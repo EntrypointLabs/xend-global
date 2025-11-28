@@ -16,7 +16,7 @@ import { PreparePaymentIntentParams, SmartAccount, SolanaAddress } from '@/types
 import { ErrorCode } from '@/utils/errors';
 import Toast from 'react-native-toast-message';
 import * as Sentry from '@sentry/react-native';
-import { CreatePaymentIntentRequest } from '@sqds/grid';
+import { CreatePaymentIntentRequest } from '@sqds/grid-react-native';
 import { SDKGridClient } from '../../grid/sdkClient';
 import { StorageService } from '@/utils/storage';
 import { AUTH_STORAGE_KEYS } from '@/utils/auth';
@@ -50,23 +50,30 @@ export default function ConfirmScreen() {
                 return;
             }
 
+            const backupKey = user.policies.signers.find((signer: any) => signer.provider === 'turnkey');
+            if (!backupKey) {
+                throw new Error('Backup key not found');
+            }
+
+            
+
             const prepareTransactionParams: CreatePaymentIntentRequest = {
                 amount: (Number(amount) * 1000000).toString(), // Convert to USDC base units
-                grid_user_id: user.grid_user_id!,
                 source: {
                     account: user.address,
-                    currency: "usdc"
+                    currency: "usdc",
+                    // transaction_signers: [backupKey.address]
                 },
                 destination: {
                     address: recipient,
                     currency: "usdc"
-                }
+                },
             };
 
             const easClient = new EasClient();
 
             const transactionData = await easClient.preparePaymentIntent(prepareTransactionParams, user.address, true);
-
+            
             if (!user) {
                 logout();
                 router.push({

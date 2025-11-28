@@ -1,4 +1,4 @@
-import { UniversalKeyPair } from '@sqds/grid/native';
+import { UniversalKeyPair } from '@sqds/grid-react-native';
 import { z } from 'zod/v4';
 
 export const Email = z.email();

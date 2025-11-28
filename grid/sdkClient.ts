@@ -1,4 +1,4 @@
-import { GridClient, GridEnvironment } from '@sqds/grid';
+import { GridClient, GridEnvironment } from '@sqds/grid-react-native';
 
 let clientInstance: GridClient | null = null;
 

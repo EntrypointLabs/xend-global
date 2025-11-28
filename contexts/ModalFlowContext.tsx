@@ -99,7 +99,7 @@ export function ModalFlowProvider({ children }: { children: React.ReactNode }) {
         try {
             const easClient = new EasClient();
             const response = await easClient.getVirtualAccounts(user.address);
-            setBankAccountDetails(response);
+            setBankAccountDetails(response.data);
         } catch (err) {
             setError('Failed to fetch bank details');
             console.error('Error fetching bank details:', err);
@@ -116,7 +116,9 @@ export function ModalFlowProvider({ children }: { children: React.ReactNode }) {
 
         try {
             const userData = await MockDatabase.getUser(user.grid_user_id);
+            console.log('🍓 userData in ModalFlowContext.tsx::::: ', JSON.stringify(userData, null, 2));
             const kycLinkId = userData?.kyc_link_id;
+            console.log('🍓 kycLinkId in ModalFlowContext.tsx::::: ', kycLinkId);
             if (!kycLinkId) {
                 setKycStatus('not_started');
                 return;

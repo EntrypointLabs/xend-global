@@ -4,7 +4,7 @@ import { KycResponse, KycParams } from '@/types/Kyc';
 import { OpenVirtualAccountParams } from '@/types/VirtualAccounts';
 import { ConfirmPayload } from '@/types/Transaction';
 import { SentryApiResponse } from '@/types/Sentry';
-import { InitAuthResponse, SessionSecrets } from '@sqds/grid/native';
+import { InitAuthResponse, SessionSecrets } from '@sqds/grid-react-native';
 
 // import * as Sentry from '@sentry/react-native'; 
 
@@ -60,7 +60,6 @@ export class EasClient {
 
             const response = await fetch(url, fetchOptions);
 
-
             if (!response.ok) {
                 const errorData = await response.json().catch(() => console.error('Error parsing response:', response));
 
@@ -81,8 +80,10 @@ export class EasClient {
                 throw new EasError('EasClient: Request failed', response.status, errorData);
             }
 
-            const data = await response.json();
-            return data;
+            const res = await response.json();
+            console.log('🍓 res in easClient.ts::::: ', JSON.stringify(res, null, 2));
+            
+            return res;
         } catch (error) {
             console.error('EasClient: Unexpected error in request():', error);
             // Sentry.captureException(new Error(`EasClient: Unexpected error in request(): ${error}. (utils)/easClient.ts (request) Endpoint: ${endpoint}, Options: ${JSON.stringify(options)}`));
