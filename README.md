@@ -3,9 +3,9 @@
 ![neobank-example-app](https://github.com/user-attachments/assets/f5c6e770-36e6-43dc-953e-dd16369d2ab6)
 
 
-This is a demo React Native app built with [Expo](https://expo.dev/), designed to showcase the [@sqds/grid SDK](https://www.npmjs.com/package/@sqds/grid). It demonstrates authentication, KYC, virtual account creation, and more, using a modern Expo Router structure and the official Grid React Native SDK.
+This is a demo React Native app built with [Expo](https://expo.dev/), designed to showcase the [@sqds/grid-react-native SDK](https://www.npmjs.com/package/@sqds/grid-react-native). It demonstrates authentication, KYC, virtual account creation, and more, using a modern Expo Router structure and the official Grid React Native SDK.
 
-> **Note:** This branch supports Expo SDK 54. Expo recommends using [development builds](https://docs.expo.dev/develop/development-builds/introduction/) for production apps, as Expo Go only supports the latest SDK version. See the [Expo SDK upgrade guide](https://docs.expo.dev/workflow/upgrading-expo-sdk-walkthrough/) for more information.
+> **Note:** This repo supports Expo SDK 54. Expo recommends using [development builds](https://docs.expo.dev/develop/development-builds/introduction/) for production apps, as Expo Go only supports the latest SDK version. See the [Expo SDK upgrade guide](https://docs.expo.dev/workflow/upgrading-expo-sdk-walkthrough/) for more information.
 
 > ⚠️ **Disclaimer:** This is a demo application intended for educational and demonstration purposes only. 
 
@@ -22,7 +22,7 @@ This is a demo React Native app built with [Expo](https://expo.dev/), designed t
 
 ## Overview
 
-This demo app showcases how to integrate Grid into a React Native application using the official [@sqds/grid SDK](https://www.npmjs.com/package/@sqds/grid). It includes:
+This demo app showcases how to integrate Grid into a React Native application using the official [@sqds/grid-react-native SDK](https://www.npmjs.com/package/@sqds/grid-react-native). It includes:
 
 - Email authentication with OTP verification
 - KYC onboarding flow
@@ -33,7 +33,7 @@ This demo app showcases how to integrate Grid into a React Native application us
 
 ## SDK Architecture
 
-The app demonstrates a secure architecture using the [@sqds/grid SDK](https://www.npmjs.com/package/@sqds/grid):
+The app demonstrates a secure architecture using the [@sqds/grid-react-native SDK](https://www.npmjs.com/package/@sqds/grid-react-native):
 
 - **Frontend**: Uses [easClient.ts](utils/easClient.ts) to make requests to backend API routes
 - **Backend API Routes**: Located in the `app/api/` folder, these routes use the Grid SDK via [sdkClient.ts](grid/sdkClient.ts)
