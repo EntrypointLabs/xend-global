@@ -1,4 +1,4 @@
-import { AccountInfo } from '@/types/Auth';
+// import { AccountInfo } from '@/types/Auth';
 import { SessionSecrets } from '@sqds/grid';
 import { EasClient } from '@/utils/easClient';
 // import { setupCryptoPolyfill } from '@/polyfills';
@@ -35,6 +35,7 @@ export const verifyOtpCodeAndCreateAccount = async (code: string, sessionSecrets
 export const authenticateUser = async (email: string): Promise<any> => {
     const request: {email: string} = {
         email: email,
+        // provider: 'turnkey',
     };
     const easClient = new EasClient();
     const response = await easClient.authenticate(request);

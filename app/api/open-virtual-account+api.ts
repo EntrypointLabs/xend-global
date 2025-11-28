@@ -1,4 +1,4 @@
-import { RequestVirtualAccountRequest } from '@sqds/grid';
+import { RequestVirtualAccountRequest } from '@sqds/grid-react-native';
 import { SDKGridClient } from '../../grid/sdkClient';
 
 export async function POST(request: Request) {
@@ -7,7 +7,6 @@ export async function POST(request: Request) {
         
         const virtualAccountRequest: RequestVirtualAccountRequest = {
             currency: body.currency,
-            grid_user_id: body.gridUserId
         };
 
         const gridClient = SDKGridClient.getInstance();

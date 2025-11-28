@@ -28,7 +28,7 @@
     "@sentry/react-native": "~7.2.0",
     "@solana/spl-token": "^0.1.8",
     "@solana/web3.js": "^1.98.2",
-    "@sqds/grid": "^0.1.0",
+    "@sqds/grid-react-native": "^1.0.0",
     "@stablelib/chacha20poly1305": "^2.0.1",
     "@stablelib/hex": "^2.0.1",
     "@types/uuid": "^10.0.0",

@@ -1,4 +1,4 @@
-import { RequestKycLinkRequest } from '@sqds/grid';
+import { RequestKycLinkRequest } from '@sqds/grid-react-native';
 import { SDKGridClient } from '../../grid/sdkClient';
 
 export async function POST(request: Request) {

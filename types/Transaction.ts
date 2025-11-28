@@ -1,4 +1,4 @@
-import { SplTransfer } from "@sqds/grid/native";
+import { SplTransfer } from "@sqds/grid-react-native";
 
 /**
  * Core transaction data interface

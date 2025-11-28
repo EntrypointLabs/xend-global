@@ -57,6 +57,7 @@ function LoginScreen() {
             setError(null);
 
             if (formError) {
+                console.log('formError', formError);
                 setError(formError);
                 handleError(ErrorCode.INVALID_EMAIL, true, true);
                 return;

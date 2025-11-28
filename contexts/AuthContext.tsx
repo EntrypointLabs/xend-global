@@ -146,9 +146,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const authenticate = async (email: string): Promise<void> => {
         try {
             const result= await authenticateUser(email);
-            if(!result.success) {
-                throw new Error(result.error);
-            }
 
             setUser(result.data);
             setEmail(email);
@@ -169,10 +166,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const register = async (email: string): Promise<void> => {
         try {
             const result= await registerUser(email);
-
-            if(!result.success) {
-                throw new Error(result.error);
-            }
 
             setUser(result.data);
             setEmail(email);

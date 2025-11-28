@@ -1,4 +1,4 @@
-import { CreatePaymentIntentRequest } from '@sqds/grid';
+import { CreatePaymentIntentRequest } from '@sqds/grid-react-native';
 import { SDKGridClient } from '../../grid/sdkClient';
 
 export async function POST(request: Request) {
