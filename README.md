@@ -3,7 +3,7 @@
 ![neobank-example-app](https://github.com/user-attachments/assets/f5c6e770-36e6-43dc-953e-dd16369d2ab6)
 
 
-This is a demo React Native app built with [Expo](https://expo.dev/), designed to showcase the [@sqds/grid SDK](https://www.npmjs.com/package/@sqds/grid). It demonstrates authentication, KYC, virtual account creation, and more, using a modern Expo Router structure and the official Grid SDK.
+This is a demo React Native app built with [Expo](https://expo.dev/), designed to showcase the [@sqds/grid SDK](https://www.npmjs.com/package/@sqds/grid). It demonstrates authentication, KYC, virtual account creation, and more, using a modern Expo Router structure and the official Grid React Native SDK.
 
 > **Note:** This branch supports Expo SDK 54. Expo recommends using [development builds](https://docs.expo.dev/develop/development-builds/introduction/) for production apps, as Expo Go only supports the latest SDK version. See the [Expo SDK upgrade guide](https://docs.expo.dev/workflow/upgrading-expo-sdk-walkthrough/) for more information.
 
@@ -45,7 +45,7 @@ The app demonstrates a secure architecture using the [@sqds/grid SDK](https://ww
 The [sdkClient.ts](grid/sdkClient.ts) file provides a singleton pattern for the Grid SDK with proper environment configuration:
 
 ```typescript
-import { GridClient, GridEnvironment } from '@sqds/grid';
+import { GridClient, GridEnvironment } from '@sqds/grid-react-native';
 import { SDKGridClient } from './grid/sdkClient';
 
 // Direct SDK initialization (what happens inside SDKGridClient)
@@ -191,7 +191,7 @@ app/
 
 ## Resources
 
-- [@sqds/grid SDK Documentation](https://www.npmjs.com/package/@sqds/grid)
+- [@sqds/grid-react-native SDK Documentation](https://www.npmjs.com/package/@sqds/grid-react-native)
 - [Expo Documentation](https://docs.expo.dev/)
 - [Expo Go App](https://expo.dev/client)
 - [Expo CLI](https://docs.expo.dev/workflow/expo-cli/)
