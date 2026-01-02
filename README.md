@@ -1,135 +1,131 @@
-# Turborepo starter
+# Fuse Monorepo (Mobile + Backend)
 
-This Turborepo starter is maintained by the Turborepo core team.
+A Turborepo-managed workspace containing an Expo React Native mobile app and a Node-based backend, plus shared configs and a small UI library.
 
-## Using this example
+## Structure
 
-Run the following command:
+- `apps/mobile`: Expo React Native app (Android/iOS/Web)
+  - Scripts: `start`, `android`, `ios`, `web`, `lint`, `test`
+  - Notables: `entrypoint.js`, `SETUP.md`, `app/`, `metro.config.js`, `example.env`
+- `apps/backend`: Node server (ESM) with TypeScript tooling
+  - Scripts: `dev`, `build`, `start`, `lint`, `check-types`
+  - Entry: `index.js`
+- `packages/ui`: Shared React component library
+  - Scripts: `lint`, `generate:component`, `check-types`
+- `packages/eslint-config`: Shared ESLint configs
+- `packages/typescript-config`: Shared TypeScript configs
+- Root scripts (run across workspaces via Turbo): `build`, `dev`, `lint`, `check-types`, `format`
 
-```sh
-npx create-turbo@latest
-```
+## Prerequisites
 
-## What's inside?
+- Node `>=18`
+- Mobile: Android Studio + JDK (for `android`), Xcode (for `ios`)
+- Optional: Watchman (macOS) for faster Metro reloads
 
-This Turborepo includes the following packages/apps:
+## Setup
 
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@fuse/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@fuse/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@fuse/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
+1) Install dependencies at the repo root:
 
 ```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build
-yarn dlx turbo build
-pnpm exec turbo build
+npm install
 ```
 
-You can build a specific package by using a [filter](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters):
+2) Mobile environment file (optional but recommended):
 
 ```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build --filter=docs
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build --filter=docs
-yarn exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+cp apps/mobile/example.env apps/mobile/.env
 ```
 
-### Develop
+## Development
 
-To develop all apps and packages, run the following command:
-
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev
-yarn exec turbo dev
-pnpm exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters):
+- Start backend (port `8000`):
 
 ```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev --filter=web
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev --filter=web
-yarn exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
+npm --workspace apps/backend run dev
 ```
 
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.com/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
+- Start mobile app (Expo dev tools):
 
 ```
-cd my-turborepo
+npm --workspace apps/mobile run start
+```
 
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo login
+- Platform-specific mobile commands:
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
+```
+npm --workspace apps/mobile run android
+npm --workspace apps/mobile run ios
+npm --workspace apps/mobile run web
+```
+
+- Run via Turbo with filters (alternative):
+
+```
+# Backend dev
+npx turbo run dev --filter=apps/backend
+
+# Mobile start
+npx turbo run start --filter=apps/mobile
+```
+
+- Run all available `dev` scripts (note: mobile uses `start`, not `dev`):
+
+```
+npm run dev
+```
+
+## Build & Type Check
+
+- Build all workspaces (primarily affects backend):
+
+```
+npm run build
+```
+
+- Type checks across the monorepo:
+
+```
+npm run check-types
+```
+
+- Start backend after build:
+
+```
+npm --workspace apps/backend run start
+```
+
+## Linting & Formatting
+
+- Lint across all workspaces:
+
+```
+npm run lint
+```
+
+- Format common file types:
+
+```
+npm run format
+```
+
+## Turbo Tips
+
+- Filter tasks to specific apps/packages:
+
+```
+npx turbo run <task> --filter=apps/mobile
+npx turbo run <task> --filter=apps/backend
+```
+
+- Remote caching (optional) with Vercel:
+
+```
 npx turbo login
-yarn exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo link
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
 npx turbo link
-yarn exec turbo link
-pnpm exec turbo link
 ```
 
-## Useful Links
+## Useful References
 
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.com/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.com/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.com/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.com/docs/reference/configuration)
-- [CLI Usage](https://turborepo.com/docs/reference/command-line-reference)
+- Expo: https://docs.expo.dev
+- React Native: https://reactnative.dev/docs
+- Turborepo: https://turbo.build/repo/docs
