@@ -1,13 +1,13 @@
 {
-  "name": "web",
+  "name": "fuse-backend",
   "version": "0.1.0",
   "type": "module",
   "private": true,
   "main": "index.js",
   "scripts": {
-    "dev": "next dev --port 3000",
-    "build": "next build",
-    "start": "next start",
+    "dev": "PORT=8000 node --watch index.js",
+    "build": "tsc",
+    "start": "node dist/index.js",
     "lint": "eslint --max-warnings 0",
     "check-types": "next typegen && tsc --noEmit"
   },
