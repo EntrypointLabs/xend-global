@@ -13,11 +13,15 @@ export async function POST(request: Request) {
             headers: { "Content-Type": "application/json" },
         });
     } catch (error: any) {
+        // Add diagnostic logging to surface backend errors
+        console.error('register+api.ts error:', error);
+        console.error('register+api.ts error.response:', error?.response);
+
         // Format the error response consistently
         const errorResponse = {
             error: error.message || "An unknown error occurred",
             details: error.data?.details || [{ code: "UNKNOWN_ERROR" }],
-            status: error.status || 500
+            status: error.status || error?.response?.status || 500
         };
 
         return new Response(
