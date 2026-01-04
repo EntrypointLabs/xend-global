@@ -13,11 +13,17 @@ export async function POST(request: Request) {
             headers: { "Content-Type": "application/json" },
         });
     } catch (error: any) {
-        // Pass through the error dataar
+        // Format the error response consistently
+        const errorResponse = {
+            error: error.message || "An unknown error occurred",
+            details: error.data?.details || [{ code: "UNKNOWN_ERROR" }],
+            status: error.status || 500
+        };
+
         return new Response(
-            JSON.stringify(error),
+            JSON.stringify(errorResponse),
             {
-                status: error.status || 500,
+                status: errorResponse.status,
                 headers: { "Content-Type": "application/json" }
             }
         );

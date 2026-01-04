@@ -30,11 +30,12 @@ export class SDKGridClient {
         if (!clientInstance) {
             this.validateBackendEnv();
             const environment = this.getEnvironment();
-            
+
+            const baseUrl = process.env.EXPO_PUBLIC_GRID_ENDPOINT;
             clientInstance = new GridClient({
                 apiKey: process.env.GRID_API_KEY!,
                 environment,
-                baseUrl: process.env.EXPO_PUBLIC_GRID_ENDPOINT!
+                ...(baseUrl ? { baseUrl } : {})
             });
         }
         return clientInstance;
@@ -43,10 +44,11 @@ export class SDKGridClient {
     static getFrontendClient(): GridClient {
         this.validateFrontendEnv();
         const environment = this.getEnvironment();
-        
+        const baseUrl = process.env.EXPO_PUBLIC_GRID_ENDPOINT;
+
         return new GridClient({
             environment,
-            baseUrl: process.env.EXPO_PUBLIC_GRID_ENDPOINT!
+            ...(baseUrl ? { baseUrl } : {})
         });
     }
 
