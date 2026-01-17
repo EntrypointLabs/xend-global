@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "Bright",
-    "slug": "bright",
+    "name": "Fuse",
+    "slug": "fuse",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon.png",
-    "scheme": "bright",
+    "scheme": "fuse",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "io.sqds.neobank-example-app",
+      "bundleIdentifier": "io.sqds.fuse",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
@@ -23,20 +23,20 @@
         "NSCameraUsageDescription": "This app requires camera access to verify your identity."
       },
       "associatedDomains": [
-        "applinks:bright.app"
+        "applinks:fuse.app"
       ]
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/app-icon.png"
       },
-      "package": "io.sqds.neobankexampleapp",
+      "package": "io.sqds.fuse",
       "intentFilters": [
         {
           "action": "VIEW",
           "data": [
             {
-              "scheme": "bright"
+              "scheme": "fuse"
             }
           ],
           "category": [
@@ -73,9 +73,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "dcd71206-0960-4586-a78d-0e4b096aeace"
+        "projectId": "2dbedae2-a00f-46bb-803b-53ee43d89a9e"
       }
     },
-    "owner": "squads-grid"
+    "owner": "gifted-borg"
   }
 }

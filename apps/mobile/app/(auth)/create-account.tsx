@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { LoginForm } from '@/components/LoginForm';
 import { ScreenHeaderText } from '@/components/ui/molecules';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { WithScreenTheme } from '@/components/WithScreenTheme';
 import { ThemedScreen, StarburstBackground } from '@/components/ui/layout';
 import { ThemedActionText, ThemedText } from '@/components/ui/atoms';
@@ -82,8 +82,19 @@ function CreateAccountScreen() {
 
     return (
         <ThemedScreen>
-            <StarburstBackground primaryColor={error ? '#FF0048' : "#0080FF"} />
-
+            <Image
+            source={require('@/assets/images/onboarding/purple-blur.png')}
+            style={{
+                position: 'absolute',
+                width: '100%',
+                height: 323,
+                // top: -171,            
+                top: -100,            
+                left: 0,
+            }}
+            
+            resizeMode="cover"
+            />
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
@@ -131,9 +142,12 @@ function CreateAccountScreen() {
 }
 
 export default WithScreenTheme(CreateAccountScreen, {
-    backgroundColor: '#000000',
-    textColor: '#FFFFFF',
-    primaryColor: '#FFFFFF'
+    // backgroundColor: '#000000',
+    // textColor: '#FFFFFF',
+    // primaryColor: '#FFFFFF'
+    backgroundColor: '#FFFFFF',
+    textColor: '#000000',
+    primaryColor: '#000000'
 });
 
 const styles = StyleSheet.create({

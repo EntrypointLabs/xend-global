@@ -20,7 +20,8 @@ export function ThemedScreen({
 }: ThemedScreenProps) {
     const { backgroundColor } = useScreenTheme();
 
-    const isDarkBackground = backgroundColor.toLowerCase() === '#000' || backgroundColor.toLowerCase() === '#000000';
+    // const isDarkBackground = backgroundColor.toLowerCase() === '#000' || backgroundColor.toLowerCase() === '#000000';
+    const isDarkBackground = true
     const statusBarStyle = isDarkBackground ? 'light' : 'dark';
 
     const content = (
@@ -54,6 +55,6 @@ export function ThemedScreen({
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        padding: Spacing.md,
+        // padding: Spacing.md,
     },
 });
