@@ -14,7 +14,7 @@ export function StartScreen() {
             {/* <View > */}
             <ThemedButton
                 title="Start now"
-                onPress={() => router.push('/(auth)/create-account')}
+                onPress={() => router.push('/(auth)/restore-account')}
                 style={{ width: 200 }}
             />
         </ThemedScreen>

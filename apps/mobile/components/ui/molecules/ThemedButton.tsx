@@ -12,6 +12,8 @@ interface ThemedButtonProps {
     style?: ViewStyle;
     textStyle?: TextStyle;
     disabled?: boolean;
+    iconLeft?: React.ReactNode;
+    iconRight?: React.ReactNode;
 }
 
 export function ThemedButton({
@@ -21,6 +23,8 @@ export function ThemedButton({
     style,
     textStyle,
     disabled = false,
+    iconLeft,
+    iconRight,
 }: ThemedButtonProps) {
     const { primaryColor, backgroundColor, textColor } = useScreenTheme();
     const primaryColorInstance = tinycolor(primaryColor);
@@ -34,20 +38,20 @@ export function ThemedButton({
             case 'primary':
                 return {
                     ...baseStyle,
-                    backgroundColor: primaryColor,
-                    borderColor: primaryColor,
+                    backgroundColor: "#FFFFFF",
+                    borderColor: "#FFFFFF",
                 };
             case 'secondary':
                 return {
                     ...baseStyle,
-                    backgroundColor: primaryColorInstance.setAlpha(0.1).toRgbString(),
-                    borderColor: primaryColorInstance.setAlpha(0.4).toRgbString(),
+                    backgroundColor: "#000000",
+                    borderColor: "#000000",
                 };
             case 'outline':
                 return {
                     ...baseStyle,
-                    backgroundColor: 'transparent',
-                    borderColor: textColor,
+                    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                    borderColor: "rgba(255, 255, 255, 0.2)",
                     borderWidth: 1,
                 };
             default:
@@ -62,13 +66,13 @@ export function ThemedButton({
     const getTextColor = (): string => {
         switch (variant) {
             case 'primary':
-                return backgroundColor;
+                return "#000000";
             case 'secondary':
-                return textColor;
+                return "#FFFFFF";
             case 'outline':
-                return textColor;
+                return "#FFFFFF";
             default:
-                return backgroundColor;
+                return "#000000";
         }
     };
 
@@ -81,30 +85,30 @@ export function ThemedButton({
             ]}
             onPress={onPress}
             disabled={disabled}
+            activeOpacity={0.8}
+            className='flex-row items-center justify-center gap-3'
         >
+            {iconLeft}
             <Text
                 style={[
-                    styles.text,
                     { color: getTextColor() },
                     textStyle,
                 ]}
+                className='font-semibold text-lg'
             >
                 {title}
             </Text>
+            {iconRight}
         </TouchableOpacity>
     );
 }
 
 const styles = StyleSheet.create({
     button: {
-        padding: Spacing.md,
+        padding: 20,
         borderRadius: 42,
         alignItems: 'center',
         justifyContent: 'center',
         width: '100%',
-    },
-    text: {
-        fontSize: Size.medium,
-        fontWeight: Weight.semiBoldWeight,
     },
 }); 

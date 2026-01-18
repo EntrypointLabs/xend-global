@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
         width: '100%',
     },
     themedViewInner: {
-        paddingHorizontal: Spacing.md,
+        // paddingHorizontal: Spacing.md,
     },
     text: {
         textAlign: 'center',

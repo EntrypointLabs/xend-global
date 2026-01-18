@@ -1,24 +1,20 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { LoginForm } from '@/components/LoginForm';
-import { ScreenHeaderText } from '@/components/ui/molecules';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ThemedButton } from '@/components/ui/molecules';
+import { Image, Text, View } from 'react-native';
 import { WithScreenTheme } from '@/components/WithScreenTheme';
-import { ThemedScreen, StarburstBackground } from '@/components/ui/layout';
-import { ThemedActionText, ThemedText } from '@/components/ui/atoms';
 import { useResendTimer } from '@/hooks/useResendTimer';
-import { Spacing } from '@/constants/Spacing';
 import { router } from 'expo-router';
 import { ErrorCode } from '@/utils/errors';
 import { handleError } from '@/utils/errors';
 import { useScreenTheme } from '@/contexts/ScreenThemeContext';
+import Logo from '@/components/Logo';
 
 function LoginScreen() {
     const [isLoading, setIsLoading] = useState(false);
     const [showCodeInput, setShowCodeInput] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    // const [otpId, setOtpId] = useState<string | null>(null);
-    const { authenticate, verifyCode, user} = useAuth();
+    const { authenticate, verifyCode, user } = useAuth();
     const { textColor } = useScreenTheme();
 
     const triggerAuthentication = async (emailToUse: string) => {
@@ -44,14 +40,14 @@ function LoginScreen() {
         const success = await verifyCode(
             code
         );
-        if(success) {
+        if (success) {
             router.replace('/success');
         }
         return success;
     };
 
     const handleSubmit = async (submittedEmail: string, code?: string, formError?: string) => {
-        
+
         try {
             setIsLoading(true);
             setError(null);
@@ -80,73 +76,60 @@ function LoginScreen() {
     };
 
     return (
-        <ThemedScreen>
-            <StarburstBackground primaryColor={error ? '#FF0048' : "#0080FF"} />
+        <View className='flex-1'>
+            <GradientBackround />
 
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
-                style={styles.contentContainer}
-            >
-                <View style={[styles.contentContainer, { justifyContent: 'space-between' }]}>
-                    <View style={{ flex: 1 }}>
-                        <View style={styles.headerContainer}>
-                            <ScreenHeaderText
-                                title="Login"
-                                // subtitle="Your finances, upgraded"
-                            />
-                        </View>
-                        {/* <View style={[styles.headerContainer, { alignItems: 'flex-start', paddingHorizontal: Spacing.lg, marginBottom: Spacing.lg}]}>
-                            <ThemedText type="large" style={{ color: textColor + 40 }}>Login to your account</ThemedText>
-                        </View> */}
-                        <LoginForm
-                            onSubmit={handleSubmit}
-                            isLoading={isLoading}
-                            error={error}
-                        />
-                        <View style={[styles.headerContainer, { alignItems: 'flex-start', marginTop: Spacing.lg, paddingHorizontal: Spacing.lg, marginBottom: Spacing.lg, flexDirection: 'row', gap: Spacing.sm}]}>
-                            <ThemedText type="default" style={{ color: textColor + 40, paddingVertical: Spacing.xs, marginTop: Spacing.xxs}}>Already have an account?</ThemedText>
-                            <Pressable onPress={() => router.push('/(auth)/create-account')}>
-                                <ThemedText type="link" style={{ color: textColor }}>Sign up</ThemedText>
-                            </Pressable>
-                        </View>
-                    </View>
-
-                    {showCodeInput && !isLoading && (
-                        <View style={styles.actionContainer}>
-                            <ThemedActionText
-                                onPress={resend}
-                                disabled={isDisabled}
-                                countdown={countdown}
-                                activeText="Resend code"
-                                disabledText="Resend code in"
-                            />
-                        </View>
-                    )}
+            <View className='px-8 py-16 flex-1 justify-between border border-green-950'>
+                <View className='flex-1 h-full justify-center'>
+                    <Text className='text-4xl font-medium'>Invest</Text>
                 </View>
-            </KeyboardAvoidingView>
-        </ThemedScreen>
+
+                <View className='flex-1 h-full justify-end'>
+                    <Logo />
+                    <Text className='text-4xl font-medium max-w-[269px] w-full text-white my-[22px]'>
+                        Your money, upgraded
+                    </Text>
+                    <View className='mb-10'>
+                        <Text className='text-lg font-medium max-w-[311px] w-full text-[#8FE5F6]'>Save, earn and invest
+                        </Text>
+                        <Text className='text-lg font-medium max-w-[311px] w-full text-[#8FE5F6]'>with stablecoins and digital assets.</Text>
+                    </View>
+                    <View className='gap-2.5'>
+                        <ThemedButton onPress={() => authenticate("")} title="Continue with Google"
+                            iconLeft={<Image source={require('@/assets/icons/google.png')} className='size-6' />}
+                        />
+                        <ThemedButton onPress={() => { }} variant='outline' title="Recover existing wallet" iconLeft={<Image source={require('@/assets/icons/redo.png')} className='size-6' />} />
+                    </View>
+                </View>
+            </View>
+        </View>
+    );
+}
+
+const GradientBackround = () => {
+    return (
+        <>
+            <Image
+                source={require('@/assets/images/onboarding/blue-blur-1.png')}
+                className='absolute w-full h-[468px] bottom-[58px] left-0'
+                resizeMode="stretch"
+            />
+            <Image
+                source={require('@/assets/images/onboarding/blue-blur-2.png')}
+                className='absolute w-full h-[468px] bottom-[-17px] left-0'
+                resizeMode="cover"
+            />
+            <Image
+                source={require('@/assets/images/onboarding/blue-blur-3.png')}
+                className='absolute w-full h-[468px] bottom-[-134px] left-0'
+                resizeMode="cover"
+            />
+        </>
     );
 }
 
 export default WithScreenTheme(LoginScreen, {
-    backgroundColor: '#000000',
-    textColor: '#FFFFFF',
-    primaryColor: '#FFFFFF'
-});
-
-const styles = StyleSheet.create({
-    contentContainer: {
-        flex: 1,
-        zIndex: 1,
-    },
-    headerContainer: {
-        justifyContent: 'flex-start',
-        alignItems: 'center',
-        marginBottom: Spacing.lg * 3,
-    },
-    actionContainer: {
-        flex: 0.1,
-        alignItems: 'center',
-    },
+    backgroundColor: '#FFFFFF',
+    textColor: '#000000',
+    primaryColor: '#000000'
 });
