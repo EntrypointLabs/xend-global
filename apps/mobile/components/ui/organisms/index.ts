@@ -1,9 +1,8 @@
-export { OverlappingImages } from './OverlappingImages';
-export { CurrencySwitcher } from './CurrencySwitcher';
-export { SwipeableModal } from './SwipeableModal';
-export { TransactionList } from './TransactionList';
-export { TransactionItem } from './TransactionItem';
-export { ScreenVerificationCodeInput } from './ScreenVerificationCodeInput';
-export { ActionModal } from './ActionModal';
-export * from './InAppBrowser';
-export * from './ComingSoonToast'; 
+export { CustomTabBar } from "./CustomTabBar";
+export { SendModal } from "./modals/SendModal";
+export { ReceiveModal } from "./modals/ReceiveModal";
+export { QRCodeModal } from "./modals/QRCodeModal";
+export { ComingSoonToast } from "./ComingSoonToast";
+export { TransactionList } from "./TransactionList";
+export { default as WalletQRCode } from "./WalletQRCode";
+export { ActionModal } from "./ActionModal";

@@ -1,0 +1,129 @@
+import React from 'react';
+import { View, TouchableOpacity, StyleSheet, Platform, ToastAndroid, Alert } from 'react-native';
+import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Spacing } from '@/constants/Spacing';
+import { useThemeColor } from '@/hooks/useThemeColor';
+import { useModalFlow } from '@/contexts/ModalFlowContext';
+import History from '../atoms/icons/history';
+import Home from '../atoms/icons/home';
+import Settings from '../atoms/icons/settings';
+import * as Haptics from 'expo-haptics';
+import HapticPressable from '../atoms/HapticPressable';
+
+const iconMappings = {
+    index: Home,
+    settings: Settings,
+    history: History,
+} as Record<string, React.FC<{ isActive?: boolean }>>;
+
+export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+    const insets = useSafeAreaInsets();
+    const primaryColor = useThemeColor({}, 'primary');
+    const backgroundColor = useThemeColor({}, 'background');
+    const cardColor = useThemeColor({}, 'card');
+    const { showReceiveModal } = useModalFlow();
+
+    return (
+        <View style={[styles.container, { bottom: insets.bottom + Spacing.sm }]}>
+            {/* Left Pill - Navigation Tabs == TODO: Make it look better per design*/}
+            <View className='flex-row py-3 px-5 rounded-full items-center gap-6 border border-black/5' style={[styles.tabContainer, { backgroundColor: "rgba(255, 255, 255, 0.8)" }]}>
+                {state.routes.map((route, index) => {
+                    const { options } = descriptors[route.key];
+                    const isFocused = state.index === index;
+
+                    const onPress = () => {
+                        const event = navigation.emit({
+                            type: 'tabPress',
+                            target: route.key,
+                            canPreventDefault: true,
+                        });
+
+                        if (!isFocused && !event.defaultPrevented) {
+                            navigation.navigate(route.name);
+                        }
+                    };
+
+                    const onLongPress = () => {
+                        navigation.emit({
+                            type: 'tabLongPress',
+                            target: route.key,
+                        });
+                    };
+
+                    const Icon = iconMappings[route.name];
+
+                    return (
+                        <HapticPressable
+                            key={index}
+                            accessibilityRole="button"
+                            accessibilityState={isFocused ? { selected: true } : {}}
+                            accessibilityLabel={options.tabBarAccessibilityLabel}
+                            testID={options.title}
+                            onPress={onPress}
+                            onLongPress={onLongPress}
+                            style={styles.tabButton}
+
+                        >
+                            <Icon isActive={isFocused} />
+                        </HapticPressable>
+                    );
+                })}
+            </View>
+
+            {/* Right FAB - Action Button */}
+            <HapticPressable
+                style={[styles.fab, { backgroundColor: '#000' }]}
+                onPress={() => {
+                    // Open Send/Receive modal (or mapped action)
+                    // For this task, connecting to showReceiveModal as an example or primary action
+                    showReceiveModal();
+                }}
+            >
+                <Ionicons name="add" size={32} color="white" />
+            </HapticPressable>
+        </View>
+    );
+}
+
+const styles = StyleSheet.create({
+    container: {
+        position: 'absolute',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        left: Spacing.md,
+        right: Spacing.md,
+    },
+    tabContainer: {
+        // Shadow
+        // shadowColor: "#000",
+        // shadowOffset: {
+        //     width: 0,
+        //     height: 4,
+        // },
+        // shadowOpacity: 0.1,
+        // shadowRadius: 12,
+        // elevation: 5,
+    },
+    tabButton: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    fab: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: "#000",
+        shadowOffset: {
+            width: 0,
+            height: 4,
+        },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 6,
+    }
+});

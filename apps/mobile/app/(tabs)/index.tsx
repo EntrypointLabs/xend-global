@@ -1,9 +1,9 @@
-import { Platform, StyleSheet, View, Image, ScrollView, RefreshControl } from 'react-native';
+import { Platform, StyleSheet, View, Image, ScrollView, RefreshControl, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { LoadingSpinner, ThemedText } from '@/components/ui/atoms';
 import { Spacing } from '@/constants/Spacing';
-import { CircleButtonGroup } from '@/components/ui/molecules';
+import { ActionCard, PromoBanner } from '@/components/ui/molecules';
 import { ThemedScreen } from '@/components/ui/layout';
 import { TransferResponse, Transfer, Transaction, TransactionGroup } from '@/types/Transaction';
 import { useAuth } from '@/contexts/AuthContext';
@@ -83,37 +83,41 @@ function HomeScreenContent() {
 
     const actions = useMemo(() => [
         {
-            icon: 'add-outline' as keyof typeof Ionicons.glyphMap,
-            label: 'Add',
-            onPress: showReceiveModal,
-        },
-        {
-            icon: 'arrow-forward-outline' as keyof typeof Ionicons.glyphMap,
-            label: 'Send',
-            onPress: () => setIsSendModalVisible(true),
-        },
-        {
-            icon: 'calendar-outline' as keyof typeof Ionicons.glyphMap,
-            label: 'Scheduled',
-            onPress: () => showToast("Scheduled payments coming soon!"),
-            color: textColor + 40,
-            textColor: textColor + 40
-        },
-        {
+            title: 'Cash',
+            subtitle: 'Send and Receive',
             icon: 'cash-outline' as keyof typeof Ionicons.glyphMap,
-            label: 'Invest',
+            onPress: () => showToast("Cash features coming soon!"), // Placeholder, maybe open send/receive options?
+            color: '#007AFF', // Blue
+        },
+        {
+            title: 'Investments',
+            subtitle: 'Trade Crypto',
+            icon: 'grid-outline' as keyof typeof Ionicons.glyphMap,
             onPress: () => showToast("Investment features coming soon!"),
-            color: textColor + 40,
-            textColor: textColor + 40
+            color: '#FF9500', // Orange
+        },
+        {
+            title: 'Earn',
+            subtitle: 'Up to 7.99% APY',
+            icon: 'bar-chart-outline' as keyof typeof Ionicons.glyphMap,
+            onPress: () => showToast("Earn features coming soon!"),
+            color: '#AF52DE', // Purple
+        },
+        {
+            title: 'Fuse Card',
+            subtitle: 'Get your free Card',
+            icon: 'card-outline' as keyof typeof Ionicons.glyphMap,
+            onPress: () => showToast("Card features coming soon!"),
+            color: '#000000', // Black
         }
-    ], [showReceiveModal, setIsSendModalVisible, showToast, textColor]);
+    ], [showToast]);
 
     const formatTransfers = useCallback((transfers: TransferResponse) => {
         for (const transfer of transfers) {
             if ('Spl' in transfer && transfer.Spl.confirmation_status === 'confirmed') {
-            } 
+            }
         }
-        const transfersToConsider = transfers.filter(transfer => ('Spl' in transfer && transfer.Spl.mint === process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS && ['confirmed'].includes(transfer.Spl.confirmation_status) ) || ('Bridge' in transfer && (transfer.Bridge.state === 'payment_processed' || transfer.Bridge.state === 'payment_submitted')));
+        const transfersToConsider = transfers.filter(transfer => ('Spl' in transfer && transfer.Spl.mint === process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS && ['confirmed'].includes(transfer.Spl.confirmation_status)) || ('Bridge' in transfer && (transfer.Bridge.state === 'payment_processed' || transfer.Bridge.state === 'payment_submitted')));
 
         const transactions = transfersToConsider.map(transfer => {
 
@@ -182,38 +186,71 @@ function HomeScreenContent() {
     }, [formatTransfers, transfers]);
 
     return (
-        <ThemedScreen>
+        <ThemedScreen useSafeArea={true}>
             <View style={styles.container}>
                 <ScrollView
-                    contentContainerStyle={{ flexGrow: 1 }}
+                    contentContainerStyle={styles.scrollContent}
                     refreshControl={
                         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                     }
                     showsVerticalScrollIndicator={false}
                 >
                     <View style={styles.header}>
+                        <ThemedText style={styles.headerTitle} type="defaultSemiBold">Wallet</ThemedText>
 
-                        <ThemedText style={styles.headline}>Home · Balance</ThemedText>
-                        <ThemedText type="highlight" style={styles.balanceTextStyle}>
-                            {`$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                        </ThemedText>
-                        <CircleButtonGroup buttons={actions} />
+                        <View style={styles.balanceContainer}>
+                            <ThemedText style={styles.balanceLabel}>Total Balance <Ionicons name="remove-circle" size={12} color="#999" /> 100%</ThemedText>
+                            <ThemedText style={styles.balanceAmount}>
+                                {`$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                            </ThemedText>
+                        </View>
+
+                        {transfers.length === 0 && (
+                            <View style={styles.emptyStateContainer}>
+                                <ThemedText type="defaultSemiBold" style={styles.emptyStateTitle}>There is nothing here yet</ThemedText>
+                                <ThemedText type="small" style={styles.emptyStateDescription}>
+                                    Deposit tokens to your address and start using Fuse Wallet
+                                </ThemedText>
+
+                                <TouchableOpacity
+                                    style={styles.receiveButton}
+                                    onPress={showReceiveModal}
+                                >
+                                    <Ionicons name="arrow-down-circle" size={20} color="white" />
+                                    <ThemedText style={styles.receiveButtonText}>Receive</ThemedText>
+                                </TouchableOpacity>
+                            </View>
+                        )}
                     </View>
 
-
-                    {isLoading ? <LoadingSpinner /> : (transfers.length > 0 ? (
-                        <TransactionList
-                            transactions={formattedTransactions}
-                        />
-                    ) : (
-                        <View style={styles.emptyContainer}>
-                            <Image
-                                source={placeholder}
-                                style={styles.placeholderImage}
+                    <View style={styles.gridContainer}>
+                        {actions.map((action, index) => (
+                            <ActionCard
+                                key={index}
+                                title={action.title}
+                                subtitle={action.subtitle}
+                                icon={action.icon}
+                                onPress={action.onPress}
+                                iconBackgroundColor={action.color}
                             />
-                            <ThemedText type="regular">No transactions yet</ThemedText>
+                        ))}
+                    </View>
+
+                    <PromoBanner
+                        title="Get your Virtual Bank Account"
+                        description="Receive USD and EUR for USDC"
+                        onPress={() => showToast("Virtual Bank Account coming soon!")}
+                        onClose={() => { }}
+                    />
+
+                    {transfers.length > 0 && (
+                        <View style={styles.transactionsContainer}>
+                            <ThemedText type="subtitle" style={styles.sectionTitle}>Recent Activity</ThemedText>
+                            <TransactionList
+                                transactions={formattedTransactions}
+                            />
                         </View>
-                    ))}
+                    )}
 
                 </ScrollView>
                 <SendModal
@@ -251,30 +288,71 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+        paddingHorizontal: Spacing.md,
+    },
+    scrollContent: {
+        flexGrow: 1,
+        paddingBottom: 100, // Space for bottom tab bar or safe area
     },
     header: {
-        paddingHorizontal: Spacing.md,
-        paddingVertical: Spacing.md,
+        marginTop: Spacing.md,
+        marginBottom: Spacing.xl,
     },
-    emptyContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingBottom: Platform.OS === 'ios' ? 60 : 50,
-        minHeight: 300,
-    },
-    headline: {
-        opacity: 0.3,
-        textAlign: 'center',
-        marginTop: Spacing.xl,
-    },
-    balanceTextStyle: {
-        marginTop: Spacing.sm,
+    headerTitle: {
+        fontSize: 32,
         marginBottom: Spacing.lg,
-        textAlign: 'center',
     },
-    placeholderImage: {
-        height: 46,
-        resizeMode: 'contain',
+    balanceContainer: {
+        marginBottom: Spacing.xl,
+    },
+    balanceLabel: {
+        fontSize: 14,
+        color: '#8E8E93',
+        marginBottom: Spacing.xs,
+    },
+    balanceAmount: {
+        fontSize: 48,
+        fontWeight: 'bold',
+        letterSpacing: -1,
+    },
+    emptyStateContainer: {
+        alignItems: 'center',
+        paddingVertical: Spacing.xl,
+    },
+    emptyStateTitle: {
+        fontSize: 16,
+        marginBottom: Spacing.xs,
+    },
+    emptyStateDescription: {
+        textAlign: 'center',
+        color: '#8E8E93',
+        maxWidth: 250,
+        marginBottom: Spacing.lg,
+        lineHeight: 20,
+    },
+    receiveButton: {
+        flexDirection: 'row',
+        backgroundColor: '#000',
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.sm,
+        borderRadius: 20,
+        alignItems: 'center',
+        gap: 8,
+    },
+    receiveButtonText: {
+        color: 'white',
+        fontWeight: '600',
+    },
+    gridContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+        marginBottom: Spacing.lg,
+    },
+    transactionsContainer: {
+        marginTop: Spacing.lg,
+    },
+    sectionTitle: {
+        marginBottom: Spacing.md,
     },
 });

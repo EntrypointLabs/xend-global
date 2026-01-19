@@ -4,7 +4,7 @@ import { useScreenTheme } from '@/contexts/ScreenThemeContext';
 import { Height, Size, Weight } from '@/constants/Typography';
 
 export type ThemedTextProps = TextProps & {
-    type?: 'default' | 'highlight' | 'defaultSemiBold' | 'subtitle' | 'link' | 'jumbo' | 'regular' | 'regularSemiBold' | 'tiny' | 'large';
+    type?: 'default' | 'highlight' | 'defaultSemiBold' | 'subtitle' | 'link' | 'jumbo' | 'regular' | 'regularSemiBold' | 'tiny' | 'large' | 'small';
 };
 
 export function ThemedText({
@@ -29,6 +29,7 @@ export function ThemedText({
                 type === 'regularSemiBold' ? styles.regularSemiBold : undefined,
                 type === 'tiny' ? styles.tiny : undefined,
                 type === 'large' ? styles.large : undefined,
+                type === 'small' ? styles.small : undefined,
                 style
             ]}
             {...props}
@@ -89,5 +90,10 @@ const styles = StyleSheet.create({
         lineHeight: 30,
         fontSize: Size.medium,
         color: '#FFFFFF',
+    },
+    small: {
+        fontSize: Size.small,
+        fontWeight: Weight.regularWeight,
+        lineHeight: Size.small * Height.lineHeightNormal,
     },
 });
