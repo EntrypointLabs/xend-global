@@ -21,6 +21,7 @@ import { useWalletData } from '@/hooks/useWalletData';
 import { MockDatabase } from '@/utils/mockDatabase';
 import * as Sentry from '@sentry/react-native';
 import { useThemeColor } from '@/hooks/useThemeColor';
+import HapticPressable from '@/components/ui/atoms/HapticPressable';
 
 const placeholder = require('@/assets/images/no-txn.png');
 
@@ -187,38 +188,42 @@ function HomeScreenContent() {
 
     return (
         <ThemedScreen useSafeArea={true}>
-            <View style={styles.container}>
+            <View style={styles.container} className=''>
                 <ScrollView
                     contentContainerStyle={styles.scrollContent}
-                    refreshControl={
-                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-                    }
+                    // refreshControl={
+                    //     <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                    // }
                     showsVerticalScrollIndicator={false}
                 >
-                    <View style={styles.header}>
+                    <View className='mb-6 mt-2'>
                         <ThemedText style={styles.headerTitle} type="defaultSemiBold">Wallet</ThemedText>
 
-                        <View style={styles.balanceContainer}>
-                            <ThemedText style={styles.balanceLabel}>Total Balance <Ionicons name="remove-circle" size={12} color="#999" /> 100%</ThemedText>
-                            <ThemedText style={styles.balanceAmount}>
+                        <View style={{ marginBottom: Spacing.xl }}>
+                            <Text
+                                className='text-black/30 font-medium text-sm'
+                            >Total Balance <Ionicons name="remove-circle" size={12} color="#999" /> 100%</Text>
+                            <Text className='font-bold text-[40px] leading-[140%]'>
                                 {`$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                            </ThemedText>
+                            </Text>
                         </View>
 
                         {transfers.length === 0 && (
-                            <View style={styles.emptyStateContainer}>
-                                <ThemedText type="defaultSemiBold" style={styles.emptyStateTitle}>There is nothing here yet</ThemedText>
-                                <ThemedText type="small" style={styles.emptyStateDescription}>
+                            <View
+                                className='items-center pt-2 pb-6'
+                            >
+                                <Text className='text-xl font-semibold text-center mb-2'>There is nothing here yet</Text>
+                                <Text className='text-center text-black/30 max-w-[250px] mb-7 font-medium text-sm'>
                                     Deposit tokens to your address and start using Fuse Wallet
-                                </ThemedText>
+                                </Text>
 
-                                <TouchableOpacity
-                                    style={styles.receiveButton}
+                                <HapticPressable
+                                    className='bg-black p-2 pr-2.5 gap-0.5 items-center rounded-full flex-row'
                                     onPress={showReceiveModal}
                                 >
                                     <Ionicons name="arrow-down-circle" size={20} color="white" />
                                     <ThemedText style={styles.receiveButtonText}>Receive</ThemedText>
-                                </TouchableOpacity>
+                                </HapticPressable>
                             </View>
                         )}
                     </View>
@@ -303,25 +308,19 @@ const styles = StyleSheet.create({
         marginBottom: Spacing.lg,
     },
     balanceContainer: {
-        marginBottom: Spacing.xl,
+
     },
     balanceLabel: {
-        fontSize: 14,
-        color: '#8E8E93',
-        marginBottom: Spacing.xs,
+
     },
     balanceAmount: {
-        fontSize: 48,
-        fontWeight: 'bold',
-        letterSpacing: -1,
+
     },
     emptyStateContainer: {
-        alignItems: 'center',
-        paddingVertical: Spacing.xl,
+
     },
     emptyStateTitle: {
-        fontSize: 16,
-        marginBottom: Spacing.xs,
+
     },
     emptyStateDescription: {
         textAlign: 'center',

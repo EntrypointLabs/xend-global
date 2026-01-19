@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ui/atoms';
 import { Spacing } from '@/constants/Spacing';
 import { useThemeColor } from '@/hooks/useThemeColor';
+import HapticPressable from '../atoms/HapticPressable';
 
 interface ActionCardProps {
     title: string;
@@ -15,7 +16,8 @@ interface ActionCardProps {
 }
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - (Spacing.md * 3)) / 2; // 2 columns with outer padding and gap
+const CARD_GAP = 16
+const CARD_WIDTH = (width - (CARD_GAP * 3)) / 2; // 2 columns with outer padding and gap
 
 export function ActionCard({
     title,
@@ -29,10 +31,12 @@ export function ActionCard({
     const primaryColor = useThemeColor({}, 'primary');
 
     return (
-        <TouchableOpacity
-            style={[styles.container, { backgroundColor: cardBackgroundColor }]}
+        <HapticPressable
+            style={[
+                { width: CARD_WIDTH },
+                styles.container, { backgroundColor: cardBackgroundColor }]}
+            className='rounded-2xl mb-4 justify-between min-h-[140px] border border-black/[0.12] border-dashed px-4 py-6 gap-10'
             onPress={onPress}
-            activeOpacity={0.7}
         >
             <View style={[
                 styles.iconContainer,
@@ -45,27 +49,21 @@ export function ActionCard({
                 <ThemedText type="defaultSemiBold" style={styles.title}>{title}</ThemedText>
                 <ThemedText type="small" style={styles.subtitle}>{subtitle}</ThemedText>
             </View>
-        </TouchableOpacity>
+        </HapticPressable>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
-        width: CARD_WIDTH,
-        padding: Spacing.md,
-        borderRadius: 24, // High border radius as per design
-        marginBottom: Spacing.md,
-        minHeight: 140,
-        justifyContent: 'space-between',
-        // Shadow for depth
-        shadowColor: "#000",
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.05,
-        shadowRadius: 3.84,
-        elevation: 2,
+        // // Shadow for depth
+        // shadowColor: "#000",
+        // shadowOffset: {
+        //     width: 0,
+        //     height: 2,
+        // },
+        // shadowOpacity: 0.05,
+        // shadowRadius: 3.84,
+        // elevation: 2,
     },
     iconContainer: {
         width: 48,
