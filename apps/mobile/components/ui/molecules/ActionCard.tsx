@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, TouchableOpacity, Dimensions } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, Dimensions, Image, ImageSourcePropType } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ui/atoms';
 import { Spacing } from '@/constants/Spacing';
@@ -9,7 +9,7 @@ import HapticPressable from '../atoms/HapticPressable';
 interface ActionCardProps {
     title: string;
     subtitle: string;
-    icon: keyof typeof Ionicons.glyphMap;
+    icon: ImageSourcePropType;
     onPress: () => void;
     iconColor?: string;
     iconBackgroundColor?: string;
@@ -24,7 +24,6 @@ export function ActionCard({
     subtitle,
     icon,
     onPress,
-    iconColor = 'white',
     iconBackgroundColor
 }: ActionCardProps) {
     const cardBackgroundColor = useThemeColor({}, 'card');
@@ -38,12 +37,8 @@ export function ActionCard({
             className='rounded-2xl mb-4 justify-between min-h-[140px] border border-black/[0.12] border-dashed px-4 py-6 gap-10'
             onPress={onPress}
         >
-            <View style={[
-                styles.iconContainer,
-                { backgroundColor: iconBackgroundColor || primaryColor }
-            ]}>
-                <Ionicons name={icon} size={24} color={iconColor} />
-            </View>
+
+            <Image source={icon} className='size-10' />
 
             <View style={styles.textContainer}>
                 <ThemedText type="defaultSemiBold" style={styles.title}>{title}</ThemedText>

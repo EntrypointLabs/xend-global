@@ -86,28 +86,28 @@ function HomeScreenContent() {
         {
             title: 'Cash',
             subtitle: 'Send and Receive',
-            icon: 'cash-outline' as keyof typeof Ionicons.glyphMap,
+            icon: require('@/assets/icons/usdc.png'),
             onPress: () => showToast("Cash features coming soon!"), // Placeholder, maybe open send/receive options?
             color: '#007AFF', // Blue
         },
         {
             title: 'Investments',
             subtitle: 'Trade Crypto',
-            icon: 'grid-outline' as keyof typeof Ionicons.glyphMap,
+            icon: require('@/assets/icons/investment.png'),
             onPress: () => showToast("Investment features coming soon!"),
             color: '#FF9500', // Orange
         },
         {
             title: 'Earn',
             subtitle: 'Up to 7.99% APY',
-            icon: 'bar-chart-outline' as keyof typeof Ionicons.glyphMap,
+            icon: require('@/assets/icons/earn.png'),
             onPress: () => showToast("Earn features coming soon!"),
             color: '#AF52DE', // Purple
         },
         {
             title: 'Fuse Card',
             subtitle: 'Get your free Card',
-            icon: 'card-outline' as keyof typeof Ionicons.glyphMap,
+            icon: require('@/assets/icons/card.png'),
             onPress: () => showToast("Card features coming soon!"),
             color: '#000000', // Black
         }
@@ -188,7 +188,7 @@ function HomeScreenContent() {
 
     return (
         <ThemedScreen useSafeArea={true}>
-            <View style={styles.container} className=''>
+            <View style={styles.container}>
                 <ScrollView
                     contentContainerStyle={styles.scrollContent}
                     // refreshControl={
@@ -196,10 +196,13 @@ function HomeScreenContent() {
                     // }
                     showsVerticalScrollIndicator={false}
                 >
-                    <View className='mb-6 mt-2'>
-                        <ThemedText style={styles.headerTitle} type="defaultSemiBold">Wallet</ThemedText>
+                    <View>
+                        <Text
 
-                        <View style={{ marginBottom: Spacing.xl }}>
+                            className='text-3xl font-semibold mb-8'
+                        >Wallet</Text>
+
+                        <View>
                             <Text
                                 className='text-black/30 font-medium text-sm'
                             >Total Balance <Ionicons name="remove-circle" size={12} color="#999" /> 100%</Text>
@@ -228,7 +231,9 @@ function HomeScreenContent() {
                         )}
                     </View>
 
-                    <View style={styles.gridContainer}>
+                    <View
+                        className='flex-row flex-wrap justify-between mb-6'
+                    >
                         {actions.map((action, index) => (
                             <ActionCard
                                 key={index}
@@ -304,8 +309,7 @@ const styles = StyleSheet.create({
         marginBottom: Spacing.xl,
     },
     headerTitle: {
-        fontSize: 32,
-        marginBottom: Spacing.lg,
+
     },
     balanceContainer: {
 
@@ -343,10 +347,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     gridContainer: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'space-between',
-        marginBottom: Spacing.lg,
+
     },
     transactionsContainer: {
         marginTop: Spacing.lg,
