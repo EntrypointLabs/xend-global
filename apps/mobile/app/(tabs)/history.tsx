@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { ScreenLayout } from '@/components/ui/layout';
 import { ActivityList, ActivitySection, ActivityItemProps, TransactionDetailModal } from '@/components/ui/organisms';
 import { ThemedText } from '@/components/ui/atoms';
+import TabHeaderText from '@/components/ui/atoms/TabHeaderText';
 
 // Mock Assets
 const ICONS = {
@@ -186,7 +187,7 @@ export default function HistoryScreen() {
     return (
         <ScreenLayout>
             <View>
-                <ThemedText type="subtitle">Activity</ThemedText>
+                <TabHeaderText>Activity</TabHeaderText>
             </View>
             <ActivityList sections={sectionsWithHandlers} />
 

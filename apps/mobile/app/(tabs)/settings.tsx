@@ -1,171 +1,131 @@
-import { ThemedText } from '@/components/ui/atoms';
-import { ThemedButton } from '@/components/ui/molecules';
-import { useAuth } from '@/contexts/AuthContext';
+import React from 'react';
+import { View, Text, SectionList, TouchableOpacity, Image } from 'react-native';
 import { ScreenLayout } from '@/components/ui/layout';
-import { View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Spacing } from '@/constants/Spacing';
-import { useThemeColor } from '@/hooks/useThemeColor';
-import * as SecureStore from 'expo-secure-store';
-import { AUTH_STORAGE_KEYS } from '@/utils/auth';
-import { useEffect, useState } from 'react';
+import { ThemedText } from '@/components/ui/atoms';
+import { SettingsItem } from '@/components/ui/molecules';
 import { Ionicons } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
-import { useKyc } from '@/hooks/useKyc';
+import { useThemeColor } from '@/hooks/useThemeColor';
+import { Spacing } from '@/constants/Spacing';
+import { useAuth } from '@/contexts/AuthContext';
+import TabHeaderText from '@/components/ui/atoms/TabHeaderText';
 
 export default function SettingsScreen() {
-    const { logout, user, email, isLoggingOut } = useAuth();
-    const { status: kycStatus, checkStatus } = useKyc();
+    const { logout } = useAuth();
     const textColor = useThemeColor({}, 'text');
     const backgroundColor = useThemeColor({}, 'background');
-    const [gridUserId, setGridUserId] = useState<string>('');
 
-    useEffect(() => {
-        const loadData = async () => {
-            const id = await SecureStore.getItemAsync(AUTH_STORAGE_KEYS.GRID_USER_ID);
-            if (id) setGridUserId(id);
-            await checkStatus();
-        };
-        loadData();
-    }, []);
-
-    const formatKycStatus = (status: string | null) => {
-        if (!status) return 'Not Started';
-        return status.charAt(0).toUpperCase() + status.slice(1);
-    };
-
-    const formatGridUserId = (id: string) => {
-        if (!id) return '-';
-        if (id.length <= 8) return id;
-        return `${id.slice(1, 5)}...${id.slice(-5)}`;
-    };
-
-    const copyToClipboard = async () => {
-        if (gridUserId) {
-            await Clipboard.setStringAsync(gridUserId);
+    const sections = [
+        {
+            title: 'Security',
+            data: [
+                {
+                    label: 'Keys and Recovery',
+                    icon: <Ionicons name="key-outline" size={22} color="#AF52DE" />, // Purple
+                    onPress: () => { },
+                },
+                {
+                    label: 'Spending Limit',
+                    icon: <Ionicons name="speedometer-outline" size={22} color="#007AFF" />, // Blue
+                    onPress: () => { },
+                },
+            ]
+        },
+        {
+            title: 'General',
+            data: [
+                {
+                    label: 'Edit Wallet',
+                    icon: <Ionicons name="wallet-outline" size={22} color={textColor} />,
+                    onPress: () => { },
+                },
+                {
+                    label: 'Notifications',
+                    icon: <Ionicons name="notifications-outline" size={22} color="#007AFF" />,
+                    onPress: () => { },
+                },
+                {
+                    label: 'Address Book',
+                    icon: <Ionicons name="person-circle-outline" size={22} color="#007AFF" />,
+                    onPress: () => { },
+                },
+                {
+                    label: 'NFTs',
+                    icon: <Ionicons name="images-outline" size={22} color="#007AFF" />,
+                    onPress: () => { },
+                },
+            ]
+        },
+        {
+            title: 'About',
+            data: [
+                {
+                    label: 'Contact Support',
+                    icon: <Ionicons name="chatbubble-ellipses-outline" size={22} color="#FF2D55" />, // Pink
+                    onPress: () => { },
+                },
+                {
+                    label: 'Share your Feedback',
+                    icon: <Ionicons name="chatbox-outline" size={22} color="#34C759" />, // Green
+                    onPress: () => { },
+                },
+                {
+                    label: 'Follow @fusewallet',
+                    icon: <Ionicons name="logo-twitter" size={22} color="#007AFF" />, // Blue
+                    onPress: () => { },
+                },
+            ]
         }
-    };
+    ];
 
     return (
         <ScreenLayout>
+            <View className="flex-1 w-full">
+                <View className="mb-6">
+                    <TabHeaderText>Settings</TabHeaderText>
+                </View>
 
-            <View style={{ borderRadius: 12, overflow: 'hidden', backgroundColor: textColor + 10, padding: Spacing.sm }}>
-                <View style={[styles.sectionHeaderContainer]}>
-                    <ThemedText type="defaultSemiBold" style={styles.groupTitle}>
-                        Account Details
-                    </ThemedText>
-                </View>
-                <View style={styles.accountInfo}>
-                    <ThemedText type="regular">Email:</ThemedText>
-                    <ThemedText type="regular" style={styles.infoText}>{email}</ThemedText>
-                </View>
-                <View style={styles.accountInfo}>
-                    <ThemedText type="regular">KYC Status:</ThemedText>
-                    <ThemedText type="regular" style={styles.infoText}>{formatKycStatus(kycStatus)}</ThemedText>
-                </View>
-                <View style={styles.accountInfo}>
-                    <ThemedText type="regular">Grid User ID:</ThemedText>
-                    <View style={styles.idContainer}>
-                        <ThemedText type="regular" style={styles.infoText}>{formatGridUserId(user?.grid_user_id ?? '').replaceAll('\"', '')}</ThemedText>
-                        <TouchableOpacity onPress={copyToClipboard} style={styles.copyButton}>
-                            <Ionicons name="copy-outline" size={20} color={textColor} style={{ opacity: 0.6 }} />
-                        </TouchableOpacity>
+                {/* Fuse Plus Banner */}
+                <TouchableOpacity
+                    className="mb-8 bg-black rounded-3xl p-4 flex-row items-center justify-between"
+                    activeOpacity={0.9}
+                >
+                    <View className="flex-row items-center">
+                        <View className="w-8 h-8 mr-3 items-center justify-center">
+                            <Ionicons name="sparkles" size={20} color="white" />
+                        </View>
+                        <View>
+                            <Text className="text-white font-bold text-sm">Get Fuse Plus</Text>
+                            <Text className="text-gray-400 text-xs">Earn more, pay less</Text>
+                        </View>
                     </View>
-                </View>
-            </View>
-            <View style={styles.footer}>
-                <ThemedButton
-                    title={isLoggingOut ? "Logging out..." : "Logout"}
-                    onPress={logout}
-                    variant="primary"
-                    textStyle={{ color: backgroundColor }}
-                    disabled={isLoggingOut}
+                    <View className="w-6 h-6 rounded-full bg-white/20 items-center justify-center">
+                        <Ionicons name="chevron-forward" size={14} color="white" />
+                    </View>
+                </TouchableOpacity>
+
+                <SectionList
+                    sections={sections}
+                    keyExtractor={(item, index) => item.label + index}
+                    renderItem={({ item, index, section }) => (
+                        <View className="">
+                            <SettingsItem
+                                label={item.label}
+                                icon={item.icon}
+                                onPress={item.onPress}
+                                isLast={index === section.data.length - 1}
+                            />
+                        </View>
+                    )}
+                    renderSectionHeader={({ section: { title } }) => (
+                        <View className="mt-6 mb-2">
+                            <Text className="text-lg font-medium text-gray-500">{title}</Text>
+                        </View>
+                    )}
+                    stickySectionHeadersEnabled={false}
+                    contentContainerStyle={{ paddingBottom: Spacing.xxxl }}
+                    showsVerticalScrollIndicator={false}
                 />
-                {isLoggingOut && (
-                    <View style={styles.logoutSpinner}>
-                        <ActivityIndicator size="small" color={textColor} />
-                        <ThemedText style={styles.logoutText}>Logging you out...</ThemedText>
-                    </View>
-                )}
             </View>
         </ScreenLayout>
     );
 }
-
-const styles = StyleSheet.create({
-    header: {
-        marginBottom: Spacing.xxl,
-    },
-    subtitle: {
-        marginTop: Spacing.xs,
-        opacity: 0.7,
-    },
-    section: {
-        marginBottom: Spacing.xl,
-        width: '100%',
-    },
-    sectionTitle: {
-        marginBottom: Spacing.md,
-        opacity: 0.6,
-    },
-    accountContainer: {
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-        borderRadius: 12,
-        overflow: 'hidden',
-    },
-    accountInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: Spacing.sm,
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-    },
-    infoText: {
-        opacity: 0.8,
-    },
-    footer: {
-        marginTop: 'auto',
-        width: '100%',
-        paddingBottom: Spacing.xxxl,
-    },
-    idContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.xs,
-    },
-    copyButton: {
-        padding: 4,
-    },
-    container: {
-        flex: 1,
-        width: '100%',
-    },
-    contentContainer: {
-        flexGrow: 1,
-    },
-    sectionHeaderContainer: {
-        paddingTop: Spacing.sm,
-        paddingHorizontal: Spacing.sm,
-        zIndex: 1,
-    },
-    groupTitle: {
-        opacity: 0.23,
-        marginBottom: Spacing.sm,
-    },
-    emptyText: {
-        textAlign: 'center',
-        marginTop: Spacing.xl,
-        opacity: 0.5,
-    },
-    logoutSpinner: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginTop: Spacing.sm,
-        gap: Spacing.xs,
-    },
-    logoutText: {
-        fontSize: 14,
-        opacity: 0.7,
-    },
-});

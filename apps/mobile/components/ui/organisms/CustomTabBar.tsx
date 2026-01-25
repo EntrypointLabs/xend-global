@@ -30,7 +30,7 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
     return (
         <BlurView intensity={10} tint="light" style={[styles.container, { bottom: insets.bottom + Spacing.sm }]}>
             {/* Left Pill - Navigation Tabs == TODO: Make it look better per design*/}
-            <View className='flex-row py-3 px-5 rounded-full items-center gap-6 bg-white' style={[styles.tabContainer]}>
+            <View className='flex-row py-3 px-5 rounded-full items-center gap-7 bg-white' style={[styles.tabContainer]}>
                 {state.routes.map((route, index) => {
                     const { options } = descriptors[route.key];
                     const isFocused = state.index === index;

@@ -22,6 +22,7 @@ import { MockDatabase } from '@/utils/mockDatabase';
 import * as Sentry from '@sentry/react-native';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import HapticPressable from '@/components/ui/atoms/HapticPressable';
+import TabHeaderText from '@/components/ui/atoms/TabHeaderText';
 
 const placeholder = require('@/assets/images/no-txn.png');
 
@@ -197,10 +198,7 @@ function HomeScreenContent() {
                     showsVerticalScrollIndicator={false}
                 >
                     <View>
-                        <Text
-
-                            className='text-3xl font-semibold mb-8'
-                        >Wallet</Text>
+                        <TabHeaderText className='mb-8'>Wallet</TabHeaderText>
 
                         <View>
                             <Text

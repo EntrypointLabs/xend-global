@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleSheet, View, SectionList } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { StyleSheet, SectionList, RefreshControl } from 'react-native';
 import { ThemedText } from '@/components/ui/atoms';
 import { ActivityItem, ActivityItemProps } from './ActivityItem';
 import { Spacing } from '@/constants/Spacing';
@@ -16,6 +16,15 @@ interface ActivityListProps {
 
 export function ActivityList({ sections }: ActivityListProps) {
     const sectionHeaderColor = useThemeColor({}, 'tabIconDefault');
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = useCallback(() => {
+        setRefreshing(true);
+        // TODO: Add refresh logic
+        setTimeout(() => {
+            setRefreshing(false);
+        }, 1000);
+    }, []);
 
     return (
         <SectionList
@@ -30,6 +39,9 @@ export function ActivityList({ sections }: ActivityListProps) {
             contentContainerStyle={styles.contentContainer}
             stickySectionHeadersEnabled={false}
             showsVerticalScrollIndicator={false}
+            refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
         />
     );
 }
