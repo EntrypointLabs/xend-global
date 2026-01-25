@@ -42,10 +42,8 @@ export function ActionModal({
     const textColor = useThemeColor({}, 'text');
     const colorScheme = useColorScheme() || 'light';
 
-    const overlayBackgroundColor = colorScheme === 'dark'
-        ? 'rgba(51, 51, 51, 0.4)'
-        : 'rgba(177, 177, 177, 0.40)';
-    const blurTint = colorScheme === 'dark' ? 'dark' : 'light';
+    const overlayBackgroundColor = 'rgb(189, 189, 189, 1)';
+    const blurTint = 'dark';
 
     // Memoize the header to prevent re-renders
     const header = useMemo(() => (
@@ -66,7 +64,10 @@ export function ActionModal({
             statusBarTranslucent
         >
             <TouchableWithoutFeedback onPress={onClose}>
-                <BlurView intensity={20} style={[styles.overlay, { backgroundColor: overlayBackgroundColor }]} tint={blurTint}>
+                <BlurView intensity={24.2} style={[styles.overlay, { backgroundColor: overlayBackgroundColor }, StyleSheet.absoluteFill]} tint={blurTint}
+                    experimentalBlurMethod="dimezisBlurView" // For Android
+
+                >
                     <View style={[styles.modalContainer, { backgroundColor: useStarburstModal ? '#000' : backgroundColor }]}>
                         {header}
                         <View style={styles.contentContainer}>
