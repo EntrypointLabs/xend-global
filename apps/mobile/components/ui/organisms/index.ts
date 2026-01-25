@@ -6,3 +6,6 @@ export { ComingSoonToast } from "./ComingSoonToast";
 export { TransactionList } from "./TransactionList";
 export { default as WalletQRCode } from "./WalletQRCode";
 export { ActionModal } from "./ActionModal";
+export { ActivityItem, type ActivityItemProps } from "./ActivityItem";
+export { ActivityList, type ActivitySection } from "./ActivityList";
+export { TransactionDetailModal } from "./modals/TransactionDetailModal";

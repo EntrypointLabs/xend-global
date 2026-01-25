@@ -63,6 +63,7 @@ export function ActionModal({
             transparent={true}
             animationType="fade"
             onRequestClose={onClose}
+            statusBarTranslucent
         >
             <TouchableWithoutFeedback onPress={onClose}>
                 <BlurView intensity={20} style={[styles.overlay, { backgroundColor: overlayBackgroundColor }]} tint={blurTint}>

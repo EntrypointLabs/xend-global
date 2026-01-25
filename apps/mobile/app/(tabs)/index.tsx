@@ -221,11 +221,13 @@ function HomeScreenContent() {
                                 </Text>
 
                                 <HapticPressable
-                                    className='bg-black p-2 pr-2.5 gap-0.5 items-center rounded-full flex-row'
+                                    className='bg-black p-2 gap-0.5 items-center rounded-full flex-row'
                                     onPress={showReceiveModal}
                                 >
-                                    <Ionicons name="arrow-down-circle" size={20} color="white" />
-                                    <ThemedText style={styles.receiveButtonText}>Receive</ThemedText>
+                                    <Ionicons name="arrow-down-circle" size={18} color="white" />
+                                    <Text
+                                        className='text-white font-medium text-base'
+                                    >Receive</Text>
                                 </HapticPressable>
                             </View>
                         )}
@@ -285,7 +287,9 @@ function HomeScreenContent() {
                     onHide={hideToast}
                     message={message}
                 />
+
             </View>
+
 
         </ThemedScreen>
     );
@@ -308,24 +312,6 @@ const styles = StyleSheet.create({
         marginTop: Spacing.md,
         marginBottom: Spacing.xl,
     },
-    headerTitle: {
-
-    },
-    balanceContainer: {
-
-    },
-    balanceLabel: {
-
-    },
-    balanceAmount: {
-
-    },
-    emptyStateContainer: {
-
-    },
-    emptyStateTitle: {
-
-    },
     emptyStateDescription: {
         textAlign: 'center',
         color: '#8E8E93',
@@ -343,10 +329,6 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     receiveButtonText: {
-        color: 'white',
-        fontWeight: '600',
-    },
-    gridContainer: {
 
     },
     transactionsContainer: {

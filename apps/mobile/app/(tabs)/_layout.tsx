@@ -1,9 +1,5 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Platform } from 'react-native';
-import { IconSymbol, HapticTab } from '@/components/ui/atoms';
-import { Colors } from '@/constants/Colors';
-import { useColorScheme } from '@/hooks/useColorScheme';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { CustomTabBar } from '@/components/ui/organisms';
 

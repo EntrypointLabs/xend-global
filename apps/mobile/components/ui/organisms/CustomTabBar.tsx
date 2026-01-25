@@ -12,6 +12,8 @@ import Settings from '../atoms/icons/settings';
 import * as Haptics from 'expo-haptics';
 import HapticPressable from '../atoms/HapticPressable';
 
+import { BlurView } from 'expo-blur';
+
 const iconMappings = {
     index: Home,
     settings: Settings,
@@ -26,9 +28,9 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
     const { showReceiveModal } = useModalFlow();
 
     return (
-        <View style={[styles.container, { bottom: insets.bottom + Spacing.sm }]}>
+        <BlurView intensity={10} tint="light" style={[styles.container, { bottom: insets.bottom + Spacing.sm }]}>
             {/* Left Pill - Navigation Tabs == TODO: Make it look better per design*/}
-            <View className='flex-row py-3 px-5 rounded-full items-center gap-6 border border-black/5' style={[styles.tabContainer, { backgroundColor: "rgba(255, 255, 255, 0.8)" }]}>
+            <View className='flex-row py-3 px-5 rounded-full items-center gap-6 bg-white' style={[styles.tabContainer]}>
                 {state.routes.map((route, index) => {
                     const { options } = descriptors[route.key];
                     const isFocused = state.index === index;
@@ -83,7 +85,7 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
             >
                 <Ionicons name="add" size={32} color="white" />
             </HapticPressable>
-        </View>
+        </BlurView>
     );
 }
 
@@ -95,6 +97,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         left: Spacing.md,
         right: Spacing.md,
+        // backgroundColor: 'rgba(255, 255, 255, 1)'
+        // backgroundColor: 'rgba(0, 0, 0, 1)'
     },
     tabContainer: {
         // Shadow

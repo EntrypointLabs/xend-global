@@ -1,9 +1,7 @@
 import React from 'react';
-import { View, StyleSheet, ViewStyle } from 'react-native';
-import { useScreenTheme } from '@/contexts/ScreenThemeContext';
+import { View, ViewStyle } from 'react-native';
 import { SafeAreaView, Edge } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { Spacing } from '@/constants/Spacing';
 
 interface ThemedScreenProps {
     children: React.ReactNode;
@@ -18,16 +16,13 @@ export function ThemedScreen({
     useSafeArea = true,
     safeAreaEdges = ['top', 'right', 'bottom', 'left']
 }: ThemedScreenProps) {
-    const { backgroundColor } = useScreenTheme();
-
-    // const isDarkBackground = backgroundColor.toLowerCase() === '#000' || backgroundColor.toLowerCase() === '#000000';
-    const isDarkBackground = true
-    const statusBarStyle = isDarkBackground ? 'light' : 'dark';
+    const statusBarStyle = 'dark';
+    const className = 'flex-1 bg-white/90'
 
     const content = (
         <>
             <StatusBar style={statusBarStyle} />
-            <View style={[styles.container, style]}>
+            <View style={[{ backgroundColor: 'rgba(255, 255, 255, 90)' }, style]} className={className}>
                 {children}
             </View>
         </>
@@ -36,8 +31,9 @@ export function ThemedScreen({
     if (useSafeArea) {
         return (
             <SafeAreaView
-                style={{ flex: 1, backgroundColor }}
                 edges={safeAreaEdges}
+                className={className}
+                style={[{ backgroundColor: 'rgba(255, 255, 255, 90)' },]}
             >
                 {content}
             </SafeAreaView>
@@ -45,15 +41,8 @@ export function ThemedScreen({
     }
 
     return (
-        <View style={{ flex: 1, backgroundColor }}>
+        <View className={className}>
             {content}
         </View>
     );
 }
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        // padding: Spacing.md,
-    },
-});
