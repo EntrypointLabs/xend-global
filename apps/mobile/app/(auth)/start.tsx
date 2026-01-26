@@ -1,29 +1,26 @@
-import React from 'react';
-import { router } from 'expo-router';
-import { ScreenHeaderText, ThemedButton } from '@/components/ui/molecules';
+import React, { useEffect } from 'react';
+import { useRouter } from 'expo-router';
 import { WithScreenTheme } from '@/components/WithScreenTheme';
-import { ThemedScreen, Starburst } from '@/components/ui/layout';
+import { useAuth } from '@/contexts/AuthContext';
+import { View } from 'react-native';
 
 export function StartScreen() {
+    const router = useRouter();
+    const { isAuthenticated, isLoading } = useAuth();
+    useEffect(() => {
+        if (!isLoading && isAuthenticated) {
+            router.replace('/(tabs)');
+        }
+    }, [isLoading]);
+
+    if (isLoading) {
+        return null;
+    }
 
     return (
-        <ThemedScreen style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-            {/* Background Starburst */}
-            <Starburst />
-            <ScreenHeaderText title="Bright" subtitle="Your finances, upgraded" />
-            {/* <View > */}
-            <ThemedButton
-                title="Start now"
-                onPress={() => router.push('/(auth)/restore-account')}
-                style={{ width: 200 }}
-            />
-        </ThemedScreen>
+        <View />
     );
 }
 
-export default WithScreenTheme(StartScreen, {
-    backgroundColor: '#000000',
-    textColor: '#FFFFFF',
-    primaryColor: '#FFFFFF'
-});
+export default WithScreenTheme(StartScreen);
 
