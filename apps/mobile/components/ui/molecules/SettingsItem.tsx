@@ -1,39 +1,33 @@
-import React, { ReactNode } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import React from 'react';
+import { View, Text, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColor } from '@/hooks/useThemeColor';
+import HapticPressable from '../atoms/HapticPressable';
 
 interface SettingsItemProps {
-    icon: ReactNode;
+    icon: any;
     label: string;
     onPress?: () => void;
     showChevron?: boolean;
-    isLast?: boolean;
+    color?: string;
 }
 
-export function SettingsItem({ icon, label, onPress, showChevron = true, isLast = false }: SettingsItemProps) {
-    const textColor = useThemeColor({}, 'text');
-
+export function SettingsItem({ icon, label, onPress, showChevron = true, color }: SettingsItemProps) {
     return (
-        <TouchableOpacity
+        <HapticPressable
             onPress={onPress}
-            activeOpacity={0.7}
-            className={`flex-row items-center py-4 bg-transparent`}
+            className={`flex-row items-center gap-4 py-4 bg-transparent`}
         >
-            <View className="mr-4">
-                {icon}
-            </View>
+
+            <Image source={icon} className="size-6" resizeMode='contain' />
+
             <View className="flex-1">
-                <Text
-                    className="text-base font-medium"
-                    style={{ color: textColor }}
-                >
+                <Text className="text-lg font-medium text-black" style={{ color }}>
                     {label}
                 </Text>
             </View>
             {showChevron && (
                 <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />
             )}
-        </TouchableOpacity>
+        </HapticPressable>
     );
 }

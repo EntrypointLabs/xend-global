@@ -8,6 +8,7 @@ import { useThemeColor } from '@/hooks/useThemeColor';
 import { Spacing } from '@/constants/Spacing';
 import { useAuth } from '@/contexts/AuthContext';
 import TabHeaderText from '@/components/ui/atoms/TabHeaderText';
+import clsx from 'clsx';
 
 export default function SettingsScreen() {
     const { logout } = useAuth();
@@ -19,13 +20,13 @@ export default function SettingsScreen() {
             title: 'Security',
             data: [
                 {
-                    label: 'Keys and Recovery',
-                    icon: <Ionicons name="key-outline" size={22} color="#AF52DE" />, // Purple
+                    label: 'Keys & Recovery',
+                    icon: require('@/assets/icons/keys.png'),
                     onPress: () => { },
                 },
                 {
-                    label: 'Spending Limit',
-                    icon: <Ionicons name="speedometer-outline" size={22} color="#007AFF" />, // Blue
+                    label: 'Spending Limits',
+                    icon: require('@/assets/icons/spending-limt.png'),
                     onPress: () => { },
                 },
             ]
@@ -34,23 +35,23 @@ export default function SettingsScreen() {
             title: 'General',
             data: [
                 {
-                    label: 'Edit Wallet',
-                    icon: <Ionicons name="wallet-outline" size={22} color={textColor} />,
+                    label: 'Edit wallet',
+                    icon: require('@/assets/icons/edit-wallet.png'),
                     onPress: () => { },
                 },
                 {
                     label: 'Notifications',
-                    icon: <Ionicons name="notifications-outline" size={22} color="#007AFF" />,
+                    icon: require('@/assets/icons/notification.png'),
                     onPress: () => { },
                 },
                 {
-                    label: 'Address Book',
-                    icon: <Ionicons name="person-circle-outline" size={22} color="#007AFF" />,
+                    label: 'Address book',
+                    icon: require('@/assets/icons/address-book.png'),
                     onPress: () => { },
                 },
                 {
                     label: 'NFTs',
-                    icon: <Ionicons name="images-outline" size={22} color="#007AFF" />,
+                    icon: require('@/assets/icons/nfts.png'),
                     onPress: () => { },
                 },
             ]
@@ -59,19 +60,26 @@ export default function SettingsScreen() {
             title: 'About',
             data: [
                 {
-                    label: 'Contact Support',
-                    icon: <Ionicons name="chatbubble-ellipses-outline" size={22} color="#FF2D55" />, // Pink
+                    label: 'Contact support',
+                    icon: require('@/assets/icons/support.png'),
                     onPress: () => { },
                 },
                 {
-                    label: 'Share your Feedback',
-                    icon: <Ionicons name="chatbox-outline" size={22} color="#34C759" />, // Green
+                    label: 'Share your feedback',
+                    icon: require('@/assets/icons/feedback.png'),
                     onPress: () => { },
                 },
                 {
                     label: 'Follow @fusewallet',
-                    icon: <Ionicons name="logo-twitter" size={22} color="#007AFF" />, // Blue
+                    // icon: <Ionicons name="logo-twitter" size={22} color="#007AFF" />, // Blue
+                    icon: require('@/assets/icons/x.png'),
                     onPress: () => { },
+                },
+                {
+                    label: 'Delete Wallet',
+                    icon: require('@/assets/icons/x.png'),
+                    onPress: () => { },
+                    color: "#F90101"
                 },
             ]
         }
@@ -86,7 +94,7 @@ export default function SettingsScreen() {
 
                 {/* Fuse Plus Banner */}
                 <TouchableOpacity
-                    className="mb-8 bg-black rounded-3xl p-4 flex-row items-center justify-between"
+                    className="bg-black rounded-3xl p-4 flex-row items-center justify-between"
                     activeOpacity={0.9}
                 >
                     <View className="flex-row items-center">
@@ -106,19 +114,18 @@ export default function SettingsScreen() {
                 <SectionList
                     sections={sections}
                     keyExtractor={(item, index) => item.label + index}
-                    renderItem={({ item, index, section }) => (
-                        <View className="">
-                            <SettingsItem
-                                label={item.label}
-                                icon={item.icon}
-                                onPress={item.onPress}
-                                isLast={index === section.data.length - 1}
-                            />
-                        </View>
+                    renderItem={({ item }) => (
+                        <SettingsItem
+                            label={item.label}
+                            icon={item.icon}
+                            onPress={item.onPress}
+                            color={item.color}
+                        />
+
                     )}
                     renderSectionHeader={({ section: { title } }) => (
-                        <View className="mt-6 mb-2">
-                            <Text className="text-lg font-medium text-gray-500">{title}</Text>
+                        <View className="mb-2 mt-6">
+                            <Text className="text-lg font-medium text-black/30">{title}</Text>
                         </View>
                     )}
                     stickySectionHeadersEnabled={false}
