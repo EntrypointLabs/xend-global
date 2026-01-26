@@ -88,30 +88,33 @@ export default function SettingsScreen() {
     return (
         <ScreenLayout>
             <View className="flex-1 w-full">
-                <View className="mb-6">
-                    <TabHeaderText>Settings</TabHeaderText>
-                </View>
-
-                {/* Fuse Plus Banner */}
-                <TouchableOpacity
-                    className="bg-black rounded-3xl p-4 flex-row items-center justify-between"
-                    activeOpacity={0.9}
-                >
-                    <View className="flex-row items-center">
-                        <View className="w-8 h-8 mr-3 items-center justify-center">
-                            <Ionicons name="sparkles" size={20} color="white" />
-                        </View>
-                        <View>
-                            <Text className="text-white font-bold text-sm">Get Fuse Plus</Text>
-                            <Text className="text-gray-400 text-xs">Earn more, pay less</Text>
-                        </View>
-                    </View>
-                    <View className="w-6 h-6 rounded-full bg-white/20 items-center justify-center">
-                        <Ionicons name="chevron-forward" size={14} color="white" />
-                    </View>
-                </TouchableOpacity>
-
                 <SectionList
+                    ListHeaderComponent={
+                        <View>
+                            <View className="mb-6">
+                                <TabHeaderText>Settings</TabHeaderText>
+                            </View>
+
+                            {/* Fuse Plus Banner */}
+                            <TouchableOpacity
+                                className="bg-black rounded-3xl p-4 flex-row items-center justify-between"
+                                activeOpacity={0.9}
+                            >
+                                <View className="flex-row items-center">
+                                    <View className="w-8 h-8 mr-3 items-center justify-center">
+                                        <Ionicons name="sparkles" size={20} color="white" />
+                                    </View>
+                                    <View>
+                                        <Text className="text-white font-bold text-sm">Get Fuse Plus</Text>
+                                        <Text className="text-gray-400 text-xs">Earn more, pay less</Text>
+                                    </View>
+                                </View>
+                                <View className="w-6 h-6 rounded-full bg-white/20 items-center justify-center">
+                                    <Ionicons name="chevron-forward" size={14} color="white" />
+                                </View>
+                            </TouchableOpacity>
+                        </View>
+                    }
                     sections={sections}
                     keyExtractor={(item, index) => item.label + index}
                     renderItem={({ item }) => (
