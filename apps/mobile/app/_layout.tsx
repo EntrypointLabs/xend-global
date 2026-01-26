@@ -51,8 +51,6 @@ function AuthLayout() {
 
         const inAuthGroup = segments[0] === '(auth)';
 
-        console.log('jsksjsks', { inAuthGroup, isAuthenticated })
-
         if (!isAuthenticated && !inAuthGroup) {
             // Redirect to the sign-in page
             router.replace('/login');
