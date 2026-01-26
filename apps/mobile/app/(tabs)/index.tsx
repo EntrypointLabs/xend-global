@@ -1,40 +1,31 @@
-import { Platform, StyleSheet, View, Image, ScrollView, RefreshControl, Text, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, ScrollView, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { LoadingSpinner, ThemedText } from '@/components/ui/atoms';
+import { ThemedText } from '@/components/ui/atoms';
 import { Spacing } from '@/constants/Spacing';
 import { ActionCard, PromoBanner } from '@/components/ui/molecules';
 import { ThemedScreen } from '@/components/ui/layout';
-import { TransferResponse, Transfer, Transaction, TransactionGroup } from '@/types/Transaction';
+import { TransferResponse, Transaction } from '@/types/Transaction';
 import { useAuth } from '@/contexts/AuthContext';
-import { createSmartAccount } from '@/utils/smartAccount';
 import { SendModal } from '@/components/ui/organisms/modals/SendModal';
 import { ReceiveModal } from '@/components/ui/organisms/modals/ReceiveModal';
 import { QRCodeModal } from '@/components/ui/organisms/modals/QRCodeModal';
 import { useModalFlow } from '@/contexts/ModalFlowContext';
 import { ComingSoonToast } from '@/components/ui/organisms/ComingSoonToast';
 import { useComingSoonToast } from '@/hooks/useComingSoonToast';
-import { AUTH_STORAGE_KEYS } from '@/utils/auth';
 import { TransactionList } from '@/components/ui/organisms/TransactionList';
-import { StorageService } from '@/utils/storage';
 import { useWalletData } from '@/hooks/useWalletData';
-import { MockDatabase } from '@/utils/mockDatabase';
 import * as Sentry from '@sentry/react-native';
-import { useThemeColor } from '@/hooks/useThemeColor';
 import HapticPressable from '@/components/ui/atoms/HapticPressable';
 import TabHeaderText from '@/components/ui/atoms/TabHeaderText';
-
-const placeholder = require('@/assets/images/no-txn.png');
 
 function HomeScreenContent() {
     const { accountInfo, user } = useAuth();
     const { showReceiveModal, isReceiveModalVisible, hideAllModals } = useModalFlow();
-    const [refreshing, setRefreshing] = useState(false);
     const [isSendModalVisible, setIsSendModalVisible] = useState(false);
     const [isQRCodeModalVisible, setIsQRCodeModalVisible] = useState(false);
     const { isVisible, message, showToast, hideToast } = useComingSoonToast();
     const { balance, transfers, isLoading, error, fetchWalletData } = useWalletData(accountInfo);
-    const textColor = useThemeColor({}, 'text');
 
     useEffect(() => {
         // if (!accountInfo || !accountInfo.smart_account_signer_public_key) {
@@ -69,18 +60,6 @@ function HomeScreenContent() {
         };
 
         initializeAccount();
-    }, [fetchWalletData]);
-
-    const onRefresh = React.useCallback(async () => {
-        setRefreshing(true);
-        const timeoutId = setTimeout(() => setRefreshing(false), 10000);
-
-        try {
-            await fetchWalletData();
-        } finally {
-            clearTimeout(timeoutId);
-            setRefreshing(false);
-        }
     }, [fetchWalletData]);
 
     const actions = useMemo(() => [
@@ -192,9 +171,6 @@ function HomeScreenContent() {
             <View style={styles.container}>
                 <ScrollView
                     contentContainerStyle={styles.scrollContent}
-                    // refreshControl={
-                    //     <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-                    // }
                     showsVerticalScrollIndicator={false}
                 >
                     <View>
