@@ -9,3 +9,4 @@ export { CircleButtonGroup } from "./CircleButtonGroup";
 export { ActionCard } from "./ActionCard";
 export { PromoBanner } from "./PromoBanner";
 export { SettingsItem } from "./SettingsItem";
+export { ActionPill } from "./ActionPill";

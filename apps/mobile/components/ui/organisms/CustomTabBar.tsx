@@ -10,6 +10,7 @@ import History from '../atoms/icons/history';
 import Home from '../atoms/icons/home';
 import Settings from '../atoms/icons/settings';
 import * as Haptics from 'expo-haptics';
+import { ActionPill } from '../molecules';
 import HapticPressable from '../atoms/HapticPressable';
 
 import { BlurView } from 'expo-blur';
@@ -29,9 +30,9 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
 
     return (
         <BlurView intensity={10} tint="light" style={[styles.container, { bottom: insets.bottom + Spacing.sm }]}>
-            {/* Left Pill - Navigation Tabs == TODO: Make it look better per design*/}
-            <View className='flex-row py-3 px-5 rounded-full items-center gap-7 bg-white' style={[styles.tabContainer]}>
-                {state.routes.map((route, index) => {
+            {/* Left Pill - Navigation Tabs */}
+            <ActionPill
+                items={state.routes.map((route, index) => {
                     const { options } = descriptors[route.key];
                     const isFocused = state.index === index;
 
@@ -54,25 +55,16 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
                         });
                     };
 
-                    const Icon = iconMappings[route.name];
-
-                    return (
-                        <HapticPressable
-                            key={index}
-                            accessibilityRole="button"
-                            accessibilityState={isFocused ? { selected: true } : {}}
-                            accessibilityLabel={options.tabBarAccessibilityLabel}
-                            testID={options.title}
-                            onPress={onPress}
-                            onLongPress={onLongPress}
-                            style={styles.tabButton}
-
-                        >
-                            <Icon isActive={isFocused} />
-                        </HapticPressable>
-                    );
+                    return {
+                        icon: iconMappings[route.name],
+                        onPress,
+                        onLongPress,
+                        isActive: isFocused,
+                        accessibilityLabel: options.tabBarAccessibilityLabel,
+                        testID: options.title,
+                    };
                 })}
-            </View>
+            />
 
             {/* Right FAB - Action Button */}
             <HapticPressable

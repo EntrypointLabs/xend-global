@@ -30,7 +30,7 @@ export function ModalOptionsList({ options }: ModalOptionsListProps) {
                     onPress={option.onPress}
                     disabled={option.disabled}
                 >
-                    <Image source={option.icon} style={[styles.icon, option.disabled && styles.disabledIcon]} />
+                    <Image source={option.icon} className='size-7' style={[option.disabled && styles.disabledIcon]} resizeMode='contain' />
                     <View style={styles.optionTextContainer}>
                         <ThemedText type="regularSemiBold" style={option.disabled && styles.disabledText}>{option.title}</ThemedText>
                         <ThemedText type="tiny" style={[styles.subText, option.disabled && styles.disabledText]}>{option.description}</ThemedText>
@@ -79,11 +79,5 @@ const styles = StyleSheet.create({
     },
     arrowContainer: {
         marginLeft: Spacing.sm,
-    },
-    icon: {
-        width: 58,
-        height: 34.1,
-        resizeMode: 'contain',
-        overflow: 'hidden'
     },
 })

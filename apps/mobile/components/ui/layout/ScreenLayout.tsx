@@ -1,7 +1,6 @@
-import {  StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedView } from '@/components/ui/atoms';
-import { Spacing } from '@/constants/Spacing';
 import { ViewProps } from 'react-native';
 import { useThemeColor } from '@/hooks/useThemeColor';
 
@@ -19,10 +18,6 @@ export function ScreenLayout({
     darkColor,
     ...rest
 }: ScreenLayoutProps) {
-    const effectiveBackgroundColor = useThemeColor(
-        { light: lightColor, dark: darkColor }, // Pass potential overrides
-        'background' // Default semantic name if no overrides match the theme
-    );
     return (
         <SafeAreaView style={[styles.safeArea, { backgroundColor: lightColor }]}>
             <ThemedView
@@ -43,6 +38,6 @@ const styles = StyleSheet.create({
     },
     container: {
         flex: 1,
-        padding: Spacing.lg,
+        padding: 20,
     },
 }); 

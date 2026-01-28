@@ -5,6 +5,7 @@ import { ActionOption } from '../../molecules/ModalOptionsList';
 import { router } from 'expo-router';
 import { useKyc } from '@/hooks/useKyc';
 import { useModalFlow } from '@/contexts/ModalFlowContext';
+import { Image, Text, View } from 'react-native';
 
 const bankIcon = require('@/assets/icons/bank.png');
 const walletIcon = require('@/assets/icons/wallet.png');
@@ -50,28 +51,32 @@ export function SendModal({ visible, onClose }: SendModalProps) {
 
     const sendOptions: ActionOption[] = [
         {
-            key: 'wallet',
-            title: 'To Wallet',
-            description: 'Send assets to wallet address',
-            icon: walletIcon,
-            onPress: handleSendToWallet
-        },
-        {
-            key: 'bank',
-            title: 'To Bank Account',
-            description: getBankDescription('send'),
+            key: 'fiat',
+            title: 'To bank account',
+            description: 'Send USDC/EURC to bank Account',
             icon: bankIcon,
             onPress: handleSendToBank,
             disabled: isBankDisabled
-        }
+        },
+        {
+            key: 'crypto',
+            title: 'To crypto wallet',
+            description: 'Send assets to a solana address',
+            icon: walletIcon,
+            onPress: handleSendToWallet,
+        },
     ];
 
     return (
         <ActionModal
             visible={visible}
             onClose={onClose}
-            title="Send"
         >
+            <View className='flex-col items-center justify-center mb-5 -mt-10'>
+                <Image source={require('@/assets/icons/recieve.png')} className='h-8 w-8 mb-5' resizeMode='contain' />
+                <Text className='text-base font-semibold mb-1'>Send</Text>
+                <Text className='text-sm font-medium text-black/40 max-w-[192px] text-center'>Choose one of the options below to send crypto assets</Text>
+            </View>
             <ModalOptionsList options={sendOptions} />
         </ActionModal>
     );
