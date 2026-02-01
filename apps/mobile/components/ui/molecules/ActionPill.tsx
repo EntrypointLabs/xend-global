@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import HapticPressable from '@/components/ui/atoms/HapticPressable';
 
 export interface ActionPillItem {
-    icon: React.FC<{ isActive?: boolean }>;
+    icon: React.FC<{ isActive?: boolean, className?: string }>;
     label?: string;
     onPress: () => void;
     onLongPress?: () => void;
@@ -44,7 +44,7 @@ export function ActionPill({ items, containerStyle }: ActionPillProps) {
                         onLongPress={item.onLongPress}
                         className="items-center justify-center"
                     >
-                        <Icon isActive={item.isActive} />
+                        <Icon isActive={item.isActive} className='!size-1 !h-1 !w-1' />
                     </HapticPressable>
                 );
             })}

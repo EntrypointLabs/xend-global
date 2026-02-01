@@ -14,6 +14,7 @@ import { ActionPill } from '../molecules';
 import HapticPressable from '../atoms/HapticPressable';
 
 import { BlurView } from 'expo-blur';
+import { useRouter, useSegments, useSitemap } from 'expo-router';
 
 const iconMappings = {
     index: Home,
@@ -22,14 +23,16 @@ const iconMappings = {
 } as Record<string, React.FC<{ isActive?: boolean }>>;
 
 export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-    const insets = useSafeAreaInsets();
+    const segments = useSegments();
     const primaryColor = useThemeColor({}, 'primary');
     const backgroundColor = useThemeColor({}, 'background');
     const cardColor = useThemeColor({}, 'card');
     const { showReceiveModal } = useModalFlow();
 
+    const isHome = segments[0] === '(tabs)' && segments[1] === undefined;
+
     return (
-        <BlurView intensity={10} tint="light" style={[styles.container, { bottom: insets.bottom + Spacing.sm }]}>
+        <ContainerWrapper withBlur={!isHome}>
             {/* Left Pill - Navigation Tabs */}
             <ActionPill
                 items={state.routes.map((route, index) => {
@@ -67,7 +70,7 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
             />
 
             {/* Right FAB - Action Button */}
-            <HapticPressable
+            {isHome && <HapticPressable
                 style={[styles.fab, { backgroundColor: '#000' }]}
                 onPress={() => {
                     // Open Send/Receive modal (or mapped action)
@@ -76,9 +79,25 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
                 }}
             >
                 <Ionicons name="add" size={32} color="white" />
-            </HapticPressable>
-        </BlurView>
+            </HapticPressable>}
+        </ContainerWrapper>
     );
+}
+
+const ContainerWrapper = ({ children, withBlur }: { children: React.ReactNode, withBlur?: boolean }) => {
+    const insets = useSafeAreaInsets();
+    if (!withBlur) {
+        return (
+            <View style={[styles.container, { bottom: insets.bottom + Spacing.sm }]}>
+                {children}
+            </View>
+        )
+    }
+    return (
+        <BlurView intensity={10} tint="light" style={[styles.container, { bottom: insets.bottom + Spacing.sm }]} experimentalBlurMethod='dimezisBlurView'>
+            {children}
+        </BlurView>
+    )
 }
 
 const styles = StyleSheet.create({
@@ -87,8 +106,12 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        left: Spacing.md,
-        right: Spacing.md,
+        paddingLeft: Spacing.md,
+        paddingRight: Spacing.md,
+        left: 0,
+        right: 0,
+        paddingTop: 10,
+        // backgroundColor: 'red',
         // backgroundColor: 'rgba(255, 255, 255, 1)'
         // backgroundColor: 'rgba(0, 0, 0, 1)'
     },

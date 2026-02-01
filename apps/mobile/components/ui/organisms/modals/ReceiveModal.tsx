@@ -64,7 +64,7 @@ export function ReceiveModal({ visible, onClose, onOpenQRCode }: ReceiveModalPro
             visible={visible}
             onClose={onClose}
         >
-            <View className='flex-col items-center justify-center mb-5 -mt-10'>
+            <View className='flex-col items-center justify-center mb-5'>
                 <Image source={require('@/assets/icons/recieve.png')} className='h-8 w-8 mb-5' resizeMode='contain' />
                 <Text className='text-base font-semibold mb-1'>Recieve</Text>
                 <Text className='text-sm font-medium text-black/40 max-w-[192px] text-center'>Choose one of the options below to deposit crypto</Text>

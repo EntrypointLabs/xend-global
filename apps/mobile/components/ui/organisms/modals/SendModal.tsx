@@ -13,22 +13,26 @@ const walletIcon = require('@/assets/icons/wallet.png');
 interface SendModalProps {
     visible: boolean;
     onClose: () => void;
+    onSendToWallet?: () => void;
 }
 
-export function SendModal({ visible, onClose }: SendModalProps) {
+export function SendModal({ visible, onClose, onSendToWallet }: SendModalProps) {
     const { isBankLoading, getBankDescription, isBankDisabled, status, tosStatus } = useKyc();
     const { hideAllModals } = useModalFlow();
 
 
     const handleSendToWallet = () => {
         onClose();
-        router.push({
-            pathname: '/amount',
-            params: {
-                type: 'wallet',
-                title: 'Send Crypto'
-            }
-        });
+        if (onSendToWallet) {
+            onSendToWallet();
+        } else {
+            router.push({
+                pathname: '/(send)/recipient',
+                params: {
+                    title: 'Send Crypto'
+                }
+            });
+        }
     };
 
     const handleSendToBank = () => {
@@ -72,7 +76,7 @@ export function SendModal({ visible, onClose }: SendModalProps) {
             visible={visible}
             onClose={onClose}
         >
-            <View className='flex-col items-center justify-center mb-5 -mt-10'>
+            <View className='flex-col items-center justify-center mb-5'>
                 <Image source={require('@/assets/icons/recieve.png')} className='h-8 w-8 mb-5' resizeMode='contain' />
                 <Text className='text-base font-semibold mb-1'>Send</Text>
                 <Text className='text-sm font-medium text-black/40 max-w-[192px] text-center'>Choose one of the options below to send crypto assets</Text>
