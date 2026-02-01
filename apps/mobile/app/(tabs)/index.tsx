@@ -17,9 +17,11 @@ import { TransactionList } from '@/components/ui/organisms/TransactionList';
 import { useWalletData } from '@/hooks/useWalletData';
 import * as Sentry from '@sentry/react-native';
 import HapticPressable from '@/components/ui/atoms/HapticPressable';
+import { useRouter } from 'expo-router';
 import TabHeaderText from '@/components/ui/atoms/TabHeaderText';
 
 function HomeScreenContent() {
+    const router = useRouter();
     const { accountInfo, user } = useAuth();
     const { showReceiveModal, isReceiveModalVisible, hideAllModals } = useModalFlow();
     const [isSendModalVisible, setIsSendModalVisible] = useState(false);
@@ -67,7 +69,7 @@ function HomeScreenContent() {
             title: 'Cash',
             subtitle: 'Send and Receive',
             icon: require('@/assets/icons/usdc.png'),
-            onPress: () => showToast("Cash features coming soon!"), // Placeholder, maybe open send/receive options?
+            onPress: () => router.push('/cash'),
             color: '#007AFF', // Blue
         },
         {
@@ -253,7 +255,7 @@ function HomeScreenContent() {
                 <QRCodeModal
                     visible={isQRCodeModalVisible}
                     onClose={() => setIsQRCodeModalVisible(false)}
-                    walletAddress={user?.address || ''}
+                    walletAddress={user?.address || 'ssnksnsmk'}
                 />
 
                 <ComingSoonToast

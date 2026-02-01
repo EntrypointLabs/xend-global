@@ -10,9 +10,11 @@ import History from '../atoms/icons/history';
 import Home from '../atoms/icons/home';
 import Settings from '../atoms/icons/settings';
 import * as Haptics from 'expo-haptics';
+import { ActionPill } from '../molecules';
 import HapticPressable from '../atoms/HapticPressable';
 
 import { BlurView } from 'expo-blur';
+import { useRouter, useSegments, useSitemap } from 'expo-router';
 
 const iconMappings = {
     index: Home,
@@ -21,17 +23,19 @@ const iconMappings = {
 } as Record<string, React.FC<{ isActive?: boolean }>>;
 
 export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-    const insets = useSafeAreaInsets();
+    const segments = useSegments();
     const primaryColor = useThemeColor({}, 'primary');
     const backgroundColor = useThemeColor({}, 'background');
     const cardColor = useThemeColor({}, 'card');
     const { showReceiveModal } = useModalFlow();
 
+    const isHome = segments[0] === '(tabs)' && segments[1] === undefined;
+
     return (
-        <BlurView intensity={10} tint="light" style={[styles.container, { bottom: insets.bottom + Spacing.sm }]}>
-            {/* Left Pill - Navigation Tabs == TODO: Make it look better per design*/}
-            <View className='flex-row py-3 px-5 rounded-full items-center gap-7 bg-white' style={[styles.tabContainer]}>
-                {state.routes.map((route, index) => {
+        <ContainerWrapper withBlur={!isHome}>
+            {/* Left Pill - Navigation Tabs */}
+            <ActionPill
+                items={state.routes.map((route, index) => {
                     const { options } = descriptors[route.key];
                     const isFocused = state.index === index;
 
@@ -54,28 +58,19 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
                         });
                     };
 
-                    const Icon = iconMappings[route.name];
-
-                    return (
-                        <HapticPressable
-                            key={index}
-                            accessibilityRole="button"
-                            accessibilityState={isFocused ? { selected: true } : {}}
-                            accessibilityLabel={options.tabBarAccessibilityLabel}
-                            testID={options.title}
-                            onPress={onPress}
-                            onLongPress={onLongPress}
-                            style={styles.tabButton}
-
-                        >
-                            <Icon isActive={isFocused} />
-                        </HapticPressable>
-                    );
+                    return {
+                        icon: iconMappings[route.name],
+                        onPress,
+                        onLongPress,
+                        isActive: isFocused,
+                        accessibilityLabel: options.tabBarAccessibilityLabel,
+                        testID: options.title,
+                    };
                 })}
-            </View>
+            />
 
             {/* Right FAB - Action Button */}
-            <HapticPressable
+            {isHome && <HapticPressable
                 style={[styles.fab, { backgroundColor: '#000' }]}
                 onPress={() => {
                     // Open Send/Receive modal (or mapped action)
@@ -84,9 +79,25 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
                 }}
             >
                 <Ionicons name="add" size={32} color="white" />
-            </HapticPressable>
-        </BlurView>
+            </HapticPressable>}
+        </ContainerWrapper>
     );
+}
+
+const ContainerWrapper = ({ children, withBlur }: { children: React.ReactNode, withBlur?: boolean }) => {
+    const insets = useSafeAreaInsets();
+    if (!withBlur) {
+        return (
+            <View style={[styles.container, { bottom: insets.bottom + Spacing.sm }]}>
+                {children}
+            </View>
+        )
+    }
+    return (
+        <BlurView intensity={10} tint="light" style={[styles.container, { bottom: insets.bottom + Spacing.sm }]} experimentalBlurMethod='dimezisBlurView'>
+            {children}
+        </BlurView>
+    )
 }
 
 const styles = StyleSheet.create({
@@ -95,8 +106,12 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        left: Spacing.md,
-        right: Spacing.md,
+        paddingLeft: Spacing.md,
+        paddingRight: Spacing.md,
+        left: 0,
+        right: 0,
+        paddingTop: 10,
+        // backgroundColor: 'red',
         // backgroundColor: 'rgba(255, 255, 255, 1)'
         // backgroundColor: 'rgba(0, 0, 0, 1)'
     },

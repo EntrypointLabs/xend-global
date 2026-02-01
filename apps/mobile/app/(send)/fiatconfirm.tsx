@@ -181,13 +181,13 @@ export default function FiatConfirmScreen() {
                     sessionSecrets: sessionSecrets as any,
                     session: user.authentication,
                     transactionPayload: transactionData.data.transactionPayload!
-                  })
-    
-                  const confirmPayload = {
+                })
+
+                const confirmPayload = {
                     signedTransactionPayload: signedPayload,
                     address: user.address
-                  }
-    
+                }
+
                 const signature = await easClient.confirmPaymentIntent(confirmPayload);
                 router.push({
                     pathname: '/success',
@@ -275,7 +275,7 @@ export default function FiatConfirmScreen() {
                     <View style={styles.content}>
                         <View style={{ gap: Spacing.sm }}>
                             <ThemedText type="regular">Amount</ThemedText>
-                            <ThemedText type="jumbo" >{formatAmount(amount)}</ThemedText>
+                            <ThemedText type="jumbo" >{formatAmount({ amount })}</ThemedText>
                         </View>
                         {externalAccountId ? (
                             renderInfo('creditcard', 'Account', accountLabel)

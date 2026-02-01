@@ -1,9 +1,10 @@
 import React from 'react';
-import { StyleSheet, View, TouchableOpacity, Text } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { Spacing } from '@/constants/Spacing';
 import { Ionicons } from '@expo/vector-icons';
 import { Weight } from '@/constants/Typography';
+import HapticPressable from '../atoms/HapticPressable';
 
 interface KeypadProps {
     onKeyPress: (key: string) => void;
@@ -13,7 +14,7 @@ export function Keypad({ onKeyPress }: KeypadProps) {
     const textColor = useThemeColor({}, 'text');
 
     const renderKey = (key: string) => (
-        <TouchableOpacity
+        <HapticPressable
             key={key}
             style={styles.keyButton}
             onPress={() => onKeyPress(key)}
@@ -23,7 +24,7 @@ export function Keypad({ onKeyPress }: KeypadProps) {
             ) : (
                 <Text style={[styles.keyText, { color: textColor }]}>{key}</Text>
             )}
-        </TouchableOpacity>
+        </HapticPressable>
     );
 
     return (

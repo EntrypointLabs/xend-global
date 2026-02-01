@@ -21,7 +21,7 @@ export default function WalletQRCode({ walletAddress }: WalletQRCodeProps) {
     // Memoize the QR code to prevent regeneration on every render
     const qrCode = useMemo(() => (
         <QRCode
-            value={walletAddress}
+            value={walletAddress || "sjknskjsns"}
             size={200} // Reduced size for better performance
             color="white"
             backgroundColor="#000033"

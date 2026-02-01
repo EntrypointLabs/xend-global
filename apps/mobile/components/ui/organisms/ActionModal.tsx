@@ -1,21 +1,24 @@
-import React, { ReactElement, useMemo } from 'react';
-import { Modal, StyleSheet, View, TouchableOpacity, Text, TouchableWithoutFeedback } from 'react-native';
+import React, { ReactElement, useEffect } from 'react';
+import { Modal, StyleSheet, View, TouchableOpacity, Text, Dimensions, TouchableWithoutFeedback } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { ThemedText } from '@/components/ui/atoms';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { Spacing } from '@/constants/Spacing';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import Animated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withSpring,
+    withTiming,
 
-/**
- * Props for the ActionModal component
- * @interface ActionModalProps
- * @property {boolean} visible - Controls the visibility of the modal
- * @property {() => void} onClose - Callback function when the modal is closed
- * @property {string} [title] - Optional title displayed at the top of the modal
- * @property {React.ReactNode} children - Content to be displayed in the modal
- * @property {boolean} [useStarburstModal] - Whether to use the starburst background style
- * @property {string} [primaryColor] - Primary color for the starburst background
- */
+    SlideInDown,
+    SlideOutDown,
+    FadeIn,
+    FadeOut
+} from 'react-native-reanimated';
+import { runOnJS } from 'react-native-worklets';
+import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
+
 export interface ActionModalProps {
     visible: boolean;
     onClose: () => void;
@@ -25,11 +28,9 @@ export interface ActionModalProps {
     primaryColor?: string;
 }
 
-/**
- * A reusable modal component with customizable styling and content
- * @param {ActionModalProps} props - The component props
- * @returns {ReactElement} The rendered modal component
- */
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const SWIPE_THRESHOLD = 150;
+
 export function ActionModal({
     visible,
     onClose,
@@ -40,42 +41,93 @@ export function ActionModal({
 }: ActionModalProps): ReactElement {
     const backgroundColor = useThemeColor({}, 'background');
     const textColor = useThemeColor({}, 'text');
-    const colorScheme = useColorScheme() || 'light';
 
     const overlayBackgroundColor = 'rgb(189, 189, 189, 1)';
     const blurTint = 'dark';
 
-    // Memoize the header to prevent re-renders
-    const header = useMemo(() => (
-        <View style={styles.header}>
-            <ThemedText type="subtitle" style={{ color: useStarburstModal ? 'white' : textColor }}>{title}</ThemedText>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                <Text style={[styles.closeText, { color: useStarburstModal ? 'white' : textColor }]}>×</Text>
-            </TouchableOpacity>
-        </View>
-    ), [title, useStarburstModal, textColor, onClose]);
+    const translateY = useSharedValue(0);
+
+    useEffect(() => {
+        if (visible) {
+            translateY.value = withSpring(0, { damping: 15 });
+        } else {
+            translateY.value = SCREEN_HEIGHT;
+        }
+    }, [visible]);
+
+    const handleClose = () => {
+        // Reset state and call onClose
+        translateY.value = 0; // Reset for next time (though unmount handles it mostly)
+        onClose();
+    };
+
+    const pan = Gesture.Pan()
+        .onChange((event) => {
+            if (event.translationY > 0) {
+                translateY.value = event.translationY;
+            }
+        })
+        .onEnd((event) => {
+            if (event.translationY > SWIPE_THRESHOLD || event.velocityY > 500) {
+                runOnJS(handleClose)();
+            } else {
+                translateY.value = withSpring(0);
+            }
+        });
+
+    const animatedStyle = useAnimatedStyle(() => {
+        return {
+            transform: [{ translateY: translateY.value }],
+        };
+    });
 
     return (
         <Modal
             visible={visible}
             transparent={true}
-            animationType="fade"
+            animationType="fade" // Fade effectively controls the background blur fade-in
             onRequestClose={onClose}
             statusBarTranslucent
         >
-            <TouchableWithoutFeedback onPress={onClose}>
-                <BlurView intensity={24.2} style={[styles.overlay, { backgroundColor: overlayBackgroundColor }, StyleSheet.absoluteFill]} tint={blurTint}
-                    experimentalBlurMethod="dimezisBlurView" // For Android
+            <GestureHandlerRootView style={{ flex: 1 }}>
+                <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose}>
+                    {/* Using TouchableOpacity as backdrop to close on outside press */}
+                    <BlurView
+                        intensity={24.2}
+                        style={[styles.overlay, { backgroundColor: overlayBackgroundColor }, StyleSheet.absoluteFill]}
+                        tint={blurTint}
+                        experimentalBlurMethod="dimezisBlurView"
+                    >
+                        <TouchableWithoutFeedback>
+                            {/* Prevent touches inside passing to backdrop */}
+                            <GestureDetector gesture={pan}>
+                                <Animated.View
+                                    style={[
+                                        styles.modalContainer,
+                                        { backgroundColor: useStarburstModal ? '#000' : backgroundColor },
+                                        // animatedStyle
+                                    ]}
+                                // entering={SlideInDown.springify().damping(15)}
+                                // exiting={SlideOutDown}
+                                >
+                                    {title ? (
+                                        <View style={styles.header}>
+                                            <ThemedText type="subtitle" style={{ color: useStarburstModal ? 'white' : textColor }}>{title}</ThemedText>
+                                            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                                                <Text style={[styles.closeText, { color: useStarburstModal ? 'white' : textColor }]}>×</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    ) : null}
 
-                >
-                    <View style={[styles.modalContainer, { backgroundColor: useStarburstModal ? '#000' : backgroundColor }]}>
-                        {header}
-                        <View style={styles.contentContainer}>
-                            {children}
-                        </View>
-                    </View>
-                </BlurView>
-            </TouchableWithoutFeedback>
+                                    <View style={styles.contentContainer}>
+                                        {children}
+                                    </View>
+                                </Animated.View>
+                            </GestureDetector>
+                        </TouchableWithoutFeedback>
+                    </BlurView>
+                </TouchableOpacity>
+            </GestureHandlerRootView>
         </Modal>
     );
 }
@@ -87,20 +139,13 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     modalContainer: {
-        width: '90%',
+        width: '93%',
         borderRadius: 32,
-        padding: Spacing.lg,
-        margin: 34,
+        paddingHorizontal: 24,
+        paddingVertical: 20,
+        margin: 21,
         overflow: 'hidden',
         position: 'relative',
-    },
-    backgroundContainer: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 0,
     },
     header: {
         flexDirection: 'row',
@@ -119,4 +164,4 @@ const styles = StyleSheet.create({
         fontSize: 28,
         fontWeight: '300',
     },
-}); 
+});

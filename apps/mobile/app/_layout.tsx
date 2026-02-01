@@ -16,6 +16,8 @@ import { ModalFlowProvider } from '@/contexts/ModalFlowContext';
 import * as Sentry from '@sentry/react-native';
 import { sentryApiResponse } from '@/types/Sentry';
 import { EasClient } from '@/utils/easClient';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 
 // Sentry for error tracking
 if (process.env.EXPO_PUBLIC_GRID_ENV === 'production') {
@@ -105,15 +107,23 @@ const toastConfig = {
 export default process.env.EXPO_PUBLIC_GRID_ENV === 'production'
     ? Sentry.wrap(function RootLayout() {
         return (
-            <AuthProvider>
-                <AuthLayout />
-            </AuthProvider>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+                <AuthProvider>
+                    <BottomSheetModalProvider>
+                        <AuthLayout />
+                    </BottomSheetModalProvider>
+                </AuthProvider>
+            </GestureHandlerRootView>
         );
     })
     : function RootLayout() {
         return (
-            <AuthProvider>
-                <AuthLayout />
-            </AuthProvider>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+                <AuthProvider>
+                    <BottomSheetModalProvider>
+                        <AuthLayout />
+                    </BottomSheetModalProvider>
+                </AuthProvider>
+            </GestureHandlerRootView>
         );
     };
