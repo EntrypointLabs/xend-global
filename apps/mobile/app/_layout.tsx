@@ -108,22 +108,22 @@ export default process.env.EXPO_PUBLIC_GRID_ENV === 'production'
     ? Sentry.wrap(function RootLayout() {
         return (
             <GestureHandlerRootView style={{ flex: 1 }}>
-                <BottomSheetModalProvider>
-                    <AuthProvider>
+                <AuthProvider>
+                    <BottomSheetModalProvider>
                         <AuthLayout />
-                    </AuthProvider>
-                </BottomSheetModalProvider>
+                    </BottomSheetModalProvider>
+                </AuthProvider>
             </GestureHandlerRootView>
         );
     })
     : function RootLayout() {
         return (
             <GestureHandlerRootView style={{ flex: 1 }}>
-                <BottomSheetModalProvider>
-                    <AuthProvider>
+                <AuthProvider>
+                    <BottomSheetModalProvider>
                         <AuthLayout />
-                    </AuthProvider>
-                </BottomSheetModalProvider>
+                    </BottomSheetModalProvider>
+                </AuthProvider>
             </GestureHandlerRootView>
         );
     };

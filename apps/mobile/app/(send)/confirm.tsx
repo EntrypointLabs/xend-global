@@ -55,7 +55,7 @@ export default function ConfirmScreen() {
                 throw new Error('Backup key not found');
             }
 
-            
+
 
             const prepareTransactionParams: CreatePaymentIntentRequest = {
                 amount: (Number(amount) * 1000000).toString(), // Convert to USDC base units
@@ -73,7 +73,7 @@ export default function ConfirmScreen() {
             const easClient = new EasClient();
 
             const transactionData = await easClient.preparePaymentIntent(prepareTransactionParams, user.address, true);
-            
+
             if (!user) {
                 logout();
                 router.push({
@@ -82,19 +82,19 @@ export default function ConfirmScreen() {
 
                 return;
             }
-            
+
             const gridClient = SDKGridClient.getFrontendClient();
 
             const signedPayload = await gridClient.sign({
                 sessionSecrets: sessionSecrets as any,
                 session: user.authentication,
                 transactionPayload: transactionData.data.transactionPayload!
-              })
+            })
 
-              const payload = {
+            const payload = {
                 signedTransactionPayload: signedPayload,
                 address: user.address
-              }
+            }
 
             const signature = await easClient.confirmPaymentIntent(payload);
             router.push({
@@ -153,7 +153,7 @@ export default function ConfirmScreen() {
 
                         <View style={{ gap: Spacing.sm }}>
                             <ThemedText type="regular">Amount</ThemedText>
-                            <ThemedText type="jumbo" >{formatAmount(amount)}</ThemedText>
+                            <ThemedText type="jumbo" >{formatAmount({ amount })}</ThemedText>
                         </View>
                         {renderInfo('arrow.forward', 'To', recipient)}
                         {renderInfo('person', 'Name', name)}

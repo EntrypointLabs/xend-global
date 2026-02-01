@@ -9,13 +9,24 @@ import * as Sentry from "@sentry/react-native";
  * @param amount - The amount to format
  * @returns Formatted currency string
  */
-export const formatAmount = (amount: string) => {
+export const formatAmount = ({
+  amount,
+  minimumFractionDigits,
+  maximumFractionDigits = 2,
+}: {
+  amount: string;
+  minimumFractionDigits?: number;
+  maximumFractionDigits?: number;
+}) => {
   try {
+    const minFractionDigits =
+      (minimumFractionDigits ?? amount.includes(".")) ? 2 : 0;
+
     return parseFloat(amount).toLocaleString("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: amount.includes(".") ? 2 : 0,
-      maximumFractionDigits: 2,
+      // style: "currency",
+      // currency: "USD",
+      minimumFractionDigits: minFractionDigits,
+      maximumFractionDigits,
     });
   } catch (e) {
     Sentry.captureException(

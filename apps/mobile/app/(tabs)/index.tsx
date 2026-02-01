@@ -255,7 +255,7 @@ function HomeScreenContent() {
                 <QRCodeModal
                     visible={isQRCodeModalVisible}
                     onClose={() => setIsQRCodeModalVisible(false)}
-                    walletAddress={user?.address || ''}
+                    walletAddress={user?.address || 'ssnksnsmk'}
                 />
 
                 <ComingSoonToast

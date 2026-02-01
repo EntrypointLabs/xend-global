@@ -224,7 +224,7 @@ export default function AmountScreen() {
     const renderAmount = () => {
         return (
             <ThemedText type="highlight" style={{ color: textColor }}>
-                {formatAmount(amount)}
+                {formatAmount({ amount })}
             </ThemedText>
         )
     }

@@ -10,7 +10,7 @@ import { ActionPill } from '@/components/ui/molecules';
 import { SendModal } from '@/components/ui/organisms/modals/SendModal';
 import { ReceiveModal } from '@/components/ui/organisms/modals/ReceiveModal';
 import { QRCodeModal } from '@/components/ui/organisms/modals/QRCodeModal';
-import { SendRecipientModal } from '@/components/ui/organisms/modals/SendRecipientModal';
+import { SendFlowModal } from '@/components/ui/organisms/send/SendFlowModal';
 import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { useModalFlow } from '@/contexts/ModalFlowContext';
@@ -25,7 +25,7 @@ export default function CashScreen() {
     const [isSendModalVisible, setIsSendModalVisible] = useState(false);
     const [isReceiveModalVisible, setIsReceiveModalVisible] = useState(false);
     const [isQRCodeModalVisible, setIsQRCodeModalVisible] = useState(false);
-    const sendRecipientModalRef = useRef<BottomSheetModal>(null);
+    const sendFlowModalRef = useRef<BottomSheetModal>(null);
 
     const actionItems = useMemo(() => [
         {
@@ -150,12 +150,12 @@ export default function CashScreen() {
                     setIsSendModalVisible(false);
                     // Short delay to allow animation to start closing before opening new one
                     // or just open it. ActionModal handles mounting.
-                    setTimeout(() => sendRecipientModalRef.current?.present(), 100);
+                    setTimeout(() => sendFlowModalRef.current?.present(), 100);
                 }}
             />
 
-            <SendRecipientModal
-                ref={sendRecipientModalRef}
+            <SendFlowModal
+                ref={sendFlowModalRef}
                 onClose={() => { }}
             />
 
@@ -171,7 +171,7 @@ export default function CashScreen() {
             <QRCodeModal
                 visible={isQRCodeModalVisible}
                 onClose={() => setIsQRCodeModalVisible(false)}
-                walletAddress={user?.address || ''}
+                walletAddress={user?.address || 'sjsksjknkjs'}
             />
         </ScreenLayout>
     );

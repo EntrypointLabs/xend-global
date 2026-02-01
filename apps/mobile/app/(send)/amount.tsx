@@ -61,7 +61,7 @@ export default function AmountScreen() {
                 {/* Amount Display */}
                 <View className="flex-1 justify-center items-center -mt-20">
                     <Text className="text-[64px] font-bold text-gray-300 tracking-tight">
-                        {amount === '0' ? '0' : formatAmount(amount)}
+                        {amount === '0' ? '0' : formatAmount({ amount })}
                     </Text>
                     <View className="flex-row items-center mt-2">
                         <Text className="text-gray-400 text-lg font-medium mr-1">$0</Text>
