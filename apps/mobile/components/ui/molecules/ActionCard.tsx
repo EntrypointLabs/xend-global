@@ -38,7 +38,7 @@ export function ActionCard({
             onPress={onPress}
         >
 
-            <Image source={icon} className='size-10' />
+            <Image source={icon} className='size-10' resizeMode='contain' />
 
             <View style={styles.textContainer}>
                 <ThemedText type="defaultSemiBold" style={styles.title}>{title}</ThemedText>

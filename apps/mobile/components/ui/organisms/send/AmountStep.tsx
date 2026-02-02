@@ -7,8 +7,8 @@ import { formatAmount, truncateAddress } from '@/utils/helper';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWalletData } from '@/hooks/useWalletData';
 import { useRouter } from 'expo-router';
-import clsx from 'clsx';
 import HapticPressable from '../../atoms/HapticPressable';
+import { cn } from '@/utils/class';
 
 interface AmountStepProps {
     recipient: string;
@@ -101,7 +101,7 @@ export default function AmountStep({ recipient, onBack, onClose }: AmountStepPro
 
                 {/* Amount Display */}
                 <View className="flex-1 justify-center items-center -mt-10">
-                    <Typography weight="700" className={clsx("text-7xl tracking-tight", !amount ? 'text-gray-300' : 'text-black')}>
+                    <Typography weight="700" className={cn("text-7xl tracking-tight", !amount ? 'text-gray-300' : 'text-black')}>
                         {formattedAmount}
                     </Typography>
                     {/* <View className="flex-row items-center mt-2">
@@ -139,7 +139,7 @@ export default function AmountStep({ recipient, onBack, onClose }: AmountStepPro
 
                 {/* Review Button */}
                 <HapticPressable
-                    className={clsx('w-full py-4 rounded-full items-center mb-2 bg-black', {
+                    className={cn('w-full py-4 rounded-full items-center mb-2 bg-black', {
                         'opacity-70': status === 'idle',
                         'opacity-100': status === 'ready',
                         'bg-red-500/30': status === 'error'
@@ -147,7 +147,7 @@ export default function AmountStep({ recipient, onBack, onClose }: AmountStepPro
                     onPress={handleContinue}
                     disabled={status === 'error' || status === 'idle'}
                 >
-                    <Typography weight="500" className={clsx("text-white text-base", status === 'error' && 'text-red-500')}>{label}</Typography>
+                    <Typography weight="500" className={cn("text-white text-base", status === 'error' && 'text-red-500')}>{label}</Typography>
                 </HapticPressable>
             </View>
         </View>

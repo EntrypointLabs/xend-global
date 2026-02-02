@@ -71,8 +71,8 @@ export default function CashScreen() {
                     <View className="mb-8">
                         <Typography weight="500" className="text-black/30 text-base mb-1">Balance</Typography>
                         <View className="flex-row items-baseline">
-                            <Typography weight="700" className="text-4xl">$4.</Typography>
-                            <Typography weight="700" className="text-4xl text-black/30">66</Typography>
+                            <Typography weight="700" className="text-[40px] leading-[140%]">$4.</Typography>
+                            <Typography weight="700" className="text-[40px] leading-[140%] text-black/30">66</Typography>
                         </View>
                     </View>
 
@@ -95,7 +95,7 @@ export default function CashScreen() {
                         </View>
 
                         {/* Divider */}
-                        <View className="h-[1px] bg-gray-100 w-full my-2 border-t border-dashed border-gray-200" style={{}} />
+                        <View className="h-px bg-gray-100 w-full my-2 border-t border-dashed border-gray-200" style={{}} />
 
                         {/* Earn Footer */}
                         <TouchableOpacity className="flex-row justify-between items-center pt-2">

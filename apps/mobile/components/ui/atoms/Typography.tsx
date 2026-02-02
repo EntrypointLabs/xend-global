@@ -1,12 +1,16 @@
+import { cn } from '@/utils/class';
 import React from 'react';
 import { Text, TextProps, StyleSheet } from 'react-native';
 
 type FontWeight = '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' |
     'thin' | 'extralight' | 'light' | 'regular' | 'medium' | 'semibold' | 'bold' | 'extrabold' | 'black';
 
+type Variant = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'title1' | 'title2' | 'body' | 'caption';
+
 export type TypographyProps = TextProps & {
     weight?: FontWeight;
     italic?: boolean;
+    variant?: Variant;
     children?: React.ReactNode;
 };
 
@@ -52,11 +56,25 @@ const fontFamilyMapItalic: Record<FontWeight, string> = {
     'black': 'Inter_900Black_Italic',
 };
 
+const variantMap: Record<Variant, string> = {
+    'h1': 'text-[48px]',
+    'h2': 'text-[40px]',
+    'h3': 'text-[33px]',
+    'h4': 'text-[28px]',
+    'h5': 'text-[23px]',
+    'title1': 'text-[19px]',
+    'title2': 'text-[16px]',
+    'body': 'text-[13px]',
+    'caption': 'text-[11px]',
+};
+
 export function Typography({
     children,
     weight = '400',
     italic = false,
+    variant = 'body',
     style,
+    className,
     ...props
 }: TypographyProps) {
     const map = italic ? fontFamilyMapItalic : fontFamilyMap;
@@ -64,6 +82,7 @@ export function Typography({
 
     return (
         <Text
+            className={cn(variantMap[variant], "leading-[140%]", className)}
             style={[{ fontFamily }, style]}
             {...props}
         >

@@ -1,9 +1,9 @@
-import { StyleSheet, View, ScrollView } from 'react-native';
+import { View, ScrollView } from 'react-native';
 import { Typography } from '@/components/ui/atoms/Typography';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { ThemedText } from '@/components/ui/atoms';
-import { Spacing } from '@/constants/Spacing';
+
 import { ActionCard, PromoBanner } from '@/components/ui/molecules';
 import { ThemedScreen } from '@/components/ui/layout';
 import { TransferResponse, Transaction } from '@/types/Transaction';
@@ -171,9 +171,9 @@ function HomeScreenContent() {
 
     return (
         <ThemedScreen useSafeArea={true}>
-            <View style={styles.container}>
+            <View className="flex-1 px-4">
                 <ScrollView
-                    contentContainerStyle={styles.scrollContent}
+                    contentContainerClassName="grow pb-[100px]"
                     showsVerticalScrollIndicator={false}
                 >
                     <View>
@@ -235,8 +235,8 @@ function HomeScreenContent() {
                     />
 
                     {transfers.length > 0 && (
-                        <View style={styles.transactionsContainer}>
-                            <ThemedText type="subtitle" style={styles.sectionTitle}>Recent Activity</ThemedText>
+                        <View className="mt-6">
+                            <ThemedText type="subtitle" className="mb-4">Recent Activity</ThemedText>
                             <TransactionList
                                 transactions={formattedTransactions}
                             />
@@ -278,42 +278,4 @@ export default function HomeScreen() {
     return <HomeScreenContent />;
 }
 
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        paddingHorizontal: Spacing.md,
-    },
-    scrollContent: {
-        flexGrow: 1,
-        paddingBottom: 100, // Space for bottom tab bar or safe area
-    },
-    header: {
-        marginTop: Spacing.md,
-        marginBottom: Spacing.xl,
-    },
-    emptyStateDescription: {
-        textAlign: 'center',
-        color: '#8E8E93',
-        maxWidth: 250,
-        marginBottom: Spacing.lg,
-        lineHeight: 20,
-    },
-    receiveButton: {
-        flexDirection: 'row',
-        backgroundColor: '#000',
-        paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.sm,
-        borderRadius: 20,
-        alignItems: 'center',
-        gap: 8,
-    },
-    receiveButtonText: {
 
-    },
-    transactionsContainer: {
-        marginTop: Spacing.lg,
-    },
-    sectionTitle: {
-        marginBottom: Spacing.md,
-    },
-});

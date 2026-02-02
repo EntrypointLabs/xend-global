@@ -1,8 +1,5 @@
-import React from 'react';
-import { StyleSheet, View, ImageSourcePropType, Image, TouchableOpacity } from 'react-native';
-import { ThemedText } from '@/components/ui/atoms';
-import { Spacing } from '@/constants/Spacing';
-import { useThemeColor } from '@/hooks/useThemeColor';
+import { View, ImageSourcePropType, Image, TouchableOpacity } from 'react-native';
+import { Typography } from '../atoms/Typography';
 
 export interface ActivityItemProps {
     title: string;
@@ -19,62 +16,31 @@ export interface ActivityItemProps {
 }
 
 export function ActivityItem({ title, subtitle, value, isPositive, isHidden, icon, onPress }: ActivityItemProps) {
-    const textColor = useThemeColor({}, 'text');
-    const subtitleColor = useThemeColor({}, 'tabIconDefault');
+
     const positiveColor = '#34C759'; // Green
     const negativeColor = '#FF3B30'; // Red
 
     const displayValue = isHidden ? '****' : value;
-    const valueColor = isHidden ? subtitleColor : (isPositive ? positiveColor : negativeColor);
+    const valueColor = isHidden ? undefined : (isPositive ? positiveColor : negativeColor);
 
     return (
-        <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.7}>
-            <Image source={icon} style={styles.icon} />
-            <View style={styles.content}>
-                <View style={styles.textContainer}>
-                    <ThemedText type="defaultSemiBold" style={styles.title}>{title}</ThemedText>
-                    <ThemedText type="tiny" style={[styles.subtitle, { color: subtitleColor }]}>{subtitle}</ThemedText>
+        <TouchableOpacity className="flex-row items-center py-4" onPress={onPress} activeOpacity={0.7}>
+            <Image source={icon} className="w-10 h-10 rounded-full mr-4" />
+            <View className="flex-1 flex-row justify-between items-center">
+                <View className="flex-col">
+                    <Typography weight="600" className="mb-0.5">{title}</Typography>
+                    <Typography weight="500" className="text-[13px] text-black/30">{subtitle}</Typography>
                 </View>
-                <ThemedText
-                    type="defaultSemiBold"
-                    style={[styles.value, { color: valueColor }]}
+                <Typography
+                    weight="600"
+                    className="text-[13px] tracking-[0.5px]"
+                    style={{ color: valueColor }}
                 >
                     {displayValue}
-                </ThemedText>
+                </Typography>
             </View>
         </TouchableOpacity>
     );
 }
 
-const styles = StyleSheet.create({
-    container: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: Spacing.md,
-    },
-    icon: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        marginRight: Spacing.md,
-    },
-    content: {
-        flex: 1,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    textContainer: {
-        flexDirection: 'column',
-    },
-    title: {
-        marginBottom: 2,
-    },
-    subtitle: {
-        fontSize: 13,
-    },
-    value: {
-        fontSize: 13,
-        letterSpacing: 0.5,
-    },
-});
+
