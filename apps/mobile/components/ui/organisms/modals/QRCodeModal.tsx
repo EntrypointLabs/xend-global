@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Modal, StyleSheet, View, TouchableOpacity, Text, TouchableWithoutFeedback, ImageBackground } from 'react-native';
+import { Modal, StyleSheet, View, TouchableOpacity, TouchableWithoutFeedback, ImageBackground } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { ThemedText } from '@/components/ui/atoms';
 import { useThemeColor } from '@/hooks/useThemeColor';

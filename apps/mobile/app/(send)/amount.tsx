@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { Typography } from '@/components/ui/atoms/Typography';
 import { ThemedScreen } from '@/components/ui/layout';
 import { Keypad, ThemedButton } from '@/components/ui/molecules';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -52,19 +53,19 @@ export default function AmountScreen() {
                         <Ionicons name="chevron-back" size={24} color="#999" />
                     </TouchableOpacity>
                     <View className="items-center">
-                        <Text className="font-bold text-lg">Enter amount</Text>
-                        <Text className="text-gray-400 text-sm">To: {recipient?.slice(0, 4)}...{recipient?.slice(-4)}</Text>
+                        <Typography weight="700" className="text-lg">Enter amount</Typography>
+                        <Typography className="text-gray-400 text-sm">To: {recipient?.slice(0, 4)}...{recipient?.slice(-4)}</Typography>
                     </View>
                     <View className="w-10 h-10" />
                 </View>
 
                 {/* Amount Display */}
                 <View className="flex-1 justify-center items-center -mt-20">
-                    <Text className="text-[64px] font-bold text-gray-300 tracking-tight">
+                    <Typography weight="700" className="text-[64px] text-gray-300 tracking-tight">
                         {amount === '0' ? '0' : formatAmount({ amount })}
-                    </Text>
+                    </Typography>
                     <View className="flex-row items-center mt-2">
-                        <Text className="text-gray-400 text-lg font-medium mr-1">$0</Text>
+                        <Typography weight="500" className="text-gray-400 text-lg mr-1">$0</Typography>
                     </View>
 
                     {/* Swap Icon Button */}
@@ -79,14 +80,14 @@ export default function AmountScreen() {
                         <View className="w-5 h-5 bg-blue-500 rounded-full mr-2 items-center justify-center">
                             <Ionicons name="logo-usd" size={12} color="white" />
                         </View>
-                        <Text className="font-bold mr-1">USDC</Text>
+                        <Typography weight="700" className="mr-1">USDC</Typography>
                         <Ionicons name="chevron-down" size={12} color="black" />
                     </TouchableOpacity>
 
-                    <Text className="text-gray-400 font-medium ml-3 flex-1">{balance ? balance.toFixed(2) : '0.00'} USDC</Text>
+                    <Typography weight="500" className="text-gray-400 ml-3 flex-1">{balance ? balance.toFixed(2) : '0.00'} USDC</Typography>
 
                     <TouchableOpacity className="bg-black rounded-full px-4 py-1.5" onPress={() => setAmount(balance.toString())}>
-                        <Text className="text-white font-bold text-xs">MAX</Text>
+                        <Typography weight="700" className="text-white text-xs">MAX</Typography>
                     </TouchableOpacity>
                 </View>
 
@@ -102,7 +103,7 @@ export default function AmountScreen() {
                     onPress={handleContinue}
                     disabled={Number(amount) <= 0}
                 >
-                    <Text className="text-white font-bold text-lg">Review</Text>
+                    <Typography weight="700" className="text-white text-lg">Review</Typography>
                 </TouchableOpacity>
             </View>
         </ThemedScreen>

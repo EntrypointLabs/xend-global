@@ -1,5 +1,6 @@
 import React, { ReactElement, useEffect } from 'react';
-import { Modal, StyleSheet, View, TouchableOpacity, Text, Dimensions, TouchableWithoutFeedback } from 'react-native';
+import { Modal, StyleSheet, View, TouchableOpacity, Dimensions, TouchableWithoutFeedback } from 'react-native';
+import { Typography } from '@/components/ui/atoms/Typography';
 import { BlurView } from 'expo-blur';
 import { ThemedText } from '@/components/ui/atoms';
 import { useThemeColor } from '@/hooks/useThemeColor';
@@ -114,7 +115,7 @@ export function ActionModal({
                                         <View style={styles.header}>
                                             <ThemedText type="subtitle" style={{ color: useStarburstModal ? 'white' : textColor }}>{title}</ThemedText>
                                             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                                                <Text style={[styles.closeText, { color: useStarburstModal ? 'white' : textColor }]}>×</Text>
+                                                <Typography weight="300" style={[styles.closeText, { color: useStarburstModal ? 'white' : textColor }]}>×</Typography>
                                             </TouchableOpacity>
                                         </View>
                                     ) : null}
@@ -162,6 +163,5 @@ const styles = StyleSheet.create({
     },
     closeText: {
         fontSize: 28,
-        fontWeight: '300',
     },
 });

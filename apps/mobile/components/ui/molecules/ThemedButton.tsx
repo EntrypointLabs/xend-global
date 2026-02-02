@@ -1,5 +1,6 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { TouchableOpacity, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { Typography } from '../atoms/Typography';
 import { useScreenTheme } from '@/contexts/ScreenThemeContext';
 import { Spacing } from '@/constants/Spacing';
 import tinycolor from 'tinycolor2';
@@ -89,15 +90,16 @@ export function ThemedButton({
             className='flex-row items-center justify-center gap-3'
         >
             {iconLeft}
-            <Text
+            <Typography
+                weight="600"
                 style={[
                     { color: getTextColor() },
                     textStyle,
                 ]}
-                className='font-semibold text-lg'
+                className='text-lg'
             >
                 {title}
-            </Text>
+            </Typography>
             {iconRight}
         </TouchableOpacity>
     );

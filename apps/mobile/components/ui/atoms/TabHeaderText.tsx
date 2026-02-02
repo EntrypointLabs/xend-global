@@ -1,10 +1,11 @@
 import React from 'react'
-import { Text, TextProps } from 'react-native'
+import { TextProps } from 'react-native'
 import clsx from 'clsx'
+import { Typography } from './Typography'
 
 const TabHeaderText = ({ children, className, ...props }: TextProps) => {
     return (
-        <Text className={clsx("text-black font-medium text-lg", className)} {...props}>{children}</Text>
+        <Typography weight="500" className={clsx("text-black text-lg", className)} {...props}>{children}</Typography>
     )
 }
 

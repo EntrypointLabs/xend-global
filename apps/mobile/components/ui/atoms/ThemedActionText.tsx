@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, TextProps, StyleSheet, TouchableOpacity } from 'react-native';
+import { TextProps, StyleSheet, TouchableOpacity } from 'react-native';
+import { Typography } from './Typography';
 import { useScreenTheme } from '@/contexts/ScreenThemeContext';
 import { Size, Weight } from '@/constants/Typography';
 
@@ -36,7 +37,8 @@ export function ThemedActionText({
             disabled={disabled}
             style={styles.container}
         >
-            <Text
+            <Typography
+                weight="500"
                 style={[
                     styles.text,
                     {
@@ -47,7 +49,7 @@ export function ThemedActionText({
                 {...props}
             >
                 {getDisplayText()}
-            </Text>
+            </Typography>
         </TouchableOpacity>
     );
 }
@@ -59,6 +61,5 @@ const styles = StyleSheet.create({
     },
     text: {
         fontSize: Size.medium,
-        fontWeight: Weight.mediumWeight,
     },
 }); 

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ThemedButton } from '@/components/ui/molecules';
-import { Image, Text, View } from 'react-native';
+import { Image, View } from 'react-native';
+import { Typography } from '@/components/ui/atoms/Typography';
 import { WithScreenTheme } from '@/components/WithScreenTheme';
 import { useResendTimer } from '@/hooks/useResendTimer';
 import { router } from 'expo-router';
@@ -81,18 +82,18 @@ function LoginScreen() {
 
             <View className='px-8 py-16 flex-1 justify-between border border-green-950'>
                 <View className='flex-1 h-full justify-center'>
-                    <Text className='text-4xl font-medium'>Invest</Text>
+                    <Typography weight="500" className='text-4xl'>Invest</Typography>
                 </View>
 
                 <View className='flex-1 h-full justify-end'>
                     <Logo />
-                    <Text className='text-4xl font-medium max-w-[269px] w-full text-white my-[22px]'>
+                    <Typography weight="500" className='text-4xl max-w-[269px] w-full text-white my-[22px]'>
                         Your money, upgraded
-                    </Text>
+                    </Typography>
                     <View className='mb-10'>
-                        <Text className='text-lg font-medium max-w-[311px] w-full text-[#8FE5F6]'>Save, earn and invest
-                        </Text>
-                        <Text className='text-lg font-medium max-w-[311px] w-full text-[#8FE5F6]'>with stablecoins and digital assets.</Text>
+                        <Typography weight="500" className='text-lg max-w-[311px] w-full text-[#8FE5F6]'>Save, earn and invest
+                        </Typography>
+                        <Typography weight="500" className='text-lg max-w-[311px] w-full text-[#8FE5F6]'>with stablecoins and digital assets.</Typography>
                     </View>
                     <View className='gap-2.5'>
                         <ThemedButton onPress={() => authenticate("")} title="Continue with Google"

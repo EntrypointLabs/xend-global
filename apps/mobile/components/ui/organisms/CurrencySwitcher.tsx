@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { Typography } from '../atoms/Typography';
 import { BlurView } from 'expo-blur';
 import tinycolor from 'tinycolor2';
 import { Currency } from '@/types/Transaction';
@@ -44,10 +45,10 @@ export function CurrencySwitcher({ onCurrencyChange, backgroundColor = 'white', 
                 >
                     <View style={styles.tabContent}>
                         <Image source={usFlagIcon} style={styles.flagIcon} />
-                        <Text style={[
+                        <Typography weight="500" style={[
                             styles.tabText,
                             { color: selectedCurrency === 'usd' ? textColor : unselectedTextColor }
-                        ]}>USD</Text>
+                        ]}>USD</Typography>
                     </View>
                 </TouchableOpacity>
 
@@ -64,10 +65,10 @@ export function CurrencySwitcher({ onCurrencyChange, backgroundColor = 'white', 
                 >
                     <View style={styles.tabContent}>
                         <Image source={euFlagIcon} style={styles.flagIcon} />
-                        <Text style={[
+                        <Typography weight="500" style={[
                             styles.tabText,
                             { color: selectedCurrency === 'eur' ? textColor : unselectedTextColor }
-                        ]}>EUR</Text>
+                        ]}>EUR</Typography>
                     </View>
                 </TouchableOpacity>
             </BlurView>
@@ -106,6 +107,5 @@ const styles = StyleSheet.create({
     },
     tabText: {
         color: '#8E8E93',
-        fontWeight: '500',
     }
 });

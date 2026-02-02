@@ -5,7 +5,8 @@ import { ActionOption } from '../../molecules/ModalOptionsList';
 import { router } from 'expo-router';
 import { useKyc } from '@/hooks/useKyc';
 import { useModalFlow } from '@/contexts/ModalFlowContext';
-import { Image, Text, View } from 'react-native';
+import { Image, View } from 'react-native';
+import { Typography } from '@/components/ui/atoms/Typography';
 
 const bankIcon = require('@/assets/icons/bank.png');
 const walletIcon = require('@/assets/icons/wallet.png');
@@ -78,8 +79,8 @@ export function SendModal({ visible, onClose, onSendToWallet }: SendModalProps) 
         >
             <View className='flex-col items-center justify-center mb-5'>
                 <Image source={require('@/assets/icons/recieve.png')} className='h-8 w-8 mb-5' resizeMode='contain' />
-                <Text className='text-base font-semibold mb-1'>Send</Text>
-                <Text className='text-sm font-medium text-black/40 max-w-[192px] text-center'>Choose one of the options below to send crypto assets</Text>
+                <Typography weight="600" className='text-base mb-1'>Send</Typography>
+                <Typography weight="500" className='text-sm text-black/40 max-w-[192px] text-center'>Choose one of the options below to send crypto assets</Typography>
             </View>
             <ModalOptionsList options={sendOptions} />
         </ActionModal>

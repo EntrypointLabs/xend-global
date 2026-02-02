@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Image } from 'react-native';
+import { View, TouchableOpacity, Image } from 'react-native';
+import { Typography } from '@/components/ui/atoms/Typography';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import HapticPressable from '@/components/ui/atoms/HapticPressable';
@@ -78,7 +79,7 @@ export default function RecipientStep({ onClose, onNext }: RecipientStepProps) {
                     ref={inputRef}
                     style={{ fontSize: 16, color: 'black', marginBottom: 6, height: 40 }}
                 />
-                <Text onPress={() => inputRef.current?.focus()} className="text-black/30 text-xs font-medium mb-2.5">Enter Solana address or .sol handle</Text>
+                <Typography onPress={() => inputRef.current?.focus()} weight="500" className="text-black/30 text-xs mb-2.5">Enter Solana address or .sol handle</Typography>
 
                 <View className="flex-row gap-3">
                     <HapticPressable
@@ -86,7 +87,7 @@ export default function RecipientStep({ onClose, onNext }: RecipientStepProps) {
                         onPress={handleContinue}
                         disabled={recipient.length === 0}
                     >
-                        <Text className="text-white font-semibold">Continue</Text>
+                        <Typography weight="600" className="text-white">Continue</Typography>
                     </HapticPressable>
 
                     <HapticPressable
@@ -94,13 +95,13 @@ export default function RecipientStep({ onClose, onNext }: RecipientStepProps) {
                         onPress={handlePaste}
                     >
                         <Ionicons name="document-text-outline" size={16} color="black" style={{ marginRight: 6 }} />
-                        <Text className="font-semibold text-black">Paste</Text>
+                        <Typography weight="600" className="text-black">Paste</Typography>
                     </HapticPressable>
                 </View>
             </View>
 
             {/* Recent Addresses */}
-            <Text className="font-semibold text-lg mb-4 ml-5">Recent addresses</Text>
+            <Typography weight="600" className="text-lg mb-4 ml-5">Recent addresses</Typography>
 
             {RECENT_ADDRESSES.map((item, index) => (
                 <TouchableOpacity
@@ -115,8 +116,8 @@ export default function RecipientStep({ onClose, onNext }: RecipientStepProps) {
                         <Image source={item.icon} className="w-6 h-6" resizeMode="contain" />
                     </View>
                     <View>
-                        <Text className="font-bold text-base">{truncateAddress(item.address)}</Text>
-                        <Text className="text-gray-400 text-sm">{item.sends} sends</Text>
+                        <Typography weight="700" className="text-base">{truncateAddress(item.address)}</Typography>
+                        <Typography className="text-gray-400 text-sm">{item.sends} sends</Typography>
                     </View>
                 </TouchableOpacity>
             ))}

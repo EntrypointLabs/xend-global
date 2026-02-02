@@ -1,4 +1,5 @@
-import { StyleSheet, View, ScrollView, Text } from 'react-native';
+import { StyleSheet, View, ScrollView } from 'react-native';
+import { Typography } from '@/components/ui/atoms/Typography';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { ThemedText } from '@/components/ui/atoms';
@@ -179,31 +180,33 @@ function HomeScreenContent() {
                         <TabHeaderText className='mb-8'>Wallet</TabHeaderText>
 
                         <View>
-                            <Text
-                                className='text-black/30 font-medium text-sm'
-                            >Total Balance <Ionicons name="remove-circle" size={12} color="#999" /> 100%</Text>
-                            <Text className='font-bold text-[40px] leading-[140%]'>
+                            <Typography
+                                weight="500"
+                                className='text-black/30 text-sm'
+                            >Total Balance <Ionicons name="remove-circle" size={12} color="#999" /> 100%</Typography>
+                            <Typography weight="700" className='text-[40px] leading-[140%]'>
                                 {`$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                            </Text>
+                            </Typography>
                         </View>
 
                         {transfers.length === 0 && (
                             <View
                                 className='items-center pt-2 pb-6'
                             >
-                                <Text className='text-xl font-semibold text-center mb-2'>There is nothing here yet</Text>
-                                <Text className='text-center text-black/30 max-w-[250px] mb-7 font-medium text-sm'>
+                                <Typography weight="600" className='text-xl text-center mb-2'>There is nothing here yet</Typography>
+                                <Typography weight="500" className='text-center text-black/30 max-w-[250px] mb-7 text-sm'>
                                     Deposit tokens to your address and start using Fuse Wallet
-                                </Text>
+                                </Typography>
 
                                 <HapticPressable
                                     className='bg-black p-2 gap-0.5 items-center rounded-full flex-row'
                                     onPress={showReceiveModal}
                                 >
                                     <Ionicons name="arrow-down-circle" size={18} color="white" />
-                                    <Text
-                                        className='text-white font-medium text-base'
-                                    >Receive</Text>
+                                    <Typography
+                                        weight="500"
+                                        className='text-white text-base'
+                                    >Receive</Typography>
                                 </HapticPressable>
                             </View>
                         )}

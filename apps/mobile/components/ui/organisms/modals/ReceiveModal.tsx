@@ -6,7 +6,8 @@ import { useModalFlow } from '@/contexts/ModalFlowContext';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useKyc } from '@/hooks/useKyc';
-import { Image, Text, View } from 'react-native';
+import { Image, View } from 'react-native';
+import { Typography } from '@/components/ui/atoms/Typography';
 
 const bankIcon = require('@/assets/icons/bank.png');
 const walletIcon = require('@/assets/icons/wallet.png');
@@ -66,8 +67,8 @@ export function ReceiveModal({ visible, onClose, onOpenQRCode }: ReceiveModalPro
         >
             <View className='flex-col items-center justify-center mb-5'>
                 <Image source={require('@/assets/icons/recieve.png')} className='h-8 w-8 mb-5' resizeMode='contain' />
-                <Text className='text-base font-semibold mb-1'>Recieve</Text>
-                <Text className='text-sm font-medium text-black/40 max-w-[192px] text-center'>Choose one of the options below to deposit crypto</Text>
+                <Typography weight="600" className='text-base mb-1'>Recieve</Typography>
+                <Typography weight="500" className='text-sm text-black/40 max-w-[192px] text-center'>Choose one of the options below to deposit crypto</Typography>
             </View>
             <ModalOptionsList options={receiveOptions} />
         </ActionModal>

@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Typography } from '@/components/ui/atoms/Typography';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { Spacing } from '@/constants/Spacing';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,7 +23,7 @@ export function Keypad({ onKeyPress }: KeypadProps) {
             {key === 'backspace' ? (
                 <Ionicons name="backspace-outline" size={24} color={textColor} />
             ) : (
-                <Text style={[styles.keyText, { color: textColor }]}>{key}</Text>
+                <Typography weight="600" style={[styles.keyText, { color: textColor }]}>{key}</Typography>
             )}
         </HapticPressable>
     );
@@ -72,6 +73,5 @@ const styles = StyleSheet.create({
     },
     keyText: {
         fontSize: 26,
-        fontWeight: Weight.semiBoldWeight,
     },
 }); 

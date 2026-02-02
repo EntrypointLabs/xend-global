@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { LoginForm } from '@/components/LoginForm';
 import { ScreenHeaderText } from '@/components/ui/molecules';
-import { Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Typography } from '@/components/ui/atoms/Typography';
 import { WithScreenTheme } from '@/components/WithScreenTheme';
 import { ThemedScreen, StarburstBackground } from '@/components/ui/layout';
 import { ThemedActionText, ThemedText } from '@/components/ui/atoms';
@@ -103,7 +104,7 @@ function RestoreAccountScreen() {
             >
 
                 <View className='px-10 py-16 flex-1 justify-between' style={{ flex: 1 }}>
-                    <Text className='font-medium text-white text-xl max-w-[90px] w-full'>Secure your wallet</Text>
+                    <Typography weight="500" className='text-white text-xl max-w-[90px] w-full'>Secure your wallet</Typography>
                     <View>
                         <LoginForm
                             onSubmit={handleSubmit}

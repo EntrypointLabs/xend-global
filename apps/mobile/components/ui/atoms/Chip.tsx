@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, StyleSheet, ViewStyle, Text, TextStyle } from 'react-native';
+import { View, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { Typography } from './Typography';
 import { useScreenTheme } from '@/contexts/ScreenThemeContext';
 import { Spacing } from '@/constants/Spacing';
 
@@ -14,7 +15,7 @@ export function Chip({ children, style, textStyle }: ChipProps) {
 
     return (
         <View style={[styles.chip, style, { borderColor: textColor + 10 }]}>
-            <Text style={[{ color: textColor }, textStyle]}>{children}</Text>
+            <Typography style={[{ color: textColor }, textStyle]}>{children}</Typography>
         </View>
     );
 }

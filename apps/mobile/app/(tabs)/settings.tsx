@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, SectionList, TouchableOpacity, Image } from 'react-native';
+import { View, SectionList, TouchableOpacity, Image } from 'react-native';
+import { Typography } from '@/components/ui/atoms/Typography';
 import { ScreenLayout } from '@/components/ui/layout';
 import { ThemedText } from '@/components/ui/atoms';
 import { SettingsItem } from '@/components/ui/molecules';
@@ -105,8 +106,8 @@ export default function SettingsScreen() {
                                         <Ionicons name="sparkles" size={20} color="white" />
                                     </View>
                                     <View>
-                                        <Text className="text-white font-bold text-sm">Get Fuse Plus</Text>
-                                        <Text className="text-gray-400 text-xs">Earn more, pay less</Text>
+                                        <Typography weight="700" className="text-white text-sm">Get Fuse Plus</Typography>
+                                        <Typography className="text-gray-400 text-xs">Earn more, pay less</Typography>
                                     </View>
                                 </View>
                                 <View className="w-6 h-6 rounded-full bg-white/20 items-center justify-center">
@@ -128,7 +129,7 @@ export default function SettingsScreen() {
                     )}
                     renderSectionHeader={({ section: { title } }) => (
                         <View className="mb-2 mt-6">
-                            <Text className="text-lg font-medium text-black/30">{title}</Text>
+                            <Typography weight="500" className="text-lg text-black/30">{title}</Typography>
                         </View>
                     )}
                     stickySectionHeadersEnabled={false}

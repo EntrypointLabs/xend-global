@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, TouchableOpacity, View, Text } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Typography } from '../atoms/Typography';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { Spacing } from '@/constants/Spacing';
@@ -57,9 +58,9 @@ export function CircleButton({
                     color={buttonTextColor}
                 />
             </TouchableOpacity>
-            {label && <Text style={[styles.label, { color: customTextColor || textColor }]}>
+            {label && <Typography weight="500" style={[styles.label, { color: customTextColor || textColor }]}>
                 {label}
-            </Text>}
+            </Typography>}
         </View>
     );
 }
@@ -84,6 +85,5 @@ const styles = StyleSheet.create({
     label: {
         marginTop: Spacing.xs,
         fontSize: Size.tiny,
-        fontWeight: Weight.mediumWeight,
     },
 }); 

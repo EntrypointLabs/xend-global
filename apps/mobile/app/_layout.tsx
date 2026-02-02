@@ -2,7 +2,8 @@
 import React, { useEffect } from 'react';
 import { Stack, Slot, useRouter, useSegments } from 'expo-router';
 import Toast from 'react-native-toast-message';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
+import { Typography } from '@/components/ui/atoms/Typography';
 
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
@@ -18,6 +19,29 @@ import { sentryApiResponse } from '@/types/Sentry';
 import { EasClient } from '@/utils/easClient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+
+import * as SplashScreen from 'expo-splash-screen';
+import {
+    Inter_100Thin,
+    Inter_200ExtraLight,
+    Inter_300Light,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+    Inter_900Black,
+    Inter_100Thin_Italic,
+    Inter_200ExtraLight_Italic,
+    Inter_300Light_Italic,
+    Inter_400Regular_Italic,
+    Inter_500Medium_Italic,
+    Inter_600SemiBold_Italic,
+    Inter_700Bold_Italic,
+    Inter_800ExtraBold_Italic,
+    Inter_900Black_Italic,
+    useFonts
+} from '@expo-google-fonts/inter';
 
 // Sentry for error tracking
 if (process.env.EXPO_PUBLIC_GRID_ENV === 'production') {
@@ -93,37 +117,57 @@ const toastConfig = {
             shadowRadius: 3.84,
             elevation: 5,
         }}>
-            <Text style={{
+            <Typography weight="600" style={{
                 color: '#FFFFFF',
                 fontSize: 14,
-                fontWeight: '600',
             }}>
                 {props.text1 || 'An error occurred'}
-            </Text>
+            </Typography>
         </View>
     )
 };
 
-export default process.env.EXPO_PUBLIC_GRID_ENV === 'production'
-    ? Sentry.wrap(function RootLayout() {
-        return (
-            <GestureHandlerRootView style={{ flex: 1 }}>
-                <AuthProvider>
-                    <BottomSheetModalProvider>
-                        <AuthLayout />
-                    </BottomSheetModalProvider>
-                </AuthProvider>
-            </GestureHandlerRootView>
-        );
-    })
-    : function RootLayout() {
-        return (
-            <GestureHandlerRootView style={{ flex: 1 }}>
-                <AuthProvider>
-                    <BottomSheetModalProvider>
-                        <AuthLayout />
-                    </BottomSheetModalProvider>
-                </AuthProvider>
-            </GestureHandlerRootView>
-        );
-    };
+function RootLayout() {
+    const [loaded, error] = useFonts({
+        Inter_100Thin,
+        Inter_200ExtraLight,
+        Inter_300Light,
+        Inter_400Regular,
+        Inter_500Medium,
+        Inter_600SemiBold,
+        Inter_700Bold,
+        Inter_800ExtraBold,
+        Inter_900Black,
+        Inter_100Thin_Italic,
+        Inter_200ExtraLight_Italic,
+        Inter_300Light_Italic,
+        Inter_400Regular_Italic,
+        Inter_500Medium_Italic,
+        Inter_600SemiBold_Italic,
+        Inter_700Bold_Italic,
+        Inter_800ExtraBold_Italic,
+        Inter_900Black_Italic,
+    });
+
+    useEffect(() => {
+        if (loaded || error) {
+            SplashScreen.hideAsync();
+        }
+    }, [loaded, error]);
+
+    if (!loaded && !error) {
+        return null;
+    }
+
+    return (
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <AuthProvider>
+                <BottomSheetModalProvider>
+                    <AuthLayout />
+                </BottomSheetModalProvider>
+            </AuthProvider>
+        </GestureHandlerRootView>
+    );
+}
+
+export default process.env.EXPO_PUBLIC_GRID_ENV === 'production' ? Sentry.wrap(RootLayout) : RootLayout;

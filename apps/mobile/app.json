@@ -15,18 +15,17 @@
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
           {
-            "CFBundleURLSchemes": [
-              "bright"
-            ]
+            "CFBundleURLSchemes": ["bright"]
           }
         ],
         "NSCameraUsageDescription": "This app requires camera access to verify your identity."
       },
-      "associatedDomains": [
-        "applinks:fuse.app"
-      ]
+      "associatedDomains": ["applinks:fuse.app"]
     },
     "android": {
+      "fonts": [
+        "node_modules/@expo-google-fonts/inter/900Black/Inter_900Black.ttf"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/app-icon.png"
       },
@@ -39,15 +38,10 @@
               "scheme": "fuse"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ],
-      "permissions": [
-        "CAMERA"
-      ]
+      "permissions": ["CAMERA"]
     },
     "web": {
       "bundler": "metro",

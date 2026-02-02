@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { View, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { Typography } from '@/components/ui/atoms/Typography';
 import { useRouter } from 'expo-router';
 import { ScreenLayout } from '@/components/ui/layout';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,7 +35,7 @@ export default function CashScreen() {
                     <View className="bg-black rounded-full w-6 h-6 items-center justify-center">
                         <Ionicons name="arrow-down" size={14} color="white" />
                     </View>
-                    <Text className="font-bold text-lg">Receive</Text>
+                    <Typography weight="700" className="text-lg">Receive</Typography>
                 </View>
             ),
             onPress: () => setIsReceiveModalVisible(true),
@@ -44,7 +45,7 @@ export default function CashScreen() {
             icon: ({ isActive }: { isActive?: boolean }) => (
                 <View className="flex-row items-center gap-2">
                     <Ionicons name="paper-plane-outline" size={20} color="black" />
-                    <Text className="font-bold text-lg">Send</Text>
+                    <Typography weight="700" className="text-lg">Send</Typography>
                 </View>
             ),
             onPress: () => setIsSendModalVisible(true),
@@ -68,10 +69,10 @@ export default function CashScreen() {
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
                     {/* Balance */}
                     <View className="mb-8">
-                        <Text className="text-black/30 font-medium text-base mb-1">Balance</Text>
+                        <Typography weight="500" className="text-black/30 text-base mb-1">Balance</Typography>
                         <View className="flex-row items-baseline">
-                            <Text className="text-4xl font-bold">$4.</Text>
-                            <Text className="text-4xl font-bold text-black/30">66</Text>
+                            <Typography weight="700" className="text-4xl">$4.</Typography>
+                            <Typography weight="700" className="text-4xl text-black/30">66</Typography>
                         </View>
                     </View>
 
@@ -87,10 +88,10 @@ export default function CashScreen() {
 
                         <View className="flex-row justify-between items-end mb-4">
                             <View>
-                                <Text className="text-lg font-bold mb-1">USDC</Text>
-                                <Text className="text-black/30 font-semibold">4.6568 USDC</Text>
+                                <Typography weight="700" className="text-lg mb-1">USDC</Typography>
+                                <Typography weight="600" className="text-black/30">4.6568 USDC</Typography>
                             </View>
-                            <Text className="text-lg font-semibold">$4.<Text className="text-black/30">66</Text></Text>
+                            <Typography weight="600" className="text-lg">$4.<Typography weight="600" className="text-black/30">66</Typography></Typography>
                         </View>
 
                         {/* Divider */}
@@ -102,10 +103,10 @@ export default function CashScreen() {
                                 <View className="w-5 h-5 bg-blue-500 rounded-full mr-2 items-center justify-center">
                                     <Ionicons name="trending-up" size={12} color="white" />
                                 </View>
-                                <Text className="font-medium">Earn <Text className="text-blue-500">7.57% </Text><Text>APY</Text></Text>
+                                <Typography weight="500">Earn <Typography weight="500" className="text-blue-500">7.57% </Typography><Typography weight="500">APY</Typography></Typography>
                             </View>
                             <View className="flex-row items-center">
-                                <Text className="text-black/30 text-sm font-medium mr-1">Put USDC into Earn</Text>
+                                <Typography weight="500" className="text-black/30 text-sm mr-1">Put USDC into Earn</Typography>
                                 <Ionicons name="chevron-forward" size={12} color="#999" />
                             </View>
                         </TouchableOpacity>
@@ -113,12 +114,12 @@ export default function CashScreen() {
 
                     {/* Other Assets - Empty State */}
                     <View>
-                        <Text className="font-medium mb-4">Other assets</Text>
+                        <Typography weight="500" className="mb-4">Other assets</Typography>
                         <View className="flex-row items-center">
                             <View className="size-10 rounded-full border-2 border-dashed border-black/40 mr-2" />
                             <View>
-                                <Text className="text-black/30 font-medium text-sm">You have no other</Text>
-                                <Text className="text-black/30 font-medium text-sm">cash assets yet</Text>
+                                <Typography weight="500" className="text-black/30 text-sm">You have no other</Typography>
+                                <Typography weight="500" className="text-black/30 text-sm">cash assets yet</Typography>
                             </View>
                         </View>
                     </View>

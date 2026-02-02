@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { View, TextInput, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { Typography } from '@/components/ui/atoms/Typography';
 import { useRouter } from 'expo-router';
 import { ScreenLayout } from '@/components/ui/layout';
 import * as Clipboard from 'expo-clipboard';
@@ -52,7 +53,7 @@ export default function ChooseRecipientScreen() {
 
                 {/* Input Container */}
                 <View className="bg-white rounded-[24px] p-4 mb-8">
-                    <Text className="text-gray-400 text-base mb-2">Address or .sol handle</Text>
+                    <Typography className="text-gray-400 text-base mb-2">Address or .sol handle</Typography>
                     <TextInput
                         className="text-base text-black mb-4 h-10"
                         placeholder="Enter Solana address or .sol handle"
@@ -69,7 +70,7 @@ export default function ChooseRecipientScreen() {
                             onPress={handleContinue}
                             disabled={recipient.length === 0}
                         >
-                            <Text className="text-white font-semibold">Continue</Text>
+                            <Typography weight="600" className="text-white">Continue</Typography>
                         </HapticPressable>
 
                         <HapticPressable
@@ -77,13 +78,13 @@ export default function ChooseRecipientScreen() {
                             onPress={handlePaste}
                         >
                             <Ionicons name="document-text-outline" size={16} color="black" style={{ marginRight: 6 }} />
-                            <Text className="font-semibold text-black">Paste</Text>
+                            <Typography weight="600" className="text-black">Paste</Typography>
                         </HapticPressable>
                     </View>
                 </View>
 
                 {/* Recent Addresses */}
-                <Text className="font-semibold text-lg mb-4 ml-1">Recent addresses</Text>
+                <Typography weight="600" className="text-lg mb-4 ml-1">Recent addresses</Typography>
 
                 {RECENT_ADDRESSES.map((item, index) => (
                     <TouchableOpacity
@@ -95,8 +96,8 @@ export default function ChooseRecipientScreen() {
                             <Image source={item.icon} className="w-6 h-6" resizeMode="contain" />
                         </View>
                         <View>
-                            <Text className="font-bold text-base">{item.name}</Text>
-                            <Text className="text-gray-400 text-sm">{item.sends}</Text>
+                            <Typography weight="700" className="text-base">{item.name}</Typography>
+                            <Typography className="text-gray-400 text-sm">{item.sends}</Typography>
                         </View>
                     </TouchableOpacity>
                 ))}
