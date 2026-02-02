@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, SectionList, TouchableOpacity, Image } from 'react-native';
+import { View, SectionList, TouchableOpacity } from 'react-native';
 import { Typography } from '@/components/ui/atoms/Typography';
 import { ScreenLayout } from '@/components/ui/layout';
 import { ThemedText } from '@/components/ui/atoms';
@@ -129,7 +129,7 @@ export default function SettingsScreen() {
                     )}
                     renderSectionHeader={({ section: { title } }) => (
                         <View className="mb-2 mt-6">
-                            <Typography weight="500" className="text-lg text-black/30">{title}</Typography>
+                            <Typography weight="500" className="text-lg text-black/40">{title}</Typography>
                         </View>
                     )}
                     stickySectionHeadersEnabled={false}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { StyleProp, View, ViewStyle } from 'react-native';
 import HapticPressable from '@/components/ui/atoms/HapticPressable';
 
 export interface ActionPillItem {
@@ -14,16 +14,16 @@ export interface ActionPillItem {
 
 export interface ActionPillProps {
     items: ActionPillItem[];
-    containerStyle?: any;
+    containerStyle?: StyleProp<ViewStyle>;
 }
 
 export function ActionPill({ items, containerStyle }: ActionPillProps) {
     const shadowStyle = {
-        shadowColor: "#000",
+        shadowColor: "#CECECE",
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
         shadowRadius: 12,
-        elevation: 2,
+        elevation: 1,
     };
 
     return (

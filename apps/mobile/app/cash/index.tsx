@@ -71,8 +71,8 @@ export default function CashScreen() {
                     <View className="mb-8">
                         <Typography weight="500" className="text-black/30 text-base mb-1">Balance</Typography>
                         <View className="flex-row items-baseline">
-                            <Typography weight="700" className="text-[40px] leading-[140%]">$4.</Typography>
-                            <Typography weight="700" className="text-[40px] leading-[140%] text-black/30">66</Typography>
+                            <Typography weight="700" variant='h2'>$4.</Typography>
+                            <Typography weight="700" variant='h2' className="text-black/30">66</Typography>
                         </View>
                     </View>
 

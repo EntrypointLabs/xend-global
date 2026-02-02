@@ -27,7 +27,7 @@ export function SettingsItem({ icon, label, onPress, showChevron = true, color }
                 </Typography>
             </View>
             {showChevron && (
-                <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />
+                <Ionicons name="chevron-forward" size={20} className='!text-black/40' />
             )}
         </HapticPressable>
     );

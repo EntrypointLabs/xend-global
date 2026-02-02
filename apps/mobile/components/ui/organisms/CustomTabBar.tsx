@@ -1,20 +1,18 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Platform, ToastAndroid, Alert } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spacing } from '@/constants/Spacing';
-import { useThemeColor } from '@/hooks/useThemeColor';
 import { useModalFlow } from '@/contexts/ModalFlowContext';
 import History from '../atoms/icons/history';
 import Home from '../atoms/icons/home';
 import Settings from '../atoms/icons/settings';
-import * as Haptics from 'expo-haptics';
 import { ActionPill } from '../molecules';
 import HapticPressable from '../atoms/HapticPressable';
 
 import { BlurView } from 'expo-blur';
-import { useRouter, useSegments, useSitemap } from 'expo-router';
+import { useSegments } from 'expo-router';
 
 const iconMappings = {
     index: Home,
@@ -24,9 +22,6 @@ const iconMappings = {
 
 export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     const segments = useSegments();
-    const primaryColor = useThemeColor({}, 'primary');
-    const backgroundColor = useThemeColor({}, 'background');
-    const cardColor = useThemeColor({}, 'card');
     const { showReceiveModal } = useModalFlow();
 
     const isHome = segments[0] === '(tabs)' && segments[1] === undefined;
@@ -65,8 +60,10 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
                         isActive: isFocused,
                         accessibilityLabel: options.tabBarAccessibilityLabel,
                         testID: options.title,
+
                     };
                 })}
+                containerStyle={isHome ? { shadowColor: "transparent", elevation: 0 } : {}}
             />
 
             {/* Right FAB - Action Button */}
@@ -78,7 +75,7 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
                     showReceiveModal();
                 }}
             >
-                <Ionicons name="add" size={32} color="white" />
+                <Ionicons name="add" size={28} color="white" />
             </HapticPressable>}
         </ContainerWrapper>
     );
@@ -131,18 +128,23 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     fab: {
-        width: 56,
-        height: 56,
+        width: 50,
+        height: 50,
         borderRadius: 28,
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: "#000",
-        shadowOffset: {
-            width: 0,
-            height: 4,
-        },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-        elevation: 6,
+        position: 'absolute',
+        // bottom: 0,
+        top: 12,
+        right: Spacing.md,
+
+        // shadowColor: "#000",
+        // shadowOffset: {
+        //     width: 0,
+        //     height: 4,
+        // },
+        // shadowOpacity: 0.2,
+        // shadowRadius: 8,
+        // elevation: 6,
     }
 });
