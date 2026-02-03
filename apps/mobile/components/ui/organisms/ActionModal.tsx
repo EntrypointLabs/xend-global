@@ -94,7 +94,8 @@ export function ActionModal({
                 <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose}>
                     {/* Using TouchableOpacity as backdrop to close on outside press */}
                     <BlurView
-                        intensity={24.2}
+                        // intensity={24.2}
+                        intensity={44.2}
                         style={[styles.overlay, { backgroundColor: overlayBackgroundColor }, StyleSheet.absoluteFill]}
                         tint={blurTint}
                         experimentalBlurMethod="dimezisBlurView"

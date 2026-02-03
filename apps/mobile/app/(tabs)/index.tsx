@@ -1,7 +1,7 @@
 import { View, ScrollView } from 'react-native';
 import { Typography } from '@/components/ui/atoms/Typography';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { ThemedText } from '@/components/ui/atoms';
 
 import { ActionCard, PromoBanner } from '@/components/ui/molecules';
@@ -20,15 +20,18 @@ import * as Sentry from '@sentry/react-native';
 import HapticPressable from '@/components/ui/atoms/HapticPressable';
 import { useRouter } from 'expo-router';
 import TabHeaderText from '@/components/ui/atoms/TabHeaderText';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
+import { SendFlowModal } from '@/components/ui/organisms/send/SendFlowModal';
 
 function HomeScreenContent() {
     const router = useRouter();
     const { accountInfo, user } = useAuth();
-    const { showReceiveModal, isReceiveModalVisible, hideAllModals } = useModalFlow();
-    const [isSendModalVisible, setIsSendModalVisible] = useState(false);
+    const { showReceiveModal, isReceiveModalVisible, hideAllModals, isSendModalVisible, showSendModal } = useModalFlow();
+    // const [isSendModalVisible, setIsSendModalVisible] = useState(false);
     const [isQRCodeModalVisible, setIsQRCodeModalVisible] = useState(false);
     const { isVisible, message, showToast, hideToast } = useComingSoonToast();
     const { balance, transfers, isLoading, error, fetchWalletData } = useWalletData(accountInfo);
+    const sendFlowModalRef = useRef<BottomSheetModal>(null);
 
     useEffect(() => {
         // if (!accountInfo || !accountInfo.smart_account_signer_public_key) {
@@ -179,10 +182,12 @@ function HomeScreenContent() {
                     <TabHeaderText className='mb-8'>Wallet</TabHeaderText>
 
                     <View>
-                        <Typography
-                            weight="500"
-                            className='text-black/30 text-sm'
-                        >Total Balance <Ionicons name="remove-circle" size={12} color="#999" /> 100%</Typography>
+                        <View className='flex-row items-center gap-2'>
+                            <Typography
+                                weight="500"
+                                className='text-black/30 text-sm'
+                            >Total Balance <Ionicons name="remove-circle" size={12} color="#999" /> 100%</Typography>
+                        </View>
                         <Typography weight="700" className='text-[40px] leading-[140%]'>
                             {`$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                         </Typography>
@@ -245,8 +250,20 @@ function HomeScreenContent() {
             </ScrollView>
             <SendModal
                 visible={isSendModalVisible}
-                onClose={() => setIsSendModalVisible(false)}
+                onClose={hideAllModals}
+                onSendToWallet={() => {
+                    hideAllModals();
+                    // Short delay to allow animation to start closing before opening new one
+                    // or just open it. ActionModal handles mounting.
+                    setTimeout(() => sendFlowModalRef.current?.present(), 100);
+                }}
             />
+
+            <SendFlowModal
+                ref={sendFlowModalRef}
+                onClose={() => { }}
+            />
+
 
             <ReceiveModal
                 visible={isReceiveModalVisible}

@@ -1,18 +1,27 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, StyleSheet, Pressable } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spacing } from '@/constants/Spacing';
-import { useModalFlow } from '@/contexts/ModalFlowContext';
 import History from '../atoms/icons/history';
 import Home from '../atoms/icons/home';
 import Settings from '../atoms/icons/settings';
 import { ActionPill } from '../molecules';
 import HapticPressable from '../atoms/HapticPressable';
+import Animated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withSpring,
+    withSequence,
+    withTiming
+} from 'react-native-reanimated';
+import { ActionMenu } from './ActionMenu'; // Import ActionMenu
 
 import { BlurView } from 'expo-blur';
 import { useSegments } from 'expo-router';
+import { SendFlowModal } from './send/SendFlowModal';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
 
 const iconMappings = {
     index: Home,
@@ -22,62 +31,102 @@ const iconMappings = {
 
 export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     const segments = useSegments();
-    const { showReceiveModal } = useModalFlow();
+    const [isActionMenuVisible, setIsActionMenuVisible] = useState(false);
+
+    const sendFlowModalRef = useRef<BottomSheetModal>(null);
+
+    // Animation Shared Value
+    const fabScale = useSharedValue(1);
+    const fabOpacity = useSharedValue(1);
 
     const isHome = segments[0] === '(tabs)' && segments[1] === undefined;
 
+    React.useEffect(() => {
+        fabOpacity.value = withTiming(isActionMenuVisible ? 0 : 1, { duration: 200 });
+    }, [isActionMenuVisible]);
+
+    const fabStyle = useAnimatedStyle(() => {
+        return {
+            transform: [{ scale: fabScale.value }],
+            opacity: fabOpacity.value,
+        };
+    });
+
+    const handleFabPress = () => {
+        // Shrink and Grow Animation
+        fabScale.value = withSequence(
+            withTiming(0.9, { duration: 100 }),
+            withSpring(1, { damping: 15, stiffness: 200 })
+        );
+
+        setIsActionMenuVisible(true);
+    };
+
     return (
-        <ContainerWrapper withBlur={!isHome}>
-            {/* Left Pill - Navigation Tabs */}
-            <ActionPill
-                items={state.routes.map((route, index) => {
-                    const { options } = descriptors[route.key];
-                    const isFocused = state.index === index;
+        <>
+            <ContainerWrapper withBlur={!isHome}>
+                {/* Left Pill - Navigation Tabs */}
+                <ActionPill
+                    items={state.routes.map((route, index) => {
+                        const { options } = descriptors[route.key];
+                        const isFocused = state.index === index;
 
-                    const onPress = () => {
-                        const event = navigation.emit({
-                            type: 'tabPress',
-                            target: route.key,
-                            canPreventDefault: true,
-                        });
+                        const onPress = () => {
+                            const event = navigation.emit({
+                                type: 'tabPress',
+                                target: route.key,
+                                canPreventDefault: true,
+                            });
 
-                        if (!isFocused && !event.defaultPrevented) {
-                            navigation.navigate(route.name);
-                        }
-                    };
+                            if (!isFocused && !event.defaultPrevented) {
+                                navigation.navigate(route.name);
+                            }
+                        };
 
-                    const onLongPress = () => {
-                        navigation.emit({
-                            type: 'tabLongPress',
-                            target: route.key,
-                        });
-                    };
+                        const onLongPress = () => {
+                            navigation.emit({
+                                type: 'tabLongPress',
+                                target: route.key,
+                            });
+                        };
 
-                    return {
-                        icon: iconMappings[route.name],
-                        onPress,
-                        onLongPress,
-                        isActive: isFocused,
-                        accessibilityLabel: options.tabBarAccessibilityLabel,
-                        testID: options.title,
+                        return {
+                            icon: iconMappings[route.name],
+                            onPress,
+                            onLongPress,
+                            isActive: isFocused,
+                            accessibilityLabel: options.tabBarAccessibilityLabel,
+                            testID: options.title,
 
-                    };
-                })}
-                containerStyle={isHome ? { shadowColor: "transparent", elevation: 0 } : {}}
+                        };
+                    })}
+                    containerStyle={isHome ? { shadowColor: "transparent", elevation: 0 } : {}}
+                />
+
+                {/* Right FAB - Action Button */}
+                {isHome && (
+                    <Animated.View style={[styles.fabContainer, fabStyle]}>
+                        <HapticPressable
+                            style={[styles.fab, { backgroundColor: '#000' }]}
+                            onPress={handleFabPress}
+                        >
+                            <Ionicons name="add" size={28} color="white" />
+                        </HapticPressable>
+                    </Animated.View>
+                )}
+            </ContainerWrapper>
+
+            {/* Action Menu Overlay */}
+            <ActionMenu
+                visible={isActionMenuVisible}
+                onClose={() => setIsActionMenuVisible(false)}
             />
 
-            {/* Right FAB - Action Button */}
-            {isHome && <HapticPressable
-                style={[styles.fab, { backgroundColor: '#000' }]}
-                onPress={() => {
-                    // Open Send/Receive modal (or mapped action)
-                    // For this task, connecting to showReceiveModal as an example or primary action
-                    showReceiveModal();
-                }}
-            >
-                <Ionicons name="add" size={28} color="white" />
-            </HapticPressable>}
-        </ContainerWrapper>
+            {/* <SendFlowModal
+                ref={sendFlowModalRef}
+                onClose={() => { }}
+            /> */}
+        </>
     );
 }
 
@@ -108,24 +157,13 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         paddingTop: 10,
-        // backgroundColor: 'red',
-        // backgroundColor: 'rgba(255, 255, 255, 1)'
-        // backgroundColor: 'rgba(0, 0, 0, 1)'
+        zIndex: 1, // Ensure container is above content but below menu
     },
-    tabContainer: {
-        // Shadow
-        // shadowColor: "#000",
-        // shadowOffset: {
-        //     width: 0,
-        //     height: 4,
-        // },
-        // shadowOpacity: 0.1,
-        // shadowRadius: 12,
-        // elevation: 5,
-    },
-    tabButton: {
-        alignItems: 'center',
-        justifyContent: 'center',
+    fabContainer: {
+        position: 'absolute',
+        top: 12,
+        right: Spacing.md,
+        zIndex: 2,
     },
     fab: {
         width: 50,
@@ -133,18 +171,14 @@ const styles = StyleSheet.create({
         borderRadius: 28,
         justifyContent: 'center',
         alignItems: 'center',
-        position: 'absolute',
-        // bottom: 0,
-        top: 12,
-        right: Spacing.md,
-
-        // shadowColor: "#000",
-        // shadowOffset: {
-        //     width: 0,
-        //     height: 4,
-        // },
-        // shadowOpacity: 0.2,
-        // shadowRadius: 8,
-        // elevation: 6,
+        // Shadow for FAB
+        shadowColor: "#000",
+        shadowOffset: {
+            width: 0,
+            height: 4,
+        },
+        shadowOpacity: 0.3,
+        shadowRadius: 4.65,
+        elevation: 8,
     }
 });

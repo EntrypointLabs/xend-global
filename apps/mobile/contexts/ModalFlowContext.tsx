@@ -25,6 +25,7 @@ interface ModalFlowContextType {
     isBankDetailsModalVisible: boolean;
     isCreateBankAccountModalVisible: boolean;
     isKycModalVisible: boolean;
+    isSendModalVisible: boolean;
 
     // Shared data
     selectedCurrency: Currency;
@@ -39,6 +40,7 @@ interface ModalFlowContextType {
     showBankDetailsModal: () => void;
     showCreateBankAccountModal: () => void;
     showKycModal: () => void;
+    showSendModal: () => void;
     hideAllModals: () => void;
 
     // Data actions
@@ -57,6 +59,7 @@ export function ModalFlowProvider({ children }: { children: React.ReactNode }) {
     const [isBankDetailsModalVisible, setIsBankDetailsModalVisible] = useState(false);
     const [isCreateBankAccountModalVisible, setIsCreateBankAccountModalVisible] = useState(false);
     const [isKycModalVisible, setIsKycModalVisible] = useState(false);
+    const [isSendModalVisible, setIsSendModalVisible] = useState(false);
 
     // Shared data
     const [selectedCurrency, setSelectedCurrency] = useState<Currency>('usd');
@@ -82,11 +85,16 @@ export function ModalFlowProvider({ children }: { children: React.ReactNode }) {
         setIsKycModalVisible(true);
     }, []);
 
+    const showSendModal = useCallback(() => {
+        setIsSendModalVisible(true);
+    }, []);
+
     const hideAllModals = useCallback(() => {
         setIsReceiveModalVisible(false);
         setIsBankDetailsModalVisible(false);
         setIsCreateBankAccountModalVisible(false);
         setIsKycModalVisible(false);
+        setIsSendModalVisible(false);
     }, []);
 
     // Data fetching methods
@@ -149,6 +157,7 @@ export function ModalFlowProvider({ children }: { children: React.ReactNode }) {
         isBankDetailsModalVisible,
         isCreateBankAccountModalVisible,
         isKycModalVisible,
+        isSendModalVisible,
 
         // Shared data
         selectedCurrency,
@@ -163,6 +172,7 @@ export function ModalFlowProvider({ children }: { children: React.ReactNode }) {
         showBankDetailsModal,
         showCreateBankAccountModal,
         showKycModal,
+        showSendModal,
         hideAllModals,
 
         // Data actions

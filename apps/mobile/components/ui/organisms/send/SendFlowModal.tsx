@@ -103,6 +103,7 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(({
             android_keyboardInputMode="adjustResize"
             handleIndicatorStyle={{ display: 'none' }}
             backgroundStyle={{ backgroundColor: '#F0F0F0' }}
+
         >
             <BottomSheetView className='h-full flex-1 overflow-hidden bg-[#F0F0F0]'>
                 <Animated.View style={[styles.container, requestLayout]}>
