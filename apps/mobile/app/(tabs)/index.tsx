@@ -12,8 +12,7 @@ import { SendModal } from '@/components/ui/organisms/modals/SendModal';
 import { ReceiveModal } from '@/components/ui/organisms/modals/ReceiveModal';
 import { QRCodeModal } from '@/components/ui/organisms/modals/QRCodeModal';
 import { useModalFlow } from '@/contexts/ModalFlowContext';
-import { ComingSoonToast } from '@/components/ui/organisms/ComingSoonToast';
-import { useComingSoonToast } from '@/hooks/useComingSoonToast';
+import { useToast } from '@/contexts/ToastContext';
 import { TransactionList } from '@/components/ui/organisms/TransactionList';
 import { useWalletData } from '@/hooks/useWalletData';
 import * as Sentry from '@sentry/react-native';
@@ -29,7 +28,7 @@ function HomeScreenContent() {
     const { showReceiveModal, isReceiveModalVisible, hideAllModals, isSendModalVisible, showSendModal } = useModalFlow();
     // const [isSendModalVisible, setIsSendModalVisible] = useState(false);
     const [isQRCodeModalVisible, setIsQRCodeModalVisible] = useState(false);
-    const { isVisible, message, showToast, hideToast } = useComingSoonToast();
+    const { showToast } = useToast();
     const { balance, transfers, isLoading, error, fetchWalletData } = useWalletData(accountInfo);
     const sendFlowModalRef = useRef<BottomSheetModal>(null);
 
@@ -80,21 +79,21 @@ function HomeScreenContent() {
             title: 'Investments',
             subtitle: 'Trade Crypto',
             icon: require('@/assets/icons/investment.png'),
-            onPress: () => showToast("Investment features coming soon!"),
+            onPress: () => showToast("Coming soon"),
             color: '#FF9500', // Orange
         },
         {
             title: 'Earn',
             subtitle: 'Up to 7.99% APY',
             icon: require('@/assets/icons/earn.png'),
-            onPress: () => showToast("Earn features coming soon!"),
+            onPress: () => showToast("Coming soon"),
             color: '#AF52DE', // Purple
         },
         {
             title: 'Fuse Card',
             subtitle: 'Get your free Card',
             icon: require('@/assets/icons/card.png'),
-            onPress: () => showToast("Card features coming soon!"),
+            onPress: () => showToast("Coming soon"),
             color: '#000000', // Black
         }
     ], [showToast]);
@@ -203,7 +202,7 @@ function HomeScreenContent() {
                             </Typography>
 
                             <HapticPressable
-                                className='bg-black p-2 gap-0.5 items-center rounded-full flex-row'
+                                className='bg-black p-2.5 px-3 gap-0.5 items-center rounded-full flex-row'
                                 onPress={showReceiveModal}
                             >
                                 <Ionicons name="arrow-down-circle" size={18} color="white" />
@@ -277,11 +276,6 @@ function HomeScreenContent() {
                 walletAddress={user?.address || 'ssnksnsmk'}
             />
 
-            <ComingSoonToast
-                visible={isVisible}
-                onHide={hideToast}
-                message={message}
-            />
         </ScreenLayout>
     );
 }

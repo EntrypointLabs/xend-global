@@ -37,12 +37,14 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
             {
                 title: 'Receive',
                 icon: require('@/assets/icons/recieve.png'),
-                onPress: showReceiveModal
+                onPress: showReceiveModal,
+                disabled: false
             },
             {
                 title: 'Send',
                 icon: require('@/assets/icons/send.png'),
-                onPress: showSendModal
+                onPress: showSendModal,
+                disabled: false
             },
             {
                 title: 'Swap',
@@ -61,24 +63,26 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
                 // intensity={24.2}
                 intensity={44.2}
                 tint="light"
-                style={styles.absolute}
+                style={StyleSheet.absoluteFillObject}
                 entering={FadeIn}
                 exiting={FadeOut}
                 experimentalBlurMethod='dimezisBlurView'
             >
-                <HapticPressable style={styles.backdrop} onPress={onClose} />
+                <HapticPressable className='flex-1' onPress={onClose} />
             </AnimatedBlurView>
 
-            <View className='flex flex-col gap-10' style={[styles.menuContainer, { bottom: insets.bottom + Spacing.sm }]}>
-                {menus.map((menu, index) => (
+            <View className='flex flex-col absolute items-end right-4' style={[{ bottom: insets.bottom + Spacing.sm }]}>
+                {menus.map((menu) => (
                     <Animated.View
-                        entering={SlideInDown.delay(100).springify().damping(20).stiffness(300)}
-                        exiting={SlideOutDown.delay(100).springify().damping(20).stiffness(300)}
-                        style={styles.menuItemWrapper}
+                        entering={SlideInDown.springify(100).damping(20).stiffness(300)}
+                        exiting={SlideOutDown.springify(100).damping(20).stiffness(300)}
+                        // entering={SlideInDown.delay(100).damping(20).stiffness(300)}
+                        // exiting={SlideOutDown.delay(100).damping(20).stiffness(300)}
+                        className="items-end"
                         key={menu.title}
                     >
                         <HapticPressable
-                            style={styles.menuItem}
+                            className='flex-row items-center gap-4 py-6'
                             onPress={() => {
                                 onClose();
                                 setTimeout(menu.onPress, 10);
@@ -89,39 +93,6 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
                         </HapticPressable>
                     </Animated.View>
                 ))}
-
-
-                {/* <Animated.View
-                    entering={SlideInDown.delay(50).springify().damping(20).stiffness(300)}
-                    exiting={SlideOutDown.delay(50).springify().damping(20).stiffness(300)}
-                    style={styles.menuItemWrapper}
-                >
-                    <HapticPressable
-                        style={styles.menuItem}
-                        onPress={() => {
-                            onClose();
-                            setTimeout(showSendModal, 10);
-                        }}
-                    >
-                        <Typography weight="600" style={styles.menuText}>Send</Typography>
-                        <View style={[styles.iconContainer, { backgroundColor: '#AF52DE' }]}>
-                            <Ionicons name="paper-plane" size={24} color="white" />
-                        </View>
-                    </HapticPressable>
-                </Animated.View>
-
-                <Animated.View
-                    entering={SlideInDown.springify().damping(20).stiffness(300)}
-                    exiting={SlideOutDown.springify().damping(20).stiffness(300)}
-                    style={styles.menuItemWrapper}
-                >
-                    <View style={[styles.menuItem, { opacity: 0.5 }]}>
-                        <Typography weight="600" style={styles.menuText}>Swap</Typography>
-                        <View style={[styles.iconContainer, { backgroundColor: '#007AFF' }]}>
-                            <Ionicons name="swap-horizontal" size={24} color="white" />
-                        </View>
-                    </View>
-                </Animated.View> */}
             </View>
         </View>
     );
@@ -134,12 +105,6 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
         alignItems: 'flex-end',
     },
-    absolute: {
-        ...StyleSheet.absoluteFillObject,
-    },
-    backdrop: {
-        flex: 1,
-    },
     menuContainer: {
         position: 'absolute',
         right: Spacing.md,
@@ -148,11 +113,6 @@ const styles = StyleSheet.create({
     },
     menuItemWrapper: {
         alignItems: 'flex-end',
-    },
-    menuItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 16,
     },
     menuText: {
         fontSize: 18,

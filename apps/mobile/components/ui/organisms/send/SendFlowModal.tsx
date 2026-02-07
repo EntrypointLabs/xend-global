@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, forwardRef, useState } from 'react';
-import { View, StyleSheet, Dimensions, Keyboard } from 'react-native';
+import { View, Dimensions, Keyboard } from 'react-native';
 import {
     BottomSheetModal,
     BottomSheetView,
@@ -103,17 +103,17 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(({
             android_keyboardInputMode="adjustResize"
             handleIndicatorStyle={{ display: 'none' }}
             backgroundStyle={{ backgroundColor: '#F0F0F0' }}
-
+            containerStyle={{ zIndex: 1 }}
         >
             <BottomSheetView className='h-full flex-1 overflow-hidden bg-[#F0F0F0]'>
-                <Animated.View style={[styles.container, requestLayout]}>
-                    <View style={styles.screen}>
+                <Animated.View className="flex-1 w-[200%] flex-row" style={requestLayout}>
+                    <View className='flex-1 w-full'>
                         <RecipientStep
                             onClose={handleClose}
                             onNext={handleNext}
                         />
                     </View>
-                    <View style={styles.screen}>
+                    <View className='flex-1 w-full'>
                         <AmountStep
                             recipient={recipient}
                             onBack={handleBack}
@@ -126,14 +126,4 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(({
     );
 });
 
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        flexDirection: 'row',
-        width: '200%', // Double width for side-by-side screens
-    },
-    screen: {
-        flex: 1,
-        width: '100%',
-    }
-});
+

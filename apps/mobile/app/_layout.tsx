@@ -14,6 +14,7 @@ import { lightTheme, darkTheme } from '@/constants/Theme';
 import { ScreenThemeProvider } from '@/contexts/ScreenThemeContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { ModalFlowProvider } from '@/contexts/ModalFlowContext';
+import { ToastProvider } from '@/contexts/ToastContext';
 import * as Sentry from '@sentry/react-native';
 import { sentryApiResponse } from '@/types/Sentry';
 import { EasClient } from '@/utils/easClient';
@@ -90,9 +91,11 @@ function AuthLayout() {
         <ThemeProvider value={colorScheme === 'dark' ? darkTheme : lightTheme}>
             <ScreenThemeProvider>
                 <ModalFlowProvider>
-                    <Slot />
-                    <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-                    <Toast config={toastConfig} />
+                    <ToastProvider>
+                        <Slot />
+                        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+                        <Toast config={toastConfig} />
+                    </ToastProvider>
                 </ModalFlowProvider>
             </ScreenThemeProvider>
         </ThemeProvider>

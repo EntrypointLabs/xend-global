@@ -6,7 +6,8 @@ import { useModalFlow } from '@/contexts/ModalFlowContext';
 import { WithScreenTheme } from '@/components/WithScreenTheme';
 import { ThemedScreen, StarburstBank } from '@/components/ui/layout';
 import { Spacing } from '@/constants/Spacing';
-import { CurrencySwitcher, SwipeableModal, OverlappingImages, ComingSoonToast } from '@/components/ui/organisms';
+import { CurrencySwitcher, SwipeableModal, OverlappingImages } from '@/components/ui/organisms';
+import { useToast } from '@/contexts/ToastContext';
 import { useScreenTheme } from '@/contexts/ScreenThemeContext';
 import { ThemedText, Chip, IconSymbol, Divider } from '@/components/ui/atoms';
 // TODO: check if this is needed
@@ -66,7 +67,7 @@ function BankDetailsModal() {
     const { backgroundColor, textColor } = useScreenTheme();
     const [copiedField, setCopiedField] = useState<string | null>(null);
     const { user, logout } = useAuth();
-    const [showToast, setShowToast] = useState(false);
+    const { showToast } = useToast();
     const [isCreatingAccount, setIsCreatingAccount] = useState(false);
 
     const handleCurrencyChange = (currency: Currency) => {
@@ -124,7 +125,7 @@ function BankDetailsModal() {
 
     const handleCreateBankAccount = async () => {
         if (selectedCurrency === 'eur') {
-            setShowToast(true);
+            showToast("EUR accounts coming soon to your region!");
             return;
         }
 
@@ -372,11 +373,6 @@ function BankDetailsModal() {
                 />
                 {renderContent()}
             </SwipeableModal>
-            <ComingSoonToast
-                visible={showToast}
-                message="EUR accounts coming soon to your region!"
-                onHide={() => setShowToast(false)}
-            />
         </ThemedScreen>
     );
 }

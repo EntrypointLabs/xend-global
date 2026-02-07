@@ -2,7 +2,6 @@ export { CustomTabBar } from "./CustomTabBar";
 export { SendModal } from "./modals/SendModal";
 export { ReceiveModal } from "./modals/ReceiveModal";
 export { QRCodeModal } from "./modals/QRCodeModal";
-export { ComingSoonToast } from "./ComingSoonToast";
 export { TransactionList } from "./TransactionList";
 export { default as WalletQRCode } from "./WalletQRCode";
 export { ActionModal } from "./ActionModal";
