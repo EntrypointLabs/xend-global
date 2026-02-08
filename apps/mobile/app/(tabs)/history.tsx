@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { ScreenLayout } from '@/components/ui/layout';
-import { ActivityList, ActivitySection, ActivityItemProps, TransactionDetailModal } from '@/components/ui/organisms';
-import { ThemedText } from '@/components/ui/atoms';
+import { ActivityList, ActivitySection, TransactionDetailModal } from '@/components/ui/organisms';
 import TabHeaderText from '@/components/ui/atoms/TabHeaderText';
+import { History } from '@/types/History';
 
 // Mock Assets
 const ICONS = {
@@ -14,169 +14,70 @@ const ICONS = {
     key: require('@/assets/icons/card.png'),
 };
 
-const MOCK_DATA: ActivitySection[] = [
-    {
-        title: 'Oct 3, 2025',
-        data: [
-            {
-                title: 'USDC',
-                subtitle: 'To: HTjz...sUjs',
-                value: '-100 USDC',
-                amount: '100.00',
-                icon: ICONS.usdc,
-                isPositive: false,
-                date: 'Oct 3, 2025 at 10:30 AM',
-            },
-            {
-                title: 'USDC',
-                subtitle: 'To: HTjz...sUjs',
-                value: '-45 USDC',
-                amount: '45.00',
-                icon: ICONS.usdc,
-                isPositive: false,
-                date: 'Oct 3, 2025 at 9:15 AM',
-            },
-            {
-                title: 'USDC',
-                subtitle: 'From: CZ2R...K4Aj',
-                value: '+154.03 USDC',
-                amount: '154.03',
-                icon: ICONS.usdc,
-                isPositive: true,
-                date: 'Oct 3, 2025 at 8:45 AM',
-            },
-            {
-                title: 'Card Deposit',
-                subtitle: 'Visa ··· 7649',
-                value: '-400 USDC',
-                amount: '400.00',
-                icon: ICONS.key, // Using card icon
-                isPositive: false,
-                date: 'Oct 3, 2025 at 8:00 AM',
-            },
-            {
-                title: 'Card activated',
-                subtitle: 'Visa ··· 7649',
-                value: '',
-                amount: '',
-                icon: ICONS.key,
-                isPositive: true,
-                isHidden: true, // Just to test hidden logic if needed, but per design this has no value
-                date: 'Oct 3, 2025 at 7:55 AM',
-            },
-            {
-                title: 'Verification Successful',
-                subtitle: 'Bridge has verified your identity',
-                value: '',
-                amount: '',
-                icon: ICONS.key, // Using placeholder
-                isPositive: true,
-                date: 'Oct 3, 2025 at 7:50 AM',
-            },
-        ],
+const data: History[] = Array(10).fill({
+    id: "1",
+    type: "transaction",
+    side: "send", // send or receive or swap or card-deposit or card-withdraw
+    amount: "10000000",
+    token: {
+        name: "USD Coin",
+        symbol: "USDC",
+        decimal: 6,
+        icon: ICONS.usdc
     },
-    {
-        title: 'Sep 28, 2025',
-        data: [
-            {
-                title: 'Kamino Earn',
-                subtitle: 'Withdraw',
-                value: '*****',
-                amount: '*****',
-                icon: ICONS.earn,
-                isHidden: true,
-                date: 'Sep 28, 2025 at 2:00 PM',
-            },
-        ]
-    },
-    {
-        title: 'Oct 3, 2025',
-        data: [
-            {
-                title: 'USDC',
-                subtitle: 'To: HTjz...sUjs',
-                value: '-100 USDC',
-                amount: '100.00',
-                icon: ICONS.usdc,
-                isPositive: false,
-                date: 'Oct 3, 2025 at 10:30 AM',
-            },
-            {
-                title: 'USDC',
-                subtitle: 'To: HTjz...sUjs',
-                value: '-45 USDC',
-                amount: '45.00',
-                icon: ICONS.usdc,
-                isPositive: false,
-                date: 'Oct 3, 2025 at 9:15 AM',
-            },
-            {
-                title: 'USDC',
-                subtitle: 'From: CZ2R...K4Aj',
-                value: '+154.03 USDC',
-                amount: '154.03',
-                icon: ICONS.usdc,
-                isPositive: true,
-                date: 'Oct 3, 2025 at 8:45 AM',
-            },
-            {
-                title: 'Card Deposit',
-                subtitle: 'Visa ··· 7649',
-                value: '-400 USDC',
-                amount: '400.00',
-                icon: ICONS.key, // Using card icon
-                isPositive: false,
-                date: 'Oct 3, 2025 at 8:00 AM',
-            },
-            {
-                title: 'Card activated',
-                subtitle: 'Visa ··· 7649',
-                value: '',
-                amount: '',
-                icon: ICONS.key,
-                isPositive: true,
-                isHidden: true, // Just to test hidden logic if needed, but per design this has no value
-                date: 'Oct 3, 2025 at 7:55 AM',
-            },
-            {
-                title: 'Verification Successful',
-                subtitle: 'Bridge has verified your identity',
-                value: '',
-                amount: '',
-                icon: ICONS.key, // Using placeholder
-                isPositive: true,
-                date: 'Oct 3, 2025 at 7:50 AM',
-            },
-        ],
-    },
-    {
-        title: 'Sep 28, 2025',
-        data: [
-            {
-                title: 'Kamino Earn',
-                subtitle: 'Withdraw',
-                value: '*****',
-                amount: '*****',
-                icon: ICONS.earn,
-                isHidden: true,
-                date: 'Sep 28, 2025 at 2:00 PM',
-            },
-        ]
-    },
-];
+    from: "CZ2R74BnKNHhjVw83jPV1FRx1CUvZjaz5DGMUS5tK4Aj",
+    to: "AtfW8YJC4mdzi9iZyEd8KaPSyxmWQjwvmVCJMYRm8DtK",
+    fee: {
+        amount: "10000000",
+        token: {
+            name: "USD Coin",
+            symbol: "USDC",
+            decimal: 6,
+            icon: ""
+        }
+    }, // null when incognito
+    incognito: false,
+    status: "success",
+    date: "Oct 3, 2025 at 10:30 AM",
+    transactionHash: "4rbUpiz58uJZXPmXtekEPcT9KpkWRbAzGCZRvu63Yfr6SDYcYznpxmwmqkcfHi6Xdk4FdR6315PwU75iXhP11w8a",
+}).map((item, index) => ({
+    ...item,
+    id: index.toString(),
+    date: new Date(Date.now() - Math.floor(Math.random() * 1000 * 60 * 60 * 24 * 30)).toISOString(),
+    side: Math.random() < 0.5 ? 'send' : 'receive',
+    amount: Math.floor(Math.random() * 10000000).toString(),
+    incognito: Math.random() < 0.5,
+}))
 
 export default function HistoryScreen() {
-    const [selectedItem, setSelectedItem] = useState<ActivityItemProps | null>(null);
+    const [selectedItem, setSelectedItem] = useState<History | null>(null);
     const [modalVisible, setModalVisible] = useState(false);
 
     // Handler for item press
-    const handleItemPress = (item: ActivityItemProps) => {
+    const handleItemPress = (item: History) => {
         setSelectedItem(item);
         setModalVisible(true);
     };
 
-    // Enhance data with onPress handlers
-    const sectionsWithHandlers = MOCK_DATA.map(section => ({
+    const sections = data.reduce((acc, item) => {
+        const day = new Date(item.date).toLocaleDateString('en-US', {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+        });
+        const existingSection = acc.find((section) => section.title === day);
+        if (existingSection) {
+            existingSection.data.push(item);
+        } else {
+            acc.push({
+                title: day,
+                data: [item],
+            });
+        }
+        return acc;
+    }, [] as { title: string; data: History[] }[]);
+
+    const sectionsWithHandlers = sections.map(section => ({
         ...section,
         data: section.data.map(item => ({
             ...item,
@@ -186,9 +87,7 @@ export default function HistoryScreen() {
 
     return (
         <ScreenLayout>
-            <View>
-                <TabHeaderText>Activity</TabHeaderText>
-            </View>
+            <TabHeaderText>Activity</TabHeaderText>
             <ActivityList sections={sectionsWithHandlers} />
 
             <TransactionDetailModal

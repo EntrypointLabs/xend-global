@@ -92,9 +92,9 @@ export default function SettingsScreen() {
                 <SectionList
                     ListHeaderComponent={
                         <View>
-                            <View className="mb-6">
-                                <TabHeaderText>Settings</TabHeaderText>
-                            </View>
+
+                            <TabHeaderText>Settings</TabHeaderText>
+
 
                             {/* Fuse Plus Banner */}
                             <TouchableOpacity

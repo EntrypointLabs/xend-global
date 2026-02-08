@@ -178,7 +178,7 @@ function HomeScreenContent() {
                 showsVerticalScrollIndicator={false}
             >
                 <View>
-                    <TabHeaderText className='mb-8'>Wallet</TabHeaderText>
+                    <TabHeaderText>Wallet</TabHeaderText>
 
                     <View>
                         <View className='flex-row items-center gap-2'>

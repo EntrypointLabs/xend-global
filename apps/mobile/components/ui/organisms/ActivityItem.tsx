@@ -1,45 +1,43 @@
-import { View, ImageSourcePropType, Image, TouchableOpacity } from 'react-native';
+import { View, Image, TouchableOpacity, ImageSourcePropType } from 'react-native';
 import { Typography } from '../atoms/Typography';
+import { History } from '@/types/History';
+import { truncateAddress } from '@/utils/helper';
+import { formatAmount } from '@/utils/solana';
+import HapticPressable from '../atoms/HapticPressable';
 
-export interface ActivityItemProps {
-    title: string;
-    subtitle: string;
-    value: string;
-    isPositive?: boolean;
-    isHidden?: boolean;
-    icon: ImageSourcePropType;
+export type ActivityItemProps = History & {
     onPress?: () => void;
-    // Extra data for modal
-    date?: string;
-    status?: string;
-    [key: string]: any;
-}
+};
 
-export function ActivityItem({ title, subtitle, value, isPositive, isHidden, icon, onPress }: ActivityItemProps) {
+export function ActivityItem({ onPress, ...data }: ActivityItemProps) {
 
     const positiveColor = '#34C759'; // Green
     const negativeColor = '#FF3B30'; // Red
 
-    const displayValue = isHidden ? '****' : value;
-    const valueColor = isHidden ? undefined : (isPositive ? positiveColor : negativeColor);
+    const isHidden = false
+
+    const displayAmount = isHidden ? '****' : formatAmount(data.amount, data.token.decimal);
+    const displaySign = isHidden ? '' : (data.side === 'send' ? '-' : '+');
+    const valueColor = isHidden ? undefined : (data.side === 'send' ? negativeColor : positiveColor);
+    const label = data.side === 'send' ? `To: ${truncateAddress(data.to)}` : `From: ${truncateAddress(data.from)}`;
 
     return (
-        <TouchableOpacity className="flex-row items-center py-4" onPress={onPress} activeOpacity={0.7}>
-            <Image source={icon} className="w-10 h-10 rounded-full mr-4" />
+        <HapticPressable className="flex-row items-center py-3 gap-3.5" onPress={onPress}>
+            <Image source={data.token.icon as ImageSourcePropType} className="size-10 rounded-full" />
             <View className="flex-1 flex-row justify-between items-center">
                 <View className="flex-col">
-                    <Typography weight="600" className="mb-0.5">{title}</Typography>
-                    <Typography weight="500" className="text-[13px] text-black/30">{subtitle}</Typography>
+                    <Typography weight="600" className="mb-0.5">{data.token.name}</Typography>
+                    <Typography weight="500" className="text-sm text-black/30">{label}</Typography>
                 </View>
                 <Typography
                     weight="600"
-                    className="text-[13px] tracking-[0.5px]"
+                    className="text-sm tracking-[0.5px]"
                     style={{ color: valueColor }}
                 >
-                    {displayValue}
+                    {displaySign}{displayAmount} {data.token.symbol}
                 </Typography>
             </View>
-        </TouchableOpacity>
+        </HapticPressable>
     );
 }
 

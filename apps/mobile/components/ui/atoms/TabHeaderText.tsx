@@ -5,7 +5,7 @@ import { cn } from '@/utils/class'
 
 const TabHeaderText = ({ children, className, ...props }: TextProps) => {
     return (
-        <Typography weight="600" className={cn("text-black text-lg", className)} {...props}>{children}</Typography>
+        <Typography weight="600" className={cn("text-black text-lg pb-8", className)} {...props}>{children}</Typography>
     )
 }
 

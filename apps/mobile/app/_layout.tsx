@@ -1,6 +1,5 @@
-// import '@/polyfills';
 import React, { useEffect } from 'react';
-import { Stack, Slot, useRouter, useSegments } from 'expo-router';
+import { Slot, useRouter, useSegments } from 'expo-router';
 import Toast from 'react-native-toast-message';
 import { View } from 'react-native';
 import { Typography } from '@/components/ui/atoms/Typography';

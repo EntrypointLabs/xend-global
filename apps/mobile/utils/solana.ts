@@ -31,3 +31,10 @@ export async function resolveSnsName(domain: string): Promise<string | null> {
 
   return registry.owner.toBase58();
 }
+
+export function formatAmount(amount: string, decimal: number): string {
+  return (Number(amount) / Math.pow(10, decimal)).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
