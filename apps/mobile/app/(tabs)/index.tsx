@@ -27,10 +27,10 @@ function HomeScreenContent() {
     const { accountInfo, user } = useAuth();
     const { showReceiveModal, isReceiveModalVisible, hideAllModals, isSendModalVisible, showSendModal } = useModalFlow();
     // const [isSendModalVisible, setIsSendModalVisible] = useState(false);
-    const [isQRCodeModalVisible, setIsQRCodeModalVisible] = useState(false);
     const { showToast } = useToast();
     const { balance, transfers, isLoading, error, fetchWalletData } = useWalletData(accountInfo);
     const sendFlowModalRef = useRef<BottomSheetModal>(null);
+    const qrCodeModalRef = useRef<BottomSheetModal>(null);
 
     useEffect(() => {
         // if (!accountInfo || !accountInfo.smart_account_signer_public_key) {
@@ -267,13 +267,12 @@ function HomeScreenContent() {
             <ReceiveModal
                 visible={isReceiveModalVisible}
                 onClose={hideAllModals}
-                onOpenQRCode={() => setIsQRCodeModalVisible(true)}
+                onOpenQRCode={() => qrCodeModalRef.current?.present()}
             />
 
             <QRCodeModal
-                visible={isQRCodeModalVisible}
-                onClose={() => setIsQRCodeModalVisible(false)}
-                walletAddress={user?.address || 'ssnksnsmk'}
+                ref={qrCodeModalRef}
+                walletAddress={user?.address || 'AtfWTb16gD8P7D975ZwMfUvABZvkqyLCF6wySvpTntZj'}
             />
 
         </ScreenLayout>

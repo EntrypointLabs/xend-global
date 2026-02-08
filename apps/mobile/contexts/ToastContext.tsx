@@ -81,12 +81,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             {toast && (
                 <Animated.View
                     pointerEvents="none"
-                    className="absolute left-0 right-0 items-center z-9999"
+                    className="absolute left-0 right-0 items-center"
                     style={[
                         {
                             top: insets.top + 8,
                             transform: [{ translateY }],
                             opacity,
+                            zIndex: 9999,
                         },
                     ]}
                 >

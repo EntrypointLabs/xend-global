@@ -25,8 +25,8 @@ export default function CashScreen() {
     // Modal State
     const [isSendModalVisible, setIsSendModalVisible] = useState(false);
     const [isReceiveModalVisible, setIsReceiveModalVisible] = useState(false);
-    const [isQRCodeModalVisible, setIsQRCodeModalVisible] = useState(false);
     const sendFlowModalRef = useRef<BottomSheetModal>(null);
+    const qrCodeModalRef = useRef<BottomSheetModal>(null);
 
     const actionItems = useMemo(() => [
         {
@@ -166,13 +166,12 @@ export default function CashScreen() {
                     setIsReceiveModalVisible(false);
                     hideAllModals(); // Ensure flow context is cleared if needed
                 }}
-                onOpenQRCode={() => setIsQRCodeModalVisible(true)}
+                onOpenQRCode={() => qrCodeModalRef.current?.present()}
             />
 
             <QRCodeModal
-                visible={isQRCodeModalVisible}
-                onClose={() => setIsQRCodeModalVisible(false)}
-                walletAddress={user?.address || 'sjsksjknkjs'}
+                ref={qrCodeModalRef}
+                walletAddress={user?.address || ''}
             />
         </ScreenLayout>
     );
