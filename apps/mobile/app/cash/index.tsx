@@ -15,6 +15,7 @@ import { SendFlowModal } from '@/components/ui/organisms/send/SendFlowModal';
 import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { useModalFlow } from '@/contexts/ModalFlowContext';
+import BalanceView from '@/components/BalanceView';
 
 export default function CashScreen() {
     const router = useRouter();
@@ -70,10 +71,8 @@ export default function CashScreen() {
                     {/* Balance */}
                     <View className="mb-8">
                         <Typography weight="500" className="text-black/30 text-base mb-1">Balance</Typography>
-                        <View className="flex-row items-baseline">
-                            <Typography weight="700" variant='h2'>$4.</Typography>
-                            <Typography weight="700" variant='h2' className="text-black/30">66</Typography>
-                        </View>
+
+                        <BalanceView weight='700' variant='h2' amount='4.66' />
                     </View>
 
                     {/* USDC Card */}
@@ -91,13 +90,11 @@ export default function CashScreen() {
                                 <Typography weight="700" className="text-lg mb-1">USDC</Typography>
                                 <Typography weight="600" className="text-black/30">4.6568 USDC</Typography>
                             </View>
-                            <Typography weight="600" className="text-lg">$4.<Typography weight="600" className="text-black/30">66</Typography></Typography>
+                            <BalanceView weight='600' className='text-lg' amount='4.66' />
                         </View>
 
-                        {/* Divider */}
                         <View className="h-px bg-gray-100 w-full my-2 border-t border-dashed border-gray-200" style={{}} />
 
-                        {/* Earn Footer */}
                         <TouchableOpacity className="flex-row justify-between items-center pt-2">
                             <View className="flex-row items-center">
                                 <View className="w-5 h-5 bg-blue-500 rounded-full mr-2 items-center justify-center">
@@ -112,7 +109,6 @@ export default function CashScreen() {
                         </TouchableOpacity>
                     </View>
 
-                    {/* Other Assets - Empty State */}
                     <View>
                         <Typography weight="500" className="mb-4">Other assets</Typography>
                         <View className="flex-row items-center">

@@ -21,6 +21,7 @@ import { useRouter } from 'expo-router';
 import TabHeaderText from '@/components/ui/atoms/TabHeaderText';
 import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { SendFlowModal } from '@/components/ui/organisms/send/SendFlowModal';
+import BalanceView from '@/components/BalanceView';
 
 function HomeScreenContent() {
     const router = useRouter();
@@ -187,9 +188,7 @@ function HomeScreenContent() {
                                 className='text-black/30 text-sm'
                             >Total Balance <Ionicons name="remove-circle" size={12} color="#999" /> 100%</Typography>
                         </View>
-                        <Typography weight="700" className='text-[40px] leading-[140%]'>
-                            {`$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                        </Typography>
+                        <BalanceView weight='700' className='text-[40px] leading-[140%]' amount={balance.toString()} />
                     </View>
 
                     {transfers.length === 0 && (

@@ -1,10 +1,8 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Image, TouchableOpacity, Switch, ImageSourcePropType } from 'react-native';
-import { ThemedText } from '@/components/ui/atoms';
+import React from 'react';
+import { StyleSheet, View, Image, TouchableOpacity, ImageSourcePropType } from 'react-native';
 import { ActionModal } from '../ActionModal';
 import { ActivityItemProps } from '../ActivityItem';
 import { Spacing } from '@/constants/Spacing';
-import { useThemeColor } from '@/hooks/useThemeColor';
 import { FontAwesome6, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import Haptic from 'expo-haptics';
