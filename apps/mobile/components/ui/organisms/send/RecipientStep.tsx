@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useMemo, useCallback } from 'react';
-import { View, TouchableOpacity, Image, TouchableWithoutFeedback, Keyboard, ActivityIndicator } from 'react-native';
+import { View, TouchableOpacity, Image, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { Typography } from '@/components/ui/atoms/Typography';
 import * as Clipboard from 'expo-clipboard';
-import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, FontAwesome5, MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import HapticPressable from '@/components/ui/atoms/HapticPressable';
 import TabHeaderText from '@/components/ui/atoms/TabHeaderText';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
@@ -152,21 +152,21 @@ export default function RecipientStep({ onNext, onScanPress, recipient, setRecip
                         </HapticPressable>}
                     </TouchableOpacity>
 
-                    <View className="flex-row gap-3">
+                    <View className="flex-row gap-2.5">
                         <HapticPressable
-                            className={`px-6 py-2.5 rounded-full ${!isContinueDisabled ? 'bg-black' : 'bg-black/30'}`}
+                            className={`px-6 py-[8px] rounded-full ${!isContinueDisabled ? 'bg-black' : 'bg-black/30'}`}
                             onPress={handleContinue}
                             disabled={isContinueDisabled}
                         >
-                            <Typography weight="500" className="text-white">Continue</Typography>
+                            <Typography weight="600" className="text-white">Continue</Typography>
                         </HapticPressable>
 
                         <HapticPressable
-                            className="flex-row items-center bg-gray-100 px-4 py-2.5 rounded-full"
+                            className="flex-row items-center bg-black/10 px-6 py-[8px] rounded-full gap-1"
                             onPress={handlePaste}
                         >
-                            <Ionicons name="document-text-outline" size={16} color="black" style={{ marginRight: 6 }} />
-                            <Typography weight="500" className="text-black">Paste</Typography>
+                            <Ionicons name="document" size={16} color="black" />
+                            <Typography weight="600" className="text-black">Paste</Typography>
                         </HapticPressable>
                     </View>
                 </View>
@@ -183,12 +183,12 @@ export default function RecipientStep({ onNext, onScanPress, recipient, setRecip
                             onNext(item.address);
                         }}
                     >
-                        <View className="w-12 h-12 rounded-full bg-white items-center justify-center mr-3 border border-[#F2F4F7]">
-                            <Image source={item.icon} className="w-6 h-6" resizeMode="contain" />
+                        <View className="w-12 h-12 rounded-full bg-gray-200/60 items-center justify-center mr-3 border" style={{ borderColor: "#F2F4F7" }}>
+                            <MaterialIcons name="wallet" size={22} color="black" />
                         </View>
                         <View>
-                            <Typography weight="700" className="text-base">{truncateAddress(item.address)}</Typography>
-                            <Typography className="text-gray-400 text-sm">{item.sends} sends</Typography>
+                            <Typography weight="600" className="text-base">{truncateAddress(item.address)}</Typography>
+                            <Typography weight="500" className="text-gray-400 text-sm">{item.sends} sends</Typography>
                         </View>
                     </TouchableOpacity>
                 ))}
