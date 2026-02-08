@@ -1,13 +1,16 @@
-import React, { useRef, useEffect } from 'react';
-import { View, TouchableOpacity, Image, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import React, { useRef, useEffect, useMemo, useCallback } from 'react';
+import { View, TouchableOpacity, Image, TouchableWithoutFeedback, Keyboard, ActivityIndicator } from 'react-native';
 import { Typography } from '@/components/ui/atoms/Typography';
 import * as Clipboard from 'expo-clipboard';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import HapticPressable from '@/components/ui/atoms/HapticPressable';
 import TabHeaderText from '@/components/ui/atoms/TabHeaderText';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { truncateAddress } from '@/utils/helper';
 import { TextInput } from 'react-native-gesture-handler';
+import { isPublicKey, isSnsName, resolveSnsName } from '@/utils/solana';
+import { cn } from '@/utils/class';
+import { useQuery } from '@tanstack/react-query';
 
 const solanaAddress = "AtfWTb16gD8P7D975ZwMfUvABZvkqyLCF6wySvpTntZj";
 
@@ -31,27 +34,81 @@ interface RecipientStepProps {
 export default function RecipientStep({ onNext, onScanPress, recipient, setRecipient }: RecipientStepProps) {
     const inputRef = useRef<TextInput | null>(null);
 
+    const isSns = recipient.includes(".")
+
+    const { data: resolvedAddress, isLoading: isResolving, error: resolveError } = useQuery({
+        queryKey: ['resolve-solana-name', recipient],
+        queryFn: () => resolveSnsName(recipient),
+        enabled: Boolean(recipient && !isPublicKey(recipient) && isSns),
+        retry: (count, error) => {
+            if (count > 1) return false;
+            if (error?.message === "The name account does not exist") return false;
+            return true;
+        },
+        retryDelay: 2_000,
+    })
+
     const handlePaste = async () => {
         const text = await Clipboard.getStringAsync();
-        if (text) {
+        if (!text) return;
+        if (isPublicKey(text)) {
+            setRecipient(text);
+        }
+        const isSns = await isSnsName(text);
+        if (isSns) {
             setRecipient(text);
         }
     };
 
-    const handleContinue = () => {
-        if (recipient.length > 0) {
+    const handleContinue = useCallback(() => {
+        if (isPublicKey(recipient)) {
             onNext(recipient);
+        } else if (resolvedAddress) {
+            onNext(resolvedAddress);
         }
-    };
+    }, [recipient, resolvedAddress, onNext]);
 
     // Focus input on mount
     useEffect(() => {
-        // Small timeout to allow animation to complete
         const timer = setTimeout(() => {
             inputRef.current?.focus();
         }, 300);
         return () => clearTimeout(timer);
     }, []);
+
+    const { isValid, label, icon } = useMemo(() => {
+        if (recipient.length === 0) {
+            return { isValid: true, label: "Enter Solana address or .sol handle" };
+        }
+
+        const sends = 0;
+        const sendsLabel = sends === 0 ? "New address" : `${sends} send${sends === 1 ? "" : "s"}`;
+
+        if (isSns) {
+            if (isResolving) {
+                return { isValid: true, label: "Resolving...", icon: <FontAwesome5 name="spinner" size={14} color="blue" className='animate-spin' /> };
+            }
+            if (resolveError) {
+                const errLabel = resolveError.message === "The name account does not exist" ? "No matching address found" : resolveError.message;
+                return { isValid: false, label: errLabel, icon: <MaterialCommunityIcons name="alert-decagram" size={14} color="red" /> };
+            }
+            if (resolvedAddress) {
+                return { isValid: true, label: `${truncateAddress(resolvedAddress)} • ${sendsLabel}`, icon: <MaterialCommunityIcons name="check-decagram" size={14} color="green" /> };
+            }
+            return { isValid: true, label: "Enter Solana address or .sol handle" };
+        }
+
+        if (isPublicKey(recipient)) {
+            return { isValid: true, label: sendsLabel, icon: <MaterialCommunityIcons name="clock-time-nine" size={14} color="lightgrey" /> };
+        }
+
+        return { isValid: false, label: "Invalid Solana address" };
+    }, [recipient, isResolving, resolveError, resolvedAddress, isSns]);
+
+    const isContinueDisabled = useMemo(() => {
+        if (recipient.length === 0 || !isValid) return true;
+        return !isPublicKey(recipient) && !resolvedAddress;
+    }, [isValid, recipient, resolvedAddress]);
 
 
     return (
@@ -69,7 +126,7 @@ export default function RecipientStep({ onNext, onScanPress, recipient, setRecip
                 </View>
 
                 <View className="mx-4 bg-[#F9F9F9] border border-white rounded-[24px] p-4 mb-8">
-                    <TouchableOpacity className="bg-transparent" onPress={() => inputRef.current?.focus()}>
+                    <TouchableOpacity className="bg-transparent relative" onPress={() => inputRef.current?.focus()}>
                         <BottomSheetTextInput
                             className="text-base text-black/90 -ml-1 py-0 mb-1.5 font-medium w-[235px]"
                             placeholder="Address or .sol handle"
@@ -85,14 +142,21 @@ export default function RecipientStep({ onNext, onScanPress, recipient, setRecip
                             submitBehavior='blurAndSubmit'
                             multiline
                         />
-                        <Typography onPress={() => inputRef.current?.focus()} weight="500" className="text-black/30 text-xs mb-2.5">Enter Solana address or .sol handle</Typography>
+                        <TouchableOpacity onPress={() => inputRef.current?.focus()} className='mb-2.5 flex-row items-center justify-start gap-1'>
+                            {icon}
+                            <Typography weight="600" className={cn("text-black/30 text-xs", !isValid && "text-red-500")}>{label}</Typography>
+                        </TouchableOpacity>
+
+                        {recipient && <HapticPressable className='absolute -right-5 -top-5 z-10 transition-all duration-200 ease-in-out p-5' onPress={() => setRecipient("")}>
+                            <Ionicons name="close-circle" size={20} color="lightgrey" />
+                        </HapticPressable>}
                     </TouchableOpacity>
 
                     <View className="flex-row gap-3">
                         <HapticPressable
-                            className={`px-6 py-2.5 rounded-full ${recipient.length > 0 ? 'bg-black' : 'bg-black/30'}`}
+                            className={`px-6 py-2.5 rounded-full ${!isContinueDisabled ? 'bg-black' : 'bg-black/30'}`}
                             onPress={handleContinue}
-                            disabled={recipient.length === 0}
+                            disabled={isContinueDisabled}
                         >
                             <Typography weight="500" className="text-white">Continue</Typography>
                         </HapticPressable>

@@ -20,6 +20,7 @@ import { sentryApiResponse } from '@/types/Sentry';
 import { EasClient } from '@/utils/easClient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import * as SplashScreen from 'expo-splash-screen';
 import {
@@ -43,6 +44,8 @@ import {
     Inter_900Black_Italic,
     useFonts
 } from '@expo-google-fonts/inter';
+
+const queryClient = new QueryClient();
 
 // Sentry for error tracking
 if (process.env.EXPO_PUBLIC_GRID_ENV === 'production') {
@@ -163,13 +166,15 @@ function RootLayout() {
     }
 
     return (
-        <GestureHandlerRootView style={{ flex: 1 }}>
-            <AuthProvider>
-                <BottomSheetModalProvider>
-                    <AuthLayout />
-                </BottomSheetModalProvider>
-            </AuthProvider>
-        </GestureHandlerRootView>
+        <QueryClientProvider client={queryClient}>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+                <AuthProvider>
+                    <BottomSheetModalProvider>
+                        <AuthLayout />
+                    </BottomSheetModalProvider>
+                </AuthProvider>
+            </GestureHandlerRootView>
+        </QueryClientProvider>
     );
 }
 
