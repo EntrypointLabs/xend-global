@@ -1,7 +1,7 @@
 import { View, ScrollView } from 'react-native';
 import { Typography } from '@/components/ui/atoms/Typography';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef } from 'react';
 import { ThemedText } from '@/components/ui/atoms';
 
 import { ActionCard, PromoBanner } from '@/components/ui/molecules';

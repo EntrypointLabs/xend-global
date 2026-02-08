@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { View, TouchableOpacity, Image, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { Typography } from '@/components/ui/atoms/Typography';
 import * as Clipboard from 'expo-clipboard';
@@ -11,6 +11,7 @@ import { TextInput } from 'react-native-gesture-handler';
 import { isPublicKey, isSnsName, resolveSnsName } from '@/utils/solana';
 import { cn } from '@/utils/class';
 import { useQuery } from '@tanstack/react-query';
+import { useDebounce } from '@/hooks/useDebounce';
 
 const solanaAddress = "AtfWTb16gD8P7D975ZwMfUvABZvkqyLCF6wySvpTntZj";
 
@@ -31,15 +32,16 @@ interface RecipientStepProps {
     setRecipient: (recipient: string) => void;
 }
 
-export default function RecipientStep({ onNext, onScanPress, recipient, setRecipient }: RecipientStepProps) {
+export default memo(function RecipientStep({ onNext, onScanPress, recipient, setRecipient }: RecipientStepProps) {
     const inputRef = useRef<TextInput | null>(null);
+    const debouncedRecipient = useDebounce(recipient, 400)
 
-    const isSns = recipient.includes(".")
+    const isSns = debouncedRecipient.includes(".")
 
     const { data: resolvedAddress, isLoading: isResolving, error: resolveError } = useQuery({
-        queryKey: ['resolve-solana-name', recipient],
-        queryFn: () => resolveSnsName(recipient),
-        enabled: Boolean(recipient && !isPublicKey(recipient) && isSns),
+        queryKey: ['resolve-solana-name', debouncedRecipient],
+        queryFn: () => resolveSnsName(debouncedRecipient),
+        enabled: Boolean(debouncedRecipient && !isPublicKey(debouncedRecipient) && isSns),
         retry: (count, error) => {
             if (count > 1) return false;
             if (error?.message === "The name account does not exist") return false;
@@ -61,12 +63,12 @@ export default function RecipientStep({ onNext, onScanPress, recipient, setRecip
     };
 
     const handleContinue = useCallback(() => {
-        if (isPublicKey(recipient)) {
-            onNext(recipient);
+        if (isPublicKey(debouncedRecipient)) {
+            onNext(debouncedRecipient);
         } else if (resolvedAddress) {
             onNext(resolvedAddress);
         }
-    }, [recipient, resolvedAddress, onNext]);
+    }, [debouncedRecipient, resolvedAddress, onNext]);
 
     // Focus input on mount
     useEffect(() => {
@@ -77,7 +79,7 @@ export default function RecipientStep({ onNext, onScanPress, recipient, setRecip
     }, []);
 
     const { isValid, label, icon } = useMemo(() => {
-        if (recipient.length === 0) {
+        if (debouncedRecipient.length === 0) {
             return { isValid: true, label: "Enter Solana address or .sol handle" };
         }
 
@@ -98,17 +100,17 @@ export default function RecipientStep({ onNext, onScanPress, recipient, setRecip
             return { isValid: true, label: "Enter Solana address or .sol handle" };
         }
 
-        if (isPublicKey(recipient)) {
+        if (isPublicKey(debouncedRecipient)) {
             return { isValid: true, label: sendsLabel, icon: <MaterialCommunityIcons name="clock-time-nine" size={14} color="lightgrey" /> };
         }
 
         return { isValid: false, label: "Invalid Solana address" };
-    }, [recipient, isResolving, resolveError, resolvedAddress, isSns]);
+    }, [debouncedRecipient, isResolving, resolveError, resolvedAddress, isSns]);
 
     const isContinueDisabled = useMemo(() => {
-        if (recipient.length === 0 || !isValid) return true;
-        return !isPublicKey(recipient) && !resolvedAddress;
-    }, [isValid, recipient, resolvedAddress]);
+        if (debouncedRecipient.length === 0 || !isValid) return true;
+        return !isPublicKey(debouncedRecipient) && !resolvedAddress;
+    }, [isValid, debouncedRecipient, resolvedAddress]);
 
 
     return (
@@ -195,4 +197,4 @@ export default function RecipientStep({ onNext, onScanPress, recipient, setRecip
             </View>
         </TouchableWithoutFeedback>
     );
-}
+})

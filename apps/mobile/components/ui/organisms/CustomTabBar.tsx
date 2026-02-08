@@ -20,7 +20,6 @@ import { ActionMenu } from './ActionMenu'; // Import ActionMenu
 
 import { BlurView } from 'expo-blur';
 import { useSegments } from 'expo-router';
-import { SendFlowModal } from './send/SendFlowModal';
 import { BottomSheetModal } from '@gorhom/bottom-sheet';
 
 const iconMappings = {
