@@ -1,5 +1,5 @@
-import React, { useMemo, useCallback, forwardRef } from 'react';
-import { View } from 'react-native';
+import React, { useMemo, useCallback, forwardRef, useState, memo } from 'react';
+import { View, Pressable } from 'react-native';
 import {
     BottomSheetModal,
     BottomSheetView,
@@ -14,6 +14,8 @@ import HapticPressable from '@/components/ui/atoms/HapticPressable';
 import TabHeaderText from '@/components/ui/atoms/TabHeaderText';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useToast } from '@/contexts/ToastContext';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import { cn } from '@/utils/class';
 
 interface QRCodeModalProps {
     walletAddress: string;
@@ -23,6 +25,21 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
     ({ walletAddress }, ref) => {
         const snapPoints = useMemo(() => ['94%'], []);
         const { showToast } = useToast();
+        const [isHideWalletEnabled, setIsHideWalletEnabled] = useState(false);
+        const translateX = useSharedValue(0);
+
+        const animatedStyle = useAnimatedStyle(() => {
+            return {
+                transform: [{ translateX: translateX.value }],
+            };
+        });
+
+        const handleToggle = () => {
+            const newValue = !isHideWalletEnabled;
+            setIsHideWalletEnabled(newValue);
+            translateX.value = withTiming(newValue ? 20 : 0);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        };
 
         const renderBackdrop = useCallback(
             (props: BottomSheetBackdropProps) => (
@@ -41,16 +58,6 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             showToast('Copied address', <Ionicons name="checkmark-circle" size={16} color="black" />);
         };
-
-        const qrCode = useMemo(() => (
-            <QRCode
-                value={walletAddress}
-                size={280}
-                color="black"
-                backgroundColor="transparent"
-                ecl="L"
-            />
-        ), [walletAddress]);
 
         return (
             <BottomSheetModal
@@ -72,11 +79,15 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
                     </View>
 
                     <View className='h-10 w-[70%] mx-auto bg-black/5 mt-12 z-[0] rounded-full' />
-                    <HapticPressable onPress={handleCopyAddress} className="mx-10 bg-white rounded-[28px] -mt-8 p-8 items-center border border-black/5">
-                        <View className="bg-white rounded-full relative w-full">
-                            {qrCode}
+                    <HapticPressable onPress={handleCopyAddress} className={cn("mx-10 bg-white rounded-[28px] -mt-8 p-8 items-center border border-black/5", {
+                        "bg-[#3B82F6]": isHideWalletEnabled,
+                    })}>
+                        <View className="bg-transparent relative w-full">
+                            <MemoizedQRCodeModal walletAddress={walletAddress} color={isHideWalletEnabled ? "white" : "black"} />
                         </View>
-                        <Typography weight="500" className="text-black/30 text-sm text-center mt-5 leading-4 max-w-[198px] mx-auto">
+                        <Typography weight="500" className={cn("text-black/30 text-sm text-center mt-5 leading-4 max-w-[198px] mx-auto", {
+                            "text-white/40": isHideWalletEnabled,
+                        })}>
                             {walletAddress}
                         </Typography>
 
@@ -95,18 +106,24 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
                                 </View>
                             </View>
                         </View>
-                        <View className="w-16 h-7 bg-black/10 rounded-full justify-center px-0.5">
-                            <View className="w-10 h-6 bg-white rounded-full shadow-sm" />
-                        </View>
+                        <Pressable onPress={handleToggle}>
+                            <View className={cn(`w-16 h-7 rounded-full justify-center`, isHideWalletEnabled ? 'bg-[#3B82F6]' : 'bg-black/10 px-0.5')}>
+                                <Animated.View style={animatedStyle} className="w-10 h-6 bg-white rounded-full shadow-sm" />
+                            </View>
+                        </Pressable>
                     </View>
 
-                    {/* Copy Address Button */}
                     <View className="mx-6 mb-8">
                         <HapticPressable
-                            className="bg-black/5 py-4 rounded-full items-center border-none"
+                            className={cn("py-4 rounded-full items-center border-none", {
+                                "bg-black/5": !isHideWalletEnabled,
+                                "bg-[#3B82F6]": isHideWalletEnabled,
+                            })}
                             onPress={handleCopyAddress}
                         >
-                            <Typography weight="700" className="text-black text-base">Copy address</Typography>
+                            <Typography weight="700" className={cn("text-black text-base", {
+                                "text-white": isHideWalletEnabled,
+                            })}>Copy address</Typography>
                         </HapticPressable>
                     </View>
                 </BottomSheetView>
@@ -114,3 +131,15 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
         );
     }
 );
+
+
+const MemoizedQRCodeModal = memo(({ walletAddress, color = "black", backgroundColor = "transparent" }: { walletAddress: string, color?: string, backgroundColor?: string }) => {
+    return <QRCode
+        value={walletAddress}
+        size={280}
+        color={color}
+        backgroundColor={backgroundColor}
+        ecl="L"
+    />
+});
+
