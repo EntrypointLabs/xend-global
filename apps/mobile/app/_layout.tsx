@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import Toast from 'react-native-toast-message';
 import { View } from 'react-native';
@@ -60,7 +60,6 @@ if (process.env.EXPO_PUBLIC_GRID_ENV === 'production') {
             });
         } catch (error) {
             console.error('Failed to initialize Sentry:', error);
-
         }
     };
 
@@ -73,18 +72,14 @@ function AuthLayout() {
     const { isAuthenticated } = useAuth();
     const colorScheme = useColorScheme();
 
-
-
     useEffect(() => {
         if (isAuthenticated === null) return;
 
         const inAuthGroup = segments[0] === '(auth)';
 
         if (!isAuthenticated && !inAuthGroup) {
-            // Redirect to the sign-in page
             router.replace('/login');
         } else if (isAuthenticated && inAuthGroup) {
-            // Redirect away from the sign-in page
             router.replace('/(tabs)');
         }
     }, [isAuthenticated, segments]);
@@ -154,13 +149,20 @@ function RootLayout() {
         Inter_900Black_Italic,
     });
 
+    const [fontTimeout, setFontTimeout] = useState(false);
+
+    useEffect(() => {
+        const timer = setTimeout(() => setFontTimeout(true), 3000);
+        return () => clearTimeout(timer);
+    }, []);
+
     useEffect(() => {
         if (loaded || error) {
             SplashScreen.hideAsync();
         }
     }, [loaded, error]);
 
-    if (!loaded && !error) {
+    if (!loaded && !error && !fontTimeout) {
         return null;
     }
 
