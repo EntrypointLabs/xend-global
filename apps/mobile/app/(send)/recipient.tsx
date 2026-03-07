@@ -1,107 +1,139 @@
-import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, ScrollView, Image } from 'react-native';
-import { Typography } from '@/components/ui/atoms/Typography';
-import { useRouter } from 'expo-router';
-import { ScreenLayout } from '@/components/ui/layout';
-import * as Clipboard from 'expo-clipboard';
-import { Ionicons } from '@expo/vector-icons';
-import { useThemeColor } from '@/hooks/useThemeColor';
-import HapticPressable from '@/components/ui/atoms/HapticPressable';
-import TabHeaderText from '@/components/ui/atoms/TabHeaderText';
+import React, { useState } from "react";
+import {
+  View,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Image,
+} from "react-native";
+import { Typography } from "@/components/ui/atoms/Typography";
+import { useRouter } from "expo-router";
+import { ScreenLayout } from "@/components/ui/layout";
+import * as Clipboard from "expo-clipboard";
+import { Ionicons } from "@expo/vector-icons";
+import { useThemeColor } from "@/hooks/useThemeColor";
+import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 
 // Mock Recent Addresses
 const RECENT_ADDRESSES = [
-    {
-        name: 'AtfW...8DtK',
-        sends: '2 sends',
-        icon: require('@/assets/icons/wallet.png')
-    }
+  {
+    name: "AtfW...8DtK",
+    sends: "2 sends",
+    icon: require("@/assets/icons/wallet.png"),
+  },
 ];
 
 export default function ChooseRecipientScreen() {
-    const router = useRouter();
-    const [recipient, setRecipient] = useState('');
-    const backgroundColor = useThemeColor({}, 'background');
+  const router = useRouter();
+  const [recipient, setRecipient] = useState("");
+  const backgroundColor = useThemeColor({}, "background");
 
-    const handlePaste = async () => {
-        const text = await Clipboard.getStringAsync();
-        if (text) {
-            setRecipient(text);
-        }
-    };
+  const handlePaste = async () => {
+    const text = await Clipboard.getStringAsync();
+    if (text) {
+      setRecipient(text);
+    }
+  };
 
-    const handleContinue = () => {
-        if (recipient.length > 0) {
-            router.push({
-                pathname: '/(send)/amount',
-                params: { recipient: recipient }
-            });
-        }
-    };
+  const handleContinue = () => {
+    if (recipient.length > 0) {
+      router.push({
+        pathname: "/(send)/amount",
+        params: { recipient: recipient },
+      });
+    }
+  };
 
-    return (
-        <ScreenLayout>
-            <View className="flex-1 px-4 pt-4">
-                {/* Header */}
-                <View className="flex-row items-center justify-between mb-8">
-                    <View className="w-10 h-10" />
-                    <TabHeaderText className="text-center">Choose recipient</TabHeaderText>
-                    <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 items-center justify-center">
-                        <Ionicons name="scan-outline" size={24} color="black" />
-                    </TouchableOpacity>
-                </View>
+  return (
+    <ScreenLayout>
+      <View className="flex-1 px-4 pt-4">
+        {/* Header */}
+        <View className="mb-8 flex-row items-center justify-between">
+          <View className="h-10 w-10" />
+          <TabHeaderText className="text-center">
+            Choose recipient
+          </TabHeaderText>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            className="h-10 w-10 items-center justify-center"
+          >
+            <Ionicons name="scan-outline" size={24} color="black" />
+          </TouchableOpacity>
+        </View>
 
-                {/* Input Container */}
-                <View className="bg-white rounded-[24px] p-4 mb-8">
-                    <Typography className="text-gray-400 text-base mb-2">Address or .sol handle</Typography>
-                    <TextInput
-                        className="text-base text-black mb-4 h-10"
-                        placeholder="Enter Solana address or .sol handle"
-                        placeholderTextColor="#999"
-                        value={recipient}
-                        onChangeText={setRecipient}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                    />
+        {/* Input Container */}
+        <View className="mb-8 rounded-[24px] bg-white p-4">
+          <Typography className="mb-2 text-base text-gray-400">
+            Address or .sol handle
+          </Typography>
+          <TextInput
+            className="mb-4 h-10 text-base text-black"
+            placeholder="Enter Solana address or .sol handle"
+            placeholderTextColor="#999"
+            value={recipient}
+            onChangeText={setRecipient}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
 
-                    <View className="flex-row gap-3">
-                        <HapticPressable
-                            className={`px-6 py-2.5 rounded-full ${recipient.length > 0 ? 'bg-black' : 'bg-black/30'}`}
-                            onPress={handleContinue}
-                            disabled={recipient.length === 0}
-                        >
-                            <Typography weight="600" className="text-white">Continue</Typography>
-                        </HapticPressable>
+          <View className="flex-row gap-3">
+            <HapticPressable
+              className={`rounded-full px-6 py-2.5 ${recipient.length > 0 ? "bg-black" : "bg-black/30"}`}
+              onPress={handleContinue}
+              disabled={recipient.length === 0}
+            >
+              <Typography weight="600" className="text-white">
+                Continue
+              </Typography>
+            </HapticPressable>
 
-                        <HapticPressable
-                            className="flex-row items-center bg-gray-100 px-4 py-2.5 rounded-full"
-                            onPress={handlePaste}
-                        >
-                            <Ionicons name="document-text-outline" size={16} color="black" style={{ marginRight: 6 }} />
-                            <Typography weight="600" className="text-black">Paste</Typography>
-                        </HapticPressable>
-                    </View>
-                </View>
+            <HapticPressable
+              className="flex-row items-center rounded-full bg-gray-100 px-4 py-2.5"
+              onPress={handlePaste}
+            >
+              <Ionicons
+                name="document-text-outline"
+                size={16}
+                color="black"
+                style={{ marginRight: 6 }}
+              />
+              <Typography weight="600" className="text-black">
+                Paste
+              </Typography>
+            </HapticPressable>
+          </View>
+        </View>
 
-                {/* Recent Addresses */}
-                <Typography weight="600" className="text-lg mb-4 ml-1">Recent addresses</Typography>
+        {/* Recent Addresses */}
+        <Typography weight="600" className="mb-4 ml-1 text-lg">
+          Recent addresses
+        </Typography>
 
-                {RECENT_ADDRESSES.map((item, index) => (
-                    <TouchableOpacity
-                        key={index}
-                        className="flex-row items-center mb-4"
-                        onPress={() => setRecipient(item.name)}
-                    >
-                        <View className="w-12 h-12 rounded-full bg-white items-center justify-center mr-3 border border-[#F2F4F7]">
-                            <Image source={item.icon} className="w-6 h-6" resizeMode="contain" />
-                        </View>
-                        <View>
-                            <Typography weight="700" className="text-base">{item.name}</Typography>
-                            <Typography className="text-gray-400 text-sm">{item.sends}</Typography>
-                        </View>
-                    </TouchableOpacity>
-                ))}
+        {RECENT_ADDRESSES.map((item, index) => (
+          <TouchableOpacity
+            key={index}
+            className="mb-4 flex-row items-center"
+            onPress={() => setRecipient(item.name)}
+          >
+            <View className="mr-3 h-12 w-12 items-center justify-center rounded-full border border-[#F2F4F7] bg-white">
+              <Image
+                source={item.icon}
+                className="h-6 w-6"
+                resizeMode="contain"
+              />
             </View>
-        </ScreenLayout>
-    );
+            <View>
+              <Typography weight="700" className="text-base">
+                {item.name}
+              </Typography>
+              <Typography className="text-sm text-gray-400">
+                {item.sends}
+              </Typography>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </ScreenLayout>
+  );
 }

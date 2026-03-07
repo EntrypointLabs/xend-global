@@ -1,12 +1,18 @@
-import React from 'react'
-import { TextProps } from 'react-native'
-import { Typography } from './Typography'
-import { cn } from '@/utils/class'
+import React from "react";
+import { TextProps } from "react-native";
+import { Typography } from "./Typography";
+import { cn } from "@/utils/class";
 
 const TabHeaderText = ({ children, className, ...props }: TextProps) => {
-    return (
-        <Typography weight="600" className={cn("text-black text-lg pb-8", className)} {...props}>{children}</Typography>
-    )
-}
+  return (
+    <Typography
+      weight="600"
+      className={cn("pb-8 text-lg text-black", className)}
+      {...props}
+    >
+      {children}
+    </Typography>
+  );
+};
 
-export default TabHeaderText
+export default TabHeaderText;

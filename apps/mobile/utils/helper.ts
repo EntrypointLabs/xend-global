@@ -31,18 +31,18 @@ export const formatAmount = ({
   } catch (e) {
     Sentry.captureException(
       new Error(
-        `Error formatting amount: ${e}. (utils)/helper.ts (formatAmount)`,
-      ),
+        `Error formatting amount: ${e}. (utils)/helper.ts (formatAmount)`
+      )
     );
     return "$0";
   }
 };
 
 export const getKycLinkId = async (
-  gridUserId: string,
+  gridUserId: string
 ): Promise<string | null> => {
   const bridge_kyc_link_ids = await SecureStore.getItemAsync(
-    AUTH_STORAGE_KEYS.BRIDGE_KYC_LINK_IDS,
+    AUTH_STORAGE_KEYS.BRIDGE_KYC_LINK_IDS
   );
 
   if (!bridge_kyc_link_ids) {
@@ -59,7 +59,7 @@ export const getKycLinkId = async (
 
 export const setKycLinkId = async (gridUserId: string, kycLinkId: string) => {
   const bridge_kyc_link_ids = await SecureStore.getItemAsync(
-    AUTH_STORAGE_KEYS.BRIDGE_KYC_LINK_IDS,
+    AUTH_STORAGE_KEYS.BRIDGE_KYC_LINK_IDS
   );
   if (!bridge_kyc_link_ids) {
     const parsedIds = {
@@ -67,14 +67,14 @@ export const setKycLinkId = async (gridUserId: string, kycLinkId: string) => {
     } as KycLinkIds;
     SecureStore.setItemAsync(
       AUTH_STORAGE_KEYS.BRIDGE_KYC_LINK_IDS,
-      JSON.stringify(parsedIds),
+      JSON.stringify(parsedIds)
     );
   } else {
     const parsedIds = JSON.parse(bridge_kyc_link_ids) as KycLinkIds;
     parsedIds.ids.push({ grid_user_id: gridUserId, kyc_link_id: kycLinkId });
     SecureStore.setItemAsync(
       AUTH_STORAGE_KEYS.BRIDGE_KYC_LINK_IDS,
-      JSON.stringify(parsedIds),
+      JSON.stringify(parsedIds)
     );
   }
 };
@@ -82,7 +82,7 @@ export const setKycLinkId = async (gridUserId: string, kycLinkId: string) => {
 export const truncateAddress = (
   address: string,
   start: number = 4,
-  end: number = 4,
+  end: number = 4
 ): string => {
   if (!address) return "";
   if (address.length <= start + end) return address;

@@ -1,1 +1,1 @@
-export { formatAmount } from './helper';
+export { formatAmount } from "./helper";
