@@ -85,7 +85,7 @@ function AuthLayout() {
     } else if (isAuthenticated && inAuthGroup) {
       router.replace("/(tabs)");
     }
-  }, [isAuthenticated, segments]);
+  }, [isAuthenticated, router, segments]);
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? darkTheme : lightTheme}>
@@ -170,7 +170,7 @@ function RootLayout() {
     }
   }, [loaded, error]);
 
-  if (!loaded && !error && !fontTimeout) {
+  if ((!loaded && !fontTimeout) || !!error) {
     return null;
   }
 

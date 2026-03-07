@@ -11,7 +11,7 @@ export function StartScreen() {
     if (!isLoading && isAuthenticated) {
       router.replace("/(tabs)");
     }
-  }, [isLoading]);
+  }, [isLoading, isAuthenticated, router]);
 
   if (isLoading) {
     return null;
