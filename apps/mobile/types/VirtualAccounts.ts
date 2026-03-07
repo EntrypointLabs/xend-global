@@ -1,11 +1,10 @@
 import { Currency } from "./Transaction";
 
-
 // TODO: Review what is actually used
 export interface OpenVirtualAccountParams {
-    smartAccountAddress: string;
-    gridUserId: string;
-    currency: Currency;
+  smartAccountAddress: string;
+  gridUserId: string;
+  currency: Currency;
 }
 
 // export interface VirtualAccount {
@@ -29,5 +28,3 @@ export interface OpenVirtualAccountParams {
 // export interface VirtualAccountsResponse {
 //     virtual_accounts: VirtualAccount[];
 // }
-
-

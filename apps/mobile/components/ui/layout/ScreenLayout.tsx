@@ -1,43 +1,43 @@
-import { StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { ThemedView } from '@/components/ui/atoms';
-import { ViewProps } from 'react-native';
-import { useThemeColor } from '@/hooks/useThemeColor';
+import { StyleSheet } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { ThemedView } from "@/components/ui/atoms";
+import { ViewProps } from "react-native";
+import { useThemeColor } from "@/hooks/useThemeColor";
 
 // Extend ViewProps and add the color props
 export type ScreenLayoutProps = ViewProps & {
-    children: React.ReactNode;
-    lightColor?: string;
-    darkColor?: string;
+  children: React.ReactNode;
+  lightColor?: string;
+  darkColor?: string;
 };
 
 export function ScreenLayout({
-    children,
-    style,
-    lightColor,
-    darkColor,
-    ...rest
+  children,
+  style,
+  lightColor,
+  darkColor,
+  ...rest
 }: ScreenLayoutProps) {
-    return (
-        <SafeAreaView style={[styles.safeArea, { backgroundColor: lightColor }]}>
-            <ThemedView
-                style={[styles.container, style]}
-                lightColor={lightColor}
-                darkColor={darkColor}
-                {...rest}
-            >
-                {children}
-            </ThemedView>
-        </SafeAreaView>
-    );
+  return (
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: lightColor }]}>
+      <ThemedView
+        style={[styles.container, style]}
+        lightColor={lightColor}
+        darkColor={darkColor}
+        {...rest}
+      >
+        {children}
+      </ThemedView>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-    safeArea: {
-        flex: 1,
-    },
-    container: {
-        flex: 1,
-        padding: 20,
-    },
-}); 
+  safeArea: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+    padding: 20,
+  },
+});

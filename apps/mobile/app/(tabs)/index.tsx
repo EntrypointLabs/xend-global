@@ -1,285 +1,326 @@
-import { View, ScrollView } from 'react-native';
-import { Typography } from '@/components/ui/atoms/Typography';
-import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useCallback, useMemo, useRef } from 'react';
-import { ThemedText } from '@/components/ui/atoms';
+import { View, ScrollView } from "react-native";
+import { Typography } from "@/components/ui/atoms/Typography";
+import { Ionicons } from "@expo/vector-icons";
+import React, { useEffect, useCallback, useMemo, useRef } from "react";
+import { ThemedText } from "@/components/ui/atoms";
 
-import { ActionCard, PromoBanner } from '@/components/ui/molecules';
-import { ScreenLayout } from '@/components/ui/layout';
-import { TransferResponse, Transaction } from '@/types/Transaction';
-import { useAuth } from '@/contexts/AuthContext';
-import { SendModal } from '@/components/ui/organisms/modals/SendModal';
-import { ReceiveModal } from '@/components/ui/organisms/modals/ReceiveModal';
-import { QRCodeModal } from '@/components/ui/organisms/modals/QRCodeModal';
-import { useModalFlow } from '@/contexts/ModalFlowContext';
-import { useToast } from '@/contexts/ToastContext';
-import { TransactionList } from '@/components/ui/organisms/TransactionList';
-import { useWalletData } from '@/hooks/useWalletData';
-import * as Sentry from '@sentry/react-native';
-import HapticPressable from '@/components/ui/atoms/HapticPressable';
-import { useRouter } from 'expo-router';
-import TabHeaderText from '@/components/ui/atoms/TabHeaderText';
-import { BottomSheetModal } from '@gorhom/bottom-sheet';
-import { SendFlowModal } from '@/components/ui/organisms/send/SendFlowModal';
-import BalanceView from '@/components/BalanceView';
+import { ActionCard, PromoBanner } from "@/components/ui/molecules";
+import { ScreenLayout } from "@/components/ui/layout";
+import { TransferResponse, Transaction } from "@/types/Transaction";
+import { useAuth } from "@/contexts/AuthContext";
+import { SendModal } from "@/components/ui/organisms/modals/SendModal";
+import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
+import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
+import { useModalFlow } from "@/contexts/ModalFlowContext";
+import { useToast } from "@/contexts/ToastContext";
+import { TransactionList } from "@/components/ui/organisms/TransactionList";
+import { useWalletData } from "@/hooks/useWalletData";
+import * as Sentry from "@sentry/react-native";
+import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { useRouter } from "expo-router";
+import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
+import { BottomSheetModal } from "@gorhom/bottom-sheet";
+import { SendFlowModal } from "@/components/ui/organisms/send/SendFlowModal";
+import BalanceView from "@/components/BalanceView";
 
 function HomeScreenContent() {
-    const router = useRouter();
-    const { accountInfo, user } = useAuth();
-    const { showReceiveModal, isReceiveModalVisible, hideAllModals, isSendModalVisible, showSendModal } = useModalFlow();
-    // const [isSendModalVisible, setIsSendModalVisible] = useState(false);
-    const { showToast } = useToast();
-    const { balance, transfers, isLoading, error, fetchWalletData } = useWalletData(accountInfo);
-    const sendFlowModalRef = useRef<BottomSheetModal>(null);
-    const qrCodeModalRef = useRef<BottomSheetModal>(null);
+  const router = useRouter();
+  const { accountInfo, user } = useAuth();
+  const {
+    showReceiveModal,
+    isReceiveModalVisible,
+    hideAllModals,
+    isSendModalVisible,
+    showSendModal,
+  } = useModalFlow();
+  // const [isSendModalVisible, setIsSendModalVisible] = useState(false);
+  const { showToast } = useToast();
+  const { balance, transfers, isLoading, error, fetchWalletData } =
+    useWalletData(accountInfo);
+  const sendFlowModalRef = useRef<BottomSheetModal>(null);
+  const qrCodeModalRef = useRef<BottomSheetModal>(null);
 
-    useEffect(() => {
-        // if (!accountInfo || !accountInfo.smart_account_signer_public_key) {
-        //     logout();
-        //     return;
+  useEffect(() => {
+    // if (!accountInfo || !accountInfo.smart_account_signer_public_key) {
+    //     logout();
+    //     return;
+    // }
+
+    const initializeAccount = async () => {
+      try {
+        // const account = await createSmartAccount(accountInfo);
+        // await StorageService.setItem(AUTH_STORAGE_KEYS.GRID_USER_ID, account.grid_user_id);
+        // await StorageService.setItem(AUTH_STORAGE_KEYS.SMART_ACCOUNT_ADDRESS, account.smart_account_address);
+
+        // // Only create user if they don't exist
+        // const existingUser = await MockDatabase.getUser(account.grid_user_id);
+        // if (!existingUser) {
+        //     await MockDatabase.createUser(account.grid_user_id);
         // }
 
-        const initializeAccount = async () => {
-            try {
-                // const account = await createSmartAccount(accountInfo);
-                // await StorageService.setItem(AUTH_STORAGE_KEYS.GRID_USER_ID, account.grid_user_id);
-                // await StorageService.setItem(AUTH_STORAGE_KEYS.SMART_ACCOUNT_ADDRESS, account.smart_account_address);
+        // const updatedAccountInfo = {
+        //     ...accountInfo,
+        //     smart_account_address: account.smart_account_address,
+        //     grid_user_id: account.grid_user_id
+        // };
 
-                // // Only create user if they don't exist
-                // const existingUser = await MockDatabase.getUser(account.grid_user_id);
-                // if (!existingUser) {
-                //     await MockDatabase.createUser(account.grid_user_id);
-                // }
+        // setAccountInfo(updatedAccountInfo);
+        await fetchWalletData();
+      } catch (err) {
+        console.error("Error initializing account:", err);
+        Sentry.captureException(
+          new Error(
+            `Error initializing account: ${err}. (tabs)/index.tsx (initializeAccount)`
+          )
+        );
+      }
+    };
 
-                // const updatedAccountInfo = {
-                //     ...accountInfo,
-                //     smart_account_address: account.smart_account_address,
-                //     grid_user_id: account.grid_user_id
-                // };
+    initializeAccount();
+  }, [fetchWalletData]);
 
-                // setAccountInfo(updatedAccountInfo);
-                await fetchWalletData();
-            } catch (err) {
-                console.error('Error initializing account:', err);
-                Sentry.captureException(new Error(`Error initializing account: ${err}. (tabs)/index.tsx (initializeAccount)`));
-            }
-        };
+  const actions = useMemo(
+    () => [
+      {
+        title: "Cash",
+        subtitle: "Send and Receive",
+        icon: require("@/assets/icons/usdc.png"),
+        onPress: () => router.push("/cash"),
+        color: "#007AFF", // Blue
+      },
+      {
+        title: "Investments",
+        subtitle: "Trade Crypto",
+        icon: require("@/assets/icons/investment.png"),
+        onPress: () => showToast("Coming soon"),
+        color: "#FF9500", // Orange
+      },
+      {
+        title: "Earn",
+        subtitle: "Up to 7.99% APY",
+        icon: require("@/assets/icons/earn.png"),
+        onPress: () => showToast("Coming soon"),
+        color: "#AF52DE", // Purple
+      },
+      {
+        title: "Fuse Card",
+        subtitle: "Get your free Card",
+        icon: require("@/assets/icons/card.png"),
+        onPress: () => showToast("Coming soon"),
+        color: "#000000", // Black
+      },
+    ],
+    [showToast]
+  );
 
-        initializeAccount();
-    }, [fetchWalletData]);
-
-    const actions = useMemo(() => [
-        {
-            title: 'Cash',
-            subtitle: 'Send and Receive',
-            icon: require('@/assets/icons/usdc.png'),
-            onPress: () => router.push('/cash'),
-            color: '#007AFF', // Blue
-        },
-        {
-            title: 'Investments',
-            subtitle: 'Trade Crypto',
-            icon: require('@/assets/icons/investment.png'),
-            onPress: () => showToast("Coming soon"),
-            color: '#FF9500', // Orange
-        },
-        {
-            title: 'Earn',
-            subtitle: 'Up to 7.99% APY',
-            icon: require('@/assets/icons/earn.png'),
-            onPress: () => showToast("Coming soon"),
-            color: '#AF52DE', // Purple
-        },
-        {
-            title: 'Fuse Card',
-            subtitle: 'Get your free Card',
-            icon: require('@/assets/icons/card.png'),
-            onPress: () => showToast("Coming soon"),
-            color: '#000000', // Black
+  const formatTransfers = useCallback(
+    (transfers: TransferResponse) => {
+      for (const transfer of transfers) {
+        if (
+          "Spl" in transfer &&
+          transfer.Spl.confirmation_status === "confirmed"
+        ) {
         }
-    ], [showToast]);
+      }
+      const transfersToConsider = transfers.filter(
+        (transfer) =>
+          ("Spl" in transfer &&
+            transfer.Spl.mint === process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS &&
+            ["confirmed"].includes(transfer.Spl.confirmation_status)) ||
+          ("Bridge" in transfer &&
+            (transfer.Bridge.state === "payment_processed" ||
+              transfer.Bridge.state === "payment_submitted"))
+      );
 
-    const formatTransfers = useCallback((transfers: TransferResponse) => {
-        for (const transfer of transfers) {
-            if ('Spl' in transfer && transfer.Spl.confirmation_status === 'confirmed') {
-            }
+      const transactions = transfersToConsider.map((transfer) => {
+        if ("Spl" in transfer) {
+          const splTransfer = transfer.Spl;
+
+          return {
+            id: splTransfer.id,
+            amount: parseFloat(splTransfer.ui_amount),
+            status: splTransfer.confirmation_status,
+            type:
+              splTransfer.direction === "outflow"
+                ? ("sent" as const)
+                : ("received" as const),
+            date: new Date(splTransfer.created_at),
+            address:
+              splTransfer.from_address === user?.address
+                ? splTransfer.to_address
+                : splTransfer.from_address,
+          } as Transaction;
+        } else if ("Bridge" in transfer) {
+          const type =
+            transfer.Bridge.source.from_address === user?.address
+              ? ("sent" as const)
+              : ("received" as const);
+
+          return {
+            id: transfer.Bridge.id,
+            amount: parseFloat(transfer.Bridge.amount),
+            status: transfer.Bridge.state,
+            type: type,
+            date: new Date(transfer.Bridge.created_at),
+            address:
+              type === "sent"
+                ? transfer.Bridge.destination.external_account_id
+                : user?.address,
+          } as Transaction;
+        } else {
+          Sentry.captureException(
+            new Error(
+              `Unknown transfer: ${transfer}. (tabs)/index.tsx (formatTransfers)`
+            )
+          );
         }
-        const transfersToConsider = transfers.filter(transfer => ('Spl' in transfer && transfer.Spl.mint === process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS && ['confirmed'].includes(transfer.Spl.confirmation_status)) || ('Bridge' in transfer && (transfer.Bridge.state === 'payment_processed' || transfer.Bridge.state === 'payment_submitted')));
+      });
 
-        const transactions = transfersToConsider.map(transfer => {
+      // Group transactions by date
+      const groups = transactions.reduce(
+        (acc: { [key: string]: Transaction[] }, transaction) => {
+          if (!transaction) return acc;
+          const date = transaction.date;
+          const dateStr = date.toLocaleDateString("en-US", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          });
 
-            if ('Spl' in transfer) {
-                const splTransfer = transfer.Spl;
+          if (!acc[dateStr]) {
+            acc[dateStr] = [];
+          }
+          acc[dateStr].push(transaction);
+          return acc;
+        },
+        {}
+      );
 
-                return {
-                    id: splTransfer.id,
-                    amount: parseFloat(splTransfer.ui_amount),
-                    status: splTransfer.confirmation_status,
-                    type: splTransfer.direction === 'outflow' ? 'sent' as const : 'received' as const,
-                    date: new Date(splTransfer.created_at),
-                    address: splTransfer.from_address === user?.address
-                        ? splTransfer.to_address
-                        : splTransfer.from_address
-                } as Transaction;
-            } else if ('Bridge' in transfer) {
-                const type = transfer.Bridge.source.from_address === user?.address ? 'sent' as const : 'received' as const;
-
-                return {
-                    id: transfer.Bridge.id,
-                    amount: parseFloat(transfer.Bridge.amount),
-                    status: transfer.Bridge.state,
-                    type: type,
-                    date: new Date(transfer.Bridge.created_at),
-                    address: type === 'sent' ? transfer.Bridge.destination.external_account_id : user?.address
-                } as Transaction;
-            } else {
-                Sentry.captureException(new Error(`Unknown transfer: ${transfer}. (tabs)/index.tsx (formatTransfers)`));
-            }
+      // Convert to TransactionGroup array and sort by date
+      return Object.entries(groups)
+        .map(([title, data]) => ({
+          title,
+          data: data.sort((a, b) => b.date.getTime() - a.date.getTime()),
+        }))
+        .sort((a, b) => {
+          const dateA = new Date(a.data[0].date);
+          const dateB = new Date(b.data[0].date);
+          return dateB.getTime() - dateA.getTime();
         });
+    },
+    [user?.address]
+  );
 
+  const formattedTransactions = useMemo(() => {
+    return formatTransfers(transfers);
+  }, [formatTransfers, transfers]);
 
-        // Group transactions by date
-        const groups = transactions.reduce((acc: { [key: string]: Transaction[] }, transaction) => {
-            if (!transaction) return acc;
-            const date = transaction.date;
-            const dateStr = date.toLocaleDateString('en-US', {
-                month: 'long',
-                day: 'numeric',
-                year: 'numeric'
-            });
+  return (
+    <ScreenLayout>
+      <ScrollView
+        contentContainerClassName="grow pb-[100px]"
+        showsVerticalScrollIndicator={false}
+      >
+        <View>
+          <TabHeaderText>Wallet</TabHeaderText>
 
-            if (!acc[dateStr]) {
-                acc[dateStr] = [];
-            }
-            acc[dateStr].push(transaction);
-            return acc;
-        }, {});
-
-        // Convert to TransactionGroup array and sort by date
-        return Object.entries(groups)
-            .map(([title, data]) => ({
-                title,
-                data: data.sort((a, b) => b.date.getTime() - a.date.getTime())
-            }))
-            .sort((a, b) => {
-                const dateA = new Date(a.data[0].date);
-                const dateB = new Date(b.data[0].date);
-                return dateB.getTime() - dateA.getTime();
-            });
-    }, [user?.address]);
-
-    const formattedTransactions = useMemo(() => {
-        return formatTransfers(transfers);
-    }, [formatTransfers, transfers]);
-
-    return (
-        <ScreenLayout>
-            <ScrollView
-                contentContainerClassName="grow pb-[100px]"
-                showsVerticalScrollIndicator={false}
-            >
-                <View>
-                    <TabHeaderText>Wallet</TabHeaderText>
-
-                    <View>
-                        <View className='flex-row items-center gap-2'>
-                            <Typography
-                                weight="500"
-                                className='text-black/30 text-sm'
-                            >Total Balance <Ionicons name="remove-circle" size={12} color="#999" /> 100%</Typography>
-                        </View>
-                        <BalanceView weight='700' className='text-[40px] leading-[140%]' amount={balance.toString()} />
-                    </View>
-
-                    {transfers.length === 0 && (
-                        <View
-                            className='items-center pt-2 pb-6'
-                        >
-                            <Typography weight="600" className='text-xl text-center mb-2'>There is nothing here yet</Typography>
-                            <Typography weight="500" className='text-center text-black/30 max-w-[250px] mb-7 text-sm'>
-                                Deposit tokens to your address and start using Fuse Wallet
-                            </Typography>
-
-                            <HapticPressable
-                                className='bg-black p-2.5 px-3 gap-0.5 items-center rounded-full flex-row'
-                                onPress={showReceiveModal}
-                            >
-                                <Ionicons name="arrow-down-circle" size={18} color="white" />
-                                <Typography
-                                    weight="500"
-                                    className='text-white text-base'
-                                >Receive</Typography>
-                            </HapticPressable>
-                        </View>
-                    )}
-                </View>
-
-                <View
-                    className='flex-row flex-wrap justify-between mb-6'
-                >
-                    {actions.map((action, index) => (
-                        <ActionCard
-                            key={index}
-                            title={action.title}
-                            subtitle={action.subtitle}
-                            icon={action.icon}
-                            onPress={action.onPress}
-                            iconBackgroundColor={action.color}
-                        />
-                    ))}
-                </View>
-
-                <PromoBanner
-                    title="Get your Virtual Bank Account"
-                    description="Receive USD and EUR for USDC"
-                    onPress={() => showToast("Virtual Bank Account coming soon!")}
-                    onClose={() => { }}
-                />
-
-                {transfers.length > 0 && (
-                    <View className="mt-6">
-                        <ThemedText type="subtitle" className="mb-4">Recent Activity</ThemedText>
-                        <TransactionList
-                            transactions={formattedTransactions}
-                        />
-                    </View>
-                )}
-
-            </ScrollView>
-            <SendModal
-                visible={isSendModalVisible}
-                onClose={hideAllModals}
-                onSendToWallet={() => {
-                    hideAllModals();
-                    // Short delay to allow animation to start closing before opening new one
-                    // or just open it. ActionModal handles mounting.
-                    setTimeout(() => sendFlowModalRef.current?.present(), 100);
-                }}
+          <View>
+            <View className="flex-row items-center gap-2">
+              <Typography weight="500" className="text-sm text-black/30">
+                Total Balance{" "}
+                <Ionicons name="remove-circle" size={12} color="#999" /> 100%
+              </Typography>
+            </View>
+            <BalanceView
+              weight="700"
+              className="text-[40px] leading-[140%]"
+              amount={balance.toString()}
             />
+          </View>
 
-            <SendFlowModal
-                ref={sendFlowModalRef}
-                onClose={() => { }}
+          {transfers.length === 0 && (
+            <View className="items-center pb-6 pt-2">
+              <Typography weight="600" className="mb-2 text-center text-xl">
+                There is nothing here yet
+              </Typography>
+              <Typography
+                weight="500"
+                className="mb-7 max-w-[250px] text-center text-sm text-black/30"
+              >
+                Deposit tokens to your address and start using Fuse Wallet
+              </Typography>
+
+              <HapticPressable
+                className="flex-row items-center gap-0.5 rounded-full bg-black p-2.5 px-3"
+                onPress={showReceiveModal}
+              >
+                <Ionicons name="arrow-down-circle" size={18} color="white" />
+                <Typography weight="500" className="text-base text-white">
+                  Receive
+                </Typography>
+              </HapticPressable>
+            </View>
+          )}
+        </View>
+
+        <View className="mb-6 flex-row flex-wrap justify-between">
+          {actions.map((action, index) => (
+            <ActionCard
+              key={index}
+              title={action.title}
+              subtitle={action.subtitle}
+              icon={action.icon}
+              onPress={action.onPress}
+              iconBackgroundColor={action.color}
             />
+          ))}
+        </View>
 
+        <PromoBanner
+          title="Get your Virtual Bank Account"
+          description="Receive USD and EUR for USDC"
+          onPress={() => showToast("Virtual Bank Account coming soon!")}
+          onClose={() => {}}
+        />
 
-            <ReceiveModal
-                visible={isReceiveModalVisible}
-                onClose={hideAllModals}
-                onOpenQRCode={() => qrCodeModalRef.current?.present()}
-            />
+        {transfers.length > 0 && (
+          <View className="mt-6">
+            <ThemedText type="subtitle" className="mb-4">
+              Recent Activity
+            </ThemedText>
+            <TransactionList transactions={formattedTransactions} />
+          </View>
+        )}
+      </ScrollView>
+      <SendModal
+        visible={isSendModalVisible}
+        onClose={hideAllModals}
+        onSendToWallet={() => {
+          hideAllModals();
+          // Short delay to allow animation to start closing before opening new one
+          // or just open it. ActionModal handles mounting.
+          setTimeout(() => sendFlowModalRef.current?.present(), 100);
+        }}
+      />
 
-            <QRCodeModal
-                ref={qrCodeModalRef}
-                walletAddress={user?.address || 'AtfWTb16gD8P7D975ZwMfUvABZvkqyLCF6wySvpTntZj'}
-            />
+      <SendFlowModal ref={sendFlowModalRef} onClose={() => {}} />
 
-        </ScreenLayout>
-    );
+      <ReceiveModal
+        visible={isReceiveModalVisible}
+        onClose={hideAllModals}
+        onOpenQRCode={() => qrCodeModalRef.current?.present()}
+      />
+
+      <QRCodeModal
+        ref={qrCodeModalRef}
+        walletAddress={
+          user?.address || "AtfWTb16gD8P7D975ZwMfUvABZvkqyLCF6wySvpTntZj"
+        }
+      />
+    </ScreenLayout>
+  );
 }
 
 export default function HomeScreen() {
-    return <HomeScreenContent />;
+  return <HomeScreenContent />;
 }
-
-
