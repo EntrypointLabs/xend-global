@@ -156,7 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setMpcPrimaryId(null);
 
       // Navigate to start/login screen
-      router.replace("/(auth)/start");
+      router.replace("/(auth)/login");
     } catch (error) {
       Sentry.captureException(
         new Error(
