@@ -1,0 +1,234 @@
+import React, { useState } from "react";
+import { View, Image, ActivityIndicator, Keyboard, TouchableWithoutFeedback, ScrollView } from "react-native";
+import { router } from "expo-router";
+import { Email } from "@/types/Auth";
+import { useAuth } from "@/contexts/AuthContext";
+import { useLoginMutation } from "@/hooks/useLoginMutation";
+import { useResendTimer } from "@/hooks/useResendTimer";
+import { WithScreenTheme } from "@/components/WithScreenTheme";
+import { Typography } from "@/components/ui/atoms/Typography";
+import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { ThemedTextInput } from "@/components/ui/molecules";
+import { ScreenVerificationCodeInput } from "@/components/ui/organisms/ScreenVerificationCodeInput";
+import Toast from "react-native-toast-message";
+
+function EmailLoginScreen() {
+  const [emailInput, setEmailInput] = useState("");
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const { completeLogin } = useAuth();
+  
+
+  const {
+    sendOtpAsync,
+    verifyOtpAsync,
+    isSendingOtp,
+    isVerifying,
+    otpSent,
+    resetSendOtp,
+  } = useLoginMutation();
+
+  const handleSendOtp = async () => {
+    setEmailError(null);
+
+    const result = Email.safeParse(emailInput.trim());
+    if (!result.success) {
+      setEmailError("Please enter a valid email address");
+      return;
+    }
+
+    try {
+      await sendOtpAsync(emailInput.trim());
+    } catch (error: any) {
+      Toast.show({
+        type: "error",
+        text1: error?.message || "Failed to send code. Please try again.",
+        position: "top",
+      });
+    }
+  };
+
+  console.log('otpSent', otpSent)
+
+  const handleVerifyOtp = async (code: string) => {
+    setVerifyError(null);
+    console.log('code', code)
+    try {
+      const result = await verifyOtpAsync(code);
+      console.log('result', result)
+      await completeLogin(result.data, emailInput.trim(), result.token);
+    } catch (error: any) {
+      console.log('error', error)
+      setVerifyError("Invalid code. Please try again.");
+    }
+  };
+
+  const handleResend = async () => {
+    resetSendOtp();
+    try {
+      await sendOtpAsync(emailInput.trim());
+    } catch (error: any) {
+      Toast.show({
+        type: "error",
+        text1: "Failed to resend code.",
+        position: "top",
+      });
+    }
+  };
+
+  const { countdown, isDisabled, handleResend: resend } = useResendTimer({
+    initialSeconds: 30,
+    onResend: handleResend,
+  });
+
+  return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <View className="flex-1">
+        <GradientBackground />
+
+        <ScrollView
+          className="flex-1"
+          contentContainerClassName="flex-grow"
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+        >
+          <View className="flex-1 px-8 py-16">
+            {/* Back button */}
+            <HapticPressable
+              onPress={() => router.back()}
+              className="mt-8 self-start"
+            >
+              <Typography weight="500" className="text-lg text-white">
+                {"< Back"}
+              </Typography>
+            </HapticPressable>
+
+            <View className="flex-1 justify-end">
+              {!otpSent ? (
+                // State 1: Email input
+                <View>
+                  <Typography
+                    weight="600"
+                    className="mb-8 text-3xl text-white"
+                  >
+                    Enter your email
+                  </Typography>
+
+                  <ThemedTextInput
+                    value={emailInput}
+                    onChangeText={(text) => {
+                      setEmailInput(text);
+                      setEmailError(null);
+                    }}
+                    placeholder="you@example.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="email"
+                    error={!!emailError}
+                    onSubmitEditing={handleSendOtp}
+                    returnKeyType="go"
+                    editable={!isSendingOtp}
+                  />
+
+                  {emailError && (
+                    <Typography weight="400" className="mt-2 text-sm text-red-400">
+                      {emailError}
+                    </Typography>
+                  )}
+
+                  <HapticPressable
+                    onPress={handleSendOtp}
+                    disabled={isSendingOtp || !emailInput.trim()}
+                    className="mt-6 items-center justify-center rounded-full bg-white p-4"
+                    style={{ opacity: isSendingOtp || !emailInput.trim() ? 0.5 : 1 }}
+                  >
+                    {isSendingOtp ? (
+                      <ActivityIndicator color="#000" />
+                    ) : (
+                      <Typography weight="600" className="text-lg text-black">
+                        Continue
+                      </Typography>
+                    )}
+                  </HapticPressable>
+                </View>
+              ) : (
+                // State 2: OTP input
+                <View>
+                  <Typography
+                    weight="600"
+                    className="mb-2 text-3xl text-white"
+                  >
+                    Enter the code
+                  </Typography>
+                  <Typography
+                    weight="400"
+                    className="mb-8 text-base text-[#8FE5F6]"
+                  >
+                    Sent to {emailInput.trim()}
+                  </Typography>
+
+                  <ScreenVerificationCodeInput onCodeComplete={handleVerifyOtp} />
+
+                  {verifyError && (
+                    <Typography weight="400" className="mt-2 text-sm text-red-400">
+                      {verifyError}
+                    </Typography>
+                  )}
+
+                  {isVerifying && (
+                    <ActivityIndicator color="#fff" className="mt-4" />
+                  )}
+
+                  <HapticPressable
+                    onPress={resend}
+                    disabled={isDisabled}
+                    className="mt-6 items-center"
+                  >
+                    <Typography
+                      weight="500"
+                      className="text-base text-white"
+                      style={{ opacity: isDisabled ? 0.5 : 1 }}
+                    >
+                      {countdown
+                        ? `Resend code in ${countdown}s`
+                        : "Resend code"}
+                    </Typography>
+                  </HapticPressable>
+                </View>
+              )}
+            </View>
+          </View>
+        </ScrollView>
+      </View>
+    </TouchableWithoutFeedback>
+  );
+}
+
+const GradientBackground = () => {
+  return (
+    <>
+      <Image
+        source={require("@/assets/images/onboarding/blue-blur-1.png")}
+        className="absolute bottom-[58px] left-0 h-[468px] w-full"
+        resizeMode="stretch"
+      />
+      <Image
+        source={require("@/assets/images/onboarding/blue-blur-2.png")}
+        className="absolute bottom-[-17px] left-0 h-[468px] w-full"
+        resizeMode="cover"
+      />
+      <Image
+        source={require("@/assets/images/onboarding/blue-blur-3.png")}
+        className="absolute bottom-[-134px] left-0 h-[468px] w-full"
+        resizeMode="cover"
+      />
+    </>
+  );
+};
+
+export default WithScreenTheme(EmailLoginScreen, {
+  backgroundColor: "#000000",
+  textColor: "#FFFFFF",
+  primaryColor: "#FFFFFF",
+});

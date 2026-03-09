@@ -25,6 +25,7 @@ export interface AuthContextType {
   register: (email: string) => Promise<void>;
   verifyCode: (code: string) => Promise<boolean>;
   verifyCodeAndCreateAccount: (code: string) => Promise<boolean>;
+  completeLogin: (userData: any, email: string, token: string) => Promise<void>;
   logout: () => Promise<void>;
   wallet: string | null;
   isLoading: boolean;

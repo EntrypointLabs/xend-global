@@ -172,6 +172,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const completeLogin = async (
+    userData: any,
+    email: string,
+    token: string
+  ): Promise<void> => {
+    setUser(userData);
+    setEmail(email);
+    await AuthStorage.saveUserData(userData);
+    await AuthStorage.saveEmail(email);
+    await AuthStorage.saveToken(token);
+    await AuthStorage.saveIsAuthenticated(true);
+    setIsAuthenticated(true);
+    setAuthError(null);
+  };
+
   const authenticate = async (email: string): Promise<void> => {
     setUser({
       address: "HskwRmauuraCF6mMBMn8CfiPvAXGSL8t5QDBzERKcoaS",
@@ -241,6 +256,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         credentialsBundle,
         authError,
         authenticate,
+        completeLogin,
         register,
         verifyCode,
         verifyCodeAndCreateAccount,

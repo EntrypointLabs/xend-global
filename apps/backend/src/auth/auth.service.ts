@@ -1,25 +1,59 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { GridService } from '../grid/grid.service';
 import { DbService } from '../db/db.service';
 import { users, smartAccounts } from '../db/schema';
 import { eq } from 'drizzle-orm';
-import { SessionSecrets } from '@sqds/grid';
+import { CompleteAuthAndCreateAccountResponse, SessionSecrets } from '@sqds/grid';
 
 @Injectable()
 export class AuthService {
+    private readonly logger = new Logger(AuthService.name);
+
     constructor(
         private grid: GridService,
         private jwt: JwtService,
         private db: DbService,
     ) {}
 
+    private handleGridError(error: any, context: string): never {
+        this.logger.error(`Grid error in ${context}:`, error);
+
+        const status = error?.lastResponse?.cause?.statusCode ?? error?.statusCode ?? error?.response?.status ?? error?.status;
+        const message = error?.response?.data?.message
+            ?? error?.message
+            ?? 'Grid service error';
+        const code = error?.response?.data?.code ?? error.code ?? 'GRID_ERROR';
+
+        // Map known Grid status codes to HTTP status codes
+        if (status === 404 || message.toLowerCase().includes('not found')) {
+            throw new HttpException({ code: 'USER_NOT_FOUND', message }, HttpStatus.NOT_FOUND);
+        }
+        if (status === 401 || message.toLowerCase().includes('unauthorized')) {
+            throw new HttpException({ code: 'UNAUTHORIZED', message }, HttpStatus.UNAUTHORIZED);
+        }
+        if (status === 409 || message.toLowerCase().includes('already exists') || message.toLowerCase().includes('conflict')) {
+            throw new HttpException({ code: 'USER_ALREADY_EXISTS', message }, HttpStatus.CONFLICT);
+        }
+        if (status === 429 || message.toLowerCase().includes('rate limit')) {
+            throw new HttpException({ code: 'OTP_RATE_LIMIT', message }, HttpStatus.TOO_MANY_REQUESTS);
+        }
+
+        throw new HttpException(
+            { code, message },
+            typeof status === 'number' && status >= 400 ? status : HttpStatus.BAD_GATEWAY,
+        );
+    }
+
     // Registration
 
     // Step 1: mobile sends email - Grid sends OTP
     async register(email: string) {
-        return this.grid.createAccount(email);
-        // Returns Grid's response with user context mobile needs for step 2
+        try {
+            return await this.grid.createAccount(email);
+        } catch (error) {
+            this.handleGridError(error, 'register');
+        }
     }
 
     // Step 2: mobile sends OTP + sessionSecrets + user context
@@ -29,11 +63,16 @@ export class AuthService {
         sessionSecrets: SessionSecrets;
         user: any;
     }) {
-        const gridResponse = await this.grid.completeAuthAndCreateAccount({
-            otpCode:        dto.otpCode,
-            sessionSecrets: dto.sessionSecrets,
-            user:           dto.user,
-        });
+        let gridResponse: CompleteAuthAndCreateAccountResponse;
+        try {
+            gridResponse = await this.grid.completeAuthAndCreateAccount({
+                otpCode:        dto.otpCode,
+                sessionSecrets: dto.sessionSecrets,
+                user:           dto.user,
+            });
+        } catch (error) {
+            this.handleGridError(error, 'verifyOtpAndCreateAccount');
+        }
 
         const address = gridResponse.data.address;
 
@@ -74,8 +113,11 @@ export class AuthService {
 
     // Step 1: mobile sends email → Grid sends OTP
     async authenticate(email: string) {
-        return this.grid.initAuth(email);
-        // Returns Grid's user context mobile needs for step 2
+        try {
+            return await this.grid.initAuth(email);
+        } catch (error) {
+            this.handleGridError(error, 'authenticate');
+        }
     }
 
     // Step 2: mobile sends OTP + sessionSecrets + user context
@@ -84,11 +126,16 @@ export class AuthService {
         sessionSecrets: SessionSecrets;
         user: any;
     }) {
-        const gridResponse = await this.grid.completeAuth({
-            otpCode:        dto.otpCode,
-            sessionSecrets: dto.sessionSecrets,
-            user:           dto.user,
-        });
+        let gridResponse: any;
+        try {
+            gridResponse = await this.grid.completeAuth({
+                otpCode:        dto.otpCode,
+                sessionSecrets: dto.sessionSecrets,
+                user:           dto.user,
+            });
+        } catch (error) {
+            this.handleGridError(error, 'verifyOtp');
+        }
 
         const address = gridResponse.data.address;
 

@@ -6,10 +6,10 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { WithScreenTheme } from "@/components/WithScreenTheme";
 import { useResendTimer } from "@/hooks/useResendTimer";
 import { router } from "expo-router";
-import { ErrorCode } from "@/utils/errors";
-import { handleError } from "@/utils/errors";
+import { ErrorCode , handleError } from "@/utils/errors";
 import { useScreenTheme } from "@/contexts/ScreenThemeContext";
 import Logo from "@/components/Logo";
+import HapticPressable from "@/components/ui/atoms/HapticPressable";
 
 function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
@@ -114,7 +114,7 @@ function LoginScreen() {
             </Typography>
           </View>
           <View className="gap-2.5">
-            <ThemedButton
+            {/* <ThemedButton
               onPress={() => authenticate("")}
               title="Continue with Google"
               iconLeft={
@@ -123,8 +123,22 @@ function LoginScreen() {
                   className="size-6"
                 />
               }
-            />
-            <ThemedButton
+            /> */}
+            <HapticPressable onPress={() => router.push("/(auth)/email-login")} className="bg-white border border-white p-4 rounded-full items-center justify-center w-full flex-row gap-4">
+               <Image
+                  source={require("@/assets/icons/google.png")}
+                  className="size-6"
+                />
+                <Typography  weight="600" className="text-lg text-black">Continue with Email</Typography>
+            </HapticPressable>
+            <HapticPressable onPress={() => router.push("/(auth)/restore-account")} className="bg-white/20 border border-white/20 p-4 rounded-full items-center justify-center w-full flex-row gap-3">
+                 <Image
+                  source={require("@/assets/icons/redo.png")}
+                  className="size-6"
+                />
+                <Typography  weight="600" className="text-lg text-white">Recover existing wallet</Typography>
+            </HapticPressable>
+            {/* <ThemedButton
               onPress={() => {}}
               variant="outline"
               title="Recover existing wallet"
@@ -134,7 +148,7 @@ function LoginScreen() {
                   className="size-6"
                 />
               }
-            />
+            /> */}
           </View>
         </View>
       </View>
