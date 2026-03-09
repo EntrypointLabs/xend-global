@@ -4,7 +4,7 @@ import { GridService } from '../grid/grid.service';
 import { DbService } from '../db/db.service';
 import { users, smartAccounts } from '../db/schema';
 import { eq } from 'drizzle-orm';
-import { CompleteAuthAndCreateAccountResponse, SessionSecrets } from '@sqds/grid';
+import { CompleteAuthAndCreateAccountResponse, CompleteAuthResponse, SessionSecrets } from '@sqds/grid';
 
 @Injectable()
 export class AuthService {
@@ -126,7 +126,7 @@ export class AuthService {
         sessionSecrets: SessionSecrets;
         user: any;
     }) {
-        let gridResponse: any;
+        let gridResponse: CompleteAuthResponse;
         try {
             gridResponse = await this.grid.completeAuth({
                 otpCode:        dto.otpCode,
