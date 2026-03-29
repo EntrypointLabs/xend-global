@@ -79,6 +79,7 @@ export const AUTH_STORAGE_KEYS = {
   KEYPAIR: "auth_keypair",
   CREDENTIALS_BUNDLE: "auth_credentials_bundle",
   WALLET: "auth_wallet",
+  TOKEN: "auth_token",
   IS_AUTHENTICATED: "auth_is_authenticated",
   MPC_PRIMARY_ID: "auth_mpc_primary_id",
   KYC_STATUS: "auth_kyc_status",
