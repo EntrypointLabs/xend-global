@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ThemedButton } from '@/components/ui/molecules';
 import { Image, View } from 'react-native';
@@ -10,6 +10,8 @@ import { ErrorCode } from '@/utils/errors';
 import { handleError } from '@/utils/errors';
 import { useScreenTheme } from '@/contexts/ScreenThemeContext';
 import Logo from '@/components/Logo';
+import { Ionicons } from '@expo/vector-icons';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 
 function LoginScreen() {
     const [isLoading, setIsLoading] = useState(false);
@@ -82,7 +84,7 @@ function LoginScreen() {
 
             <View className='px-8 py-16 flex-1 justify-between border border-green-950'>
                 <View className='flex-1 h-full justify-center'>
-                    <Typography weight="500" className='text-4xl'>Invest</Typography>
+                    <RotatingWords />
                 </View>
 
                 <View className='flex-1 h-full justify-end'>
@@ -104,6 +106,103 @@ function LoginScreen() {
                 </View>
             </View>
         </View>
+    );
+}
+
+const WORDS = [
+    { label: 'Spend', icon: 'card-outline' as const },
+    { label: 'Invest', icon: 'trending-up-outline' as const },
+    { label: 'Pay', icon: 'send-outline' as const },
+];
+
+const ITEM_HEIGHT = 48;
+const ROTATION_INTERVAL = 2500;
+
+function RotatingWords() {
+    const [activeIndex, setActiveIndex] = useState(0);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setActiveIndex(prev => (prev + 1) % WORDS.length);
+        }, ROTATION_INTERVAL);
+        return () => clearInterval(interval);
+    }, []);
+
+    return (
+        <View style={{ height: ITEM_HEIGHT * 3 }}>
+            {WORDS.map((word, index) => {
+                let slot = index - activeIndex;
+                if (slot > 1) slot -= WORDS.length;
+                if (slot < -1) slot += WORDS.length;
+
+                return (
+                    <RotatingWordItem
+                        key={word.label}
+                        word={word}
+                        slot={slot}
+                        isActive={slot === 0}
+                    />
+                );
+            })}
+        </View>
+    );
+}
+
+function RotatingWordItem({ word, slot, isActive }: {
+    word: (typeof WORDS)[number];
+    slot: number;
+    isActive: boolean;
+}) {
+    const targetY = (slot + 1) * ITEM_HEIGHT;
+    const animatedY = useSharedValue(targetY);
+    const prevSlotRef = useRef(slot);
+
+    useEffect(() => {
+        const prevSlot = prevSlotRef.current;
+        const newTarget = (slot + 1) * ITEM_HEIGHT;
+
+        if (slot === 1 && prevSlot === -1) {
+            // Wrapping from top to bottom: teleport below then animate in
+            animatedY.value = 3 * ITEM_HEIGHT;
+            animatedY.value = withTiming(newTarget, {
+                duration: 500,
+                easing: Easing.out(Easing.cubic),
+            });
+        } else {
+            animatedY.value = withTiming(newTarget, {
+                duration: 500,
+                easing: Easing.out(Easing.cubic),
+            });
+        }
+
+        prevSlotRef.current = slot;
+    }, [slot]);
+
+    const style = useAnimatedStyle(() => ({
+        position: 'absolute' as const,
+        left: 0,
+        height: ITEM_HEIGHT,
+        justifyContent: 'center' as const,
+        transform: [{ translateY: animatedY.value }],
+    }));
+
+    return (
+        <Animated.View style={style} className="flex-row items-center">
+            {isActive && (
+                <Ionicons
+                    name={word.icon}
+                    size={28}
+                    color="black"
+                    style={{ marginRight: 10 }}
+                />
+            )}
+            <Typography
+                weight="500"
+                className={`text-4xl ${isActive ? 'text-black' : 'text-black/30'}`}
+            >
+                {word.label}
+            </Typography>
+        </Animated.View>
     );
 }
 

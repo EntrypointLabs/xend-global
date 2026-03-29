@@ -144,34 +144,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const authenticate = async (email: string): Promise<void> => {
-        setUser({
-            address: "HskwRmauuraCF6mMBMn8CfiPvAXGSL8t5QDBzERKcoaS"
-        });
-        setEmail(email);
-        await AuthStorage.saveUserData({});
-        await AuthStorage.saveEmail(email);
-        await AuthStorage.saveIsAuthenticated(true);
+        // setUser({
+        //     address: "HskwRmauuraCF6mMBMn8CfiPvAXGSL8t5QDBzERKcoaS"
+        // });
+        // setEmail(email);
+        // await AuthStorage.saveUserData({});
+        // await AuthStorage.saveEmail(email);
+        // await AuthStorage.saveIsAuthenticated(true);
 
-        setIsAuthenticated(true);
-        setAuthError(null);
+        // setIsAuthenticated(true);
+        // setAuthError(null);
 
-        // try {
-        //     const result= await authenticateUser(email);
+        try {
+            const result = await authenticateUser(email);
 
-        //     setUser(result.data);
-        //     setEmail(email);
-        //     await AuthStorage.saveUserData(result.data);
-        //     await AuthStorage.saveEmail(email);
+            setUser(result.data);
+            setEmail(email);
+            await AuthStorage.saveUserData(result.data);
+            await AuthStorage.saveEmail(email);
 
-        //     setAuthError(null);
+            setAuthError(null);
 
 
-        // } catch (error) {
-        //     Sentry.captureException(new Error(`Error authenticating: ${error}. (contexts)/AuthContext.tsx (authenticate)`));
-        //     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-        //     setAuthError(errorMessage);
-        //     throw error;
-        // }
+        } catch (error) {
+            Sentry.captureException(new Error(`Error authenticating: ${error}. (contexts)/AuthContext.tsx (authenticate)`));
+            const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+            setAuthError(errorMessage);
+            throw error;
+        }
     };
 
     const register = async (email: string): Promise<void> => {
