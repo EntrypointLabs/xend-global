@@ -30,4 +30,6 @@ export interface AuthContextType {
   wallet: string | null;
   isLoading: boolean;
   isLoggingOut: boolean;
+  pendingPasskeySetup: boolean;
+  completePasskeySetup: () => void;
 }

@@ -127,6 +127,18 @@ export const AuthStorage = {
     };
   },
 
+  async saveHasPasskey(hasPasskey: boolean) {
+    await SecureStore.setItemAsync(
+      AUTH_STORAGE_KEYS.HAS_PASSKEY,
+      hasPasskey ? "true" : "false"
+    );
+  },
+
+  async getHasPasskey(): Promise<boolean> {
+    const value = await SecureStore.getItemAsync(AUTH_STORAGE_KEYS.HAS_PASSKEY);
+    return value === "true";
+  },
+
   async clearAuthData() {
     await Promise.all([
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.ACCOUNT_INFO),
@@ -143,6 +155,7 @@ export const AuthStorage = {
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.IS_AUTHENTICATED),
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.PERSISTENT_EMAIL),
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.CACHED_BALANCE),
+      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.HAS_PASSKEY),
     ]);
   },
 };

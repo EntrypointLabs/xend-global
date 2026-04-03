@@ -28,6 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [mpcPrimaryId, setMpcPrimaryId] = useState<string | null>(null);
   const [user, setUser] = useState<any | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [pendingPasskeySetup, setPendingPasskeySetup] = useState(false);
 
   useEffect(() => {
     const initializeAuth = async () => {
@@ -38,6 +39,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setEmail(savedEmail);
         const isAuthenticated = await AuthStorage.isAuthenticated();
         setIsAuthenticated(isAuthenticated);
+
+        // If authenticated but no passkey cached, gate the redirect
+        if (isAuthenticated) {
+          const hasPasskey = await AuthStorage.getHasPasskey();
+          if (!hasPasskey) {
+            setPendingPasskeySetup(true);
+          }
+        }
 
         // if (user && sessionSecrets) {
         //     setIsAuthenticated(true);
@@ -147,6 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Reset authentication state
       setIsAuthenticated(false);
+      setPendingPasskeySetup(false);
       setUser(null);
       setEmail(null);
       setAccountInfo(null);
@@ -184,7 +194,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AuthStorage.saveToken(token);
     await AuthStorage.saveIsAuthenticated(true);
     setIsAuthenticated(true);
+    setPendingPasskeySetup(true);
     setAuthError(null);
+  };
+
+  const completePasskeySetup = () => {
+    setPendingPasskeySetup(false);
   };
 
   const authenticate = async (email: string): Promise<void> => {
@@ -264,6 +279,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         wallet,
         isLoading,
         isLoggingOut,
+        pendingPasskeySetup,
+        completePasskeySetup,
       }}
     >
       {children}

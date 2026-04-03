@@ -5,6 +5,8 @@ import {
     SessionSecrets,
     CompleteAuthAndCreateAccountRequest,
     CompleteAuthRequestWithOtp,
+    CreatePasskeySessionRequest,
+    AddPasskeyRequest,
 } from '@sqds/grid';
 
 @Injectable()
@@ -68,5 +70,19 @@ export class GridService implements OnModuleInit {
 
     async generateSessionSecrets(): Promise<SessionSecrets> {
         return this.client.generateSessionSecrets();
+    }
+
+    // ── Passkeys ────────────────────────────────────────────────────────
+
+    async getPasskeys(accountAddress: string) {
+        return this.client.getPasskeys(accountAddress);
+    }
+
+    async createPasskeySession(params: CreatePasskeySessionRequest) {
+        return this.client.createPasskeySession(params, this.env);
+    }
+
+    async addPasskey(accountAddress: string, request: AddPasskeyRequest) {
+        return this.client.addPasskey(accountAddress, request);
     }
 }

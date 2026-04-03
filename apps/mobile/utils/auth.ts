@@ -90,4 +90,5 @@ export const AUTH_STORAGE_KEYS = {
   EXTERNAL_ACCOUNTS: "auth_external_accounts",
   KYC_LINK: "auth_kyc_link",
   CACHED_BALANCE: "auth_cached_balance",
+  HAS_PASSKEY: "auth_has_passkey",
 };

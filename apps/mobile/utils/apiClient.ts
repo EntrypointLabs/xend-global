@@ -1,5 +1,10 @@
 import { handleError, ErrorCode } from "@/utils/errors";
-import { SessionSecrets } from "@sqds/grid-react-native";
+import {
+  SessionSecrets,
+  GetPasskeysResponse,
+  CreatePasskeySessionResponse,
+  MetaInfo,
+} from "@sqds/grid-react-native";
 
 class ApiError extends Error {
   constructor(
@@ -118,6 +123,19 @@ class BackendClient {
     return this.request<any>("/verify-otp-and-create-account", {
       method: "POST",
       body: JSON.stringify(request),
+    });
+  }
+  async checkPasskeys(accountAddress: string) {
+    return this.request<GetPasskeysResponse>("/passkeys/check", {
+      method: "POST",
+      body: JSON.stringify({ accountAddress }),
+    });
+  }
+
+  async createPasskeySession(accountAddress: string, metaInfo: MetaInfo) {
+    return this.request<CreatePasskeySessionResponse>("/passkeys/session", {
+      method: "POST",
+      body: JSON.stringify({ accountAddress, metaInfo }),
     });
   }
 }

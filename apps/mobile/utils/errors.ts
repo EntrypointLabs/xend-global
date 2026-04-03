@@ -19,6 +19,11 @@ export enum ErrorCode {
   // Transaction errors
   INSUFFICIENT_BALANCE = "INSUFFICIENT_BALANCE",
 
+  // Passkey errors
+  PASSKEY_CHECK_FAILED = "PASSKEY_CHECK_FAILED",
+  PASSKEY_REGISTRATION_FAILED = "PASSKEY_REGISTRATION_FAILED",
+  PASSKEY_CANCELLED = "PASSKEY_CANCELLED",
+
   // Network errors
   UNKNOWN_ERROR = "UNKNOWN_ERROR",
 }
@@ -43,6 +48,14 @@ export const ErrorMessages: Record<ErrorCode, string> = {
 
   // Transaction errors
   [ErrorCode.INSUFFICIENT_BALANCE]: "Insufficient balance.",
+
+  // Passkey errors
+  [ErrorCode.PASSKEY_CHECK_FAILED]:
+    "Failed to check passkey status. Please try again.",
+  [ErrorCode.PASSKEY_REGISTRATION_FAILED]:
+    "Passkey registration failed. Please try again.",
+  [ErrorCode.PASSKEY_CANCELLED]:
+    "Passkey setup was cancelled. Please try again to continue.",
 
   // Network errors
   [ErrorCode.UNKNOWN_ERROR]:

@@ -4,19 +4,29 @@ import { router } from "expo-router";
 import { Email } from "@/types/Auth";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLoginMutation } from "@/hooks/useLoginMutation";
+import { usePasskey } from "@/hooks/usePasskey";
 import { useResendTimer } from "@/hooks/useResendTimer";
 import { WithScreenTheme } from "@/components/WithScreenTheme";
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { ThemedTextInput } from "@/components/ui/molecules";
 import { ScreenVerificationCodeInput } from "@/components/ui/organisms/ScreenVerificationCodeInput";
+import { PasskeySetupModal } from "@/components/ui/organisms/modals/PasskeySetupModal";
 import Toast from "react-native-toast-message";
 
 function EmailLoginScreen() {
   const [emailInput, setEmailInput] = useState("");
   const [emailError, setEmailError] = useState<string | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
-  const { completeLogin } = useAuth();
+  const [showPasskeySetup, setShowPasskeySetup] = useState(false);
+  const { completeLogin, completePasskeySetup, user } = useAuth();
+  const {
+    checkPasskeys,
+    registerPasskey,
+    isRegistering,
+    error: passkeyError,
+    clearError: clearPasskeyError,
+  } = usePasskey();
   
 
   const {
@@ -48,18 +58,39 @@ function EmailLoginScreen() {
     }
   };
 
-  console.log('otpSent', otpSent)
-
   const handleVerifyOtp = async (code: string) => {
     setVerifyError(null);
-    console.log('code', code)
     try {
       const result = await verifyOtpAsync(code);
-      console.log('result', result)
       await completeLogin(result.data, emailInput.trim(), result.token);
+
+      // Passkey check — mandatory before proceeding to dashboard
+      const accountAddress =
+        result.data?.smart_account_address || result.data?.address;
+      if (accountAddress) {
+        const hasExisting = await checkPasskeys(accountAddress);
+        if (hasExisting) {
+          completePasskeySetup();
+        } else {
+          setShowPasskeySetup(true);
+        }
+      } else {
+        setShowPasskeySetup(true);
+      }
     } catch (error: any) {
-      console.log('error', error)
       setVerifyError("Invalid code. Please try again.");
+    }
+  };
+
+  const handleAddPasskey = async () => {
+    clearPasskeyError();
+    const addr = user?.smart_account_address || user?.address;
+    if (!addr) return;
+
+    const success = await registerPasskey(addr);
+    if (success) {
+      setShowPasskeySetup(false);
+      completePasskeySetup();
     }
   };
 
@@ -200,6 +231,14 @@ function EmailLoginScreen() {
             </View>
           </View>
         </ScrollView>
+
+        <PasskeySetupModal
+          visible={showPasskeySetup}
+          onAddPasskey={handleAddPasskey}
+          isLoading={isRegistering}
+          error={passkeyError}
+          onRetry={handleAddPasskey}
+        />
       </View>
     </TouchableWithoutFeedback>
   );

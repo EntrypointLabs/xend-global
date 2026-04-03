@@ -1,6 +1,6 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { SessionSecrets } from '@sqds/grid';
+import { SessionSecrets, MetaInfo } from '@sqds/grid';
 
 class RegisterDto {
     email: string;
@@ -20,6 +20,15 @@ class VerifyOtpDto {
     otpCode:        string;
     sessionSecrets: SessionSecrets;
     user:           any;
+}
+
+class CheckPasskeysDto {
+    accountAddress: string;
+}
+
+class CreatePasskeySessionDto {
+    accountAddress: string;
+    metaInfo:       MetaInfo;
 }
 
 @Controller()
@@ -48,5 +57,17 @@ export class AuthController {
     @Post('verify-otp')
     verifyOtp(@Body() dto: VerifyOtpDto) {
         return this.auth.verifyOtp(dto);
+    }
+
+    // Passkey — check if account has passkeys
+    @Post('passkeys/check')
+    checkPasskeys(@Body() dto: CheckPasskeysDto) {
+        return this.auth.checkPasskeys(dto.accountAddress);
+    }
+
+    // Passkey — create a passkey session (returns hosted URL)
+    @Post('passkeys/session')
+    createPasskeySession(@Body() dto: CreatePasskeySessionDto) {
+        return this.auth.createPasskeySession(dto);
     }
 }

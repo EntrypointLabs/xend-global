@@ -4,7 +4,7 @@ import { GridService } from '../grid/grid.service';
 import { DbService } from '../db/db.service';
 import { users, smartAccounts } from '../db/schema';
 import { eq } from 'drizzle-orm';
-import { CompleteAuthAndCreateAccountResponse, CompleteAuthResponse, SessionSecrets } from '@sqds/grid';
+import { CompleteAuthAndCreateAccountResponse, CompleteAuthResponse, SessionSecrets, MetaInfo } from '@sqds/grid';
 
 @Injectable()
 export class AuthService {
@@ -153,5 +153,33 @@ export class AuthService {
         });
 
         return { ...gridResponse, token };
+    }
+
+    // ── Passkeys ───────────────────────────────────────────────────────
+
+    async checkPasskeys(accountAddress: string) {
+        try {
+            return await this.grid.getPasskeys(accountAddress);
+        } catch (error) {
+            this.handleGridError(error, 'checkPasskeys');
+        }
+    }
+
+    async createPasskeySession(dto: { accountAddress: string; metaInfo: MetaInfo }) {
+        try {
+            const sessionSecrets = await this.grid.generateSessionSecrets();
+            const sessionKey = {
+                key: sessionSecrets[0].publicKey,
+                expiration: Math.floor(Date.now() / 1000) + 900, // 15 minutes
+            };
+
+            return await this.grid.createPasskeySession({
+                sessionKey,
+                env: this.grid.getEnv(),
+                metaInfo: dto.metaInfo,
+            });
+        } catch (error) {
+            this.handleGridError(error, 'createPasskeySession');
+        }
     }
 }

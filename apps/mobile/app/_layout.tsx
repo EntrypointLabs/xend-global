@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Slot, useRouter, useSegments } from "expo-router";
+import { Redirect, Slot, useRouter, useSegments } from "expo-router";
 import Toast from "react-native-toast-message";
 import { View } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
@@ -43,6 +43,7 @@ import {
   Inter_900Black_Italic,
   useFonts,
 } from "@expo-google-fonts/inter";
+import LoadingScreen from "@/components/ui/layout/LoadingScreen";
 
 const queryClient = new QueryClient();
 
@@ -71,21 +72,36 @@ if (process.env.EXPO_PUBLIC_GRID_ENV === "production") {
 
 function AuthLayout() {
   const segments = useSegments();
-  const router = useRouter();
-  const { isAuthenticated } = useAuth();
+  // const router = useRouter();
+  const { isAuthenticated, pendingPasskeySetup } = useAuth();
   const colorScheme = useColorScheme();
 
-  useEffect(() => {
-    if (isAuthenticated === null) return;
+  // useEffect(() => {
+  //   if (isAuthenticated === null) return;
+
+  //   const inAuthGroup = segments[0] === "(auth)";
+
+  //   if (!isAuthenticated && !inAuthGroup) {
+  //     router.replace("/login");
+  //   } else if (isAuthenticated && !pendingPasskeySetup && inAuthGroup) {
+  //     router.replace("/(tabs)");
+  //   }
+  // }, [isAuthenticated, pendingPasskeySetup, router, segments]);
+
+  if (isAuthenticated === null) {
+    return <LoadingScreen />;
+  }
 
     const inAuthGroup = segments[0] === "(auth)";
 
-    if (!isAuthenticated && !inAuthGroup) {
-      router.replace("/login");
-    } else if (isAuthenticated && inAuthGroup) {
-      router.replace("/(tabs)");
-    }
-  }, [isAuthenticated, router, segments]);
+
+  if (!isAuthenticated && !inAuthGroup) {
+    return <Redirect href="/login" withAnchor />;
+  }
+  
+  if (isAuthenticated && !pendingPasskeySetup && inAuthGroup) {
+    return <Redirect href="/(tabs)" withAnchor />;
+  }
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? darkTheme : lightTheme}>
@@ -170,7 +186,11 @@ function RootLayout() {
     }
   }, [loaded, error]);
 
-  if ((!loaded && !fontTimeout) || !!error) {
+  if (!loaded && !fontTimeout) {
+    return <LoadingScreen />;
+  }
+
+  if (!loaded || !!error) {
     return null;
   }
 
