@@ -53,19 +53,23 @@ export function usePasskey() {
     setIsRegistering(true);
     setError(null);
     try {
+      // Generate redirect URL first so Grid knows where to send user back
+      const redirectUrl = Linking.createURL("passkey-callback");
       // Get hosted URL from backend
       const response = await apiClient.createPasskeySession(accountAddress, {
         appName: "Fuse",
+        redirectUrl,
       });
 
-      const url = response?.data?.url || response?.url;
+      const url = response?.data?.url;
       if (!url) {
         throw new Error("No passkey session URL returned");
       }
 
       // Open system browser for WebAuthn ceremony
-      const redirectUrl = Linking.createURL("passkey-callback");
       const result = await WebBrowser.openAuthSessionAsync(url, redirectUrl);
+
+      console.log('result', result);
 
       if (result.type === "cancel" || result.type === "dismiss") {
         setError("Passkey setup was cancelled. Please try again to continue.");

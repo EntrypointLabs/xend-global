@@ -79,7 +79,7 @@ export default function SettingsScreen() {
         {
           label: "Delete Wallet",
           icon: require("@/assets/icons/x.png"),
-          onPress: () => {},
+          onPress: logout,
           color: "#F90101",
         },
       ],

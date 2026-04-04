@@ -168,8 +168,16 @@ export class AuthService {
     async createPasskeySession(dto: { accountAddress: string; metaInfo: MetaInfo }) {
         try {
             const sessionSecrets = await this.grid.generateSessionSecrets();
+            const passkeySecret = sessionSecrets.find(s => s.tag === 'passkey');
+            if (!passkeySecret) {
+                throw new HttpException(
+                    { code: 'PASSKEY_SESSION_FAILED', message: 'No passkey session key generated' },
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                );
+            }
+
             const sessionKey = {
-                key: sessionSecrets[0].publicKey,
+                key: passkeySecret.publicKey,
                 expiration: Math.floor(Date.now() / 1000) + 900, // 15 minutes
             };
 
