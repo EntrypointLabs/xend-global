@@ -1,6 +1,6 @@
 # KYC Verification
 
-The KYC verification process is implemented in [`app/(modals)/kyc.tsx`](app/(modals)/kyc.tsx) using the [@sqds/grid SDK](https://www.npmjs.com/package/@sqds/grid).
+The KYC verification process is implemented in [`app/(modals)/kyc.tsx`](<app/(modals)/kyc.tsx>) using the [@sqds/grid SDK](https://www.npmjs.com/package/@sqds/grid).
 
 ### Step 1: KYC Initiation
 
@@ -15,9 +15,11 @@ When the user starts the KYC process, the app:
 The backend API routes use the Grid SDK:
 
 ```typescript
-import { SDKGridClient } from '../../grid/sdkClient';
+import { SDKGridClient } from "../../grid/sdkClient";
 
 const gridClient = SDKGridClient.getInstance();
-const response = await gridClient.requestKycLink(smartAccountAddress, kycRequest);
+const response = await gridClient.requestKycLink(
+  smartAccountAddress,
+  kycRequest
+);
 ```
-

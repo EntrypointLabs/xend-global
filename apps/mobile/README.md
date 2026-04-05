@@ -2,12 +2,11 @@
 
 ![neobank-example-app](https://github.com/user-attachments/assets/f5c6e770-36e6-43dc-953e-dd16369d2ab6)
 
-
 This is a demo React Native app built with [Expo](https://expo.dev/), designed to showcase the [@sqds/grid-react-native SDK](https://www.npmjs.com/package/@sqds/grid-react-native). It demonstrates authentication, KYC, virtual account creation, and more, using a modern Expo Router structure and the official Grid React Native SDK.
 
 > **Note:** This repo supports Expo SDK 54. Expo recommends using [development builds](https://docs.expo.dev/develop/development-builds/introduction/) for production apps, as Expo Go only supports the latest SDK version. See the [Expo SDK upgrade guide](https://docs.expo.dev/workflow/upgrading-expo-sdk-walkthrough/) for more information.
 
-> ⚠️ **Disclaimer:** This is a demo application intended for educational and demonstration purposes only. 
+> ⚠️ **Disclaimer:** This is a demo application intended for educational and demonstration purposes only.
 
 ## Table of Contents
 
@@ -45,20 +44,21 @@ The app demonstrates a secure architecture using the [@sqds/grid-react-native SD
 The [sdkClient.ts](grid/sdkClient.ts) file provides a singleton pattern for the Grid SDK with proper environment configuration:
 
 ```typescript
-import { GridClient, GridEnvironment } from '@sqds/grid-react-native';
-import { SDKGridClient } from './grid/sdkClient';
+import { GridClient, GridEnvironment } from "@sqds/grid-react-native";
+import { SDKGridClient } from "./grid/sdkClient";
 
 // Direct SDK initialization (what happens inside SDKGridClient)
 const gridClient = new GridClient({
-    apiKey: process.env.GRID_API_KEY,           // Required for backend operations
-    environment: 'sandbox' as GridEnvironment, // 'sandbox' or 'production'
-    baseUrl: process.env.EXPO_PUBLIC_GRID_ENDPOINT // Grid Api endpoint
+  apiKey: process.env.GRID_API_KEY, // Required for backend operations
+  environment: "sandbox" as GridEnvironment, // 'sandbox' or 'production'
+  baseUrl: process.env.EXPO_PUBLIC_GRID_ENDPOINT, // Grid Api endpoint
 });
 
 const sessionSecrets = await gridClient.generateSessionSecrets();
 ```
 
 **Required Environment Variables:**
+
 ```env
 GRID_API_KEY=your_grid_api_key_here           # Backend only - never expose to frontend
 EXPO_PUBLIC_GRID_ENV=sandbox                  # 'sandbox' or 'production'
@@ -124,7 +124,8 @@ EXPO_PUBLIC_GRID_ENV=sandbox # or production
 EXPO_PUBLIC_API_ENDPOINT=http://localhost:8081/api
 ```
 
-**Important**: 
+**Important**:
+
 - `GRID_API_KEY` is used server-side only for SDK authentication
 - `EXPO_PUBLIC_*` variables are safe to expose to the frontend
 - Use `sandbox` environment for development and testing
@@ -172,7 +173,7 @@ app/
 ## App Flow
 
 - **Authentication:** Enter your email, receive an OTP, and log in.
-- **KYC:** Complete the KYC flow and accept the Terms of Service, in order to create a virtual bank account and send money to and from your 
+- **KYC:** Complete the KYC flow and accept the Terms of Service, in order to create a virtual bank account and send money to and from your
 - **Virtual Account:** After KYC, create a virtual bank account.
 - **Send/Receive:** Try sending and receiving funds using the demo flows.
 
@@ -195,5 +196,3 @@ app/
 - [Expo Documentation](https://docs.expo.dev/)
 - [Expo Go App](https://expo.dev/client)
 - [Expo CLI](https://docs.expo.dev/workflow/expo-cli/)
-
-

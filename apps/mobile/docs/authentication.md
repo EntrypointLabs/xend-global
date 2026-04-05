@@ -9,6 +9,7 @@ The Grid SDK authentication has two separate flows: **Registration** (new users)
 When a new user enters their email:
 
 1. Uses the Grid SDK's `createAccount()` method via [`app/api/register+api.ts`](../app/api/register+api.ts):
+
    ```typescript
    const gridClient = SDKGridClient.getInstance();
    const response = await gridClient.createAccount({ email });
@@ -21,6 +22,7 @@ When a new user enters their email:
 When the user enters the OTP code:
 
 1. Generate session secrets using the SDK:
+
    ```typescript
    const gridClient = SDKGridClient.getFrontendClient();
    const sessionSecrets = await gridClient.generateSessionSecrets();
@@ -31,7 +33,7 @@ When the user enters the OTP code:
    const response = await gridClient.completeAuthAndCreateAccount({
      otpCode: code,
      sessionSecrets: sessionSecrets,
-     user: userData
+     user: userData,
    });
    ```
 
@@ -42,6 +44,7 @@ When the user enters the OTP code:
 When an existing user enters their email:
 
 1. Uses the Grid SDK's `initAuth()` method via [`app/api/auth+api.ts`](../app/api/auth+api.ts):
+
    ```typescript
    const gridClient = SDKGridClient.getInstance();
    const response = await gridClient.initAuth({ email });
@@ -54,6 +57,7 @@ When an existing user enters their email:
 When the user enters the OTP code:
 
 1. Generate session secrets (same as registration):
+
    ```typescript
    const sessionSecrets = await gridClient.generateSessionSecrets();
    ```
@@ -63,7 +67,7 @@ When the user enters the OTP code:
    const response = await gridClient.completeAuth({
      otpCode: code,
      sessionSecrets: sessionSecrets,
-     user: userData
+     user: userData,
    });
    ```
 
@@ -85,7 +89,6 @@ Session secrets are critical for all authenticated operations in your app:
 - **Renewal**: Users need to re-authenticate when sessions expire
 - **Cleanup**: Should be encrypted and cleared on logout for security
 
-
 ## Security Considerations
 
 - **Local Signing Architecture**: All transaction signing happens on-device using session secrets - private keys never leave the client
@@ -95,4 +98,3 @@ Session secrets are critical for all authenticated operations in your app:
 - **No Backend Secrets**: The SDK never transmits session secrets to your backend - only signed payloads are sent
 - **Environment Security**: API keys are server-side only, never exposed to frontend
 - **Logout Cleanup**: Always clear session secrets from storage on logout
-

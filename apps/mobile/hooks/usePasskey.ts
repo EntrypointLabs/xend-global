@@ -37,9 +37,7 @@ export function usePasskey() {
       setIsChecking(false);
       return exists;
     } catch (err) {
-      Sentry.captureException(
-        new Error(`Passkey check failed: ${err}`)
-      );
+      Sentry.captureException(new Error(`Passkey check failed: ${err}`));
       setError("Failed to check passkey status.");
       setHasPasskey(false);
       setIsChecking(false);
@@ -47,9 +45,7 @@ export function usePasskey() {
     }
   };
 
-  const registerPasskey = async (
-    accountAddress: string
-  ): Promise<boolean> => {
+  const registerPasskey = async (accountAddress: string): Promise<boolean> => {
     setIsRegistering(true);
     setError(null);
     try {
@@ -69,7 +65,7 @@ export function usePasskey() {
       // Open system browser for WebAuthn ceremony
       const result = await WebBrowser.openAuthSessionAsync(url, redirectUrl);
 
-      console.log('result', result);
+      console.log("result", result);
 
       if (result.type === "cancel" || result.type === "dismiss") {
         setError("Passkey setup was cancelled. Please try again to continue.");
@@ -92,9 +88,7 @@ export function usePasskey() {
 
         // Check for error in params
         const errorMsg = params.get("error");
-        setError(
-          errorMsg || "Passkey registration failed. Please try again."
-        );
+        setError(errorMsg || "Passkey registration failed. Please try again.");
         setIsRegistering(false);
         return false;
       }
@@ -103,9 +97,7 @@ export function usePasskey() {
       setIsRegistering(false);
       return false;
     } catch (err) {
-      Sentry.captureException(
-        new Error(`Passkey registration failed: ${err}`)
-      );
+      Sentry.captureException(new Error(`Passkey registration failed: ${err}`));
       setError(
         err instanceof Error
           ? err.message

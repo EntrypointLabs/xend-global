@@ -2,8 +2,8 @@
 
 The USDC transfer process is implemented using the [@sqds/grid SDK](https://www.npmjs.com/package/@sqds/grid) in two main screens:
 
-1. [`app/(send)/amount.tsx`](../app/(send)/amount.tsx) - Amount entry and recipient details
-2. [`app/(send)/confirm.tsx`](../app/(send)/confirm.tsx) - Payment authorization and execution
+1. [`app/(send)/amount.tsx`](<../app/(send)/amount.tsx>) - Amount entry and recipient details
+2. [`app/(send)/confirm.tsx`](<../app/(send)/confirm.tsx>) - Payment authorization and execution
 
 ## Transfer Process
 
@@ -13,11 +13,14 @@ When the user enters transfer details, the app creates a payment intent using th
 
 ```typescript
 // Backend API with API key
-import { CreatePaymentIntentRequest } from '@sqds/grid';
-import { SDKGridClient } from '../../grid/sdkClient';
+import { CreatePaymentIntentRequest } from "@sqds/grid";
+import { SDKGridClient } from "../../grid/sdkClient";
 
 const gridClient = SDKGridClient.getInstance(); // Uses API key
-const response = await gridClient.createPaymentIntent(smartAccountAddress, paymentRequest);
+const response = await gridClient.createPaymentIntent(
+  smartAccountAddress,
+  paymentRequest
+);
 ```
 
 #### Payment Request Structure
@@ -44,17 +47,18 @@ When the user confirms the transfer, the frontend signs the transaction locally 
 
 ```typescript
 // Frontend client WITHOUT API key (secure - no key exposure)
-import { SDKGridClient } from './grid/sdkClient';
+import { SDKGridClient } from "./grid/sdkClient";
 
 const gridClient = SDKGridClient.getFrontendClient(); // No API key
 const signedPayload = await gridClient.sign({
   sessionSecrets: sessionSecrets,
   session: user.authentication,
-  transactionPayload: transactionData.data.transactionPayload
+  transactionPayload: transactionData.data.transactionPayload,
 });
 ```
 
 **Critical Security Points:**
+
 - **Frontend uses `sign()` only** - never exposes API key to frontend
 - **Session secrets enable local signing** - private keys never leave the device
 
@@ -67,11 +71,11 @@ The signed payload is sent to the backend which submits it using the SDK's `send
 const gridClient = SDKGridClient.getInstance(); // Uses API key
 const signature = await gridClient.send({
   signedTransactionPayload: signedPayload,
-  address: smartAccountAddress
+  address: smartAccountAddress,
 });
 ```
 
-## Security Architecture 
+## Security Architecture
 
 The Grid SDK uses a secure three-step process that separates signing from sending:
 
@@ -86,29 +90,31 @@ The Grid SDK uses a secure three-step process that separates signing from sendin
 ```typescript
 // 1. Backend: Create payment intent
 export async function POST(request: Request) {
-    const { payload, smartAccountAddress } = await request.json();
-    const gridClient = SDKGridClient.getInstance(); // With API key
-    const response = await gridClient.createPaymentIntent(smartAccountAddress, payload);
-    return Response.json(response);
+  const { payload, smartAccountAddress } = await request.json();
+  const gridClient = SDKGridClient.getInstance(); // With API key
+  const response = await gridClient.createPaymentIntent(
+    smartAccountAddress,
+    payload
+  );
+  return Response.json(response);
 }
 
 // 2. Frontend: Sign transaction (secure - no API key exposure)
 const frontendClient = SDKGridClient.getFrontendClient(); // No API key
 const signedPayload = await frontendClient.sign({
-    sessionSecrets,
-    session: user.authentication,
-    transactionPayload: transactionData.data.transactionPayload
+  sessionSecrets,
+  session: user.authentication,
+  transactionPayload: transactionData.data.transactionPayload,
 });
 
 // 3. Backend: Send signed transaction
 export async function POST(request: Request) {
-    const { address, signedTransactionPayload } = await request.json();
-    const gridClient = SDKGridClient.getInstance(); // With API key
-    const signature = await gridClient.send({
-        signedTransactionPayload,
-        address
-    });
-    return Response.json(signature);
+  const { address, signedTransactionPayload } = await request.json();
+  const gridClient = SDKGridClient.getInstance(); // With API key
+  const signature = await gridClient.send({
+    signedTransactionPayload,
+    address,
+  });
+  return Response.json(signature);
 }
 ```
-

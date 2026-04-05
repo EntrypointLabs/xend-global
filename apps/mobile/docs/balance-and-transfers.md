@@ -1,6 +1,6 @@
 # Transfers & Balance
 
-The transfers and balance functionality is implemented in [`app/(tabs)/index.tsx`](../app/(tabs)/index.tsx) using the [@sqds/grid SDK](https://www.npmjs.com/package/@sqds/grid).
+The transfers and balance functionality is implemented in [`app/(tabs)/index.tsx`](<../app/(tabs)/index.tsx>) using the [@sqds/grid SDK](https://www.npmjs.com/package/@sqds/grid).
 
 ### Fetch Balance
 
@@ -23,5 +23,3 @@ const response = await gridClient.getTransfers(smartAccountAddress);
 ```
 
 This returns a list of all transactions (transfers, deposits, withdrawals) with their status and details.
-
-

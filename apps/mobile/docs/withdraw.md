@@ -2,8 +2,8 @@
 
 The bank withdrawal process is implemented using the [@sqds/grid SDK](https://www.npmjs.com/package/@sqds/grid) in two main screens:
 
-1. [`app/(send)/amount.tsx`](../app/(send)/amount.tsx) - Amount entry and bank account details
-2. [`app/(send)/fiatconfirm.tsx`](../app/(send)/fiatconfirm.tsx) - Payment authorization and execution
+1. [`app/(send)/amount.tsx`](<../app/(send)/amount.tsx>) - Amount entry and bank account details
+2. [`app/(send)/fiatconfirm.tsx`](<../app/(send)/fiatconfirm.tsx>) - Payment authorization and execution
 
 ## Withdrawal Process
 
@@ -13,11 +13,14 @@ When the user enters withdrawal details, the app creates a payment intent for fi
 
 ```typescript
 // Backend API with API key
-import { CreatePaymentIntentRequest } from '@sqds/grid';
-import { SDKGridClient } from '../../grid/sdkClient';
+import { CreatePaymentIntentRequest } from "@sqds/grid";
+import { SDKGridClient } from "../../grid/sdkClient";
 
 const gridClient = SDKGridClient.getInstance(); // Uses API key
-const response = await gridClient.createPaymentIntent(smartAccountAddress, withdrawalRequest);
+const response = await gridClient.createPaymentIntent(
+  smartAccountAddress,
+  withdrawalRequest
+);
 ```
 
 #### Withdrawal Request Structure
@@ -45,13 +48,13 @@ When the user confirms the withdrawal, the frontend signs the transaction locall
 
 ```typescript
 // Frontend client WITHOUT API key
-import { SDKGridClient } from './grid/sdkClient';
+import { SDKGridClient } from "./grid/sdkClient";
 
 const gridClient = SDKGridClient.getFrontendClient(); // No API key
 const signedPayload = await gridClient.sign({
   sessionSecrets: sessionSecrets,
   session: user.authentication,
-  transactionPayload: transactionData.data.transactionPayload
+  transactionPayload: transactionData.data.transactionPayload,
 });
 ```
 
@@ -64,7 +67,7 @@ The signed payload is sent to the backend which processes the withdrawal using t
 const gridClient = SDKGridClient.getInstance(); // Uses API key
 const signature = await gridClient.send({
   signedTransactionPayload: signedPayload,
-  address: smartAccountAddress
+  address: smartAccountAddress,
 });
 ```
 
@@ -81,35 +84,39 @@ const signature = await gridClient.send({
 ```typescript
 // 1. Backend: Create withdrawal payment intent
 export async function POST(request: Request) {
-    const { payload, smartAccountAddress } = await request.json();
-    const gridClient = SDKGridClient.getInstance(); // With API key
-    const response = await gridClient.createPaymentIntent(smartAccountAddress, payload);
-    return Response.json(response);
+  const { payload, smartAccountAddress } = await request.json();
+  const gridClient = SDKGridClient.getInstance(); // With API key
+  const response = await gridClient.createPaymentIntent(
+    smartAccountAddress,
+    payload
+  );
+  return Response.json(response);
 }
 
 // 2. Frontend: Sign transaction
 const frontendClient = SDKGridClient.getFrontendClient(); // No API key
 const signedPayload = await frontendClient.sign({
-    sessionSecrets,
-    session: user.authentication,
-    transactionPayload: transactionData.data.transactionPayload
+  sessionSecrets,
+  session: user.authentication,
+  transactionPayload: transactionData.data.transactionPayload,
 });
 
 // 3. Backend: Send signed withdrawal
 export async function POST(request: Request) {
-    const { address, signedTransactionPayload } = await request.json();
-    const gridClient = SDKGridClient.getInstance(); // With API key
-    const signature = await gridClient.send({
-        signedTransactionPayload,
-        address
-    });
-    return Response.json(signature);
+  const { address, signedTransactionPayload } = await request.json();
+  const gridClient = SDKGridClient.getInstance(); // With API key
+  const signature = await gridClient.send({
+    signedTransactionPayload,
+    address,
+  });
+  return Response.json(signature);
 }
 ```
 
 ## Requirements
 
 Before processing withdrawals, ensure:
+
 - User has completed KYC verification
 - Virtual bank account is created and verified
 - Sufficient balance in the smart account

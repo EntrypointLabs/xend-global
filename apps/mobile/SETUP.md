@@ -6,7 +6,7 @@ This guide will help you get the Grid SDK demo app running in minutes.
 
 - Node.js 18+ installed
 - Expo CLI (`npm install -g expo-cli`)
-- Grid API key 
+- Grid API key
 
 ## 1. Clone & Install
 
@@ -48,7 +48,7 @@ npx expo start
 This app demonstrates key Grid SDK patterns:
 
 - **Authentication**: Email + OTP flow
-- **Smart Accounts**: Account creation and management  
+- **Smart Accounts**: Account creation and management
 - **KYC**: Identity verification integration
 - **Virtual Accounts**: Bank account creation
 - **Payments**: USDC transfers and fiat operations

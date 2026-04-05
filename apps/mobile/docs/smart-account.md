@@ -13,13 +13,13 @@ Smart accounts are automatically created when new users complete registration us
 const response = await gridClient.completeAuthAndCreateAccount({
   otpCode: code,
   sessionSecrets: sessionSecrets,
-  user: userData
+  user: userData,
 });
 
 // Response includes the newly created smart account
 {
-  smart_account_address: string;  // Solana address of the smart account
-  grid_user_id: string;          // Unique Grid user identifier
+  smart_account_address: string; // Solana address of the smart account
+  grid_user_id: string; // Unique Grid user identifier
   // ... additional user data
 }
 ```
@@ -33,7 +33,7 @@ Smart accounts are automatically retrieved when existing users login using `comp
 const response = await gridClient.completeAuth({
   otpCode: code,
   sessionSecrets: sessionSecrets,
-  user: userData
+  user: userData,
 });
 
 // Response includes the existing smart account details
@@ -51,9 +51,8 @@ The smart account address is used in all subsequent SDK operations and holds the
 ## Key Points
 
 - **No Manual Creation Required**: Smart accounts are created automatically during user registration
-- **Always Available After Auth**: Once authenticated, the smart account address is available for all operations  
+- **Always Available After Auth**: Once authenticated, the smart account address is available for all operations
 - **Persistent**: Smart accounts persist across login sessions for existing users
 - **Integrated with SDK**: All SDK operations that require a smart account will use the one from authentication
 
 See the [Authentication Flow documentation](authentication.md) for details on how smart accounts are created during the registration and login process.
-

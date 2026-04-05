@@ -48,8 +48,8 @@ export function PasskeySetupModal({
             </Typography>
 
             <Typography weight="400" style={styles.description}>
-              A passkey lets you securely sign transactions using biometrics like
-              Face ID or fingerprint.
+              A passkey lets you securely sign transactions using biometrics
+              like Face ID or fingerprint.
             </Typography>
 
             {error ? (

@@ -24,13 +24,13 @@ A Turborepo-managed workspace containing an Expo React Native mobile app and a N
 
 ## Setup
 
-1) Install dependencies at the repo root:
+1. Install dependencies at the repo root:
 
 ```
 npm install
 ```
 
-2) Mobile environment file (optional but recommended):
+2. Mobile environment file (optional but recommended):
 
 ```
 cp apps/mobile/example.env apps/mobile/.env
