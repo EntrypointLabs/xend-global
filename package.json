@@ -6,7 +6,9 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "check-types": "turbo run check-types"
+    "check-types": "turbo run check-types",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "devDependencies": {
     "prettier": "^3.7.4",
@@ -23,6 +25,11 @@
   ],
   "dependencies": {
     "@bonfida/spl-name-service": "^3.0.16",
-    "@tanstack/react-query": "^5.90.20"
-  }
+    "@tanstack/react-query": "^5.90.20",
+    "expo": "~54.0.30",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-worklets": "0.7.2"
+  },
+  "version": "1.0.0"
 }
