@@ -1,6 +1,6 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { SessionSecrets, MetaInfo } from '@sqds/grid';
+import { SessionSecrets, MetaInfo, GridClientUserContext } from '@sqds/grid';
 
 class RegisterDto {
   email: string;
@@ -9,7 +9,7 @@ class RegisterDto {
 class VerifyOtpAndCreateAccountDto {
   otpCode: string;
   sessionSecrets: SessionSecrets;
-  user: any;
+  user: GridClientUserContext;
 }
 
 class AuthenticateDto {
@@ -19,7 +19,7 @@ class AuthenticateDto {
 class VerifyOtpDto {
   otpCode: string;
   sessionSecrets: SessionSecrets;
-  user: any;
+  user: GridClientUserContext;
 }
 
 class CheckPasskeysDto {

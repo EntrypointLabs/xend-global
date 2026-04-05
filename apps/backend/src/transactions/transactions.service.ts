@@ -3,14 +3,7 @@ import { GridService } from '../grid/grid.service';
 import { DbService } from '../db/db.service';
 import { transactions, smartAccounts } from '../db/schema';
 import { eq } from 'drizzle-orm';
-
-interface SendDto {
-  toAddress: string;
-  amount: string;
-  token: string; // "SOL", "USDC" or mint address
-  sessionSecrets: unknown; // TaggedKeyPair[] from Grid, passed back by mobile
-  session: unknown; // AuthenticationData from Grid
-}
+import { type SendTransactionDto } from './types';
 
 @Injectable()
 export class TransactionsService {
@@ -19,7 +12,7 @@ export class TransactionsService {
     private db: DbService,
   ) {}
 
-  async send(userId: string, dto: SendDto) {
+  async send(userId: string, dto: SendTransactionDto) {
     const [account] = await this.db.client
       .select()
       .from(smartAccounts)
@@ -38,8 +31,8 @@ export class TransactionsService {
 
     // Sign and send via Grid
     const result = await this.grid.client.signAndSend({
-      sessionSecrets: dto.sessionSecrets as any,
-      session: dto.session as any,
+      sessionSecrets: dto.sessionSecrets,
+      session: dto.session,
       transactionPayload: prepared.data,
       address: gridAccountId,
     });

@@ -37,11 +37,11 @@
   "version": "1.0.0",
   "lint-staged": {
     "*.{ts,tsx}": [
-      "lint --fix",
-      "prettier --write"
+      "npm run lint --fix",
+      "npm run format"
     ],
     "*.{json,md}": [
-      "prettier --write"
+      "npm run format"
     ]
   }
 }

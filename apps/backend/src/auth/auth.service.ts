@@ -1,7 +1,6 @@
 import {
   Injectable,
   UnauthorizedException,
-  ConflictException,
   HttpException,
   HttpStatus,
   Logger,
@@ -16,6 +15,7 @@ import {
   CompleteAuthResponse,
   SessionSecrets,
   MetaInfo,
+  GridClientUserContext,
 } from '@sqds/grid';
 
 @Injectable()
@@ -28,17 +28,25 @@ export class AuthService {
     private db: DbService,
   ) {}
 
-  private handleGridError(error: any, context: string): never {
+  private handleGridError(error: unknown, context: string): never {
     this.logger.error(`Grid error in ${context}:`, error);
 
+    const err = error as Record<string, unknown> | undefined;
+    const lastResponse = err?.lastResponse as
+      | Record<string, unknown>
+      | undefined;
+    const cause = lastResponse?.cause as Record<string, unknown> | undefined;
+    const response = err?.response as Record<string, unknown> | undefined;
+    const data = response?.data as Record<string, unknown> | undefined;
+
     const status =
-      error?.lastResponse?.cause?.statusCode ??
-      error?.statusCode ??
-      error?.response?.status ??
-      error?.status;
+      cause?.statusCode ?? err?.statusCode ?? response?.status ?? err?.status;
     const message =
-      error?.response?.data?.message ?? error?.message ?? 'Grid service error';
-    const code = error?.response?.data?.code ?? error.code ?? 'GRID_ERROR';
+      (data?.message as string) ??
+      (err?.message as string) ??
+      'Grid service error';
+    const code =
+      (data?.code as string) ?? (err?.code as string) ?? 'GRID_ERROR';
 
     // Map known Grid status codes to HTTP status codes
     if (status === 404 || message.toLowerCase().includes('not found')) {
@@ -94,7 +102,7 @@ export class AuthService {
   async verifyOtpAndCreateAccount(dto: {
     otpCode: string;
     sessionSecrets: SessionSecrets;
-    user: any;
+    user: GridClientUserContext;
   }) {
     let gridResponse: CompleteAuthAndCreateAccountResponse;
     try {
@@ -157,7 +165,7 @@ export class AuthService {
   async verifyOtp(dto: {
     otpCode: string;
     sessionSecrets: SessionSecrets;
-    user: any;
+    user: GridClientUserContext;
   }) {
     let gridResponse: CompleteAuthResponse;
     try {
