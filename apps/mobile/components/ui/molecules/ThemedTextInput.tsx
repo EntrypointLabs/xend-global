@@ -90,6 +90,8 @@ export const ThemedTextInput = forwardRef<TextInput, ThemedTextInputProps>(
   }
 );
 
+ThemedTextInput.displayName = "ThemedTextInput";
+
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",

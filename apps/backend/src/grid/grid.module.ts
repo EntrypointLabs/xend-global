@@ -3,7 +3,7 @@ import { GridService } from './grid.service';
 
 @Global()
 @Module({
-    providers: [GridService],
-    exports: [GridService],
+  providers: [GridService],
+  exports: [GridService],
 })
 export class GridModule {}

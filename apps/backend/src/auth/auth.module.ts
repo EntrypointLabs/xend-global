@@ -7,18 +7,18 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 
 @Module({
-    imports: [
-        PassportModule,
-        JwtModule.registerAsync({
-            inject:     [ConfigService],
-            useFactory: (config: ConfigService) => ({
-                secret:      config.getOrThrow('JWT_SECRET'),
-                signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '7d') },
-            }),
-        }),
-    ],
-    controllers: [AuthController],
-    providers:   [AuthService, JwtStrategy],
-    exports:     [JwtStrategy],
+  imports: [
+    PassportModule,
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.getOrThrow('JWT_SECRET'),
+        signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '7d') },
+      }),
+    }),
+  ],
+  controllers: [AuthController],
+  providers: [AuthService, JwtStrategy],
+  exports: [JwtStrategy],
 })
 export class AuthModule {}

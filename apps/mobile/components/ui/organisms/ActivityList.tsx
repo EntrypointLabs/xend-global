@@ -54,6 +54,8 @@ export const ActivityList = memo(({ sections }: ActivityListProps) => {
   );
 });
 
+ActivityList.displayName = "ActivityList";
+
 const styles = StyleSheet.create({
   contentContainer: {
     paddingBottom: 70,

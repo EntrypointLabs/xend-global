@@ -154,3 +154,5 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
     );
   }
 );
+
+SendFlowModal.displayName = "SendFlowModal";

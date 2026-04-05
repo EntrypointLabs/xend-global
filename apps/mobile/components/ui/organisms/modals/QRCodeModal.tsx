@@ -181,6 +181,8 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
   }
 );
 
+QRCodeModal.displayName = "QRCodeModal";
+
 const MemoizedQRCodeModal = memo(
   ({
     walletAddress,
@@ -202,3 +204,5 @@ const MemoizedQRCodeModal = memo(
     );
   }
 );
+
+MemoizedQRCodeModal.displayName = "MemoizedQRCodeModal";

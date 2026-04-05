@@ -92,6 +92,8 @@ export const QRScannerModal = forwardRef<BottomSheetModal, QRScannerModalProps>(
   }
 );
 
+QRScannerModal.displayName = "QRScannerModal";
+
 type RenderContentProps = {
   permission: PermissionResponse | null;
   requestPermission: () => Promise<PermissionResponse>;
