@@ -92,13 +92,12 @@ function AuthLayout() {
     return <LoadingScreen />;
   }
 
-    const inAuthGroup = segments[0] === "(auth)";
-
+  const inAuthGroup = segments[0] === "(auth)";
 
   if (!isAuthenticated && !inAuthGroup) {
     return <Redirect href="/login" withAnchor />;
   }
-  
+
   if (isAuthenticated && !pendingPasskeySetup && inAuthGroup) {
     return <Redirect href="/(tabs)" withAnchor />;
   }

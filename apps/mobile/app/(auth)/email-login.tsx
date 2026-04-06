@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { View, Image, ActivityIndicator, Keyboard, TouchableWithoutFeedback, ScrollView } from "react-native";
+import {
+  View,
+  Image,
+  ActivityIndicator,
+  Keyboard,
+  TouchableWithoutFeedback,
+  ScrollView,
+} from "react-native";
 import { router } from "expo-router";
 import { Email } from "@/types/Auth";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,7 +34,6 @@ function EmailLoginScreen() {
     error: passkeyError,
     clearError: clearPasskeyError,
   } = usePasskey();
-  
 
   const {
     sendOtpAsync,
@@ -107,7 +113,11 @@ function EmailLoginScreen() {
     }
   };
 
-  const { countdown, isDisabled, handleResend: resend } = useResendTimer({
+  const {
+    countdown,
+    isDisabled,
+    handleResend: resend,
+  } = useResendTimer({
     initialSeconds: 30,
     onResend: handleResend,
   });
@@ -138,10 +148,7 @@ function EmailLoginScreen() {
               {!otpSent ? (
                 // State 1: Email input
                 <View>
-                  <Typography
-                    weight="600"
-                    className="mb-8 text-3xl text-white"
-                  >
+                  <Typography weight="600" className="mb-8 text-3xl text-white">
                     Enter your email
                   </Typography>
 
@@ -163,7 +170,10 @@ function EmailLoginScreen() {
                   />
 
                   {emailError && (
-                    <Typography weight="400" className="mt-2 text-sm text-red-400">
+                    <Typography
+                      weight="400"
+                      className="mt-2 text-sm text-red-400"
+                    >
                       {emailError}
                     </Typography>
                   )}
@@ -172,7 +182,9 @@ function EmailLoginScreen() {
                     onPress={handleSendOtp}
                     disabled={isSendingOtp || !emailInput.trim()}
                     className="mt-6 items-center justify-center rounded-full bg-white p-4"
-                    style={{ opacity: isSendingOtp || !emailInput.trim() ? 0.5 : 1 }}
+                    style={{
+                      opacity: isSendingOtp || !emailInput.trim() ? 0.5 : 1,
+                    }}
                   >
                     {isSendingOtp ? (
                       <ActivityIndicator color="#000" />
@@ -186,10 +198,7 @@ function EmailLoginScreen() {
               ) : (
                 // State 2: OTP input
                 <View>
-                  <Typography
-                    weight="600"
-                    className="mb-2 text-3xl text-white"
-                  >
+                  <Typography weight="600" className="mb-2 text-3xl text-white">
                     Enter the code
                   </Typography>
                   <Typography
@@ -199,10 +208,15 @@ function EmailLoginScreen() {
                     Sent to {emailInput.trim()}
                   </Typography>
 
-                  <ScreenVerificationCodeInput onCodeComplete={handleVerifyOtp} />
+                  <ScreenVerificationCodeInput
+                    onCodeComplete={handleVerifyOtp}
+                  />
 
                   {verifyError && (
-                    <Typography weight="400" className="mt-2 text-sm text-red-400">
+                    <Typography
+                      weight="400"
+                      className="mt-2 text-sm text-red-400"
+                    >
                       {verifyError}
                     </Typography>
                   )}
