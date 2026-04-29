@@ -6,6 +6,8 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { Email } from "@/types/Auth";
@@ -123,6 +125,7 @@ function EmailLoginScreen() {
   });
 
   return (
+        
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View className="flex-1">
         <GradientBackground />
@@ -152,6 +155,7 @@ function EmailLoginScreen() {
                     Enter your email
                   </Typography>
 
+<KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
                   <ThemedTextInput
                     value={emailInput}
                     onChangeText={(text) => {
@@ -168,6 +172,8 @@ function EmailLoginScreen() {
                     returnKeyType="go"
                     editable={!isSendingOtp}
                   />
+
+                  </KeyboardAvoidingView>
 
                   {emailError && (
                     <Typography
@@ -255,6 +261,7 @@ function EmailLoginScreen() {
         />
       </View>
     </TouchableWithoutFeedback>
+
   );
 }
 

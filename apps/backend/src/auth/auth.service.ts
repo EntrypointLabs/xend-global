@@ -17,6 +17,7 @@ import {
   MetaInfo,
   GridClientUserContext,
 } from '@sqds/grid';
+import { PublicKey } from '@solana/web3.js';
 
 @Injectable()
 export class AuthService {
@@ -223,10 +224,18 @@ export class AuthService {
         );
       }
 
-      const sessionKey = {
-        key: passkeySecret.publicKey,
-        expiration: Math.floor(Date.now() / 1000) + 900, // 15 minutes
-      };
+      console.log("passKeySecret", passkeySecret)
+
+      const pubKey = new PublicKey(passkeySecret.publicKey)
+
+      console.log("pubKey", pubKey)
+
+      const sessionKey = this.grid.client.getSessionKeyObject(
+        pubKey.toBase58(),
+        '900',
+      );
+
+      console.log("sessionKey", sessionKey)
 
       return await this.grid.createPasskeySession({
         sessionKey,

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Fuse",
-    "slug": "fuse",
+    "name": "Fuse Android",
+    "slug": "fuse-android",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon.png",
@@ -41,7 +41,8 @@
           "category": ["BROWSABLE", "DEFAULT"]
         }
       ],
-      "permissions": ["CAMERA"]
+      "permissions": ["CAMERA"],
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "bundler": "metro",
