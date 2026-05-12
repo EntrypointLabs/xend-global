@@ -1,13 +1,13 @@
-# Fuse Monorepo (Mobile + Backend)
+# Xend Monorepo (Mobile + Backend)
 
-A Turborepo-managed workspace containing an Expo React Native mobile app and a Node-based backend, plus shared configs and a small UI library.
+A Turborepo-managed workspace containing an Expo React Native mobile app (`@xend/mobile`) and a Node-based backend (`@xend/backend`), plus shared configs and a small UI library.
 
 ## Structure
 
-- `apps/mobile`: Expo React Native app (Android/iOS/Web)
+- `apps/mobile` (`@xend/mobile`): Expo React Native app (Android/iOS/Web)
   - Scripts: `start`, `android`, `ios`, `web`, `lint`, `test`
   - Notables: `entrypoint.js`, `SETUP.md`, `app/`, `metro.config.js`, `example.env`
-- `apps/backend`: Node server (ESM) with TypeScript tooling
+- `apps/backend` (`@xend/backend`): Node server (ESM) with TypeScript tooling
   - Scripts: `dev`, `build`, `start`, `lint`, `check-types`
   - Entry: `index.js`
 - `packages/ui`: Shared React component library
@@ -41,31 +41,31 @@ cp apps/mobile/example.env apps/mobile/.env
 - Start backend (port `8000`):
 
 ```
-npm --workspace apps/backend run dev
+npm --workspace @xend/backend run dev
 ```
 
 - Start mobile app (Expo dev tools):
 
 ```
-npm --workspace apps/mobile run start
+npm --workspace @xend/mobile run start
 ```
 
 - Platform-specific mobile commands:
 
 ```
-npm --workspace apps/mobile run android
-npm --workspace apps/mobile run ios
-npm --workspace apps/mobile run web
+npm --workspace @xend/mobile run android
+npm --workspace @xend/mobile run ios
+npm --workspace @xend/mobile run web
 ```
 
 - Run via Turbo with filters (alternative):
 
 ```
 # Backend dev
-npx turbo run dev --filter=apps/backend
+npx turbo run dev --filter=@xend/backend
 
 # Mobile start
-npx turbo run start --filter=apps/mobile
+npx turbo run start --filter=@xend/mobile
 ```
 
 - Run all available `dev` scripts (note: mobile uses `start`, not `dev`):
@@ -91,7 +91,7 @@ npm run check-types
 - Start backend after build:
 
 ```
-npm --workspace apps/backend run start
+npm --workspace @xend/backend run start
 ```
 
 ## Linting & Formatting
@@ -113,8 +113,8 @@ npm run format
 - Filter tasks to specific apps/packages:
 
 ```
-npx turbo run <task> --filter=apps/mobile
-npx turbo run <task> --filter=apps/backend
+npx turbo run <task> --filter=@xend/mobile
+npx turbo run <task> --filter=@xend/backend
 ```
 
 - Remote caching (optional) with Vercel:
