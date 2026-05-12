@@ -11,6 +11,8 @@ interface PasskeySetupModalProps {
   isLoading: boolean;
   error: string | null;
   onRetry: () => void;
+  onSkip?: () => void;
+  skipLabel?: string;
 }
 
 export function PasskeySetupModal({
@@ -19,6 +21,8 @@ export function PasskeySetupModal({
   isLoading,
   error,
   onRetry,
+  onSkip,
+  skipLabel = "Skip for now",
 }: PasskeySetupModalProps) {
   const backgroundColor = useThemeColor({}, "background");
 
@@ -86,6 +90,18 @@ export function PasskeySetupModal({
                 )}
               </HapticPressable>
             )}
+
+            {onSkip && (
+              <HapticPressable
+                onPress={onSkip}
+                disabled={isLoading}
+                style={styles.skipButton}
+              >
+                <Typography weight="500" style={styles.skipButtonText}>
+                  {skipLabel}
+                </Typography>
+              </HapticPressable>
+            )}
           </View>
         </View>
       </BlurView>
@@ -150,5 +166,16 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "#fff",
     fontSize: 16,
+  },
+  skipButton: {
+    marginTop: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  skipButtonText: {
+    color: "#000",
+    fontSize: 14,
+    opacity: 0.6,
   },
 });

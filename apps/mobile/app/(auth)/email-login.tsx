@@ -102,6 +102,12 @@ function EmailLoginScreen() {
     }
   };
 
+  const handleSkipPasskey = () => {
+    clearPasskeyError();
+    setShowPasskeySetup(false);
+    completePasskeySetup();
+  };
+
   const handleResend = async () => {
     resetSendOtp();
     try {
@@ -259,6 +265,7 @@ function EmailLoginScreen() {
           isLoading={isRegistering}
           error={passkeyError}
           onRetry={handleAddPasskey}
+          onSkip={handleSkipPasskey}
         />
       </View>
     </TouchableWithoutFeedback>

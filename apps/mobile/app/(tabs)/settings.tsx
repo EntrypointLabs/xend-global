@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, SectionList, TouchableOpacity } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
@@ -7,14 +7,72 @@ import { Ionicons } from "@expo/vector-icons";
 import { Spacing } from "@/constants/Spacing";
 import { useAuth } from "@/contexts/AuthContext";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
+import { PasskeySetupModal } from "@/components/ui/organisms/modals/PasskeySetupModal";
+import { usePasskey } from "@/hooks/usePasskey";
+import Toast from "react-native-toast-message";
 
 export default function SettingsScreen() {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+  const {
+    hasPasskey,
+    isRegistering,
+    error: passkeyError,
+    checkPasskeys,
+    registerPasskey,
+    clearError: clearPasskeyError,
+  } = usePasskey();
+  const [showPasskeyModal, setShowPasskeyModal] = useState(false);
+
+  const accountAddress = user?.smart_account_address || user?.address;
+
+  useEffect(() => {
+    if (accountAddress) {
+      checkPasskeys(accountAddress);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountAddress]);
+
+  const handlePasskeyPress = () => {
+    if (hasPasskey) {
+      Toast.show({
+        type: "success",
+        text1: "Passkey is already set up",
+        position: "top",
+      });
+      return;
+    }
+    clearPasskeyError();
+    setShowPasskeyModal(true);
+  };
+
+  const handleAddPasskey = async () => {
+    clearPasskeyError();
+    if (!accountAddress) return;
+    const success = await registerPasskey(accountAddress);
+    if (success) {
+      setShowPasskeyModal(false);
+      Toast.show({
+        type: "success",
+        text1: "Passkey set up successfully",
+        position: "top",
+      });
+    }
+  };
+
+  const handleSkipPasskey = () => {
+    clearPasskeyError();
+    setShowPasskeyModal(false);
+  };
 
   const sections = [
     {
       title: "Security",
       data: [
+        {
+          label: hasPasskey ? "Passkey (Enabled)" : "Set up Passkey",
+          icon: require("@/assets/icons/keys.png"),
+          onPress: handlePasskeyPress,
+        },
         {
           label: "Keys & Recovery",
           icon: require("@/assets/icons/keys.png"),
@@ -83,6 +141,15 @@ export default function SettingsScreen() {
 
   return (
     <ScreenLayout>
+      <PasskeySetupModal
+        visible={showPasskeyModal}
+        onAddPasskey={handleAddPasskey}
+        isLoading={isRegistering}
+        error={passkeyError}
+        onRetry={handleAddPasskey}
+        onSkip={handleSkipPasskey}
+        skipLabel="Cancel"
+      />
       <View className="w-full flex-1">
         <SectionList
           ListHeaderComponent={
