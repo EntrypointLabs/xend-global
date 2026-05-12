@@ -6,7 +6,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { router } from "expo-router";
+import { router, Link } from "expo-router";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { WithScreenTheme } from "@/components/WithScreenTheme";
 import { ThemedScreen, StarburstBank } from "@/components/ui/layout";
@@ -21,14 +21,11 @@ import { useScreenTheme } from "@/contexts/ScreenThemeContext";
 import { ThemedText, Chip, IconSymbol, Divider } from "@/components/ui/atoms";
 // TODO: check if this is needed
 import { IconSymbolName } from "@/components/ui/atoms/IconSymbol";
-import { Link } from "expo-router";
 import { ThemedButton } from "@/components/ui/molecules";
 import * as Haptics from "expo-haptics";
 import { EasClient } from "@/utils/easClient";
 import { useAuth } from "@/contexts/AuthContext";
 import { OpenVirtualAccountParams } from "@/types/VirtualAccounts";
-import { AUTH_STORAGE_KEYS } from "@/utils/auth";
-import { StorageService } from "@/utils/storage";
 import { Currency } from "@/types/Transaction";
 import * as Sentry from "@sentry/react-native";
 
@@ -42,9 +39,9 @@ const INFO = [
   {
     icon: "dollarsign.arrow.circlepath",
     textEUR:
-      "Get paid in EUR and automatically receive EURC in your Fuse wallet",
+      "Get paid in EUR and automatically receive EURC in your Xend wallet",
     textUSD:
-      "Get paid in USD and automatically receive USDC in your Fuse wallet",
+      "Get paid in USD and automatically receive USDC in your Xend wallet",
   },
   {
     icon: "arrow.down.circle",
@@ -186,7 +183,8 @@ function BankDetailsModal() {
       };
 
       const easClient = new EasClient();
-      const response = await easClient.openVirtualAccount(accountParams);
+      // const response = await easClient.openVirtualAccount(accountParams);
+      await easClient.openVirtualAccount(accountParams);
 
       // Fetch updated bank details
       await fetchBankDetails();

@@ -15,7 +15,7 @@ import {
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
-import Haptic from "expo-haptics";
+import { notificationAsync, NotificationFeedbackType } from "expo-haptics";
 import { formatAmount } from "@/utils/solana";
 import { truncateAddress } from "@/utils/helper";
 import { Typography } from "../../atoms/Typography";
@@ -39,7 +39,7 @@ export function TransactionDetailModal({
 
   const copyToClipboard = async (text: string) => {
     await Clipboard.setStringAsync(text);
-    Haptic.notificationAsync(Haptic.NotificationFeedbackType.Success);
+    notificationAsync(NotificationFeedbackType.Success);
   };
 
   const transactionType = item.side === "send" ? "Sent" : "Received";
@@ -130,7 +130,7 @@ export function TransactionDetailModal({
                 className="text-black/30"
                 style={{ marginRight: 4, fontSize: 13 }}
               >
-                Fuse⁺
+                Xend⁺
               </Typography>
               <Typography weight="500" style={{ color: "#34C759" }}>
                 Covered

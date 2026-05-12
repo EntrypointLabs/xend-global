@@ -31,12 +31,9 @@ function HomeScreenContent() {
     isReceiveModalVisible,
     hideAllModals,
     isSendModalVisible,
-    showSendModal,
   } = useModalFlow();
-  // const [isSendModalVisible, setIsSendModalVisible] = useState(false);
   const { showToast } = useToast();
-  const { balance, transfers, isLoading, error, fetchWalletData } =
-    useWalletData(accountInfo);
+  const { balance, transfers, fetchWalletData } = useWalletData(accountInfo);
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
   const qrCodeModalRef = useRef<BottomSheetModal>(null);
 
@@ -103,14 +100,14 @@ function HomeScreenContent() {
         color: "#AF52DE", // Purple
       },
       {
-        title: "Fuse Card",
+        title: "Xend Card",
         subtitle: "Get your free Card",
         icon: require("@/assets/icons/card.png"),
         onPress: () => showToast("Coming soon"),
         color: "#000000", // Black
       },
     ],
-    [showToast]
+    [showToast, router]
   );
 
   const formatTransfers = useCallback(
@@ -247,7 +244,7 @@ function HomeScreenContent() {
                 weight="500"
                 className="mb-7 max-w-[250px] text-center text-sm text-black/30"
               >
-                Deposit tokens to your address and start using Fuse Wallet
+                Deposit tokens to your address and start using Xend Wallet
               </Typography>
 
               <HapticPressable

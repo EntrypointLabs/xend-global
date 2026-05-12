@@ -2,19 +2,14 @@ import React from "react";
 import { View, SectionList, TouchableOpacity } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
-import { ThemedText } from "@/components/ui/atoms";
 import { SettingsItem } from "@/components/ui/molecules";
 import { Ionicons } from "@expo/vector-icons";
-import { useThemeColor } from "@/hooks/useThemeColor";
 import { Spacing } from "@/constants/Spacing";
 import { useAuth } from "@/contexts/AuthContext";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
-import clsx from "clsx";
 
 export default function SettingsScreen() {
   const { logout } = useAuth();
-  const textColor = useThemeColor({}, "text");
-  const backgroundColor = useThemeColor({}, "background");
 
   const sections = [
     {
@@ -71,7 +66,7 @@ export default function SettingsScreen() {
           onPress: () => {},
         },
         {
-          label: "Follow @fusewallet",
+          label: "Follow @xend_global",
           // icon: <Ionicons name="logo-twitter" size={22} color="#007AFF" />, // Blue
           icon: require("@/assets/icons/x.png"),
           onPress: () => {},
@@ -94,7 +89,7 @@ export default function SettingsScreen() {
             <View>
               <TabHeaderText>Settings</TabHeaderText>
 
-              {/* Fuse Plus Banner */}
+              {/* Xend Plus Banner */}
               <TouchableOpacity
                 className="flex-row items-center justify-between rounded-3xl bg-black p-4"
                 activeOpacity={0.9}
@@ -105,7 +100,7 @@ export default function SettingsScreen() {
                   </View>
                   <View>
                     <Typography weight="700" className="text-sm text-white">
-                      Get Fuse Plus
+                      Get Xend Plus
                     </Typography>
                     <Typography className="text-xs text-gray-400">
                       Earn more, pay less

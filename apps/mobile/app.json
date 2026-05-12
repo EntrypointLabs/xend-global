@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "Fuse Android",
-    "slug": "fuse-android",
+    "name": "Xend",
+    "slug": "xend",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon.png",
-    "scheme": "fuse",
+    "scheme": "xend",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "io.sqds.fuse",
+      "bundleIdentifier": "io.sqds.xend",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
@@ -20,7 +20,7 @@
         ],
         "NSCameraUsageDescription": "This app requires camera access to verify your identity."
       },
-      "associatedDomains": ["applinks:fuse.app"]
+      "associatedDomains": ["applinks:xend.global"]
     },
     "android": {
       "fonts": [
@@ -29,13 +29,13 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/app-icon.png"
       },
-      "package": "io.sqds.fuse",
+      "package": "io.sqds.xend",
       "intentFilters": [
         {
           "action": "VIEW",
           "data": [
             {
-              "scheme": "fuse"
+              "scheme": "xend"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
@@ -66,10 +66,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "2dbedae2-a00f-46bb-803b-53ee43d89a9e"
-      }
+      "router": {}
     },
     "owner": "gifted-borg"
   }

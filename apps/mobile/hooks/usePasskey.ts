@@ -53,7 +53,7 @@ export function usePasskey() {
       const redirectUrl = Linking.createURL("passkey-callback");
       // Get hosted URL from backend
       const response = await apiClient.createPasskeySession(accountAddress, {
-        appName: "Fuse",
+        appName: "Xend",
         redirectUrl,
       });
 
