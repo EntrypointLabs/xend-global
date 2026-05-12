@@ -37,14 +37,5 @@
   "version": "1.0.0",
   "overrides": {
     "react-native-worklets": "0.5.1"
-  },
-  "lint-staged": {
-    "*.{ts,tsx}": [
-      "npm run lint --fix",
-      "npm run format"
-    ],
-    "*.{json,md}": [
-      "npm run format"
-    ]
   }
 }

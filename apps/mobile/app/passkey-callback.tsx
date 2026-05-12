@@ -1,10 +1,9 @@
 import LoadingScreen from "@/components/ui/layout/LoadingScreen";
-import { Redirect, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import React from "react";
-import { Text, View } from "react-native";
 
 function PasskeyCallbackScreen() {
-    console.log("passkey_callback")
+  console.log("passkey_callback");
   const searchParams = useLocalSearchParams();
 
   const { status } = searchParams;

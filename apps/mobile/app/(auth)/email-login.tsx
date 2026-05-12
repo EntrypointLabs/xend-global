@@ -85,7 +85,7 @@ function EmailLoginScreen() {
       } else {
         setShowPasskeySetup(true);
       }
-    } catch (error: any) {
+    } catch {
       setVerifyError("Invalid code. Please try again.");
     }
   };
@@ -106,7 +106,7 @@ function EmailLoginScreen() {
     resetSendOtp();
     try {
       await sendOtpAsync(emailInput.trim());
-    } catch (error: any) {
+    } catch {
       Toast.show({
         type: "error",
         text1: "Failed to resend code.",
@@ -125,7 +125,6 @@ function EmailLoginScreen() {
   });
 
   return (
-        
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View className="flex-1">
         <GradientBackground />
@@ -155,24 +154,26 @@ function EmailLoginScreen() {
                     Enter your email
                   </Typography>
 
-<KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-                  <ThemedTextInput
-                    value={emailInput}
-                    onChangeText={(text) => {
-                      setEmailInput(text);
-                      setEmailError(null);
-                    }}
-                    placeholder="you@example.com"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoComplete="email"
-                    error={!!emailError}
-                    onSubmitEditing={handleSendOtp}
-                    returnKeyType="go"
-                    editable={!isSendingOtp}
-                  />
-
+                  <KeyboardAvoidingView
+                    behavior={Platform.OS === "ios" ? "padding" : undefined}
+                    style={{ flex: 1 }}
+                  >
+                    <ThemedTextInput
+                      value={emailInput}
+                      onChangeText={(text) => {
+                        setEmailInput(text);
+                        setEmailError(null);
+                      }}
+                      placeholder="you@example.com"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="email"
+                      error={!!emailError}
+                      onSubmitEditing={handleSendOtp}
+                      returnKeyType="go"
+                      editable={!isSendingOtp}
+                    />
                   </KeyboardAvoidingView>
 
                   {emailError && (
@@ -261,7 +262,6 @@ function EmailLoginScreen() {
         />
       </View>
     </TouchableWithoutFeedback>
-
   );
 }
 

@@ -224,18 +224,12 @@ export class AuthService {
         );
       }
 
-      console.log("passKeySecret", passkeySecret)
-
-      const pubKey = new PublicKey(passkeySecret.publicKey)
-
-      console.log("pubKey", pubKey)
+      const pubKey = new PublicKey(passkeySecret.publicKey);
 
       const sessionKey = this.grid.client.getSessionKeyObject(
         pubKey.toBase58(),
         '900',
       );
-
-      console.log("sessionKey", sessionKey)
 
       return await this.grid.createPasskeySession({
         sessionKey,

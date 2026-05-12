@@ -1,5 +1,5 @@
 {
-  "extends": "@fuse/typescript-config/react-library.json",
+  "extends": "@xend/typescript-config/react-library.json",
   "compilerOptions": {
     "outDir": "dist"
   },

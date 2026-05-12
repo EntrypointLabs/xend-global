@@ -1,5 +1,5 @@
 {
-  "name": "@fuse/eslint-config",
+  "name": "@xend/eslint-config",
   "version": "0.0.0",
   "type": "module",
   "private": true,
