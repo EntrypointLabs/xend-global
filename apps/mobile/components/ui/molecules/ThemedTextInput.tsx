@@ -37,7 +37,7 @@ export const ThemedTextInput = forwardRef<TextInput, ThemedTextInputProps>(
     },
     ref
   ) => {
-    const { textColor, backgroundColor, primaryColor } = useScreenTheme();
+    const { textColor, backgroundColor } = useScreenTheme();
     const errorColor = "#FF3B30"; // Standard error color
 
     // Determine button color logic (invert of background color)
@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 0.5,
-    borderRadius: 421,
+    borderRadius: 42,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     width: "100%",

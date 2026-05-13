@@ -1,11 +1,11 @@
 import React from "react";
-import { View, Image } from "react-native";
+import { View, Image, ImageSourcePropType } from "react-native";
 import { Typography } from "../atoms/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "../atoms/HapticPressable";
 
 interface SettingsItemProps {
-  icon: any;
+  icon: ImageSourcePropType;
   label: string;
   onPress?: () => void;
   showChevron?: boolean;

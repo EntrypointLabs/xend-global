@@ -7,9 +7,6 @@ import {
 } from "react-native";
 import { Typography } from "../atoms/Typography";
 import { useScreenTheme } from "@/contexts/ScreenThemeContext";
-import { Spacing } from "@/constants/Spacing";
-import tinycolor from "tinycolor2";
-import { Size, Weight } from "@/constants/Typography";
 
 interface ThemedButtonProps {
   onPress: () => void;
@@ -32,8 +29,7 @@ export function ThemedButton({
   iconLeft,
   iconRight,
 }: ThemedButtonProps) {
-  const { primaryColor, backgroundColor, textColor } = useScreenTheme();
-  const primaryColorInstance = tinycolor(primaryColor);
+  useScreenTheme(); // Preserved subscription for deferred ScreenThemeContext removal (ADR-0007).
 
   const getButtonStyle = (): ViewStyle => {
     const baseStyle = {
