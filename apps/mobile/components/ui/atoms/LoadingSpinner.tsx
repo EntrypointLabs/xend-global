@@ -1,18 +1,9 @@
-import { ActivityIndicator, StyleSheet } from "react-native";
-import { ThemedView } from "./ThemedView";
+import { ActivityIndicator, View } from "react-native";
 
 export function LoadingSpinner() {
   return (
-    <ThemedView style={styles.container}>
+    <View className="flex-1 items-center justify-center bg-background">
       <ActivityIndicator size="large" />
-    </ThemedView>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-});

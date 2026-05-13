@@ -1,8 +1,7 @@
 import React from "react";
-import { TextProps, StyleSheet } from "react-native";
-import { useScreenTheme } from "@/contexts/ScreenThemeContext";
-import { Height, Size } from "@/constants/Typography";
+import { TextProps } from "react-native";
 import { Typography, TypographyProps } from "./Typography";
+import { cn } from "@/utils/cn";
 
 export type ThemedTextProps = TextProps & {
   type?:
@@ -17,9 +16,9 @@ export type ThemedTextProps = TextProps & {
     | "tiny"
     | "large"
     | "small";
+  className?: string;
 };
 
-// Map text types to font weights
 const typeToWeight: Record<string, TypographyProps["weight"]> = {
   tiny: "500",
   regular: "500",
@@ -34,82 +33,33 @@ const typeToWeight: Record<string, TypographyProps["weight"]> = {
   small: "400",
 };
 
+const typeToClass: Record<string, string> = {
+  tiny: "text-[12px] leading-[12px]",
+  regular: "text-[14px] leading-[18px]",
+  regularSemiBold: "text-[14px] leading-[17px]",
+  default: "text-[16px] leading-[19px]",
+  defaultSemiBold: "text-[16px] leading-[21px]",
+  highlight: "text-[56px] leading-[67px]",
+  large: "text-[24px] leading-[29px]",
+  jumbo: "text-[40px] leading-[48px]",
+  subtitle: "text-[20px]",
+  link: "text-[16px] leading-[30px] text-white",
+  small: "text-[13px] leading-[16px]",
+};
+
 export function ThemedText({
   children,
-  style,
   type = "default",
+  className,
   ...props
 }: ThemedTextProps) {
-  const { textColor } = useScreenTheme();
-
   return (
     <Typography
       weight={typeToWeight[type]}
-      style={[
-        { color: textColor },
-        type === "default" ? styles.default : undefined,
-        type === "highlight" ? styles.highlight : undefined,
-        type === "defaultSemiBold" ? styles.defaultSemiBold : undefined,
-        type === "subtitle" ? styles.subtitle : undefined,
-        type === "link" ? styles.link : undefined,
-        type === "jumbo" ? styles.jumbo : undefined,
-        type === "regular" ? styles.regular : undefined,
-        type === "regularSemiBold" ? styles.regularSemiBold : undefined,
-        type === "tiny" ? styles.tiny : undefined,
-        type === "large" ? styles.large : undefined,
-        type === "small" ? styles.small : undefined,
-        style,
-      ]}
+      className={cn("text-foreground", typeToClass[type], className)}
       {...props}
     >
       {children}
     </Typography>
   );
 }
-
-const styles = StyleSheet.create({
-  tiny: {
-    fontSize: Size.tiny,
-    lineHeight: Size.tiny * Height.lineHeightTight,
-  },
-  regular: {
-    fontSize: Size.regular,
-    lineHeight: Size.regular * Height.lineHeightMedium,
-  },
-  regularSemiBold: {
-    fontSize: Size.regular,
-    lineHeight: Size.regular * Height.lineHeightNormal,
-  },
-  default: {
-    fontSize: Size.medium,
-    lineHeight: Size.medium * Height.lineHeightNormal,
-  },
-  defaultSemiBold: {
-    fontSize: Size.medium,
-    lineHeight: Size.medium * Height.lineHeightMedium,
-  },
-  highlight: {
-    fontSize: Size.giant,
-    lineHeight: Size.giant * Height.lineHeightNormal,
-  },
-  large: {
-    fontSize: Size.xlarge,
-    lineHeight: Size.xlarge * Height.lineHeightNormal,
-  },
-  jumbo: {
-    fontSize: Size.jumbo,
-    lineHeight: Size.jumbo * Height.lineHeightNormal,
-  },
-  subtitle: {
-    fontSize: Size.large,
-  },
-  link: {
-    lineHeight: 30,
-    fontSize: Size.medium,
-    color: "#FFFFFF",
-  },
-  small: {
-    fontSize: Size.small,
-    lineHeight: Size.small * Height.lineHeightNormal,
-  },
-});

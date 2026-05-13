@@ -1,7 +1,7 @@
 import React from "react";
 import { TextProps } from "react-native";
 import { Typography } from "./Typography";
-import { cn } from "@/utils/class";
+import { cn } from "@/utils/cn";
 
 const TabHeaderText = ({ children, className, ...props }: TextProps) => {
   return (

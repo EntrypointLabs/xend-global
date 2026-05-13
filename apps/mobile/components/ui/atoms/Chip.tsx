@@ -1,34 +1,37 @@
 import React from "react";
-import { View, StyleSheet, ViewStyle, TextStyle } from "react-native";
+import { View, ViewStyle, TextStyle } from "react-native";
 import { Typography } from "./Typography";
-import { useScreenTheme } from "@/contexts/ScreenThemeContext";
-import { Spacing } from "@/constants/Spacing";
+import { cn } from "@/utils/cn";
 
 interface ChipProps {
   children: React.ReactNode;
+  className?: string;
+  textClassName?: string;
+  /** @deprecated use className */
   style?: ViewStyle;
+  /** @deprecated use textClassName */
   textStyle?: TextStyle;
 }
 
-export function Chip({ children, style, textStyle }: ChipProps) {
-  const { textColor } = useScreenTheme();
-
+export function Chip({
+  children,
+  className,
+  textClassName,
+  style,
+  textStyle,
+}: ChipProps) {
   return (
-    <View style={[styles.chip, style, { borderColor: textColor + 10 }]}>
-      <Typography style={[{ color: textColor }, textStyle]}>
+    <View
+      className={cn(
+        "flex-row items-center rounded-full border border-foreground/10 px-3.5 py-2",
+        className
+      )}
+      // MEASURED-LAYOUT
+      style={style}
+    >
+      <Typography className={textClassName} style={textStyle}>
         {children}
       </Typography>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: 14,
-  },
-});

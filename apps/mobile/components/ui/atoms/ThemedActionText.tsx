@@ -1,8 +1,7 @@
 import React from "react";
-import { TextProps, StyleSheet, TouchableOpacity } from "react-native";
+import { TextProps, TouchableOpacity } from "react-native";
 import { Typography } from "./Typography";
-import { useScreenTheme } from "@/contexts/ScreenThemeContext";
-import { Size, Weight } from "@/constants/Typography";
+import { cn } from "@/utils/cn";
 
 interface ThemedActionTextProps extends Omit<TextProps, "style"> {
   onPress?: () => void;
@@ -10,7 +9,7 @@ interface ThemedActionTextProps extends Omit<TextProps, "style"> {
   countdown?: number;
   disabledText?: string;
   activeText?: string;
-  style?: TextProps["style"];
+  className?: string;
 }
 
 export function ThemedActionText({
@@ -19,11 +18,9 @@ export function ThemedActionText({
   countdown,
   disabledText = "Resend code",
   activeText = "Resend code",
-  style,
+  className,
   ...props
 }: ThemedActionTextProps) {
-  const { textColor } = useScreenTheme();
-
   const getDisplayText = () => {
     if (disabled && countdown !== undefined) {
       return `${disabledText} ${countdown}s`;
@@ -35,17 +32,15 @@ export function ThemedActionText({
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
-      style={styles.container}
+      className="items-center justify-center"
     >
       <Typography
         weight="500"
-        style={[
-          styles.text,
-          {
-            color: disabled ? textColor + "60" : textColor,
-          },
-          style,
-        ]}
+        className={cn(
+          "text-base text-foreground",
+          disabled && "text-foreground/40",
+          className
+        )}
         {...props}
       >
         {getDisplayText()}
@@ -53,13 +48,3 @@ export function ThemedActionText({
     </TouchableOpacity>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  text: {
-    fontSize: Size.medium,
-  },
-});

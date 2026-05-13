@@ -1,6 +1,6 @@
-import { cn } from "@/utils/class";
+import { cn } from "@/utils/cn";
 import React from "react";
-import { Text, TextProps, StyleSheet } from "react-native";
+import { Text, TextProps } from "react-native";
 
 type FontWeight =
   | "100"

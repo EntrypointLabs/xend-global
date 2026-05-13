@@ -1,16 +1,15 @@
 import React from "react";
-import { Pressable, PressableProps, StyleProp, ViewStyle } from "react-native";
+import { Pressable, PressableProps } from "react-native";
 import * as Haptics from "expo-haptics";
 
 interface HapticPressableProps extends PressableProps {
-  style?: StyleProp<ViewStyle>;
+  className?: string;
 }
 
-const HapticPressable = ({ style, ...props }: HapticPressableProps) => {
+const HapticPressable = (props: HapticPressableProps) => {
   return (
     <Pressable
       {...props}
-      style={style}
       onPress={(event) => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         props.onPress?.(event);
