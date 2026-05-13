@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Redirect, Slot, useRouter, useSegments } from "expo-router";
+import { Redirect, Slot, useSegments } from "expo-router";
 import Toast from "react-native-toast-message";
 import { View } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
@@ -7,11 +7,13 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 import "@/global.css";
+import "@/utils/cssInteropSetup";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@react-navigation/native";
 import { lightTheme, darkTheme } from "@/constants/Theme";
 import { ScreenThemeProvider } from "@/contexts/ScreenThemeContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { useTheme } from "@/hooks/useTheme";
 import { ModalFlowProvider } from "@/contexts/ModalFlowContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import * as Sentry from "@sentry/react-native";
@@ -196,13 +198,24 @@ function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <AuthProvider>
-          <BottomSheetModalProvider>
-            <AuthLayout />
-          </BottomSheetModalProvider>
-        </AuthProvider>
+        <ThemedRoot>
+          <AuthProvider>
+            <BottomSheetModalProvider>
+              <AuthLayout />
+            </BottomSheetModalProvider>
+          </AuthProvider>
+        </ThemedRoot>
       </GestureHandlerRootView>
     </QueryClientProvider>
+  );
+}
+
+function ThemedRoot({ children }: { children: React.ReactNode }) {
+  const { theme } = useTheme();
+  return (
+    <View className={`flex-1 ${theme === "dark" ? "dark" : ""}`}>
+      {children}
+    </View>
   );
 }
 

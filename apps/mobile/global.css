@@ -1,3 +1,43 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Semantic token system. Values are HSL triplets (space-separated, no hsl(...) wrapper)
+ * so Tailwind's <alpha-value> substitution works in `bg-token/20` opacity modifiers.
+ * See docs/adr/0003-semantic-token-taxonomy.md.
+ */
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 199 25% 9%;
+  --primary: 0 0% 0%;
+  --primary-foreground: 0 0% 100%;
+  --tint: 194 88% 34%;
+  --icon: 0 0% 0%;
+  --tab-icon-default: 210 7% 44%;
+  --tab-icon-selected: 194 88% 34%;
+  --card: 0 0% 100%;
+  --border: 0 0% 80%;
+  --success: 135 59% 49%;
+  --destructive: 4 100% 59%;
+  --info: 211 100% 50%;
+}
+
+.dark:root,
+:root.dark,
+.dark {
+  --background: 210 5% 9%;
+  --foreground: 210 6% 93%;
+  --primary: 0 0% 100%;
+  --primary-foreground: 0 0% 0%;
+  --tint: 0 0% 100%;
+  --icon: 0 0% 100%;
+  --tab-icon-default: 210 5% 63%;
+  --tab-icon-selected: 0 0% 100%;
+  --card: 0 0% 0%;
+  --border: 0 0% 20%;
+  --success: 135 50% 45%;
+  --destructive: 4 95% 55%;
+  --info: 211 90% 55%;
+}
