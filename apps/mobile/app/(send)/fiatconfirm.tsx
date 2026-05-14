@@ -1,23 +1,17 @@
 import React, { useState } from "react";
-import { View, StyleSheet, TextInput } from "react-native";
+import { View } from "react-native";
 import { ThemedScreen } from "@/components/ui/layout";
 import { ThemedText, IconSymbol, LoadingSpinner } from "@/components/ui/atoms";
 // TODO: check if this is needed
 import { IconSymbolName } from "@/components/ui/atoms/IconSymbol";
 import { router, useLocalSearchParams } from "expo-router";
-import { Spacing } from "@/constants/Spacing";
 import { formatAmount } from "@/utils/helper";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { ButtonGroup } from "@/components/ui/molecules";
-import { Height, Size, Weight } from "@/constants/Typography";
 import { useAuth } from "@/contexts/AuthContext";
 import { EasClient } from "@/utils/easClient";
-import { ConfirmPayload, SmartAccount } from "@/types/Transaction";
 import { v4 as uuidv4 } from "uuid";
-import {
-  clearExternalAccounts,
-  storeExternalAccount,
-} from "@/utils/externalAccount";
+import { storeExternalAccount } from "@/utils/externalAccount";
 import Toast from "react-native-toast-message";
 import { ErrorCode, handleError } from "@/utils/errors";
 import * as Sentry from "@sentry/react-native";
@@ -40,7 +34,7 @@ interface Address {
 export default function FiatConfirmScreen() {
   const textColor = useThemeColor({}, "text");
   const [isLoading, setIsLoading] = useState(false);
-  const { accountInfo, credentialsBundle, keypair, user, logout } = useAuth();
+  const { user, logout } = useAuth();
 
   const {
     amount,
@@ -94,12 +88,6 @@ export default function FiatConfirmScreen() {
 
         return;
       }
-
-      const source: SmartAccount = {
-        smart_account_address: user.address,
-        currency: "usdc",
-        authorities: [user.smart_account_signer_public_key],
-      };
 
       // Convert amount to USDC base units (multiply by 10^6)
       const amountInBaseUnits = Math.round(
@@ -205,7 +193,7 @@ export default function FiatConfirmScreen() {
           address: user.address,
         };
 
-        const signature = await easClient.confirmPaymentIntent(confirmPayload);
+        await easClient.confirmPaymentIntent(confirmPayload);
         router.push({
           pathname: "/success",
           params: { amount, type, title },
@@ -268,13 +256,17 @@ export default function FiatConfirmScreen() {
 
     return (
       <View>
-        <View style={styles.labelContainer}>
+        <View className="mb-2 flex-row items-center gap-1">
           <IconSymbol name={icon} size={16} color={iconColor} />
+          {/* DYNAMIC-COLOR */}
           <ThemedText type="regular" style={{ color: iconColor }}>
             {label}
           </ThemedText>
         </View>
-        <ThemedText type="default" style={styles.infoText}>
+        <ThemedText
+          type="defaultSemiBold"
+          className="text-[18px] leading-[23px]"
+        >
           {value}
         </ThemedText>
       </View>
@@ -283,26 +275,40 @@ export default function FiatConfirmScreen() {
 
   const renderAddress = () => {
     return (
-      <View style={styles.addressContainer}>
+      <View className="mt-2">
+        {/* DYNAMIC-COLOR */}
         <ThemedText
           type="regular"
-          style={{ color: textColor + "40", marginBottom: Spacing.sm }}
+          className="mb-2"
+          style={{ color: textColor + "40" }}
         >
           Address
         </ThemedText>
-        <View style={styles.addressContent}>
-          <ThemedText type="default" style={styles.infoText}>
+        <View className="gap-1">
+          <ThemedText
+            type="defaultSemiBold"
+            className="text-[18px] leading-[23px]"
+          >
             {parsedAddress.street_line_1}
           </ThemedText>
           {parsedAddress.street_line_2 && (
-            <ThemedText type="default" style={styles.infoText}>
+            <ThemedText
+              type="defaultSemiBold"
+              className="text-[18px] leading-[23px]"
+            >
               {parsedAddress.street_line_2}
             </ThemedText>
           )}
-          <ThemedText type="default" style={styles.infoText}>
+          <ThemedText
+            type="defaultSemiBold"
+            className="text-[18px] leading-[23px]"
+          >
             {`${parsedAddress.city}, ${parsedAddress.state} ${parsedAddress.postal_code || ""}`}
           </ThemedText>
-          <ThemedText type="default" style={styles.infoText}>
+          <ThemedText
+            type="defaultSemiBold"
+            className="text-[18px] leading-[23px]"
+          >
             {parsedAddress.country}
           </ThemedText>
         </View>
@@ -318,9 +324,9 @@ export default function FiatConfirmScreen() {
       {isLoading ? (
         <LoadingSpinner />
       ) : (
-        <View style={styles.container}>
-          <View style={styles.content}>
-            <View style={{ gap: Spacing.sm }}>
+        <View className="flex-1 px-6 pb-8 pt-12">
+          <View className="flex-1 gap-6">
+            <View className="gap-2">
               <ThemedText type="regular">Amount</ThemedText>
               <ThemedText type="jumbo">{formatAmount({ amount })}</ThemedText>
             </View>
@@ -354,33 +360,3 @@ export default function FiatConfirmScreen() {
     </ThemedScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xxl,
-    paddingBottom: Spacing.xl,
-  },
-  content: {
-    flex: 1,
-    gap: Spacing.lg,
-  },
-  labelContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-    marginBottom: Spacing.sm,
-  },
-  infoText: {
-    fontSize: Size.mediumLarge,
-    fontWeight: Weight.semiBoldWeight,
-    lineHeight: Size.mediumLarge * Height.lineHeightMedium,
-  },
-  addressContainer: {
-    marginTop: Spacing.sm,
-  },
-  addressContent: {
-    gap: Spacing.xs,
-  },
-});
