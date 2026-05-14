@@ -3,14 +3,12 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  StyleSheet,
   View,
   Keyboard,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, Link } from "expo-router";
 import { WithScreenTheme } from "@/components/WithScreenTheme";
 import { ThemedScreen, StarburstBank } from "@/components/ui/layout";
-import { Spacing } from "@/constants/Spacing";
 import {
   SwipeableModal,
   OverlappingImages,
@@ -18,12 +16,12 @@ import {
 } from "@/components/ui/organisms";
 import { useScreenTheme } from "@/contexts/ScreenThemeContext";
 import { ThemedText } from "@/components/ui/atoms";
-import { Link } from "expo-router";
 import { ThemedButton, ThemedTextInput } from "@/components/ui/molecules";
 import { useAuth } from "@/contexts/AuthContext";
 import { useKyc } from "@/hooks/useKyc";
 import { KycParams } from "@/types/Kyc";
 import * as Sentry from "@sentry/react-native";
+import { cn } from "@/utils/cn";
 
 function KYCModal() {
   const { textColor } = useScreenTheme();
@@ -48,7 +46,7 @@ function KYCModal() {
         router.replace("/(send)/fiatamount");
       }
     }
-  }, [status, tosStatus]);
+  }, [status, tosStatus, source]);
 
   const handleClose = () => {
     router.back();
@@ -90,12 +88,13 @@ function KYCModal() {
     }
   };
 
-  const handleNavigationStateChange = async (navState: any) => {
+  const handleNavigationStateChange = async (navState: unknown) => {
+    const url = (navState as { url?: string })?.url ?? "";
     // Check if we're on the completion or success page
     const isCompletionPage =
-      navState.url.includes("/completion") ||
-      navState.url.includes("/success") ||
-      navState.url.includes("status=complete");
+      url.includes("/completion") ||
+      url.includes("/success") ||
+      url.includes("status=complete");
 
     if (isCompletionPage) {
       await checkStatus(); // This will update the status in the hook
@@ -105,7 +104,7 @@ function KYCModal() {
 
   const renderContent = () => {
     return showChecklist ? (
-      <View style={styles.contentContainer}>
+      <View className="mx-8 flex-1 items-center justify-center gap-4">
         <ThemedButton
           title={
             tosStatus === "approved"
@@ -124,13 +123,13 @@ function KYCModal() {
     ) : (
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
+        className="flex-1"
         keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
       >
-        <View style={styles.contentContainer}>
+        <View className="mx-8 flex-1 items-center justify-center gap-4">
           {!showNameInputs && !showChecklist ? (
             <>
-              <View style={styles.flagContainer}>
+              <View className="mb-4 items-center">
                 <OverlappingImages
                   leftImage={require("@/assets/images/bridge.png")}
                   rightImage={require("@/assets/images/starburst-round.png")}
@@ -139,40 +138,48 @@ function KYCModal() {
                   borderWidth={0}
                 />
               </View>
-              <ThemedText type="large" style={styles.headline}>
+              <ThemedText type="large" className="px-6 text-center">
                 Continue with Bridge for identity verification
               </ThemedText>
+              {/* DYNAMIC-COLOR */}
               <ThemedText
                 type="regular"
-                style={[styles.subtitle, { color: textColor + 40 }]}
+                className="mt-2 text-center"
+                style={{ color: textColor + 40 }}
               >
                 Complete verification with Bridge.xyz and your account details
                 will automatically appear in your Bright App.
               </ThemedText>
             </>
           ) : (
-            <View style={styles.inputContainer}>
+            <View className="mt-4 w-full gap-2">
+              {/* DYNAMIC-COLOR */}
               <ThemedTextInput
                 value={firstName}
                 onChangeText={setFirstName}
                 placeholder="First Name"
-                style={[styles.input, { backgroundColor: textColor + 10 }]}
+                style={{ backgroundColor: textColor + 10 }}
                 inputStyle={{ color: textColor }}
               />
+              {/* DYNAMIC-COLOR */}
               <ThemedTextInput
                 value={lastName}
                 onChangeText={setLastName}
                 placeholder="Last Name"
-                style={[styles.input, { backgroundColor: textColor + 10 }]}
+                style={{ backgroundColor: textColor + 10 }}
                 inputStyle={{ color: textColor }}
               />
             </View>
           )}
         </View>
-        <View style={styles.bottomContainer}>
+        <View
+          className={cn("w-full px-8", Platform.OS === "ios" ? "pb-8" : "pb-4")}
+        >
+          {/* DYNAMIC-COLOR */}
           <ThemedText
             type="tiny"
-            style={[styles.footerText, { color: textColor + 40 }]}
+            className="mb-8 w-4/5 self-center text-center"
+            style={{ color: textColor + 40 }}
           >
             By pressing continue, you agree to the{" "}
             <Link href="https://bridge.xyz/terms-of-service">
@@ -195,7 +202,7 @@ function KYCModal() {
       <SwipeableModal onDismiss={handleClose}>
         <StarburstBank primaryColor={"#0080FF"} />
         {isLoading || isSubmitting ? (
-          <View style={styles.loadingContainer}>
+          <View className="flex-1 items-center justify-center">
             <ActivityIndicator size="large" color={textColor} />
           </View>
         ) : (
@@ -214,59 +221,6 @@ function KYCModal() {
     </ThemedScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  checklistContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    marginHorizontal: Spacing.xl,
-    gap: Spacing.md,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  flagContainer: {
-    alignItems: "center",
-    marginBottom: Spacing.md,
-  },
-  contentContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    marginHorizontal: Spacing.xl,
-    gap: Spacing.md,
-  },
-  headline: {
-    textAlign: "center",
-    paddingHorizontal: Spacing.lg,
-  },
-  subtitle: {
-    marginTop: Spacing.sm,
-    textAlign: "center",
-  },
-  footerText: {
-    width: "80%",
-    textAlign: "center",
-    alignSelf: "center",
-    marginBottom: Spacing.xl,
-  },
-  inputContainer: {
-    width: "100%",
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
-  },
-  input: {
-    width: "100%",
-  },
-  bottomContainer: {
-    width: "100%",
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Platform.OS === "ios" ? Spacing.xl : Spacing.md,
-  },
-});
 
 export default WithScreenTheme(KYCModal, {
   backgroundColor: "#000000",
