@@ -1,12 +1,11 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
-import { ThemedScreen } from "@/components/ui/layout";
+import { ThemedScreen, StarburstFull } from "@/components/ui/layout";
 import { ThemedText, IconSymbol } from "@/components/ui/atoms";
 import { ThemedButton } from "@/components/ui/molecules";
-import { StarburstFull } from "@/components/ui/layout";
 import { WithScreenTheme } from "@/components/WithScreenTheme";
-import { Spacing } from "@/constants/Spacing";
 import { useScreenTheme } from "@/contexts/ScreenThemeContext";
+
 interface FaceIDScreenProps {
   show2FA: boolean;
 }
@@ -17,28 +16,27 @@ export function FaceIDScreen({ show2FA }: FaceIDScreenProps) {
 
   const handleEnable2FA = () => {
     // TODO: Implement Face ID/2FA logic or navigation
-    // setTimeout(() => {
-    //     router.push('/(sign)/success');
-    // }, 1000);
   };
 
   return (
-    <ThemedScreen style={styles.container}>
+    <ThemedScreen className="flex-1">
       <StarburstFull
         primaryColor="#0080FF"
         opacity={0.7}
+        // MEASURED-LAYOUT
         style={StyleSheet.absoluteFillObject}
       />
-      <View style={styles.content}>
+      <View className="flex-1 items-center justify-center px-6">
         <IconSymbol name="faceid" size={64} color={textColor} />
-        <ThemedText type="default" style={styles.textStyle}>
+        <ThemedText type="default" className="mb-6 mt-3 text-center">
           Enable Face ID to{"\n"}protect your account
         </ThemedText>
         {show2FA && (
           <ThemedButton
             title="Enable 2FA"
             onPress={handleEnable2FA}
-            style={styles.button}
+            // MEASURED-LAYOUT
+            style={{ width: 150 }}
           />
         )}
       </View>
@@ -50,24 +48,4 @@ export default WithScreenTheme(FaceIDScreen, {
   backgroundColor: "#000000",
   textColor: "#FFFFFF",
   primaryColor: "#FFFFFF",
-});
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: Spacing.lg,
-  },
-  textStyle: {
-    textAlign: "center",
-    marginTop: Spacing.md,
-    marginBottom: Spacing.lg,
-  },
-  button: {
-    width: 150,
-  },
 });
