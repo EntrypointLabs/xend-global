@@ -1,12 +1,8 @@
 import React from "react";
-import {
-  TouchableOpacity,
-  StyleSheet,
-  ViewStyle,
-  TextStyle,
-} from "react-native";
+import { TouchableOpacity, ViewStyle, TextStyle } from "react-native";
 import { Typography } from "../atoms/Typography";
 import { useScreenTheme } from "@/contexts/ScreenThemeContext";
+import { cn } from "@/utils/cn";
 
 interface ThemedButtonProps {
   onPress: () => void;
@@ -18,6 +14,18 @@ interface ThemedButtonProps {
   iconLeft?: React.ReactNode;
   iconRight?: React.ReactNode;
 }
+
+const variantBg: Record<NonNullable<ThemedButtonProps["variant"]>, string> = {
+  primary: "bg-white border-white",
+  secondary: "bg-black border-black",
+  outline: "bg-white/20 border border-white/20",
+};
+
+const variantText: Record<NonNullable<ThemedButtonProps["variant"]>, string> = {
+  primary: "text-black",
+  secondary: "text-white",
+  outline: "text-white",
+};
 
 export function ThemedButton({
   onPress,
@@ -31,66 +39,24 @@ export function ThemedButton({
 }: ThemedButtonProps) {
   useScreenTheme(); // Preserved subscription for deferred ScreenThemeContext removal (ADR-0007).
 
-  const getButtonStyle = (): ViewStyle => {
-    const baseStyle = {
-      opacity: disabled ? 0.5 : 1,
-    };
-
-    switch (variant) {
-      case "primary":
-        return {
-          ...baseStyle,
-          backgroundColor: "#FFFFFF",
-          borderColor: "#FFFFFF",
-        };
-      case "secondary":
-        return {
-          ...baseStyle,
-          backgroundColor: "#000000",
-          borderColor: "#000000",
-        };
-      case "outline":
-        return {
-          ...baseStyle,
-          backgroundColor: "rgba(255, 255, 255, 0.2)",
-          borderColor: "rgba(255, 255, 255, 0.2)",
-          borderWidth: 1,
-        };
-      default:
-        return {
-          ...baseStyle,
-          backgroundColor: primaryColor,
-          borderColor: primaryColor,
-        };
-    }
-  };
-
-  const getTextColor = (): string => {
-    switch (variant) {
-      case "primary":
-        return "#000000";
-      case "secondary":
-        return "#FFFFFF";
-      case "outline":
-        return "#FFFFFF";
-      default:
-        return "#000000";
-    }
-  };
-
   return (
     <TouchableOpacity
-      style={[styles.button, getButtonStyle(), style]}
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.8}
-      className="flex-row items-center justify-center gap-3"
+      className={cn(
+        "w-full flex-row items-center justify-center gap-3 rounded-[42px] p-5",
+        variantBg[variant],
+        disabled && "opacity-50"
+      )}
+      // MEASURED-LAYOUT
+      style={style}
     >
       {iconLeft}
       <Typography
         weight="600"
-        style={[{ color: getTextColor() }, textStyle]}
-        className="text-lg"
+        className={cn("text-lg", variantText[variant])}
+        style={textStyle}
       >
         {title}
       </Typography>
@@ -98,13 +64,3 @@ export function ThemedButton({
     </TouchableOpacity>
   );
 }
-
-const styles = StyleSheet.create({
-  button: {
-    padding: 20,
-    borderRadius: 42,
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-  },
-});

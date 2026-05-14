@@ -1,15 +1,19 @@
-import { Spacing } from "@/constants/Spacing";
 import React from "react";
-import { View, TouchableOpacity, Image, StyleSheet } from "react-native";
+import {
+  View,
+  TouchableOpacity,
+  Image,
+  ImageSourcePropType,
+} from "react-native";
 import { ThemedText } from "@/components/ui/atoms";
 import { CircleButton } from "./CircleButton";
+import { cn } from "@/utils/cn";
 
-// Define interface for each option (like wallet or bank)
 export interface ActionOption {
   key: string;
   title: string;
   description: string;
-  icon: any;
+  icon: ImageSourcePropType;
   onPress: () => void;
   disabled?: boolean;
 }
@@ -23,34 +27,36 @@ export function ModalOptionsList({ options }: ModalOptionsListProps) {
 
   return (
     <View>
-      {options.map((option, index) => (
+      {options.map((option) => (
         <TouchableOpacity
           key={option.key}
-          style={[styles.option, option.disabled && styles.disabledOption]}
+          className={cn(
+            "flex-row items-center py-3",
+            option.disabled && "opacity-50"
+          )}
           onPress={option.onPress}
           disabled={option.disabled}
         >
           <Image
             source={option.icon}
-            className="size-7"
-            style={[option.disabled && styles.disabledIcon]}
+            className={cn("size-7", option.disabled && "opacity-50")}
             resizeMode="contain"
           />
-          <View style={styles.optionTextContainer}>
+          <View className="ml-2 h-[34.1px] flex-1 flex-col justify-between pt-0.5">
             <ThemedText
               type="regularSemiBold"
-              style={option.disabled && styles.disabledText}
+              className={cn(option.disabled && "opacity-50")}
             >
               {option.title}
             </ThemedText>
             <ThemedText
               type="tiny"
-              style={[styles.subText, option.disabled && styles.disabledText]}
+              className={cn("opacity-40", option.disabled && "opacity-50")}
             >
               {option.description}
             </ThemedText>
           </View>
-          <View style={styles.arrowContainer}>
+          <View className="ml-2">
             <CircleButton
               icon="arrow-forward-outline"
               label=""
@@ -65,34 +71,3 @@ export function ModalOptionsList({ options }: ModalOptionsListProps) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  option: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: Spacing.md,
-  },
-  disabledOption: {
-    opacity: 0.5,
-  },
-  optionTextContainer: {
-    flex: 1,
-    flexDirection: "column",
-    justifyContent: "space-between",
-    paddingTop: Spacing.xxs,
-    height: 34.1,
-    marginLeft: Spacing.sm,
-  },
-  subText: {
-    opacity: 0.4,
-  },
-  disabledText: {
-    opacity: 0.5,
-  },
-  disabledIcon: {
-    opacity: 0.5,
-  },
-  arrowContainer: {
-    marginLeft: Spacing.sm,
-  },
-});

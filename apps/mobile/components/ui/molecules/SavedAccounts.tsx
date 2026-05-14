@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { View, StyleSheet, TouchableOpacity } from "react-native";
+import { View, TouchableOpacity } from "react-native";
 import { ThemedText, IconSymbol } from "@/components/ui/atoms";
-import { Spacing } from "@/constants/Spacing";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { ExternalAccountMapping } from "@/types/Transaction";
 import { AUTH_STORAGE_KEYS } from "@/utils/auth";
@@ -18,7 +17,6 @@ export const SavedAccounts: React.FC<SavedAccountsProps> = ({
 }) => {
   const [accounts, setAccounts] = useState<ExternalAccountMapping[]>([]);
   const textColor = useThemeColor({}, "text");
-  const backgroundColor = useThemeColor({}, "background");
 
   useEffect(() => {
     loadAccounts();
@@ -40,8 +38,11 @@ export const SavedAccounts: React.FC<SavedAccountsProps> = ({
 
   if (accounts.length === 0) {
     return (
-      <View style={styles.container}>
-        <TouchableOpacity style={styles.addButton} onPress={onAddNew}>
+      <View className="w-full">
+        <TouchableOpacity
+          className="flex-row items-center gap-1 p-2"
+          onPress={onAddNew}
+        >
           <IconSymbol name="plus" size={20} color={textColor} />
           <ThemedText type="regular">Add New Account</ThemedText>
         </TouchableOpacity>
@@ -50,26 +51,29 @@ export const SavedAccounts: React.FC<SavedAccountsProps> = ({
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <ThemedText type="regular" style={{ color: textColor + "40" }}>
+    <View className="w-full">
+      <View className="mb-4 flex-row items-center justify-between">
+        <ThemedText type="regular" className="text-foreground/40">
           Saved Accounts
         </ThemedText>
-        <TouchableOpacity style={styles.addButton} onPress={onAddNew}>
+        <TouchableOpacity
+          className="flex-row items-center gap-1 p-2"
+          onPress={onAddNew}
+        >
           <IconSymbol name="plus" size={20} color={textColor} />
           <ThemedText type="regular">Add New</ThemedText>
         </TouchableOpacity>
       </View>
-      <View style={styles.accountsList}>
+      <View className="gap-2">
         {accounts.map((account) => (
           <TouchableOpacity
             key={account.external_account_id}
-            style={[styles.accountItem, { backgroundColor }]}
+            className="flex-row items-center justify-between rounded-lg border border-black/10 bg-background p-4"
             onPress={() => onSelect(account.external_account_id)}
           >
-            <View style={styles.accountInfo}>
+            <View className="gap-1">
               <ThemedText type="default">{account.label}</ThemedText>
-              <ThemedText type="regular" style={{ color: textColor + "40" }}>
+              <ThemedText type="regular" className="text-foreground/40">
                 Account ID: {account.external_account_id.slice(-4)}
               </ThemedText>
             </View>
@@ -84,36 +88,3 @@ export const SavedAccounts: React.FC<SavedAccountsProps> = ({
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    width: "100%",
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: Spacing.md,
-  },
-  addButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-    padding: Spacing.sm,
-  },
-  accountsList: {
-    gap: Spacing.sm,
-  },
-  accountItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: Spacing.md,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.1)",
-  },
-  accountInfo: {
-    gap: Spacing.xs,
-  },
-});

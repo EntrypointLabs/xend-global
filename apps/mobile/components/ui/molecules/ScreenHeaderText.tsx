@@ -1,8 +1,8 @@
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
 import { ThemedText } from "@/components/ui/atoms";
-import { Spacing } from "@/constants/Spacing";
 import { useScreenTheme } from "@/contexts/ScreenThemeContext";
+import { cn } from "@/utils/cn";
 
 interface ScreenHeaderTextProps {
   title: string;
@@ -18,26 +18,28 @@ export function ScreenHeaderText({
   const { textColor } = useScreenTheme();
 
   return (
-    <View style={[styles.container, flex ? { flex } : {}]}>
-      <ThemedText style={[styles.title, { color: textColor }]} type="highlight">
+    <View
+      className="mb-6 mt-[60px] items-center"
+      // MEASURED-LAYOUT
+      style={flex ? { flex } : undefined}
+    >
+      <ThemedText
+        className={cn("mb-2")}
+        type="highlight"
+        // DYNAMIC-COLOR
+        style={{ color: textColor }}
+      >
         {title}
       </ThemedText>
       {subtitle && (
-        <ThemedText style={{ color: textColor }} type="default">
+        <ThemedText
+          type="default"
+          // DYNAMIC-COLOR
+          style={{ color: textColor }}
+        >
           {subtitle}
         </ThemedText>
       )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    alignItems: "center",
-    marginBottom: Spacing.xl,
-    marginTop: 60,
-  },
-  title: {
-    marginBottom: Spacing.sm,
-  },
-});

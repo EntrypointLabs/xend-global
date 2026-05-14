@@ -2,15 +2,14 @@ import React, { forwardRef } from "react";
 import {
   TextInput,
   TextInputProps,
-  StyleSheet,
   View,
   ViewStyle,
   StyleProp,
 } from "react-native";
 import { useScreenTheme } from "@/contexts/ScreenThemeContext";
-import { Spacing } from "@/constants/Spacing";
 import { CircleButton } from "./CircleButton";
-import { Size } from "@/constants/Typography";
+import { cn } from "@/utils/cn";
+
 interface ThemedTextInputProps extends Omit<TextInputProps, "style"> {
   onButtonPress?: () => void;
   buttonIcon?: keyof typeof import("@expo/vector-icons").Ionicons.glyphMap;
@@ -38,9 +37,7 @@ export const ThemedTextInput = forwardRef<TextInput, ThemedTextInputProps>(
     ref
   ) => {
     const { textColor, backgroundColor } = useScreenTheme();
-    const errorColor = "#FF3B30"; // Standard error color
 
-    // Determine button color logic (invert of background color)
     const isBackgroundDark =
       backgroundColor === "#000000" || backgroundColor.toLowerCase() === "#000";
     const buttonBackground = isBackgroundDark ? "#FFFFFF" : "#000000";
@@ -48,31 +45,26 @@ export const ThemedTextInput = forwardRef<TextInput, ThemedTextInputProps>(
 
     return (
       <View
-        style={[
-          styles.container,
-          {
-            borderColor: error ? errorColor : textColor + "20",
-            backgroundColor: textColor + "20",
-          },
-          style,
-        ]}
+        className={cn(
+          "w-full flex-row items-center rounded-[42px] border-[0.5px] px-3 py-2",
+          error ? "border-destructive" : "border-foreground/20",
+          "bg-foreground/20"
+        )}
+        // MEASURED-LAYOUT
+        style={style}
       >
         <TextInput
           ref={ref}
-          style={[
-            styles.input,
-            {
-              color: textColor,
-            },
-            inputStyle,
-          ]}
+          className="h-10 flex-1 pl-3 text-base"
+          // DYNAMIC-COLOR (theme-driven text color from ScreenThemeContext)
+          style={[{ color: textColor }, inputStyle]}
           placeholderTextColor={textColor + "80"}
           {...textInputProps}
         />
         {buttonIcon && (
           <CircleButton
             icon={buttonIcon}
-            label="" // No label needed visually inside the input
+            label=""
             onPress={
               onButtonPress
                 ? onButtonPress
@@ -91,28 +83,3 @@ export const ThemedTextInput = forwardRef<TextInput, ThemedTextInputProps>(
 );
 
 ThemedTextInput.displayName = "ThemedTextInput";
-
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 0.5,
-    borderRadius: 42,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    width: "100%",
-  },
-  input: {
-    flex: 1,
-    fontSize: Size.medium,
-    height: 40,
-    paddingLeft: Spacing.md,
-  },
-  button: {
-    flex: 1,
-    fontSize: Size.mediumLarge,
-    marginRight: Spacing.sm,
-    paddingVertical: 0,
-    marginLeft: Spacing.md,
-  },
-});

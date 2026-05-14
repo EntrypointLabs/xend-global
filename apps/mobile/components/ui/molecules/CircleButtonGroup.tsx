@@ -1,7 +1,6 @@
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
 import { CircleButton } from "./CircleButton";
-import { Spacing } from "@/constants/Spacing";
 
 interface ButtonItem {
   icon: React.ComponentProps<typeof CircleButton>["icon"];
@@ -17,9 +16,9 @@ interface CircleButtonGroupProps {
 
 export function CircleButtonGroup({ buttons }: CircleButtonGroupProps) {
   return (
-    <View style={styles.container}>
+    <View className="flex-row items-center justify-evenly py-2">
       {buttons.map((button, index) => (
-        <View key={index} style={styles.itemContainer}>
+        <View key={index} className="w-[75px] items-center justify-center">
           <CircleButton
             icon={button.icon}
             label={button.label}
@@ -32,17 +31,3 @@ export function CircleButtonGroup({ buttons }: CircleButtonGroupProps) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    justifyContent: "space-evenly",
-    alignItems: "center",
-    paddingVertical: Spacing.sm,
-  },
-  itemContainer: {
-    justifyContent: "center",
-    alignItems: "center",
-    width: 75,
-  },
-});

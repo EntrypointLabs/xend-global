@@ -29,6 +29,7 @@ export function ActionPill({ items, containerStyle }: ActionPillProps) {
   return (
     <View
       className="flex-row items-center gap-7 rounded-full bg-white px-5 py-3"
+      // PLATFORM-SHADOW
       style={[shadowStyle, containerStyle]}
     >
       {items.map((item, index) => {

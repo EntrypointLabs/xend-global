@@ -1,5 +1,5 @@
 import React from "react";
-import { View, StyleSheet } from "react-native";
+import { View, ViewStyle, StyleProp } from "react-native";
 import { ThemedButton } from "./ThemedButton";
 
 interface ButtonGroupProps {
@@ -9,7 +9,8 @@ interface ButtonGroupProps {
   rightOnPress: () => void;
   leftVariant?: "primary" | "secondary" | "outline";
   rightVariant?: "primary" | "secondary" | "outline";
-  style?: any;
+  className?: string;
+  style?: StyleProp<ViewStyle>;
 }
 
 export function ButtonGroup({
@@ -19,33 +20,26 @@ export function ButtonGroup({
   rightOnPress,
   leftVariant = "primary",
   rightVariant = "secondary",
+  className,
   style,
 }: ButtonGroupProps) {
   return (
-    <View style={[styles.buttonContainer, style]}>
+    <View
+      className={`flex-row justify-between gap-3 ${className ?? ""}`}
+      style={style}
+    >
       <ThemedButton
         title={leftTitle}
         onPress={leftOnPress}
         variant={leftVariant}
-        style={styles.button}
+        style={{ flex: 1 }}
       />
       <ThemedButton
         title={rightTitle}
         onPress={rightOnPress}
         variant={rightVariant}
-        style={styles.button}
+        style={{ flex: 1 }}
       />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  buttonContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  button: {
-    flex: 1,
-  },
-});
