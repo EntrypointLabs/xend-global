@@ -11,17 +11,10 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { BlurView } from "expo-blur";
 import { ThemedText } from "@/components/ui/atoms";
 import { useThemeColor } from "@/hooks/useThemeColor";
-import { Spacing } from "@/constants/Spacing";
-import { useColorScheme } from "@/hooks/useColorScheme";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  withTiming,
-  SlideInDown,
-  SlideOutDown,
-  FadeIn,
-  FadeOut,
 } from "react-native-reanimated";
 import { runOnJS } from "react-native-worklets";
 import {
@@ -48,13 +41,9 @@ export function ActionModal({
   title = "",
   children,
   useStarburstModal = false,
-  primaryColor = "#0080FF",
 }: ActionModalProps): ReactElement {
   const backgroundColor = useThemeColor({}, "background");
   const textColor = useThemeColor({}, "text");
-
-  const overlayBackgroundColor = "rgb(189, 189, 189, 1)";
-  const blurTint = "dark";
 
   const translateY = useSharedValue(0);
 
@@ -64,11 +53,10 @@ export function ActionModal({
     } else {
       translateY.value = SCREEN_HEIGHT;
     }
-  }, [visible]);
+  }, [visible, translateY]);
 
   const handleClose = () => {
-    // Reset state and call onClose
-    translateY.value = 0; // Reset for next time (though unmount handles it mostly)
+    translateY.value = 0;
     onClose();
   };
 
@@ -96,48 +84,43 @@ export function ActionModal({
     <Modal
       visible={visible}
       transparent={true}
-      animationType="fade" // Fade effectively controls the background blur fade-in
+      animationType="fade"
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureHandlerRootView className="flex-1">
         <TouchableOpacity
-          style={{ flex: 1 }}
+          className="flex-1"
           activeOpacity={1}
           onPress={onClose}
         >
-          {/* Using TouchableOpacity as backdrop to close on outside press */}
           <BlurView
-            // intensity={24.2}
             intensity={44.2}
-            style={[
-              styles.overlay,
-              { backgroundColor: overlayBackgroundColor },
-              StyleSheet.absoluteFill,
-            ]}
-            tint={blurTint}
+            className="flex-1 items-center justify-end bg-[rgb(189,189,189)]"
+            // MEASURED-LAYOUT (absoluteFill helper)
+            style={StyleSheet.absoluteFill}
+            tint="dark"
             experimentalBlurMethod="dimezisBlurView"
           >
             <TouchableWithoutFeedback>
-              {/* Prevent touches inside passing to backdrop */}
               <GestureDetector gesture={pan}>
+                {/* REANIMATED-EXCEPTION */}
                 <Animated.View
+                  className="relative m-[21px] w-[93%] overflow-hidden rounded-[32px] px-6 py-5"
                   style={[
-                    styles.modalContainer,
                     {
                       backgroundColor: useStarburstModal
                         ? "#000"
                         : backgroundColor,
                     },
-                    // animatedStyle
+                    animatedStyle,
                   ]}
-                  // entering={SlideInDown.springify().damping(15)}
-                  // exiting={SlideOutDown}
                 >
                   {title ? (
-                    <View style={styles.header}>
+                    <View className="z-10 mb-2 flex-row items-center justify-between">
                       <ThemedText
                         type="subtitle"
+                        // DYNAMIC-COLOR
                         style={{
                           color: useStarburstModal ? "white" : textColor,
                         }}
@@ -146,14 +129,15 @@ export function ActionModal({
                       </ThemedText>
                       <TouchableOpacity
                         onPress={onClose}
-                        style={styles.closeButton}
+                        className="opacity-25"
                       >
                         <Typography
                           weight="300"
-                          style={[
-                            styles.closeText,
-                            { color: useStarburstModal ? "white" : textColor },
-                          ]}
+                          className="text-[28px]"
+                          // DYNAMIC-COLOR
+                          style={{
+                            color: useStarburstModal ? "white" : textColor,
+                          }}
                         >
                           ×
                         </Typography>
@@ -161,7 +145,7 @@ export function ActionModal({
                     </View>
                   ) : null}
 
-                  <View style={styles.contentContainer}>{children}</View>
+                  <View className="z-10">{children}</View>
                 </Animated.View>
               </GestureDetector>
             </TouchableWithoutFeedback>
@@ -171,36 +155,3 @@ export function ActionModal({
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-    alignItems: "center",
-  },
-  modalContainer: {
-    width: "93%",
-    borderRadius: 32,
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    margin: 21,
-    overflow: "hidden",
-    position: "relative",
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: Spacing.sm,
-    zIndex: 1,
-  },
-  contentContainer: {
-    zIndex: 1,
-  },
-  closeButton: {
-    opacity: 0.25,
-  },
-  closeText: {
-    fontSize: 28,
-  },
-});

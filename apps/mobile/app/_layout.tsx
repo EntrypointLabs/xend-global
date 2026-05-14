@@ -14,6 +14,7 @@ import { lightTheme, darkTheme } from "@/constants/Theme";
 import { ScreenThemeProvider } from "@/contexts/ScreenThemeContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useTheme } from "@/hooks/useTheme";
+import { cn } from "@/utils/cn";
 import { ModalFlowProvider } from "@/contexts/ModalFlowContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import * as Sentry from "@sentry/react-native";
@@ -213,9 +214,7 @@ function RootLayout() {
 function ThemedRoot({ children }: { children: React.ReactNode }) {
   const { theme } = useTheme();
   return (
-    <View className={`flex-1 ${theme === "dark" ? "dark" : ""}`}>
-      {children}
-    </View>
+    <View className={cn("flex-1", theme === "dark" && "dark")}>{children}</View>
   );
 }
 

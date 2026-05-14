@@ -1,6 +1,7 @@
 import React from "react";
 import { View, ViewStyle, StyleProp } from "react-native";
 import { ThemedButton } from "./ThemedButton";
+import { cn } from "@/utils/cn";
 
 interface ButtonGroupProps {
   leftTitle: string;
@@ -25,7 +26,7 @@ export function ButtonGroup({
 }: ButtonGroupProps) {
   return (
     <View
-      className={`flex-row justify-between gap-3 ${className ?? ""}`}
+      className={cn("flex-row justify-between gap-3", className)}
       style={style}
     >
       <ThemedButton

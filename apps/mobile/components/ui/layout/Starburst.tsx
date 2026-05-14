@@ -1,5 +1,5 @@
 import React from "react";
-import { View, StyleSheet, Dimensions } from "react-native";
+import { View, Dimensions, ViewStyle, StyleProp } from "react-native";
 import Svg, {
   Path,
   Defs,
@@ -13,7 +13,7 @@ import Svg, {
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
 interface StarburstProps {
-  style?: any;
+  style?: StyleProp<ViewStyle>;
 }
 
 export const Starburst: React.FC<StarburstProps> = ({ style }) => {
@@ -27,11 +27,9 @@ export const Starburst: React.FC<StarburstProps> = ({ style }) => {
 
   return (
     <View
-      style={[
-        styles.container,
-        { left, top, width: svgWidth, height: svgHeight },
-        style,
-      ]}
+      className="absolute"
+      // MEASURED-LAYOUT
+      style={[{ left, top, width: svgWidth, height: svgHeight }, style]}
       pointerEvents="none"
     >
       <Svg
@@ -154,9 +152,3 @@ export const Starburst: React.FC<StarburstProps> = ({ style }) => {
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    position: "absolute",
-  },
-});

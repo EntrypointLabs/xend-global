@@ -8,11 +8,11 @@ import Svg, {
   FeBlend,
   FeGaussianBlur,
 } from "react-native-svg";
-import { StyleSheet, ViewStyle } from "react-native";
+import { ViewStyle, StyleProp } from "react-native";
 
 interface StarburstBankProps {
   primaryColor?: string;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   opacity?: number;
 }
 
@@ -22,11 +22,12 @@ export function StarburstBank({
   opacity = 0.5,
 }: StarburstBankProps) {
   return (
+    // MEASURED-LAYOUT
     <Svg
       width="402"
       height="862"
       viewBox="0 0 402 862"
-      style={[styles.svg, style]}
+      style={[{ position: "absolute", left: "0%", top: "-10%" }, style]}
     >
       <G filter="url(#filter0_f_53_2504)">
         <Path
@@ -111,11 +112,3 @@ export function StarburstBank({
     </Svg>
   );
 }
-
-const styles = StyleSheet.create({
-  svg: {
-    position: "absolute",
-    left: "0%",
-    top: "-10%",
-  },
-});

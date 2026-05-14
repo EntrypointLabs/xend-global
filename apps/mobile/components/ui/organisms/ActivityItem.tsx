@@ -1,34 +1,27 @@
-import {
-  View,
-  Image,
-  TouchableOpacity,
-  ImageSourcePropType,
-} from "react-native";
+import { View, Image, ImageSourcePropType } from "react-native";
 import { Typography } from "../atoms/Typography";
 import { History } from "@/types/History";
 import { truncateAddress } from "@/utils/helper";
 import { formatAmount } from "@/utils/solana";
 import HapticPressable from "../atoms/HapticPressable";
+import { cn } from "@/utils/cn";
 
 export type ActivityItemProps = History & {
   onPress?: () => void;
 };
 
 export function ActivityItem({ onPress, ...data }: ActivityItemProps) {
-  const positiveColor = "#34C759"; // Green
-  const negativeColor = "#FF3B30"; // Red
-
   const isHidden = false;
 
   const displayAmount = isHidden
     ? "****"
     : formatAmount(data.amount, data.token.decimal);
   const displaySign = isHidden ? "" : data.side === "send" ? "-" : "+";
-  const valueColor = isHidden
-    ? undefined
+  const valueColorClass = isHidden
+    ? ""
     : data.side === "send"
-      ? negativeColor
-      : positiveColor;
+      ? "text-destructive"
+      : "text-success";
   const label =
     data.side === "send"
       ? `To: ${truncateAddress(data.to)}`
@@ -54,8 +47,7 @@ export function ActivityItem({ onPress, ...data }: ActivityItemProps) {
         </View>
         <Typography
           weight="600"
-          className="text-sm tracking-[0.5px]"
-          style={{ color: valueColor }}
+          className={cn("text-sm tracking-[0.5px]", valueColorClass)}
         >
           {displaySign}
           {displayAmount} {data.token.symbol}

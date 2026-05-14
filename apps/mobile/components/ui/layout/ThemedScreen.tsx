@@ -1,31 +1,31 @@
 import React from "react";
-import { View, ViewStyle } from "react-native";
+import { View, ViewStyle, StyleProp } from "react-native";
 import { SafeAreaView, Edge } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import { cn } from "@/utils/cn";
 
 interface ThemedScreenProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  className?: string;
+  style?: StyleProp<ViewStyle>;
   useSafeArea?: boolean;
   safeAreaEdges?: Edge[];
 }
 
 export function ThemedScreen({
   children,
+  className,
   style,
   useSafeArea = true,
   safeAreaEdges = ["top", "right", "bottom", "left"],
 }: ThemedScreenProps) {
-  const statusBarStyle = "dark";
-  const className = "flex-1 bg-white/90";
+  const containerClass = cn("flex-1 bg-white/90", className);
 
   const content = (
     <>
-      <StatusBar style={statusBarStyle} />
-      <View
-        style={[{ backgroundColor: "rgba(255, 255, 255, 90)" }, style]}
-        className={className}
-      >
+      <StatusBar style="dark" />
+      {/* MEASURED-LAYOUT */}
+      <View className={containerClass} style={style}>
         {children}
       </View>
     </>
@@ -33,15 +33,16 @@ export function ThemedScreen({
 
   if (useSafeArea) {
     return (
+      // MEASURED-LAYOUT
       <SafeAreaView
         edges={safeAreaEdges}
-        className={className}
-        style={[{ backgroundColor: "rgba(255, 255, 255, 90)" }]}
+        className={containerClass}
+        style={style}
       >
         {content}
       </SafeAreaView>
     );
   }
 
-  return <View className={className}>{content}</View>;
+  return <View className={containerClass}>{content}</View>;
 }

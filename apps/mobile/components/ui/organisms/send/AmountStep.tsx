@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useWalletData } from "@/hooks/useWalletData";
 import { useRouter } from "expo-router";
 import HapticPressable from "../../atoms/HapticPressable";
-import { cn } from "@/utils/class";
+import { cn } from "@/utils/cn";
 
 interface AmountStepProps {
   recipient: string;

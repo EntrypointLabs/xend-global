@@ -1,9 +1,7 @@
 import React from "react";
-import { StyleSheet, View, ScrollView, RefreshControl } from "react-native";
+import { View, ScrollView, RefreshControl } from "react-native";
 import { ThemedText } from "@/components/ui/atoms";
 import { TransactionItem } from "./TransactionItem";
-import { Spacing } from "@/constants/Spacing";
-import { useThemeColor } from "@/hooks/useThemeColor";
 import { TransactionGroup } from "@/types/Transaction";
 
 interface TransactionListProps {
@@ -17,13 +15,11 @@ export function TransactionList({
   onRefresh,
   refreshing,
 }: TransactionListProps) {
-  const sectionHeaderBg = useThemeColor({}, "background");
-
   return (
-    <View style={styles.container}>
+    <View className="w-full flex-1">
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.contentContainer}
+        className="flex-1"
+        contentContainerClassName="flex-grow"
         showsVerticalScrollIndicator={false}
         refreshControl={
           onRefresh ? (
@@ -35,17 +31,14 @@ export function TransactionList({
         }
       >
         {transactions.length === 0 ? (
-          <ThemedText style={styles.emptyText}>No transactions yet</ThemedText>
+          <ThemedText className="mt-6 text-center opacity-50">
+            No transactions yet
+          </ThemedText>
         ) : (
           transactions.map((section) => (
             <View key={section.title}>
-              <View
-                style={[
-                  styles.sectionHeaderContainer,
-                  { backgroundColor: sectionHeaderBg },
-                ]}
-              >
-                <ThemedText type="defaultSemiBold" style={styles.groupTitle}>
+              <View className="z-10 bg-background px-3 pt-6">
+                <ThemedText type="defaultSemiBold" className="opacity-25">
                   {section.title}
                 </ThemedText>
               </View>
@@ -67,29 +60,3 @@ export function TransactionList({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    width: "100%",
-  },
-  scrollView: {
-    flex: 1,
-  },
-  contentContainer: {
-    flexGrow: 1,
-  },
-  sectionHeaderContainer: {
-    paddingTop: Spacing.xl,
-    paddingHorizontal: Spacing.md,
-    zIndex: 1,
-  },
-  groupTitle: {
-    opacity: 0.23,
-  },
-  emptyText: {
-    textAlign: "center",
-    marginTop: Spacing.xl,
-    opacity: 0.5,
-  },
-});

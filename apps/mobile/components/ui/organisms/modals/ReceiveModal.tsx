@@ -1,7 +1,9 @@
 import React from "react";
 import { ActionModal } from "../ActionModal";
-import { ModalOptionsList } from "../../molecules/ModalOptionsList";
-import { ActionOption } from "../../molecules/ModalOptionsList";
+import {
+  ModalOptionsList,
+  ActionOption,
+} from "../../molecules/ModalOptionsList";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { router } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,13 +27,7 @@ export function ReceiveModal({
 }: ReceiveModalProps) {
   const { accountInfo } = useAuth();
   const { hideAllModals } = useModalFlow();
-  const {
-    isBankLoading,
-    getBankDescription,
-    isBankDisabled,
-    status,
-    tosStatus,
-  } = useKyc();
+  const { isBankLoading, isBankDisabled, status, tosStatus } = useKyc();
 
   const handleReceiveToWallet = () => {
     hideAllModals();

@@ -1,9 +1,9 @@
 import React from "react";
-import { View, ActivityIndicator, Modal, StyleSheet } from "react-native";
+import { View, ActivityIndicator, Modal } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { BlurView } from "expo-blur";
-import { useThemeColor } from "@/hooks/useThemeColor";
+import { cn } from "@/utils/cn";
 
 interface PasskeySetupModalProps {
   visible: boolean;
@@ -24,8 +24,6 @@ export function PasskeySetupModal({
   onSkip,
   skipLabel = "Skip for now",
 }: PasskeySetupModalProps) {
-  const backgroundColor = useThemeColor({}, "background");
-
   return (
     <Modal
       visible={visible}
@@ -35,41 +33,50 @@ export function PasskeySetupModal({
     >
       <BlurView
         intensity={44.2}
-        style={[styles.overlay, { backgroundColor: "rgb(189, 189, 189, 1)" }]}
+        className="flex-1 items-center justify-end bg-[rgb(189,189,189)]"
         tint="dark"
         experimentalBlurMethod="dimezisBlurView"
       >
-        <View style={[styles.modalContainer, { backgroundColor }]}>
-          <View style={styles.content}>
-            <View style={styles.iconContainer}>
-              <Typography weight="700" style={styles.icon}>
-                {"\uD83D\uDD12"}
+        <View className="m-[21px] w-[93%] overflow-hidden rounded-[32px] bg-background px-6 py-7">
+          <View className="items-center">
+            <View className="mb-4">
+              <Typography weight="700" className="text-[40px]">
+                {"🔒"}
               </Typography>
             </View>
 
-            <Typography weight="600" style={styles.title}>
+            <Typography weight="600" className="mb-2 text-center text-xl">
               Set up your passkey
             </Typography>
 
-            <Typography weight="400" style={styles.description}>
+            <Typography
+              weight="400"
+              className="mb-6 max-w-[260px] text-center text-sm leading-5 opacity-50"
+            >
               A passkey lets you securely sign transactions using biometrics
               like Face ID or fingerprint.
             </Typography>
 
             {error ? (
-              <View style={styles.errorContainer}>
-                <Typography weight="400" style={styles.errorText}>
+              <View className="w-full items-center">
+                <Typography
+                  weight="400"
+                  className="mb-4 text-center text-sm text-destructive"
+                >
                   {error}
                 </Typography>
                 <HapticPressable
                   onPress={onRetry}
                   disabled={isLoading}
-                  style={[styles.button, { opacity: isLoading ? 0.5 : 1 }]}
+                  className={cn(
+                    "w-full items-center justify-center rounded-full bg-black py-4",
+                    isLoading && "opacity-50"
+                  )}
                 >
                   {isLoading ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Typography weight="600" style={styles.buttonText}>
+                    <Typography weight="600" className="text-base text-white">
                       Try Again
                     </Typography>
                   )}
@@ -79,12 +86,15 @@ export function PasskeySetupModal({
               <HapticPressable
                 onPress={onAddPasskey}
                 disabled={isLoading}
-                style={[styles.button, { opacity: isLoading ? 0.5 : 1 }]}
+                className={cn(
+                  "w-full items-center justify-center rounded-full bg-black py-4",
+                  isLoading && "opacity-50"
+                )}
               >
                 {isLoading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Typography weight="600" style={styles.buttonText}>
+                  <Typography weight="600" className="text-base text-white">
                     Set up Passkey
                   </Typography>
                 )}
@@ -95,9 +105,12 @@ export function PasskeySetupModal({
               <HapticPressable
                 onPress={onSkip}
                 disabled={isLoading}
-                style={styles.skipButton}
+                className="mt-3 items-center justify-center py-3"
               >
-                <Typography weight="500" style={styles.skipButtonText}>
+                <Typography
+                  weight="500"
+                  className="text-sm text-black opacity-60"
+                >
                   {skipLabel}
                 </Typography>
               </HapticPressable>
@@ -108,74 +121,3 @@ export function PasskeySetupModal({
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-    alignItems: "center",
-  },
-  modalContainer: {
-    width: "93%",
-    borderRadius: 32,
-    paddingHorizontal: 24,
-    paddingVertical: 28,
-    margin: 21,
-    overflow: "hidden",
-  },
-  content: {
-    alignItems: "center",
-  },
-  iconContainer: {
-    marginBottom: 16,
-  },
-  icon: {
-    fontSize: 40,
-  },
-  title: {
-    fontSize: 20,
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  description: {
-    fontSize: 14,
-    opacity: 0.5,
-    textAlign: "center",
-    maxWidth: 260,
-    marginBottom: 24,
-    lineHeight: 20,
-  },
-  errorContainer: {
-    width: "100%",
-    alignItems: "center",
-  },
-  errorText: {
-    fontSize: 14,
-    color: "#FF4444",
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  button: {
-    width: "100%",
-    backgroundColor: "#000",
-    borderRadius: 100,
-    paddingVertical: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-  },
-  skipButton: {
-    marginTop: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  skipButtonText: {
-    color: "#000",
-    fontSize: 14,
-    opacity: 0.6,
-  },
-});

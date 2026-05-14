@@ -8,11 +8,11 @@ import Svg, {
   FeBlend,
   FeGaussianBlur,
 } from "react-native-svg";
-import { StyleSheet, ViewStyle } from "react-native";
+import { ViewStyle, StyleProp } from "react-native";
 
 interface StarburstBackgroundProps {
   primaryColor?: string;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   opacity?: number;
 }
 
@@ -22,11 +22,12 @@ export function StarburstBackground({
   opacity = 0.5,
 }: StarburstBackgroundProps) {
   return (
+    // MEASURED-LAYOUT
     <Svg
       width="402"
       height="874"
       viewBox="0 0 402 874"
-      style={[styles.svg, style]}
+      style={[{ position: "absolute", left: "0%", top: "-10%" }, style]}
     >
       <G filter="url(#filter0_f_9_280)">
         <G filter="url(#filter1_f_9_280)">
@@ -159,11 +160,3 @@ export function StarburstBackground({
     </Svg>
   );
 }
-
-const styles = StyleSheet.create({
-  svg: {
-    position: "absolute",
-    left: "0%",
-    top: "-10%",
-  },
-});

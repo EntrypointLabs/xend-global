@@ -1,7 +1,6 @@
 import React, { memo, useCallback, useState } from "react";
-import { StyleSheet, SectionList, RefreshControl } from "react-native";
+import { SectionList, RefreshControl } from "react-native";
 import { ActivityItem } from "./ActivityItem";
-import { Spacing } from "@/constants/Spacing";
 import { History } from "@/types/History";
 import { Typography } from "../atoms/Typography";
 
@@ -39,7 +38,7 @@ export const ActivityList = memo(({ sections }: ActivityListProps) => {
           {title}
         </Typography>
       )}
-      contentContainerStyle={styles.contentContainer}
+      contentContainerClassName="pb-[70px]"
       stickySectionHeadersEnabled={false}
       showsVerticalScrollIndicator={false}
       refreshControl={
@@ -55,9 +54,3 @@ export const ActivityList = memo(({ sections }: ActivityListProps) => {
 });
 
 ActivityList.displayName = "ActivityList";
-
-const styles = StyleSheet.create({
-  contentContainer: {
-    paddingBottom: 70,
-  },
-});

@@ -19,7 +19,7 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
 } from "react-native-reanimated";
-import { cn } from "@/utils/class";
+import { cn } from "@/utils/cn";
 
 interface QRCodeModalProps {
   walletAddress: string;

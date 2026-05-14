@@ -2,7 +2,6 @@ import React, { useRef, useEffect, useMemo, useCallback, memo } from "react";
 import {
   View,
   TouchableOpacity,
-  Image,
   TouchableWithoutFeedback,
   Keyboard,
 } from "react-native";
@@ -20,7 +19,7 @@ import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { truncateAddress } from "@/utils/helper";
 import { TextInput } from "react-native-gesture-handler";
 import { isPublicKey, isSnsName, resolveSnsName } from "@/utils/solana";
-import { cn } from "@/utils/class";
+import { cn } from "@/utils/cn";
 import { useQuery } from "@tanstack/react-query";
 import { useDebounce } from "@/hooks/useDebounce";
 
@@ -243,7 +242,10 @@ export default memo(function RecipientStep({
 
           <View className="flex-row gap-2.5">
             <HapticPressable
-              className={`rounded-full px-6 py-[8px] ${!isContinueDisabled ? "bg-black" : "bg-black/30"}`}
+              className={cn(
+                "rounded-full px-6 py-[8px]",
+                !isContinueDisabled ? "bg-black" : "bg-black/30"
+              )}
               onPress={handleContinue}
               disabled={isContinueDisabled}
             >

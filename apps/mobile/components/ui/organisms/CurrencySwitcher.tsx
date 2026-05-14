@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { View, TouchableOpacity, StyleSheet, Image } from "react-native";
+import { View, TouchableOpacity, Image } from "react-native";
 import { Typography } from "../atoms/Typography";
 import { BlurView } from "expo-blur";
 import tinycolor from "tinycolor2";
 import { Currency } from "@/types/Transaction";
+import { cn } from "@/utils/cn";
 
 interface CurrencySwitcherProps {
   onCurrencyChange: (currency: Currency) => void;
@@ -18,7 +19,6 @@ export function CurrencySwitcher({
 }: CurrencySwitcherProps) {
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>("usd");
 
-  // Define colors
   const selectedBackgroundColor = backgroundColor;
   const colorInstance = tinycolor(backgroundColor);
   const unselectedBackgroundColor = colorInstance.setAlpha(0.1).toRgbString();
@@ -29,116 +29,47 @@ export function CurrencySwitcher({
     onCurrencyChange(currency);
   };
 
-  // Flag icons
   const usFlagIcon = require("@/assets/images/us-flag-round.png");
   const euFlagIcon = require("@/assets/images/eu-flag-round.png");
 
+  const renderTab = (code: Currency, label: string, icon: number) => {
+    const isSelected = selectedCurrency === code;
+    return (
+      <TouchableOpacity
+        className="items-center justify-center rounded-[25px] px-5 py-2.5"
+        // DYNAMIC-COLOR (caller-provided palette)
+        style={{
+          backgroundColor: isSelected ? selectedBackgroundColor : "transparent",
+        }}
+        onPress={() => handleCurrencyChange(code)}
+      >
+        <View className="flex-row items-center">
+          <Image source={icon} className="mr-2 h-6 w-6 rounded-full" />
+          <Typography
+            weight="500"
+            className={cn(!isSelected && "opacity-100")}
+            // DYNAMIC-COLOR
+            style={{ color: isSelected ? textColor : unselectedTextColor }}
+          >
+            {label}
+          </Typography>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   return (
-    <View style={styles.wrapper}>
+    <View className="items-center justify-center">
       <BlurView
         intensity={20}
         tint="dark"
-        style={[
-          styles.container,
-          { backgroundColor: unselectedBackgroundColor },
-        ]}
+        className="w-auto flex-row self-center overflow-hidden rounded-[25px]"
+        // DYNAMIC-COLOR (alpha-derived from caller backgroundColor)
+        style={{ backgroundColor: unselectedBackgroundColor }}
       >
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            {
-              backgroundColor:
-                selectedCurrency === "usd"
-                  ? selectedBackgroundColor
-                  : "transparent",
-            },
-          ]}
-          onPress={() => handleCurrencyChange("usd")}
-        >
-          <View style={styles.tabContent}>
-            <Image source={usFlagIcon} style={styles.flagIcon} />
-            <Typography
-              weight="500"
-              style={[
-                styles.tabText,
-                {
-                  color:
-                    selectedCurrency === "usd"
-                      ? textColor
-                      : unselectedTextColor,
-                },
-              ]}
-            >
-              USD
-            </Typography>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            {
-              backgroundColor:
-                selectedCurrency === "eur"
-                  ? selectedBackgroundColor
-                  : "transparent",
-            },
-          ]}
-          onPress={() => handleCurrencyChange("eur")}
-        >
-          <View style={styles.tabContent}>
-            <Image source={euFlagIcon} style={styles.flagIcon} />
-            <Typography
-              weight="500"
-              style={[
-                styles.tabText,
-                {
-                  color:
-                    selectedCurrency === "eur"
-                      ? textColor
-                      : unselectedTextColor,
-                },
-              ]}
-            >
-              EUR
-            </Typography>
-          </View>
-        </TouchableOpacity>
+        {renderTab("usd", "USD", usFlagIcon)}
+        {renderTab("eur", "EUR", euFlagIcon)}
       </BlurView>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrapper: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  container: {
-    flexDirection: "row",
-    borderRadius: 25,
-    overflow: "hidden",
-    alignSelf: "center",
-    width: "auto", // This ensures it only takes the width it needs
-  },
-  tab: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 25, // Apply border radius here if needed for selected state background
-  },
-  tabContent: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  flagIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    marginRight: 8,
-  },
-  tabText: {
-    color: "#8E8E93",
-  },
-});

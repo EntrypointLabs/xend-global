@@ -1,7 +1,9 @@
 import React from "react";
 import { ActionModal } from "../ActionModal";
-import { ModalOptionsList } from "../../molecules/ModalOptionsList";
-import { ActionOption } from "../../molecules/ModalOptionsList";
+import {
+  ModalOptionsList,
+  ActionOption,
+} from "../../molecules/ModalOptionsList";
 import { router } from "expo-router";
 import { useKyc } from "@/hooks/useKyc";
 import { useModalFlow } from "@/contexts/ModalFlowContext";

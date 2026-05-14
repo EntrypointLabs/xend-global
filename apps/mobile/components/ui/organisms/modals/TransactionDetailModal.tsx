@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  StyleSheet,
   View,
   Image,
   TouchableOpacity,
@@ -8,7 +7,6 @@ import {
 } from "react-native";
 import { ActionModal } from "../ActionModal";
 import { ActivityItemProps } from "../ActivityItem";
-import { Spacing } from "@/constants/Spacing";
 import {
   FontAwesome6,
   Ionicons,
@@ -57,10 +55,10 @@ export function TransactionDetailModal({
           <FontAwesome6 name="xmark" size={20} color={copyIconColor} />
         </HapticPressable>
 
-        <View style={styles.iconContainer}>
+        <View className="relative mb-3">
           <Image
             source={item.token.icon as ImageSourcePropType}
-            style={styles.icon}
+            className="h-16 w-16 rounded-full"
           />
           <View className="absolute right-0 top-0 overflow-hidden rounded-full bg-white">
             <Ionicons name="checkmark-circle" size={16} color="#34C759" />
@@ -82,10 +80,8 @@ export function TransactionDetailModal({
         <View className="w-full pb-3">
           <View className={rowClass}>
             <Typography weight="600">Status</Typography>
-            <View style={styles.valueRow}>
-              <Typography style={{ color: "#34C759", marginRight: 4 }}>
-                Completed
-              </Typography>
+            <View className="flex-row items-center">
+              <Typography className="mr-1 text-success">Completed</Typography>
               <Ionicons name="checkmark-circle" size={14} color="#34C759" />
             </View>
           </View>
@@ -95,10 +91,10 @@ export function TransactionDetailModal({
               From
             </Typography>
             <TouchableOpacity
-              style={styles.valueRow}
+              className="flex-row items-center"
               onPress={() => copyToClipboard("CZ2R...K4Aj")}
             >
-              <Typography weight="600" style={{ marginRight: 4 }}>
+              <Typography weight="600" className="mr-1">
                 CZ2R...K4Aj
               </Typography>
               <Ionicons name="copy-outline" size={14} color={copyIconColor} />
@@ -110,10 +106,10 @@ export function TransactionDetailModal({
               Onchain transaction
             </Typography>
             <TouchableOpacity
-              style={styles.valueRow}
+              className="flex-row items-center"
               onPress={() => copyToClipboard(item.transactionHash)}
             >
-              <Typography weight="600" style={{ marginRight: 4 }}>
+              <Typography weight="600" className="mr-1">
                 {truncateAddress(item.transactionHash)}
               </Typography>
               <Ionicons name="copy-outline" size={14} color={copyIconColor} />
@@ -124,15 +120,14 @@ export function TransactionDetailModal({
             <Typography weight="600" className="text-black/30">
               Onchain fees
             </Typography>
-            <View style={styles.valueRow}>
+            <View className="flex-row items-center">
               <Typography
                 weight="500"
-                className="text-black/30"
-                style={{ marginRight: 4, fontSize: 13 }}
+                className="mr-1 text-[13px] text-black/30"
               >
                 Xend⁺
               </Typography>
-              <Typography weight="500" style={{ color: "#34C759" }}>
+              <Typography weight="500" className="text-success">
                 Covered
               </Typography>
             </View>
@@ -158,36 +153,3 @@ export function TransactionDetailModal({
     </ActionModal>
   );
 }
-
-const styles = StyleSheet.create({
-  iconContainer: {
-    position: "relative",
-    marginBottom: Spacing.md,
-  },
-  icon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-  },
-  amount: {
-    fontSize: 32,
-    fontWeight: "bold",
-    marginBottom: Spacing.xs,
-    textAlign: "center",
-  },
-  detailsContainer: {
-    width: "100%",
-    backgroundColor: "rgba(0,0,0,0.03)", // Subtle background for the card
-    borderRadius: 16,
-    padding: Spacing.md,
-  },
-  valueRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  separator: {
-    height: 1,
-    width: "100%",
-    marginVertical: 4,
-  },
-});
