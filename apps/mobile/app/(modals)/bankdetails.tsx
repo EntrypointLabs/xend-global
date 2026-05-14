@@ -1,16 +1,10 @@
 import React, { useState } from "react";
-import {
-  StyleSheet,
-  View,
-  TouchableOpacity,
-  ActivityIndicator,
-} from "react-native";
+import { View, TouchableOpacity, ActivityIndicator } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { router, Link } from "expo-router";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { WithScreenTheme } from "@/components/WithScreenTheme";
 import { ThemedScreen, StarburstBank } from "@/components/ui/layout";
-import { Spacing } from "@/constants/Spacing";
 import {
   CurrencySwitcher,
   SwipeableModal,
@@ -203,24 +197,17 @@ function BankDetailsModal() {
   const renderChipContent = (content: React.ReactNode) => {
     return (
       <Chip>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {content}
-        </View>
+        <View className="flex-row items-center justify-center">{content}</View>
       </Chip>
     );
   };
 
   const renderChips = () => {
     return (
-      <View style={styles.chipsContainer}>
+      <View className="mt-4 flex-row gap-1">
         {renderChipContent(
           <>
+            {/* DYNAMIC-COLOR */}
             <ThemedText type="regular" style={{ color: textColor + 40 }}>
               Fees{" "}
             </ThemedText>
@@ -234,6 +221,7 @@ function BankDetailsModal() {
           </>
         )}
         {renderChipContent(
+          // DYNAMIC-COLOR
           <ThemedText type="regular" style={{ color: textColor + 40 }}>
             Min. transfer is {selectedCurrency === "usd" ? "$2" : "€2"}
           </ThemedText>
@@ -246,11 +234,13 @@ function BankDetailsModal() {
     const isCopied = copiedField === detail.label;
 
     return (
-      <View key={detail.label} style={styles.infoContainer}>
+      <View key={detail.label} className="w-full">
+        {/* DYNAMIC-COLOR */}
         <ThemedText type="regular" style={{ color: textColor + 40 }}>
           {detail.label}
         </ThemedText>
-        <View style={styles.infoValueContainer}>
+        <View className="mb-4 flex-row items-start justify-between">
+          {/* DYNAMIC-COLOR */}
           <ThemedText
             type="regular"
             style={{ color: textColor }}
@@ -260,7 +250,7 @@ function BankDetailsModal() {
           </ThemedText>
           <TouchableOpacity
             onPress={() => handleCopy(detail.label, detail.value)}
-            style={styles.copyButton}
+            className="p-0.5"
           >
             <IconSymbol
               name={isCopied ? "checkmark" : "doc.on.doc"}
@@ -275,10 +265,12 @@ function BankDetailsModal() {
 
   const renderCreateAccountInfo = (detail: InfoItem, isLast: boolean) => {
     return (
-      <View key={detail.icon} style={styles.infoContainer}>
-        <View style={styles.infoValueContainer}>
+      <View key={detail.icon} className="w-full">
+        <View className="mb-4 flex-row items-start justify-between">
+          {/* DYNAMIC-COLOR */}
           <View
-            style={[styles.iconContainer, { backgroundColor: textColor + 40 }]}
+            className="rounded-[10px] p-[7px]"
+            style={{ backgroundColor: textColor + 40 }}
           >
             <IconSymbol
               name={detail.icon as IconSymbolName}
@@ -286,10 +278,12 @@ function BankDetailsModal() {
               color={textColor}
             />
           </View>
-          <View style={{ flex: 1 }}>
+          <View className="flex-1">
+            {/* DYNAMIC-COLOR */}
             <ThemedText
               type="regular"
-              style={{ color: textColor + 40, marginLeft: Spacing.sm }}
+              className="ml-2"
+              style={{ color: textColor + 40 }}
               numberOfLines={0}
             >
               {selectedCurrency === "eur" ? detail.textEUR : detail.textUSD}
@@ -306,11 +300,13 @@ function BankDetailsModal() {
   const renderContent = () => {
     if (isLoading || isCreatingAccount) {
       return (
-        <View style={styles.loadingContainer}>
+        <View className="flex-1 items-center justify-center">
           <ActivityIndicator />
+          {/* DYNAMIC-COLOR */}
           <ThemedText
             type="regular"
-            style={{ marginTop: Spacing.md, color: textColor + 40 }}
+            className="mt-4"
+            style={{ color: textColor + 40 }}
           >
             {isCreatingAccount
               ? "Creating your virtual account..."
@@ -357,8 +353,9 @@ function BankDetailsModal() {
 
       return (
         <>
-          <View style={styles.contentContainer}>
+          <View className="mx-4 mt-8 flex-1 items-center">
             <ThemedText type="subtitle">Virtual US Bank Account</ThemedText>
+            {/* DYNAMIC-COLOR */}
             <ThemedText type="regular" style={{ color: textColor + 40 }}>
               Accept ACH & Wire Payments
             </ThemedText>
@@ -366,9 +363,11 @@ function BankDetailsModal() {
             <Divider type="dashed" color={textColor + 10} thickness={1} />
             {bankDetails.map((detail) => renderInfo(detail))}
           </View>
+          {/* DYNAMIC-COLOR */}
           <ThemedText
             type="tiny"
-            style={[styles.footerText, { color: textColor + 40 }]}
+            className="mb-8 w-4/5 self-center text-center"
+            style={{ color: textColor + 40 }}
           >
             For assistance regarding issues with transfers and deposits, reach
             out to{" "}
@@ -411,8 +410,9 @@ function BankDetailsModal() {
 
       return (
         <>
-          <View style={styles.contentContainer}>
+          <View className="mx-4 mt-8 flex-1 items-center">
             <ThemedText type="subtitle">Virtual EUR Bank Account</ThemedText>
+            {/* DYNAMIC-COLOR */}
             <ThemedText type="regular" style={{ color: textColor + 40 }}>
               Accept ACH & Wire Payments
             </ThemedText>
@@ -420,9 +420,11 @@ function BankDetailsModal() {
             <Divider type="dashed" color={textColor + 10} thickness={1} />
             {bankDetails.map((detail) => renderInfo(detail))}
           </View>
+          {/* DYNAMIC-COLOR */}
           <ThemedText
             type="tiny"
-            style={[styles.footerText, { color: textColor + 40 }]}
+            className="mb-8 w-4/5 self-center text-center"
+            style={{ color: textColor + 40 }}
           >
             For assistance regarding issues with transfers and deposits, reach
             out to{" "}
@@ -438,7 +440,7 @@ function BankDetailsModal() {
     } else {
       return (
         <>
-          <View style={styles.flagContainer}>
+          <View className="mt-12 items-center">
             <OverlappingImages
               leftImage={require("@/assets/images/us-flag-round.png")}
               rightImage={require("@/assets/images/eu-flag-round.png")}
@@ -449,14 +451,14 @@ function BankDetailsModal() {
               backdropOpacity={0.4}
             />
           </View>
-          <View style={styles.contentContainer}>
-            <ThemedText type="large" style={styles.headline}>
+          <View className="mx-4 mt-8 flex-1 items-center">
+            <ThemedText type="large" className="text-center">
               Create your
             </ThemedText>
-            <ThemedText type="large" style={styles.headline}>
+            <ThemedText type="large" className="text-center">
               Virtual {selectedCurrency === "usd" ? "US" : "EUR"} Bank Account
             </ThemedText>
-            <View style={styles.infoWrapper}>
+            <View className="mt-12 w-full">
               {INFO.map((detail, index) =>
                 renderCreateAccountInfo(detail, index === INFO.length - 1)
               )}
@@ -476,7 +478,7 @@ function BankDetailsModal() {
     <ThemedScreen>
       <SwipeableModal onDismiss={handleClose}>
         <StarburstBank primaryColor={error ? "#FF0048" : "#0080FF"} />
-        <View style={{ height: Spacing.md }} />
+        <View className="h-4" />
         <CurrencySwitcher
           onCurrencyChange={handleCurrencyChange}
           backgroundColor={textColor}
@@ -487,58 +489,6 @@ function BankDetailsModal() {
     </ThemedScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  flagContainer: {
-    alignItems: "center",
-    marginTop: Spacing.xxl,
-  },
-  contentContainer: {
-    flex: 1,
-    alignItems: "center",
-    marginTop: Spacing.xl,
-    marginHorizontal: Spacing.md,
-  },
-  headline: {
-    textAlign: "center",
-  },
-  iconContainer: {
-    padding: 7,
-    borderRadius: 10,
-  },
-  infoWrapper: {
-    width: "100%",
-    marginTop: Spacing.xxl,
-  },
-  chipsContainer: {
-    flexDirection: "row",
-    gap: Spacing.xs,
-    marginTop: Spacing.md,
-  },
-  infoContainer: {
-    width: "100%",
-  },
-  infoValueContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: Spacing.md,
-  },
-  copyButton: {
-    padding: Spacing.xxs,
-  },
-  footerText: {
-    width: "80%",
-    textAlign: "center",
-    alignSelf: "center",
-    marginBottom: Spacing.xl,
-  },
-});
 
 export default WithScreenTheme(BankDetailsModal, {
   backgroundColor: "#000000",
