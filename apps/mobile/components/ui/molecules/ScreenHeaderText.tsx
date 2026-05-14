@@ -19,7 +19,7 @@ export function ScreenHeaderText({
 
   return (
     <View
-      className="mb-6 mt-[60px] items-center"
+      className="mb-8 mt-[60px] items-center"
       // MEASURED-LAYOUT
       style={flex ? { flex } : undefined}
     >

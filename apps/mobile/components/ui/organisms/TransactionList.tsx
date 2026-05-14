@@ -31,13 +31,13 @@ export function TransactionList({
         }
       >
         {transactions.length === 0 ? (
-          <ThemedText className="mt-6 text-center opacity-50">
+          <ThemedText className="mt-8 text-center opacity-50">
             No transactions yet
           </ThemedText>
         ) : (
           transactions.map((section) => (
             <View key={section.title}>
-              <View className="z-10 bg-background px-3 pt-6">
+              <View className="z-10 bg-background px-4 pt-8">
                 <ThemedText type="defaultSemiBold" className="opacity-25">
                   {section.title}
                 </ThemedText>

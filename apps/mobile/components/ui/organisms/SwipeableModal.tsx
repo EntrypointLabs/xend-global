@@ -53,7 +53,7 @@ export function SwipeableModal({
     >
       {showPullIndicator && (
         <View
-          className="mb-3.5 mt-2.5 h-[5px] w-10 self-center rounded-[3px]"
+          className="mb-[15px] mt-2.5 h-[5px] w-10 self-center rounded-[3px]"
           // DYNAMIC-COLOR (user-controllable indicator tint)
           style={{ backgroundColor: pullIndicatorColor }}
         />

@@ -63,7 +63,7 @@ export function ScreenVerificationCodeInput({
   };
 
   return (
-    <View className="mb-4 flex-row justify-between">
+    <View className="mb-6 flex-row justify-between">
       {code.map((digit, index) => (
         <TextInput
           key={index}
@@ -75,7 +75,7 @@ export function ScreenVerificationCodeInput({
           onKeyPress={(e) => handleKeyPress(e, index)}
           keyboardType="number-pad"
           maxLength={6}
-          className="h-[45px] w-[45px] rounded-xl border text-center text-xl font-semibold"
+          className="h-[45px] w-[45px] rounded-xl border text-center text-2xl font-semibold"
           // DYNAMIC-COLOR (theme-derived colors via ScreenThemeContext)
           style={{
             backgroundColor: inputBackgroundColor + "40",

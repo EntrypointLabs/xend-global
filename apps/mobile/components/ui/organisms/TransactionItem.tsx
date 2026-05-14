@@ -27,7 +27,7 @@ export function TransactionItem({
 
   return (
     <Pressable
-      className="flex-row items-center bg-transparent px-3 py-3"
+      className="flex-row items-center bg-transparent p-4"
       onPress={onPress}
     >
       <AppIcon name={iconName} size={34} />

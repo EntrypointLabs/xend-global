@@ -22,7 +22,7 @@ export function SettingsItem({
   return (
     <HapticPressable
       onPress={onPress}
-      className={`flex-row items-center gap-4 bg-transparent py-4`}
+      className="flex-row items-center gap-4 bg-transparent py-4"
     >
       <Image source={icon} className="size-6" resizeMode="contain" />
 

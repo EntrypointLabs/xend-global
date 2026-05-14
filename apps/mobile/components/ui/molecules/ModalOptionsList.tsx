@@ -31,7 +31,7 @@ export function ModalOptionsList({ options }: ModalOptionsListProps) {
         <TouchableOpacity
           key={option.key}
           className={cn(
-            "flex-row items-center py-3",
+            "flex-row items-center py-4",
             option.disabled && "opacity-50"
           )}
           onPress={option.onPress}

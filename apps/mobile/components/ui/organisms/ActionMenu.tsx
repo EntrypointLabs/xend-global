@@ -63,7 +63,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
       </AnimatedBlurView>
 
       <View
-        className="absolute right-3 flex flex-col items-end"
+        className="absolute right-4 flex flex-col items-end"
         // MEASURED-LAYOUT (safe-area inset)
         style={{ bottom: insets.bottom + 8 }}
       >
