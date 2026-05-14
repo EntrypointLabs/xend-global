@@ -13,6 +13,7 @@ import { PasskeySetupModal } from "@/components/ui/organisms/modals/PasskeySetup
 import { EditWalletModal } from "@/components/ui/organisms/modals/EditWalletModal";
 import { NotificationsSheet } from "@/components/ui/organisms/modals/NotificationsSheet";
 import { usePasskey } from "@/hooks/usePasskey";
+import { useWalletName } from "@/hooks/useWalletName";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 
@@ -35,7 +36,7 @@ export default function SettingsScreen() {
     clearError: clearPasskeyError,
   } = usePasskey();
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
-  const [walletName, setWalletName] = useState("My Wallet");
+  const { name: walletName, setName: setWalletName } = useWalletName();
   const [showEditWallet, setShowEditWallet] = useState(false);
   const notificationsSheetRef = useRef<BottomSheetModal>(null);
 

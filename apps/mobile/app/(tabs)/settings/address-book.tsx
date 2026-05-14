@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef } from "react";
 import { Image, View } from "react-native";
 import { router } from "expo-router";
 import { ScreenLayout } from "@/components/ui/layout";
@@ -10,19 +10,11 @@ import {
 } from "@/components/ui/organisms/modals/AddContactSheet";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
-
-interface Contact {
-  name: string;
-  address: string;
-}
+import { useContacts } from "@/hooks/useContacts";
 
 export default function AddressBookScreen() {
   const addContactRef = useRef<AddContactSheetRef>(null);
-  const [contacts, setContacts] = useState<Contact[]>([]);
-
-  const handleAdd = (contact: Contact) => {
-    setContacts((prev) => [...prev, contact]);
-  };
+  const { contacts, addContact } = useContacts();
 
   return (
     <ScreenLayout>
@@ -94,7 +86,7 @@ export default function AddressBookScreen() {
         />
       </View>
 
-      <AddContactSheet ref={addContactRef} onAdd={handleAdd} />
+      <AddContactSheet ref={addContactRef} onAdd={addContact} />
     </ScreenLayout>
   );
 }

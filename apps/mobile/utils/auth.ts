@@ -91,4 +91,6 @@ export const AUTH_STORAGE_KEYS = {
   KYC_LINK: "auth_kyc_link",
   CACHED_BALANCE: "auth_cached_balance",
   HAS_PASSKEY: "auth_has_passkey",
+  WALLET_NAME: "wallet_name",
+  ADDRESS_BOOK: "address_book",
 };

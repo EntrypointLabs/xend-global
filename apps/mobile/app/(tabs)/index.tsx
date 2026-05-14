@@ -15,6 +15,7 @@ import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useToast } from "@/contexts/ToastContext";
 import { TransactionList } from "@/components/ui/organisms/TransactionList";
 import { useWalletData } from "@/hooks/useWalletData";
+import { useWalletName } from "@/hooks/useWalletName";
 import * as Sentry from "@sentry/react-native";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { useRouter } from "expo-router";
@@ -34,6 +35,7 @@ function HomeScreenContent() {
   } = useModalFlow();
   const { showToast } = useToast();
   const { balance, transfers, fetchWalletData } = useWalletData(accountInfo);
+  const { name: walletName } = useWalletName();
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
   const qrCodeModalRef = useRef<BottomSheetModal>(null);
 
@@ -219,7 +221,7 @@ function HomeScreenContent() {
         showsVerticalScrollIndicator={false}
       >
         <View>
-          <TabHeaderText>Wallet</TabHeaderText>
+          <TabHeaderText>{walletName}</TabHeaderText>
 
           <View>
             <View className="flex-row items-center gap-2">
