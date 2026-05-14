@@ -69,7 +69,7 @@ export default function CashScreen() {
             className="mr-2.5 size-9"
             resizeMode="contain"
           />
-          <TabHeaderText>Cash</TabHeaderText>
+          <TabHeaderText className="pb-0">Cash</TabHeaderText>
         </View>
 
         <ScrollView
