@@ -46,6 +46,10 @@ export function CustomTabBar({
   const fabOpacity = useSharedValue(1);
 
   const isHome = segments[0] === "(tabs)" && segments[1] === undefined;
+  const isSettingsSubPage =
+    segments[0] === "(tabs)" &&
+    segments[1] === "settings" &&
+    segments[2] !== undefined;
 
   React.useEffect(() => {
     fabOpacity.value = withTiming(isActionMenuVisible ? 0 : 1, {
@@ -59,6 +63,10 @@ export function CustomTabBar({
       opacity: fabOpacity.value,
     };
   });
+
+  if (isSettingsSubPage) {
+    return null;
+  }
 
   const handleFabPress = () => {
     fabScale.value = withSequence(

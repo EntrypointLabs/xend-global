@@ -1,11 +1,11 @@
-import React from "react";
+import React, { isValidElement } from "react";
 import { View, Image, ImageSourcePropType } from "react-native";
 import { Typography } from "../atoms/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "../atoms/HapticPressable";
 
 interface SettingsItemProps {
-  icon: ImageSourcePropType;
+  icon: ImageSourcePropType | React.ReactNode;
   label: string;
   onPress?: () => void;
   showChevron?: boolean;
@@ -24,7 +24,17 @@ export function SettingsItem({
       onPress={onPress}
       className="flex-row items-center gap-4 bg-transparent py-4"
     >
-      <Image source={icon} className="size-6" resizeMode="contain" />
+      <View className="size-6 items-center justify-center">
+        {isValidElement(icon) ? (
+          icon
+        ) : (
+          <Image
+            source={icon as ImageSourcePropType}
+            className="size-6"
+            resizeMode="contain"
+          />
+        )}
+      </View>
 
       <View className="flex-1">
         <Typography

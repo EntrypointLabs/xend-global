@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from "react";
-import { View, SectionList, TouchableOpacity } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { View, SectionList, TouchableOpacity, Linking } from "react-native";
+import Constants from "expo-constants";
+import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
 import { SettingsItem } from "@/components/ui/molecules";
@@ -8,10 +10,21 @@ import { Spacing } from "@/constants/Spacing";
 import { useAuth } from "@/contexts/AuthContext";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { PasskeySetupModal } from "@/components/ui/organisms/modals/PasskeySetupModal";
+import { EditWalletModal } from "@/components/ui/organisms/modals/EditWalletModal";
+import { NotificationsSheet } from "@/components/ui/organisms/modals/NotificationsSheet";
 import { usePasskey } from "@/hooks/usePasskey";
+import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 
+const XEND_TWITTER_URL = "https://twitter.com/xend_global";
+
+const APP_VERSION = Constants.expoConfig?.version ?? "1.0.0";
+const APP_BUILD =
+  Constants.expoConfig?.ios?.buildNumber ??
+  Constants.expoConfig?.android?.versionCode?.toString();
+
 export default function SettingsScreen() {
+  const router = useRouter();
   const { logout, user } = useAuth();
   const {
     hasPasskey,
@@ -22,6 +35,9 @@ export default function SettingsScreen() {
     clearError: clearPasskeyError,
   } = usePasskey();
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
+  const [walletName, setWalletName] = useState("My Wallet");
+  const [showEditWallet, setShowEditWallet] = useState(false);
+  const notificationsSheetRef = useRef<BottomSheetModal>(null);
 
   const accountAddress = user?.smart_account_address || user?.address;
 
@@ -81,7 +97,7 @@ export default function SettingsScreen() {
         {
           label: "Spending Limits",
           icon: require("@/assets/icons/spending-limt.png"),
-          onPress: () => {},
+          onPress: () => router.push("/settings/spending-limits" as never),
         },
       ],
     },
@@ -91,17 +107,17 @@ export default function SettingsScreen() {
         {
           label: "Edit wallet",
           icon: require("@/assets/icons/edit-wallet.png"),
-          onPress: () => {},
+          onPress: () => setShowEditWallet(true),
         },
         {
           label: "Notifications",
           icon: require("@/assets/icons/notification.png"),
-          onPress: () => {},
+          onPress: () => notificationsSheetRef.current?.present(),
         },
         {
           label: "Address book",
           icon: require("@/assets/icons/address-book.png"),
-          onPress: () => {},
+          onPress: () => router.push("/settings/address-book" as never),
         },
         {
           label: "NFTs",
@@ -125,13 +141,14 @@ export default function SettingsScreen() {
         },
         {
           label: "Follow @xend_global",
-          // icon: <Ionicons name="logo-twitter" size={22} color="#007AFF" />, // Blue
           icon: require("@/assets/icons/x.png"),
-          onPress: () => {},
+          onPress: () => {
+            Linking.openURL(XEND_TWITTER_URL);
+          },
         },
         {
           label: "Delete Wallet",
-          icon: require("@/assets/icons/x.png"),
+          icon: <Ionicons name="trash-outline" size={22} color="#F90101" />,
           onPress: logout,
           color: "#F90101",
         },
@@ -197,11 +214,28 @@ export default function SettingsScreen() {
               </Typography>
             </View>
           )}
+          ListFooterComponent={
+            <View className="mt-8 items-center">
+              <Typography weight="500" className="text-sm text-black/40">
+                Version {APP_VERSION}
+                {APP_BUILD ? ` (${APP_BUILD})` : ""}
+              </Typography>
+            </View>
+          }
           stickySectionHeadersEnabled={false}
           contentContainerStyle={{ paddingBottom: Spacing.xxxl }}
           showsVerticalScrollIndicator={false}
         />
       </View>
+
+      <EditWalletModal
+        visible={showEditWallet}
+        onClose={() => setShowEditWallet(false)}
+        initialName={walletName}
+        address={accountAddress ?? ""}
+        onSave={setWalletName}
+      />
+      <NotificationsSheet ref={notificationsSheetRef} />
     </ScreenLayout>
   );
 }
