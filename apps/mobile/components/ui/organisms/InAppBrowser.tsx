@@ -37,7 +37,7 @@ export function InAppBrowser({
       </View>
       {isLoading && (
         <View
-          className="z-10 items-center justify-center bg-white/90"
+          className="z-[1] items-center justify-center bg-white/90"
           // MEASURED-LAYOUT (absoluteFill)
           style={StyleSheet.absoluteFillObject}
         >

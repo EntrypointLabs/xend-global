@@ -30,7 +30,7 @@ export function SuccessScreen() {
           name="checkmark.circle"
           size={80}
           color={primaryColor}
-          style={{ marginBottom: 12 }}
+          style={{ marginBottom: 16 }}
         />
         <ThemedText type="default" className="opacity-70">
           All done!

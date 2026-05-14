@@ -74,7 +74,7 @@ export default function CashScreen() {
 
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerClassName="pb-24"
+          contentContainerClassName="pb-[100px]"
         >
           {/* Balance */}
           <View className="mb-8">

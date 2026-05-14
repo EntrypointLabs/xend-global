@@ -2,7 +2,6 @@ import React from "react";
 import { View } from "react-native";
 import { ThemedText } from "@/components/ui/atoms";
 import { useScreenTheme } from "@/contexts/ScreenThemeContext";
-import { cn } from "@/utils/cn";
 
 interface ScreenHeaderTextProps {
   title: string;
@@ -24,7 +23,7 @@ export function ScreenHeaderText({
       style={flex ? { flex } : undefined}
     >
       <ThemedText
-        className={cn("mb-2")}
+        className="mb-2"
         type="highlight"
         // DYNAMIC-COLOR
         style={{ color: textColor }}

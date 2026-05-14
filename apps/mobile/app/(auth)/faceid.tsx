@@ -28,7 +28,7 @@ export function FaceIDScreen({ show2FA }: FaceIDScreenProps) {
       />
       <View className="flex-1 items-center justify-center px-6">
         <IconSymbol name="faceid" size={64} color={textColor} />
-        <ThemedText type="default" className="mb-6 mt-3 text-center">
+        <ThemedText type="default" className="mb-6 mt-4 text-center">
           Enable Face ID to{"\n"}protect your account
         </ThemedText>
         {show2FA && (

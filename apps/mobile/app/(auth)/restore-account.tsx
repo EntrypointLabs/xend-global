@@ -91,7 +91,7 @@ function RestoreAccountScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
-        className="z-10 flex-1"
+        className="z-[1] flex-1"
       >
         <View className="flex-1 justify-between px-10 py-16">
           <Typography
