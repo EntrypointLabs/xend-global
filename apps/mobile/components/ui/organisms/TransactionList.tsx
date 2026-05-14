@@ -38,7 +38,7 @@ export function TransactionList({
           transactions.map((section) => (
             <View key={section.title}>
               <View className="z-[1] bg-background px-4 pt-8">
-                <ThemedText type="defaultSemiBold" className="opacity-25">
+                <ThemedText type="defaultSemiBold" className="opacity-[0.23]">
                   {section.title}
                 </ThemedText>
               </View>
