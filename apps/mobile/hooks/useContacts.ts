@@ -53,10 +53,34 @@ export function useContacts() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async ({
+      originalAddress,
+      contact,
+    }: {
+      originalAddress: string;
+      contact: Contact;
+    }) => {
+      const current =
+        (await StorageService.getItem<Contact[]>(
+          AUTH_STORAGE_KEYS.ADDRESS_BOOK
+        )) ?? [];
+      const next = current.map((c) =>
+        c.address === originalAddress ? contact : c
+      );
+      await StorageService.setItem(AUTH_STORAGE_KEYS.ADDRESS_BOOK, next);
+      return next;
+    },
+    onSuccess: (next) => {
+      queryClient.setQueryData(QUERY_KEY, next);
+    },
+  });
+
   return {
     contacts: query.data ?? [],
     addContact: addMutation.mutate,
     removeContact: removeMutation.mutate,
+    updateContact: updateMutation.mutate,
     isLoading: query.isLoading,
   };
 }

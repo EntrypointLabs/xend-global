@@ -23,25 +23,43 @@ import { cn } from "@/utils/cn";
 
 export interface AddContactSheetRef {
   present: () => void;
+  presentEdit: (contact: { name: string; address: string }) => void;
   dismiss: () => void;
 }
 
 interface AddContactSheetProps {
   onAdd: (contact: { name: string; address: string }) => void;
+  onUpdate?: (input: {
+    originalAddress: string;
+    contact: { name: string; address: string };
+  }) => void;
 }
 
 export const AddContactSheet = forwardRef<
   AddContactSheetRef,
   AddContactSheetProps
->(({ onAdd }, ref) => {
+>(({ onAdd, onUpdate }, ref) => {
   const sheetRef = useRef<BottomSheetModal>(null);
   const scannerRef = useRef<BottomSheetModal>(null);
   const snapPoints = useMemo(() => ["62%"], []);
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
+  const [originalAddress, setOriginalAddress] = useState<string | null>(null);
+  const isEditMode = originalAddress !== null;
 
   useImperativeHandle(ref, () => ({
-    present: () => sheetRef.current?.present(),
+    present: () => {
+      setOriginalAddress(null);
+      setName("");
+      setAddress("");
+      sheetRef.current?.present();
+    },
+    presentEdit: (contact) => {
+      setOriginalAddress(contact.address);
+      setName(contact.name);
+      setAddress(contact.address);
+      sheetRef.current?.present();
+    },
     dismiss: () => sheetRef.current?.dismiss(),
   }));
 
@@ -60,6 +78,7 @@ export const AddContactSheet = forwardRef<
   const reset = () => {
     setName("");
     setAddress("");
+    setOriginalAddress(null);
   };
 
   const handleSheetChange = (index: number) => {
@@ -88,10 +107,15 @@ export const AddContactSheet = forwardRef<
 
   const canSubmit = name.trim().length > 0 && address.trim().length > 0;
 
-  const handleAdd = () => {
+  const handleSubmit = () => {
     if (!canSubmit) return;
     Keyboard.dismiss();
-    onAdd({ name: name.trim(), address: address.trim() });
+    const contact = { name: name.trim(), address: address.trim() };
+    if (isEditMode && originalAddress && onUpdate) {
+      onUpdate({ originalAddress, contact });
+    } else {
+      onAdd(contact);
+    }
     handleClose();
   };
 
@@ -163,7 +187,7 @@ export const AddContactSheet = forwardRef<
           </View>
 
           <HapticPressable
-            onPress={handleAdd}
+            onPress={handleSubmit}
             disabled={!canSubmit}
             className={cn(
               "items-center justify-center rounded-full py-4",
@@ -171,7 +195,7 @@ export const AddContactSheet = forwardRef<
             )}
           >
             <Typography weight="600" className="text-base text-white">
-              Add contact
+              {isEditMode ? "Save changes" : "Add contact"}
             </Typography>
           </HapticPressable>
         </BottomSheetView>

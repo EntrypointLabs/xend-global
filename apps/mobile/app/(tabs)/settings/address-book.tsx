@@ -1,20 +1,62 @@
-import React, { useRef } from "react";
-import { Image, View } from "react-native";
+import React, { useRef, useState } from "react";
+import { Alert, Image, View } from "react-native";
 import { router } from "expo-router";
 import { ScreenLayout } from "@/components/ui/layout";
 import { Typography } from "@/components/ui/atoms/Typography";
-import { ScreenActionFooter } from "@/components/ui/molecules";
+import {
+  ContactActionsPopover,
+  PopoverAnchor,
+  ScreenActionFooter,
+} from "@/components/ui/molecules";
 import {
   AddContactSheet,
   AddContactSheetRef,
 } from "@/components/ui/organisms/modals/AddContactSheet";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
-import { useContacts } from "@/hooks/useContacts";
+import { Contact, useContacts } from "@/hooks/useContacts";
 
 export default function AddressBookScreen() {
   const addContactRef = useRef<AddContactSheetRef>(null);
-  const { contacts, addContact } = useContacts();
+  const { contacts, addContact, removeContact, updateContact } = useContacts();
+  const [menuContact, setMenuContact] = useState<Contact | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<PopoverAnchor | null>(null);
+
+  const openMenu = (
+    contact: Contact,
+    ref: {
+      measureInWindow: (
+        cb: (x: number, y: number, w: number, h: number) => void
+      ) => void;
+    } | null
+  ) => {
+    if (!ref) return;
+    ref.measureInWindow((x, y, width, height) => {
+      setMenuAnchor({ x, y, width, height });
+      setMenuContact(contact);
+    });
+  };
+
+  const closeMenu = () => {
+    setMenuContact(null);
+    setMenuAnchor(null);
+  };
+
+  const confirmRemove = (name: string, address: string) => {
+    Alert.alert(
+      "Remove contact",
+      `Remove ${name} from your address book?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => removeContact(address),
+        },
+      ],
+      { cancelable: true }
+    );
+  };
 
   return (
     <ScreenLayout>
@@ -52,29 +94,7 @@ export default function AddressBookScreen() {
         ) : (
           <View className="mt-6 flex-1 gap-2">
             {contacts.map((c) => (
-              <View
-                key={`${c.name}-${c.address}`}
-                className="flex-row items-center rounded-2xl border border-black/10 bg-white p-4"
-              >
-                <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-black/[0.04]">
-                  <Ionicons name="person-outline" size={18} color="#000" />
-                </View>
-                <View className="flex-1">
-                  <Typography weight="600" className="text-base text-black">
-                    {c.name}
-                  </Typography>
-                  <Typography weight="500" className="text-xs text-black/40">
-                    {c.address.slice(0, 4)}...{c.address.slice(-4)}
-                  </Typography>
-                </View>
-                <HapticPressable className="p-1">
-                  <Ionicons
-                    name="ellipsis-horizontal"
-                    size={18}
-                    color="#00000066"
-                  />
-                </HapticPressable>
-              </View>
+              <ContactRow key={c.address} contact={c} onOpenMenu={openMenu} />
             ))}
           </View>
         )}
@@ -86,7 +106,68 @@ export default function AddressBookScreen() {
         />
       </View>
 
-      <AddContactSheet ref={addContactRef} onAdd={addContact} />
+      <ContactActionsPopover
+        visible={menuContact !== null}
+        anchor={menuAnchor}
+        onClose={closeMenu}
+        onEdit={() => {
+          if (menuContact) {
+            addContactRef.current?.presentEdit(menuContact);
+          }
+        }}
+        onDelete={() => {
+          if (menuContact) {
+            confirmRemove(menuContact.name, menuContact.address);
+          }
+        }}
+      />
+
+      <AddContactSheet
+        ref={addContactRef}
+        onAdd={addContact}
+        onUpdate={updateContact}
+      />
     </ScreenLayout>
+  );
+}
+
+interface ContactRowProps {
+  contact: Contact;
+  onOpenMenu: (
+    contact: Contact,
+    ref: {
+      measureInWindow: (
+        cb: (x: number, y: number, w: number, h: number) => void
+      ) => void;
+    } | null
+  ) => void;
+}
+
+function ContactRow({ contact, onOpenMenu }: ContactRowProps) {
+  const buttonRef = useRef<View>(null);
+
+  return (
+    <View className="flex-row items-center rounded-2xl border border-black/10 bg-white p-4">
+      <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-black/[0.04]">
+        <Ionicons name="wallet-outline" size={18} color="#000" />
+      </View>
+      <View className="flex-1">
+        <Typography weight="600" className="text-base text-black">
+          {contact.name}
+        </Typography>
+        <Typography weight="500" className="text-xs text-black/40">
+          {contact.address.slice(0, 4)}...{contact.address.slice(-4)}
+        </Typography>
+      </View>
+      <View ref={buttonRef} collapsable={false}>
+        <HapticPressable
+          className="p-1"
+          hitSlop={8}
+          onPress={() => onOpenMenu(contact, buttonRef.current)}
+        >
+          <Ionicons name="ellipsis-horizontal" size={18} color="#00000066" />
+        </HapticPressable>
+      </View>
+    </View>
   );
 }

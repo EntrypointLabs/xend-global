@@ -11,3 +11,7 @@ export { PromoBanner } from "./PromoBanner";
 export { SettingsItem } from "./SettingsItem";
 export { ActionPill } from "./ActionPill";
 export { ScreenActionFooter } from "./ScreenActionFooter";
+export {
+  ContactActionsPopover,
+  type PopoverAnchor,
+} from "./ContactActionsPopover";
