@@ -183,7 +183,7 @@ export default memo(function RecipientStep({
       <View className="flex-1 bg-[#F0F0F0]">
         <View className="mb-8 flex-row items-center justify-between px-4">
           <View className="h-10 w-10" />
-          <TabHeaderText className="text-center font-semibold">
+          <TabHeaderText className="pb-0 text-center font-semibold">
             Choose recipient
           </TabHeaderText>
           <TouchableOpacity

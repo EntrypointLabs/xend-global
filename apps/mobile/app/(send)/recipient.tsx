@@ -44,7 +44,7 @@ export default function ChooseRecipientScreen() {
         {/* Header */}
         <View className="mb-8 flex-row items-center justify-between">
           <View className="h-10 w-10" />
-          <TabHeaderText className="text-center">
+          <TabHeaderText className="pb-0 text-center">
             Choose recipient
           </TabHeaderText>
           <TouchableOpacity
