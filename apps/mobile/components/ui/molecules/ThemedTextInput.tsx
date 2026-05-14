@@ -8,7 +8,6 @@ import {
 } from "react-native";
 import { useScreenTheme } from "@/contexts/ScreenThemeContext";
 import { CircleButton } from "./CircleButton";
-import { cn } from "@/utils/cn";
 
 interface ThemedTextInputProps extends Omit<TextInputProps, "style"> {
   onButtonPress?: () => void;
@@ -43,15 +42,19 @@ export const ThemedTextInput = forwardRef<TextInput, ThemedTextInputProps>(
     const buttonBackground = isBackgroundDark ? "#FFFFFF" : "#000000";
     const iconColor = isBackgroundDark ? "#000000" : "#FFFFFF";
 
+    const errorColor = "#FF3B30";
+
     return (
       <View
-        className={cn(
-          "w-full flex-row items-center rounded-[42px] border-[0.5px] px-3 py-2",
-          error ? "border-destructive" : "border-foreground/20",
-          "bg-foreground/20"
-        )}
-        // MEASURED-LAYOUT
-        style={style}
+        className="w-full flex-row items-center rounded-[42px] border-[0.5px] px-3 py-2"
+        // DYNAMIC-COLOR (per-screen theme via useScreenTheme; hex "20" = 12.5% alpha)
+        style={[
+          {
+            borderColor: error ? errorColor : textColor + "20",
+            backgroundColor: textColor + "20",
+          },
+          style,
+        ]}
       >
         <TextInput
           ref={ref}

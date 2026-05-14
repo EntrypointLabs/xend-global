@@ -53,7 +53,7 @@ export const SavedAccounts: React.FC<SavedAccountsProps> = ({
   return (
     <View className="w-full">
       <View className="mb-4 flex-row items-center justify-between">
-        <ThemedText type="regular" className="text-foreground/40">
+        <ThemedText type="regular" className="text-foreground/25">
           Saved Accounts
         </ThemedText>
         <TouchableOpacity
@@ -73,7 +73,7 @@ export const SavedAccounts: React.FC<SavedAccountsProps> = ({
           >
             <View className="gap-1">
               <ThemedText type="default">{account.label}</ThemedText>
-              <ThemedText type="regular" className="text-foreground/40">
+              <ThemedText type="regular" className="text-foreground/25">
                 Account ID: {account.external_account_id.slice(-4)}
               </ThemedText>
             </View>
