@@ -1,20 +1,14 @@
 import React, { useState } from "react";
-import {
-  View,
-  TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+import { View, TouchableOpacity } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ThemedScreen } from "@/components/ui/layout";
-import { Keypad, ThemedButton } from "@/components/ui/molecules";
+import { Keypad } from "@/components/ui/molecules";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { formatAmount } from "@/utils/helper";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWalletData } from "@/hooks/useWalletData";
+import { cn } from "@/utils/cn";
 
 export default function AmountScreen() {
   const [amount, setAmount] = useState("0");
@@ -125,7 +119,10 @@ export default function AmountScreen() {
 
         {/* Review Button */}
         <TouchableOpacity
-          className={`mb-6 w-full items-center rounded-full py-4 ${Number(amount) > 0 ? "bg-gray-500" : "bg-gray-300"}`} // Mocking disabled color visual
+          className={cn(
+            "mb-6 w-full items-center rounded-full py-4",
+            Number(amount) > 0 ? "bg-gray-500" : "bg-gray-300"
+          )}
           onPress={handleContinue}
           disabled={Number(amount) <= 0}
         >
