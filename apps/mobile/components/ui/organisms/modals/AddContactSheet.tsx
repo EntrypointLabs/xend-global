@@ -20,44 +20,34 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { QRScannerModal } from "@/components/ui/organisms/send/QRScannerModal";
 import { cn } from "@/utils/cn";
+import { isPublicKey } from "@/utils/solana";
+
+const ERROR_COLOR = "#F90101";
 
 export interface AddContactSheetRef {
   present: () => void;
-  presentEdit: (contact: { name: string; address: string }) => void;
   dismiss: () => void;
 }
 
 interface AddContactSheetProps {
   onAdd: (contact: { name: string; address: string }) => void;
-  onUpdate?: (input: {
-    originalAddress: string;
-    contact: { name: string; address: string };
-  }) => void;
+  existingAddresses: string[];
 }
 
 export const AddContactSheet = forwardRef<
   AddContactSheetRef,
   AddContactSheetProps
->(({ onAdd, onUpdate }, ref) => {
+>(({ onAdd, existingAddresses }, ref) => {
   const sheetRef = useRef<BottomSheetModal>(null);
   const scannerRef = useRef<BottomSheetModal>(null);
   const snapPoints = useMemo(() => ["62%"], []);
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
-  const [originalAddress, setOriginalAddress] = useState<string | null>(null);
-  const isEditMode = originalAddress !== null;
 
   useImperativeHandle(ref, () => ({
     present: () => {
-      setOriginalAddress(null);
       setName("");
       setAddress("");
-      sheetRef.current?.present();
-    },
-    presentEdit: (contact) => {
-      setOriginalAddress(contact.address);
-      setName(contact.name);
-      setAddress(contact.address);
       sheetRef.current?.present();
     },
     dismiss: () => sheetRef.current?.dismiss(),
@@ -78,7 +68,6 @@ export const AddContactSheet = forwardRef<
   const reset = () => {
     setName("");
     setAddress("");
-    setOriginalAddress(null);
   };
 
   const handleSheetChange = (index: number) => {
@@ -105,17 +94,25 @@ export const AddContactSheet = forwardRef<
     setAddress(scanned);
   };
 
-  const canSubmit = name.trim().length > 0 && address.trim().length > 0;
+  const trimmedAddress = address.trim();
+
+  const addressError = useMemo<string | null>(() => {
+    if (trimmedAddress.length === 0) return null;
+    if (!isPublicKey(trimmedAddress)) return "Invalid Solana address";
+    if (existingAddresses.includes(trimmedAddress))
+      return "Contact already exists";
+    return null;
+  }, [trimmedAddress, existingAddresses]);
+
+  const canSubmit =
+    name.trim().length > 0 &&
+    trimmedAddress.length > 0 &&
+    addressError === null;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
     Keyboard.dismiss();
-    const contact = { name: name.trim(), address: address.trim() };
-    if (isEditMode && originalAddress && onUpdate) {
-      onUpdate({ originalAddress, contact });
-    } else {
-      onAdd(contact);
-    }
+    onAdd({ name: name.trim(), address: trimmedAddress });
     handleClose();
   };
 
@@ -166,7 +163,12 @@ export const AddContactSheet = forwardRef<
             />
           </View>
 
-          <View className="mb-6 flex-row items-center rounded-2xl border border-black/10 px-4 py-3">
+          <View
+            className={cn(
+              "flex-row items-center rounded-2xl border px-4 py-3",
+              addressError ? "border-[#F90101]" : "border-black/10"
+            )}
+          >
             <BottomSheetTextInput
               value={address}
               onChangeText={setAddress}
@@ -186,16 +188,26 @@ export const AddContactSheet = forwardRef<
             </HapticPressable>
           </View>
 
+          {addressError ? (
+            <Typography
+              weight="500"
+              className="ml-1 mt-1 text-xs"
+              style={{ color: ERROR_COLOR }}
+            >
+              {addressError}
+            </Typography>
+          ) : null}
+
           <HapticPressable
             onPress={handleSubmit}
             disabled={!canSubmit}
             className={cn(
-              "items-center justify-center rounded-full py-4",
+              "mt-6 items-center justify-center rounded-full py-4",
               canSubmit ? "bg-black" : "bg-black/30"
             )}
           >
             <Typography weight="600" className="text-base text-white">
-              {isEditMode ? "Save changes" : "Add contact"}
+              Add contact
             </Typography>
           </HapticPressable>
         </BottomSheetView>
