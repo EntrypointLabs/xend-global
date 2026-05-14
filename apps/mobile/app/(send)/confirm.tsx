@@ -1,22 +1,15 @@
 import React, { useState } from "react";
-import { View, StyleSheet } from "react-native";
+import { View } from "react-native";
 import { ThemedScreen } from "@/components/ui/layout";
 import { ThemedText, IconSymbol, LoadingSpinner } from "@/components/ui/atoms";
 // TODO: check if this is needed
 import { IconSymbolName } from "@/components/ui/atoms/IconSymbol";
 import { router, useLocalSearchParams } from "expo-router";
-import { Spacing } from "@/constants/Spacing";
 import { formatAmount } from "@/utils/helper";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { ButtonGroup } from "@/components/ui/molecules";
-import { Height, Size, Weight } from "@/constants/Typography";
 import { useAuth } from "@/contexts/AuthContext";
 import { EasClient } from "@/utils/easClient";
-import {
-  PreparePaymentIntentParams,
-  SmartAccount,
-  SolanaAddress,
-} from "@/types/Transaction";
 import { ErrorCode } from "@/utils/errors";
 import Toast from "react-native-toast-message";
 import * as Sentry from "@sentry/react-native";
@@ -24,9 +17,6 @@ import { CreatePaymentIntentRequest } from "@sqds/grid-react-native";
 import { SDKGridClient } from "../../grid/sdkClient";
 import { StorageService } from "@/utils/storage";
 import { AUTH_STORAGE_KEYS } from "@/utils/auth";
-
-// USDC has 6 decimals
-const USDC_DECIMALS = 6;
 
 export default function ConfirmScreen() {
   const textColor = useThemeColor({}, "text");
@@ -106,7 +96,7 @@ export default function ConfirmScreen() {
         address: user.address,
       };
 
-      const signature = await easClient.confirmPaymentIntent(payload);
+      await easClient.confirmPaymentIntent(payload);
       router.push({
         pathname: "/success",
         params: { amount, type, title },
@@ -149,13 +139,17 @@ export default function ConfirmScreen() {
     const iconColor = textColor + "40";
     return (
       <View>
-        <View style={styles.labelContainer}>
+        <View className="mb-2 flex-row items-center gap-1">
           <IconSymbol name={icon} size={16} color={iconColor} />
+          {/* DYNAMIC-COLOR */}
           <ThemedText type="regular" style={{ color: iconColor }}>
             {label}
           </ThemedText>
         </View>
-        <ThemedText type="default" style={styles.infoText}>
+        <ThemedText
+          type="defaultSemiBold"
+          className="text-[18px] leading-[23px]"
+        >
           {value}
         </ThemedText>
       </View>
@@ -170,9 +164,9 @@ export default function ConfirmScreen() {
       {isLoading ? (
         <LoadingSpinner />
       ) : (
-        <View style={styles.container}>
-          <View style={styles.content}>
-            <View style={{ gap: Spacing.sm }}>
+        <View className="flex-1 px-6 pb-8 pt-12">
+          <View className="flex-1 gap-6">
+            <View className="gap-2">
               <ThemedText type="regular">Amount</ThemedText>
               <ThemedText type="jumbo">{formatAmount({ amount })}</ThemedText>
             </View>
@@ -194,26 +188,3 @@ export default function ConfirmScreen() {
     </ThemedScreen>
   );
 }
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xxl,
-    paddingBottom: Spacing.xl,
-  },
-  content: {
-    flex: 1,
-    gap: Spacing.lg,
-  },
-  labelContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-    marginBottom: Spacing.sm,
-  },
-  infoText: {
-    fontSize: Size.mediumLarge,
-    fontWeight: Weight.semiBoldWeight,
-    lineHeight: Size.mediumLarge * Height.lineHeightMedium,
-  },
-});
