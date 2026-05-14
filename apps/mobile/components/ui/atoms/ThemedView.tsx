@@ -1,19 +1,30 @@
 import { View, type ViewProps } from "react-native";
-import { cn } from "@/utils/cn";
+import { useThemeColor } from "@/hooks/useThemeColor";
 
 export type ThemedViewProps = ViewProps & {
   className?: string;
-  /** @deprecated Theme is class-driven now; use `className` with token utilities. */
   lightColor?: string;
-  /** @deprecated Theme is class-driven now; use `className` with token utilities. */
   darkColor?: string;
 };
 
 export function ThemedView({
   className,
-  lightColor: _lightColor,
-  darkColor: _darkColor,
+  lightColor,
+  darkColor,
+  style,
   ...otherProps
 }: ThemedViewProps) {
-  return <View className={cn("bg-background", className)} {...otherProps} />;
+  const backgroundColor = useThemeColor(
+    { light: lightColor, dark: darkColor },
+    "background"
+  );
+
+  return (
+    <View
+      className={className}
+      // DYNAMIC-COLOR (system theme via useThemeColor; honors lightColor/darkColor overrides)
+      style={[{ backgroundColor }, style]}
+      {...otherProps}
+    />
+  );
 }

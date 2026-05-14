@@ -113,7 +113,7 @@ export function CustomTabBar({
         {isHome && (
           // REANIMATED-EXCEPTION
           <Animated.View
-            className="absolute right-3 top-3 z-20"
+            className="absolute right-3 top-3 z-[2]"
             style={fabStyle}
           >
             <HapticPressable
@@ -148,7 +148,7 @@ const ContainerWrapper = ({
   if (!withBlur) {
     return (
       <View
-        className="absolute left-0 right-0 z-10 flex-row items-center justify-between px-3 pt-2.5"
+        className="absolute left-0 right-0 z-[1] flex-row items-center justify-between px-3 pt-2.5"
         // MEASURED-LAYOUT (safe-area inset)
         style={{ bottom }}
       >
@@ -160,7 +160,7 @@ const ContainerWrapper = ({
     <BlurView
       intensity={10}
       tint="light"
-      className="absolute left-0 right-0 z-10 flex-row items-center justify-between px-3 pt-2.5"
+      className="absolute left-0 right-0 z-[1] flex-row items-center justify-between px-3 pt-2.5"
       // MEASURED-LAYOUT (safe-area inset)
       style={{ bottom }}
       experimentalBlurMethod="dimezisBlurView"

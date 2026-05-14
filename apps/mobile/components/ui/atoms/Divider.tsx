@@ -1,12 +1,13 @@
 import React, { useState, useCallback } from "react";
 import { View, LayoutChangeEvent } from "react-native";
+import { useScreenTheme } from "@/contexts/ScreenThemeContext";
+import tinycolor from "tinycolor2";
 import { cn } from "@/utils/cn";
 
 type DividerType = "dashed" | "dotted" | "solid";
 
 interface DividerProps {
   className?: string;
-  /** @deprecated Pass `className` instead. Kept for backward compat during refactor. */
   color?: string;
   thickness?: number;
   dashLength?: number;
@@ -22,7 +23,11 @@ export function Divider({
   dashGap = 8,
   type = "dashed",
 }: DividerProps) {
+  const { textColor } = useScreenTheme();
   const [width, setWidth] = useState(0);
+
+  const dividerColor =
+    color || tinycolor(textColor).setAlpha(0.2).toRgbString();
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     setWidth(event.nativeEvent.layout.width);
@@ -30,14 +35,10 @@ export function Divider({
 
   if (type === "solid") {
     return (
-      // MEASURED-LAYOUT
       <View
-        className={cn("my-4 w-full", !color && "bg-foreground/20", className)}
-        style={
-          color
-            ? { height: thickness, backgroundColor: color }
-            : { height: thickness }
-        }
+        className={cn("my-6 w-full", className)}
+        // DYNAMIC-COLOR (per-screen theme via useScreenTheme)
+        style={{ height: thickness, backgroundColor: dividerColor }}
       />
     );
   }
@@ -51,16 +52,15 @@ export function Divider({
       onLayout={onLayout}
       // MEASURED-LAYOUT
       style={{ height: type === "dotted" ? thickness * 2 : thickness }}
-      className={cn("my-4 w-full", className)}
+      className={cn("my-6 w-full", className)}
       collapsable={false}
     >
       {width > 0 && (
         <View className="h-full flex-row items-center">
           {Array.from({ length: numberOfItems }, (_, i) => (
+            // DYNAMIC-COLOR + MEASURED-LAYOUT
             <View
               key={i}
-              className={cn(!color && "bg-foreground/20")}
-              // MEASURED-LAYOUT
               style={
                 type === "dotted"
                   ? {
@@ -68,13 +68,13 @@ export function Divider({
                       height: thickness * 2,
                       borderRadius: thickness,
                       marginRight: dashGap,
-                      ...(color ? { backgroundColor: color } : {}),
+                      backgroundColor: dividerColor,
                     }
                   : {
                       width: dashLength,
                       height: thickness,
                       marginRight: dashGap,
-                      ...(color ? { backgroundColor: color } : {}),
+                      backgroundColor: dividerColor,
                     }
               }
             />

@@ -30,7 +30,7 @@ export function PromoBanner({
 
   return (
     <TouchableOpacity
-      className="mb-3 mt-auto flex-row items-center justify-between rounded-[20px] border border-black/[0.05] bg-white p-4"
+      className="mb-4 mt-auto flex-row items-center justify-between rounded-[20px] border border-black/[0.05] bg-white p-4"
       // PLATFORM-SHADOW
       style={shadowStyle}
       onPress={onPress}

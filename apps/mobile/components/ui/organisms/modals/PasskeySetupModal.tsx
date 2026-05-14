@@ -1,8 +1,9 @@
 import React from "react";
-import { View, ActivityIndicator, Modal } from "react-native";
+import { View, ActivityIndicator, Modal, StyleSheet } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { BlurView } from "expo-blur";
+import { useThemeColor } from "@/hooks/useThemeColor";
 import { cn } from "@/utils/cn";
 
 interface PasskeySetupModalProps {
@@ -24,6 +25,8 @@ export function PasskeySetupModal({
   onSkip,
   skipLabel = "Skip for now",
 }: PasskeySetupModalProps) {
+  const backgroundColor = useThemeColor({}, "background");
+
   return (
     <Modal
       visible={visible}
@@ -33,11 +36,15 @@ export function PasskeySetupModal({
     >
       <BlurView
         intensity={44.2}
-        className="flex-1 items-center justify-end bg-[rgb(189,189,189)]"
+        style={[
+          StyleSheet.absoluteFill,
+          styles.overlay,
+          { backgroundColor: "rgba(189, 189, 189, 1)" },
+        ]}
         tint="dark"
         experimentalBlurMethod="dimezisBlurView"
       >
-        <View className="m-[21px] w-[93%] overflow-hidden rounded-[32px] bg-background px-6 py-7">
+        <View style={[styles.modalContainer, { backgroundColor }]}>
           <View className="items-center">
             <View className="mb-4">
               <Typography weight="700" className="text-[40px]">
@@ -61,7 +68,7 @@ export function PasskeySetupModal({
               <View className="w-full items-center">
                 <Typography
                   weight="400"
-                  className="mb-4 text-center text-sm text-destructive"
+                  className="mb-4 text-center text-sm text-[#FF4444]"
                 >
                   {error}
                 </Typography>
@@ -121,3 +128,19 @@ export function PasskeySetupModal({
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    alignItems: "center",
+  },
+  modalContainer: {
+    width: "93%",
+    borderRadius: 32,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    margin: 21,
+    overflow: "hidden",
+  },
+});
