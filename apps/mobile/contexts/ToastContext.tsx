@@ -2,6 +2,7 @@ import React, {
   createContext,
   useContext,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -9,6 +10,7 @@ import { Animated, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { setToastHandler } from "@/utils/toast";
 
 interface ToastOptions {
   label: string;
@@ -83,6 +85,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     },
     [translateY, opacity]
   );
+
+  useEffect(() => {
+    setToastHandler(showToast);
+    return () => setToastHandler(null);
+  }, [showToast]);
 
   return (
     <ToastContext.Provider value={{ showToast }}>

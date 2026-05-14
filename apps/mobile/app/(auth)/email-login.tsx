@@ -21,7 +21,7 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { ThemedTextInput } from "@/components/ui/molecules";
 import { ScreenVerificationCodeInput } from "@/components/ui/organisms/ScreenVerificationCodeInput";
 import { PasskeySetupModal } from "@/components/ui/organisms/modals/PasskeySetupModal";
-import Toast from "react-native-toast-message";
+import { useToast } from "@/contexts/ToastContext";
 
 function EmailLoginScreen() {
   const [emailInput, setEmailInput] = useState("");
@@ -29,6 +29,7 @@ function EmailLoginScreen() {
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [showPasskeySetup, setShowPasskeySetup] = useState(false);
   const { completeLogin, completePasskeySetup, user } = useAuth();
+  const { showToast } = useToast();
   const {
     checkPasskeys,
     registerPasskey,
@@ -58,11 +59,7 @@ function EmailLoginScreen() {
     try {
       await sendOtpAsync(emailInput.trim());
     } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: error?.message || "Failed to send code. Please try again.",
-        position: "top",
-      });
+      showToast(error?.message || "Failed to send code. Please try again.");
     }
   };
 
@@ -113,11 +110,7 @@ function EmailLoginScreen() {
     try {
       await sendOtpAsync(emailInput.trim());
     } catch {
-      Toast.show({
-        type: "error",
-        text1: "Failed to resend code.",
-        position: "top",
-      });
+      showToast("Failed to resend code.");
     }
   };
 

@@ -11,7 +11,7 @@ import { ButtonGroup } from "@/components/ui/molecules";
 import { useAuth } from "@/contexts/AuthContext";
 import { EasClient } from "@/utils/easClient";
 import { ErrorCode } from "@/utils/errors";
-import Toast from "react-native-toast-message";
+import { useToast } from "@/contexts/ToastContext";
 import * as Sentry from "@sentry/react-native";
 import { CreatePaymentIntentRequest } from "@sqds/grid-react-native";
 import { SDKGridClient } from "../../grid/sdkClient";
@@ -22,6 +22,7 @@ export default function ConfirmScreen() {
   const textColor = useThemeColor({}, "text");
   const [isLoading, setIsLoading] = useState(false);
   const { user, logout } = useAuth();
+  const { showToast } = useToast();
 
   const { amount, recipient, name, type, title } = useLocalSearchParams<{
     amount: string;
@@ -108,11 +109,7 @@ export default function ConfirmScreen() {
           (detail: any) => detail.code === "API_KEY_EXPIRED"
         )
       ) {
-        Toast.show({
-          text1: "Session expired, please log in again",
-          type: "error",
-          visibilityTime: 5000,
-        });
+        showToast("Session expired, please log in again");
         logout();
         return;
       }

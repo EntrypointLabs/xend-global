@@ -67,7 +67,10 @@ export default function AddressBookScreen() {
 
   const handleCopyAddress = async (address: string) => {
     await Clipboard.setStringAsync(address);
-    showToast("Address copied to clipboard");
+    showToast(
+      "Copied to clipboard",
+      <Ionicons name="checkmark-circle" size={16} color="#000" />
+    );
   };
 
   const handleSaveContactName = (newName: string) => {

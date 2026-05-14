@@ -1,4 +1,4 @@
-import Toast from "react-native-toast-message";
+import { showToast } from "@/utils/toast";
 
 export enum ErrorCode {
   // Authentication errors
@@ -74,12 +74,7 @@ export class AppError extends Error {
 
   showToast() {
     if (this.shouldDisplay) {
-      Toast.show({
-        type: "error",
-        text1: ErrorMessages[this.code],
-        position: "top",
-        visibilityTime: 4000,
-      });
+      showToast(ErrorMessages[this.code]);
     }
 
     if (this.shouldLog) {

@@ -15,7 +15,7 @@ import { NotificationsSheet } from "@/components/ui/organisms/modals/Notificatio
 import { usePasskey } from "@/hooks/usePasskey";
 import { useWalletName } from "@/hooks/useWalletName";
 import { useRouter } from "expo-router";
-import Toast from "react-native-toast-message";
+import { useToast } from "@/contexts/ToastContext";
 
 const XEND_TWITTER_URL = "https://twitter.com/xend_global";
 
@@ -39,6 +39,7 @@ export default function SettingsScreen() {
   const { name: walletName, setName: setWalletName } = useWalletName();
   const [showEditWallet, setShowEditWallet] = useState(false);
   const notificationsSheetRef = useRef<BottomSheetModal>(null);
+  const { showToast } = useToast();
 
   const accountAddress = user?.smart_account_address || user?.address;
 
@@ -51,11 +52,7 @@ export default function SettingsScreen() {
 
   const handlePasskeyPress = () => {
     if (hasPasskey) {
-      Toast.show({
-        type: "success",
-        text1: "Passkey is already set up",
-        position: "top",
-      });
+      showToast("Passkey is already set up");
       return;
     }
     clearPasskeyError();
@@ -68,11 +65,7 @@ export default function SettingsScreen() {
     const success = await registerPasskey(accountAddress);
     if (success) {
       setShowPasskeyModal(false);
-      Toast.show({
-        type: "success",
-        text1: "Passkey set up successfully",
-        position: "top",
-      });
+      showToast("Passkey set up successfully");
     }
   };
 

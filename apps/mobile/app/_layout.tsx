@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Redirect, Slot, useSegments } from "expo-router";
-import Toast from "react-native-toast-message";
 import { View } from "react-native";
-import { Typography } from "@/components/ui/atoms/Typography";
 
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
@@ -112,46 +110,12 @@ function AuthLayout() {
           <ToastProvider>
             <Slot />
             <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-            <Toast config={toastConfig} />
           </ToastProvider>
         </ModalFlowProvider>
       </ScreenThemeProvider>
     </ThemeProvider>
   );
 }
-
-const toastConfig = {
-  error: (props: { text1?: string }) => (
-    <View
-      style={{
-        backgroundColor: "#000000",
-        opacity: 0.4,
-        padding: 16,
-        borderRadius: 8,
-        marginHorizontal: 16,
-        marginTop: 40,
-        shadowColor: "#000",
-        shadowOffset: {
-          width: 0,
-          height: 2,
-        },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-        elevation: 5,
-      }}
-    >
-      <Typography
-        weight="600"
-        style={{
-          color: "#FFFFFF",
-          fontSize: 14,
-        }}
-      >
-        {props.text1 || "An error occurred"}
-      </Typography>
-    </View>
-  ),
-};
 
 function RootLayout() {
   const [loaded, error] = useFonts({

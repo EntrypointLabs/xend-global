@@ -12,7 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { EasClient } from "@/utils/easClient";
 import { v4 as uuidv4 } from "uuid";
 import { storeExternalAccount } from "@/utils/externalAccount";
-import Toast from "react-native-toast-message";
+import { useToast } from "@/contexts/ToastContext";
 import { ErrorCode, handleError } from "@/utils/errors";
 import * as Sentry from "@sentry/react-native";
 import { SDKGridClient } from "../../grid/sdkClient";
@@ -35,6 +35,7 @@ export default function FiatConfirmScreen() {
   const textColor = useThemeColor({}, "text");
   const [isLoading, setIsLoading] = useState(false);
   const { user, logout } = useAuth();
+  const { showToast } = useToast();
 
   const {
     amount,
@@ -211,11 +212,7 @@ export default function FiatConfirmScreen() {
             (detail: any) => detail.code === "API_KEY_EXPIRED"
           )
         ) {
-          Toast.show({
-            text1: "Session expired, please log in again",
-            type: "error",
-            visibilityTime: 5000,
-          });
+          showToast("Session expired, please log in again");
           logout();
           return;
         }
@@ -233,12 +230,9 @@ export default function FiatConfirmScreen() {
           `Failed to sign transaction: ${err}. (send)/fiatconfirm.tsx (handleConfirm)`
         )
       );
-      Toast.show({
-        text1:
-          "An error occurred while processing your transaction. Please try again.",
-        type: "error",
-        visibilityTime: 5000,
-      });
+      showToast(
+        "An error occurred while processing your transaction. Please try again."
+      );
     } finally {
       setIsLoading(false);
     }
