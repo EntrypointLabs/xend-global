@@ -1,19 +1,13 @@
 import React, { useState } from "react";
-import {
-  View,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Image,
-} from "react-native";
+import { View, TextInput, TouchableOpacity, Image } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { useRouter } from "expo-router";
 import { ScreenLayout } from "@/components/ui/layout";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
-import { useThemeColor } from "@/hooks/useThemeColor";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
+import { cn } from "@/utils/cn";
 
 // Mock Recent Addresses
 const RECENT_ADDRESSES = [
@@ -27,7 +21,6 @@ const RECENT_ADDRESSES = [
 export default function ChooseRecipientScreen() {
   const router = useRouter();
   const [recipient, setRecipient] = useState("");
-  const backgroundColor = useThemeColor({}, "background");
 
   const handlePaste = async () => {
     const text = await Clipboard.getStringAsync();
@@ -79,7 +72,10 @@ export default function ChooseRecipientScreen() {
 
           <View className="flex-row gap-3">
             <HapticPressable
-              className={`rounded-full px-6 py-2.5 ${recipient.length > 0 ? "bg-black" : "bg-black/30"}`}
+              className={cn(
+                "rounded-full px-6 py-2.5",
+                recipient.length > 0 ? "bg-black" : "bg-black/30"
+              )}
               onPress={handleContinue}
               disabled={recipient.length === 0}
             >
@@ -96,7 +92,7 @@ export default function ChooseRecipientScreen() {
                 name="document-text-outline"
                 size={16}
                 color="black"
-                style={{ marginRight: 6 }}
+                className="mr-1.5"
               />
               <Typography weight="600" className="text-black">
                 Paste

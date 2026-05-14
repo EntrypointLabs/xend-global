@@ -4,7 +4,6 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { useRouter } from "expo-router";
 import { ScreenLayout } from "@/components/ui/layout";
 import { Ionicons } from "@expo/vector-icons";
-import { useThemeColor } from "@/hooks/useThemeColor";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { ActionPill } from "@/components/ui/molecules";
@@ -19,7 +18,6 @@ import BalanceView from "@/components/BalanceView";
 
 export default function CashScreen() {
   const router = useRouter();
-  const backgroundColor = useThemeColor({}, "background");
   const { user } = useAuth();
   const { hideAllModals } = useModalFlow();
 
@@ -32,7 +30,7 @@ export default function CashScreen() {
   const actionItems = useMemo(
     () => [
       {
-        icon: ({ isActive }: { isActive?: boolean }) => (
+        icon: () => (
           <View className="flex-row items-center gap-2">
             <View className="h-6 w-6 items-center justify-center rounded-full bg-black">
               <Ionicons name="arrow-down" size={14} color="white" />
@@ -46,7 +44,7 @@ export default function CashScreen() {
         label: "Receive",
       },
       {
-        icon: ({ isActive }: { isActive?: boolean }) => (
+        icon: () => (
           <View className="flex-row items-center gap-2">
             <Ionicons name="paper-plane-outline" size={20} color="black" />
             <Typography weight="700" className="text-lg">
@@ -76,7 +74,7 @@ export default function CashScreen() {
 
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 100 }}
+          contentContainerClassName="pb-24"
         >
           {/* Balance */}
           <View className="mb-8">
@@ -109,10 +107,7 @@ export default function CashScreen() {
               <BalanceView weight="600" className="text-lg" amount="4.66" />
             </View>
 
-            <View
-              className="my-2 h-px w-full border-t border-dashed border-gray-200 bg-gray-100"
-              style={{}}
-            />
+            <View className="my-2 h-px w-full border-t border-dashed border-gray-200 bg-gray-100" />
 
             <TouchableOpacity className="flex-row items-center justify-between pt-2">
               <View className="flex-row items-center">
