@@ -1,14 +1,7 @@
 import React, { useEffect, useState } from "react";
-import {
-  View,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-} from "react-native";
+import { View, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { ThemedScreen } from "@/components/ui/layout";
 import { useThemeColor } from "@/hooks/useThemeColor";
-import { Spacing } from "@/constants/Spacing";
 import {
   Keypad,
   ThemedButton,
@@ -41,8 +34,8 @@ export default function AmountScreen() {
   const [routingNumber, setRoutingNumber] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [accountType, setAccountType] = useState<UsAccountType>("checking");
-  const [country, setCountry] = useState<CountryCode>("USA");
+  const [accountType] = useState<UsAccountType>("checking");
+  const [country] = useState<CountryCode>("USA");
   const [accountLabel, setAccountLabel] = useState("");
   const [bankName, setBankName] = useState("");
   const [externalAccounts, setExternalAccounts] = useState<
@@ -161,7 +154,7 @@ export default function AmountScreen() {
           first_name: firstName,
           last_name: lastName,
         });
-      } catch (error) {
+      } catch {
         validationError = true;
         handleError(ErrorCode.INVALID_NAME, true, true);
       }
@@ -169,7 +162,7 @@ export default function AmountScreen() {
       // Validate the address
       try {
         Address.parse(address);
-      } catch (error) {
+      } catch {
         validationError = true;
         handleError(ErrorCode.INVALID_ADDRESS, true, true);
       }
@@ -181,7 +174,7 @@ export default function AmountScreen() {
           routing_number: routingNumber,
           bank_name: bankName,
         });
-      } catch (error) {
+      } catch {
         validationError = true;
         handleError(ErrorCode.INVALID_BANK_ACCOUNT, true, true);
       }
@@ -190,7 +183,7 @@ export default function AmountScreen() {
         AccountLabel.parse({
           label: accountLabel,
         });
-      } catch (error) {
+      } catch {
         validationError = true;
         handleError(ErrorCode.INVALID_LABEL, true, true);
       }
@@ -233,7 +226,7 @@ export default function AmountScreen() {
 
   const renderKeypad = () => {
     return (
-      <View style={styles.keypadContainer}>
+      <View className="w-full flex-1 justify-center">
         <Keypad onKeyPress={handleKeyPress} />
       </View>
     );
@@ -241,6 +234,7 @@ export default function AmountScreen() {
 
   const renderAmount = () => {
     return (
+      // DYNAMIC-COLOR
       <ThemedText type="highlight" style={{ color: textColor }}>
         {formatAmount({ amount })}
       </ThemedText>
@@ -249,10 +243,11 @@ export default function AmountScreen() {
 
   const renderExternalAccounts = (currentLabel: string, id: string) => {
     return (
-      <View key={id} style={{ marginBottom: Spacing.sm }}>
+      <View key={id} className="mb-2">
         <ThemedButton
           title={currentLabel}
           variant="outline"
+          // DYNAMIC-COLOR
           textStyle={{ color: textColor }}
           onPress={() => {
             handleExistingContinue(currentLabel, id);
@@ -265,37 +260,34 @@ export default function AmountScreen() {
   const renderBankDetails = () => {
     return (
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollViewContent}
+        className="flex-1"
+        contentContainerClassName="flex-grow"
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.bankDetailsContainer}>
-          <ThemedText type="regular" style={styles.sectionTitle}>
+        <View className="w-full px-6">
+          <ThemedText type="regular" className="mb-2 opacity-60">
             Personal Information
           </ThemedText>
           <ThemedTextInput
-            style={styles.input}
             value={firstName}
             onChangeText={setFirstName}
             placeholder="First Name"
           />
-          <View style={{ marginBottom: Spacing.sm }} />
+          <View className="mb-2" />
           <ThemedTextInput
-            style={styles.input}
             value={lastName}
             onChangeText={setLastName}
             placeholder="Last Name"
           />
-          <View style={{ marginBottom: Spacing.lg }} />
+          <View className="mb-6" />
 
-          <ThemedText type="regular" style={styles.sectionTitle}>
+          <ThemedText type="regular" className="mb-2 opacity-60">
             Address
           </ThemedText>
-          <View style={styles.row}>
-            <View style={styles.quarterWidth}>
+          <View className="w-full flex-row">
+            <View className="flex-1">
               <ThemedTextInput
-                style={styles.input}
                 value={address.street_number}
                 onChangeText={(text) =>
                   setAddress((prev) => ({ ...prev, street_number: text }))
@@ -304,10 +296,9 @@ export default function AmountScreen() {
                 keyboardType="numeric"
               />
             </View>
-            <View style={styles.spacer} />
-            <View style={styles.threeQuarterWidth}>
+            <View className="w-2" />
+            <View className="flex-[3]">
               <ThemedTextInput
-                style={styles.input}
                 value={address.street_name}
                 onChangeText={(text) =>
                   setAddress((prev) => ({ ...prev, street_name: text }))
@@ -316,20 +307,18 @@ export default function AmountScreen() {
               />
             </View>
           </View>
-          <View style={{ marginBottom: Spacing.sm }} />
+          <View className="mb-2" />
           <ThemedTextInput
-            style={styles.input}
             value={address.street_line_2}
             onChangeText={(text) =>
               setAddress((prev) => ({ ...prev, street_line_2: text }))
             }
             placeholder="e.g. APT 2135"
           />
-          <View style={{ marginBottom: Spacing.sm }} />
-          <View style={styles.row}>
-            <View style={styles.halfWidth}>
+          <View className="mb-2" />
+          <View className="w-full flex-row">
+            <View className="flex-1">
               <ThemedTextInput
-                style={styles.input}
                 value={address.city}
                 onChangeText={(text) =>
                   setAddress((prev) => ({ ...prev, city: text }))
@@ -337,10 +326,9 @@ export default function AmountScreen() {
                 placeholder="e.g. Austin"
               />
             </View>
-            <View style={styles.spacer} />
-            <View style={styles.halfWidth}>
+            <View className="w-2" />
+            <View className="flex-1">
               <ThemedTextInput
-                style={styles.input}
                 value={address.state}
                 onChangeText={(text) =>
                   setAddress((prev) => ({ ...prev, state: text }))
@@ -349,11 +337,10 @@ export default function AmountScreen() {
               />
             </View>
           </View>
-          <View style={{ marginBottom: Spacing.sm }} />
-          <View style={styles.row}>
-            <View style={styles.halfWidth}>
+          <View className="mb-2" />
+          <View className="w-full flex-row">
+            <View className="flex-1">
               <ThemedTextInput
-                style={styles.input}
                 value={address.postal_code}
                 onChangeText={(text) =>
                   setAddress((prev) => ({ ...prev, postal_code: text }))
@@ -362,10 +349,9 @@ export default function AmountScreen() {
                 keyboardType="numeric"
               />
             </View>
-            <View style={styles.spacer} />
-            <View style={styles.halfWidth}>
+            <View className="w-2" />
+            <View className="flex-1">
               <ThemedTextInput
-                style={styles.input}
                 value={address.country}
                 onChangeText={(text) =>
                   setAddress((prev) => ({ ...prev, country: text }))
@@ -375,46 +361,42 @@ export default function AmountScreen() {
               />
             </View>
           </View>
-          <View style={{ marginBottom: Spacing.lg }} />
+          <View className="mb-6" />
 
-          <ThemedText type="regular" style={styles.sectionTitle}>
+          <ThemedText type="regular" className="mb-2 opacity-60">
             Bank Account
           </ThemedText>
           <ThemedTextInput
-            style={styles.input}
             value={bankName}
             onChangeText={setBankName}
             placeholder="Bank Name"
           />
-          <View style={{ marginBottom: Spacing.sm }} />
+          <View className="mb-2" />
           <ThemedTextInput
-            style={styles.input}
             value={accountNumber}
             onChangeText={setAccountNumber}
             placeholder="Account Number"
             keyboardType="numeric"
           />
-          <View style={{ marginBottom: Spacing.sm }} />
+          <View className="mb-2" />
           <ThemedTextInput
-            style={styles.input}
             value={routingNumber}
             onChangeText={setRoutingNumber}
             placeholder="Routing Number"
             keyboardType="numeric"
           />
-          <View style={{ marginBottom: Spacing.lg }} />
+          <View className="mb-6" />
 
-          <ThemedText type="regular" style={styles.sectionTitle}>
+          <ThemedText type="regular" className="mb-2 opacity-60">
             Bank Label
           </ThemedText>
           <ThemedTextInput
-            style={[styles.input]}
             placeholder="Enter a label for this account"
             placeholderTextColor={textColor + "40"}
             value={accountLabel}
             onChangeText={setAccountLabel}
           />
-          <View style={{ marginBottom: Spacing.xxxl }} />
+          <View className="mb-16" />
         </View>
       </ScrollView>
     );
@@ -428,6 +410,7 @@ export default function AmountScreen() {
         )}
         <ThemedButton
           variant="outline"
+          // DYNAMIC-COLOR
           textStyle={{ color: textColor }}
           title="Add new account"
           onPress={() => {
@@ -445,25 +428,17 @@ export default function AmountScreen() {
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.container}
+        className="flex-1"
         keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
       >
-        <View style={styles.header}>
-          <View style={styles.headerContent}>
-            <ThemedText
-              type="defaultSemiBold"
-              style={[styles.label, { paddingVertical: 4 }]}
-            >
+        <View className="mb-4 w-full px-6">
+          <View className="h-[30px] flex-row items-center justify-between">
+            <ThemedText type="defaultSemiBold" className="mb-2 py-1">
               {steps[step - 1].label}
             </ThemedText>
             {step === 3 && (
-              <Chip
-                style={{
-                  paddingHorizontal: Spacing.sm,
-                  paddingVertical: Spacing.xs,
-                }}
-              >
-                <View style={{ flexDirection: "row" }}>
+              <Chip className="px-2 py-1">
+                <View className="flex-row">
                   <ThemedText type="tiny">ACH </ThemedText>
                   <IconSymbol name="chevron.down" size={12} color={textColor} />
                 </View>
@@ -472,10 +447,12 @@ export default function AmountScreen() {
           </View>
         </View>
 
-        <View style={styles.content}>
+        <View className="flex-1">
           {step === 1 && (
             <>
-              <View style={styles.amountContainer}>{renderAmount()}</View>
+              <View className="flex-1 items-center justify-center">
+                {renderAmount()}
+              </View>
               {renderKeypad()}
             </>
           )}
@@ -483,86 +460,10 @@ export default function AmountScreen() {
           {step === 3 && renderBankDetails()}
         </View>
 
-        <View style={styles.buttonContainer}>
+        <View className="w-full px-6 pb-8">
           <ThemedButton title="Continue" onPress={handleContinue} />
         </View>
       </KeyboardAvoidingView>
     </ThemedScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  // externalAccountContainer: {
-  //     padding: Spacing.md,
-  //     borderWidth: 1,
-  //     borderRadius: 10,
-  // },
-  container: {
-    flex: 1,
-  },
-  header: {
-    width: "100%",
-    paddingHorizontal: Spacing.lg,
-    marginBottom: Spacing.md,
-  },
-  headerContent: {
-    height: 30,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  content: {
-    flex: 1,
-  },
-  amountContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  label: {
-    marginBottom: Spacing.sm,
-  },
-  keypadContainer: {
-    flex: 1,
-    width: "100%",
-    justifyContent: "center",
-  },
-  buttonContainer: {
-    width: "100%",
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.xl,
-  },
-  bankDetailsContainer: {
-    width: "100%",
-    paddingHorizontal: Spacing.lg,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollViewContent: {
-    flexGrow: 1,
-  },
-  sectionTitle: {
-    marginBottom: Spacing.sm,
-    opacity: 0.6,
-  },
-  row: {
-    flexDirection: "row",
-    width: "100%",
-  },
-  halfWidth: {
-    flex: 1,
-  },
-  spacer: {
-    width: Spacing.sm,
-  },
-  input: {
-    paddingVertical: Spacing.xxs,
-  },
-  quarterWidth: {
-    flex: 1,
-  },
-  threeQuarterWidth: {
-    flex: 3,
-  },
-});
