@@ -13,7 +13,7 @@ import { ThemedText } from "@/components/ui/atoms";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import Animated, {
   useSharedValue,
-  useAnimatedStyle,
+  // useAnimatedStyle,
   withSpring,
 } from "react-native-reanimated";
 import { runOnJS } from "react-native-worklets";
@@ -107,11 +107,11 @@ export function ActionModal({
       }
     });
 
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateY: translateY.value }],
-    };
-  });
+  // const animatedStyle = useAnimatedStyle(() => {
+  //   return {
+  //     transform: [{ translateY: translateY.value }],
+  //   };
+  // });
 
   return (
     <Modal
@@ -148,7 +148,7 @@ export function ActionModal({
                         ? "#000"
                         : backgroundColor,
                     },
-                    animatedStyle,
+                    // animatedStyle,
                   ]}
                 >
                   {title ? (

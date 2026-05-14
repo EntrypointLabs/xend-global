@@ -1,9 +1,7 @@
 import React, { useState } from "react";
-import { View } from "react-native";
 import { ScreenLayout } from "@/components/ui/layout";
 import {
   ActivityList,
-  ActivitySection,
   TransactionDetailModal,
 } from "@/components/ui/organisms";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
@@ -18,7 +16,7 @@ const ICONS = {
   key: require("@/assets/icons/card.png"),
 };
 
-const data: History[] = Array(10)
+const data: History[] = Array(50)
   .fill({
     id: "1",
     type: "transaction",
