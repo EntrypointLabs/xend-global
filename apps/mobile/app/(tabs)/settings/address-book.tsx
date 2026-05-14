@@ -186,12 +186,12 @@ function ContactRow({ contact, onCopy, onOpenMenu }: ContactRowProps) {
   const buttonRef = useRef<View>(null);
 
   return (
-    <View className="flex-row items-center rounded-2xl border border-black/10 bg-white p-4">
+    <View className="flex-row items-center py-2">
       <HapticPressable
         onPress={() => onCopy(contact.address)}
         className="flex-1 flex-row items-center"
       >
-        <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-black/[0.04]">
+        <View className="mr-3 size-12 items-center justify-center rounded-full bg-black/[0.04]">
           <Ionicons name="wallet-outline" size={18} color="#000" />
         </View>
         <View className="flex-1">
