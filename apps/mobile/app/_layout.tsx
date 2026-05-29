@@ -21,6 +21,7 @@ import { EasClient } from "@/utils/easClient";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useNewInboundToast } from "@/queries/useNewInboundToast";
 
 import * as SplashScreen from "expo-splash-screen";
 import {
@@ -62,6 +63,46 @@ if (process.env.EXPO_PUBLIC_GRID_ENV === "production") {
           Sentry.mobileReplayIntegration(),
           Sentry.feedbackIntegration(),
         ],
+        // Strip auth-sensitive payloads before they leave the device. The
+        // breadcrumb hook hits per-request fetch/xhr records; the event hook
+        // hits the final payload (including extra/context bags). Both check
+        // for Authorization headers, body fields named like sessionSecrets /
+        // session / signedTransactionPayload, and any string starting with
+        // "Bearer ".
+        beforeBreadcrumb(crumb) {
+          if (crumb.category === "fetch" || crumb.category === "xhr") {
+            const data = crumb.data as
+              | { request_headers?: Record<string, string>; request_body?: string }
+              | undefined;
+            const headers = data?.request_headers;
+            if (headers && headers.Authorization) {
+              headers.Authorization = "[redacted]";
+            }
+            if (data?.request_body) {
+              try {
+                const parsed = JSON.parse(data.request_body);
+                for (const k of [
+                  "sessionSecrets",
+                  "session",
+                  "signedTransactionPayload",
+                ]) {
+                  if (k in parsed) parsed[k] = "[redacted]";
+                }
+                data.request_body = JSON.stringify(parsed);
+              } catch {
+                // body wasn't JSON — nothing structured to redact
+              }
+            }
+          }
+          return crumb;
+        },
+        beforeSend(event) {
+          const redact = (v: unknown): unknown =>
+            typeof v === "string" && /^Bearer /.test(v) ? "[redacted]" : v;
+          // JSON round-trip with a replacer scrubs Bearer values anywhere
+          // they appear (headers, extra context, breadcrumbs).
+          return JSON.parse(JSON.stringify(event, (_k, v) => redact(v)));
+        },
       });
     } catch (error) {
       console.error("Failed to initialize Sentry:", error);
@@ -108,6 +149,10 @@ function AuthLayout() {
       <ScreenThemeProvider>
         <ModalFlowProvider>
           <ToastProvider>
+            {/* Phase 7: receive-toast listener. Mounted inside ToastProvider
+                (uses useToast) but inside AuthLayout's authenticated branch so
+                it only runs once the user is signed in. Side-effect only. */}
+            <InboundToastListener />
             <Slot />
             <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
           </ToastProvider>
@@ -115,6 +160,11 @@ function AuthLayout() {
       </ScreenThemeProvider>
     </ThemeProvider>
   );
+}
+
+function InboundToastListener() {
+  useNewInboundToast();
+  return null;
 }
 
 function RootLayout() {

@@ -1,16 +1,30 @@
 import { SplTransfer } from "@sqds/grid-react-native";
 
 /**
- * Core transaction data interface
+ * Core transaction data interface — wire-real-backend shape.
+ *
+ * Rewritten in Phase 1 of wire-real-backend to match the NestJS backend's
+ * /transactions response shape. `amount` is a decimal string (e.g. "0.10"),
+ * `timestamp` is ISO-string, `signature` is the on-chain tx id (canonical).
+ *
+ * NOTE: After this change, apps/mobile/hooks/useWalletData.ts and
+ * apps/mobile/app/(tabs)/index.tsx will fail to type-check until Phase 5
+ * rewrites them to consume useTransactionsQuery + the toUiTransactions
+ * adapter. The breakage is EXPECTED and is scoped to those two files only.
  */
 export interface Transaction {
   id: string;
-  amount: number;
-  status: ConfirmationStatus | TransferState;
-  type: "sent" | "received" | "bridge";
-  date: Date;
-  address: string;
+  signature: string;
+  type: "sent" | "received";
+  amount: string;
+  token: "USDC";
+  status: TransactionStatus;
+  timestamp: string;
+  from: string;
+  to: string;
 }
+
+export type TransactionStatus = "PENDING" | "CONFIRMED" | "FAILED";
 
 /**
  * Interface for grouped transactions
@@ -101,7 +115,11 @@ export type PaymentRail =
   | "Stellar"
   | "Tron";
 
-export type ConfirmationStatus = "pending" | "confirmed" | "failed";
+// ConfirmationStatus removed in Phase 1 of wire-real-backend — only consumer
+// was the old Transaction.status field, now replaced by TransactionStatus
+// (uppercase to match the backend tx_status enum). TransferState is preserved
+// below because BridgeTransfer.state and PreparePaymentIntentResponse.status
+// (both out-of-scope fiat/bridge flows) still depend on it.
 
 export type TransferState =
   | "awaiting_funds"
@@ -286,7 +304,12 @@ export type Transfer =
       Bridge: BridgeTransfer;
     };
 
-export type TransferResponse = Transfer[];
+// TransferResponse was previously `Transfer[]` (the keyed Spl|Bridge union from
+// the legacy Expo-API-route shape). Phase 1 of wire-real-backend repoints it to
+// the new UI `Transaction[]` so screens and hooks consume one shape end-to-end.
+// The two known importers (hooks/useWalletData.ts, app/(tabs)/index.tsx) are
+// rewritten in Phase 5.
+export type TransferResponse = Transaction[];
 
 export interface ExternalAccountMapping {
   grid_user_id: string;

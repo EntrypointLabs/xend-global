@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { View } from "react-native";
 import { ThemedScreen } from "@/components/ui/layout";
 import { ThemedText, IconSymbol, LoadingSpinner } from "@/components/ui/atoms";
@@ -9,20 +9,23 @@ import { formatAmount } from "@/utils/helper";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { ButtonGroup } from "@/components/ui/molecules";
 import { useAuth } from "@/contexts/AuthContext";
-import { EasClient } from "@/utils/easClient";
 import { ErrorCode } from "@/utils/errors";
 import { useToast } from "@/contexts/ToastContext";
 import * as Sentry from "@sentry/react-native";
-import { CreatePaymentIntentRequest } from "@sqds/grid-react-native";
-import { SDKGridClient } from "../../grid/sdkClient";
 import { StorageService } from "@/utils/storage";
 import { AUTH_STORAGE_KEYS } from "@/utils/auth";
+import { useSendTransactionMutation } from "@/queries/useSendTransactionMutation";
 
 export default function ConfirmScreen() {
   const textColor = useThemeColor({}, "text");
   const [isLoading, setIsLoading] = useState(false);
   const { user, logout } = useAuth();
   const { showToast } = useToast();
+  const mutation = useSendTransactionMutation();
+  // Synchronous in-flight guard — React state updates are async-batched, so a
+  // rapid double-tap on Confirm can fire two requests between setIsLoading(true)
+  // and the disabled-button re-render. useRef.current changes immediately.
+  const inFlight = useRef(false);
 
   const { amount, recipient, name, type, title } = useLocalSearchParams<{
     amount: string;
@@ -33,71 +36,35 @@ export default function ConfirmScreen() {
   }>();
 
   const handleConfirm = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setIsLoading(true);
     try {
       const sessionSecrets = await StorageService.getItem(
-        AUTH_STORAGE_KEYS.SESSION_SECRETS
+        AUTH_STORAGE_KEYS.SESSION_SECRETS,
       );
-      if (!user || !user.address || !sessionSecrets) {
+      if (
+        !user ||
+        !user.address ||
+        !user.authentication ||
+        !sessionSecrets
+      ) {
         logout();
-        router.push({
-          pathname: "/(auth)/login",
-        });
-
+        router.push({ pathname: "/(auth)/login" });
         return;
       }
 
-      const backupKey = user.policies.signers.find(
-        (signer: any) => signer.provider === "turnkey"
-      );
-      if (!backupKey) {
-        throw new Error("Backup key not found");
-      }
-
-      const prepareTransactionParams: CreatePaymentIntentRequest = {
-        amount: (Number(amount) * 1000000).toString(), // Convert to USDC base units
-        source: {
-          account: user.address,
-          currency: "usdc",
-          // transaction_signers: [backupKey.address]
-        },
-        destination: {
-          address: recipient,
-          currency: "usdc",
-        },
-      };
-
-      const easClient = new EasClient();
-
-      const transactionData = await easClient.preparePaymentIntent(
-        prepareTransactionParams,
-        user.address,
-        true
-      );
-
-      if (!user) {
-        logout();
-        router.push({
-          pathname: "/(auth)/login",
-        });
-
-        return;
-      }
-
-      const gridClient = SDKGridClient.getFrontendClient();
-
-      const signedPayload = await gridClient.sign({
-        sessionSecrets: sessionSecrets as any,
+      // Single round-trip: backend handles prepare + sign + send via Grid.
+      // amount is a DECIMAL string ("0.10"); backend's TOKEN_DECIMALS maps it
+      // to base units before calling createPaymentIntent.
+      await mutation.mutateAsync({
+        toAddress: recipient,
+        amount,
+        token: "USDC",
+        sessionSecrets: sessionSecrets as never,
         session: user.authentication,
-        transactionPayload: transactionData.data.transactionPayload!,
       });
 
-      const payload = {
-        signedTransactionPayload: signedPayload,
-        address: user.address,
-      };
-
-      await easClient.confirmPaymentIntent(payload);
       router.push({
         pathname: "/success",
         params: { amount, type, title },
@@ -106,7 +73,7 @@ export default function ConfirmScreen() {
       if (
         error?.data?.code === ErrorCode.SESSION_EXPIRED ||
         error?.data?.details?.some(
-          (detail: any) => detail.code === "API_KEY_EXPIRED"
+          (detail: any) => detail.code === "API_KEY_EXPIRED",
         )
       ) {
         showToast("Session expired, please log in again");
@@ -116,11 +83,13 @@ export default function ConfirmScreen() {
 
       Sentry.captureException(
         new Error(
-          `Failed to confirm payment: ${error}. (send)/confirm.tsx (handleConfirm)`
-        )
+          `Failed to confirm payment: ${error}. (send)/confirm.tsx (handleConfirm)`,
+        ),
       );
+      showToast("Could not send. Try again.");
+    } finally {
       setIsLoading(false);
-      throw error;
+      inFlight.current = false;
     }
   };
 

@@ -18,8 +18,9 @@ export class GridService implements OnModuleInit {
   constructor(private config: ConfigService) {}
 
   onModuleInit() {
-    this.env =
-      this.config.get('NODE_ENV') === 'production' ? 'production' : 'sandbox';
+    // this.env =
+    //   this.config.get('NODE_ENV') === 'production' ? 'production' : 'sandbox';
+    this.env = 'production';
     this.client = new GridClient({
       apiKey: this.config.getOrThrow('GRID_API_KEY'),
       environment: this.env,

@@ -23,6 +23,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@jest/pattern": "^30.0.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.0.1",
@@ -32,7 +33,9 @@
     "@paralleldrive/cuid2": "^2.3.1",
     "@solana/web3.js": "^1.98.4",
     "@sqds/grid": "^3.0.0",
+    "bignumber.js": "^9.3.1",
     "drizzle-orm": "^0.45.1",
+    "exit-x": "^0.2.2",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.19.0",

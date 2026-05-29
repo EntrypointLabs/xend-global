@@ -5,6 +5,15 @@ import {
   CreatePasskeySessionResponse,
   MetaInfo,
 } from "@sqds/grid-react-native";
+import { AuthStorage } from "@/utils/storage/authStorage";
+import { AuthEvents } from "@/utils/authEvents";
+import type {
+  WalletDto,
+  BalancesDto,
+  TransactionsDto,
+  TransactionRowDto,
+  SendTransactionDto,
+} from "@/types/Backend";
 
 class ApiError extends Error {
   constructor(
@@ -17,13 +26,25 @@ class ApiError extends Error {
   }
 }
 
+// Endpoints that must NOT carry an Authorization header — they're how the user
+// obtains the token in the first place. Anything else gets `Bearer <jwt>` if a
+// token is in SecureStore.
+const PUBLIC_PATHS = new Set<string>([
+  "/register",
+  "/auth",
+  "/verify-otp",
+  "/verify-otp-and-create-account",
+  "/passkeys/check",
+  "/passkeys/session",
+]);
+
 class BackendClient {
   private baseUrl: string;
   private defaultHeaders: Record<string, string>;
 
   constructor() {
     this.validateEnv();
-    this.baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL!;
+    this.baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL!.replace(/\/$/, "");
     this.defaultHeaders = {
       "Content-Type": "application/json",
     };
@@ -38,16 +59,28 @@ class BackendClient {
   }
 
   private async request<T>(
-    endpoint: string,
+    endpoint: `/${string}`,
     options: RequestInit = {}
   ): Promise<T> {
     try {
       const url = `${this.baseUrl}${endpoint}`;
 
+      // Attach Authorization: Bearer for protected endpoints when a token exists.
+      // PUBLIC_PATHS (auth bootstrap) get no header. The AuthEvents emitter
+      // breaks the apiClient ↔ AuthContext cycle on 401.
+      const authHeader: Record<string, string> = {};
+      if (!PUBLIC_PATHS.has(endpoint)) {
+        const token = await AuthStorage.getToken();
+        if (token) {
+          authHeader.Authorization = `Bearer ${token}`;
+        }
+      }
+
       const fetchOptions: RequestInit = {
         ...options,
         headers: {
           ...this.defaultHeaders,
+          ...authHeader,
           ...options.headers,
         },
       };
@@ -62,6 +95,14 @@ class BackendClient {
         const errorData = await response
           .json()
           .catch(() => console.error("Error parsing response:", response));
+
+        // 401 → notify AuthContext (via the event bus) so it can log the user
+        // out and route to /(auth)/login. Public bootstrap endpoints can still
+        // legitimately return 401 (wrong OTP etc.); only emit for protected
+        // paths where 401 means "session is dead".
+        if (response.status === 401 && !PUBLIC_PATHS.has(endpoint)) {
+          AuthEvents.emitUnauthorized();
+        }
 
         if (errorData?.details?.[0]?.code) {
           const code = errorData.details[0].code as ErrorCode;
@@ -136,6 +177,30 @@ class BackendClient {
     return this.request<CreatePasskeySessionResponse>("/passkeys/session", {
       method: "POST",
       body: JSON.stringify({ accountAddress, metaInfo }),
+    });
+  }
+
+  // ── Wallet + transactions (wire-real-backend Phase 4) ────────────────────
+  // All four are JWT-guarded on the backend; request<T>() above attaches the
+  // Bearer header. Decimal amount is mobile-side (Clarify #2); backend converts
+  // to base units before calling Grid.
+
+  async getWallet(): Promise<WalletDto> {
+    return this.request<WalletDto>("/wallets/me", { method: "GET" });
+  }
+
+  async getBalances(): Promise<BalancesDto> {
+    return this.request<BalancesDto>("/wallets/me/balances", { method: "GET" });
+  }
+
+  async getTransactions(): Promise<TransactionsDto> {
+    return this.request<TransactionsDto>("/transactions", { method: "GET" });
+  }
+
+  async sendTransaction(dto: SendTransactionDto): Promise<TransactionRowDto> {
+    return this.request<TransactionRowDto>("/transactions/send", {
+      method: "POST",
+      body: JSON.stringify(dto),
     });
   }
 }

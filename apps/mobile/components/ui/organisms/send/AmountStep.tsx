@@ -4,8 +4,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { Keypad } from "@/components/ui/molecules";
 import { Ionicons } from "@expo/vector-icons";
 import { formatAmount, truncateAddress } from "@/utils/helper";
-import { useAuth } from "@/contexts/AuthContext";
-import { useWalletData } from "@/hooks/useWalletData";
+import { useBalancesQuery } from "@/queries/useBalancesQuery";
 import { useRouter } from "expo-router";
 import HapticPressable from "../../atoms/HapticPressable";
 import { cn } from "@/utils/cn";
@@ -24,8 +23,7 @@ export default function AmountStep({
   const router = useRouter(); // For final navigation to confirm
 
   const [amount, setAmount] = useState("");
-  const { accountInfo } = useAuth();
-  const { balance } = useWalletData(accountInfo);
+  const balance = useBalancesQuery().data?.usdc ?? 0;
 
   const handleKeyPress = (key: string) => {
     if (key === "backspace") {

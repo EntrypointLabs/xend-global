@@ -1,5 +1,10 @@
 import * as SecureStore from "expo-secure-store";
-import { AUTH_STORAGE_KEYS } from "@/utils/auth";
+// Import the constants from the standalone module (not `@/utils/auth`) so
+// authStorage doesn't pull in `auth.ts` — which in turn imports `apiClient.ts`,
+// which imports `authStorage.ts`. That round-trip is the require cycle Metro
+// warns about. `@/utils/auth` still re-exports AUTH_STORAGE_KEYS for any
+// non-authStorage consumer that prefers the old path.
+import { AUTH_STORAGE_KEYS } from "@/utils/authStorageKeys";
 import { AccountInfo } from "@/types/Auth";
 
 export const AuthStorage = {
@@ -140,22 +145,12 @@ export const AuthStorage = {
   },
 
   async clearAuthData() {
-    await Promise.all([
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.ACCOUNT_INFO),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.KEYPAIR),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.CREDENTIALS_BUNDLE),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.WALLET),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.IS_AUTHENTICATED),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.GRID_USER_ID),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.SMART_ACCOUNT_ADDRESS),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.KYC_STATUS),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.SESSION_SECRETS),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.TOKEN),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.USER),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.IS_AUTHENTICATED),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.PERSISTENT_EMAIL),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.CACHED_BALANCE),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.HAS_PASSKEY),
-    ]);
+    // Iterate every registered key so new entries added later
+    // (e.g. LAST_SEEN_INBOUND_SIG in Phase 7) are cleared automatically
+    // without another edit here. Set deduplicates if the same key is listed twice.
+    const keys = Array.from(new Set(Object.values(AUTH_STORAGE_KEYS)));
+    await Promise.all(
+      keys.map((key) => SecureStore.deleteItemAsync(key)),
+    );
   },
 };

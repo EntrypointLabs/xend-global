@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { router } from "expo-router";
 import { AccountInfo, AuthContextType } from "@/types/Auth";
 import {
@@ -8,9 +14,9 @@ import {
   verifyOtpCode,
 } from "@/utils/auth";
 import { AuthStorage } from "@/utils/storage/authStorage";
+import { AuthEvents } from "@/utils/authEvents";
 import * as Sentry from "@sentry/react-native";
 import { SDKGridClient } from "../grid/sdkClient";
-import { MockDatabase } from "@/utils/mockDatabase";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -84,9 +90,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       );
       setUser(result.data);
 
-      // Create user in MockDatabase with email
-      if (result.data.grid_user_id && email) {
-        await MockDatabase.createUser(result.data.grid_user_id, email);
+      // Persist JWT issued by NestJS /verify-otp-and-create-account so subsequent
+      // BackendClient calls can attach Authorization: Bearer.
+      if (result?.token) {
+        await AuthStorage.saveToken(result.token);
       }
 
       setIsAuthenticated(true);
@@ -124,9 +131,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await verifyOtpCode(code, sessionSecrets, userData);
       setUser(result.data);
 
-      // Create user in MockDatabase with email
-      if (result.data.grid_user_id && email) {
-        await MockDatabase.createUser(result.data.grid_user_id, email);
+      // Persist JWT issued by NestJS /verify-otp so subsequent BackendClient
+      // calls can attach Authorization: Bearer. Without this, every protected
+      // endpoint (wallets, transactions) would 401 → silent forced logout.
+      if (result?.token) {
+        await AuthStorage.saveToken(result.token);
       }
 
       setIsAuthenticated(true);
@@ -147,6 +156,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
   };
+
+  // Stable ref to `logout` so the AuthEvents subscriber can call the current
+  // implementation without re-subscribing on every render.
+  const logoutRef = useRef<() => Promise<void>>(async () => {});
+
+  // Subscribe to apiClient 401 events (emitted by BackendClient.request<T>).
+  // Lives here so AuthContext owns the logout-on-session-expired policy without
+  // creating a circular import inside apiClient.
+  useEffect(() => {
+    return AuthEvents.onUnauthorized(() => {
+      void logoutRef.current();
+    });
+  }, []);
 
   const logout = async () => {
     setIsLoggingOut(true);
@@ -182,6 +204,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Keep the ref in sync so AuthEvents-driven logout always calls the latest closure.
+  logoutRef.current = logout;
+
   const completeLogin = async (
     userData: any,
     email: string,
@@ -203,33 +228,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const authenticate = async (email: string): Promise<void> => {
-    setUser({
-      address: "HskwRmauuraCF6mMBMn8CfiPvAXGSL8t5QDBzERKcoaS",
-    });
-    setEmail(email);
-    await AuthStorage.saveUserData({});
-    await AuthStorage.saveEmail(email);
-    await AuthStorage.saveIsAuthenticated(true);
-
-    setIsAuthenticated(true);
-    setAuthError(null);
-
-    // try {
-    //     const result= await authenticateUser(email);
-
-    //     setUser(result.data);
-    //     setEmail(email);
-    //     await AuthStorage.saveUserData(result.data);
-    //     await AuthStorage.saveEmail(email);
-
-    //     setAuthError(null);
-
-    // } catch (error) {
-    //     Sentry.captureException(new Error(`Error authenticating: ${error}. (contexts)/AuthContext.tsx (authenticate)`));
-    //     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    //     setAuthError(errorMessage);
-    //     throw error;
-    // }
+    try {
+      const result = await authenticateUser(email);
+      setUser(result.data);
+      setEmail(email);
+      await AuthStorage.saveUserData(result.data);
+      await AuthStorage.saveEmail(email);
+      setAuthError(null);
+    } catch (error) {
+      Sentry.captureException(
+        new Error(
+          `Error authenticating: ${error}. (contexts)/AuthContext.tsx (authenticate)`
+        )
+      );
+      const errorMessage =
+        error instanceof Error ? error.message : "An unknown error occurred";
+      setAuthError(errorMessage);
+      throw error;
+    }
   };
 
   const register = async (email: string): Promise<void> => {

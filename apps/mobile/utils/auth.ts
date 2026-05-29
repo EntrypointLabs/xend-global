@@ -1,6 +1,6 @@
 // import { AccountInfo } from '@/types/Auth';
 import { SessionSecrets } from "@sqds/grid";
-import { EasClient } from "@/utils/easClient";
+import { apiClient } from "@/utils/apiClient";
 // import { setupCryptoPolyfill } from '@/polyfills';
 // import * as Sentry from '@sentry/react-native';
 
@@ -13,12 +13,11 @@ export const validateEnv = () => {
 };
 
 /**
- * First time a user registers.
+ * First time a user registers. Hits NestJS /register so the verifyOtp follow-up
+ * can return a JWT (the legacy EAS shim doesn't issue tokens).
  */
 export const registerUser = async (email: string): Promise<any> => {
-  const easClient = new EasClient();
-  const response = await easClient.register({ email: email });
-  return response;
+  return apiClient.register(email);
 };
 
 export const verifyOtpCodeAndCreateAccount = async (
@@ -26,28 +25,18 @@ export const verifyOtpCodeAndCreateAccount = async (
   sessionSecrets: SessionSecrets,
   user: any
 ): Promise<any> => {
-  const easClient = new EasClient();
-  const response = await easClient.verifyCodeAndCreateAccount({
+  return apiClient.verifyOtpAndCreateAccount({
     otpCode: code,
-    sessionSecrets: sessionSecrets,
-    user: user,
+    sessionSecrets,
+    user,
   });
-
-  // Return the full session secrets array instead of single keypair
-  return response;
 };
 
 /**
- * existing user logs in.
+ * Existing user logs in. Routes through NestJS /auth so verifyOtp can produce a JWT.
  */
 export const authenticateUser = async (email: string): Promise<any> => {
-  const request: { email: string } = {
-    email: email,
-    // provider: 'turnkey',
-  };
-  const easClient = new EasClient();
-  const response = await easClient.authenticate(request);
-  return response;
+  return apiClient.authenticate(email);
 };
 
 export const verifyOtpCode = async (
@@ -55,42 +44,17 @@ export const verifyOtpCode = async (
   sessionSecrets: SessionSecrets,
   user: any
 ): Promise<any> => {
-  const easClient = new EasClient();
-  const response = await easClient.verifyOtpCode({
-    otpCode,
-    sessionSecrets,
-    user,
-  });
-  // const response = await easClient.verifyOtp(otpData);
-
-  // Return the full session secrets array instead of single keypair
-  return response;
+  // NestJS /verify-otp returns `{ ...gridResponse, token }`; the caller in
+  // AuthContext.verifyCode extracts `token` and persists via AuthStorage.saveToken.
+  return apiClient.verifyOtp({ otpCode, sessionSecrets, user });
 };
 
 export const verifyOtpAndCreateAccount = async (
-  code: string
+  _code: string
 ): Promise<void> => {};
 
-export const AUTH_STORAGE_KEYS = {
-  USER: "auth_user",
-  SESSION_SECRETS: "auth_session_secrets",
-  EMAIL: "auth_email",
-  ACCOUNT_INFO: "auth_account_info",
-  KEYPAIR: "auth_keypair",
-  CREDENTIALS_BUNDLE: "auth_credentials_bundle",
-  WALLET: "auth_wallet",
-  TOKEN: "auth_token",
-  IS_AUTHENTICATED: "auth_is_authenticated",
-  MPC_PRIMARY_ID: "auth_mpc_primary_id",
-  KYC_STATUS: "auth_kyc_status",
-  SMART_ACCOUNT_ADDRESS: "auth_smart_account_address",
-  GRID_USER_ID: "auth_grid_user_id",
-  BRIDGE_KYC_LINK_IDS: "auth_bridge_kyc_link_id",
-  PERSISTENT_EMAIL: "auth_persistent_email",
-  EXTERNAL_ACCOUNTS: "auth_external_accounts",
-  KYC_LINK: "auth_kyc_link",
-  CACHED_BALANCE: "auth_cached_balance",
-  HAS_PASSKEY: "auth_has_passkey",
-  WALLET_NAME: "wallet_name",
-  ADDRESS_BOOK: "address_book",
-};
+// AUTH_STORAGE_KEYS lives in its own module to break the
+// `auth.ts → apiClient.ts → authStorage.ts → auth.ts` Metro require cycle.
+// Re-exported here so existing `import { AUTH_STORAGE_KEYS } from "@/utils/auth"`
+// call sites keep working.
+export { AUTH_STORAGE_KEYS } from "@/utils/authStorageKeys";

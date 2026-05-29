@@ -1,32 +1,31 @@
 import { View, ScrollView } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useMemo, useRef } from "react";
 import { ThemedText } from "@/components/ui/atoms";
 
 import { ActionCard, PromoBanner } from "@/components/ui/molecules";
 import { ScreenLayout } from "@/components/ui/layout";
-import { TransferResponse, Transaction } from "@/types/Transaction";
-import { useAuth } from "@/contexts/AuthContext";
 import { SendModal } from "@/components/ui/organisms/modals/SendModal";
 import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useToast } from "@/contexts/ToastContext";
 import { TransactionList } from "@/components/ui/organisms/TransactionList";
-import { useWalletData } from "@/hooks/useWalletData";
+import { useWalletQuery } from "@/queries/useWalletQuery";
+import { useBalancesQuery } from "@/queries/useBalancesQuery";
+import { useTransactionsQuery } from "@/queries/useTransactionsQuery";
 import { useWalletName } from "@/hooks/useWalletName";
-import * as Sentry from "@sentry/react-native";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { useRouter } from "expo-router";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { SendFlowModal } from "@/components/ui/organisms/send/SendFlowModal";
 import BalanceView from "@/components/BalanceView";
+import { groupByDate } from "@/utils/groupByDate";
 
 function HomeScreenContent() {
   const router = useRouter();
-  const { accountInfo, user } = useAuth();
   const {
     showReceiveModal,
     isReceiveModalVisible,
@@ -34,49 +33,23 @@ function HomeScreenContent() {
     isSendModalVisible,
   } = useModalFlow();
   const { showToast } = useToast();
-  const { balance, transfers, fetchWalletData } = useWalletData(accountInfo);
+
+  // Wire-real-backend Phase 5: consume real backend via TanStack-Query hooks.
+  // Adapter handles DB+Grid dedupe and self-send filtering; this screen just
+  // groups by day and feeds the existing TransactionList.
+  const walletQuery = useWalletQuery();
+  const balancesQuery = useBalancesQuery();
+  const gridAccountId = walletQuery.data?.gridAccountId ?? "";
+  const transactionsQuery = useTransactionsQuery({ gridAccountId });
+  
+  // console.log("infoAboutUser", balancesQuery)
+
+  const balance = balancesQuery.data?.usdc ?? 0;
+  const transactions = transactionsQuery.data ?? [];
+
   const { name: walletName } = useWalletName();
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
   const qrCodeModalRef = useRef<BottomSheetModal>(null);
-
-  useEffect(() => {
-    // if (!accountInfo || !accountInfo.smart_account_signer_public_key) {
-    //     logout();
-    //     return;
-    // }
-
-    const initializeAccount = async () => {
-      try {
-        // const account = await createSmartAccount(accountInfo);
-        // await StorageService.setItem(AUTH_STORAGE_KEYS.GRID_USER_ID, account.grid_user_id);
-        // await StorageService.setItem(AUTH_STORAGE_KEYS.SMART_ACCOUNT_ADDRESS, account.smart_account_address);
-
-        // // Only create user if they don't exist
-        // const existingUser = await MockDatabase.getUser(account.grid_user_id);
-        // if (!existingUser) {
-        //     await MockDatabase.createUser(account.grid_user_id);
-        // }
-
-        // const updatedAccountInfo = {
-        //     ...accountInfo,
-        //     smart_account_address: account.smart_account_address,
-        //     grid_user_id: account.grid_user_id
-        // };
-
-        // setAccountInfo(updatedAccountInfo);
-        await fetchWalletData();
-      } catch (err) {
-        console.error("Error initializing account:", err);
-        Sentry.captureException(
-          new Error(
-            `Error initializing account: ${err}. (tabs)/index.tsx (initializeAccount)`
-          )
-        );
-      }
-    };
-
-    initializeAccount();
-  }, [fetchWalletData]);
 
   const actions = useMemo(
     () => [
@@ -112,107 +85,7 @@ function HomeScreenContent() {
     [showToast, router]
   );
 
-  const formatTransfers = useCallback(
-    (transfers: TransferResponse) => {
-      for (const transfer of transfers) {
-        if (
-          "Spl" in transfer &&
-          transfer.Spl.confirmation_status === "confirmed"
-        ) {
-        }
-      }
-      const transfersToConsider = transfers.filter(
-        (transfer) =>
-          ("Spl" in transfer &&
-            transfer.Spl.mint === process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS &&
-            ["confirmed"].includes(transfer.Spl.confirmation_status)) ||
-          ("Bridge" in transfer &&
-            (transfer.Bridge.state === "payment_processed" ||
-              transfer.Bridge.state === "payment_submitted"))
-      );
-
-      const transactions = transfersToConsider.map((transfer) => {
-        if ("Spl" in transfer) {
-          const splTransfer = transfer.Spl;
-
-          return {
-            id: splTransfer.id,
-            amount: parseFloat(splTransfer.ui_amount),
-            status: splTransfer.confirmation_status,
-            type:
-              splTransfer.direction === "outflow"
-                ? ("sent" as const)
-                : ("received" as const),
-            date: new Date(splTransfer.created_at),
-            address:
-              splTransfer.from_address === user?.address
-                ? splTransfer.to_address
-                : splTransfer.from_address,
-          } as Transaction;
-        } else if ("Bridge" in transfer) {
-          const type =
-            transfer.Bridge.source.from_address === user?.address
-              ? ("sent" as const)
-              : ("received" as const);
-
-          return {
-            id: transfer.Bridge.id,
-            amount: parseFloat(transfer.Bridge.amount),
-            status: transfer.Bridge.state,
-            type: type,
-            date: new Date(transfer.Bridge.created_at),
-            address:
-              type === "sent"
-                ? transfer.Bridge.destination.external_account_id
-                : user?.address,
-          } as Transaction;
-        } else {
-          Sentry.captureException(
-            new Error(
-              `Unknown transfer: ${transfer}. (tabs)/index.tsx (formatTransfers)`
-            )
-          );
-        }
-      });
-
-      // Group transactions by date
-      const groups = transactions.reduce(
-        (acc: { [key: string]: Transaction[] }, transaction) => {
-          if (!transaction) return acc;
-          const date = transaction.date;
-          const dateStr = date.toLocaleDateString("en-US", {
-            month: "long",
-            day: "numeric",
-            year: "numeric",
-          });
-
-          if (!acc[dateStr]) {
-            acc[dateStr] = [];
-          }
-          acc[dateStr].push(transaction);
-          return acc;
-        },
-        {}
-      );
-
-      // Convert to TransactionGroup array and sort by date
-      return Object.entries(groups)
-        .map(([title, data]) => ({
-          title,
-          data: data.sort((a, b) => b.date.getTime() - a.date.getTime()),
-        }))
-        .sort((a, b) => {
-          const dateA = new Date(a.data[0].date);
-          const dateB = new Date(b.data[0].date);
-          return dateB.getTime() - dateA.getTime();
-        });
-    },
-    [user?.address]
-  );
-
-  const formattedTransactions = useMemo(() => {
-    return formatTransfers(transfers);
-  }, [formatTransfers, transfers]);
+  const groups = useMemo(() => groupByDate(transactions), [transactions]);
 
   return (
     <ScreenLayout>
@@ -237,7 +110,7 @@ function HomeScreenContent() {
             />
           </View>
 
-          {transfers.length === 0 && (
+          {transactions.length === 0 && (
             <View className="items-center pb-6 pt-2">
               <Typography weight="600" className="mb-2 text-center text-xl">
                 There is nothing here yet
@@ -282,12 +155,12 @@ function HomeScreenContent() {
           onClose={() => {}}
         />
 
-        {transfers.length > 0 && (
+        {transactions.length > 0 && (
           <View className="mt-6">
             <ThemedText type="subtitle" className="mb-4">
               Recent Activity
             </ThemedText>
-            <TransactionList transactions={formattedTransactions} />
+            <TransactionList transactions={groups} />
           </View>
         )}
       </ScrollView>
@@ -310,12 +183,7 @@ function HomeScreenContent() {
         onOpenQRCode={() => qrCodeModalRef.current?.present()}
       />
 
-      <QRCodeModal
-        ref={qrCodeModalRef}
-        walletAddress={
-          user?.address || "AtfWTb16gD8P7D975ZwMfUvABZvkqyLCF6wySvpTntZj"
-        }
-      />
+      <QRCodeModal ref={qrCodeModalRef} walletAddress={gridAccountId} />
     </ScreenLayout>
   );
 }

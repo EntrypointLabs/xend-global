@@ -5,11 +5,16 @@ import {
 import { handleError, ErrorCode } from "@/utils/errors";
 import { KycResponse, KycParams } from "@/types/Kyc";
 import { OpenVirtualAccountParams } from "@/types/VirtualAccounts";
-import { ConfirmPayload } from "@/types/Transaction";
 import { SentryApiResponse } from "@/types/Sentry";
-import { InitAuthResponse, SessionSecrets } from "@sqds/grid-react-native";
 
 // import * as Sentry from '@sentry/react-native';
+
+// Trimmed in wire-real-backend Phase 8: methods replaced by the NestJS backend
+// (authenticate, register, verifyOtpCode, verifyCodeAndCreateAccount, getBalance,
+// getTransfers) have been removed. The remaining methods serve out-of-scope
+// flows: KYC, virtual-account / fiat onramp, create-smart-account, sentry-config.
+// preparePaymentIntent + confirmPaymentIntent are kept solely because the fiat
+// onramp confirm screen (app/(send)/fiatconfirm.tsx) still uses them.
 
 class EasError extends Error {
   constructor(
@@ -100,43 +105,6 @@ export class EasClient {
     }
   }
 
-  // Creates an account if it doesn't already exist and triggers otp. If the account already exists, it just triggers otp.
-  async authenticate(request: { email: string }): Promise<InitAuthResponse> {
-    return this.request<InitAuthResponse>("/auth", {
-      method: "POST",
-      body: JSON.stringify(request),
-    });
-  }
-
-  async register(request: { email: string }): Promise<InitAuthResponse> {
-    return this.request<InitAuthResponse>("/register", {
-      method: "POST",
-      body: JSON.stringify(request),
-    });
-  }
-
-  async verifyCodeAndCreateAccount(request: {
-    otpCode: string;
-    sessionSecrets: SessionSecrets;
-    user: any;
-  }): Promise<any> {
-    return this.request<InitAuthResponse>("/verify-otp-and-create-account", {
-      method: "POST",
-      body: JSON.stringify(request),
-    });
-  }
-
-  async verifyOtpCode(request: {
-    otpCode: string;
-    sessionSecrets: SessionSecrets;
-    user: any;
-  }): Promise<any> {
-    return this.request<InitAuthResponse>("/verify-otp", {
-      method: "POST",
-      body: JSON.stringify(request),
-    });
-  }
-
   // Creates a smart account.
   async createSmartAccount(
     request: CreateSmartAccountRequest
@@ -147,15 +115,7 @@ export class EasClient {
     });
   }
 
-  // Gets the balance of a smart account.
-  async getBalance(request: { smartAccountAddress: string }): Promise<any> {
-    return this.request<[]>("/balance", {
-      method: "POST",
-      body: JSON.stringify(request),
-    });
-  }
-
-  // Prepares a transaction.
+  // Fiat onramp prepare/confirm — still used by (send)/fiatconfirm.tsx.
   async preparePaymentIntent(
     request: any,
     smartAccountAddress: string,
@@ -168,6 +128,13 @@ export class EasClient {
         smartAccountAddress,
         useMpcProvider,
       }),
+    });
+  }
+
+  async confirmPaymentIntent(payload?: any): Promise<any> {
+    return this.request<any>(`/confirm`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     });
   }
 
@@ -201,22 +168,6 @@ export class EasClient {
     return this.request<any>(`/open-virtual-account`, {
       method: "POST",
       body: JSON.stringify(request),
-    });
-  }
-
-  async getTransfers(smartAccountAddress: string): Promise<any> {
-    return this.request<any>(
-      `/get-transfers?smart_account_address=${smartAccountAddress}`,
-      {
-        method: "GET",
-      }
-    );
-  }
-
-  async confirmPaymentIntent(payload?: any): Promise<any> {
-    return this.request<any>(`/confirm`, {
-      method: "POST",
-      body: JSON.stringify(payload),
     });
   }
 

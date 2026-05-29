@@ -24,8 +24,7 @@ import {
   AccountLabel,
 } from "@/types/ExternalAccounts";
 import { handleError, ErrorCode } from "@/utils/errors";
-import { useWalletData } from "@/hooks/useWalletData";
-import { useAuth } from "@/contexts/AuthContext";
+import { useBalancesQuery } from "@/queries/useBalancesQuery";
 
 export default function AmountScreen() {
   const [amount, setAmount] = useState("0");
@@ -41,8 +40,7 @@ export default function AmountScreen() {
   const [externalAccounts, setExternalAccounts] = useState<
     ExternalAccountMapping[]
   >([]);
-  const { accountInfo } = useAuth();
-  const { balance } = useWalletData(accountInfo);
+  const balance = useBalancesQuery().data?.usdc ?? 0;
 
   const [address, setAddress] = useState<AddressInput>({
     street_number: "",

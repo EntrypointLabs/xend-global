@@ -3,27 +3,26 @@ import {
   View,
   Image,
   TouchableOpacity,
-  ImageSourcePropType,
+  Linking,
+  type ImageSourcePropType,
 } from "react-native";
 import { ActionModal } from "../ActionModal";
-import { ActivityItemProps } from "../ActivityItem";
-import {
-  FontAwesome6,
-  Ionicons,
-  MaterialCommunityIcons,
-} from "@expo/vector-icons";
+import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { notificationAsync, NotificationFeedbackType } from "expo-haptics";
-import { formatAmount } from "@/utils/solana";
 import { truncateAddress } from "@/utils/helper";
 import { Typography } from "../../atoms/Typography";
 import { format } from "date-fns";
 import HapticPressable from "../../atoms/HapticPressable";
+import type { Transaction } from "@/types/Transaction";
+
+const usdcIcon = require("@/assets/icons/usdc.png");
+const SOLSCAN_BASE = "https://solscan.io/tx";
 
 interface TransactionDetailModalProps {
   visible: boolean;
   onClose: () => void;
-  item: ActivityItemProps | null;
+  item: Transaction | null;
 }
 
 export function TransactionDetailModal({
@@ -40,11 +39,15 @@ export function TransactionDetailModal({
     notificationAsync(NotificationFeedbackType.Success);
   };
 
-  const transactionType = item.side === "send" ? "Sent" : "Received";
-  const amount = formatAmount(item.amount, item.token.decimal);
-  const date = format(new Date(item.date), "MMM d, yyyy 'at' h:mma");
+  const transactionType = item.type === "sent" ? "Sent" : "Received";
+  const counterparty = item.type === "sent" ? item.to : item.from;
+  const dateLabel = format(new Date(item.timestamp), "MMM d, yyyy 'at' h:mma");
+  const amountNum = parseFloat(item.amount);
+  const isPending = item.status === "PENDING";
+  const explorerUrl = `${SOLSCAN_BASE}/${item.signature}?cluster=devnet`;
 
   const rowClass = "flex-row justify-between items-center py-2";
+
   return (
     <ActionModal visible={visible} onClose={onClose}>
       <View className="items-center">
@@ -57,11 +60,15 @@ export function TransactionDetailModal({
 
         <View className="relative mb-3">
           <Image
-            source={item.token.icon as ImageSourcePropType}
+            source={usdcIcon as ImageSourcePropType}
             className="h-16 w-16 rounded-full"
           />
           <View className="absolute right-0 top-0 overflow-hidden rounded-full bg-white">
-            <Ionicons name="checkmark-circle" size={16} color="#34C759" />
+            <Ionicons
+              name={isPending ? "time" : "checkmark-circle"}
+              size={16}
+              color={isPending ? "#FF9500" : "#34C759"}
+            />
           </View>
         </View>
 
@@ -70,32 +77,40 @@ export function TransactionDetailModal({
         </Typography>
 
         <Typography weight="700" className="mb-1 text-3xl">
-          {amount} {item.token.symbol}
+          {amountNum.toFixed(2)} {item.token}
         </Typography>
 
         <Typography weight="600" className="mb-4 text-sm text-black/30">
-          {date}
+          {dateLabel}
         </Typography>
 
         <View className="w-full pb-3">
           <View className={rowClass}>
             <Typography weight="600">Status</Typography>
             <View className="flex-row items-center">
-              <Typography className="mr-1 text-success">Completed</Typography>
-              <Ionicons name="checkmark-circle" size={14} color="#34C759" />
+              <Typography
+                className={isPending ? "mr-1 text-warning" : "mr-1 text-success"}
+              >
+                {isPending ? "Pending…" : "Completed"}
+              </Typography>
+              <Ionicons
+                name={isPending ? "time" : "checkmark-circle"}
+                size={14}
+                color={isPending ? "#FF9500" : "#34C759"}
+              />
             </View>
           </View>
 
           <View className={rowClass}>
             <Typography weight="600" className="text-black/30">
-              From
+              {item.type === "sent" ? "To" : "From"}
             </Typography>
             <TouchableOpacity
               className="flex-row items-center"
-              onPress={() => copyToClipboard("CZ2R...K4Aj")}
+              onPress={() => copyToClipboard(counterparty)}
             >
               <Typography weight="600" className="mr-1">
-                CZ2R...K4Aj
+                {truncateAddress(counterparty)}
               </Typography>
               <Ionicons name="copy-outline" size={14} color={copyIconColor} />
             </TouchableOpacity>
@@ -107,10 +122,10 @@ export function TransactionDetailModal({
             </Typography>
             <TouchableOpacity
               className="flex-row items-center"
-              onPress={() => copyToClipboard(item.transactionHash)}
+              onPress={() => copyToClipboard(item.signature)}
             >
               <Typography weight="600" className="mr-1">
-                {truncateAddress(item.transactionHash)}
+                {truncateAddress(item.signature)}
               </Typography>
               <Ionicons name="copy-outline" size={14} color={copyIconColor} />
             </TouchableOpacity>
@@ -133,21 +148,20 @@ export function TransactionDetailModal({
             </View>
           </View>
 
-          {item.incognito && (
-            <View className={rowClass}>
-              <View className="flex-row items-center gap-1">
-                <Typography weight="600" className="text-black/30">
-                  Hide My Wallet
-                </Typography>
-                <MaterialCommunityIcons
-                  name="shield-half-full"
-                  size={13}
-                  color="rgba(0,0,0,0.3)"
-                />
-              </View>
-              <Typography weight="600">Enabled</Typography>
-            </View>
-          )}
+          <View className={rowClass}>
+            <Typography weight="600" className="text-black/30">
+              Explorer
+            </Typography>
+            <TouchableOpacity
+              className="flex-row items-center"
+              onPress={() => Linking.openURL(explorerUrl)}
+            >
+              <Typography weight="600" className="mr-1">
+                View on Solscan
+              </Typography>
+              <Ionicons name="open-outline" size={14} color={copyIconColor} />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </ActionModal>

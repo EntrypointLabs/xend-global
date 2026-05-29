@@ -14,11 +14,13 @@ export class WalletsController {
 
   @Get('me')
   getWallet(@Req() req: AuthenticatedRequest) {
+    console.log("req.user", req.user);
     return this.wallets.getWallet(req.user.userId);
   }
 
   @Get('me/balances')
   getBalances(@Req() req: AuthenticatedRequest) {
+    console.log("req.user_balances", req.user);
     return this.wallets.getBalances(req.user.userId);
   }
 }

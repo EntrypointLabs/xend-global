@@ -36,9 +36,12 @@ export class WalletsService {
       .where(eq(smartAccounts.userId, userId))
       .limit(1);
 
+    console.log("mi_account", account)
+
     if (!account) throw new NotFoundException('Wallet not found');
 
     const balances = await this.grid.getBalances(account.gridAccountId);
+    console.log("mi_balances", balances)
     return balances.data;
   }
 }

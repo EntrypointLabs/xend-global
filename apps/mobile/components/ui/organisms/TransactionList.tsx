@@ -2,10 +2,19 @@ import React from "react";
 import { View, ScrollView, RefreshControl } from "react-native";
 import { ThemedText } from "@/components/ui/atoms";
 import { TransactionItem } from "./TransactionItem";
-import { TransactionGroup } from "@/types/Transaction";
+import type { Transaction } from "@/types/Transaction";
+
+// A row in the list is just a Transaction with an optional onPress handler the
+// parent screen attaches when it needs detail-modal behavior.
+type TransactionRow = Transaction & { onPress?: () => void };
+
+export interface TransactionListGroup {
+  title: string;
+  data: TransactionRow[];
+}
 
 interface TransactionListProps {
-  transactions: TransactionGroup[];
+  transactions: TransactionListGroup[];
   onRefresh?: () => void;
   refreshing?: boolean;
 }
@@ -45,12 +54,9 @@ export function TransactionList({
               {section.data.map((item, index) => (
                 <TransactionItem
                   key={item.id}
-                  type={item.type}
-                  date={item.date.toLocaleDateString()}
-                  amount={item.amount}
-                  address={item.address}
+                  item={item}
                   isLast={index === section.data.length - 1}
-                  status={item.status}
+                  onPress={item.onPress}
                 />
               ))}
             </View>
