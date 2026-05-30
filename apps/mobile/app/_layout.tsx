@@ -21,6 +21,8 @@ import { EasClient } from "@/utils/easClient";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { PrivyProvider } from "@privy-io/expo";
+import { useNewStack } from "@/utils/featureFlags";
 
 import * as SplashScreen from "expo-splash-screen";
 import {
@@ -161,17 +163,63 @@ function RootLayout() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <ThemedRoot>
-          <AuthProvider>
-            <BottomSheetModalProvider>
-              <AuthLayout />
-            </BottomSheetModalProvider>
-          </AuthProvider>
-        </ThemedRoot>
-      </GestureHandlerRootView>
-    </QueryClientProvider>
+    <PrivyAppShell>
+      <QueryClientProvider client={queryClient}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <ThemedRoot>
+            <AuthProvider>
+              <BottomSheetModalProvider>
+                <AuthLayout />
+              </BottomSheetModalProvider>
+            </AuthProvider>
+          </ThemedRoot>
+        </GestureHandlerRootView>
+      </QueryClientProvider>
+    </PrivyAppShell>
+  );
+}
+
+/**
+ * Wraps the app in `<PrivyProvider>` when the new stack is active.
+ *
+ * Under `useNewStack()` (`EXPO_PUBLIC_USE_NEW_STACK=true`) the tree mounts
+ * Privy so `useLoginWithEmail`, `useEmbeddedSolanaWallet`, `usePrivy`, etc.
+ * resolve. Under the legacy Grid path the provider is omitted — Privy is not
+ * needed and we deliberately avoid initialising it (no Privy app ID required
+ * for old-stack builds).
+ *
+ * The Solana embedded-wallet config is created `'users-without-wallets'` on
+ * first login, matching the Phase 1 spike harness shape
+ * (`spike/privy-solana/App.tsx`).
+ */
+function PrivyAppShell({ children }: { children: React.ReactNode }) {
+  if (!useNewStack()) {
+    return <>{children}</>;
+  }
+  const appId = process.env.EXPO_PUBLIC_PRIVY_APP_ID;
+  if (!appId) {
+    // Fail loud in dev; in prod this will render the rest of the tree without
+    // Privy so the legacy path still works. The new-stack mobile build is
+    // expected to set this env var before flipping the flag.
+
+    console.warn(
+      "[PrivyAppShell] EXPO_PUBLIC_USE_NEW_STACK=true but EXPO_PUBLIC_PRIVY_APP_ID is unset; Privy hooks will not work."
+    );
+    return <>{children}</>;
+  }
+  return (
+    <PrivyProvider
+      appId={appId}
+      config={{
+        embedded: {
+          solana: {
+            createOnLogin: "users-without-wallets",
+          },
+        },
+      }}
+    >
+      {children}
+    </PrivyProvider>
   );
 }
 
