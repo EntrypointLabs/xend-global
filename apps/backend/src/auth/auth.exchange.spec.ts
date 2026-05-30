@@ -1,7 +1,6 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
-import type { GridService } from '../grid/grid.service';
 import type { DbService } from '../db/db.service';
 import type {
   WalletProvider,
@@ -202,10 +201,8 @@ function makeService(opts: {
   const jwt = new JwtService({
     secret: opts.jwtSecret ?? 'test-secret',
   });
-  // GridService is not exercised by exchange(); pass an empty object.
-  const grid = {} as GridService;
   const solana = opts.solana ?? makeFakeSolana().rpc;
-  const service = new AuthService(grid, jwt, db, opts.wallet, solana);
+  const service = new AuthService(jwt, db, opts.wallet, solana);
   return { service, store, solana };
 }
 

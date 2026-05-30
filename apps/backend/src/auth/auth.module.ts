@@ -18,13 +18,12 @@ import { SolanaModule } from '../solana/solana.module';
         signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '7d') },
       }),
     }),
-    // Phase 1: /auth/exchange needs the WalletProvider (PrivyAdapter) to
-    // verify the incoming Privy ID token. The legacy /verify-otp* path
-    // keeps using GridService and is untouched.
+    // /auth/exchange needs the WalletProvider (PrivyAdapter) to verify
+    // the incoming Privy ID token.
     WalletModule,
-    // Phase 2: /auth/exchange registers each newly-minted wallet on the
-    // Helius webhook subscription (best-effort; failure is logged but
-    // does not block the auth response — reconciler is the safety net).
+    // /auth/exchange registers each newly-minted wallet on the Helius
+    // webhook subscription (best-effort; failure is logged but does not
+    // block the auth response — reconciler is the safety net).
     SolanaModule,
   ],
   controllers: [AuthController],

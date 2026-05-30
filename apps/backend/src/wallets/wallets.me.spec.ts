@@ -1,6 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
 import { WalletsService } from './wallets.service';
-import type { GridService } from '../grid/grid.service';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc, TokenBalance } from '../solana/solana-rpc.interface';
 import { smartAccounts } from '../db/schema';
@@ -85,8 +84,7 @@ function makeService(opts: {
     });
   }
   const db = makeFakeDb(store);
-  const grid = {} as GridService;
-  const service = new WalletsService(grid, db, opts.solana);
+  const service = new WalletsService(db, opts.solana);
   return { service, store };
 }
 

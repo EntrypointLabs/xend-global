@@ -18,8 +18,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  * AuthProvider — Privy-backed.
  *
  * Phase 5: the legacy Grid `LegacyAuthProvider` was deleted and the
- * `useNewStack()` flag is gone. Privy is the only auth path. Privy hooks
- * are children of the `<PrivyProvider>` wrap in `app/_layout.tsx`.
+ * feature flag is gone. Privy is the only auth path. Privy hooks are
+ * children of the `<PrivyProvider>` wrap in `app/_layout.tsx`.
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);

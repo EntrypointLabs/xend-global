@@ -5,7 +5,13 @@ import * as Joi from 'joi';
 /**
  * ConfigModule — Joi-validated env loader.
  *
- * Phase 1 additions (Privy + Helius + Solana RPC strategy):
+ * Phase 5 removed GRID_API_KEY: the backend Grid module is gone and the
+ * mobile KYC flow now talks directly to Grid via the mobile-side
+ * `@sqds/grid-react-native` SDK inside the expo-router BFF (kyc+api.ts /
+ * kyc-status+api.ts). Until the KYC swarm replaces Grid with Sumsub, those
+ * routes read GRID_API_KEY from `apps/mobile/.env` exclusively.
+ *
+ * Env vars consumed here:
  *   - PRIVY_APP_ID / PRIVY_APP_SECRET / PRIVY_VERIFICATION_KEY
  *     consumed by PrivyAdapter (apps/backend/src/wallet/privy.adapter.ts).
  *   - HELIUS_API_KEY / HELIUS_RPC_URL consumed by HeliusAdapter.
@@ -13,9 +19,6 @@ import * as Joi from 'joi';
  *   - EXPO_PUBLIC_USDT_MINT_ADDRESS lives here (not in mobile/.env)
  *     because the backend wallet balance summary computes the stablecoin
  *     total server-side (spec §5.5).
- *
- * GRID_API_KEY stays required while the legacy /register, /auth, and
- * /verify-otp* endpoints are still wired in (Phase 5 deletes them).
  */
 @Module({
   imports: [
@@ -27,7 +30,6 @@ import * as Joi from 'joi';
           .default('development'),
         PORT: Joi.number().default(8000),
         DATABASE_URL: Joi.string().required(),
-        GRID_API_KEY: Joi.string().required(),
         JWT_SECRET: Joi.string().required(),
         JWT_EXPIRES_IN: Joi.string().default('7d'),
 

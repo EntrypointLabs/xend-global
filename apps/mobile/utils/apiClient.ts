@@ -230,7 +230,7 @@ class BackendClient {
    * the token against Privy's JWKS, upserts the `users` + `smart_accounts`
    * row, and returns `{ token, user: { id, email, walletAddress, isNewUser } }`.
    *
-   * The caller is `AuthContext` under `useNewStack()`; the returned JWT is
+   * The caller is `AuthContext`; the returned JWT is
    * persisted via `AuthStorage.saveToken` and used as the Bearer on every
    * subsequent NestJS request.
    *
