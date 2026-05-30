@@ -83,6 +83,12 @@ export class FailoverSolanaRpc implements SolanaRpc {
     );
   }
 
+  async accountExists(address: WalletAddress): Promise<boolean> {
+    return this.withFallback('accountExists', (rpc) =>
+      rpc.accountExists(address),
+    );
+  }
+
   streamConfirmedTransfers(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     owner: WalletAddress,

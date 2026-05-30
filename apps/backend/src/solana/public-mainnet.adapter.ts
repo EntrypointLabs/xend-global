@@ -13,6 +13,7 @@ import {
   TokenBalance,
 } from './solana-rpc.interface';
 import {
+  accountExistsViaConnection,
   getRecentBlockhashViaConnection,
   getSignatureStatusesViaConnection,
   getTokenBalancesViaConnection,
@@ -64,6 +65,10 @@ export class PublicMainnetAdapter implements SolanaRpc, OnModuleInit {
 
   getSignatureStatuses(signatures: string[]): Promise<SignatureStatus[]> {
     return getSignatureStatusesViaConnection(this.connection, signatures);
+  }
+
+  accountExists(address: WalletAddress): Promise<boolean> {
+    return accountExistsViaConnection(this.connection, address);
   }
 
   streamConfirmedTransfers(

@@ -105,6 +105,18 @@ export async function sendRawTransactionViaConnection(
   });
 }
 
+export async function accountExistsViaConnection(
+  conn: Connection,
+  address: WalletAddress,
+): Promise<boolean> {
+  // `getAccountInfo` returns null when the account does not exist on
+  // chain. We pass commitment 'confirmed' to match the rest of the
+  // shared connection's defaults (avoids reading a slot that may not
+  // yet be observable by the next prepare call).
+  const info = await conn.getAccountInfo(new PublicKey(address), 'confirmed');
+  return info !== null;
+}
+
 export async function getSignatureStatusesViaConnection(
   conn: Connection,
   signatures: string[],

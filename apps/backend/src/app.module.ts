@@ -13,6 +13,9 @@ import { TransactionsModule } from './transactions/transactions.module';
 import { WalletModule } from './wallet/wallet.module';
 import { SolanaModule } from './solana/solana.module';
 import { KycModule } from './kyc/kyc.module';
+// Phase 1: new transfer module (prepare/submit/list) mounted at
+// /transfers/*. Legacy TransactionsModule stays alongside.
+import { TransferModule } from './transfer/transfer.module';
 
 @Module({
   imports: [
@@ -25,6 +28,7 @@ import { KycModule } from './kyc/kyc.module';
     WalletModule,
     SolanaModule,
     KycModule,
+    TransferModule,
   ],
   controllers: [AppController],
   providers: [AppService],

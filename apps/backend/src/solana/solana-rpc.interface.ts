@@ -39,6 +39,14 @@ export interface SolanaRpc {
 
   getSignatureStatuses(signatures: string[]): Promise<SignatureStatus[]>;
 
+  /**
+   * True iff the on-chain account at `address` exists. Used by
+   * /transfers/prepare to decide whether the recipient ATA needs a
+   * `createAssociatedTokenAccountInstruction` prepended to the
+   * transaction. Cheap RPC call (single `getAccountInfo`).
+   */
+  accountExists(address: WalletAddress): Promise<boolean>;
+
   /** Async iterator over confirmed transactions for an owner since a slot. */
   streamConfirmedTransfers(
     owner: WalletAddress,
