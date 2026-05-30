@@ -60,7 +60,12 @@
           "project": "neobank-example-app",
           "organization": "squads-dapp"
         }
-      ]
+      ],
+      "@sentry/react-native",
+      "expo-image",
+      "expo-splash-screen",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

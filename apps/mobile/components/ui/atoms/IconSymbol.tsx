@@ -11,7 +11,10 @@ import {
 } from "react-native";
 
 // Add your SFSymbol to MaterialIcons mappings here.
-const MAPPING = {
+const MAPPING: Record<
+  string,
+  React.ComponentProps<typeof MaterialIcons>["name"]
+> = {
   // See MaterialIcons here: https://icons.expo.fyi
   // See SF Symbols in the SF Symbols app on Mac.
   "house.fill": "home",
@@ -19,14 +22,9 @@ const MAPPING = {
   "chevron.left.forwardslash.chevron.right": "code",
   "chevron.right": "chevron-right",
   "checkmark.circle": "check-circle",
-} as Partial<
-  Record<
-    import("expo-symbols").SymbolViewProps["name"],
-    React.ComponentProps<typeof MaterialIcons>["name"]
-  >
->;
+};
 
-export type IconSymbolName = keyof typeof MAPPING;
+export type IconSymbolName = string;
 
 /**
  * An icon component that uses native SFSymbols on iOS, and MaterialIcons on Android and web. This ensures a consistent look across platforms, and optimal resource usage.

@@ -39,7 +39,7 @@ export function InAppBrowser({
         <View
           className="z-[1] items-center justify-center bg-white/90"
           // MEASURED-LAYOUT (absoluteFill)
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         >
           <ActivityIndicator color={textColor} size="large" />
         </View>

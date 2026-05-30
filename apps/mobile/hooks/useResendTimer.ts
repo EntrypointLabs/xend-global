@@ -14,20 +14,20 @@ export function useResendTimer({
   const [isDisabled, setIsDisabled] = useState(false);
 
   useEffect(() => {
-    let timer: number;
-
-    if (countdown > 0) {
-      timer = setInterval(() => {
-        setCountdown((prev) => prev - 1);
-      }, 1000);
-    } else if (countdown === 0) {
-      setIsDisabled(false);
+    if (countdown <= 0) {
+      return;
     }
-
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          setIsDisabled(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
     return () => {
-      if (timer) {
-        clearInterval(timer);
-      }
+      clearInterval(timer);
     };
   }, [countdown]);
 
