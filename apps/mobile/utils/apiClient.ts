@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { handleError, ErrorCode } from "@/utils/errors";
 import {
   SessionSecrets,
@@ -5,6 +7,27 @@ import {
   CreatePasskeySessionResponse,
   MetaInfo,
 } from "@sqds/grid-react-native";
+
+/**
+ * /auth/exchange request + response. Mirrors `ExchangeRequestSchema` and
+ * `ExchangeResponseSchema` in `apps/backend/src/auth/dtos.ts`. Kept in sync
+ * by hand; the backend types are not published as a workspace package today.
+ */
+export const ExchangeRequestSchema = z.object({
+  privyIdToken: z.string().min(1),
+});
+export type ExchangeRequest = z.infer<typeof ExchangeRequestSchema>;
+
+export const ExchangeResponseSchema = z.object({
+  token: z.string(),
+  user: z.object({
+    id: z.string(),
+    email: z.string().email(),
+    walletAddress: z.string(),
+    isNewUser: z.boolean(),
+  }),
+});
+export type ExchangeResponse = z.infer<typeof ExchangeResponseSchema>;
 
 class ApiError extends Error {
   constructor(
@@ -137,6 +160,28 @@ class BackendClient {
       method: "POST",
       body: JSON.stringify({ accountAddress, metaInfo }),
     });
+  }
+
+  /**
+   * Exchange a Privy ID token for our backend JWT (Phase 4 new-stack path).
+   *
+   * Calls `POST /auth/exchange` on the NestJS backend; the backend verifies
+   * the token against Privy's JWKS, upserts the `users` + `smart_accounts`
+   * row, and returns `{ token, user: { id, email, walletAddress, isNewUser } }`.
+   *
+   * The caller is `AuthContext` under `useNewStack()`; the returned JWT is
+   * persisted via `AuthStorage.saveToken` and used as the Bearer on every
+   * subsequent NestJS request.
+   *
+   * Response is validated with `ExchangeResponseSchema` so any backend drift
+   * fails loudly at the network boundary rather than silently in screens.
+   */
+  async exchange(req: ExchangeRequest): Promise<ExchangeResponse> {
+    const raw = await this.request<unknown>("/auth/exchange", {
+      method: "POST",
+      body: JSON.stringify(ExchangeRequestSchema.parse(req)),
+    });
+    return ExchangeResponseSchema.parse(raw);
   }
 }
 

@@ -93,4 +93,12 @@ export const AUTH_STORAGE_KEYS = {
   HAS_PASSKEY: "auth_has_passkey",
   WALLET_NAME: "wallet_name",
   ADDRESS_BOOK: "address_book",
+  /**
+   * Phase-4 first-launch wipe sentinel. When `useNewStack()` is true and this
+   * key is unset, `runFirstLaunchWipeIfNeeded()` clears every other key in
+   * `AUTH_STORAGE_KEYS` plus the legacy `mock_database` SecureStore blob, then
+   * sets this key to `"true"`. Set to `"true"` on every subsequent launch so
+   * the wipe is one-shot. See `apps/mobile/utils/migration.ts`.
+   */
+  MIGRATION_DONE: "auth_migration_done_v1",
 };

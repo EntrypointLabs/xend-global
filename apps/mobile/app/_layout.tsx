@@ -23,6 +23,7 @@ import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PrivyProvider } from "@privy-io/expo";
 import { useNewStack } from "@/utils/featureFlags";
+import { runFirstLaunchWipeIfNeeded } from "@/utils/migration";
 
 import * as SplashScreen from "expo-splash-screen";
 import {
@@ -154,6 +155,15 @@ function RootLayout() {
     }
   }, [loaded, error]);
 
+  // Phase-4 first-launch wipe. Idempotent. No-op when `useNewStack()` is
+  // false. Runs once before the AuthProvider's `useEffect` reads from
+  // SecureStore, by virtue of being scheduled in the parent component's
+  // mount effect — AuthProvider's effect won't run until this render commits.
+  // See `apps/mobile/utils/migration.ts`.
+  useEffect(() => {
+    runFirstLaunchWipeIfNeeded();
+  }, []);
+
   if (!loaded && !fontTimeout) {
     return <LoadingScreen />;
   }
@@ -180,33 +190,38 @@ function RootLayout() {
 }
 
 /**
- * Wraps the app in `<PrivyProvider>` when the new stack is active.
+ * Wraps the app in `<PrivyProvider>` unconditionally so Privy hooks
+ * (`useLoginWithEmail`, `useEmbeddedSolanaWallet`, `usePrivy`,
+ * `useIdentityToken`) can be called at the top of any component without
+ * violating the rules of hooks under the dual-stack dispatch pattern used by
+ * `AuthProvider` and `useLoginMutation`.
  *
- * Under `useNewStack()` (`EXPO_PUBLIC_USE_NEW_STACK=true`) the tree mounts
- * Privy so `useLoginWithEmail`, `useEmbeddedSolanaWallet`, `usePrivy`, etc.
- * resolve. Under the legacy Grid path the provider is omitted — Privy is not
- * needed and we deliberately avoid initialising it (no Privy app ID required
- * for old-stack builds).
+ * Behaviour:
+ *   - `useNewStack()` ON + `EXPO_PUBLIC_PRIVY_APP_ID` set → real Privy app.
+ *   - `useNewStack()` OFF or app ID missing → Privy mounts with a placeholder
+ *     app ID. The legacy Grid path never invokes Privy methods, so this
+ *     produces no user-visible behaviour change vs pre-Phase-4 — the
+ *     hooks merely have a valid provider ancestor.
  *
- * The Solana embedded-wallet config is created `'users-without-wallets'` on
- * first login, matching the Phase 1 spike harness shape
- * (`spike/privy-solana/App.tsx`).
+ * The Solana embedded-wallet config is `createOnLogin: 'users-without-wallets'`
+ * matching the Phase 1 spike harness shape (`spike/privy-solana/App.tsx`).
  */
 function PrivyAppShell({ children }: { children: React.ReactNode }) {
-  if (!useNewStack()) {
-    return <>{children}</>;
-  }
-  const appId = process.env.EXPO_PUBLIC_PRIVY_APP_ID;
-  if (!appId) {
-    // Fail loud in dev; in prod this will render the rest of the tree without
-    // Privy so the legacy path still works. The new-stack mobile build is
-    // expected to set this env var before flipping the flag.
+  const isNewStack = useNewStack();
+  const configuredAppId = process.env.EXPO_PUBLIC_PRIVY_APP_ID;
 
+  if (isNewStack && !configuredAppId) {
     console.warn(
-      "[PrivyAppShell] EXPO_PUBLIC_USE_NEW_STACK=true but EXPO_PUBLIC_PRIVY_APP_ID is unset; Privy hooks will not work."
+      "[PrivyAppShell] EXPO_PUBLIC_USE_NEW_STACK=true but EXPO_PUBLIC_PRIVY_APP_ID is unset; Privy hooks will not be able to authenticate."
     );
-    return <>{children}</>;
   }
+
+  // Placeholder used only when Privy will never be invoked (legacy stack
+  // without a configured app ID). Privy initialises its provider state lazily;
+  // no network call fires until a hook method (`sendCode`, etc.) is called.
+  const appId =
+    configuredAppId ?? "placeholder-app-id-legacy-stack-no-network-calls";
+
   return (
     <PrivyProvider
       appId={appId}
