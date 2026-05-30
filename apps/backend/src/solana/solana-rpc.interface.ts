@@ -24,7 +24,7 @@ export interface SignatureStatus {
   signature: string;
   slot: bigint | null;
   confirmationStatus: 'processed' | 'confirmed' | 'finalized' | null;
-  err: unknown | null;
+  err: unknown;
 }
 
 export interface SolanaRpc {

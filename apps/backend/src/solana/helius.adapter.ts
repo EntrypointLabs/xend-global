@@ -1,54 +1,78 @@
-import { Injectable, NotImplementedException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotImplementedException,
+  OnModuleInit,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Connection } from '@solana/web3.js';
 import type { WalletAddress } from '../wallet/wallet-provider.interface';
 import {
   SignatureStatus,
   SolanaRpc,
   TokenBalance,
 } from './solana-rpc.interface';
+import {
+  getRecentBlockhashViaConnection,
+  getSignatureStatusesViaConnection,
+  getTokenBalancesViaConnection,
+  sendRawTransactionViaConnection,
+} from './web3-connection';
 
 /**
- * Helius Solana RPC adapter — STUB.
+ * HeliusAdapter — primary SolanaRpc backed by Helius's RPC endpoint.
  *
- * Real implementation lands in Phase 1 against the Helius RPC endpoint
- * (HTTP + WebSocket). This is the PRIMARY RPC; PublicMainnetAdapter is the
- * fallback, composed by FailoverSolanaRpc.
+ * Talks to Helius via a `@solana/web3.js` Connection object. Helius
+ * exposes a JSON-RPC superset, so a `Connection` works without bespoke
+ * client code. Helius's enhanced webhooks + the parsed-transaction
+ * endpoint land in Phase 2 (RPC tailer); here we cover only the four
+ * methods the wallet/transfer modules need.
  *
- * Every method throws NotImplementedException with a `(Phase 1)` suffix.
+ * Hard rule (from PLAN.md): use `Connection`, never raw fetch.
+ *
+ * `streamConfirmedTransfers` stays a stub — implemented in Phase 2
+ * when we wire the Helius webhook ingest.
  */
 @Injectable()
-export class HeliusAdapter implements SolanaRpc {
-  async getRecentBlockhash(): Promise<{
+export class HeliusAdapter implements SolanaRpc, OnModuleInit {
+  private readonly logger = new Logger(HeliusAdapter.name);
+  private connection!: Connection;
+
+  constructor(private readonly config: ConfigService) {}
+
+  onModuleInit() {
+    const url = this.config.getOrThrow<string>('HELIUS_RPC_URL');
+    // The Helius URL already embeds the API key as a query param per
+    // the convention `https://devnet.helius-rpc.com/?api-key=...`. We
+    // do not log the URL because it carries the key.
+    this.connection = new Connection(url, 'confirmed');
+    this.logger.log('HeliusAdapter initialized');
+  }
+
+  getRecentBlockhash(): Promise<{
     blockhash: string;
     lastValidBlockHeight: number;
   }> {
-    throw new NotImplementedException(
-      'HeliusAdapter.getRecentBlockhash (Phase 1)',
-    );
+    return getRecentBlockhashViaConnection(this.connection);
   }
 
-  async getTokenBalances(_owner: WalletAddress): Promise<TokenBalance[]> {
-    throw new NotImplementedException(
-      'HeliusAdapter.getTokenBalances (Phase 1)',
-    );
+  getTokenBalances(owner: WalletAddress): Promise<TokenBalance[]> {
+    return getTokenBalancesViaConnection(this.connection, owner);
   }
 
-  async sendRawTransaction(_signedTxBase64: string): Promise<string> {
-    throw new NotImplementedException(
-      'HeliusAdapter.sendRawTransaction (Phase 1)',
-    );
+  sendRawTransaction(signedTxBase64: string): Promise<string> {
+    return sendRawTransactionViaConnection(this.connection, signedTxBase64);
   }
 
-  async getSignatureStatuses(
-    _signatures: string[],
-  ): Promise<SignatureStatus[]> {
-    throw new NotImplementedException(
-      'HeliusAdapter.getSignatureStatuses (Phase 1)',
-    );
+  getSignatureStatuses(signatures: string[]): Promise<SignatureStatus[]> {
+    return getSignatureStatusesViaConnection(this.connection, signatures);
   }
 
   streamConfirmedTransfers(
-    _owner: WalletAddress,
-    _sinceSlot: bigint,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    owner: WalletAddress,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    sinceSlot: bigint,
   ): AsyncIterable<{
     signature: string;
     slot: bigint;
