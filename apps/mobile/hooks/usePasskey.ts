@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { apiClient } from "@/utils/apiClient";
 import { AuthStorage } from "@/utils/storage/authStorage";
+import { useNewStack } from "@/utils/featureFlags";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import * as Sentry from "@sentry/react-native";
@@ -11,9 +12,26 @@ export function usePasskey() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Under the new stack, Privy enrols the passkey IN-APP during signup
+  // (`useLoginWithEmail` → `loginWithCode` → embedded wallet provisioned with
+  // passkey-backed recovery). The legacy `/passkeys/check` and
+  // `/passkeys/session` routes are Grid-shaped and do not exist on the new
+  // NestJS backend, so calling them would 404. Both methods therefore become
+  // no-op success paths under the flag: callers (the post-OTP check in
+  // `(auth)/email-login.tsx` and the settings screen) see "already has a
+  // passkey, nothing to do" and skip their setup UX.
+  //
+  // The legacy Grid path (flag off) is unchanged.
+  const newStack = useNewStack();
+
   const clearError = () => setError(null);
 
   const checkPasskeys = async (accountAddress: string): Promise<boolean> => {
+    if (newStack) {
+      setHasPasskey(true);
+      return true;
+    }
+
     setIsChecking(true);
     setError(null);
     try {
@@ -46,6 +64,11 @@ export function usePasskey() {
   };
 
   const registerPasskey = async (accountAddress: string): Promise<boolean> => {
+    if (newStack) {
+      setHasPasskey(true);
+      return true;
+    }
+
     setIsRegistering(true);
     setError(null);
     try {
