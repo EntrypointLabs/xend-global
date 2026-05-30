@@ -4,6 +4,7 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  Inject,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { GridService } from '../grid/grid.service';
@@ -18,6 +19,14 @@ import {
   GridClientUserContext,
 } from '@sqds/grid';
 import { PublicKey } from '@solana/web3.js';
+import { WALLET_PROVIDER } from '../wallet/wallet-provider.interface';
+import type { WalletProvider } from '../wallet/wallet-provider.interface';
+import {
+  InvalidPrivyTokenError,
+  PrivyUnavailableError,
+  PrivyUserShapeError,
+} from '../wallet/privy.errors';
+import type { ExchangeResponse } from './dtos';
 
 @Injectable()
 export class AuthService {
@@ -27,7 +36,144 @@ export class AuthService {
     private grid: GridService,
     private jwt: JwtService,
     private db: DbService,
+    @Inject(WALLET_PROVIDER) private wallet: WalletProvider,
   ) {}
+
+  // ── Phase 1: Privy exchange ────────────────────────────────────────
+  //
+  // POST /auth/exchange replaces the Grid-shaped /register +
+  // /verify-otp-and-create-account chain. Mobile completes the Privy
+  // email-OTP + embedded-wallet flow client-side, then hands us the
+  // Privy ID token. We verify it via the WalletProvider seam (today
+  // PrivyAdapter), upsert users + smart_accounts, and mint our own
+  // JWT. The legacy /register, /auth, /verify-otp, and
+  // /verify-otp-and-create-account remain alive until Phase 5 deletes
+  // them.
+  //
+  // Spec: docs/specs/migration-already-built-features.md §5.1.
+  async exchange(privyIdToken: string): Promise<ExchangeResponse> {
+    // 1. Verify the Privy ID token. Typed errors from PrivyAdapter map
+    //    to the Phase 1 "Error codes" table:
+    //      InvalidPrivyTokenError -> 401 INVALID_PRIVY_TOKEN
+    //      PrivyUserShapeError    -> 422 EMAIL_MISMATCH (rare: missing
+    //                                 email / Solana wallet)
+    //      PrivyUnavailableError  -> 502 PRIVY_UNAVAILABLE
+    let privyUser: Awaited<ReturnType<WalletProvider['verifyIdToken']>>;
+    try {
+      privyUser = await this.wallet.verifyIdToken(privyIdToken);
+    } catch (err) {
+      if (err instanceof InvalidPrivyTokenError) {
+        throw new HttpException(
+          { code: err.code, message: err.message },
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+      if (err instanceof PrivyUserShapeError) {
+        // PLAN.md error-codes maps this case to 422 EMAIL_MISMATCH.
+        // The PrivyUserShapeError carries the underlying shape detail.
+        throw new HttpException(
+          { code: 'EMAIL_MISMATCH', message: err.message },
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      if (err instanceof PrivyUnavailableError) {
+        throw new HttpException(
+          { code: err.code, message: err.message },
+          HttpStatus.BAD_GATEWAY,
+        );
+      }
+      // Defensive: unknown shape — treat as upstream outage.
+      this.logger.error('Unexpected error verifying Privy ID token', err);
+      throw new HttpException(
+        { code: 'PRIVY_UNAVAILABLE', message: 'Privy verification failed' },
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+
+    const { providerUserId, email, walletAddress } = privyUser;
+
+    // 2. Upsert users by email. We capture isNewUser by checking
+    //    whether the row existed before insert. The `users` table is
+    //    keyed by email (UNIQUE NOT NULL); concurrent first-login from
+    //    two devices is resolved by the ON CONFLICT path on
+    //    smart_accounts (step 3) — the second writer reads the
+    //    already-inserted row.
+    const [existingUser] = await this.db.client
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+
+    let userRow: typeof users.$inferSelect;
+    let isNewUser: boolean;
+
+    if (existingUser) {
+      // Touch updatedAt so the row reflects the most recent sign-in.
+      const [touched] = await this.db.client
+        .update(users)
+        .set({ updatedAt: new Date() })
+        .where(eq(users.id, existingUser.id))
+        .returning();
+      userRow = touched;
+      isNewUser = false;
+    } else {
+      const [inserted] = await this.db.client
+        .insert(users)
+        .values({ email })
+        .returning();
+      userRow = inserted;
+      isNewUser = true;
+    }
+
+    // 3. Upsert smart_accounts keyed by (provider, provider_user_id).
+    //    provider_user_id is UNIQUE in 0001; we INSERT ... ON CONFLICT
+    //    DO UPDATE SET updated_at = NOW(). The wallet_address column is
+    //    also UNIQUE: if Privy ever returns a different wallet for the
+    //    same provider_user_id (extremely unlikely; the embedded
+    //    wallet is permanent) we still keep the original row.
+    const [existingAccount] = await this.db.client
+      .select()
+      .from(smartAccounts)
+      .where(eq(smartAccounts.providerUserId, providerUserId))
+      .limit(1);
+
+    if (!existingAccount) {
+      await this.db.client.insert(smartAccounts).values({
+        userId: userRow.id,
+        walletAddress,
+        provider: 'privy',
+        providerUserId,
+      });
+    } else {
+      // Touch updatedAt; do not mutate walletAddress or provider.
+      await this.db.client
+        .update(smartAccounts)
+        .set({ updatedAt: new Date() })
+        .where(eq(smartAccounts.id, existingAccount.id));
+      // If the smart_account already existed under a different users.id
+      // (e.g. user changed Privy-linked email between sessions) we keep
+      // the existing user binding. isNewUser reflects the users-row
+      // insert, not the smart_account.
+    }
+
+    // 4. Mint our own JWT. Shape matches jwt.strategy.ts:JwtPayload
+    //    ({ sub: userId, walletAddress }) so all downstream guarded
+    //    routes (wallet/me, transfers/*) work without a DB lookup.
+    const token = this.jwt.sign({
+      sub: userRow.id,
+      walletAddress,
+    });
+
+    return {
+      token,
+      user: {
+        id: userRow.id,
+        email,
+        walletAddress,
+        isNewUser,
+      },
+    };
+  }
 
   private handleGridError(error: unknown, context: string): never {
     this.logger.error(`Grid error in ${context}:`, error);

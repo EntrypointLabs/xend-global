@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
+import { WalletModule } from '../wallet/wallet.module';
 
 @Module({
   imports: [
@@ -16,6 +17,10 @@ import { JwtStrategy } from './jwt.strategy';
         signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '7d') },
       }),
     }),
+    // Phase 1: /auth/exchange needs the WalletProvider (PrivyAdapter) to
+    // verify the incoming Privy ID token. The legacy /verify-otp* path
+    // keeps using GridService and is untouched.
+    WalletModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

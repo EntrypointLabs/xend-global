@@ -1,6 +1,8 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { SessionSecrets, MetaInfo, GridClientUserContext } from '@sqds/grid';
+import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { ExchangeRequestSchema, type ExchangeRequest } from './dtos';
 
 class RegisterDto {
   email: string;
@@ -34,6 +36,17 @@ class CreatePasskeySessionDto {
 @Controller()
 export class AuthController {
   constructor(private auth: AuthService) {}
+
+  // Phase 1: Privy ID-token exchange. Replaces the /register +
+  // /verify-otp-and-create-account chain. The legacy endpoints below
+  // stay alive until the Phase 4 mobile cutover lands (then Phase 5
+  // deletes them).
+  @Post('auth/exchange')
+  exchange(
+    @Body(new ZodValidationPipe(ExchangeRequestSchema)) dto: ExchangeRequest,
+  ) {
+    return this.auth.exchange(dto.privyIdToken);
+  }
 
   // Registration — matches mobile EasClient POST /register
   @Post('register')
