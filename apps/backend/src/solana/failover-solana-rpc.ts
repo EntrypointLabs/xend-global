@@ -1,8 +1,9 @@
-import { Injectable, Logger, NotImplementedException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { WalletAddress } from '../wallet/wallet-provider.interface';
 import { HeliusAdapter } from './helius.adapter';
 import { PublicMainnetAdapter } from './public-mainnet.adapter';
 import {
+  ConfirmedTransferEvent,
   SignatureStatus,
   SolanaRpc,
   TokenBalance,
@@ -21,6 +22,19 @@ import {
  *   WRITE path (sendRawTransaction) — PRIMARY ONLY. Failure
  *   propagates. See class doc on no-double-broadcast below.
  *
+ *   CONTROL plane (registerWebhookAddress, unregisterWebhookAddress,
+ *   verifyWebhookSignature) — PRIMARY ONLY. Webhooks are a Helius
+ *   feature; the public mainnet RPC has no equivalent. Double-applying
+ *   a registration would create a duplicate webhook subscription and a
+ *   duplicate-delivery storm, so we surface primary failures directly
+ *   and let the reconciler poll be the safety net.
+ *
+ *   STREAM (streamConfirmedTransfers) — try primary; if the *first*
+ *   page errors, fall back to the public adapter. We cannot mid-stream
+ *   failover (a partially-consumed iterator carries pagination state
+ *   only the originating connection knows), so the failover decision
+ *   is made up-front.
+ *
  * IMPORTANT — sendRawTransaction does NOT fall back.
  *   If Helius accepts a sendTransaction but our timeout fires before
  *   the response, retrying against public-mainnet risks double-
@@ -38,12 +52,7 @@ import {
  *   (`sendRawTransaction does NOT fallback`) — do not relax it without
  *   updating both the test and the spec.
  *
- * `streamConfirmedTransfers` stays a stub. Phase 2 implements the
- * tailer; failover at the stream level is more nuanced than per-call
- * (we cannot replay a missed stream slot from a different provider's
- * webhooks).
- *
- * Spec: docs/specs/migration-already-built-features.md §6, §5.4.
+ * Spec: docs/specs/migration-already-built-features.md §6, §5.4, §5.6.
  */
 @Injectable()
 export class FailoverSolanaRpc implements SolanaRpc {
@@ -89,22 +98,68 @@ export class FailoverSolanaRpc implements SolanaRpc {
     );
   }
 
+  /**
+   * Stream confirmed transfers. Attempts primary first; if priming the
+   * iterator (first page) throws, retries against the fallback adapter
+   * and yields from there. Mid-stream failover is NOT supported (see
+   * class doc).
+   */
   streamConfirmedTransfers(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     owner: WalletAddress,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     sinceSlot: bigint,
-  ): AsyncIterable<{
-    signature: string;
-    slot: bigint;
-    mint: string;
-    amountRaw: bigint;
-    fromAddress: WalletAddress;
-    toAddress: WalletAddress;
-  }> {
-    throw new NotImplementedException(
-      'FailoverSolanaRpc.streamConfirmedTransfers (Phase 2)',
-    );
+  ): AsyncIterable<ConfirmedTransferEvent> {
+    const primary = this.primary;
+    const fallback = this.fallback;
+    const logger = this.logger;
+    return {
+      [Symbol.asyncIterator](): AsyncIterator<ConfirmedTransferEvent> {
+        let inner: AsyncIterator<ConfirmedTransferEvent> | undefined;
+        let primed = false;
+        const prime = (): void => {
+          if (primed) return;
+          try {
+            inner = primary
+              .streamConfirmedTransfers(owner, sinceSlot)
+              [Symbol.asyncIterator]();
+          } catch (err) {
+            logger.warn(
+              `Helius streamConfirmedTransfers failed at prime; falling back to public mainnet`,
+              err,
+            );
+            inner = fallback
+              .streamConfirmedTransfers(owner, sinceSlot)
+              [Symbol.asyncIterator]();
+          }
+          primed = true;
+        };
+        return {
+          next(): Promise<IteratorResult<ConfirmedTransferEvent>> {
+            try {
+              prime();
+            } catch (err) {
+              return Promise.reject(
+                err instanceof Error ? err : new Error(String(err)),
+              );
+            }
+            return inner!.next();
+          },
+        };
+      },
+    };
+  }
+
+  // ── Control plane (Helius-only) ───────────────────────────────────
+
+  registerWebhookAddress(walletAddress: WalletAddress): Promise<void> {
+    return this.primary.registerWebhookAddress(walletAddress);
+  }
+
+  unregisterWebhookAddress(walletAddress: WalletAddress): Promise<void> {
+    return this.primary.unregisterWebhookAddress(walletAddress);
+  }
+
+  verifyWebhookSignature(rawBody: Buffer, signature: string): void {
+    return this.primary.verifyWebhookSignature(rawBody, signature);
   }
 
   /**

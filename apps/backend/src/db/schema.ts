@@ -1,5 +1,12 @@
-import { pgTable, pgEnum, text, timestamp, bigint } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import {
+  pgTable,
+  pgEnum,
+  text,
+  timestamp,
+  bigint,
+  index,
+} from 'drizzle-orm/pg-core';
+import { relations, sql } from 'drizzle-orm';
 import { createId } from '@paralleldrive/cuid2';
 
 // ---------- Enums ----------
@@ -84,26 +91,58 @@ export const smartAccounts = pgTable('smart_accounts', {
  *
  * Legacy columns dropped in migration 0001: type, token, amount.
  */
-export const transfers = pgTable('transfers', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => createId()),
-  smartAccountId: text('smart_account_id')
+export const transfers = pgTable(
+  'transfers',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    smartAccountId: text('smart_account_id')
+      .notNull()
+      .references(() => smartAccounts.id),
+    intentId: text('intent_id').unique(),
+    signature: text('signature').unique(),
+    direction: transferDirectionEnum('direction').notNull(),
+    mint: text('mint').notNull(),
+    amountRaw: text('amount_raw').notNull(),
+    fromAddress: text('from_address').notNull(),
+    toAddress: text('to_address').notNull(),
+    status: transferStatusEnum('status').notNull().default('PENDING'),
+    slot: bigint('slot', { mode: 'bigint' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    submittedAt: timestamp('submitted_at'),
+    confirmedAt: timestamp('confirmed_at'),
+    failureReason: text('failure_reason'),
+  },
+  (table) => ({
+    // Partial index added in migration 0002. Powers the 30-second
+    // ReconcilerService poll: scans only outstanding PENDING rows
+    // (CONFIRMED + FAILED rows do not appear in this index).
+    pendingIdx: index('transfers_pending_idx')
+      .on(table.submittedAt)
+      .where(sql`status = 'PENDING'`),
+  }),
+);
+
+/**
+ * tailer_state — per-wallet bookmark for the RPC tailer.
+ *
+ * `last_indexed_slot` is updated by:
+ *   - the webhook hot path on every CONFIRMED event (max(current, event.slot)),
+ *   - the boot-time `streamConfirmedTransfers` replay that catches up
+ *     missed events since the last bookmark.
+ *
+ * One row per wallet address; UPSERT keyed on wallet_address.
+ *
+ * Spec: docs/specs/migration-already-built-features.md §5.6.
+ * Migration: drizzle/0002_tailer_state.sql.
+ */
+export const tailerState = pgTable('tailer_state', {
+  walletAddress: text('wallet_address').primaryKey(),
+  lastIndexedSlot: bigint('last_indexed_slot', { mode: 'bigint' })
     .notNull()
-    .references(() => smartAccounts.id),
-  intentId: text('intent_id').unique(),
-  signature: text('signature').unique(),
-  direction: transferDirectionEnum('direction').notNull(),
-  mint: text('mint').notNull(),
-  amountRaw: text('amount_raw').notNull(),
-  fromAddress: text('from_address').notNull(),
-  toAddress: text('to_address').notNull(),
-  status: transferStatusEnum('status').notNull().default('PENDING'),
-  slot: bigint('slot', { mode: 'bigint' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  submittedAt: timestamp('submitted_at'),
-  confirmedAt: timestamp('confirmed_at'),
-  failureReason: text('failure_reason'),
+    .default(0n),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
 // ---------- Relations ----------

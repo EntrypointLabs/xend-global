@@ -19,7 +19,11 @@ function makeStub(
     getTokenBalances: jest.fn(),
     sendRawTransaction: jest.fn(),
     getSignatureStatuses: jest.fn(),
+    accountExists: jest.fn(),
     streamConfirmedTransfers: jest.fn(),
+    registerWebhookAddress: jest.fn(),
+    unregisterWebhookAddress: jest.fn(),
+    verifyWebhookSignature: jest.fn(),
     ...overrides,
   };
 }
@@ -161,12 +165,102 @@ describe('FailoverSolanaRpc', () => {
     });
   });
 
-  describe('streamConfirmedTransfers (Phase 2 stub)', () => {
-    it('throws NotImplementedException with Phase 2 marker', () => {
-      const rpc = makeFailover(makeStub(), makeStub());
-      expect(() => rpc.streamConfirmedTransfers('owner', 0n)).toThrow(
-        /Phase 2/,
+  describe('streamConfirmedTransfers', () => {
+    it('yields from primary when primary primes successfully', async () => {
+      const event = {
+        signature: 'sig1',
+        slot: 100n,
+        mint: 'mint',
+        amountRaw: 1n,
+        fromAddress: 'a',
+        toAddress: 'b',
+        confirmedAt: new Date(),
+      };
+      const primary = makeStub({
+        streamConfirmedTransfers: jest.fn().mockImplementation(
+          // eslint-disable-next-line @typescript-eslint/require-await
+          async function* () {
+            yield event;
+          },
+        ),
+      });
+      const fallback = makeStub();
+      const rpc = makeFailover(primary, fallback);
+      const out: unknown[] = [];
+      for await (const e of rpc.streamConfirmedTransfers('owner', 0n)) {
+        out.push(e);
+      }
+      expect(out).toEqual([event]);
+      expect(fallback.streamConfirmedTransfers).not.toHaveBeenCalled();
+    });
+
+    it('falls back when primary throws synchronously while priming', async () => {
+      const event = {
+        signature: 'sigF',
+        slot: 200n,
+        mint: 'mint',
+        amountRaw: 2n,
+        fromAddress: 'a',
+        toAddress: 'b',
+        confirmedAt: new Date(),
+      };
+      const primary = makeStub({
+        streamConfirmedTransfers: jest.fn().mockImplementation(() => {
+          throw new Error('helius down');
+        }),
+      });
+      const fallback = makeStub({
+        streamConfirmedTransfers: jest.fn().mockImplementation(
+          // eslint-disable-next-line @typescript-eslint/require-await
+          async function* () {
+            yield event;
+          },
+        ),
+      });
+      const rpc = makeFailover(primary, fallback);
+      const out: unknown[] = [];
+      for await (const e of rpc.streamConfirmedTransfers('owner', 0n)) {
+        out.push(e);
+      }
+      expect(out).toEqual([event]);
+    });
+  });
+
+  describe('control plane (Helius-only) proxies to primary', () => {
+    it('registerWebhookAddress hits primary only', async () => {
+      const primary = makeStub({
+        registerWebhookAddress: jest.fn().mockResolvedValue(undefined),
+      });
+      const fallback = makeStub();
+      const rpc = makeFailover(primary, fallback);
+      await rpc.registerWebhookAddress('addr');
+      expect(primary.registerWebhookAddress).toHaveBeenCalledWith('addr');
+      expect(fallback.registerWebhookAddress).not.toHaveBeenCalled();
+    });
+
+    it('unregisterWebhookAddress hits primary only', async () => {
+      const primary = makeStub({
+        unregisterWebhookAddress: jest.fn().mockResolvedValue(undefined),
+      });
+      const fallback = makeStub();
+      const rpc = makeFailover(primary, fallback);
+      await rpc.unregisterWebhookAddress('addr');
+      expect(primary.unregisterWebhookAddress).toHaveBeenCalled();
+      expect(fallback.unregisterWebhookAddress).not.toHaveBeenCalled();
+    });
+
+    it('verifyWebhookSignature delegates to primary', () => {
+      const primary = makeStub({
+        verifyWebhookSignature: jest.fn(),
+      });
+      const fallback = makeStub();
+      const rpc = makeFailover(primary, fallback);
+      rpc.verifyWebhookSignature(Buffer.from('body'), 'sig');
+      expect(primary.verifyWebhookSignature).toHaveBeenCalledWith(
+        Buffer.from('body'),
+        'sig',
       );
+      expect(fallback.verifyWebhookSignature).not.toHaveBeenCalled();
     });
   });
 });

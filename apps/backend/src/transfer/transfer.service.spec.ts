@@ -182,6 +182,11 @@ function makeSolana(opts: Partial<SolanaRpc>): SolanaRpc {
       ((() => {
         throw new Error('not used');
       }) as unknown as SolanaRpc['streamConfirmedTransfers']),
+    registerWebhookAddress:
+      opts.registerWebhookAddress ?? jest.fn().mockResolvedValue(undefined),
+    unregisterWebhookAddress:
+      opts.unregisterWebhookAddress ?? jest.fn().mockResolvedValue(undefined),
+    verifyWebhookSignature: opts.verifyWebhookSignature ?? jest.fn(),
   };
 }
 

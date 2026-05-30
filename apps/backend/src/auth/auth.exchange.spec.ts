@@ -7,6 +7,7 @@ import type {
   WalletProvider,
   WalletProviderUser,
 } from '../wallet/wallet-provider.interface';
+import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import {
   InvalidPrivyTokenError,
   PrivyUnavailableError,
@@ -170,11 +171,32 @@ function makeFakeDb(store: FakeStore): DbService {
 // `where` receives a non-callable). The check at the top of the chain
 // treats `where(opaqueSql)` as "filter nothing".
 
+function makeFakeSolana(overrides: Partial<SolanaRpc> = {}): {
+  rpc: SolanaRpc;
+  registerWebhookAddress: jest.Mock;
+} {
+  const registerWebhookAddress = jest.fn().mockResolvedValue(undefined);
+  const rpc = {
+    getRecentBlockhash: jest.fn(),
+    getTokenBalances: jest.fn(),
+    sendRawTransaction: jest.fn(),
+    getSignatureStatuses: jest.fn(),
+    accountExists: jest.fn(),
+    streamConfirmedTransfers: jest.fn(),
+    registerWebhookAddress,
+    unregisterWebhookAddress: jest.fn(),
+    verifyWebhookSignature: jest.fn(),
+    ...overrides,
+  } as unknown as SolanaRpc;
+  return { rpc, registerWebhookAddress };
+}
+
 function makeService(opts: {
   wallet: WalletProvider;
   store?: FakeStore;
   jwtSecret?: string;
-}): { service: AuthService; store: FakeStore } {
+  solana?: SolanaRpc;
+}): { service: AuthService; store: FakeStore; solana: SolanaRpc } {
   const store: FakeStore = opts.store ?? { users: [], smartAccounts: [] };
   const db = makeFakeDb(store);
   const jwt = new JwtService({
@@ -182,8 +204,9 @@ function makeService(opts: {
   });
   // GridService is not exercised by exchange(); pass an empty object.
   const grid = {} as GridService;
-  const service = new AuthService(grid, jwt, db, opts.wallet);
-  return { service, store };
+  const solana = opts.solana ?? makeFakeSolana().rpc;
+  const service = new AuthService(grid, jwt, db, opts.wallet, solana);
+  return { service, store, solana };
 }
 
 const validPrivyUser: WalletProviderUser = {
@@ -317,6 +340,79 @@ describe('AuthService.exchange', () => {
       status: HttpStatus.UNPROCESSABLE_ENTITY,
       response: { code: 'EMAIL_MISMATCH' },
     });
+  });
+
+  it('new user triggers webhook registration with wallet address', async () => {
+    const verifyIdToken = jest.fn().mockResolvedValue(validPrivyUser);
+    const wallet = {
+      verifyIdToken,
+      getUser: jest.fn(),
+    } as unknown as WalletProvider;
+    const { rpc, registerWebhookAddress } = makeFakeSolana();
+    const { service } = makeService({ wallet, solana: rpc });
+
+    await service.exchange('valid.privy.token');
+    expect(registerWebhookAddress).toHaveBeenCalledWith(
+      validPrivyUser.walletAddress,
+    );
+  });
+
+  it('webhook registration failure does NOT break /auth/exchange', async () => {
+    const verifyIdToken = jest.fn().mockResolvedValue(validPrivyUser);
+    const wallet = {
+      verifyIdToken,
+      getUser: jest.fn(),
+    } as unknown as WalletProvider;
+    const { rpc } = makeFakeSolana({
+      registerWebhookAddress: jest
+        .fn()
+        .mockRejectedValue(new Error('helius webhook api down')),
+    });
+    const { service, store } = makeService({ wallet, solana: rpc });
+
+    const result = await service.exchange('valid.privy.token');
+    expect(result.user.walletAddress).toBe(validPrivyUser.walletAddress);
+    expect(result.token).toEqual(expect.any(String));
+    // smart_account was still written; webhook failure is non-fatal.
+    expect(store.smartAccounts).toHaveLength(1);
+  });
+
+  it('existing user does NOT re-register webhook (idempotency)', async () => {
+    const wallet = {
+      verifyIdToken: jest.fn().mockResolvedValue(validPrivyUser),
+      getUser: jest.fn(),
+    } as unknown as WalletProvider;
+    const seedStore: FakeStore = {
+      users: [
+        {
+          id: 'u_existing',
+          email: validPrivyUser.email,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-01'),
+        },
+      ],
+      smartAccounts: [
+        {
+          id: 'sa_existing',
+          userId: 'u_existing',
+          walletAddress: validPrivyUser.walletAddress,
+          provider: 'privy',
+          providerUserId: validPrivyUser.providerUserId,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-01'),
+        },
+      ],
+    };
+    const { rpc, registerWebhookAddress } = makeFakeSolana();
+    const { service } = makeService({
+      wallet,
+      store: seedStore,
+      solana: rpc,
+    });
+
+    await service.exchange('valid.privy.token');
+    // The smart_account already existed — no INSERT, no registration.
+    expect(registerWebhookAddress).not.toHaveBeenCalled();
   });
 
   it('unknown adapter error maps to 502 PRIVY_UNAVAILABLE (defensive)', async () => {

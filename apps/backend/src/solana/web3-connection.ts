@@ -1,5 +1,15 @@
-import { Connection, PublicKey } from '@solana/web3.js';
-import type { SignatureStatus, TokenBalance } from './solana-rpc.interface';
+import {
+  Connection,
+  ParsedInstruction,
+  ParsedTransactionWithMeta,
+  PartiallyDecodedInstruction,
+  PublicKey,
+} from '@solana/web3.js';
+import type {
+  ConfirmedTransferEvent,
+  SignatureStatus,
+  TokenBalance,
+} from './solana-rpc.interface';
 import type { WalletAddress } from '../wallet/wallet-provider.interface';
 
 /**
@@ -115,6 +125,185 @@ export async function accountExistsViaConnection(
   // yet be observable by the next prepare call).
   const info = await conn.getAccountInfo(new PublicKey(address), 'confirmed');
   return info !== null;
+}
+
+/**
+ * Async iterable over confirmed SPL token transfers for `owner` since
+ * `sinceSlot`. Walks `getSignaturesForAddress` 1000 at a time (Helius
+ * + public RPC both honour this) and decodes each tx via
+ * `getParsedTransaction`. Filters to SPL token transfer instructions
+ * for the wallet's ATAs.
+ *
+ * Cluster-agnostic: works on any standard Solana RPC because we use
+ * the JSON-RPC parsed shape, not Helius's enhanced-transactions
+ * endpoint. (Helius enhanced-transactions returns identical data for
+ * the tokenTransfers field; the parsed-RPC path is simpler and gives
+ * us automatic public-RPC fallback.)
+ *
+ * Used by:
+ *   - boot-time replay in ReconcilerService.onModuleInit (per wallet)
+ *   - the dropped-webhook safety net (called only if reconciler tick
+ *     surfaces excessive late-confirmations)
+ *
+ * NOT used on the webhook hot path — the webhook delivers the same
+ * data with sub-second latency.
+ */
+export async function* streamConfirmedTransfersViaConnection(
+  conn: Connection,
+  owner: WalletAddress,
+  sinceSlot: bigint,
+): AsyncGenerator<ConfirmedTransferEvent, void, void> {
+  const ownerPk = new PublicKey(owner);
+  const PAGE = 1000;
+  let before: string | undefined = undefined;
+  // We collect newest-first from getSignaturesForAddress, then yield
+  // oldest-first so downstream UPSERTs land in chain order (handy for
+  // tailer_state.last_indexed_slot accumulation).
+  const collected: { signature: string; slot: number }[] = [];
+
+  // Stop walking when we reach the sinceSlot bookmark; Helius's `until`
+  // param is a signature, not a slot, so we filter manually.
+  for (;;) {
+    const page = await conn.getSignaturesForAddress(
+      ownerPk,
+      { before, limit: PAGE },
+      'confirmed',
+    );
+    if (page.length === 0) break;
+    let hitBookmark = false;
+    for (const entry of page) {
+      if (BigInt(entry.slot) <= sinceSlot) {
+        hitBookmark = true;
+        continue;
+      }
+      collected.push({ signature: entry.signature, slot: entry.slot });
+    }
+    if (hitBookmark || page.length < PAGE) break;
+    before = page[page.length - 1].signature;
+  }
+
+  // Now process oldest-first.
+  collected.reverse();
+
+  for (const { signature } of collected) {
+    let tx: ParsedTransactionWithMeta | null = null;
+    try {
+      tx = await conn.getParsedTransaction(signature, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0,
+      });
+    } catch {
+      // Skip on transient parse failures — the reconciliation poll +
+      // next replay will pick them up.
+      continue;
+    }
+    if (!tx || tx.meta?.err) continue;
+    for (const evt of extractTokenTransfers(tx, owner)) {
+      yield evt;
+    }
+  }
+}
+
+/**
+ * Pull SPL token transfer events from a parsed transaction. Inspects
+ * top-level + inner instructions for `spl-token`'s `transferChecked`
+ * and `transfer` variants. Returns events where the owner participates
+ * as sender OR receiver.
+ *
+ * `mint` is resolved from the parsed instruction's `mint` field for
+ * `transferChecked` and from the SOURCE token account's parsed account
+ * info for plain `transfer`. If neither is available (rare), the event
+ * is skipped.
+ */
+function extractTokenTransfers(
+  tx: ParsedTransactionWithMeta,
+  owner: WalletAddress,
+): ConfirmedTransferEvent[] {
+  if (!tx.blockTime) return [];
+  const slot = BigInt(tx.slot);
+  const confirmedAt = new Date(tx.blockTime * 1000);
+  const signature = tx.transaction.signatures[0] ?? '';
+
+  // Build a map of token account pubkey -> { owner, mint } from
+  // pre/post token balances. Used to translate raw account keys (which
+  // are the ATAs, not the wallet owners) back to wallet owners for the
+  // owner-match check.
+  const accountOwners = new Map<string, { owner: string; mint: string }>();
+  const keys = tx.transaction.message.accountKeys;
+  for (const bal of tx.meta?.preTokenBalances ?? []) {
+    const acct = keys[bal.accountIndex]?.pubkey.toBase58();
+    if (acct && bal.owner) {
+      accountOwners.set(acct, { owner: bal.owner, mint: bal.mint });
+    }
+  }
+  for (const bal of tx.meta?.postTokenBalances ?? []) {
+    const acct = keys[bal.accountIndex]?.pubkey.toBase58();
+    if (acct && bal.owner) {
+      accountOwners.set(acct, { owner: bal.owner, mint: bal.mint });
+    }
+  }
+
+  const events: ConfirmedTransferEvent[] = [];
+  const allInstructions: (ParsedInstruction | PartiallyDecodedInstruction)[] =
+    [];
+  for (const ix of tx.transaction.message.instructions) {
+    allInstructions.push(ix);
+  }
+  for (const inner of tx.meta?.innerInstructions ?? []) {
+    for (const ix of inner.instructions) {
+      allInstructions.push(ix);
+    }
+  }
+
+  for (const ix of allInstructions) {
+    if (!('parsed' in ix)) continue;
+    const parsed = ix.parsed as
+      | {
+          type: string;
+          info: {
+            source?: string;
+            destination?: string;
+            authority?: string;
+            mint?: string;
+            tokenAmount?: { amount: string };
+            amount?: string;
+          };
+        }
+      | undefined;
+    if (!parsed) continue;
+    if (parsed.type !== 'transfer' && parsed.type !== 'transferChecked') {
+      continue;
+    }
+    if (ix.programId.toBase58() !== TOKEN_PROGRAM_ID.toBase58()) continue;
+
+    const sourceAcct = parsed.info.source;
+    const destAcct = parsed.info.destination;
+    if (!sourceAcct || !destAcct) continue;
+
+    const sourceMeta = accountOwners.get(sourceAcct);
+    const destMeta = accountOwners.get(destAcct);
+    const fromOwner = sourceMeta?.owner;
+    const toOwner = destMeta?.owner;
+    if (!fromOwner || !toOwner) continue;
+    if (fromOwner !== owner && toOwner !== owner) continue;
+
+    const mint = parsed.info.mint ?? sourceMeta?.mint ?? destMeta?.mint;
+    if (!mint) continue;
+    const amountStr =
+      parsed.info.tokenAmount?.amount ?? parsed.info.amount ?? '0';
+
+    events.push({
+      signature,
+      slot,
+      mint,
+      amountRaw: BigInt(amountStr),
+      fromAddress: fromOwner,
+      toAddress: toOwner,
+      confirmedAt,
+    });
+  }
+
+  return events;
 }
 
 export async function getSignatureStatusesViaConnection(

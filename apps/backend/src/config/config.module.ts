@@ -46,9 +46,21 @@ import * as Joi from 'joi';
           .uri()
           .default('https://api.mainnet-beta.solana.com'),
 
+        // Helius webhook control plane (Phase 2 — RPC tailer).
+        //   HELIUS_WEBHOOK_SECRET: shared secret used to authenticate
+        //     incoming /webhooks/helius deliveries. Required for the
+        //     webhook receiver to accept any traffic.
+        //   HELIUS_WEBHOOK_ID: ID of the pre-created Helius webhook
+        //     subscription. Optional at boot; ops creates it once via
+        //     HeliusAdapter.bootstrapWebhook(...) and persists the
+        //     returned ID. Without it, register/unregister throw.
+        HELIUS_WEBHOOK_SECRET: Joi.string().required(),
+        HELIUS_WEBHOOK_ID: Joi.string().optional().allow(''),
+
         // Stablecoin mints (Phase 1) — backend computes the Balance sum
         // over this set per spec §5.5.
         EXPO_PUBLIC_USDT_MINT_ADDRESS: Joi.string().optional().allow(''),
+        EXPO_PUBLIC_USDC_MINT_ADDRESS: Joi.string().optional().allow(''),
       }),
     }),
   ],

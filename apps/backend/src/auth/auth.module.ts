@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { WalletModule } from '../wallet/wallet.module';
+import { SolanaModule } from '../solana/solana.module';
 
 @Module({
   imports: [
@@ -21,6 +22,10 @@ import { WalletModule } from '../wallet/wallet.module';
     // verify the incoming Privy ID token. The legacy /verify-otp* path
     // keeps using GridService and is untouched.
     WalletModule,
+    // Phase 2: /auth/exchange registers each newly-minted wallet on the
+    // Helius webhook subscription (best-effort; failure is logged but
+    // does not block the auth response — reconciler is the safety net).
+    SolanaModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

@@ -26,6 +26,8 @@ import {
   PrivyUnavailableError,
   PrivyUserShapeError,
 } from '../wallet/privy.errors';
+import { SOLANA_RPC } from '../solana/solana-rpc.interface';
+import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { ExchangeResponse } from './dtos';
 
 @Injectable()
@@ -37,6 +39,7 @@ export class AuthService {
     private jwt: JwtService,
     private db: DbService,
     @Inject(WALLET_PROVIDER) private wallet: WalletProvider,
+    @Inject(SOLANA_RPC) private solana: SolanaRpc,
   ) {}
 
   // ── Phase 1: Privy exchange ────────────────────────────────────────
@@ -144,6 +147,27 @@ export class AuthService {
         provider: 'privy',
         providerUserId,
       });
+      // Phase 2: subscribe the wallet to the Helius account-activity
+      // webhook so inbound receives + outbound confirmations are
+      // surfaced to the tailer in real time. Wrapped in try/catch:
+      // webhook registration failure MUST NOT break /auth/exchange.
+      // The reconciler poll's getSignatureStatuses + boot-time
+      // streamConfirmedTransfers replay is the safety net — if the
+      // registration is missing, the wallet still gets reconciled,
+      // just with the 30s poll latency instead of the webhook's ~3s.
+      //
+      // We deliberately do NOT touch the legacy /verify-otp* path
+      // here; it gets its own subscription wiring when Phase 4
+      // migrates it. Adding the call there now would double-register
+      // wallets that the Phase 1 /auth/exchange path also covers.
+      try {
+        await this.solana.registerWebhookAddress(walletAddress);
+      } catch (err) {
+        this.logger.error(
+          `Failed to register webhook address for ${walletAddress} (continuing; reconciler will catch up)`,
+          err,
+        );
+      }
     } else {
       // Touch updatedAt; do not mutate walletAddress or provider.
       await this.db.client
