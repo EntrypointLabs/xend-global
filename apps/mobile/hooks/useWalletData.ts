@@ -1,11 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { TransferResponse } from "@/types/Transaction";
-import { EasClient } from "@/utils/easClient";
 import { StorageService } from "@/utils/storage";
 import { AUTH_STORAGE_KEYS } from "@/utils/auth";
 import { AccountInfo } from "@/types/Auth";
 import { useAuth } from "@/contexts/AuthContext";
-import { useNewStack } from "@/utils/featureFlags";
 import { apiClient, TokenBalance, TransferRow } from "@/utils/apiClient";
 
 /**
@@ -33,10 +31,6 @@ function computeStablecoinTotal(tokens: TokenBalance[]): number {
   let total = 0;
   for (const t of tokens) {
     if (!stablecoinMints.has(t.mint)) continue;
-    // amountRaw is a u64 integer string at `decimals` native decimals.
-    // Convert via string→BigInt for safety, then to Number for display.
-    // Stablecoin amounts in USD are well within safe-int range after
-    // dividing by 10^decimals, so the eventual Number cast is safe.
     const raw = BigInt(t.amountRaw);
     const divisor = BigInt(10) ** BigInt(t.decimals);
     const whole = Number(raw / divisor);
@@ -44,26 +38,18 @@ function computeStablecoinTotal(tokens: TokenBalance[]): number {
     const fraction = fractionRaw / Number(divisor);
     total += whole + fraction;
   }
-  // Round to 2dp the same way the legacy path did.
   return parseFloat(total.toFixed(2));
 }
 
 /**
- * Map a backend `TransferRow` (Phase 4 new-stack shape) to the legacy
- * mobile `TransferResponse` shape that `(tabs)/index.tsx` reads. The
- * Activity feed reads snake_case fields (`from_address`, `to_address`,
- * `confirmation_status`, `ui_amount`, `created_at`) inherited from the
- * Grid BFF passthrough; this mapping reproduces that shape so the screen
- * code stays untouched. Phase 5 deletes the legacy path AND modernises
- * the screen to camelCase in one pass.
+ * Map a backend `TransferRow` (new-stack shape) to the legacy mobile
+ * `TransferResponse` shape that `(tabs)/index.tsx` reads. The Activity
+ * feed reads snake_case fields inherited from the Grid BFF passthrough;
+ * this mapping reproduces that shape so the screen stays untouched.
  *
- * Direction translation:
- *   backend SEND  → legacy "outflow"  (Activity renders as "sent")
- *   backend RECEIVE → legacy "inflow" (Activity renders as "received")
- *
- * Status translation:
- *   backend PENDING/CONFIRMED/FAILED → legacy lowercase (Activity filters
- *   on "confirmed").
+ * Direction translation: SEND → "outflow", RECEIVE → "inflow".
+ * Status translation: CONFIRMED → "confirmed", FAILED → "failed", else
+ * "pending".
  */
 function mapTransferRowToLegacy(row: TransferRow): any {
   const confirmation_status =
@@ -73,14 +59,10 @@ function mapTransferRowToLegacy(row: TransferRow): any {
         ? "failed"
         : "pending";
   const direction = row.direction === "SEND" ? "outflow" : "inflow";
-  // amountRaw is u64-as-string; derive a ui_amount string for display.
-  // The Activity feed parses ui_amount via parseFloat, so we render with
-  // up to 6 fractional digits (USDC) without trailing zeros.
   const raw = BigInt(row.amountRaw);
-  // We do not know decimals from the backend row (the spec keeps `amountRaw`
-  // intentionally decimal-less for the transfers table); default to 6
-  // (USDC, USDT). The Activity feed today filters to USDC-mint rows only,
-  // so this matches reality. Phase 5 should add `decimals` to TransferRow.
+  // Default decimals to 6 (USDC, USDT). The backend TransferRow schema
+  // does not carry per-row decimals; the Activity feed today filters to
+  // USDC-mint rows only.
   const decimals = 6;
   const divisor = BigInt(10) ** BigInt(decimals);
   const whole = raw / divisor;
@@ -96,7 +78,6 @@ function mapTransferRowToLegacy(row: TransferRow): any {
       mint: row.mint,
       isToken2022: false,
       signature: row.signature ?? "",
-      // snake_case fields for compatibility with the legacy Activity reader
       confirmation_status,
       from_address: row.fromAddress,
       to_address: row.toAddress,
@@ -111,25 +92,19 @@ function mapTransferRowToLegacy(row: TransferRow): any {
   };
 }
 
-export function useWalletData(accountInfo: AccountInfo | null) {
+export function useWalletData(_accountInfo: AccountInfo | null) {
   const [isLoading, setIsLoading] = useState(false);
   const [balance, setBalance] = useState(0);
   const [transfers, setTransfers] = useState<TransferResponse>([]);
   const [error, setError] = useState<string | null>(null);
   const { user, wallet } = useAuth();
-  const newStack = useNewStack();
 
   const fetchWalletData = useCallback(async () => {
-    // Under the new stack the JWT — not `user.address` — is the
-    // authentication signal. `wallet` (from AuthContext) is the Privy
-    // embedded wallet address, which is `null` until the
-    // `/auth/exchange` round-trip settles. Either signal indicates the
-    // user is past login and ready to fetch.
-    const hasIdentity = newStack
-      ? Boolean(wallet) ||
-        Boolean(user?.walletAddress) ||
-        Boolean(user?.address)
-      : Boolean(user?.address);
+    // JWT is the auth signal; `wallet` (from AuthContext) is the Privy
+    // embedded wallet address. Either signal indicates the user is past
+    // login and ready to fetch.
+    const hasIdentity =
+      Boolean(wallet) || Boolean(user?.walletAddress) || Boolean(user?.address);
     if (!hasIdentity) {
       setError("Account info not found");
       return;
@@ -139,61 +114,20 @@ export function useWalletData(accountInfo: AccountInfo | null) {
     setError(null);
 
     try {
-      if (newStack) {
-        // New stack: fetch balances + transfers from our NestJS backend.
-        // Both endpoints attach the Bearer JWT via apiClient internals.
-        const [balancesResult, transfersResult] = await Promise.all([
-          apiClient.getBalances(),
-          apiClient.listTransfers({ limit: 50 }),
-        ]);
+      const [balancesResult, transfersResult] = await Promise.all([
+        apiClient.getBalances(),
+        apiClient.listTransfers({ limit: 50 }),
+      ]);
 
-        // Balance: sum USDC + USDT (when USDT mint is configured).
-        const newBalance = computeStablecoinTotal(balancesResult.tokens);
-        setBalance(newBalance);
-        await StorageService.setItem(
-          AUTH_STORAGE_KEYS.CACHED_BALANCE,
-          newBalance.toString()
-        );
+      const newBalance = computeStablecoinTotal(balancesResult.tokens);
+      setBalance(newBalance);
+      await StorageService.setItem(
+        AUTH_STORAGE_KEYS.CACHED_BALANCE,
+        newBalance.toString()
+      );
 
-        // Activity: map backend rows to legacy shape so the Activity
-        // screen continues to render without modification.
-        const mapped = transfersResult.transfers.map(mapTransferRowToLegacy);
-        setTransfers(mapped as TransferResponse);
-      } else {
-        // Legacy Grid path (unchanged from pre-Phase-4).
-        const easClient = new EasClient();
-        const [balanceResult, transfersResult] = await Promise.all([
-          easClient
-            .getBalance({ smartAccountAddress: user!.address })
-            .then((response) => response),
-          easClient.getTransfers(user!.address),
-        ]);
-
-        const balances = balanceResult.data.tokens;
-        if (balances.length === 0) {
-          setBalance(0);
-          await StorageService.setItem(AUTH_STORAGE_KEYS.CACHED_BALANCE, "0");
-        } else {
-          const usdcAddress = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS;
-          const usdcBalance = balances.find(
-            (balance: any) => balance.token_address === usdcAddress
-          );
-          if (usdcBalance) {
-            const newBalance = parseFloat(
-              parseFloat(usdcBalance.amount_decimal).toFixed(2)
-            );
-            setBalance(newBalance);
-            await StorageService.setItem(
-              AUTH_STORAGE_KEYS.CACHED_BALANCE,
-              newBalance.toString()
-            );
-          }
-        }
-
-        if (transfersResult.data) {
-          setTransfers(transfersResult.data);
-        }
-      }
+      const mapped = transfersResult.transfers.map(mapTransferRowToLegacy);
+      setTransfers(mapped as TransferResponse);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to fetch wallet data"
@@ -202,9 +136,9 @@ export function useWalletData(accountInfo: AccountInfo | null) {
     } finally {
       setIsLoading(false);
     }
-  }, [newStack, user, wallet]);
+  }, [user, wallet]);
 
-  // Load cached balance on mount
+  // Load cached balance on mount.
   useEffect(() => {
     const loadCachedBalance = async () => {
       const cachedBalance = (await StorageService.getItem(

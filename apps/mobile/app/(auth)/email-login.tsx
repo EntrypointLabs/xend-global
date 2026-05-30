@@ -69,9 +69,10 @@ function EmailLoginScreen() {
       const result = await verifyOtpAsync(code);
       await completeLogin(result.data, emailInput.trim(), result.token);
 
-      // Passkey check — mandatory before proceeding to dashboard
-      const accountAddress =
-        result.data?.smart_account_address || result.data?.address;
+      // Passkey check — mandatory before proceeding to dashboard.
+      // Phase 5: under Privy, smart_account_address is the embedded
+      // Solana wallet address; the legacy `result.data?.address` is gone.
+      const accountAddress = result.data?.smart_account_address;
       if (accountAddress) {
         const hasExisting = await checkPasskeys(accountAddress);
         if (hasExisting) {

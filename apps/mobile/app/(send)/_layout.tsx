@@ -58,13 +58,12 @@ export default function SendLayout() {
           headerTitle: () => getHeaderTitle("Confirm Crypto Transfer"),
         }}
       />
-      <Stack.Screen
-        name="fiatconfirm"
-        options={{
-          title: "",
-          headerTitle: () => getHeaderTitle("Confirm Fiat Transfer"),
-        }}
-      />
+      {/*
+        fiatconfirm.tsx deleted in Phase 5 with the rest of the Grid-shaped
+        fiat off-ramp; virtual-account on-ramp is out of v1 scope per
+        PROJECT.md. fiatamount.tsx kept but its "Continue" handler now leads
+        to a dead route until the on-ramp swarm wires a replacement.
+      */}
     </Stack>
   );
 }

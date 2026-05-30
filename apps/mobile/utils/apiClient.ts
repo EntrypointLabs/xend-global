@@ -2,12 +2,6 @@ import { z } from "zod";
 
 import { handleError, ErrorCode } from "@/utils/errors";
 import { AuthStorage } from "@/utils/storage/authStorage";
-import {
-  SessionSecrets,
-  GetPasskeysResponse,
-  CreatePasskeySessionResponse,
-  MetaInfo,
-} from "@sqds/grid-react-native";
 
 /**
  * /auth/exchange request + response. Mirrors `ExchangeRequestSchema` and
@@ -229,57 +223,8 @@ class BackendClient {
     }
   }
 
-  async authenticate(email: string) {
-    return this.request<any>("/auth", {
-      method: "POST",
-      body: JSON.stringify({ email }),
-    });
-  }
-
-  async register(email: string) {
-    return this.request<any>("/register", {
-      method: "POST",
-      body: JSON.stringify({ email }),
-    });
-  }
-
-  async verifyOtp(request: {
-    otpCode: string;
-    sessionSecrets: SessionSecrets;
-    user: any;
-  }) {
-    return this.request<any>("/verify-otp", {
-      method: "POST",
-      body: JSON.stringify(request),
-    });
-  }
-
-  async verifyOtpAndCreateAccount(request: {
-    otpCode: string;
-    sessionSecrets: SessionSecrets;
-    user: any;
-  }) {
-    return this.request<any>("/verify-otp-and-create-account", {
-      method: "POST",
-      body: JSON.stringify(request),
-    });
-  }
-  async checkPasskeys(accountAddress: string) {
-    return this.request<GetPasskeysResponse>("/passkeys/check", {
-      method: "POST",
-      body: JSON.stringify({ accountAddress }),
-    });
-  }
-
-  async createPasskeySession(accountAddress: string, metaInfo: MetaInfo) {
-    return this.request<CreatePasskeySessionResponse>("/passkeys/session", {
-      method: "POST",
-      body: JSON.stringify({ accountAddress, metaInfo }),
-    });
-  }
-
   /**
-   * Exchange a Privy ID token for our backend JWT (Phase 4 new-stack path).
+   * Exchange a Privy ID token for our backend JWT.
    *
    * Calls `POST /auth/exchange` on the NestJS backend; the backend verifies
    * the token against Privy's JWKS, upserts the `users` + `smart_accounts`

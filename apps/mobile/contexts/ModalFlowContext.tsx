@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
-import { KycStatus, KycLinkIds, KycLinkId } from "@/types/Kyc";
+import { KycStatus } from "@/types/Kyc";
 import { EasClient } from "@/utils/easClient";
 import { useAuth } from "./AuthContext";
 import { Currency } from "@/types/Transaction";
@@ -103,24 +103,15 @@ export function ModalFlowProvider({ children }: { children: React.ReactNode }) {
     setIsSendModalVisible(false);
   }, []);
 
-  // Data fetching methods
+  // Phase 5: virtual-account on-ramp is out of v1 scope per PROJECT.md;
+  // the Grid `/get-virtual-accounts` BFF route was deleted. This is a no-op
+  // stub kept on the context so the KYC flow (which calls fetchBankDetails
+  // post-approval in useKyc.ts) compiles. The KYC swarm replaces this with
+  // a Sumsub-backed equivalent if virtual accounts come back into scope.
   const fetchBankDetails = useCallback(async () => {
-    if (!user?.address) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const easClient = new EasClient();
-      const response = await easClient.getVirtualAccounts(user.address);
-      setBankAccountDetails(response.data);
-    } catch (err) {
-      setError("Failed to fetch bank details");
-      console.error("Error fetching bank details:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user?.address]);
+    if (!user) return;
+    setBankAccountDetails(null);
+  }, [user]);
 
   const fetchKycStatus = useCallback(async () => {
     if (!user?.address || !user?.grid_user_id) return;
@@ -164,7 +155,7 @@ export function ModalFlowProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.address, user?.grid_user_id]);
+  }, [user]);
 
   const value = {
     // Modal visibility states
