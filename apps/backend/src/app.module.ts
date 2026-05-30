@@ -16,6 +16,9 @@ import { KycModule } from './kyc/kyc.module';
 // Phase 1: new transfer module (prepare/submit/list) mounted at
 // /transfers/*. Legacy TransactionsModule stays alongside.
 import { TransferModule } from './transfer/transfer.module';
+// Phase 2: RPC tailer (webhook receiver + reconciler) lives here.
+// Owns POST /webhooks/helius and the 30s ReconcilerService cron tick.
+import { ActivityModule } from './activity/activity.module';
 
 @Module({
   imports: [
@@ -29,6 +32,7 @@ import { TransferModule } from './transfer/transfer.module';
     SolanaModule,
     KycModule,
     TransferModule,
+    ActivityModule,
   ],
   controllers: [AppController],
   providers: [AppService],
