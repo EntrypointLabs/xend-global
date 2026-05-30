@@ -20,11 +20,14 @@ export class WalletsService {
 
     if (!account) throw new NotFoundException('Wallet not found');
 
-    const gridAccount = await this.grid.getAccount(account.gridAccountId);
+    const gridAccount = await this.grid.getAccount(account.walletAddress);
 
     return {
       id: account.id,
-      gridAccountId: account.gridAccountId,
+      // Legacy field name kept for the mobile app pre-Phase-4 cutover.
+      // New endpoints return `walletAddress` directly per spec §5.3.
+      gridAccountId: account.walletAddress,
+      walletAddress: account.walletAddress,
       ...gridAccount.data,
     };
   }
@@ -38,7 +41,7 @@ export class WalletsService {
 
     if (!account) throw new NotFoundException('Wallet not found');
 
-    const balances = await this.grid.getBalances(account.gridAccountId);
+    const balances = await this.grid.getBalances(account.walletAddress);
     return balances.data;
   }
 }

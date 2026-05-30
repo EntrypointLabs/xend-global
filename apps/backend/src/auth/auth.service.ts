@@ -122,19 +122,25 @@ export class AuthService {
     const existingAccount = await this.db.client
       .select()
       .from(smartAccounts)
-      .where(eq(smartAccounts.gridAccountId, address))
+      .where(eq(smartAccounts.walletAddress, address))
       .limit(1);
 
     if (existingAccount.length > 0) {
       // Already registered — just return a JWT
       const token = this.jwt.sign({
         sub: existingAccount[0].userId,
-        gridAccountId: address,
+        walletAddress: address,
       });
       return { ...gridResponse, token };
     }
 
-    // First time — persist user + smart account
+    // First time — persist user + smart account.
+    //
+    // Phase 1 schema requires provider_user_id (UNIQUE NOT NULL). For
+    // the Grid-shaped flow we synthesize one as `grid:<walletAddress>`
+    // so the column has a value; Phase 4 will replace this whole code
+    // path with a Privy ID-token exchange (/auth/exchange) that
+    // populates provider_user_id with the real Privy DID.
     const email = dto.user?.email ?? '';
     const [user] = await this.db.client
       .insert(users)
@@ -143,10 +149,12 @@ export class AuthService {
 
     await this.db.client.insert(smartAccounts).values({
       userId: user.id,
-      gridAccountId: address,
+      walletAddress: address,
+      provider: 'privy',
+      providerUserId: `grid:${address}`,
     });
 
-    const token = this.jwt.sign({ sub: user.id, gridAccountId: address });
+    const token = this.jwt.sign({ sub: user.id, walletAddress: address });
 
     return { ...gridResponse, token };
   }
@@ -184,14 +192,14 @@ export class AuthService {
     const [smartAccount] = await this.db.client
       .select()
       .from(smartAccounts)
-      .where(eq(smartAccounts.gridAccountId, address))
+      .where(eq(smartAccounts.walletAddress, address))
       .limit(1);
 
     if (!smartAccount) throw new UnauthorizedException('Account not found');
 
     const token = this.jwt.sign({
       sub: smartAccount.userId,
-      gridAccountId: address,
+      walletAddress: address,
     });
 
     return { ...gridResponse, token };

@@ -5,7 +5,7 @@ import { TransactionsService } from './transactions.service';
 import { type SendTransactionDto } from './types';
 
 interface AuthenticatedRequest extends Request {
-  user: { userId: string; gridAccountId: string };
+  user: { userId: string; walletAddress: string };
 }
 
 @Controller('transactions')

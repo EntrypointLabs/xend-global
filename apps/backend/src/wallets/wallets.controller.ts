@@ -4,7 +4,7 @@ import { Request } from 'express';
 import { WalletsService } from './wallets.service';
 
 interface AuthenticatedRequest extends Request {
-  user: { userId: string; gridAccountId: string };
+  user: { userId: string; walletAddress: string };
 }
 
 @Controller('wallets')
