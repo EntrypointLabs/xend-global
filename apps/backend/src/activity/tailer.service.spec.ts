@@ -252,7 +252,16 @@ function makeController(opts: {
   );
   const tailer = new TailerService(db);
   const parser = new EventParser();
-  const controller = new WebhookController(db, tailer, parser, solana);
+  const reconciler = {
+    recordWebhookFinalization: jest.fn(),
+  } as unknown as import('./reconciler.service').ReconcilerService;
+  const controller = new WebhookController(
+    db,
+    tailer,
+    parser,
+    solana,
+    reconciler,
+  );
   return { controller, calls, solana };
 }
 

@@ -16,6 +16,7 @@ import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import { EventParser } from './event-parser';
 import type { HeliusWebhookBody } from './event-parser';
+import { ReconcilerService } from './reconciler.service';
 import { TailerService } from './tailer.service';
 
 /**
@@ -63,6 +64,7 @@ export class WebhookController {
     private readonly tailer: TailerService,
     private readonly parser: EventParser,
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
+    private readonly reconciler: ReconcilerService,
   ) {}
 
   @Post('helius')
@@ -148,6 +150,10 @@ export class WebhookController {
         this.logger.log(
           `tailer.webhook.latency_ms sig=${evt.signature} direction=${dir} latency_ms=${latency}`,
         );
+        // Bump the denominator for the rolling
+        // tailer.reconcile.percent_of_confirmations metric so the
+        // reconciler's % calculation reflects webhook-led finalizations.
+        this.reconciler.recordWebhookFinalization();
         processed++;
       } catch (err) {
         // Per-event errors should not poison the whole batch; log and
