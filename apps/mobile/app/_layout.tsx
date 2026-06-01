@@ -7,8 +7,6 @@ import "react-native-reanimated";
 import "@/global.css";
 import "@/utils/cssInteropSetup";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { ThemeProvider } from "@react-navigation/native";
-import { lightTheme, darkTheme } from "@/constants/Theme";
 import { ScreenThemeProvider } from "@/contexts/ScreenThemeContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useTheme } from "@/hooks/useTheme";
@@ -93,17 +91,19 @@ function AuthLayout() {
     return <Redirect href="/(tabs)" withAnchor />;
   }
 
+  // Theming is driven by NativeWind (ThemedRoot's `dark` class) and
+  // ScreenThemeProvider. SDK 56's expo-router dropped the react-navigation
+  // compat layer, so the former `@react-navigation/native` ThemeProvider was
+  // removed; the navigator inherits light/dark automatically from the OS.
   return (
-    <ThemeProvider value={colorScheme === "dark" ? darkTheme : lightTheme}>
-      <ScreenThemeProvider>
-        <ModalFlowProvider>
-          <ToastProvider>
-            <Slot />
-            <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-          </ToastProvider>
-        </ModalFlowProvider>
-      </ScreenThemeProvider>
-    </ThemeProvider>
+    <ScreenThemeProvider>
+      <ModalFlowProvider>
+        <ToastProvider>
+          <Slot />
+          <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+        </ToastProvider>
+      </ModalFlowProvider>
+    </ScreenThemeProvider>
   );
 }
 
