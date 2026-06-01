@@ -38,6 +38,7 @@ export function useKyc(): UseKycReturn {
   // Initialize status from storage when hook mounts
   useEffect(() => {
     checkStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startKyc = useCallback(

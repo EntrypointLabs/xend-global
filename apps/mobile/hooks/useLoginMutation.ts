@@ -79,7 +79,6 @@ export function useLoginMutation() {
     sendOtpError: sendOtpMutation.error,
     verifyError: verifyOtpMutation.error,
     otpSent: sendOtpMutation.isSuccess,
-    // eslint-disable-next-line react-hooks/refs
     email: emailRef.current,
     resetSendOtp: sendOtpMutation.reset,
     resetVerify: verifyOtpMutation.reset,

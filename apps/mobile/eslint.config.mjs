@@ -20,4 +20,22 @@ export default defineConfig([
   {
     ignores: ["node_modules/", ".expo/", "dist/", "android/", "ios/"],
   },
+  {
+    // eslint-config-expo 56 enables the React Compiler diagnostic rules from
+    // eslint-plugin-react-hooks. This codebase predates React Compiler and is
+    // not adopting it yet, so these rules fire on intentional, idiomatic
+    // patterns rather than real defects:
+    //   - immutability: Reanimated shared-value `.value =` writes (the
+    //     documented REANIMATED-EXCEPTION pattern, see ADR-0004).
+    //   - refs: lazy `useRef(PanResponder.create(...))` gesture init and
+    //     toast/animation refs read in render-adjacent code.
+    //   - set-state-in-effect: fetch/initialise-on-mount effects.
+    // The classic rules-of-hooks and exhaustive-deps stay enforced. Re-enable
+    // these when/if a deliberate React Compiler adoption lands.
+    rules: {
+      "react-hooks/immutability": "off",
+      "react-hooks/refs": "off",
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
 ]);

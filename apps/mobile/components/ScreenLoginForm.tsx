@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { ThemedTextInput, ThemedButton } from "@/components/ui/molecules";
 import { Spacing } from "@/constants/Spacing";
-import { useScreenTheme } from "@/contexts/ScreenThemeContext";
 
 interface ScreenLoginFormProps {
   onSubmit: (email: string) => void;

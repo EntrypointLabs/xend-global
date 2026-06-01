@@ -1,8 +1,5 @@
 import { AUTH_STORAGE_KEYS } from "./auth";
-import {
-  ExternalAccountMapping,
-  ExternalAccountStorage,
-} from "@/types/Transaction";
+import { ExternalAccountStorage } from "@/types/Transaction";
 import { StorageService } from "./storage";
 import * as Sentry from "@sentry/react-native";
 

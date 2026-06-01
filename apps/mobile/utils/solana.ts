@@ -10,7 +10,7 @@ export function isPublicKey(address: string): boolean {
   try {
     new PublicKey(address);
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -19,7 +19,7 @@ export async function isSnsName(name: string): Promise<boolean> {
   try {
     const resolvedSns = await resolveSnsName(name);
     return resolvedSns !== null;
-  } catch (error) {
+  } catch {
     return false;
   }
 }

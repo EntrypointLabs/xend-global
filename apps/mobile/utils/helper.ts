@@ -1,7 +1,6 @@
-import { KycLinkIds } from "@/types/Kyc";
+import { KycLinkIds, KycLinkId } from "@/types/Kyc";
 import * as SecureStore from "expo-secure-store";
 import { AUTH_STORAGE_KEYS } from "./auth";
-import { KycLinkId } from "@/types/Kyc";
 import * as Sentry from "@sentry/react-native";
 
 /**

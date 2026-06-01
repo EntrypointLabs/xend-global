@@ -44,7 +44,7 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
     const snapPoints = useMemo(() => ["94%"], []);
     const scannerRef = useRef<BottomSheetModal>(null);
 
-    const [step, setStep] = useState<Step>("Recipient");
+    const [, setStep] = useState<Step>("Recipient");
     const [recipient, setRecipient] = useState<string>("");
 
     const translateX = useSharedValue(0);
@@ -73,7 +73,7 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
           }, 300);
         }
       },
-      [onClose]
+      [onClose, translateX]
     );
 
     const handleNext = (selectedRecipient: string) => {
