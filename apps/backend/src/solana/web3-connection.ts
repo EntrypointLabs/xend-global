@@ -17,18 +17,13 @@ import type { WalletAddress } from '../wallet/wallet-provider.interface';
  *
  * Both adapters are thin wrappers around `@solana/web3.js` Connection
  * objects — Helius and the public mainnet RPC speak the same JSON-RPC
- * dialect (Helius adds extensions like enhanced webhooks which we use
- * in Phase 2, not here). Keeping the per-method bodies in one place
- * removes drift between primary and fallback, so a fix in one place
- * fixes both.
- *
- * Hard rule (from PLAN.md): use `Connection`, never raw fetch.
+ * dialect. Keeping the per-method bodies in one place removes drift
+ * between primary and fallback, so a fix in one place fixes both. Use
+ * `Connection`, never raw fetch.
  */
 
 /** SPL Token Program ID. Pinned here to avoid a runtime dep on
- *  `@solana/spl-token` for Phase 1 (we only need balance reads; the
- *  prepare path that needs `createAssociatedTokenAccountInstruction`
- *  lives in Phase 1 Task 4, separate executor). */
+ *  `@solana/spl-token` (we only need balance reads). */
 export const TOKEN_PROGRAM_ID = new PublicKey(
   'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
 );
@@ -55,8 +50,8 @@ export async function getTokenBalancesViaConnection(
 ): Promise<TokenBalance[]> {
   const ownerPk = new PublicKey(owner);
   // Both classic SPL Token and Token-2022 can hold balances for the
-  // wallet; we query both program IDs and concatenate so the Balance
-  // view sums correctly per spec §5.5.
+  // wallet; query both program IDs and concatenate so the Balance view
+  // sums correctly.
   const [classic, t2022] = await Promise.all([
     conn.getParsedTokenAccountsByOwner(
       ownerPk,
@@ -108,8 +103,8 @@ export async function sendRawTransactionViaConnection(
   // is guaranteed by Solana itself.
   const raw = Buffer.from(signedTxBase64, 'base64');
   return await conn.sendRawTransaction(raw, {
-    // We rely on the prepare/submit split for retries; skip the SDK's
-    // preflight to keep the latency budget tight (spec §10 perf budget).
+    // The prepare/submit split owns retries, so keep the SDK's own retry
+    // count at zero to keep the latency budget tight.
     skipPreflight: false,
     maxRetries: 0,
   });
@@ -134,19 +129,13 @@ export async function accountExistsViaConnection(
  * `getParsedTransaction`. Filters to SPL token transfer instructions
  * for the wallet's ATAs.
  *
- * Cluster-agnostic: works on any standard Solana RPC because we use
- * the JSON-RPC parsed shape, not Helius's enhanced-transactions
- * endpoint. (Helius enhanced-transactions returns identical data for
- * the tokenTransfers field; the parsed-RPC path is simpler and gives
- * us automatic public-RPC fallback.)
+ * Cluster-agnostic: works on any standard Solana RPC because it uses the
+ * JSON-RPC parsed shape, not Helius's enhanced-transactions endpoint,
+ * which gives automatic public-RPC fallback.
  *
- * Used by:
- *   - boot-time replay in ReconcilerService.onModuleInit (per wallet)
- *   - the dropped-webhook safety net (called only if reconciler tick
- *     surfaces excessive late-confirmations)
- *
- * NOT used on the webhook hot path — the webhook delivers the same
- * data with sub-second latency.
+ * Used by the boot-time replay in ReconcilerService.onModuleInit and as
+ * the dropped-webhook safety net. NOT used on the webhook hot path — the
+ * webhook delivers the same data with sub-second latency.
  */
 export async function* streamConfirmedTransfersViaConnection(
   conn: Connection,

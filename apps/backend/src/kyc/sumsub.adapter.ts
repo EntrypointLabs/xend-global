@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/require-await, @typescript-eslint/no-unused-vars -- unimplemented stub: every method throws and keeps its interface params until the real adapter lands */
 import { Injectable, NotImplementedException } from '@nestjs/common';
 import {
   ApplicantId,
@@ -8,18 +9,16 @@ import {
 } from './kyc-provider.interface';
 
 /**
- * Sumsub KYC provider adapter — STUB.
- *
- * Real implementation lands in Phase 3 against the Sumsub server SDK:
+ * Sumsub KYC provider adapter — STUB. Every method throws
+ * NotImplementedException. The real implementation maps onto the Sumsub
+ * server SDK:
  *   - createApplicant: POST /resources/applicants
  *   - getApplicant: GET /resources/applicants/{id}/status
- *   - issueAccessToken: POST /resources/accessTokens (short-lived,
- *     for the WebSDK or native SDK on the mobile side)
+ *   - issueAccessToken: POST /resources/accessTokens (short-lived, for
+ *     the WebSDK or native SDK on the mobile side)
  *   - verifyWebhookSignature: HMAC-SHA256 against SUMSUB_WEBHOOK_SECRET
  *   - parseWebhookEvent: maps Sumsub reviewStatus + reviewResult into our
  *     KycStatus enum
- *
- * Every method throws NotImplementedException with a `(Phase 3)` suffix.
  */
 @Injectable()
 export class SumsubAdapter implements KycProvider {
@@ -28,19 +27,19 @@ export class SumsubAdapter implements KycProvider {
     email: string;
   }): Promise<KycApplicant> {
     throw new NotImplementedException(
-      'SumsubAdapter.createApplicant (Phase 3)',
+      'SumsubAdapter.createApplicant is not implemented',
     );
   }
 
   async getApplicant(_applicantId: ApplicantId): Promise<KycApplicant> {
-    throw new NotImplementedException('SumsubAdapter.getApplicant (Phase 3)');
+    throw new NotImplementedException(
+      'SumsubAdapter.getApplicant is not implemented',
+    );
   }
 
-  async issueAccessToken(
-    _applicantId: ApplicantId,
-  ): Promise<KycAccessToken> {
+  async issueAccessToken(_applicantId: ApplicantId): Promise<KycAccessToken> {
     throw new NotImplementedException(
-      'SumsubAdapter.issueAccessToken (Phase 3)',
+      'SumsubAdapter.issueAccessToken is not implemented',
     );
   }
 
@@ -49,7 +48,7 @@ export class SumsubAdapter implements KycProvider {
     _headers: Record<string, string>,
   ): void {
     throw new NotImplementedException(
-      'SumsubAdapter.verifyWebhookSignature (Phase 3)',
+      'SumsubAdapter.verifyWebhookSignature is not implemented',
     );
   }
 
@@ -61,7 +60,7 @@ export class SumsubAdapter implements KycProvider {
     decidedAt: Date | null;
   } {
     throw new NotImplementedException(
-      'SumsubAdapter.parseWebhookEvent (Phase 3)',
+      'SumsubAdapter.parseWebhookEvent is not implemented',
     );
   }
 }

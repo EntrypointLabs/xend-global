@@ -24,9 +24,7 @@ export const ExchangeResponseSchema = z.object({
 });
 export type ExchangeResponse = z.infer<typeof ExchangeResponseSchema>;
 
-// ── Wallet (Phase 4 new-stack) ────────────────────────────────────────
 // Mirrors apps/backend/src/wallets/dtos.ts.
-
 export const WalletResponseSchema = z.object({
   walletAddress: z.string(),
   provider: z.literal("privy"),
@@ -48,9 +46,7 @@ export const BalancesResponseSchema = z.object({
 });
 export type BalancesResponse = z.infer<typeof BalancesResponseSchema>;
 
-// ── Transfers (Phase 4 new-stack) ─────────────────────────────────────
 // Mirrors apps/backend/src/transfer/dtos.ts.
-
 export const PrepareTransferRequestSchema = z.object({
   toAddress: z.string(),
   mint: z.string(),
@@ -151,11 +147,7 @@ class BackendClient {
     try {
       const url = `${this.baseUrl}${endpoint}`;
 
-      // Attach Bearer JWT from AuthStorage when `auth: true` is set
-      // (default for every new-stack endpoint). The legacy Grid endpoints
-      // (`/auth`, `/verify-otp`, `/passkeys/*`) opt out by omitting the flag
-      // because they pre-date the JWT layer and their auth model is the
-      // Grid SDK session, not our Bearer token.
+      // Attach the Bearer JWT from AuthStorage only when `auth: true` is set.
       const authHeaders: Record<string, string> = {};
       if (options.auth) {
         const token = await AuthStorage.getToken();
@@ -186,12 +178,11 @@ class BackendClient {
           .json()
           .catch(() => console.error("Error parsing response:", response));
 
-        // 401 on an authed endpoint → token is invalid or expired. The
-        // Privy session is the source of truth and may auto-refresh; we
-        // clear the local JWT so the next app start re-exchanges. We do
-        // NOT force-logout here because (a) the dispatch §9 ban on
-        // forced logouts during the confirm flow, and (b) screens decide
-        // their own UX response (toast / retry / redirect).
+        // 401 on an authed endpoint → token is invalid or expired. Clear the
+        // local JWT so the next app start re-exchanges against the Privy
+        // session (which may have auto-refreshed). Do NOT force-logout here:
+        // it would break the confirm flow, and screens decide their own UX
+        // response (toast / retry / redirect).
         if (response.status === 401 && options.auth) {
           await AuthStorage.saveToken("").catch(() => {});
         }
@@ -245,8 +236,6 @@ class BackendClient {
     return ExchangeResponseSchema.parse(raw);
   }
 
-  // ── Wallet (Phase 4 new-stack) ──────────────────────────────────────
-
   /** GET /wallet/me — returns the authenticated user's Privy embedded
    *  Solana wallet address. */
   async getWallet(): Promise<WalletResponse> {
@@ -257,10 +246,9 @@ class BackendClient {
     return WalletResponseSchema.parse(raw);
   }
 
-  /** GET /wallet/me/balances — returns full SPL token balance list. The
-   *  client filters for headline currencies (USDC + USDT) per spec §5.5;
-   *  the full list is preserved so a future Investments screen can list
-   *  every mint. */
+  /** GET /wallet/me/balances — returns the full SPL token balance list. The
+   *  client filters for headline currencies (USDC + USDT); the full list is
+   *  preserved so a future Investments screen can list every mint. */
   async getBalances(): Promise<BalancesResponse> {
     const raw = await this.request<unknown>("/wallet/me/balances", {
       method: "GET",
@@ -268,8 +256,6 @@ class BackendClient {
     });
     return BalancesResponseSchema.parse(raw);
   }
-
-  // ── Transfers (Phase 4 new-stack) ───────────────────────────────────
 
   /** POST /transfers/prepare — backend builds an unsigned v0 transaction
    *  and returns its base64 form alongside an `intentId`. The mobile app

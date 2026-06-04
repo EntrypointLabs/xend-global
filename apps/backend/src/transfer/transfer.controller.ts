@@ -33,12 +33,9 @@ interface AuthenticatedRequest extends Request {
 }
 
 /**
- * Transfer controller — exposes the Phase 1 prepare/submit/list
- * endpoints at /transfers/*. The legacy /transactions/* controller
- * stays mounted alongside until Phase 5 (mobile still uses it until
- * Phase 4 cutover).
+ * Exposes the prepare/submit/list endpoints at /transfers/*.
  *
- * Error mapping per PLAN.md "Error codes":
+ * Error mapping:
  *   InvalidRecipientError -> 400 INVALID_RECIPIENT
  *   UnsupportedMintError  -> 400 UNSUPPORTED_MINT
  *   IntentExpiredError    -> 410 INTENT_EXPIRED
@@ -90,9 +87,8 @@ export class TransferController {
   }
 
   /**
-   * Re-throw unknown errors untouched so Nest's default exception
-   * filter handles them. Known typed errors are translated to the
-   * HTTP shape spec'd in PLAN.md.
+   * Re-throw unknown errors untouched so Nest's default exception filter
+   * handles them. Known typed errors are translated to their HTTP shape.
    */
   private mapServiceError(err: unknown): never {
     if (err instanceof InvalidRecipientError) {

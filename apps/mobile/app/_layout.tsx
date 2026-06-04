@@ -46,10 +46,8 @@ import LoadingScreen from "@/components/ui/layout/LoadingScreen";
 
 const queryClient = new QueryClient();
 
-// Sentry for error tracking — production only. Fetches the Sentry config
-// directly from the in-app `/api/sentry` BFF route (the one BFF route that
-// survived Phase 5 alongside the KYC carve-out). EasClient is no longer a
-// dependency here.
+// Error tracking, production only. Config is fetched from the `/api/sentry`
+// route so it can be rotated without an app rebuild.
 if (process.env.EXPO_PUBLIC_GRID_ENV === "production") {
   const initSentry = async () => {
     try {
@@ -92,9 +90,7 @@ function AuthLayout() {
   }
 
   // Theming is driven by NativeWind (ThemedRoot's `dark` class) and
-  // ScreenThemeProvider. SDK 56's expo-router dropped the react-navigation
-  // compat layer, so the former `@react-navigation/native` ThemeProvider was
-  // removed; the navigator inherits light/dark automatically from the OS.
+  // ScreenThemeProvider; the navigator inherits light/dark from the OS.
   return (
     <ScreenThemeProvider>
       <ModalFlowProvider>
@@ -168,10 +164,8 @@ function RootLayout() {
 }
 
 /**
- * Wraps the app in `<PrivyProvider>`. Phase 5 removed the dual-stack
- * placeholder fallback; Privy is now the only auth path and requires
- * `EXPO_PUBLIC_PRIVY_APP_ID`. The Solana embedded-wallet config matches
- * the Phase 1 spike (`spike/privy-solana/App.tsx`).
+ * Wraps the app in `<PrivyProvider>`. Privy is the only auth path and requires
+ * `EXPO_PUBLIC_PRIVY_APP_ID`; a Solana embedded wallet is created on login.
  */
 function PrivyAppShell({ children }: { children: React.ReactNode }) {
   const configuredAppId = process.env.EXPO_PUBLIC_PRIVY_APP_ID;

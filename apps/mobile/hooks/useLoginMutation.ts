@@ -9,16 +9,13 @@ import {
 import { apiClient } from "@/utils/apiClient";
 
 /**
- * Login mutation hook — Privy only.
- *
- * Phase 5: the legacy Grid branch (apiClient.authenticate/register/
- * verifyOtp + Grid session secrets) was deleted. Privy is the only path.
+ * Privy email-OTP login mutation hook.
  *
  * Returns:
  *   - `sendOtpAsync(email): Promise<{ data: { email } }>`
  *   - `verifyOtpAsync(code): Promise<{ data: any; token: string }>`
- *     where `data` carries `smart_account_address` so KYC screens that read
- *     the legacy field name keep working until the KYC swarm runs.
+ *     where `data` carries `smart_account_address` for KYC screens that read
+ *     that field.
  */
 export function useLoginMutation() {
   const [isNewUser, setIsNewUser] = useState(false);
@@ -59,8 +56,7 @@ export function useLoginMutation() {
         id: exchange.user.id,
         email: exchange.user.email,
         walletAddress: exchange.user.walletAddress,
-        // Keep the legacy field name alive for the screen's existing
-        // post-login passkey check (now a no-op stub under Privy).
+        // The post-login passkey check reads smart_account_address.
         smart_account_address: exchange.user.walletAddress,
         privyWalletAddress: embeddedSolana.wallets?.[0]?.address ?? null,
       };

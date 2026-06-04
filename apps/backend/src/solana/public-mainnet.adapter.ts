@@ -23,28 +23,22 @@ import {
 } from './web3-connection';
 
 /**
- * PublicMainnetAdapter — fallback SolanaRpc backed by the public
- * mainnet endpoint (default https://api.mainnet-beta.solana.com).
+ * Fallback SolanaRpc backed by the public mainnet endpoint (default
+ * https://api.mainnet-beta.solana.com). Same `Connection`-based shape as
+ * HeliusAdapter; the only difference is the URL. The public endpoint is
+ * rate-limited, so this is FALLBACK ONLY and only for read paths.
  *
- * Same `Connection`-based shape as HeliusAdapter; the only difference
- * is the URL. The public endpoint is rate-limited, so this is FALLBACK
- * ONLY and only for read paths.
+ * `sendRawTransaction` is implemented for parity, but `FailoverSolanaRpc`
+ * deliberately does NOT call it on failover. See `failover-solana-rpc.ts`
+ * for the rationale.
  *
- * `sendRawTransaction` is implemented for parity, but
- * `FailoverSolanaRpc` deliberately does NOT call it on failover. See
- * `failover-solana-rpc.ts` for the rationale.
+ * `streamConfirmedTransfers` works against the public RPC via
+ * cluster-agnostic JSON-RPC, never depending on Helius's enhanced
+ * endpoint, so the reconciliation safety net survives a Helius outage.
  *
- * `streamConfirmedTransfers` works against the public RPC — we use
- * cluster-agnostic JSON-RPC `getSignaturesForAddress` +
- * `getParsedTransaction` and never depend on Helius's enhanced
- * endpoint. This means the reconciliation safety net survives a Helius
- * outage.
- *
- * The webhook control-plane helpers (`registerWebhookAddress`,
- * `unregisterWebhookAddress`, `verifyWebhookSignature`) are
- * Helius-only by design: there is no public-RPC webhook product to
- * fall back to. They throw NotImplementedException so any accidental
- * use surfaces loudly.
+ * The webhook control-plane helpers are Helius-only by design: there is
+ * no public-RPC webhook product to fall back to. They throw
+ * NotImplementedException so any accidental use surfaces loudly.
  */
 @Injectable()
 export class PublicMainnetAdapter implements SolanaRpc, OnModuleInit {

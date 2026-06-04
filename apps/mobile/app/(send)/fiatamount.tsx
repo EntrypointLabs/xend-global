@@ -72,7 +72,6 @@ export default function AmountScreen() {
     const ext = await getExternalAccountIds();
     ext?.accounts.forEach((account) => {
       if (account.label === "[object Object]") {
-        // Remove account with invalid label
         deleteAccount(account.grid_user_id, account.external_account_id);
       }
     });
@@ -85,19 +84,16 @@ export default function AmountScreen() {
 
   const handleKeyPress = (key: string) => {
     if (key === "backspace") {
-      // Remove the last character
       setAmount((prev) => (prev.length > 1 ? prev.slice(0, -1) : "0"));
     } else if (key === ".") {
-      // Only add decimal if it doesn't exist already
       if (!amount.includes(".")) {
         setAmount((prev) => prev + ".");
       }
     } else {
-      // Handle number keys
       if (amount === "0") {
         setAmount(key);
       } else {
-        // Limit to 2 decimal places
+        // Limit to 2 decimal places.
         const parts = amount.split(".");
         if (parts.length > 1 && parts[1].length >= 2) {
           return;
@@ -108,9 +104,7 @@ export default function AmountScreen() {
   };
 
   const handleExistingContinue = () => {
-    // The fiat off-ramp confirm screen (`/fiatconfirm`) was removed in Phase 5
-    // with the Grid-shaped BFF flow; the virtual-account on-ramp is out of v1
-    // scope. Surface a "coming soon" instead of navigating to a dead route.
+    // Fiat off-ramp is not yet available; the confirm route does not exist.
     showToast("Fiat transfers are coming soon");
   };
 
@@ -138,7 +132,6 @@ export default function AmountScreen() {
         handleError(ErrorCode.INVALID_NAME, true, true);
       }
 
-      // Validate the address
       try {
         Address.parse(address);
       } catch {
@@ -146,7 +139,6 @@ export default function AmountScreen() {
         handleError(ErrorCode.INVALID_ADDRESS, true, true);
       }
 
-      // Validate the bank account
       try {
         ACHBankAccount.parse({
           account_number: accountNumber,
@@ -168,10 +160,7 @@ export default function AmountScreen() {
       }
 
       if (!validationError) {
-        // Inputs validate, but the fiat off-ramp confirm screen
-        // (`/fiatconfirm`) was removed in Phase 5 and the virtual-account
-        // on-ramp is out of v1 scope. Surface a "coming soon" instead of
-        // navigating to a dead route.
+        // Fiat off-ramp is not yet available; the confirm route does not exist.
         showToast("Fiat transfers are coming soon");
       }
     }

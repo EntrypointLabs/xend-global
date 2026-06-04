@@ -20,40 +20,31 @@ import { ReconcilerService } from './reconciler.service';
 import { TailerService } from './tailer.service';
 
 /**
- * Kill-switch for the dropped-webhook devnet scenario (Phase 2 verify
- * scenario c). When `ACTIVITY_WEBHOOK_KILLSWITCH=1`, the receiver
- * acknowledges deliveries with `{ killSwitched: true, processed: 0 }`
- * without parsing, looking up wallets, or writing rows. Reconciler
- * remains the only confirmation path until the env var is cleared.
- *
- * Kept as an env var (not a feature-flag table) for a one-line
- * operator toggle — `unset ACTIVITY_WEBHOOK_KILLSWITCH && restart`.
+ * Kill-switch for dropping inbound webhooks. When
+ * `ACTIVITY_WEBHOOK_KILLSWITCH=1`, the receiver acknowledges deliveries
+ * with `{ killSwitched: true, processed: 0 }` without parsing, looking
+ * up wallets, or writing rows. The reconciler remains the only
+ * confirmation path until the env var is cleared. Kept as an env var
+ * (not a feature-flag table) for a one-line operator toggle.
  */
 function killSwitchActive(): boolean {
   return process.env.ACTIVITY_WEBHOOK_KILLSWITCH === '1';
 }
 
 /**
- * WebhookController — POST /webhooks/helius.
+ * POST /webhooks/helius.
  *
  * Flow:
  *   1. Verify HMAC via SolanaRpc.verifyWebhookSignature(rawBody, sig).
- *      Bad sig → 401 INVALID_WEBHOOK_SIGNATURE (the adapter throws
- *      HttpException with that code; Nest serializes it).
+ *      Bad sig → 401 INVALID_WEBHOOK_SIGNATURE.
  *   2. EventParser.parseDecoded(body) → ConfirmedTransferEvent[].
  *   3. For each event: match fromAddress OR toAddress against owned
  *      `smart_accounts.wallet_address`. Skip silently if neither.
  *   4. For matches: TailerService.upsertConfirmedTransfer.
  *   5. Return 200 with `{ processed, skipped }`.
  *
- * Hot path metrics (structured logs the verifier can grep):
- *   - `tailer.webhook.received` once per delivery (count of events).
- *   - `tailer.webhook.latency_ms` once per matched event (block →
- *     row update).
- *
- * Helius retries on non-2xx. The receiver must therefore be
- * idempotent under retry; the TailerService's ON CONFLICT clause
- * provides that.
+ * Helius retries on non-2xx, so the receiver must be idempotent under
+ * retry; the TailerService's ON CONFLICT clause provides that.
  */
 @Controller('webhooks')
 export class WebhookController {
@@ -96,9 +87,8 @@ export class WebhookController {
       (req as Request & { rawBody?: Buffer }).rawBody ??
       Buffer.from(JSON.stringify(body), 'utf-8');
 
-    // verifyWebhookSignature throws HttpException(401) on mismatch.
-    // Nest's exception filter serializes that; no DB writes happen
-    // before this line.
+    // Throws HttpException(401) on mismatch; no DB writes happen before
+    // this line.
     this.solana.verifyWebhookSignature(rawBody, signature);
 
     const events = this.parser.parseDecoded(body);
@@ -150,14 +140,10 @@ export class WebhookController {
         this.logger.log(
           `tailer.webhook.latency_ms sig=${evt.signature} direction=${dir} latency_ms=${latency}`,
         );
-        // Bump the denominator for the rolling
-        // tailer.reconcile.percent_of_confirmations metric so the
-        // reconciler's % calculation reflects webhook-led finalizations.
         this.reconciler.recordWebhookFinalization();
         processed++;
       } catch (err) {
-        // Per-event errors should not poison the whole batch; log and
-        // continue so the rest of the delivery succeeds.
+        // A per-event error must not poison the whole batch.
         this.logger.error(
           `Failed to upsert transfer sig=${evt.signature}: ${(err as Error).message}`,
           err,

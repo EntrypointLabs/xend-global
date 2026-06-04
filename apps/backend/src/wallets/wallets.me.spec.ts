@@ -5,26 +5,15 @@ import type { SolanaRpc, TokenBalance } from '../solana/solana-rpc.interface';
 import { smartAccounts } from '../db/schema';
 
 /**
- * Integration tests for the Phase 1 WalletsService.getMe and
- * getMeBalances methods (mounted at /wallet/me and
- * /wallet/me/balances).
+ * Integration tests for WalletsService.getMe and getMeBalances (mounted
+ * at /wallet/me and /wallet/me/balances).
  *
- * The DB is a minimal in-memory stub (same pattern as
- * auth.exchange.spec.ts): each test seeds at most one row, and
- * drizzle's opaque `eq()` predicates are treated as match-all by the
- * fake. The SolanaRpc seam is stubbed per-test to exercise the
- * Helius-vs-public-fallback transparency at the FailoverSolanaRpc
- * boundary (FailoverSolanaRpc's own fallback logic is unit-tested in
- * failover-solana-rpc.spec.ts; here we assert the consuming service
- * sees a single coherent SolanaRpc and never depends on which adapter
- * served the read).
- *
- * Test plan rows from PLAN.md covered here:
- *   - wallet/me/balances: returns full mint list (multi-mint, no filter)
- *   - wallet/me/balances: empty when no token accounts
- *   - failover transparency: service consumes one SolanaRpc; the
- *     underlying primary/fallback distinction is irrelevant (covered
- *     deeper in failover-solana-rpc.spec.ts).
+ * The DB is a minimal in-memory stub: each test seeds at most one row,
+ * and drizzle's opaque `eq()` predicates are treated as match-all by the
+ * fake. The SolanaRpc seam is stubbed per-test to assert the consuming
+ * service sees a single coherent SolanaRpc and never depends on which
+ * adapter served the read (FailoverSolanaRpc's own fallback logic is
+ * unit-tested in failover-solana-rpc.spec.ts).
  */
 
 type SmartAccountsRow = typeof smartAccounts.$inferSelect;
@@ -91,7 +80,7 @@ function makeService(opts: {
 const usdcMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const usdtMint = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 
-describe('WalletsService (Phase 1: /wallet/me + /wallet/me/balances)', () => {
+describe('WalletsService (/wallet/me + /wallet/me/balances)', () => {
   describe('getMe', () => {
     it('returns walletAddress + provider literal', async () => {
       const solana = {
@@ -145,9 +134,8 @@ describe('WalletsService (Phase 1: /wallet/me + /wallet/me/balances)', () => {
     });
 
     it('returns the full multi-mint list without server-side filtering', async () => {
-      // USDC + USDT + a random SPL — all should pass through. The
-      // mobile filter for the headline Balance lives client-side per
-      // spec §5.5.
+      // USDC + USDT + a random SPL — all should pass through. The mobile
+      // filter for the headline Balance lives client-side.
       const tokens: TokenBalance[] = [
         { mint: usdcMint, amountRaw: 1_500_000n, decimals: 6 },
         { mint: usdtMint, amountRaw: 250_000n, decimals: 6 },
@@ -190,11 +178,10 @@ describe('WalletsService (Phase 1: /wallet/me + /wallet/me/balances)', () => {
     });
 
     it('helius outage falls back to public-RPC transparently (consumer sees one SolanaRpc)', async () => {
-      // The service injects SOLANA_RPC, which in production resolves to
-      // FailoverSolanaRpc — Helius primary, public-mainnet fallback.
-      // Here we model that composition with a stub that switches its
-      // internal source on the first call: this mirrors the contract
-      // the service depends on (one SolanaRpc seam, opaque failover).
+      // In production SOLANA_RPC resolves to FailoverSolanaRpc (Helius
+      // primary, public-mainnet fallback). The stub models that as a
+      // single opaque SolanaRpc seam: the service sees one resolved
+      // promise regardless of which adapter served the read.
       const fallbackTokens: TokenBalance[] = [
         { mint: usdcMint, amountRaw: 42n, decimals: 6 },
       ];
@@ -203,11 +190,6 @@ describe('WalletsService (Phase 1: /wallet/me + /wallet/me/balances)', () => {
         .fn<Promise<TokenBalance[]>, [string]>()
         .mockImplementation(() => {
           getTokenBalancesCalls += 1;
-          // First call: simulate primary throwing, then secondary
-          // returns. The actual FailoverSolanaRpc handles the
-          // primary throw internally; the service sees one resolved
-          // promise. We assert the service does not break on a
-          // composed RPC that internally fellowshipped its read.
           return Promise.resolve(fallbackTokens);
         });
       const getRecentBlockhash = jest

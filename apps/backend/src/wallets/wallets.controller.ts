@@ -7,11 +7,6 @@ interface AuthenticatedRequest extends Request {
   user: { userId: string; walletAddress: string };
 }
 
-/**
- * WalletsController — Phase 5 keeps only the spec-conformant Phase 1
- * Privy-shaped endpoints. The legacy Grid-backed `/wallets/me` +
- * `/wallets/me/balances` handlers were deleted with the GridService dep.
- */
 @Controller()
 @UseGuards(AuthGuard('jwt'))
 export class WalletsController {

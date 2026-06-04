@@ -1,6 +1,3 @@
-/**
- * Core transaction data interface
- */
 export interface Transaction {
   id: string;
   amount: number;
@@ -10,9 +7,6 @@ export interface Transaction {
   address: string;
 }
 
-/**
- * Interface for grouped transactions
- */
 export interface TransactionGroup {
   title: string;
   data: Transaction[];
@@ -127,7 +121,6 @@ export interface CreateExternalAccountRequest {
   account_type?: string;
   iban?: IbanAccount;
   account?: UsAccount;
-  // swift?: SwiftAccount; // Not supported yet
   account_owner_type?: CustomerType;
   first_name?: string;
   last_name?: string;
@@ -234,11 +227,7 @@ export interface TransferSource {
 
 /**
  * SPL transfer row as consumed by the Activity feed. Mirrors the snake_case
- * shape produced by `mapTransferRowToLegacy` in `hooks/useWalletData.ts`,
- * which adapts the new-stack backend `TransferRow` into the legacy
- * Grid-BFF-passthrough shape this screen was written against. Defined
- * locally (no longer imported from `@sqds/grid-react-native`) as part of the
- * Grid decommission.
+ * shape produced by `mapTransferRowToLegacy` in `hooks/useWalletData.ts`.
  */
 export interface SplTransfer {
   id: string;

@@ -69,9 +69,8 @@ function EmailLoginScreen() {
       const result = await verifyOtpAsync(code);
       await completeLogin(result.data, emailInput.trim(), result.token);
 
-      // Passkey check — mandatory before proceeding to dashboard.
-      // Phase 5: under Privy, smart_account_address is the embedded
-      // Solana wallet address; the legacy `result.data?.address` is gone.
+      // Passkey check is mandatory before proceeding to the dashboard.
+      // smart_account_address is the embedded Solana wallet address.
       const accountAddress = result.data?.smart_account_address;
       if (accountAddress) {
         const hasExisting = await checkPasskeys(accountAddress);
@@ -136,7 +135,6 @@ function EmailLoginScreen() {
           bounces={false}
         >
           <View className="flex-1 px-8 py-16">
-            {/* Back button */}
             <HapticPressable
               onPress={() => router.back()}
               className="mt-8 self-start"

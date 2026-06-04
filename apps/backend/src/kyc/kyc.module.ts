@@ -3,14 +3,8 @@ import { KYC_PROVIDER } from './kyc-provider.interface';
 import { SumsubAdapter } from './sumsub.adapter';
 
 /**
- * KycModule — exposes the KycProvider seam via `KYC_PROVIDER`.
- *
- * In v1 the binding is SumsubAdapter, replacing the Grid+Bridge coupling.
+ * Exposes the KycProvider seam via `KYC_PROVIDER`, bound to SumsubAdapter.
  * Swapping vendors later is a single edit here.
- *
- * In Phase 0 the adapter is a stub that throws on every method; nothing
- * consumes `KYC_PROVIDER` yet, so DI registration is the entire point of
- * this module today.
  */
 @Module({
   providers: [

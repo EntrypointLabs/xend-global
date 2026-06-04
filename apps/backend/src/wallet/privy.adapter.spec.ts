@@ -8,12 +8,9 @@ import {
 import type { User } from '@privy-io/server-auth';
 
 /**
- * Unit tests for PrivyAdapter.
- *
- * We stub the underlying PrivyClient — these tests are about our error
- * mapping and user-shape extraction, NOT the Privy SDK's correctness.
- * A real JWKS verification test belongs in a Phase 1 integration test
- * with a live Privy dev app.
+ * Unit tests for PrivyAdapter. The underlying PrivyClient is stubbed —
+ * these tests cover our error mapping and user-shape extraction, NOT the
+ * Privy SDK's correctness.
  */
 
 type GetUserFn = (props: { idToken: string }) => Promise<User>;

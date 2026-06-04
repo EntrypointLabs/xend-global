@@ -41,16 +41,6 @@ function LoginScreen() {
             </Typography>
           </View>
           <View className="gap-2.5">
-            {/* <ThemedButton
-              onPress={() => authenticate("")}
-              title="Continue with Google"
-              iconLeft={
-                <Image
-                  source={require("@/assets/icons/google.png")}
-                  className="size-6"
-                />
-              }
-            /> */}
             <HapticPressable
               onPress={() => router.push("/(auth)/email-login")}
               className="w-full flex-row items-center justify-center gap-4 rounded-full border border-white bg-white p-4"
@@ -75,17 +65,6 @@ function LoginScreen() {
                 Recover existing wallet
               </Typography>
             </HapticPressable>
-            {/* <ThemedButton
-              onPress={() => {}}
-              variant="outline"
-              title="Recover existing wallet"
-              iconLeft={
-                <Image
-                  source={require("@/assets/icons/redo.png")}
-                  className="size-6"
-                />
-              }
-            /> */}
           </View>
         </View>
       </View>

@@ -3,11 +3,6 @@ import * as SecureStore from "expo-secure-store";
 import { AUTH_STORAGE_KEYS } from "./auth";
 import * as Sentry from "@sentry/react-native";
 
-/**
- * Format a string amount as a currency string
- * @param amount - The amount to format
- * @returns Formatted currency string
- */
 export const formatAmount = ({
   amount,
   minimumFractionDigits,
@@ -22,8 +17,6 @@ export const formatAmount = ({
       (minimumFractionDigits ?? amount.includes(".")) ? 2 : 0;
 
     return parseFloat(amount).toLocaleString("en-US", {
-      // style: "currency",
-      // currency: "USD",
       minimumFractionDigits: minFractionDigits,
       maximumFractionDigits,
     });

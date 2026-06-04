@@ -11,19 +11,8 @@ import { createId } from '@paralleldrive/cuid2';
 
 // ---------- Enums ----------
 //
-// Phase 1 (migration 0001) reshape:
-//   - wallet_provider replaces the implicit "Grid" binding; today only
-//     'privy' is valid. Adding 'turnkey' / 'crossmint' later is a single
-//     ALTER TYPE ... ADD VALUE.
-//   - transfer_direction + transfer_status replace tx_type + tx_status.
-//     The values are identical but the names align with the
-//     `transfers` table rename (transactions -> transfers per spec
-//     §5.4).
-//
-// The old tx_type / tx_status enums have been DROPPED in 0001. They no
-// longer exist in the database; any TS code referencing
-// `txTypeEnum`/`txStatusEnum` must be updated in the same commit as
-// this schema change to keep the build atomic.
+// wallet_provider currently only allows 'privy'. Adding 'turnkey' /
+// 'crossmint' later is a single ALTER TYPE ... ADD VALUE.
 
 export const walletProviderEnum = pgEnum('wallet_provider', ['privy']);
 
@@ -51,13 +40,9 @@ export const users = pgTable('users', {
 
 /**
  * smart_accounts — one row per (user, wallet provider). The wallet
- * address is the canonical Solana pubkey we hand back to clients;
- * provider + provider_user_id are how we ask the provider (Privy
- * today) about the user later (e.g. fresh email on re-auth).
- *
- * The column rename grid_account_id -> wallet_address is provider-
- * neutral wording, not a schema reshape: the value is still a Solana
- * base58 address.
+ * address is the canonical Solana pubkey handed back to clients;
+ * provider + provider_user_id are how we ask the provider (Privy today)
+ * about the user later (e.g. fresh email on re-auth).
  */
 export const smartAccounts = pgTable('smart_accounts', {
   id: text('id')
@@ -75,21 +60,15 @@ export const smartAccounts = pgTable('smart_accounts', {
 });
 
 /**
- * transfers — formerly `transactions`. Reshape per spec §5.4:
+ * transfers:
  *   - intent_id: idempotency key returned by /transfers/prepare and
- *     replayed by /transfers/submit. UNIQUE but nullable so legacy
- *     /transactions/send inserts (which do not have an intent) can
- *     coexist during the Phase 1 -> Phase 4 transition.
- *   - direction: 'SEND' | 'RECEIVE'. Inbound (RECEIVE) rows are
- *     written by the Phase 2 RPC tailer; the legacy send path defaults
- *     to 'SEND'.
- *   - mint + amount_raw: provider-neutral replacements for token +
- *     amount. amount_raw is text because Solana amounts are u64 and
- *     numeric is unwieldy on the JS side.
+ *     replayed by /transfers/submit. UNIQUE but nullable.
+ *   - direction: 'SEND' | 'RECEIVE'. Inbound (RECEIVE) rows are written
+ *     by the RPC tailer.
+ *   - mint + amount_raw. amount_raw is text because Solana amounts are
+ *     u64 and numeric is unwieldy on the JS side.
  *   - submitted_at + failure_reason: written by /transfers/submit and
  *     the RPC tailer.
- *
- * Legacy columns dropped in migration 0001: type, token, amount.
  */
 export const transfers = pgTable(
   'transfers',
@@ -115,9 +94,9 @@ export const transfers = pgTable(
     failureReason: text('failure_reason'),
   },
   (table) => ({
-    // Partial index added in migration 0002. Powers the 30-second
-    // ReconcilerService poll: scans only outstanding PENDING rows
-    // (CONFIRMED + FAILED rows do not appear in this index).
+    // Partial index powering the ReconcilerService poll: scans only
+    // outstanding PENDING rows (CONFIRMED + FAILED rows do not appear in
+    // this index).
     pendingIdx: index('transfers_pending_idx')
       .on(table.submittedAt)
       .where(sql`status = 'PENDING'`),
@@ -125,17 +104,12 @@ export const transfers = pgTable(
 );
 
 /**
- * tailer_state — per-wallet bookmark for the RPC tailer.
- *
- * `last_indexed_slot` is updated by:
+ * tailer_state — per-wallet bookmark for the RPC tailer. One row per
+ * wallet address; UPSERT keyed on wallet_address. `last_indexed_slot` is
+ * updated by:
  *   - the webhook hot path on every CONFIRMED event (max(current, event.slot)),
  *   - the boot-time `streamConfirmedTransfers` replay that catches up
  *     missed events since the last bookmark.
- *
- * One row per wallet address; UPSERT keyed on wallet_address.
- *
- * Spec: docs/specs/migration-already-built-features.md §5.6.
- * Migration: drizzle/0002_tailer_state.sql.
  */
 export const tailerState = pgTable('tailer_state', {
   walletAddress: text('wallet_address').primaryKey(),

@@ -15,11 +15,8 @@ import { apiClient } from "@/utils/apiClient";
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 /**
- * AuthProvider — Privy-backed.
- *
- * Phase 5: the legacy Grid `LegacyAuthProvider` was deleted and the
- * feature flag is gone. Privy is the only auth path. Privy hooks are
- * children of the `<PrivyProvider>` wrap in `app/_layout.tsx`.
+ * Privy-backed auth provider. Must render inside the `<PrivyProvider>` wrap
+ * in `app/_layout.tsx`, since it consumes Privy hooks.
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
@@ -113,9 +110,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: exchange.user.id,
         email: exchange.user.email,
         walletAddress: exchange.user.walletAddress,
-        // Keep the legacy field name alive for KYC screens that still read it
-        // (useKyc.ts uses user.grid_user_id and user.address). The KYC swarm
-        // replaces this when it migrates KYC to Sumsub.
+        // KYC screens still read smart_account_address; mirror walletAddress
+        // into it so they keep working.
         smart_account_address: exchange.user.walletAddress,
       });
       await AuthStorage.saveEmail(exchange.user.email);

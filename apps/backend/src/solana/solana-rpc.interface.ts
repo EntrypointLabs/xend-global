@@ -1,12 +1,8 @@
 /**
- * SolanaRpc — anti-lock-in seam for Solana RPC access.
- *
- * Per PROJECT.md core essence and spec §6: Helius is the primary adapter, with
- * a public-mainnet adapter as fallback, both behind this interface. A
- * `FailoverSolanaRpc` wrapper composes the two. QuickNode or Triton can be
- * added later as additional adapters.
- *
- * Spec: docs/specs/migration-already-built-features.md §6.
+ * Anti-lock-in seam for Solana RPC access. Helius is the primary adapter,
+ * with a public-mainnet adapter as fallback, both behind this interface;
+ * `FailoverSolanaRpc` composes the two. QuickNode or Triton can be added
+ * later as additional adapters.
  */
 
 import type { WalletAddress } from '../wallet/wallet-provider.interface';
@@ -28,9 +24,8 @@ export interface SignatureStatus {
 }
 
 /**
- * Decoded SPL token transfer surfaced by the tailer.
- *
- * Phase 2 produces these from two sources:
+ * Decoded SPL token transfer surfaced by the tailer, produced from two
+ * sources:
  *   - Helius webhook deliveries (hot path, EventParser.parseDecoded).
  *   - getSignaturesForAddress + getParsedTransaction since-slot replay
  *     (boot path / reconcile fallback, streamConfirmedTransfers).

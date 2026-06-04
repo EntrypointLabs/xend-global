@@ -7,12 +7,8 @@ import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { BalancesResponse, WalletResponse } from './dtos';
 
 /**
- * WalletsService — Phase 5 reduced to the Phase 1 spec-conformant methods:
- * `/wallet/me` and `/wallet/me/balances`, backed by SolanaRpc
- * (FailoverSolanaRpc). The legacy Grid-backed `/wallets/me` +
- * `/wallets/me/balances` handlers were deleted with the GridService dep.
- *
- * Spec: docs/specs/migration-already-built-features.md §5.3, §5.5.
+ * Backs `/wallet/me` and `/wallet/me/balances` via SolanaRpc
+ * (FailoverSolanaRpc).
  */
 @Injectable()
 export class WalletsService {

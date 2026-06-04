@@ -15,27 +15,17 @@ const RECONCILE_BATCH = 256;
 const PENDING_AGE_MS = 30_000;
 
 /**
- * ReconcilerService — the safety net for the webhook hot path.
- *
- * Two duties:
- *   1. **Boot replay** (onModuleInit): for each wallet in
- *      `smart_accounts`, stream confirmed transfers since
- *      `tailer_state.last_indexed_slot` via
- *      `solanaRpc.streamConfirmedTransfers` and write them via
- *      TailerService. Catches up anything missed while the process
- *      was down.
- *   2. **30-second poll** (@Cron): for every `transfers` row with
- *      `status='PENDING' AND submitted_at < NOW() - INTERVAL '30s'`,
- *      ask the cluster what happened via `getSignatureStatuses` and
- *      finalize the row to CONFIRMED or FAILED. Status guard is
- *      enforced via the WHERE clause: `WHERE signature=$1 AND
- *      status='PENDING'` — a row that has already been CONFIRMED or
- *      FAILED by the webhook path is untouched.
- *
- * Metrics (structured log lines — verifier-2 greppable):
- *   - `tailer.reconcile.batch outstanding=N finalized=M failed=K duration_ms=...`
- *   - `tailer.reconcile.percent_of_confirmations rolling=...` (computed
- *     over the in-process counters; resets on restart).
+ * The safety net for the webhook hot path. Two duties:
+ *   1. Boot replay (onModuleInit): for each wallet in `smart_accounts`,
+ *      stream confirmed transfers since `tailer_state.last_indexed_slot`
+ *      and write them via TailerService. Catches up anything missed
+ *      while the process was down.
+ *   2. 30-second poll (@Cron): for every PENDING `transfers` row older
+ *      than the age threshold, ask the cluster what happened via
+ *      `getSignatureStatuses` and finalize the row to CONFIRMED or
+ *      FAILED. The status guard is enforced via the WHERE clause
+ *      (`status='PENDING'`) — a row already finalized by the webhook
+ *      path is untouched.
  *
  * Re-entrancy: the cron's WHERE clauses + status guards make double-
  * execution safe (the second tick finds nothing PENDING-and-old enough
@@ -46,10 +36,7 @@ export class ReconcilerService implements OnModuleInit {
   private readonly logger = new Logger(ReconcilerService.name);
 
   // Rolling counters for the "percent of confirmations via
-  // reconciliation vs webhook" metric. Reset on process restart;
-  // computed lazily on each tick. The webhook hot path does not need
-  // to update these — anything the reconciler finalizes is, by
-  // definition, missed-by-webhook.
+  // reconciliation vs webhook" metric. Reset on process restart.
   private reconcileFinalizedCount = 0;
   private webhookFinalizedCount = 0;
 
@@ -66,7 +53,6 @@ export class ReconcilerService implements OnModuleInit {
   /**
    * Replay any confirmed transfers that landed while the service was
    * down. Bounded by `tailer_state.last_indexed_slot` per wallet.
-   *
    * Catches exceptions per-wallet so a single broken wallet does not
    * block the rest of the boot sequence.
    */
@@ -101,11 +87,8 @@ export class ReconcilerService implements OnModuleInit {
   }
 
   /**
-   * Replay a single wallet. Returns the count of events written.
-   *
-   * Uses `streamConfirmedTransfers(wallet, sinceSlot)`. The Failover
-   * adapter falls back to the public RPC if Helius is down at prime
-   * time.
+   * Replay a single wallet. Returns the count of events written. The
+   * Failover RPC adapter falls back to the public RPC if Helius is down.
    */
   async replayWallet(
     smartAccountId: string,
@@ -133,22 +116,17 @@ export class ReconcilerService implements OnModuleInit {
     return count;
   }
 
-  /**
-   * 30-second tick. Reconciles outstanding PENDING transfers.
-   */
   @Cron('*/30 * * * * *')
   async tick(): Promise<void> {
     const t0 = Date.now();
 
     // Compute the cutoff server-side using LOCALTIMESTAMP, which
-    // returns `timestamp without time zone` in the server's local
-    // time. The `transfers.submitted_at` column is also `timestamp
-    // without time zone` (Phase 1 schema choice), so both sides of
-    // the comparison live in the same naive-time space. Passing a JS
-    // Date here would round-trip through timestamptz and silently
-    // shift by the server's UTC offset under non-UTC timezones (we
-    // hit exactly this on a TZ=Africa/Lagos dev DB during Task 2.3
-    // devnet verification).
+    // returns `timestamp without time zone` in the server's local time.
+    // The `transfers.submitted_at` column is also `timestamp without
+    // time zone`, so both sides of the comparison live in the same
+    // naive-time space. Passing a JS Date here would round-trip through
+    // timestamptz and silently shift by the server's UTC offset under
+    // non-UTC timezones.
     const outstanding = (await this.db.client.execute(sql`
       SELECT signature, smart_account_id AS "smartAccountId"
       FROM transfers

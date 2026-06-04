@@ -20,37 +20,30 @@ import {
 } from './privy.errors';
 
 /**
- * PrivyAdapter — concrete WalletProvider backed by `@privy-io/server-auth`.
+ * Concrete WalletProvider backed by `@privy-io/server-auth`.
  *
- * Responsibilities (Phase 1):
- *   - verifyIdToken: validate a Privy-issued ID token. The SDK's
+ *   - verifyIdToken: validates a Privy-issued ID token. The SDK's
  *     `client.getUser({ idToken })` both verifies the signature against
  *     the Privy JWKS (using PRIVY_VERIFICATION_KEY) and returns the
- *     parsed User payload in one call. We pull the embedded Solana
- *     wallet and primary email from the result.
- *   - getUser: fetch the current user state by Privy DID. Used by the
- *     RPC tailer and admin paths that need fresh wallet info after a
- *     possible passkey rotation. Wraps `getUserById` (rate-limited; the
- *     id-token path is preferred by Privy but unavailable when we only
- *     have a stored DID).
- *
- * NOT implemented (deliberate):
- *   - signTransaction. Privy signs on the device via @privy-io/expo; the
- *     backend only submits via Helius. signTransaction stays a stub for
- *     the eventual Turnkey adapter swap (spec §6: "Optional
- *     signTransaction (not used for Privy; reserved for Turnkey)").
+ *     parsed User payload in one call, from which we pull the embedded
+ *     Solana wallet and primary email.
+ *   - getUser: fetches current user state by Privy DID, for paths that
+ *     need fresh wallet info after a possible passkey rotation. Wraps
+ *     `getUserById` (rate-limited; the id-token path is preferred by
+ *     Privy but unavailable when we only have a stored DID).
+ *   - signTransaction is deliberately NOT implemented: Privy signs on the
+ *     device and the backend only submits via Helius, so it stays a stub
+ *     reserved for an eventual Turnkey adapter.
  *
  * Error mapping (see privy.errors.ts):
  *   - Token shape / signature / expiry failures -> InvalidPrivyTokenError
  *     (401 INVALID_PRIVY_TOKEN at the controller boundary).
- *   - Network / 5xx from Privy API -> PrivyUnavailableError (502
- *     PRIVY_UNAVAILABLE).
- *   - User missing Solana wallet or email -> PrivyUserShapeError (422 at
- *     controller; rare, indicates Privy dashboard misconfiguration).
+ *   - Network / 5xx from Privy API -> PrivyUnavailableError (502).
+ *   - User missing Solana wallet or email -> PrivyUserShapeError (422;
+ *     indicates Privy dashboard misconfiguration).
  *
- * The adapter uses ConfigService + OnModuleInit per the GridService
- * pattern (apps/backend/src/grid/grid.service.ts) so the SDK is
- * constructed exactly once with throw-on-missing env validation.
+ * ConfigService + OnModuleInit construct the SDK exactly once with
+ * throw-on-missing env validation.
  */
 @Injectable()
 export class PrivyAdapter implements WalletProvider, OnModuleInit {

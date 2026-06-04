@@ -7,10 +7,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { apiClient, TokenBalance, TransferRow } from "@/utils/apiClient";
 
 /**
- * Stablecoin mints that count toward the headline Balance per spec §5.5.
- * USDT is optional in dev (no canonical devnet mint); when unset, only USDC
- * contributes. The full `tokens` list is preserved on the backend response
- * so a future Investments view can render every mint without re-fetching.
+ * Stablecoin mints that count toward the headline Balance. USDT is optional in
+ * dev (no canonical devnet mint); when unset, only USDC contributes.
  */
 function getStablecoinMints(): Set<string> {
   const mints = new Set<string>();
@@ -42,10 +40,8 @@ function computeStablecoinTotal(tokens: TokenBalance[]): number {
 }
 
 /**
- * Map a backend `TransferRow` (new-stack shape) to the legacy mobile
- * `TransferResponse` shape that `(tabs)/index.tsx` reads. The Activity
- * feed reads snake_case fields inherited from the Grid BFF passthrough;
- * this mapping reproduces that shape so the screen stays untouched.
+ * Adapt a backend `TransferRow` into the snake_case `TransferResponse` shape
+ * the Activity feed in `(tabs)/index.tsx` reads.
  *
  * Direction translation: SEND → "outflow", RECEIVE → "inflow".
  * Status translation: CONFIRMED → "confirmed", FAILED → "failed", else
@@ -138,7 +134,6 @@ export function useWalletData(_accountInfo: AccountInfo | null) {
     }
   }, [user, wallet]);
 
-  // Load cached balance on mount.
   useEffect(() => {
     const loadCachedBalance = async () => {
       const cachedBalance = (await StorageService.getItem(

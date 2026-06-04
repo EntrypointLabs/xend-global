@@ -42,9 +42,7 @@ export function useResendTimer({
           `Failed to resend code: ${error}. (hooks)/useResendTimer.ts (handleResend)`
         )
       );
-      // If the resend fails, enable the button again
       setIsDisabled(false);
-      // You might want to handle the error (show toast, etc.)
       console.error("Failed to resend code:", error);
     }
   }, [initialSeconds, onResend]);

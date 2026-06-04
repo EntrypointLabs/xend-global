@@ -20,16 +20,6 @@ import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { ExchangeResponse } from './dtos';
 
-/**
- * AuthService — Phase 5 reduced this service to a single method: the Privy
- * ID-token exchange. All Grid-shaped legacy methods (register, authenticate,
- * verifyOtp, verifyOtpAndCreateAccount, checkPasskeys, createPasskeySession)
- * and their backing GridService dependency were deleted alongside the
- * `/register`, `/auth`, `/verify-otp`, `/verify-otp-and-create-account`,
- * `/passkeys/check`, `/passkeys/session` controller routes.
- *
- * Spec: docs/specs/migration-already-built-features.md §5.1.
- */
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -42,12 +32,12 @@ export class AuthService {
   ) {}
 
   async exchange(privyIdToken: string): Promise<ExchangeResponse> {
-    // 1. Verify the Privy ID token. Typed errors from PrivyAdapter map
-    //    to the Phase 1 "Error codes" table:
-    //      InvalidPrivyTokenError -> 401 INVALID_PRIVY_TOKEN
-    //      PrivyUserShapeError    -> 422 EMAIL_MISMATCH (rare: missing
-    //                                 email / Solana wallet)
-    //      PrivyUnavailableError  -> 502 PRIVY_UNAVAILABLE
+    // Verify the Privy ID token. Typed errors from PrivyAdapter map to
+    // HTTP responses:
+    //   InvalidPrivyTokenError -> 401 INVALID_PRIVY_TOKEN
+    //   PrivyUserShapeError    -> 422 EMAIL_MISMATCH (missing email /
+    //                              Solana wallet)
+    //   PrivyUnavailableError  -> 502 PRIVY_UNAVAILABLE
     let privyUser: Awaited<ReturnType<WalletProvider['verifyIdToken']>>;
     try {
       privyUser = await this.wallet.verifyIdToken(privyIdToken);
@@ -79,7 +69,7 @@ export class AuthService {
 
     const { providerUserId, email, walletAddress } = privyUser;
 
-    // 2. Upsert users by email.
+    // Upsert users by email.
     const [existingUser] = await this.db.client
       .select()
       .from(users)
@@ -106,7 +96,7 @@ export class AuthService {
       isNewUser = true;
     }
 
-    // 3. Upsert smart_accounts keyed by (provider, provider_user_id).
+    // Upsert smart_accounts keyed by (provider, provider_user_id).
     const [existingAccount] = await this.db.client
       .select()
       .from(smartAccounts)
@@ -120,8 +110,8 @@ export class AuthService {
         provider: 'privy',
         providerUserId,
       });
-      // Phase 2 webhook registration. Best-effort; reconciler is the
-      // safety net. Failure MUST NOT break /auth/exchange.
+      // Best-effort webhook registration; the reconciler is the safety
+      // net. Failure MUST NOT break /auth/exchange.
       try {
         await this.solana.registerWebhookAddress(walletAddress);
       } catch (err) {
@@ -137,7 +127,7 @@ export class AuthService {
         .where(eq(smartAccounts.id, existingAccount.id));
     }
 
-    // 4. Mint our JWT. Shape matches jwt.strategy.ts:JwtPayload.
+    // Mint our JWT. Shape matches jwt.strategy.ts:JwtPayload.
     const token = this.jwt.sign({
       sub: userRow.id,
       walletAddress,

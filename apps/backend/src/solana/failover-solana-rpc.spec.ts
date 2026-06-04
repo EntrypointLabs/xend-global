@@ -8,7 +8,7 @@ import type { SignatureStatus, TokenBalance } from './solana-rpc.interface';
  *
  * Hits the failover seam directly with stub adapters; no real Solana
  * connection. The critical invariant is the no-fallback on
- * sendRawTransaction (PLAN.md hard rule), tested explicitly below.
+ * sendRawTransaction, tested explicitly below.
  */
 
 function makeStub(
@@ -125,10 +125,9 @@ describe('FailoverSolanaRpc', () => {
   });
 
   describe('sendRawTransaction does NOT fallback (no double-broadcast)', () => {
-    // This test enforces the hard rule from PLAN.md / failover-solana-rpc.ts
-    // class doc. Failing this test means we may double-broadcast a signed
-    // transaction, which wastes blockhashes and can mask real Helius errors.
-    // Do not relax without updating the spec.
+    // Failing this test means we may double-broadcast a signed
+    // transaction, which wastes blockhashes and can mask real Helius
+    // errors. See the failover-solana-rpc.ts class doc.
 
     it('returns primary result directly on success', async () => {
       const primary = makeStub({

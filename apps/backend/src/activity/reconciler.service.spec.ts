@@ -5,9 +5,7 @@ import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 
 /**
- * Unit tests for ReconcilerService.
- *
- * Covers PLAN.md Test Plan rows for the reconciler:
+ * Unit tests for ReconcilerService:
  *   * Outstanding PENDING older than 30s finalized via mock
  *     getSignatureStatuses.
  *   * PENDING younger than 30s ignored.
@@ -42,10 +40,8 @@ function makeFakeDb(opts: {
   const execute = jest.fn().mockImplementation((stmt: unknown) => {
     const str = JSON.stringify(stmt);
     calls.push({ kind: 'execute', payload: str });
-    // The reconciler issues SELECT ... FROM transfers WHERE status =
-    // 'PENDING' via execute() (raw SQL, to avoid the TZ pitfall on
-    // timestamp without time zone columns). Return the seeded
-    // outstanding rows when we see that shape.
+    // The reconciler issues its outstanding-PENDING SELECT via execute()
+    // (raw SQL). Return the seeded outstanding rows when we see that shape.
     const isOutstandingSelect =
       str.includes('SELECT') &&
       str.includes('transfers') &&
@@ -62,23 +58,8 @@ function makeFakeDb(opts: {
     return Promise.resolve({ rows: [], rowCount: 1 });
   });
 
-  // We dispatch select based on the chain caller's eventual `from(tbl)`
-  // call by inspecting closure state. Because Drizzle's `from(table)`
-  // is opaque to JSON.stringify, we route based on the order of calls
-  // expected by the reconciler:
-  //   tick(): select(transfers).where(...).limit(N) → outstanding rows
-  //   replayWallet(): select(tailerState).where(eq).limit(1) → bookmark
-  //   replayAllWallets(): select(smartAccounts) → wallets
-  //
-  // Simple discriminator: detect by which `from()` callable is invoked
-  // first; we read the table object's stringified shape (Drizzle table
-  // objects expose Symbol-named props but JSON-stringify gives us
-  // `{}`). So we plumb a manual hint through the chain: the first
-  // word inside .from(...) is inspected by reading its `.name` if any.
-  //
-  // The cleanest path: just inspect the table reference identity by
-  // reading the imported singletons here. We accept them as
-  // parameters and compare.
+  // Dispatch select() results by the table passed to `from(...)`, read
+  // off the Drizzle table name symbol.
 
   const fromTable = (table: unknown): string | null => {
     // Drizzle pgTable instances expose the table name on a well-known

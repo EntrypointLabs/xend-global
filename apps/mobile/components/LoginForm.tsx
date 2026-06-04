@@ -88,9 +88,7 @@ const styles = StyleSheet.create({
   container: {
     width: "100%",
   },
-  themedViewInner: {
-    // paddingHorizontal: Spacing.md,
-  },
+  themedViewInner: {},
   text: {
     textAlign: "center",
     marginBottom: Spacing.lg,

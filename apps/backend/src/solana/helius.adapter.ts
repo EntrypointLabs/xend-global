@@ -41,31 +41,21 @@ interface HeliusWebhookRecord {
 }
 
 /**
- * HeliusAdapter — primary SolanaRpc backed by Helius's RPC endpoint.
+ * Primary SolanaRpc backed by Helius's RPC endpoint, via a
+ * `@solana/web3.js` Connection object. Helius exposes a JSON-RPC
+ * superset, so a `Connection` works without bespoke client code.
  *
- * Talks to Helius via a `@solana/web3.js` Connection object. Helius
- * exposes a JSON-RPC superset, so a `Connection` works without bespoke
- * client code.
- *
- * Phase 2 additions:
- *   - `streamConfirmedTransfers` against `getSignaturesForAddress` +
- *     `getParsedTransaction` (works on any RPC, Helius-specific decoding
- *     is unnecessary). Used by the boot-time replay and as the
- *     reconciliation safety net.
- *   - `registerWebhookAddress` / `unregisterWebhookAddress`: edit the
+ * Webhook control plane:
+ *   - `registerWebhookAddress` / `unregisterWebhookAddress` edit the
  *     Helius account-activity webhook subscription via the webhook
- *     config API. On first call, lazily creates the webhook and
- *     persists the ID via a small `webhook_config` row OR uses
- *     `HELIUS_WEBHOOK_ID` env. Picked the env-var path for simplicity:
- *     ops creates the webhook once via the Helius dashboard or
- *     `bootstrapWebhook()` helper, drops the ID into the env, and the
- *     adapter mutates the address list in place.
+ *     config API, keyed on `HELIUS_WEBHOOK_ID`. Ops creates the webhook
+ *     once via the Helius dashboard or `bootstrapWebhook()`, drops the
+ *     ID into the env, and the adapter mutates the address list in place.
  *   - `verifyWebhookSignature`: HMAC-SHA256 over the raw request body
- *     using `HELIUS_WEBHOOK_SECRET`. Helius sends the signature in the
- *     `Authorization` header per their webhook docs.
+ *     using `HELIUS_WEBHOOK_SECRET`.
  *
- * Hard rule (from PLAN.md): use `Connection` for RPC, never raw fetch.
- * The webhook config API is NOT JSON-RPC and is fetched directly.
+ * RPC goes through `Connection`, never raw fetch. The webhook config API
+ * is NOT JSON-RPC and is fetched directly.
  */
 @Injectable()
 export class HeliusAdapter implements SolanaRpc, OnModuleInit {

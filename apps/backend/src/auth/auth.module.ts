@@ -22,8 +22,7 @@ import { SolanaModule } from '../solana/solana.module';
     // the incoming Privy ID token.
     WalletModule,
     // /auth/exchange registers each newly-minted wallet on the Helius
-    // webhook subscription (best-effort; failure is logged but does not
-    // block the auth response — reconciler is the safety net).
+    // webhook subscription.
     SolanaModule,
   ],
   controllers: [AuthController],

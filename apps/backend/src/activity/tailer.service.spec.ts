@@ -7,20 +7,16 @@ import type { ConfirmedTransferEvent } from '../solana/solana-rpc.interface';
 import { HttpException, HttpStatus } from '@nestjs/common';
 
 /**
- * Tests for TailerService + WebhookController + EventParser, covering
- * the PLAN.md Phase 2 unit-test test plan rows:
- *
+ * Tests for TailerService + WebhookController + EventParser:
  *   * Webhook with valid HMAC + matching wallet writes CONFIRMED row.
  *   * Webhook with bad HMAC returns 401, no DB writes.
  *   * Event for unknown wallet is skipped (no DB writes).
  *   * Duplicate signature webhook is idempotent (ON CONFLICT).
  *   * CONFIRMED row NOT regressed to PENDING by late webhook.
  *
- * The DbService is faked: db.client.execute() is a jest.fn that
- * records sql template literals so we can assert on call counts +
- * presence of the status-guard CASE clause without booting Postgres.
- * The status-guard SQL behaviour itself is exercised end-to-end in
- * the Task 2.3 devnet verification scenarios.
+ * The DbService is faked: db.client.execute() is a jest.fn that records
+ * sql template literals so we can assert on call counts + presence of the
+ * status-guard CASE clause without booting Postgres.
  */
 
 interface FakeDbCall {

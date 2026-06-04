@@ -1,11 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 import { AUTH_STORAGE_KEYS } from "@/utils/auth";
 
-/**
- * AuthStorage — SecureStore wrapper, slimmed in Phase 5 to the keys the
- * Privy + NestJS path actually uses (USER, EMAIL, TOKEN, IS_AUTHENTICATED,
- * HAS_PASSKEY, CACHED_BALANCE, plus KYC keys preserved by the KYC carve-out).
- */
 export const AuthStorage = {
   async saveIsAuthenticated(isAuthenticated: boolean) {
     await SecureStore.setItemAsync(

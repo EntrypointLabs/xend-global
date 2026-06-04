@@ -2,21 +2,9 @@ import { handleError, ErrorCode } from "@/utils/errors";
 import { KycResponse, KycParams } from "@/types/Kyc";
 
 /**
- * EasClient — slimmed in Phase 5 to ONLY the two KYC methods (`getKYCLink`,
- * `getKYCStatus`) the KYC carve-out depends on.
- *
- * The Sumsub KYC migration is a separate swarm scheduled LAST; until then,
- * KYC keeps working through `apps/mobile/app/api/kyc+api.ts` and
- * `apps/mobile/app/api/kyc-status+api.ts`, which delegate to the Grid
- * `@sqds/grid-react-native` SDK via `apps/mobile/grid/sdkClient.ts`.
- *
- * All other methods (authenticate, register, verifyOtpCode,
- * verifyCodeAndCreateAccount, createSmartAccount, getBalance,
- * preparePaymentIntent, confirmPaymentIntent, getVirtualAccounts,
- * openVirtualAccount, getTransfers, getSentryConfig) were deleted along
- * with their backing BFF routes.
+ * KYC-only client. Exposes `getKYCLink` and `getKYCStatus`, which hit the
+ * `/api/kyc` and `/api/kyc-status` routes co-resident with the Expo app.
  */
-
 class EasError extends Error {
   constructor(
     message: string,
@@ -42,9 +30,7 @@ export class EasClient {
     options: RequestInit = {}
   ): Promise<T> {
     try {
-      // KYC BFF routes are co-resident with the Expo app via expo-router
-      // (apps/mobile/app/api/kyc+api.ts, kyc-status+api.ts). Use a relative
-      // URL prefixed with `/api` to hit them; no host base URL needed.
+      // Routes are local to the Expo app, so a relative `/api` URL suffices.
       const url = `/api${endpoint}`;
 
       const fetchOptions: RequestInit = {

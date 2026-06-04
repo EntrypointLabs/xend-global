@@ -1,15 +1,7 @@
 import { z } from 'zod';
 
-/**
- * Transfer DTOs for the Phase 1 /transfers/prepare, /transfers/submit,
- * and GET /transfers endpoints.
- *
- * Spec: docs/specs/migration-already-built-features.md §5.4.
- *
- * These coexist alongside the legacy /transactions/send and GET
- * /transactions endpoints (the `transactions` module stays alive
- * until Phase 5).
- */
+// DTOs for the /transfers/prepare, /transfers/submit, and
+// GET /transfers endpoints.
 
 // ── POST /transfers/prepare ─────────────────────────────────────────
 
@@ -47,9 +39,9 @@ export type SubmitRequest = z.infer<typeof SubmitRequestSchema>;
 export const SubmitResponseSchema = z.object({
   transferId: z.string(),
   signature: z.string(),
-  // Phase 1 always returns PENDING. The Phase 2 RPC tailer transitions
-  // to CONFIRMED or FAILED asynchronously; that is reflected in
-  // subsequent GET /transfers reads, never in the submit response.
+  // Always PENDING here. The RPC tailer transitions to CONFIRMED or
+  // FAILED asynchronously; that is reflected in subsequent GET
+  // /transfers reads, never in the submit response.
   status: z.literal('PENDING'),
 });
 export type SubmitResponse = z.infer<typeof SubmitResponseSchema>;

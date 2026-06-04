@@ -2,19 +2,15 @@ import { Logger } from '@nestjs/common';
 import type { ConfirmedTransferEvent } from '../solana/solana-rpc.interface';
 
 /**
- * Helius enhanced-transactions webhook payload.
- *
- * Helius posts an array of decoded transactions to `/webhooks/helius`.
- * Each transaction carries top-level metadata + a `tokenTransfers` list
- * of decoded SPL token movements. We trust the decoded values: Helius
- * normalises pre/post token balances + program ID into a single
- * tokenTransfer entry per movement.
+ * Helius enhanced-transactions webhook payload. Helius posts an array of
+ * decoded transactions to `/webhooks/helius`, each carrying top-level
+ * metadata + a `tokenTransfers` list of decoded SPL token movements.
  *
  * Reference: https://docs.helius.dev/webhooks/api-reference
  *
- * We deliberately keep the type narrow to the fields we read; Helius
- * adds more (events.nft, events.swap, etc.) that the activity feed
- * does not surface in v1.
+ * The type is deliberately narrowed to the fields we read; Helius adds
+ * more (events.nft, events.swap, etc.) that the activity feed does not
+ * surface.
  */
 export interface HeliusTokenTransfer {
   fromUserAccount: string | null;
@@ -42,21 +38,20 @@ export interface HeliusEnhancedTransaction {
 export type HeliusWebhookBody = HeliusEnhancedTransaction[];
 
 /**
- * EventParser — projects a Helius webhook delivery into the
- * provider-neutral `ConfirmedTransferEvent` shape the tailer writes.
+ * Projects a Helius webhook delivery into the provider-neutral
+ * `ConfirmedTransferEvent` shape the tailer writes.
  *
- * One Helius transaction can include zero or more SPL token transfers;
- * we flatten them. Transactions with `transactionError != null` are
- * dropped — they failed on chain and our `transfers` rows for them
- * (if any) come from the reconciler poll path that maps cluster
- * errors to status='FAILED'.
+ * One Helius transaction can include zero or more SPL token transfers,
+ * which are flattened. Transactions with `transactionError != null` are
+ * dropped — they failed on chain and any `transfers` rows for them come
+ * from the reconciler poll path that maps cluster errors to FAILED.
  *
- * Implementation note: when `rawTokenAmount.tokenAmount` is present
- * we use it directly (preserves u64 precision). When only the float
- * `tokenAmount` is present (older schema), we reconstruct the raw
- * integer from `tokenAmount * 10^decimals`. The latter is lossy for
- * very large amounts but acceptable for stablecoins (which Helius
- * historically returns with rawTokenAmount populated).
+ * When `rawTokenAmount.tokenAmount` is present it is used directly
+ * (preserves u64 precision). When only the float `tokenAmount` is
+ * present (older schema), the raw integer is reconstructed from
+ * `tokenAmount * 10^decimals` — lossy for very large amounts but
+ * acceptable for stablecoins (which Helius returns with rawTokenAmount
+ * populated).
  */
 export class EventParser {
   private readonly logger = new Logger(EventParser.name);

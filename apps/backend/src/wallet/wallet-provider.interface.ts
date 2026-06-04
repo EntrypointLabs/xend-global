@@ -1,13 +1,9 @@
 /**
- * WalletProvider — anti-lock-in seam for wallet creation, identity, and signing.
- *
- * Per PROJECT.md core essence: "No single external provider may be load-bearing
- * in a way that kills Xend if it disappears." Concrete implementations
- * (PrivyAdapter today; TurnkeyAdapter or CrossmintAdapter tomorrow) live behind
- * this interface. Business logic in `wallet`, `auth`, and `transfer` modules
- * depends only on this contract, never on the concrete adapter.
- *
- * Spec: docs/specs/migration-already-built-features.md §6.
+ * Anti-lock-in seam for wallet creation, identity, and signing. Concrete
+ * implementations (PrivyAdapter today; TurnkeyAdapter or CrossmintAdapter
+ * tomorrow) live behind this interface; business logic in `wallet`,
+ * `auth`, and `transfer` modules depends only on this contract, never on
+ * the concrete adapter.
  */
 
 /** Solana pubkey (base58 string). */

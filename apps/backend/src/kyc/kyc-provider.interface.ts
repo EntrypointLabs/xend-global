@@ -1,12 +1,8 @@
 /**
- * KycProvider — anti-lock-in seam for KYC.
- *
- * Per PROJECT.md core essence and spec §6: Sumsub is the v1 adapter, replacing
- * Grid + Bridge. Business logic in the `kyc` module and the `/webhooks/sumsub`
- * route depends only on this contract; swapping to a different KYC vendor
- * later is a single adapter swap.
- *
- * Spec: docs/specs/migration-already-built-features.md §6.
+ * Anti-lock-in seam for KYC. Sumsub is the v1 adapter. Business logic in
+ * the `kyc` module and the `/webhooks/sumsub` route depends only on this
+ * contract; swapping to a different KYC vendor later is a single adapter
+ * swap.
  */
 
 /** Opaque provider-side applicant identifier (e.g. Sumsub applicant ID). */

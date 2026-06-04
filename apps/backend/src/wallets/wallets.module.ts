@@ -5,7 +5,6 @@ import { SolanaModule } from '../solana/solana.module';
 
 @Module({
   // SolanaModule provides SOLANA_RPC for the /wallet/me/* endpoints.
-  // Phase 5 removed the legacy Grid-backed /wallets/me handlers.
   imports: [SolanaModule],
   controllers: [WalletsController],
   providers: [WalletsService],

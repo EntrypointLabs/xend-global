@@ -1,9 +1,6 @@
 /**
- * Typed errors for the PrivyAdapter.
- *
- * Controllers (auth.controller) map these to HTTP responses per
- * `phases/phase-1-backend-wallet-plumbing/PLAN.md` "Error codes":
- *
+ * Typed errors for the PrivyAdapter. Controllers map these to HTTP
+ * responses:
  *   InvalidPrivyTokenError -> 401 INVALID_PRIVY_TOKEN
  *   PrivyUnavailableError  -> 502 PRIVY_UNAVAILABLE
  *

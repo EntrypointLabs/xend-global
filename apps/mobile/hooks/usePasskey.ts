@@ -1,16 +1,10 @@
 import { useState } from "react";
 
 /**
- * Privy enrols the passkey IN-APP during signup (`useLoginWithEmail` →
- * `loginWithCode` provisions the embedded wallet with passkey-backed
- * recovery). With the legacy Grid-shaped `/passkeys/check` and
- * `/passkeys/session` routes deleted in Phase 5, this hook is a no-op stub
- * kept so its callers (`(auth)/email-login.tsx`, `(tabs)/settings/index.tsx`)
- * continue to compile without screen-level rewires.
- *
- * Both methods synchronously return `true` so the post-OTP passkey-check
- * branch in `email-login.tsx` (`hasExisting ? complete() : showSetupModal()`)
- * skips the setup modal entirely.
+ * No-op passkey hook. Privy enrols the passkey in-app during signup, so a
+ * separate check/register step is unnecessary. Both methods return `true` so
+ * the post-OTP branch in `email-login.tsx` skips the setup modal entirely.
+ * Kept so its callers compile without screen-level rewires.
  */
 export function usePasskey() {
   const [hasPasskey, setHasPasskey] = useState<boolean | null>(true);

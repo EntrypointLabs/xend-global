@@ -12,26 +12,18 @@ import {
 import { smartAccounts, transfers } from '../db/schema';
 
 /**
- * Integration tests for TransferService (prepare / submit / list).
+ * Integration tests for TransferService (prepare / submit / list):
+ *   - prepare: invalid recipient / unsupported mint return 400
+ *   - prepare: includes create-ATA when missing, omits it when present
+ *   - submit: duplicate intentId returns existing row
+ *   - submit: writes PENDING row with signature
+ *   - submit: RPC failure returns 502 without writing row
+ *   - submit: expired intent / wrong-user intent rejected
+ *   - list: pagination cursor round-trips
  *
- * Covers the PLAN.md "Test Plan Results" rows that belong to this
- * task:
- *   - transfers/prepare: invalid recipient returns 400
- *   - transfers/prepare: unsupported mint returns 400
- *   - transfers/prepare: includes create-ATA when missing
- *   - transfers/prepare: omits create-ATA when present
- *   - transfers/submit: duplicate intentId returns existing row
- *   - transfers/submit: writes PENDING row with signature
- *   - transfers/submit: RPC failure returns 502 without writing row
- *
- * Plus:
- *   - transfers/submit: expired intent rejected with INTENT_EXPIRED
- *   - transfers/submit: intent submitted from wrong user rejected
- *   - transfers list: pagination cursor round-trips
- *
- * As elsewhere in this phase we stub Drizzle in-memory; drizzle's
- * opaque SQL predicates are treated as match-all by the fake. Each
- * test seeds only the rows it cares about, so this is sound.
+ * Drizzle is stubbed in-memory; its opaque SQL predicates are treated as
+ * match-all by the fake, and each test seeds only the rows it cares
+ * about, so this is sound.
  */
 
 // ── In-memory fake DB ─────────────────────────────────────────────────

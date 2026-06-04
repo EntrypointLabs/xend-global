@@ -14,10 +14,7 @@ import { apiClient, PrepareTransferResponse } from "@/utils/apiClient";
 import { toByteArray, fromByteArray } from "base64-js";
 import { VersionedTransaction } from "@solana/web3.js";
 
-/**
- * USDC mint used by the send flow. Backend `prepareTransfer` builds a real
- * SPL transfer instruction, so we send the actual mint address.
- */
+// Real SPL mint address; prepareTransfer builds an actual transfer instruction.
 const USDC_MINT = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS ?? "";
 
 /**
@@ -80,7 +77,7 @@ export default function ConfirmScreen() {
 
     setIsLoading(true);
     try {
-      // ── Prepare (with automatic single retry on INTENT_EXPIRED) ─────
+      // Prepare, with one automatic retry on INTENT_EXPIRED.
       let prep: PrepareTransferResponse;
       try {
         prep = await apiClient.prepareTransfer({
@@ -104,7 +101,6 @@ export default function ConfirmScreen() {
         }
       }
 
-      // ── Sign with Privy ──────────────────────────────────────────────
       let signedBase64: string;
       try {
         const provider = await embeddedWallet.getProvider();
@@ -124,7 +120,6 @@ export default function ConfirmScreen() {
         throw err;
       }
 
-      // ── Submit ───────────────────────────────────────────────────────
       let submitRes;
       try {
         submitRes = await apiClient.submitTransfer({
@@ -145,7 +140,6 @@ export default function ConfirmScreen() {
         throw err;
       }
 
-      // ── Success ──────────────────────────────────────────────────────
       router.push({
         pathname: "/success",
         params: {

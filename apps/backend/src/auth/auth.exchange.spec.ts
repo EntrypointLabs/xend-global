@@ -17,21 +17,16 @@ import { users, smartAccounts } from '../db/schema';
 /**
  * Integration tests for AuthService.exchange().
  *
- * The Drizzle client is fully stubbed in-memory — we are exercising
- * the upsert branching (new user vs existing user, smart_account
- * insert vs touch) and the Privy error -> HTTP mapping in isolation
- * from Postgres. A real-DB integration test belongs in the cURL E2E
- * (PLAN.md "Verification (devnet)") which is gated on populated
- * Privy + Helius credentials.
+ * The Drizzle client is fully stubbed in-memory, exercising the upsert
+ * branching (new user vs existing user, smart_account insert vs touch)
+ * and the Privy error -> HTTP mapping in isolation from Postgres:
+ *   - new user inserts users + smart_accounts (isNewUser=true)
+ *   - existing user returns same row (isNewUser=false)
+ *   - bad Privy token returns 401
+ *   - Privy outage returns 502
+ *   - Privy user-shape error returns 422 EMAIL_MISMATCH
  *
- * Test plan rows from PLAN.md covered here:
- *   - auth/exchange: new user inserts users + smart_accounts (isNewUser=true)
- *   - auth/exchange: existing user returns same row (isNewUser=false)
- *   - auth/exchange: bad Privy token returns 401
- *   - auth/exchange: Privy outage returns 502
- *   - auth/exchange: Privy user-shape error returns 422 EMAIL_MISMATCH
- *   - auth/exchange: ZodValidationPipe is covered separately at the
- *     controller layer (BadRequestException on empty body).
+ * ZodValidationPipe is covered separately at the controller layer.
  */
 
 // ── In-memory drizzle stub ────────────────────────────────────────────
@@ -59,17 +54,10 @@ function makeFakeDb(store: FakeStore): DbService {
     throw new Error('unknown table in fake db');
   };
 
-  // Each fluent call returns a thenable so callers can `await` directly
-  // OR chain. We capture state across the chain via closures.
-  // drizzle's `eq()` returns an opaque SQL object (not a function).
-  // For the upsert paths we only need "is the row present?" semantics:
-  //   - users: at most one row per email; the seeded fixture is the
-  //     intended target.
-  //   - smart_accounts: at most one row per providerUserId.
-  // We therefore treat `where(opaque)` as match-all, which works
-  // because each test starts with at most one row in each collection
-  // (the seeded fixture). When the collection is empty the chain
-  // returns an empty array and the "new user" branch runs.
+  // `where(opaqueSql)` is treated as match-all: each test starts with at
+  // most one row per collection (the seeded fixture), so when the
+  // collection is empty the chain returns [] and the "new user" branch
+  // runs.
   const makeSelectChain = (collection: 'users' | 'smartAccounts') => {
     const ctx: { limit?: number } = {};
     const rowsAccessor = () => store[collection] as Record<string, unknown>[];
@@ -152,23 +140,6 @@ function makeFakeDb(store: FakeStore): DbService {
 
   return { client } as unknown as DbService;
 }
-
-// drizzle's `eq` returns an opaque SQL object. The fake select/update
-// chains receive that opaque value via .where(); for our predicate-
-// based fake we wrap the user-supplied predicate in a sentinel. We
-// re-export a fake `eq` mock — BUT the production code imports `eq`
-// from drizzle-orm directly. To avoid juggling jest.mock for a tiny
-// surface, we have the fake store ignore the SQL opaque and instead
-// match by reading the values we expect to be queried. The store
-// holds at most one row per key in these tests, so equality is
-// trivially satisfied: any predicate matches everything in the small
-// collection, and we control state via deliberate inserts.
-
-// Easier path: stub the fluent calls so `.where()` ignores its arg and
-// returns all rows; tests assert on the upsert side effects, not the
-// query language. We already do that above (predicate is a noop when
-// `where` receives a non-callable). The check at the top of the chain
-// treats `where(opaqueSql)` as "filter nothing".
 
 function makeFakeSolana(overrides: Partial<SolanaRpc> = {}): {
   rpc: SolanaRpc;

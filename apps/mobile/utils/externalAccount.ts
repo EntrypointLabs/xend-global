@@ -3,23 +3,13 @@ import { ExternalAccountStorage } from "@/types/Transaction";
 import { StorageService } from "./storage";
 import * as Sentry from "@sentry/react-native";
 
-/**
- * Service for managing external account mappings
- */
 export class ExternalAccountService {
-  /**
-   * Store an external account mapping
-   * @param gridUserId - The Grid user ID
-   * @param externalAccountId - The external account ID
-   * @param label - The label for the account
-   */
   static async storeAccount(
     gridUserId: string,
     externalAccountId: string,
     label: string
   ): Promise<void> {
     try {
-      // Get existing storage
       const existingStorage =
         await StorageService.getItem<ExternalAccountStorage>(
           AUTH_STORAGE_KEYS.EXTERNAL_ACCOUNTS
@@ -29,7 +19,6 @@ export class ExternalAccountService {
 
       if (existingStorage) {
         storage = existingStorage;
-        // Remove any existing mapping for this grid_user_id
         storage.accounts = storage.accounts.filter(
           (acc) => acc.grid_user_id !== gridUserId
         );
@@ -41,7 +30,6 @@ export class ExternalAccountService {
       }
 
       if (!alreadyExists) {
-        // Add new mapping
         storage.accounts.push({
           grid_user_id: gridUserId,
           external_account_id: externalAccountId,
@@ -49,7 +37,6 @@ export class ExternalAccountService {
         });
       }
 
-      // Save updated storage
       await StorageService.setItem(
         AUTH_STORAGE_KEYS.EXTERNAL_ACCOUNTS,
         storage
@@ -65,11 +52,6 @@ export class ExternalAccountService {
     }
   }
 
-  /**
-   * Get an external account ID for a given Grid user ID
-   * @param gridUserId - The Grid user ID to look up
-   * @returns The external account ID if found, null otherwise
-   */
   static async getAccountId(gridUserId: string): Promise<string | null> {
     try {
       const storage = await StorageService.getItem<ExternalAccountStorage>(
@@ -92,10 +74,6 @@ export class ExternalAccountService {
     }
   }
 
-  /**
-   * Get all external account mappings
-   * @returns All external account mappings or null if none exist
-   */
   static async getAllAccounts(): Promise<ExternalAccountStorage | null> {
     try {
       return await StorageService.getItem<ExternalAccountStorage>(
@@ -122,14 +100,12 @@ export class ExternalAccountService {
       );
       if (!storage) return;
 
-      // Remove the account from the storage
       storage.accounts = storage.accounts.filter(
         (acc) =>
           acc.grid_user_id !== gridUserId &&
           acc.external_account_id !== externalAccountId
       );
 
-      // Save the updated storage
       await StorageService.setItem(
         AUTH_STORAGE_KEYS.EXTERNAL_ACCOUNTS,
         storage
@@ -144,9 +120,6 @@ export class ExternalAccountService {
     }
   }
 
-  /**
-   * Clear all external account mappings
-   */
   static async clearAll(): Promise<void> {
     try {
       await StorageService.deleteItem(AUTH_STORAGE_KEYS.EXTERNAL_ACCOUNTS);

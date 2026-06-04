@@ -3,10 +3,8 @@ import { z } from 'zod';
 /**
  * /auth/exchange request — a Privy ID token issued to the mobile app
  * after the user completes the Privy email-OTP + embedded-wallet flow.
- * The backend verifies the token, upserts the user + smart_account,
- * and returns our own JWT for subsequent API calls.
- *
- * Spec: docs/specs/migration-already-built-features.md §5.1.
+ * The backend verifies the token, upserts the user + smart_account, and
+ * returns our own JWT for subsequent API calls.
  */
 export const ExchangeRequestSchema = z.object({
   privyIdToken: z.string().min(1),

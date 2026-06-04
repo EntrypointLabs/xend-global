@@ -103,11 +103,8 @@ export function ModalFlowProvider({ children }: { children: React.ReactNode }) {
     setIsSendModalVisible(false);
   }, []);
 
-  // Phase 5: virtual-account on-ramp is out of v1 scope per PROJECT.md;
-  // the Grid `/get-virtual-accounts` BFF route was deleted. This is a no-op
-  // stub kept on the context so the KYC flow (which calls fetchBankDetails
-  // post-approval in useKyc.ts) compiles. The KYC swarm replaces this with
-  // a Sumsub-backed equivalent if virtual accounts come back into scope.
+  // No-op stub: virtual-account fetching is not yet available. Kept on the
+  // context because the KYC flow calls fetchBankDetails after approval.
   const fetchBankDetails = useCallback(async () => {
     if (!user) return;
     setBankAccountDetails(null);

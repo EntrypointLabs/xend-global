@@ -34,24 +34,22 @@ import type {
 
 /**
  * In-memory record of a prepared transfer intent. Stored only between
- * /transfers/prepare and /transfers/submit; once submit lands the
- * intent is erased and the canonical row lives in the `transfers`
- * table (idempotency on intentId is enforced by the UNIQUE index on
+ * /transfers/prepare and /transfers/submit; once submit lands the intent
+ * is erased and the canonical row lives in the `transfers` table
+ * (idempotency on intentId is enforced by the UNIQUE index on
  * `transfers.intent_id`).
  *
- * Per task brief: use an in-memory Map keyed by intentId with 5-min
- * TTL to avoid a new migration in Phase 1. This is acceptable
+ * An in-memory Map keyed by intentId with a 5-min TTL is sufficient
  * because:
  *   - Blockhash lifetime is ~60-90 seconds; intents do not need to
  *     survive longer than that.
- *   - The /transfers/prepare -> /transfers/submit round-trip in normal
- *     UX is single-digit seconds.
- *   - Server restart between prepare and submit is rare and the
- *     mobile retries with a fresh prepare anyway.
+ *   - The prepare -> submit round-trip in normal UX is single-digit
+ *     seconds.
+ *   - Server restart between prepare and submit is rare, and the mobile
+ *     app retries with a fresh prepare anyway.
  *
- * A future Phase (or a follow-up to Phase 1) can add a
- * `transfer_intents` table if we ever want intent durability across
- * restarts. Today, that durability is not on the success path.
+ * A `transfer_intents` table could be added later if intent durability
+ * across restarts is ever needed; today it is not on the success path.
  */
 interface IntentRecord {
   intentId: string;
@@ -86,10 +84,8 @@ export class TransferService {
     private readonly config: ConfigService,
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
   ) {
-    // Pull stablecoin mint allowlist from env. USDC is required; USDT
-    // is optional in dev because the spec only enforces it as
-    // receivable, not as initially-sendable on testnets. Both come
-    // from the env so devnet vs mainnet mints can swap without code.
+    // Pull the stablecoin mint allowlist from env so devnet vs mainnet
+    // mints can swap without code changes.
     const usdc = this.config.get<string>('EXPO_PUBLIC_USDC_MINT_ADDRESS');
     const usdt = this.config.get<string>('EXPO_PUBLIC_USDT_MINT_ADDRESS');
     if (usdc) this.mintAllowlist.add(usdc);
@@ -239,11 +235,10 @@ export class TransferService {
     // 8. Persist intent in-memory with TTL.
     const intentId = createId();
     const now = Date.now();
-    // expiresAt: blockhash lifetime upper bound. lastValidBlockHeight
-    // is a slot height; we cannot directly translate it to wall time
-    // without a current-slot read. The conservative upper bound is
-    // BLOCKHASH_LIFETIME_SLOTS * SLOT_MS = 60_000 ms from now (matches
-    // spec §5.4 "expiresAt: blockhash lifetime upper bound").
+    // expiresAt: blockhash lifetime upper bound. lastValidBlockHeight is
+    // a slot height that cannot be translated directly to wall time
+    // without a current-slot read, so use the conservative upper bound
+    // BLOCKHASH_LIFETIME_SLOTS * SLOT_MS = 60_000 ms from now.
     const expiresAt =
       now + Math.min(BLOCKHASH_LIFETIME_SLOTS * SLOT_MS, INTENT_TTL_MS);
 
@@ -269,13 +264,11 @@ export class TransferService {
     return {
       intentId,
       unsignedTxBase64,
-      // feeLamports: estimating the actual fee requires a simulateTransaction
-      // round-trip. The fixed base fee is 5000 lamports per signature; with
-      // a single signer (the sender) the floor is 5000. Adding the ATA
-      // create rent (~2_039_280 lamports) would inflate this; we surface
-      // only the transaction fee here per the spec contract (feeLamports
-      // is the "fee" field, not "total cost"). Mobile shows fee separately
-      // from amount, never collapses them.
+      // feeLamports is the transaction fee, not total cost. Estimating
+      // the actual fee requires a simulateTransaction round-trip; the
+      // fixed base fee is 5000 lamports per signature, and with a single
+      // signer (the sender) the floor is 5000. ATA-create rent
+      // (~2_039_280 lamports) is deliberately excluded here.
       feeLamports: 5000,
       expiresAt: new Date(expiresAt).toISOString(),
     };
@@ -328,8 +321,8 @@ export class TransferService {
       throw new IntentExpiredError('intent does not match authenticated user');
     }
 
-    // 3. Submit via SolanaRpc. RPC failure -> RPC_UNAVAILABLE (502),
-    //    NO DB write (atomicity per spec §5.4 + test plan row).
+    // 3. Submit via SolanaRpc. RPC failure -> RPC_UNAVAILABLE (502) with
+    //    NO DB write, so prepare/submit stays atomic.
     let signature: string;
     try {
       signature = await this.solana.sendRawTransaction(req.signedTxBase64);
@@ -340,9 +333,8 @@ export class TransferService {
       );
     }
 
-    // 4. Write the canonical row. Phase 1 always writes PENDING; the
-    //    Phase 2 tailer flips it. Memo is optional; we persist it for
-    //    later UI display once Memo program parsing lands.
+    // 4. Write the canonical row. Always written PENDING; the RPC tailer
+    //    flips it to CONFIRMED or FAILED later.
     const now = new Date();
     const [row] = await this.db.client
       .insert(transfers)
@@ -385,9 +377,8 @@ export class TransferService {
       .limit(1);
     if (!account) throw new NotFoundException('Wallet not found');
 
-    // Opaque cursor: base64({ createdAt: ISO, id: text }). The query
-    // ORDER BY is (createdAt DESC, id DESC) — same as spec §5.4 "reverse
-    // chrono by (createdAt, id), pagination with opaque cursor".
+    // Opaque cursor: base64({ createdAt: ISO, id: text }), paired with an
+    // ORDER BY (createdAt DESC, id DESC) for stable reverse-chrono paging.
     let cursorWhere: SQL | undefined = undefined;
     if (opts.cursor) {
       try {
@@ -442,11 +433,8 @@ export class TransferService {
           toAddress: r.toAddress,
           status: r.status,
           signature: r.signature ?? null,
-          // The transfers schema does not have a `memo` column today
-          // (added in spec §5.4 schema sketch but deferred from
-          // migration 0001 per executor-1a — see VERIFIED-executor-1.md
-          // Files Touched). We expose null for now; Phase 2 (RPC tailer)
-          // can add the column + backfill.
+          // The transfers schema has no `memo` column yet, so expose null
+          // until one is added and backfilled.
           memo: null,
           createdAt: r.createdAt.toISOString(),
           confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,

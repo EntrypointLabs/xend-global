@@ -45,14 +45,11 @@ import {
  *   lamports, ATA missing, blockhash expired), the second attempt also
  *   fails, wasting latency and burning a blockhash. The honest
  *   behaviour is to surface the Helius failure directly and let the
- *   caller reissue `prepare` (fresh blockhash + intentId) per spec
- *   §5.4.
+ *   caller reissue `prepare` (fresh blockhash + intentId).
  *
  *   This invariant is exercised by a dedicated unit test
  *   (`sendRawTransaction does NOT fallback`) — do not relax it without
- *   updating both the test and the spec.
- *
- * Spec: docs/specs/migration-already-built-features.md §6, §5.4, §5.6.
+ *   updating the test.
  */
 @Injectable()
 export class FailoverSolanaRpc implements SolanaRpc {

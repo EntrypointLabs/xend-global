@@ -1,11 +1,8 @@
 /**
  * Typed errors thrown by TransferService and mapped to HTTP codes by
- * TransferController per the PLAN.md "Error codes" table.
- *
- * Same design as PrivyAdapter's typed errors: kept out of
- * @nestjs/common so the transfer service stays HTTP-framework-
- * agnostic (a future CLI or worker can consume the same service
- * without dragging in Nest exception shapes).
+ * TransferController. Kept out of @nestjs/common so the transfer service
+ * stays HTTP-framework-agnostic (a future CLI or worker can consume the
+ * same service without dragging in Nest exception shapes).
  */
 
 export class InvalidRecipientError extends Error {

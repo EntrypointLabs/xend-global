@@ -13,7 +13,6 @@ import {
 import { useToast } from "@/contexts/ToastContext";
 import { useScreenTheme } from "@/contexts/ScreenThemeContext";
 import { ThemedText, Chip, IconSymbol, Divider } from "@/components/ui/atoms";
-// TODO: check if this is needed
 import { IconSymbolName } from "@/components/ui/atoms/IconSymbol";
 import { ThemedButton } from "@/components/ui/molecules";
 import * as Haptics from "expo-haptics";
@@ -73,18 +72,15 @@ function BankDetailsModal() {
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
 
   const handleCurrencyChange = (currency: Currency) => {
-    // Prevent currency changes while creating an account
     if (!isCreatingAccount) {
       setSelectedCurrency(currency);
     }
   };
 
-  // Handle close modal
   const handleClose = () => {
     router.back();
   };
 
-  // Handle copying a single field
   const handleCopy = async (label: string, value: string) => {
     try {
       await Clipboard.setStringAsync(value);
@@ -103,7 +99,6 @@ function BankDetailsModal() {
     }
   };
 
-  // Handle copying all fields
   const handleCopyAll = async () => {
     if (!bankAccountDetails) return;
     try {
@@ -155,12 +150,10 @@ function BankDetailsModal() {
     }
   };
 
-  // Phase 5: virtual-account creation is out of v1 scope per PROJECT.md
-  // ("Virtual account on-ramp (Iron / BVNK). Deferred to a follow-up spec.").
-  // The button surfaces a "coming soon" toast instead of calling the
-  // now-deleted Grid `openVirtualAccount` BFF route. `bankdetails.tsx` itself
-  // is preserved by the KYC carve-out (KYC results render bank details once
-  // the KYC swarm wires Sumsub).
+  // Virtual-account creation is not yet available; the button surfaces a
+  // "coming soon" toast. The unused state setters below are kept referenced
+  // so the surrounding bank-details rendering stays intact for when KYC wires
+  // real account creation.
   const handleCreateBankAccount = async () => {
     if (!user) {
       logout();

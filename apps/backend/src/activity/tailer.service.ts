@@ -5,34 +5,19 @@ import type { ConfirmedTransferEvent } from '../solana/solana-rpc.interface';
 import type { WalletAddress } from '../wallet/wallet-provider.interface';
 
 /**
- * TailerService — the write side of the activity feed.
+ * The write side of the activity feed. Called by both the webhook hot
+ * path (WebhookController) and the boot-time replay (ReconcilerService).
  *
- * Has exactly one public method: `upsertConfirmedTransfer(evt, ownedWallets)`.
- * Called by both the webhook hot path (WebhookController) and the
- * boot-time replay (ReconcilerService.onModuleInit).
- *
- * Status guard contract (PLAN.md hard rule):
+ * Status guard contract:
  *   - A row that is CONFIRMED or FAILED MUST NEVER regress to PENDING.
  *   - Encoded in SQL via a CASE expression in the ON CONFLICT DO UPDATE
  *     clause; encoded again in the reconciler's per-row WHERE clause.
  *   - This protects against late webhook deliveries that arrive after
  *     the reconciler has already finalized the row (or vice versa).
  *
- * Idempotency contract:
- *   - `transfers.signature` is UNIQUE (Phase 1 schema).
- *   - The single write path is `INSERT ... ON CONFLICT (signature) DO
- *     UPDATE`. Duplicate webhook deliveries collapse into a single row.
- *
- * Direction determination:
- *   - `direction='SEND'` if `evt.fromAddress` is in our owned wallets
- *     AND `evt.toAddress` is not. (Outbound: we initiated it.)
- *   - `direction='RECEIVE'` if `evt.toAddress` is owned AND
- *     `evt.fromAddress` is not. (Inbound: someone paid us.)
- *   - Self-send (both ours) — write as 'SEND' (best-effort; the user
- *     sees one row, consistent with how the mobile UI today represents
- *     wallet-internal moves).
- *   - Neither ours — caller filters these BEFORE calling us; we throw
- *     defensively if it slips through.
+ * Idempotency: `transfers.signature` is UNIQUE and the single write path
+ * is `INSERT ... ON CONFLICT (signature) DO UPDATE`, so duplicate
+ * webhook deliveries collapse into a single row.
  */
 @Injectable()
 export class TailerService {
@@ -41,14 +26,10 @@ export class TailerService {
   constructor(private readonly db: DbService) {}
 
   /**
-   * Upsert a confirmed transfer.
-   *
-   * @param evt confirmed transfer event from webhook OR boot replay
-   * @param smartAccountId the smart_accounts.id of the OWNED wallet
-   *   that this event belongs to (sender or receiver). The caller
-   *   already verified the wallet is ours and looked up its id.
-   * @returns the resolved direction ('SEND' or 'RECEIVE'), useful for
-   *   metrics.
+   * @param smartAccountId the smart_accounts.id of the OWNED wallet that
+   *   this event belongs to (sender or receiver). The caller already
+   *   verified the wallet is ours and looked up its id.
+   * @returns the resolved direction ('SEND' or 'RECEIVE').
    */
   async upsertConfirmedTransfer(
     evt: ConfirmedTransferEvent,
@@ -58,17 +39,12 @@ export class TailerService {
     const direction: 'SEND' | 'RECEIVE' =
       evt.fromAddress === ownedWallet ? 'SEND' : 'RECEIVE';
 
-    // SQL UPSERT with status guard. See class doc.
-    //
-    // The CASE in the DO UPDATE clause is the load-bearing line:
-    //   - if the existing row is already CONFIRMED or FAILED, keep
-    //     that status (do not regress).
-    //   - otherwise, take the incoming status (always 'CONFIRMED'
-    //     from the webhook / replay path).
-    //
-    // confirmed_at and slot use COALESCE so an existing non-null
-    // value wins over an incoming one — this preserves the first
-    // confirmation timestamp / slot when a duplicate event arrives.
+    // The CASE in the DO UPDATE clause is the load-bearing status guard:
+    // if the existing row is already CONFIRMED or FAILED, keep that
+    // status (do not regress); otherwise take the incoming status.
+    // confirmed_at and slot use COALESCE so an existing non-null value
+    // wins over an incoming one — this preserves the first confirmation
+    // timestamp / slot when a duplicate event arrives.
     await this.db.client.execute(sql`
       INSERT INTO transfers (
         id, smart_account_id, signature, direction, mint, amount_raw,
@@ -115,13 +91,11 @@ export class TailerService {
   }
 
   private generateId(): string {
-    // Inline cuid2 to avoid pulling another import into the test path.
-    // The DB has a $defaultFn on the id column but we are bypassing
-    // Drizzle's value generation here (using raw sql.execute), so we
-    // mint one ourselves. Keeping it cuid2-shaped so rows are sortable
-    // by id and indistinguishable from prepare/submit-written rows.
-    // Lazy-require so the dependency stays optional in test contexts
-    // that mock the DB.
+    // The DB has a $defaultFn on the id column, but raw sql.execute
+    // bypasses Drizzle's value generation, so mint one here. Kept
+    // cuid2-shaped so rows are sortable by id and indistinguishable from
+    // prepare/submit-written rows. Lazy-require so the dependency stays
+    // optional in test contexts that mock the DB.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { createId } = require('@paralleldrive/cuid2') as {
       createId: () => string;
