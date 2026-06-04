@@ -11,6 +11,7 @@ import {
 import { AccountInfo, AuthContextType } from "@/types/Auth";
 import { AuthStorage } from "@/utils/storage/authStorage";
 import { apiClient } from "@/utils/apiClient";
+import { isJwtExpired } from "@/utils/jwt";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -27,10 +28,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
   const [user, setUser] = useState<any | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [needsTokenRefresh, setNeedsTokenRefresh] = useState(false);
 
   const { sendCode, loginWithCode } = useLoginWithEmail();
   const { getIdentityToken } = useIdentityToken();
-  const { logout: privyLogout } = usePrivy();
+  const {
+    logout: privyLogout,
+    user: privyUser,
+    isReady: privyReady,
+  } = usePrivy();
   const embeddedSolana = useEmbeddedSolanaWallet();
 
   useEffect(() => {
@@ -40,8 +46,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(storedUser);
         const savedEmail = await AuthStorage.getEmail();
         setEmail(savedEmail);
-        const authed = await AuthStorage.isAuthenticated();
-        setIsAuthenticated(authed);
+
+        const token = await AuthStorage.getToken();
+        if (token && !isJwtExpired(token)) {
+          setIsAuthenticated(true);
+        } else if (await AuthStorage.isAuthenticated()) {
+          // Session restored but the backend JWT is missing or expired. Defer
+          // to the refresh effect, which silently re-exchanges the Privy
+          // identity token once the SDK is ready (or drops to logged-out).
+          // Leaving isAuthenticated null keeps the loading screen up instead
+          // of flashing an authed UI whose API calls would 401.
+          setNeedsTokenRefresh(true);
+        } else {
+          setIsAuthenticated(false);
+        }
       } catch (error) {
         console.error("Error initializing auth:", error);
         Sentry.captureException(
@@ -57,6 +75,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth();
   }, []);
+
+  // Silent re-auth: when a restored session has no valid backend JWT, wait for
+  // Privy to be ready and exchange its identity token for a fresh JWT. If Privy
+  // has no session (or the exchange fails), drop to logged-out rather than
+  // stranding the user in an authed UI whose protected calls 401.
+  useEffect(() => {
+    if (!needsTokenRefresh || !privyReady) return;
+    let cancelled = false;
+
+    const refresh = async () => {
+      try {
+        if (!privyUser) throw new Error("no Privy session to refresh from");
+        const idToken = await getIdentityToken();
+        if (!idToken) throw new Error("Privy returned no identity token");
+
+        const exchange = await apiClient.exchange({ privyIdToken: idToken });
+        if (cancelled) return;
+
+        const refreshedUser = {
+          id: exchange.user.id,
+          email: exchange.user.email,
+          walletAddress: exchange.user.walletAddress,
+          smart_account_address: exchange.user.walletAddress,
+        };
+        await AuthStorage.saveToken(exchange.token);
+        await AuthStorage.saveUserData(refreshedUser);
+        await AuthStorage.saveEmail(exchange.user.email);
+        await AuthStorage.saveIsAuthenticated(true);
+        if (cancelled) return;
+
+        setUser(refreshedUser);
+        setEmail(exchange.user.email);
+        setWallet(exchange.user.walletAddress);
+        setIsAuthenticated(true);
+      } catch (error) {
+        Sentry.captureException(
+          new Error(`Silent token refresh failed: ${error}. AuthContext`)
+        );
+        await AuthStorage.clearAuthData().catch(() => {});
+        if (cancelled) return;
+        setUser(null);
+        setWallet(null);
+        setIsAuthenticated(false);
+      } finally {
+        if (!cancelled) setNeedsTokenRefresh(false);
+      }
+    };
+
+    refresh();
+    return () => {
+      cancelled = true;
+    };
+    // Trigger only on the refresh flags; getIdentityToken is captured by design.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsTokenRefresh, privyReady, privyUser]);
 
   /**
    * Step 1 of email login (and registration — Privy collapses the two).
