@@ -24,6 +24,7 @@ import {
 import {
   InvalidRecipientError,
   IntentExpiredError,
+  IntentMismatchError,
   RpcUnavailableError,
   UnsupportedMintError,
 } from './transfer.errors';
@@ -38,6 +39,7 @@ interface AuthenticatedRequest extends Request {
  * Error mapping:
  *   InvalidRecipientError -> 400 INVALID_RECIPIENT
  *   UnsupportedMintError  -> 400 UNSUPPORTED_MINT
+ *   IntentMismatchError   -> 400 INTENT_MISMATCH
  *   IntentExpiredError    -> 410 INTENT_EXPIRED
  *   RpcUnavailableError   -> 502 RPC_UNAVAILABLE
  *
@@ -107,6 +109,12 @@ export class TransferController {
       throw new HttpException(
         { code: err.code, message: err.message },
         HttpStatus.GONE,
+      );
+    }
+    if (err instanceof IntentMismatchError) {
+      throw new HttpException(
+        { code: err.code, message: err.message },
+        HttpStatus.BAD_REQUEST,
       );
     }
     if (err instanceof RpcUnavailableError) {

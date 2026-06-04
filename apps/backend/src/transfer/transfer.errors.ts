@@ -29,6 +29,20 @@ export class IntentExpiredError extends Error {
   }
 }
 
+/**
+ * The submitted signed transaction does not match the one produced by
+ * /transfers/prepare for this intent. Raised when the client signs and submits
+ * a different transaction than the backend built, which would otherwise let the
+ * ledger row (recipient, mint, amount) diverge from what lands on-chain.
+ */
+export class IntentMismatchError extends Error {
+  readonly code = 'INTENT_MISMATCH';
+  constructor(message: string) {
+    super(message);
+    this.name = 'IntentMismatchError';
+  }
+}
+
 export class RpcUnavailableError extends Error {
   readonly code = 'RPC_UNAVAILABLE';
   constructor(

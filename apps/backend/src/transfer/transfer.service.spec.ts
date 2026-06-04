@@ -1,14 +1,29 @@
 import { ConfigService } from '@nestjs/config';
-import { Keypair } from '@solana/web3.js';
+import { Keypair, VersionedTransaction } from '@solana/web3.js';
 import { TransferService } from './transfer.service';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import {
   InvalidRecipientError,
   IntentExpiredError,
+  IntentMismatchError,
   RpcUnavailableError,
   UnsupportedMintError,
 } from './transfer.errors';
+
+/**
+ * Re-sign the prepared transaction the way the Privy wallet would: signing
+ * adds signatures but leaves the message untouched, so submit()'s
+ * message-match check passes. Used by the submit tests that need a valid
+ * payload.
+ */
+function signPrepared(unsignedTxBase64: string): string {
+  const tx = VersionedTransaction.deserialize(
+    Buffer.from(unsignedTxBase64, 'base64'),
+  );
+  tx.signatures = tx.signatures.map(() => new Uint8Array(64).fill(7));
+  return Buffer.from(tx.serialize()).toString('base64');
+}
 import { smartAccounts, transfers } from '../db/schema';
 
 /**
@@ -340,9 +355,10 @@ describe('TransferService.submit', () => {
       amountRaw: '1000000',
     });
 
+    const signedTxBase64 = signPrepared(prep.unsignedTxBase64);
     const out = await service.submit('u_test', {
       intentId: prep.intentId,
-      signedTxBase64: 'fake-signed-payload',
+      signedTxBase64,
     });
 
     expect(out.signature).toBe('sig-happy');
@@ -355,7 +371,7 @@ describe('TransferService.submit', () => {
     expect(store.transfers[0].direction).toBe('SEND');
     expect(store.transfers[0].mint).toBe(usdcMint);
     expect(store.transfers[0].amountRaw).toBe('1000000');
-    expect(sendRawTransaction).toHaveBeenCalledWith('fake-signed-payload');
+    expect(sendRawTransaction).toHaveBeenCalledWith(signedTxBase64);
   });
 
   it('duplicate intentId returns the existing row (idempotency)', async () => {
@@ -372,11 +388,13 @@ describe('TransferService.submit', () => {
 
     const first = await service.submit('u_test', {
       intentId: prep.intentId,
-      signedTxBase64: 'sig-bytes-1',
+      signedTxBase64: signPrepared(prep.unsignedTxBase64),
     });
+    // The replay short-circuits on the UNIQUE intentId lookup before the
+    // message check, so its payload is irrelevant.
     const second = await service.submit('u_test', {
       intentId: prep.intentId,
-      signedTxBase64: 'sig-bytes-2',
+      signedTxBase64: 'ignored-on-replay',
     });
 
     expect(second.transferId).toBe(first.transferId);
@@ -402,10 +420,61 @@ describe('TransferService.submit', () => {
     await expect(
       service.submit('u_test', {
         intentId: prep.intentId,
-        signedTxBase64: 'sig-bytes',
+        signedTxBase64: signPrepared(prep.unsignedTxBase64),
       }),
     ).rejects.toBeInstanceOf(RpcUnavailableError);
     expect(store.transfers).toHaveLength(0);
+  });
+
+  it('signed tx not matching the prepared message -> IntentMismatchError, no broadcast', async () => {
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const sendRawTransaction = jest.fn().mockResolvedValue('sig-x');
+    const solana = makeSolana({ sendRawTransaction });
+    const { service, store } = makeService({ solana });
+
+    const prep = await service.prepare('u_test', {
+      toAddress: recipient,
+      mint: usdcMint,
+      amountRaw: '1000000',
+    });
+
+    // A different transfer (other recipient/amount) than the prepared intent.
+    const tampered = await service.prepare('u_test', {
+      toAddress: Keypair.generate().publicKey.toBase58(),
+      mint: usdcMint,
+      amountRaw: '2000000',
+    });
+
+    await expect(
+      service.submit('u_test', {
+        intentId: prep.intentId,
+        signedTxBase64: signPrepared(tampered.unsignedTxBase64),
+      }),
+    ).rejects.toBeInstanceOf(IntentMismatchError);
+    expect(sendRawTransaction).not.toHaveBeenCalled();
+    expect(store.transfers).toHaveLength(0);
+  });
+
+  it('unsigned tx (no signature) -> IntentMismatchError', async () => {
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const sendRawTransaction = jest.fn().mockResolvedValue('sig-x');
+    const solana = makeSolana({ sendRawTransaction });
+    const { service } = makeService({ solana });
+
+    const prep = await service.prepare('u_test', {
+      toAddress: recipient,
+      mint: usdcMint,
+      amountRaw: '1000000',
+    });
+
+    // Correct message, but never signed.
+    await expect(
+      service.submit('u_test', {
+        intentId: prep.intentId,
+        signedTxBase64: prep.unsignedTxBase64,
+      }),
+    ).rejects.toBeInstanceOf(IntentMismatchError);
+    expect(sendRawTransaction).not.toHaveBeenCalled();
   });
 
   it('missing / expired intent -> IntentExpiredError (410)', async () => {

@@ -22,6 +22,7 @@ import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import {
   InvalidRecipientError,
   IntentExpiredError,
+  IntentMismatchError,
   RpcUnavailableError,
   UnsupportedMintError,
 } from './transfer.errors';
@@ -61,6 +62,12 @@ interface IntentRecord {
   memo?: string;
   blockhash: string;
   lastValidBlockHeight: number;
+  /**
+   * Base64 of the compiled v0 message the backend built. submit() requires the
+   * client's signed transaction to carry this exact message, so the broadcast
+   * tx can't diverge from the recorded intent.
+   */
+  messageBase64: string;
   /** Unix millis */
   createdAt: number;
   /** Unix millis */
@@ -231,6 +238,7 @@ export class TransferService {
     }).compileToV0Message();
     const tx = new VersionedTransaction(messageV0);
     const unsignedTxBase64 = Buffer.from(tx.serialize()).toString('base64');
+    const messageBase64 = Buffer.from(messageV0.serialize()).toString('base64');
 
     // 8. Persist intent in-memory with TTL.
     const intentId = createId();
@@ -252,6 +260,7 @@ export class TransferService {
       memo: req.memo,
       blockhash: blockhashInfo.blockhash,
       lastValidBlockHeight: blockhashInfo.lastValidBlockHeight,
+      messageBase64,
       createdAt: now,
       expiresAt,
     });
@@ -321,7 +330,41 @@ export class TransferService {
       throw new IntentExpiredError('intent does not match authenticated user');
     }
 
-    // 3. Submit via SolanaRpc. RPC failure -> RPC_UNAVAILABLE (502) with
+    // 3. Bind the signed transaction to the prepared intent. Signing only
+    //    adds signatures, so the message must byte-match the one we built;
+    //    any difference means the client signed a different transfer (other
+    //    recipient/mint/amount) and the recorded row would not reflect the
+    //    on-chain effect.
+    let signedTx: VersionedTransaction;
+    try {
+      signedTx = VersionedTransaction.deserialize(
+        Buffer.from(req.signedTxBase64, 'base64'),
+      );
+    } catch {
+      throw new IntentMismatchError(
+        'signedTxBase64 is not a valid transaction',
+      );
+    }
+    const submittedMessage = Buffer.from(signedTx.message.serialize()).toString(
+      'base64',
+    );
+    if (submittedMessage !== intent.messageBase64) {
+      throw new IntentMismatchError(
+        'signed transaction does not match the prepared intent',
+      );
+    }
+    // Require a real signature so we never broadcast an unsigned transaction
+    // (which fails on-chain yet would still write a bogus PENDING row).
+    const isSigned = signedTx.signatures.some((sig) =>
+      sig.some((b) => b !== 0),
+    );
+    if (!isSigned) {
+      throw new IntentMismatchError(
+        'signed transaction is missing a signature',
+      );
+    }
+
+    // 4. Submit via SolanaRpc. RPC failure -> RPC_UNAVAILABLE (502) with
     //    NO DB write, so prepare/submit stays atomic.
     let signature: string;
     try {
@@ -333,7 +376,7 @@ export class TransferService {
       );
     }
 
-    // 4. Write the canonical row. Always written PENDING; the RPC tailer
+    // 5. Write the canonical row. Always written PENDING; the RPC tailer
     //    flips it to CONFIRMED or FAILED later.
     const now = new Date();
     const [row] = await this.db.client
@@ -352,7 +395,7 @@ export class TransferService {
       })
       .returning();
 
-    // 5. Erase the intent — it has served its purpose.
+    // 6. Erase the intent — it has served its purpose.
     this.intents.delete(req.intentId);
 
     return {
