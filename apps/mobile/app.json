@@ -10,7 +10,6 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "io.sqds.xend",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
@@ -20,7 +19,8 @@
         ],
         "NSCameraUsageDescription": "This app requires camera access to verify your identity."
       },
-      "associatedDomains": ["applinks:xend.global"]
+      "associatedDomains": ["applinks:xend.global"],
+      "bundleIdentifier": "com.giftedborg.xend"
     },
     "android": {
       "fonts": [
@@ -29,7 +29,6 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/app-icon.png"
       },
-      "package": "io.sqds.xend",
       "intentFilters": [
         {
           "action": "VIEW",
@@ -42,7 +41,8 @@
         }
       ],
       "permissions": ["CAMERA"],
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "pan",
+      "package": "com.giftedborg.xend"
     },
     "web": {
       "bundler": "metro",
@@ -71,7 +71,10 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "projectId": "12867b7e-4203-4705-a353-ee1631a0ecda"
+      }
     },
     "owner": "gifted-borg"
   }

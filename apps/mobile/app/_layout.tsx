@@ -169,10 +169,17 @@ function RootLayout() {
  */
 function PrivyAppShell({ children }: { children: React.ReactNode }) {
   const configuredAppId = process.env.EXPO_PUBLIC_PRIVY_APP_ID;
+  const configuredClientId = process.env.EXPO_PUBLIC_PRIVY_CLIENT_ID;
 
   if (!configuredAppId) {
     console.warn(
       "[PrivyAppShell] EXPO_PUBLIC_PRIVY_APP_ID is unset; Privy hooks will not be able to authenticate."
+    );
+  }
+
+  if (!configuredClientId) {
+    console.warn(
+      "[PrivyAppShell] EXPO_PUBLIC_PRIVY_CLIENT_ID is unset; native builds need the dashboard client ID for the app identifier to be recognized."
     );
   }
 
@@ -181,6 +188,7 @@ function PrivyAppShell({ children }: { children: React.ReactNode }) {
   return (
     <PrivyProvider
       appId={appId}
+      clientId={configuredClientId}
       config={{
         embedded: {
           solana: {
