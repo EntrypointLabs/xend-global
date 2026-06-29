@@ -4,7 +4,7 @@
     "slug": "xend",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/app-icon.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "xend",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -27,7 +27,8 @@
         "node_modules/@expo-google-fonts/inter/900Black/Inter_900Black.ttf"
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/app-icon.png"
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#f5f5f5"
       },
       "intentFilters": [
         {
@@ -63,7 +64,15 @@
       ],
       "@sentry/react-native",
       "expo-image",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
       "expo-status-bar",
       "expo-web-browser"
     ],

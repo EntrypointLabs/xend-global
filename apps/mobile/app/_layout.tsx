@@ -46,6 +46,10 @@ import LoadingScreen from "@/components/ui/layout/LoadingScreen";
 
 const queryClient = new QueryClient();
 
+// Keep the native splash up until the app is ready, then hand off to the
+// matching JS splash (LoadingScreen) — no white flash in between.
+SplashScreen.preventAutoHideAsync();
+
 // Error tracking, production only. Config is fetched from the `/api/sentry`
 // route so it can be rotated without an app rebuild.
 if (process.env.EXPO_PUBLIC_GRID_ENV === "production") {
@@ -132,18 +136,16 @@ function RootLayout() {
     return () => clearTimeout(timer);
   }, []);
 
+  const ready = loaded || !!error || fontTimeout;
+
   useEffect(() => {
-    if (loaded || error) {
+    if (ready) {
       SplashScreen.hideAsync();
     }
-  }, [loaded, error]);
+  }, [ready]);
 
-  if (!loaded && !fontTimeout) {
+  if (!ready) {
     return <LoadingScreen />;
-  }
-
-  if (!loaded || !!error) {
-    return null;
   }
 
   return (
