@@ -4,6 +4,7 @@ import {
   useEmbeddedSolanaWallet,
   useIdentityToken,
   useLoginWithEmail,
+  usePrivy,
 } from "@privy-io/expo";
 
 import { apiClient } from "@/utils/apiClient";
@@ -23,15 +24,18 @@ export function useLoginMutation() {
 
   const { sendCode, loginWithCode } = useLoginWithEmail();
   const { getIdentityToken } = useIdentityToken();
+  const { logout, user: privyUser } = usePrivy();
   const embeddedSolana = useEmbeddedSolanaWallet();
 
   const sendOtpMutation = useMutation({
     mutationFn: async (email: string) => {
       emailRef.current = email;
+      // A prior login whose exchange never completed leaves Privy logged in
+      // while the app is not; clear it so loginWithCode issues a fresh session.
+      if (privyUser) {
+        await logout();
+      }
       await sendCode({ email });
-      // Privy collapses register and login into the same OTP flow; the
-      // `isNewUser` distinction is settled by /auth/exchange when the OTP
-      // is verified.
       setIsNewUser(false);
       return { data: { email } };
     },
@@ -39,8 +43,8 @@ export function useLoginMutation() {
 
   const verifyOtpMutation = useMutation({
     mutationFn: async (otpCode: string) => {
-      const privyUser = await loginWithCode({ code: otpCode });
-      if (!privyUser) {
+      const privyLoginUser = await loginWithCode({ code: otpCode });
+      if (!privyLoginUser) {
         throw new Error("Privy loginWithCode returned no user");
       }
       const idToken = await getIdentityToken();
@@ -56,7 +60,6 @@ export function useLoginMutation() {
         id: exchange.user.id,
         email: exchange.user.email,
         walletAddress: exchange.user.walletAddress,
-        // The post-login passkey check reads smart_account_address.
         smart_account_address: exchange.user.walletAddress,
         privyWalletAddress: embeddedSolana.wallets?.[0]?.address ?? null,
       };

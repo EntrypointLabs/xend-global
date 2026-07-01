@@ -141,6 +141,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthError(null);
     await AuthStorage.saveEmail(emailArg);
     try {
+      // A stale Privy session blocks a fresh loginWithCode; clear it first.
+      if (privyUser) {
+        await privyLogout();
+      }
       await sendCode({ email: emailArg });
     } catch (error) {
       Sentry.captureException(
@@ -164,8 +168,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    */
   const completeOtpAndExchange = async (code: string): Promise<boolean> => {
     try {
-      const privyUser = await loginWithCode({ code });
-      if (!privyUser) {
+      const loggedInUser = await loginWithCode({ code });
+      if (!loggedInUser) {
         throw new Error("Privy loginWithCode returned no user");
       }
 
