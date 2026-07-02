@@ -96,22 +96,42 @@ export class AuthService {
       isNewUser = true;
     }
 
-    // Upsert smart_accounts keyed by (provider, provider_user_id).
+    // Upsert smart_accounts keyed by user_id (UNIQUE). Matching on
+    // provider_user_id alone would miss when an existing user re-creates
+    // their Privy account (fresh DID + embedded wallet) under the same
+    // email, and the resulting INSERT would violate the user_id unique
+    // constraint and lock the user out. Keying on user_id makes re-auth
+    // idempotent and adopts the new DID/wallet.
     const [existingAccount] = await this.db.client
       .select()
       .from(smartAccounts)
-      .where(eq(smartAccounts.providerUserId, providerUserId))
+      .where(eq(smartAccounts.userId, userRow.id))
       .limit(1);
+    const previousWalletAddress = existingAccount?.walletAddress;
 
-    if (!existingAccount) {
-      await this.db.client.insert(smartAccounts).values({
+    await this.db.client
+      .insert(smartAccounts)
+      .values({
         userId: userRow.id,
         walletAddress,
         provider: 'privy',
         providerUserId,
+      })
+      .onConflictDoUpdate({
+        target: smartAccounts.userId,
+        set: {
+          walletAddress,
+          provider: 'privy',
+          providerUserId,
+          updatedAt: new Date(),
+        },
       });
-      // Best-effort webhook registration; the reconciler is the safety
-      // net. Failure MUST NOT break /auth/exchange.
+
+    // Register the webhook whenever this is a new account or the wallet
+    // address changed (e.g. re-auth with a fresh embedded wallet).
+    // Best-effort; the reconciler is the safety net, so failure MUST NOT
+    // break /auth/exchange.
+    if (!existingAccount || previousWalletAddress !== walletAddress) {
       try {
         await this.solana.registerWebhookAddress(walletAddress);
       } catch (err) {
@@ -120,11 +140,6 @@ export class AuthService {
           err,
         );
       }
-    } else {
-      await this.db.client
-        .update(smartAccounts)
-        .set({ updatedAt: new Date() })
-        .where(eq(smartAccounts.id, existingAccount.id));
     }
 
     // Mint our JWT. Shape matches jwt.strategy.ts:JwtPayload.
