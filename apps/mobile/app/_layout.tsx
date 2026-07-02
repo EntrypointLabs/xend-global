@@ -7,6 +7,7 @@ import "react-native-reanimated";
 import "@/global.css";
 import "@/utils/cssInteropSetup";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { AppLockProvider, useAppLock } from "@/contexts/AppLockContext";
 import { ScreenThemeProvider } from "@/contexts/ScreenThemeContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useTheme } from "@/hooks/useTheme";
@@ -43,6 +44,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import LoadingScreen from "@/components/ui/layout/LoadingScreen";
+import LockScreen from "@/components/ui/layout/LockScreen";
 
 const queryClient = new QueryClient();
 
@@ -77,6 +79,7 @@ if (process.env.EXPO_PUBLIC_GRID_ENV === "production") {
 function AuthLayout() {
   const segments = useSegments();
   const { isAuthenticated, pendingPasskeySetup } = useAuth();
+  const { isLocked } = useAppLock();
   const colorScheme = useColorScheme();
 
   if (isAuthenticated === null) {
@@ -87,6 +90,12 @@ function AuthLayout() {
 
   if (!isAuthenticated && !inAuthGroup) {
     return <Redirect href="/login" withAnchor />;
+  }
+
+  // App lock: once signed in and out of the auth stack, require the biometric
+  // unlock before any app content renders.
+  if (isAuthenticated && !inAuthGroup && isLocked) {
+    return <LockScreen />;
   }
 
   if (isAuthenticated && !pendingPasskeySetup && inAuthGroup) {
@@ -154,9 +163,11 @@ function RootLayout() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <ThemedRoot>
             <AuthProvider>
-              <BottomSheetModalProvider>
-                <AuthLayout />
-              </BottomSheetModalProvider>
+              <AppLockProvider>
+                <BottomSheetModalProvider>
+                  <AuthLayout />
+                </BottomSheetModalProvider>
+              </AppLockProvider>
             </AuthProvider>
           </ThemedRoot>
         </GestureHandlerRootView>

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { usePrivy } from "@privy-io/expo";
 import { useLinkWithPasskey } from "@privy-io/expo/passkey";
 
+import { AuthStorage } from "@/utils/storage/authStorage";
+
 // Privy validates this as a full origin URL and derives the WebAuthn rp.id
 // from its registrable domain (the apex `xend.global`, not the www host). So
 // `xend.global/.well-known/assetlinks.json` must serve directly (200, no
@@ -39,11 +41,16 @@ export function usePasskey() {
     setError(null);
     try {
       const updated = await linkWithPasskey({ relyingParty: RELYING_PARTY });
-      return (
+      const linked =
         updated?.linked_accounts.some(
           (account) => account.type === "passkey"
-        ) ?? false
-      );
+        ) ?? false;
+      // Persist so the biometric app lock arms on the next launch even before
+      // Privy's user has rehydrated.
+      if (linked) {
+        await AuthStorage.saveHasPasskey(true);
+      }
+      return linked;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Passkey setup failed");
       return false;

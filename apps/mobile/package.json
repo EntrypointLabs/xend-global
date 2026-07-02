@@ -46,6 +46,7 @@
     "expo-haptics": "~56.0.3",
     "expo-image": "~56.0.9",
     "expo-linking": "~56.0.13",
+    "expo-local-authentication": "~56.0.4",
     "expo-random": "^14.0.1",
     "expo-router": "~56.2.8",
     "expo-secure-store": "~56.0.4",
