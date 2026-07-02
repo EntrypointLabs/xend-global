@@ -19,8 +19,7 @@ import {
   AccountLabel,
 } from "@/types/ExternalAccounts";
 import { handleError, ErrorCode } from "@/utils/errors";
-import { useWalletData } from "@/hooks/useWalletData";
-import { useAuth } from "@/contexts/AuthContext";
+import { useBalances } from "@/hooks/useBalances";
 import { useToast } from "@/contexts/ToastContext";
 
 export default function AmountScreen() {
@@ -35,8 +34,8 @@ export default function AmountScreen() {
   const [externalAccounts, setExternalAccounts] = useState<
     ExternalAccountMapping[]
   >([]);
-  const { accountInfo } = useAuth();
-  const { balance } = useWalletData(accountInfo);
+  const { total } = useBalances();
+  const balance = total ?? 0;
   const { showToast } = useToast();
 
   const [address, setAddress] = useState<AddressInput>({
