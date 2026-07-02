@@ -1,5 +1,6 @@
 import React from "react";
 import { Image, View } from "react-native";
+import { StatusBar } from "expo-status-bar";
 
 const splashLogo = require("@/assets/images/logo/xend-mark-white-2048.png");
 
@@ -9,6 +10,7 @@ const splashLogo = require("@/assets/images/logo/xend-mark-white-2048.png");
 function LoadingScreen() {
   return (
     <View className="flex-1 items-center justify-center bg-black">
+      <StatusBar style="light" />
       <Image source={splashLogo} className="h-40 w-40" resizeMode="contain" />
     </View>
   );

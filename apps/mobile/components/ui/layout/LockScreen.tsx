@@ -1,14 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Image, View } from "react-native";
+import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import LoadingScreen from "@/components/ui/layout/LoadingScreen";
 import { useAppLock } from "@/contexts/AppLockContext";
-
-const whiteMark = require("@/assets/images/logo/xend-mark-white-2048.png");
 
 /**
  * Full-screen biometric gate. Prompts Face ID / fingerprint over a pitch-black
@@ -36,12 +35,7 @@ function LockScreen() {
   }, [promptReady]);
 
   if (isAuthenticating || !showLocked) {
-    return (
-      <View className="flex-1 items-center justify-center bg-black">
-        <StatusBar style="light" />
-        <Image source={whiteMark} className="h-40 w-40" resizeMode="contain" />
-      </View>
-    );
+    return <LoadingScreen />;
   }
 
   return (

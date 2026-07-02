@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { View, SectionList, TouchableOpacity, Linking } from "react-native";
 import Constants from "expo-constants";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
@@ -31,7 +31,6 @@ export default function SettingsScreen() {
     hasPasskey,
     isRegistering,
     error: passkeyError,
-    checkPasskeys,
     registerPasskey,
     clearError: clearPasskeyError,
   } = usePasskey();
@@ -42,13 +41,6 @@ export default function SettingsScreen() {
   const { showToast } = useToast();
 
   const accountAddress = user?.smart_account_address || user?.address;
-
-  useEffect(() => {
-    if (accountAddress) {
-      checkPasskeys(accountAddress);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accountAddress]);
 
   const handlePasskeyPress = () => {
     if (hasPasskey) {
@@ -61,8 +53,7 @@ export default function SettingsScreen() {
 
   const handleAddPasskey = async () => {
     clearPasskeyError();
-    if (!accountAddress) return;
-    const success = await registerPasskey(accountAddress);
+    const success = await registerPasskey();
     if (success) {
       setShowPasskeyModal(false);
       showToast("Passkey set up successfully");

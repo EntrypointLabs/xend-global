@@ -28,7 +28,7 @@ function EmailLoginScreen() {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [showPasskeySetup, setShowPasskeySetup] = useState(false);
-  const { completeLogin, completePasskeySetup, user } = useAuth();
+  const { completeLogin, completePasskeySetup } = useAuth();
   const { showToast } = useToast();
   const {
     registerPasskey,
@@ -82,10 +82,7 @@ function EmailLoginScreen() {
 
   const handleAddPasskey = async () => {
     clearPasskeyError();
-    const addr = user?.smart_account_address || user?.address;
-    if (!addr) return;
-
-    const success = await registerPasskey(addr);
+    const success = await registerPasskey();
     if (success) {
       setShowPasskeySetup(false);
       completePasskeySetup();

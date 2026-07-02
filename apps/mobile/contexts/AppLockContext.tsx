@@ -11,6 +11,7 @@ import * as LocalAuthentication from "expo-local-authentication";
 import { usePrivy } from "@privy-io/expo";
 
 import { AuthStorage } from "@/utils/storage/authStorage";
+import { hasLinkedPasskey } from "@/utils/auth";
 
 interface AppLockContextType {
   /** True while the authenticated app should stay hidden behind the lock. */
@@ -67,9 +68,7 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
 
   // A passkey on the Privy account is the signal the user opted into biometric
   // protection: turn the lock on (and persist it) without locking mid-session.
-  const hasPrivyPasskey =
-    user?.linked_accounts?.some((account) => account.type === "passkey") ??
-    false;
+  const hasPrivyPasskey = hasLinkedPasskey(user);
   useEffect(() => {
     if (!hasPrivyPasskey) return;
     setEnabled(true);
@@ -81,8 +80,10 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
     authenticatingRef.current = true;
     setIsAuthenticating(true);
     try {
-      const hasHardware = await LocalAuthentication.hasHardwareAsync();
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      const [hasHardware, isEnrolled] = await Promise.all([
+        LocalAuthentication.hasHardwareAsync(),
+        LocalAuthentication.isEnrolledAsync(),
+      ]);
       // No biometric on the device — don't strand the user behind a lock they
       // can't satisfy; they already cleared email OTP + passkey to get here.
       if (!hasHardware || !isEnrolled) {

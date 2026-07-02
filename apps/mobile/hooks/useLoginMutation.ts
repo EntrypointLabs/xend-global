@@ -8,6 +8,7 @@ import {
 } from "@privy-io/expo";
 
 import { apiClient } from "@/utils/apiClient";
+import { hasLinkedPasskey } from "@/utils/auth";
 
 /**
  * Privy email-OTP login mutation hook.
@@ -50,10 +51,7 @@ export function useLoginMutation() {
       // Read passkey status off the user Privy just returned — the reactive
       // `usePrivy().user` hasn't re-rendered yet, so a stale closure would
       // wrongly report "no passkey" and re-prompt returning users.
-      const hasPasskey =
-        privyLoginUser.linked_accounts?.some(
-          (account) => account.type === "passkey"
-        ) ?? false;
+      const hasPasskey = hasLinkedPasskey(privyLoginUser);
       const idToken = await getIdentityToken();
       if (!idToken) {
         throw new Error(
