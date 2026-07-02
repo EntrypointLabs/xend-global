@@ -1,32 +1,60 @@
 import { useState } from "react";
+import { usePrivy } from "@privy-io/expo";
+import { useLinkWithPasskey } from "@privy-io/expo/passkey";
+
+// Privy validates this as a full origin URL and derives the WebAuthn rp.id
+// from its registrable domain (the apex `xend.global`, not the www host). So
+// `xend.global/.well-known/assetlinks.json` must serve directly (200, no
+// redirect) — Digital Asset Links refuses to follow the apex→www redirect.
+const RELYING_PARTY = "https://xend.global";
 
 /**
- * No-op passkey hook. Privy enrols the passkey in-app during signup, so a
- * separate check/register step is unnecessary. Both methods return `true` so
- * the post-OTP branch in `email-login.tsx` skips the setup modal entirely.
- * Kept so its callers compile without screen-level rewires.
+ * Passkey enrollment backed by Privy. A passkey is linked to the already
+ * authenticated user (post email-OTP) and appears on `user.linked_accounts`.
+ * The `_accountAddress` args are ignored — kept so existing callers compile.
  */
 export function usePasskey() {
-  const [hasPasskey, setHasPasskey] = useState<boolean | null>(true);
-  const [isChecking] = useState(false);
-  const [isRegistering] = useState(false);
+  const { user } = usePrivy();
   const [error, setError] = useState<string | null>(null);
+
+  const hasPasskey =
+    user?.linked_accounts.some((account) => account.type === "passkey") ??
+    false;
+
+  const { linkWithPasskey, state } = useLinkWithPasskey({
+    onError: (err) => setError(err?.message ?? "Passkey setup failed"),
+  });
+
+  const isRegistering =
+    state.status !== "initial" &&
+    state.status !== "done" &&
+    state.status !== "error";
+
+  const checkPasskeys = async (_accountAddress?: string): Promise<boolean> =>
+    hasPasskey;
+
+  const registerPasskey = async (
+    _accountAddress?: string
+  ): Promise<boolean> => {
+    setError(null);
+    try {
+      const updated = await linkWithPasskey({ relyingParty: RELYING_PARTY });
+      return (
+        updated?.linked_accounts.some(
+          (account) => account.type === "passkey"
+        ) ?? false
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Passkey setup failed");
+      return false;
+    }
+  };
 
   const clearError = () => setError(null);
 
-  const checkPasskeys = async (_accountAddress: string): Promise<boolean> => {
-    setHasPasskey(true);
-    return true;
-  };
-
-  const registerPasskey = async (_accountAddress: string): Promise<boolean> => {
-    setHasPasskey(true);
-    return true;
-  };
-
   return {
     hasPasskey,
-    isChecking,
+    isChecking: false,
     isRegistering,
     error,
     checkPasskeys,

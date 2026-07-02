@@ -29,6 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [needsTokenRefresh, setNeedsTokenRefresh] = useState(false);
+  const [pendingPasskeySetup, setPendingPasskeySetup] = useState(false);
 
   const { sendCode, loginWithCode } = useLoginWithEmail();
   const { getIdentityToken } = useIdentityToken();
@@ -242,6 +243,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await AuthStorage.saveToken(token);
     }
     await AuthStorage.saveIsAuthenticated(true);
+    // Gate the redirect out of the auth stack until the passkey step resolves,
+    // so the setup modal isn't unmounted by the tabs redirect.
+    setPendingPasskeySetup(true);
     setIsAuthenticated(true);
     setAuthError(null);
   };
@@ -277,9 +281,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Privy enrols the passkey in-app during signup. No separate pending step.
-  const pendingPasskeySetup = false;
-  const completePasskeySetup = () => {};
+  const completePasskeySetup = () => setPendingPasskeySetup(false);
 
   // Derive the wallet address surfaced to consumers from the union of
   // Privy's embedded wallet and the local React state (set on completeLogin
