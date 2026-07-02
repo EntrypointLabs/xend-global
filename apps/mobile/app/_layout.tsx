@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Redirect, Slot, useSegments } from "expo-router";
-import { View } from "react-native";
+import { AppState, AppStateStatus, Platform, View } from "react-native";
 
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
@@ -18,7 +18,11 @@ import * as Sentry from "@sentry/react-native";
 import { sentryApiResponse } from "@/types/Sentry";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { PrivyProvider } from "@privy-io/expo";
 
 import * as SplashScreen from "expo-splash-screen";
@@ -46,7 +50,25 @@ import {
 import LoadingScreen from "@/components/ui/layout/LoadingScreen";
 import LockScreen from "@/components/ui/layout/LockScreen";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: 2 } },
+});
+
+/**
+ * Bridges React Native's AppState into React Query's focusManager so queries
+ * refetch on foreground. `focusManager` handles this via the browser
+ * `visibilitychange` event on web, so only wire it up on native.
+ */
+function ReactQueryFocusBridge() {
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      focusManager.setFocused(state === "active");
+    });
+    return () => sub.remove();
+  }, []);
+  return null;
+}
 
 // Keep the native splash up until the app is ready, then hand off to the
 // matching JS splash (LoadingScreen) — no white flash in between.
@@ -160,6 +182,7 @@ function RootLayout() {
   return (
     <PrivyAppShell>
       <QueryClientProvider client={queryClient}>
+        <ReactQueryFocusBridge />
         <GestureHandlerRootView style={{ flex: 1 }}>
           <ThemedRoot>
             <AuthProvider>
