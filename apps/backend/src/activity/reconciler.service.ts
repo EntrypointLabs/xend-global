@@ -130,22 +130,23 @@ export class ReconcilerService implements OnModuleInit {
   async tick(): Promise<void> {
     const t0 = Date.now();
 
-    // Compute the cutoff server-side using LOCALTIMESTAMP, which
-    // returns `timestamp without time zone` in the server's local time.
-    // The `transfers.submitted_at` column is also `timestamp without
-    // time zone`, so both sides of the comparison live in the same
-    // naive-time space. Passing a JS Date here would round-trip through
-    // timestamptz and silently shift by the server's UTC offset under
-    // non-UTC timezones.
+    // Compute the cutoff server-side using `now() AT TIME ZONE 'UTC'`,
+    // which yields the current UTC wall-clock as `timestamp without time
+    // zone`. The `transfers.submitted_at` column is also `timestamp
+    // without time zone`, but it is written by /transfers/submit as a JS
+    // Date, which Drizzle serializes via `toISOString()` — i.e. the UTC
+    // wall-clock digits. Anchoring the cutoff to UTC (rather than
+    // `LOCALTIMESTAMP`, which follows the server's TimeZone GUC) keeps
+    // both sides of the comparison in the same zone on any deployment.
     const outstanding = (await this.db.client.execute(sql`
       SELECT
         signature,
         smart_account_id AS "smartAccountId",
-        submitted_at < LOCALTIMESTAMP - INTERVAL '${sql.raw(`${PENDING_EXPIRY_MS / 1000}`)} seconds'
+        submitted_at < (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${PENDING_EXPIRY_MS / 1000}`)} seconds'
           AS "expired"
       FROM transfers
       WHERE status = 'PENDING'
-        AND submitted_at < LOCALTIMESTAMP - INTERVAL '${sql.raw(`${PENDING_AGE_MS / 1000}`)} seconds'
+        AND submitted_at < (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${PENDING_AGE_MS / 1000}`)} seconds'
       ORDER BY submitted_at ASC
       LIMIT ${sql.raw(`${RECONCILE_BATCH}`)}
     `)) as unknown as {
