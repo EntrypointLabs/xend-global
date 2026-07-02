@@ -125,11 +125,13 @@ function makeFakeDb(store: FakeStore): DbService {
             row = vals;
           }
           (store[collection] as Record<string, unknown>[]).push(row);
-          return {
+          const result = {
+            onConflictDoUpdate: () => result,
             returning: () => Promise.resolve([row]),
             then: (resolve: (v: unknown) => unknown) =>
               Promise.resolve([row]).then(resolve),
           };
+          return result;
         },
       };
     },
