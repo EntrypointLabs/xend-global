@@ -24,12 +24,13 @@ import * as Joi from 'joi';
         // round-trip and to make verification offline-deterministic.
         PRIVY_VERIFICATION_KEY: Joi.string().optional().allow(''),
 
-        // Solana RPC — Helius primary, public-mainnet fallback.
+        // Solana RPC — Helius primary, public-devnet fallback. Keep this on
+        // the same cluster as HELIUS_RPC_URL to avoid cross-cluster reads.
         HELIUS_API_KEY: Joi.string().required(),
         HELIUS_RPC_URL: Joi.string().uri().required(),
         SOLANA_PUBLIC_RPC_URL: Joi.string()
           .uri()
-          .default('https://api.mainnet-beta.solana.com'),
+          .default('https://api.devnet.solana.com'),
 
         // Helius webhook control plane (RPC tailer).
         //   HELIUS_WEBHOOK_SECRET: shared secret used to authenticate
