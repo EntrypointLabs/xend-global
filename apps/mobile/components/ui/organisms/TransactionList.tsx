@@ -2,16 +2,28 @@ import React from "react";
 import { View, ScrollView, RefreshControl } from "react-native";
 import { ThemedText } from "@/components/ui/atoms";
 import { TransactionItem } from "./TransactionItem";
-import { TransactionGroup } from "@/types/Transaction";
+import type { ActivitySection } from "@/utils/activity";
 
 interface TransactionListProps {
-  transactions: TransactionGroup[];
+  sections: ActivitySection[];
   onRefresh?: () => void;
   refreshing?: boolean;
 }
 
+// The grouping key is a `YYYY-MM-DD` day; render it as a readable date. Build
+// the Date from its parts (local midnight) so the label names the same
+// calendar day it was bucketed under, regardless of the device timezone.
+function formatSectionTitle(dayKey: string): string {
+  const [year, month, day] = dayKey.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export function TransactionList({
-  transactions,
+  sections,
   onRefresh,
   refreshing,
 }: TransactionListProps) {
@@ -30,27 +42,23 @@ export function TransactionList({
           ) : undefined
         }
       >
-        {transactions.length === 0 ? (
+        {sections.length === 0 ? (
           <ThemedText className="mt-8 text-center opacity-50">
             No transactions yet
           </ThemedText>
         ) : (
-          transactions.map((section) => (
+          sections.map((section) => (
             <View key={section.title}>
               <View className="z-[1] bg-background px-4 pt-8">
                 <ThemedText type="defaultSemiBold" className="opacity-[0.23]">
-                  {section.title}
+                  {formatSectionTitle(section.title)}
                 </ThemedText>
               </View>
               {section.data.map((item, index) => (
                 <TransactionItem
                   key={item.id}
-                  type={item.type}
-                  date={item.date.toLocaleDateString()}
-                  amount={item.amount}
-                  address={item.address}
+                  {...item}
                   isLast={index === section.data.length - 1}
-                  status={item.status}
                 />
               ))}
             </View>
