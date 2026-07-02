@@ -70,10 +70,9 @@ export const AuthStorage = {
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.PERSISTENT_EMAIL),
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.CACHED_BALANCE),
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.HAS_PASSKEY),
-      // Contacts and wallet name are per-user; a re-login as a different user
-      // must not inherit them.
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.ADDRESS_BOOK),
-      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.WALLET_NAME),
+      // Contacts and wallet name are stored under per-user keys
+      // (address_book:<userId> / wallet_name:<userId>), so they survive logout
+      // and a different user can't see them. Not cleared here.
     ]);
   },
 };
