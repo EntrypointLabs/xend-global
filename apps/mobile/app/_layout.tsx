@@ -7,8 +7,7 @@ import "react-native-reanimated";
 import "@/global.css";
 import "@/utils/cssInteropSetup";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { ThemeProvider } from "@react-navigation/native";
-import { lightTheme, darkTheme } from "@/constants/Theme";
+import { AppLockProvider, useAppLock } from "@/contexts/AppLockContext";
 import { ScreenThemeProvider } from "@/contexts/ScreenThemeContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useTheme } from "@/hooks/useTheme";
@@ -17,10 +16,10 @@ import { ModalFlowProvider } from "@/contexts/ModalFlowContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import * as Sentry from "@sentry/react-native";
 import { sentryApiResponse } from "@/types/Sentry";
-import { EasClient } from "@/utils/easClient";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { PrivyProvider } from "@privy-io/expo";
 
 import * as SplashScreen from "expo-splash-screen";
 import {
@@ -45,16 +44,22 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import LoadingScreen from "@/components/ui/layout/LoadingScreen";
+import LockScreen from "@/components/ui/layout/LockScreen";
 
 const queryClient = new QueryClient();
 
-// Sentry for error tracking
+// Keep the native splash up until the app is ready, then hand off to the
+// matching JS splash (LoadingScreen) — no white flash in between.
+SplashScreen.preventAutoHideAsync();
+
+// Error tracking, production only. Config is fetched from the `/api/sentry`
+// route so it can be rotated without an app rebuild.
 if (process.env.EXPO_PUBLIC_GRID_ENV === "production") {
   const initSentry = async () => {
     try {
-      const easClient = new EasClient();
-      const response = await easClient.getSentryConfig();
-      const sentryConfig = sentryApiResponse.parse(response);
+      const res = await fetch("/api/sentry");
+      const raw = await res.json();
+      const sentryConfig = sentryApiResponse.parse(raw);
 
       Sentry.init({
         ...sentryConfig,
@@ -73,21 +78,9 @@ if (process.env.EXPO_PUBLIC_GRID_ENV === "production") {
 
 function AuthLayout() {
   const segments = useSegments();
-  // const router = useRouter();
   const { isAuthenticated, pendingPasskeySetup } = useAuth();
+  const { isLocked } = useAppLock();
   const colorScheme = useColorScheme();
-
-  // useEffect(() => {
-  //   if (isAuthenticated === null) return;
-
-  //   const inAuthGroup = segments[0] === "(auth)";
-
-  //   if (!isAuthenticated && !inAuthGroup) {
-  //     router.replace("/login");
-  //   } else if (isAuthenticated && !pendingPasskeySetup && inAuthGroup) {
-  //     router.replace("/(tabs)");
-  //   }
-  // }, [isAuthenticated, pendingPasskeySetup, router, segments]);
 
   if (isAuthenticated === null) {
     return <LoadingScreen />;
@@ -99,21 +92,27 @@ function AuthLayout() {
     return <Redirect href="/login" withAnchor />;
   }
 
+  // App lock: once signed in and out of the auth stack, require the biometric
+  // unlock before any app content renders.
+  if (isAuthenticated && !inAuthGroup && isLocked) {
+    return <LockScreen />;
+  }
+
   if (isAuthenticated && !pendingPasskeySetup && inAuthGroup) {
     return <Redirect href="/(tabs)" withAnchor />;
   }
 
+  // Theming is driven by NativeWind (ThemedRoot's `dark` class) and
+  // ScreenThemeProvider; the navigator inherits light/dark from the OS.
   return (
-    <ThemeProvider value={colorScheme === "dark" ? darkTheme : lightTheme}>
-      <ScreenThemeProvider>
-        <ModalFlowProvider>
-          <ToastProvider>
-            <Slot />
-            <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-          </ToastProvider>
-        </ModalFlowProvider>
-      </ScreenThemeProvider>
-    </ThemeProvider>
+    <ScreenThemeProvider>
+      <ModalFlowProvider>
+        <ToastProvider>
+          <Slot />
+          <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+        </ToastProvider>
+      </ModalFlowProvider>
+    </ScreenThemeProvider>
   );
 }
 
@@ -146,32 +145,73 @@ function RootLayout() {
     return () => clearTimeout(timer);
   }, []);
 
+  const ready = loaded || !!error || fontTimeout;
+
   useEffect(() => {
-    if (loaded || error) {
+    if (ready) {
       SplashScreen.hideAsync();
     }
-  }, [loaded, error]);
+  }, [ready]);
 
-  if (!loaded && !fontTimeout) {
+  if (!ready) {
     return <LoadingScreen />;
   }
 
-  if (!loaded || !!error) {
-    return null;
+  return (
+    <PrivyAppShell>
+      <QueryClientProvider client={queryClient}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <ThemedRoot>
+            <AuthProvider>
+              <AppLockProvider>
+                <BottomSheetModalProvider>
+                  <AuthLayout />
+                </BottomSheetModalProvider>
+              </AppLockProvider>
+            </AuthProvider>
+          </ThemedRoot>
+        </GestureHandlerRootView>
+      </QueryClientProvider>
+    </PrivyAppShell>
+  );
+}
+
+/**
+ * Wraps the app in `<PrivyProvider>`. Privy is the only auth path and requires
+ * `EXPO_PUBLIC_PRIVY_APP_ID`; a Solana embedded wallet is created on login.
+ */
+function PrivyAppShell({ children }: { children: React.ReactNode }) {
+  const configuredAppId = process.env.EXPO_PUBLIC_PRIVY_APP_ID;
+  const configuredClientId = process.env.EXPO_PUBLIC_PRIVY_CLIENT_ID;
+
+  if (!configuredAppId) {
+    console.warn(
+      "[PrivyAppShell] EXPO_PUBLIC_PRIVY_APP_ID is unset; Privy hooks will not be able to authenticate."
+    );
   }
 
+  if (!configuredClientId) {
+    console.warn(
+      "[PrivyAppShell] EXPO_PUBLIC_PRIVY_CLIENT_ID is unset; native builds need the dashboard client ID for the app identifier to be recognized."
+    );
+  }
+
+  const appId = configuredAppId ?? "placeholder-app-id-privy-app-id-unset";
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <ThemedRoot>
-          <AuthProvider>
-            <BottomSheetModalProvider>
-              <AuthLayout />
-            </BottomSheetModalProvider>
-          </AuthProvider>
-        </ThemedRoot>
-      </GestureHandlerRootView>
-    </QueryClientProvider>
+    <PrivyProvider
+      appId={appId}
+      clientId={configuredClientId}
+      config={{
+        embedded: {
+          solana: {
+            createOnLogin: "users-without-wallets",
+          },
+        },
+      }}
+    >
+      {children}
+    </PrivyProvider>
   );
 }
 

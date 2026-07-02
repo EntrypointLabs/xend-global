@@ -12,7 +12,7 @@ export default function WalletQRCode({ walletAddress }: WalletQRCodeProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    await Clipboard.setString(walletAddress);
+    await Clipboard.setStringAsync(walletAddress);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

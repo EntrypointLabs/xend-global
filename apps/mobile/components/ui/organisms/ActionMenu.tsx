@@ -54,7 +54,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
         intensity={44.2}
         tint="light"
         // MEASURED-LAYOUT (absoluteFill)
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
         entering={FadeIn}
         exiting={FadeOut}
         experimentalBlurMethod="dimezisBlurView"

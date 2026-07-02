@@ -4,21 +4,21 @@ import { Request } from 'express';
 import { WalletsService } from './wallets.service';
 
 interface AuthenticatedRequest extends Request {
-  user: { userId: string; gridAccountId: string };
+  user: { userId: string; walletAddress: string };
 }
 
-@Controller('wallets')
+@Controller()
 @UseGuards(AuthGuard('jwt'))
 export class WalletsController {
   constructor(private wallets: WalletsService) {}
 
-  @Get('me')
-  getWallet(@Req() req: AuthenticatedRequest) {
-    return this.wallets.getWallet(req.user.userId);
+  @Get('wallet/me')
+  getMe(@Req() req: AuthenticatedRequest) {
+    return this.wallets.getMe(req.user.userId);
   }
 
-  @Get('me/balances')
-  getBalances(@Req() req: AuthenticatedRequest) {
-    return this.wallets.getBalances(req.user.userId);
+  @Get('wallet/me/balances')
+  getMeBalances(@Req() req: AuthenticatedRequest) {
+    return this.wallets.getMeBalances(req.user.userId);
   }
 }

@@ -2,27 +2,38 @@ import React, { useState } from "react";
 import { View } from "react-native";
 import { ThemedScreen } from "@/components/ui/layout";
 import { ThemedText, IconSymbol, LoadingSpinner } from "@/components/ui/atoms";
-// TODO: check if this is needed
 import { IconSymbolName } from "@/components/ui/atoms/IconSymbol";
 import { router, useLocalSearchParams } from "expo-router";
 import { formatAmount } from "@/utils/helper";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { ButtonGroup } from "@/components/ui/molecules";
-import { useAuth } from "@/contexts/AuthContext";
-import { EasClient } from "@/utils/easClient";
-import { ErrorCode } from "@/utils/errors";
 import { useToast } from "@/contexts/ToastContext";
 import * as Sentry from "@sentry/react-native";
-import { CreatePaymentIntentRequest } from "@sqds/grid-react-native";
-import { SDKGridClient } from "../../grid/sdkClient";
-import { StorageService } from "@/utils/storage";
-import { AUTH_STORAGE_KEYS } from "@/utils/auth";
+import { useEmbeddedSolanaWallet } from "@privy-io/expo";
+import { apiClient, PrepareTransferResponse } from "@/utils/apiClient";
+import { toByteArray, fromByteArray } from "base64-js";
+import { VersionedTransaction } from "@solana/web3.js";
+
+// Real SPL mint address; prepareTransfer builds an actual transfer instruction.
+const USDC_MINT = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS ?? "";
+
+/**
+ * Detect the well-known shapes a Privy passkey ceremony surfaces when the
+ * user dismisses the system prompt. The Privy SDK does not export a typed
+ * `UserCancelled` error today; we string-match on the message/name to keep
+ * a "stay on screen, prompt to retry" UX rather than a hard failure.
+ */
+function isUserCanceledSign(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)) ?? "";
+  const name = err instanceof Error ? err.name : "";
+  return /cancel|denied|aborted|dismiss/i.test(`${name} ${msg}`);
+}
 
 export default function ConfirmScreen() {
   const textColor = useThemeColor({}, "text");
   const [isLoading, setIsLoading] = useState(false);
-  const { user, logout } = useAuth();
   const { showToast } = useToast();
+  const embeddedSolana = useEmbeddedSolanaWallet();
 
   const { amount, recipient, name, type, title } = useLocalSearchParams<{
     amount: string;
@@ -32,100 +43,122 @@ export default function ConfirmScreen() {
     title: string;
   }>();
 
+  /**
+   * Send flow: prepareTransfer → Privy signTransaction → submitTransfer.
+   *
+   * Error handling:
+   *  - INTENT_EXPIRED (410) from prepare: re-prepare once automatically.
+   *  - INTENT_EXPIRED (410) from submit: surface "Try again" toast; stay
+   *    on screen (do NOT silently re-sign — signature would mismatch the
+   *    new blockhash).
+   *  - User cancels passkey prompt: toast "Sign again to send", stay.
+   *  - RPC_UNAVAILABLE (502): toast and stay.
+   *  - Privy session expiry: SDK silently re-prompts; we do NOT logout.
+   */
   const handleConfirm = async () => {
+    if (!USDC_MINT) {
+      showToast("USDC mint not configured");
+      Sentry.captureException(
+        new Error("EXPO_PUBLIC_USDC_MINT_ADDRESS missing on confirm.tsx")
+      );
+      return;
+    }
+
+    const embeddedWallet = embeddedSolana.wallets?.[0];
+    if (!embeddedWallet) {
+      showToast("Wallet not ready, please try again");
+      return;
+    }
+
+    // USDC has 6 decimals; backend wants the integer string at native
+    // decimals. BigInt-safe construction future-proofs against larger
+    // mints with 9 decimals.
+    const amountRaw = BigInt(Math.round(Number(amount) * 1_000_000)).toString();
+
     setIsLoading(true);
     try {
-      const sessionSecrets = await StorageService.getItem(
-        AUTH_STORAGE_KEYS.SESSION_SECRETS
-      );
-      if (!user || !user.address || !sessionSecrets) {
-        logout();
-        router.push({
-          pathname: "/(auth)/login",
+      // Prepare, with one automatic retry on INTENT_EXPIRED.
+      let prep: PrepareTransferResponse;
+      try {
+        prep = await apiClient.prepareTransfer({
+          toAddress: recipient,
+          mint: USDC_MINT,
+          amountRaw,
         });
-
-        return;
+      } catch (err: any) {
+        if (err?.data?.code === "INTENT_EXPIRED") {
+          prep = await apiClient.prepareTransfer({
+            toAddress: recipient,
+            mint: USDC_MINT,
+            amountRaw,
+          });
+        } else if (err?.data?.code === "RPC_UNAVAILABLE") {
+          showToast("Network temporarily unavailable, try again");
+          setIsLoading(false);
+          return;
+        } else {
+          throw err;
+        }
       }
 
-      const backupKey = user.policies.signers.find(
-        (signer: any) => signer.provider === "turnkey"
-      );
-      if (!backupKey) {
-        throw new Error("Backup key not found");
-      }
-
-      const prepareTransactionParams: CreatePaymentIntentRequest = {
-        amount: (Number(amount) * 1000000).toString(), // Convert to USDC base units
-        source: {
-          account: user.address,
-          currency: "usdc",
-          // transaction_signers: [backupKey.address]
-        },
-        destination: {
-          address: recipient,
-          currency: "usdc",
-        },
-      };
-
-      const easClient = new EasClient();
-
-      const transactionData = await easClient.preparePaymentIntent(
-        prepareTransactionParams,
-        user.address,
-        true
-      );
-
-      if (!user) {
-        logout();
-        router.push({
-          pathname: "/(auth)/login",
+      let signedBase64: string;
+      try {
+        const provider = await embeddedWallet.getProvider();
+        const txBytes = toByteArray(prep.unsignedTxBase64);
+        const tx = VersionedTransaction.deserialize(txBytes);
+        const { signedTransaction } = await provider.request({
+          method: "signTransaction",
+          params: { transaction: tx },
         });
-
-        return;
+        signedBase64 = fromByteArray(signedTransaction.serialize());
+      } catch (err) {
+        if (isUserCanceledSign(err)) {
+          showToast("Sign again to send");
+          setIsLoading(false);
+          return;
+        }
+        throw err;
       }
 
-      const gridClient = SDKGridClient.getFrontendClient();
+      let submitRes;
+      try {
+        submitRes = await apiClient.submitTransfer({
+          intentId: prep.intentId,
+          signedTxBase64: signedBase64,
+        });
+      } catch (err: any) {
+        if (err?.data?.code === "INTENT_EXPIRED") {
+          showToast("Try again");
+          setIsLoading(false);
+          return;
+        }
+        if (err?.data?.code === "RPC_UNAVAILABLE") {
+          showToast("Network temporarily unavailable, try again");
+          setIsLoading(false);
+          return;
+        }
+        throw err;
+      }
 
-      const signedPayload = await gridClient.sign({
-        sessionSecrets: sessionSecrets as any,
-        session: user.authentication,
-        transactionPayload: transactionData.data.transactionPayload!,
-      });
-
-      const payload = {
-        signedTransactionPayload: signedPayload,
-        address: user.address,
-      };
-
-      await easClient.confirmPaymentIntent(payload);
       router.push({
         pathname: "/success",
-        params: { amount, type, title },
+        params: {
+          amount,
+          type,
+          title,
+          signature: submitRes.signature,
+        },
       });
     } catch (error: any) {
-      if (
-        error?.data?.code === ErrorCode.SESSION_EXPIRED ||
-        error?.data?.details?.some(
-          (detail: any) => detail.code === "API_KEY_EXPIRED"
-        )
-      ) {
-        showToast("Session expired, please log in again");
-        logout();
-        return;
-      }
-
       Sentry.captureException(
-        new Error(
-          `Failed to confirm payment: ${error}. (send)/confirm.tsx (handleConfirm)`
-        )
+        new Error(`Failed to confirm payment: ${error}. (send)/confirm.tsx`)
       );
       setIsLoading(false);
-      throw error;
+      showToast("Could not send. Please try again.");
     }
   };
 
   const handleCancel = () => {
-    // Navigate to home
     router.push({
       pathname: "/(tabs)",
       params: { amount, type, title },
@@ -169,7 +202,6 @@ export default function ConfirmScreen() {
             </View>
             {renderInfo("arrow.forward", "To", recipient)}
             {renderInfo("person", "Name", name)}
-            {/* {renderInfo('network', 'Network fee', '0.0004 SOL')} */}
           </View>
 
           <ButtonGroup

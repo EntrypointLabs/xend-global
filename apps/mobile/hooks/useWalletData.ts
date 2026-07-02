@@ -1,20 +1,107 @@
 import { useState, useEffect, useCallback } from "react";
 import { TransferResponse } from "@/types/Transaction";
-import { EasClient } from "@/utils/easClient";
 import { StorageService } from "@/utils/storage";
 import { AUTH_STORAGE_KEYS } from "@/utils/auth";
 import { AccountInfo } from "@/types/Auth";
 import { useAuth } from "@/contexts/AuthContext";
+import { apiClient, TokenBalance, TransferRow } from "@/utils/apiClient";
 
-export function useWalletData(accountInfo: AccountInfo | null) {
+/**
+ * Stablecoin mints that count toward the headline Balance. USDT is optional in
+ * dev (no canonical devnet mint); when unset, only USDC contributes.
+ */
+function getStablecoinMints(): Set<string> {
+  const mints = new Set<string>();
+  const usdc = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS;
+  const usdt = process.env.EXPO_PUBLIC_USDT_MINT_ADDRESS;
+  if (usdc) mints.add(usdc);
+  if (usdt) mints.add(usdt);
+  return mints;
+}
+
+/**
+ * Compute the headline Balance by summing the recognized stablecoin
+ * balances (USDC + USDT). Returns a number rounded to 2 decimal places.
+ * Uses BigInt to safely handle u64 raw amounts.
+ */
+function computeStablecoinTotal(tokens: TokenBalance[]): number {
+  const stablecoinMints = getStablecoinMints();
+  let total = 0;
+  for (const t of tokens) {
+    if (!stablecoinMints.has(t.mint)) continue;
+    const raw = BigInt(t.amountRaw);
+    const divisor = BigInt(10) ** BigInt(t.decimals);
+    const whole = Number(raw / divisor);
+    const fractionRaw = Number(raw % divisor);
+    const fraction = fractionRaw / Number(divisor);
+    total += whole + fraction;
+  }
+  return parseFloat(total.toFixed(2));
+}
+
+/**
+ * Adapt a backend `TransferRow` into the snake_case `TransferResponse` shape
+ * the Activity feed in `(tabs)/index.tsx` reads.
+ *
+ * Direction translation: SEND → "outflow", RECEIVE → "inflow".
+ * Status translation: CONFIRMED → "confirmed", FAILED → "failed", else
+ * "pending".
+ */
+function mapTransferRowToLegacy(row: TransferRow): any {
+  const confirmation_status =
+    row.status === "CONFIRMED"
+      ? "confirmed"
+      : row.status === "FAILED"
+        ? "failed"
+        : "pending";
+  const direction = row.direction === "SEND" ? "outflow" : "inflow";
+  const raw = BigInt(row.amountRaw);
+  // Default decimals to 6 (USDC, USDT). The backend TransferRow schema
+  // does not carry per-row decimals; the Activity feed today filters to
+  // USDC-mint rows only.
+  const decimals = 6;
+  const divisor = BigInt(10) ** BigInt(decimals);
+  const whole = raw / divisor;
+  const fraction = raw % divisor;
+  const fractionStr = fraction.toString().padStart(decimals, "0");
+  const uiAmount = `${whole.toString()}.${fractionStr}`.replace(/\.?0+$/, "");
+
+  return {
+    Spl: {
+      id: row.id,
+      gridUserId: "",
+      mainAccountAddress: "",
+      mint: row.mint,
+      isToken2022: false,
+      signature: row.signature ?? "",
+      confirmation_status,
+      from_address: row.fromAddress,
+      to_address: row.toAddress,
+      amount: row.amountRaw,
+      ui_amount: uiAmount,
+      decimals,
+      confirmed_at: row.confirmedAt ?? undefined,
+      created_at: row.createdAt,
+      updated_at: row.confirmedAt ?? row.createdAt,
+      direction,
+    },
+  };
+}
+
+export function useWalletData(_accountInfo: AccountInfo | null) {
   const [isLoading, setIsLoading] = useState(false);
   const [balance, setBalance] = useState(0);
   const [transfers, setTransfers] = useState<TransferResponse>([]);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, wallet } = useAuth();
 
   const fetchWalletData = useCallback(async () => {
-    if (!user?.address) {
+    // JWT is the auth signal; `wallet` (from AuthContext) is the Privy
+    // embedded wallet address. Either signal indicates the user is past
+    // login and ready to fetch.
+    const hasIdentity =
+      Boolean(wallet) || Boolean(user?.walletAddress) || Boolean(user?.address);
+    if (!hasIdentity) {
       setError("Account info not found");
       return;
     }
@@ -23,41 +110,20 @@ export function useWalletData(accountInfo: AccountInfo | null) {
     setError(null);
 
     try {
-      // Fetch balance and transactions in parallel
-      const easClient = new EasClient();
-      const [balanceResult, transfersResult] = await Promise.all([
-        easClient
-          .getBalance({ smartAccountAddress: user.address })
-          .then((response) => response),
-        easClient.getTransfers(user.address),
+      const [balancesResult, transfersResult] = await Promise.all([
+        apiClient.getBalances(),
+        apiClient.listTransfers({ limit: 50 }),
       ]);
 
-      // Handle balance
-      const balances = balanceResult.data.tokens;
-      if (balances.length === 0) {
-        setBalance(0);
-        await StorageService.setItem(AUTH_STORAGE_KEYS.CACHED_BALANCE, "0");
-      } else {
-        const usdcAddress = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS;
-        const usdcBalance = balances.find(
-          (balance: any) => balance.token_address === usdcAddress
-        );
-        if (usdcBalance) {
-          const newBalance = parseFloat(
-            parseFloat(usdcBalance.amount_decimal).toFixed(2)
-          );
-          setBalance(newBalance);
-          await StorageService.setItem(
-            AUTH_STORAGE_KEYS.CACHED_BALANCE,
-            newBalance.toString()
-          );
-        }
-      }
+      const newBalance = computeStablecoinTotal(balancesResult.tokens);
+      setBalance(newBalance);
+      await StorageService.setItem(
+        AUTH_STORAGE_KEYS.CACHED_BALANCE,
+        newBalance.toString()
+      );
 
-      // Handle transfers
-      if (transfersResult.data) {
-        setTransfers(transfersResult.data);
-      }
+      const mapped = transfersResult.transfers.map(mapTransferRowToLegacy);
+      setTransfers(mapped as TransferResponse);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to fetch wallet data"
@@ -66,9 +132,8 @@ export function useWalletData(accountInfo: AccountInfo | null) {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.address]);
+  }, [user, wallet]);
 
-  // Load cached balance on mount
   useEffect(() => {
     const loadCachedBalance = async () => {
       const cachedBalance = (await StorageService.getItem(

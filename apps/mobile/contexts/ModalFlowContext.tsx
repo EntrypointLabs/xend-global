@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
-import { KycStatus, KycLinkIds, KycLinkId } from "@/types/Kyc";
+import { KycStatus } from "@/types/Kyc";
 import { EasClient } from "@/utils/easClient";
 import { useAuth } from "./AuthContext";
 import { Currency } from "@/types/Transaction";
@@ -103,24 +103,12 @@ export function ModalFlowProvider({ children }: { children: React.ReactNode }) {
     setIsSendModalVisible(false);
   }, []);
 
-  // Data fetching methods
+  // No-op stub: virtual-account fetching is not yet available. Kept on the
+  // context because the KYC flow calls fetchBankDetails after approval.
   const fetchBankDetails = useCallback(async () => {
-    if (!user?.address) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const easClient = new EasClient();
-      const response = await easClient.getVirtualAccounts(user.address);
-      setBankAccountDetails(response.data);
-    } catch (err) {
-      setError("Failed to fetch bank details");
-      console.error("Error fetching bank details:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user?.address]);
+    if (!user) return;
+    setBankAccountDetails(null);
+  }, [user]);
 
   const fetchKycStatus = useCallback(async () => {
     if (!user?.address || !user?.grid_user_id) return;
@@ -164,7 +152,7 @@ export function ModalFlowProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.address, user?.grid_user_id]);
+  }, [user]);
 
   const value = {
     // Modal visibility states

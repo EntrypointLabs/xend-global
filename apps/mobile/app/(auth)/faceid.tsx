@@ -24,7 +24,7 @@ export function FaceIDScreen({ show2FA }: FaceIDScreenProps) {
         primaryColor="#0080FF"
         opacity={0.7}
         // MEASURED-LAYOUT
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
       <View className="flex-1 items-center justify-center px-6">
         <IconSymbol name="faceid" size={64} color={textColor} />

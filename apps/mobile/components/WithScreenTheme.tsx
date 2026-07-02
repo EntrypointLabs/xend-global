@@ -14,7 +14,6 @@ export function WithScreenTheme<P extends object>(
   WrappedComponent: React.ComponentType<P>,
   themeOptions?: ThemeOptions
 ) {
-  // Component with screen theme controls
   function ComponentWithTheme(props: P) {
     const { setScreenTheme, resetScreenTheme } = useScreenTheme();
 
@@ -24,12 +23,12 @@ export function WithScreenTheme<P extends object>(
       }
 
       return () => resetScreenTheme();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return <WrappedComponent {...props} />;
   }
 
-  // Wrap with provider
   return function WithScreenThemeProvider(props: P) {
     return (
       <ScreenThemeProvider>

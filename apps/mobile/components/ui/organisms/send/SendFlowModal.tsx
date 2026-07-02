@@ -34,17 +34,14 @@ type Step = "Recipient" | "Amount";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
-const springConfig = {
-  // damping: 20,
-  // stiffness: 150
-};
+const springConfig = {};
 
 export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
   ({ onClose }, ref) => {
     const snapPoints = useMemo(() => ["94%"], []);
     const scannerRef = useRef<BottomSheetModal>(null);
 
-    const [step, setStep] = useState<Step>("Recipient");
+    const [, setStep] = useState<Step>("Recipient");
     const [recipient, setRecipient] = useState<string>("");
 
     const translateX = useSharedValue(0);
@@ -65,7 +62,6 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
       (index: number) => {
         if (index === -1 && onClose) {
           onClose();
-          // Reset state on close
           setTimeout(() => {
             setStep("Recipient");
             setRecipient("");
@@ -73,7 +69,7 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
           }, 300);
         }
       },
-      [onClose]
+      [onClose, translateX]
     );
 
     const handleNext = (selectedRecipient: string) => {

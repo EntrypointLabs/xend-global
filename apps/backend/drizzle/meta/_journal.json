@@ -8,6 +8,20 @@
       "when": 1772598366308,
       "tag": "0000_swift_winter_soldier",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1748640000000,
+      "tag": "0001_xend_migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1748649600000,
+      "tag": "0002_tailer_state",
+      "breakpoints": true
     }
   ]
 }

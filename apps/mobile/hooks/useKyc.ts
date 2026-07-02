@@ -35,9 +35,9 @@ export function useKyc(): UseKycReturn {
   const { fetchBankDetails } = useModalFlow();
   const { user } = useAuth();
 
-  // Initialize status from storage when hook mounts
   useEffect(() => {
     checkStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startKyc = useCallback(
@@ -57,7 +57,6 @@ export function useKyc(): UseKycReturn {
           throw new Error("Account information not found");
         }
 
-        // Store the KYC link ID in the mock database
         await MockDatabase.updateUserKycLinkID(
           user.grid_user_id,
           response.data.id

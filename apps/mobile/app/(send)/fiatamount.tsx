@@ -7,14 +7,9 @@ import {
   ThemedButton,
   ThemedTextInput,
 } from "@/components/ui/molecules";
-import { router, useLocalSearchParams } from "expo-router";
 import { Chip, IconSymbol, ThemedText } from "@/components/ui/atoms";
 import { formatAmount } from "@/utils/helper";
-import {
-  CountryCode,
-  ExternalAccountMapping,
-  UsAccountType,
-} from "@/types/Transaction";
+import { ExternalAccountMapping } from "@/types/Transaction";
 import { deleteAccount, getExternalAccountIds } from "@/utils/externalAccount";
 import {
   Address,
@@ -26,6 +21,7 @@ import {
 import { handleError, ErrorCode } from "@/utils/errors";
 import { useWalletData } from "@/hooks/useWalletData";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 
 export default function AmountScreen() {
   const [amount, setAmount] = useState("0");
@@ -34,8 +30,6 @@ export default function AmountScreen() {
   const [routingNumber, setRoutingNumber] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [accountType] = useState<UsAccountType>("checking");
-  const [country] = useState<CountryCode>("USA");
   const [accountLabel, setAccountLabel] = useState("");
   const [bankName, setBankName] = useState("");
   const [externalAccounts, setExternalAccounts] = useState<
@@ -43,6 +37,7 @@ export default function AmountScreen() {
   >([]);
   const { accountInfo } = useAuth();
   const { balance } = useWalletData(accountInfo);
+  const { showToast } = useToast();
 
   const [address, setAddress] = useState<AddressInput>({
     street_number: "",
@@ -77,7 +72,6 @@ export default function AmountScreen() {
     const ext = await getExternalAccountIds();
     ext?.accounts.forEach((account) => {
       if (account.label === "[object Object]") {
-        // Remove account with invalid label
         deleteAccount(account.grid_user_id, account.external_account_id);
       }
     });
@@ -88,27 +82,18 @@ export default function AmountScreen() {
     getExtAccount();
   }, []);
 
-  // Get params from the router
-  const { type, title } = useLocalSearchParams<{
-    type: string;
-    title: string;
-  }>();
-
   const handleKeyPress = (key: string) => {
     if (key === "backspace") {
-      // Remove the last character
       setAmount((prev) => (prev.length > 1 ? prev.slice(0, -1) : "0"));
     } else if (key === ".") {
-      // Only add decimal if it doesn't exist already
       if (!amount.includes(".")) {
         setAmount((prev) => prev + ".");
       }
     } else {
-      // Handle number keys
       if (amount === "0") {
         setAmount(key);
       } else {
-        // Limit to 2 decimal places
+        // Limit to 2 decimal places.
         const parts = amount.split(".");
         if (parts.length > 1 && parts[1].length >= 2) {
           return;
@@ -118,21 +103,9 @@ export default function AmountScreen() {
     }
   };
 
-  const handleExistingContinue = (label?: string, id?: string) => {
-    try {
-      // If both validations pass, navigate to the next screen
-      router.push({
-        pathname: "/fiatconfirm",
-        params: {
-          amount,
-          accountLabel: label,
-          externalAccountId: id,
-        },
-      });
-    } catch (error) {
-      console.error("Unexpected error:", error);
-      handleError(ErrorCode.UNKNOWN_ERROR, true, true);
-    }
+  const handleExistingContinue = () => {
+    // Fiat off-ramp is not yet available; the confirm route does not exist.
+    showToast("Fiat transfers are coming soon");
   };
 
   const handleContinue = () => {
@@ -159,7 +132,6 @@ export default function AmountScreen() {
         handleError(ErrorCode.INVALID_NAME, true, true);
       }
 
-      // Validate the address
       try {
         Address.parse(address);
       } catch {
@@ -167,7 +139,6 @@ export default function AmountScreen() {
         handleError(ErrorCode.INVALID_ADDRESS, true, true);
       }
 
-      // Validate the bank account
       try {
         ACHBankAccount.parse({
           account_number: accountNumber,
@@ -189,37 +160,8 @@ export default function AmountScreen() {
       }
 
       if (!validationError) {
-        // Format address with combined street number and name
-        const formattedAddress = {
-          ...address,
-          street_line_1:
-            `${address.street_number} ${address.street_name}`.trim(),
-          street_line_2: address.street_line_2,
-        };
-        try {
-          // If both validations pass, navigate to the next screen
-          router.push({
-            pathname: "/fiatconfirm",
-            params: {
-              amount,
-              accountNumber,
-              routingNumber,
-              firstName,
-              lastName,
-              accountType,
-              country,
-              type,
-              title,
-              address: JSON.stringify(formattedAddress),
-              bankName,
-              accountLabel: accountLabel,
-              // externalAccountId: id
-            },
-          });
-        } catch (error) {
-          console.error("Unexpected error:", error);
-          handleError(ErrorCode.UNKNOWN_ERROR, true, true);
-        }
+        // Fiat off-ramp is not yet available; the confirm route does not exist.
+        showToast("Fiat transfers are coming soon");
       }
     }
   };
@@ -250,7 +192,7 @@ export default function AmountScreen() {
           // DYNAMIC-COLOR
           textStyle={{ color: textColor }}
           onPress={() => {
-            handleExistingContinue(currentLabel, id);
+            handleExistingContinue();
           }}
         />
       </View>

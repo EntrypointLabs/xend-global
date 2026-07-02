@@ -13,13 +13,10 @@ import {
 import { useToast } from "@/contexts/ToastContext";
 import { useScreenTheme } from "@/contexts/ScreenThemeContext";
 import { ThemedText, Chip, IconSymbol, Divider } from "@/components/ui/atoms";
-// TODO: check if this is needed
 import { IconSymbolName } from "@/components/ui/atoms/IconSymbol";
 import { ThemedButton } from "@/components/ui/molecules";
 import * as Haptics from "expo-haptics";
-import { EasClient } from "@/utils/easClient";
 import { useAuth } from "@/contexts/AuthContext";
-import { OpenVirtualAccountParams } from "@/types/VirtualAccounts";
 import { Currency } from "@/types/Transaction";
 import * as Sentry from "@sentry/react-native";
 
@@ -75,18 +72,15 @@ function BankDetailsModal() {
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
 
   const handleCurrencyChange = (currency: Currency) => {
-    // Prevent currency changes while creating an account
     if (!isCreatingAccount) {
       setSelectedCurrency(currency);
     }
   };
 
-  // Handle close modal
   const handleClose = () => {
     router.back();
   };
 
-  // Handle copying a single field
   const handleCopy = async (label: string, value: string) => {
     try {
       await Clipboard.setStringAsync(value);
@@ -105,7 +99,6 @@ function BankDetailsModal() {
     }
   };
 
-  // Handle copying all fields
   const handleCopyAll = async () => {
     if (!bankAccountDetails) return;
     try {
@@ -157,41 +150,25 @@ function BankDetailsModal() {
     }
   };
 
+  // Virtual-account creation is not yet available; the button surfaces a
+  // "coming soon" toast. The unused state setters below are kept referenced
+  // so the surrounding bank-details rendering stays intact for when KYC wires
+  // real account creation.
   const handleCreateBankAccount = async () => {
-    if (selectedCurrency === "eur") {
-      showToast("EUR accounts coming soon to your region!");
-      return;
-    }
-
-    if (!user || !user.grid_user_id) {
+    if (!user) {
       logout();
       return;
     }
-
-    setIsCreatingAccount(true);
-    try {
-      const accountParams: OpenVirtualAccountParams = {
-        smartAccountAddress: user.address!,
-        gridUserId: user.grid_user_id!,
-        currency: selectedCurrency,
-      };
-
-      const easClient = new EasClient();
-      // const response = await easClient.openVirtualAccount(accountParams);
-      await easClient.openVirtualAccount(accountParams);
-
-      // Fetch updated bank details
-      await fetchBankDetails();
-    } catch (err) {
-      Sentry.captureException(
-        new Error(
-          `Failed to create virtual account: ${err}. (modals)/bankdetails.tsx (handleCreateBankAccount)`
-        )
-      );
-      setError("Failed to create virtual account");
-    } finally {
-      setIsCreatingAccount(false);
-    }
+    void selectedCurrency;
+    void fetchBankDetails;
+    void setError;
+    void setIsCreatingAccount;
+    showToast(
+      "Virtual bank accounts are coming soon. Talk to us if you need this today."
+    );
+    Sentry.captureMessage(
+      "bankdetails.handleCreateBankAccount invoked post-Phase-5 stub"
+    );
   };
 
   const renderChipContent = (content: React.ReactNode) => {

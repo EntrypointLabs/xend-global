@@ -4,13 +4,12 @@
     "slug": "xend",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/app-icon.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "xend",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "io.sqds.xend",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
@@ -20,16 +19,20 @@
         ],
         "NSCameraUsageDescription": "This app requires camera access to verify your identity."
       },
-      "associatedDomains": ["applinks:xend.global"]
+      "associatedDomains": [
+        "applinks:xend.global",
+        "webcredentials:xend.global"
+      ],
+      "bundleIdentifier": "com.giftedborg.xend"
     },
     "android": {
       "fonts": [
         "node_modules/@expo-google-fonts/inter/900Black/Inter_900Black.ttf"
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/app-icon.png"
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#f5f5f5"
       },
-      "package": "io.sqds.xend",
       "intentFilters": [
         {
           "action": "VIEW",
@@ -42,7 +45,8 @@
         }
       ],
       "permissions": ["CAMERA"],
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "pan",
+      "package": "com.giftedborg.xend"
     },
     "web": {
       "bundler": "metro",
@@ -60,13 +64,35 @@
           "project": "neobank-example-app",
           "organization": "squads-dapp"
         }
+      ],
+      "@sentry/react-native",
+      "expo-image",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/logo/xend-mark-white-2048.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#000000"
+        }
+      ],
+      "expo-status-bar",
+      "expo-web-browser",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Xend to use Face ID to unlock the app."
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "projectId": "12867b7e-4203-4705-a353-ee1631a0ecda"
+      }
     },
     "owner": "gifted-borg"
   }

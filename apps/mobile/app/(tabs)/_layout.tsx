@@ -1,5 +1,6 @@
 import { Tabs } from "expo-router";
 import React from "react";
+import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { CustomTabBar } from "@/components/ui/organisms";
 
@@ -7,7 +8,9 @@ export default function TabLayout() {
   return (
     <ProtectedRoute>
       <Tabs
-        tabBar={(props) => <CustomTabBar {...props} />}
+        tabBar={(props) => (
+          <CustomTabBar {...(props as unknown as BottomTabBarProps)} />
+        )}
         screenOptions={{
           headerShown: false,
         }}

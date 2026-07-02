@@ -1,85 +1,12 @@
-import React, { useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
-import { ThemedButton } from "@/components/ui/molecules";
+import React from "react";
 import { Image, View } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { WithScreenTheme } from "@/components/WithScreenTheme";
-import { useResendTimer } from "@/hooks/useResendTimer";
 import { router } from "expo-router";
-import { ErrorCode, handleError } from "@/utils/errors";
-import { useScreenTheme } from "@/contexts/ScreenThemeContext";
 import Logo from "@/components/Logo";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 
 function LoginScreen() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [showCodeInput, setShowCodeInput] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { authenticate, verifyCode, user } = useAuth();
-  const { textColor } = useScreenTheme();
-
-  const triggerAuthentication = async (emailToUse: string) => {
-    setShowCodeInput(true);
-    await authenticate(emailToUse);
-  };
-
-  const handleResend = async () => {
-    if (!user?.email) {
-      router.push("/(auth)/login");
-      return;
-    }
-    await triggerAuthentication(user.email);
-  };
-
-  const {
-    countdown,
-    isDisabled,
-    handleResend: resend,
-  } = useResendTimer({
-    initialSeconds: 30,
-    onResend: handleResend,
-  });
-
-  const verify = async (code: string): Promise<boolean> => {
-    const success = await verifyCode(code);
-    if (success) {
-      router.replace("/success");
-    }
-    return success;
-  };
-
-  const handleSubmit = async (
-    submittedEmail: string,
-    code?: string,
-    formError?: string
-  ) => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      if (formError) {
-        console.log("formError", formError);
-        setError(formError);
-        handleError(ErrorCode.INVALID_EMAIL, true, true);
-        return;
-      }
-
-      if (code) {
-        const isValid = await verify(code);
-        if (!isValid) {
-          setError("Invalid code");
-          return;
-        }
-      } else {
-        await triggerAuthentication(submittedEmail);
-      }
-    } catch (error) {
-      setError("An error occurred. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <View className="flex-1">
       <GradientBackround />
@@ -114,16 +41,6 @@ function LoginScreen() {
             </Typography>
           </View>
           <View className="gap-2.5">
-            {/* <ThemedButton
-              onPress={() => authenticate("")}
-              title="Continue with Google"
-              iconLeft={
-                <Image
-                  source={require("@/assets/icons/google.png")}
-                  className="size-6"
-                />
-              }
-            /> */}
             <HapticPressable
               onPress={() => router.push("/(auth)/email-login")}
               className="w-full flex-row items-center justify-center gap-4 rounded-full border border-white bg-white p-4"
@@ -148,17 +65,6 @@ function LoginScreen() {
                 Recover existing wallet
               </Typography>
             </HapticPressable>
-            {/* <ThemedButton
-              onPress={() => {}}
-              variant="outline"
-              title="Recover existing wallet"
-              iconLeft={
-                <Image
-                  source={require("@/assets/icons/redo.png")}
-                  className="size-6"
-                />
-              }
-            /> */}
           </View>
         </View>
       </View>

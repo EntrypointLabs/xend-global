@@ -1,17 +1,23 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { GridService } from '../grid/grid.service';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { DbService } from '../db/db.service';
 import { smartAccounts } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import { SOLANA_RPC } from '../solana/solana-rpc.interface';
+import type { SolanaRpc } from '../solana/solana-rpc.interface';
+import type { BalancesResponse, WalletResponse } from './dtos';
 
+/**
+ * Backs `/wallet/me` and `/wallet/me/balances` via SolanaRpc
+ * (FailoverSolanaRpc).
+ */
 @Injectable()
 export class WalletsService {
   constructor(
-    private grid: GridService,
     private db: DbService,
+    @Inject(SOLANA_RPC) private solana: SolanaRpc,
   ) {}
 
-  async getWallet(userId: string) {
+  async getMe(userId: string): Promise<WalletResponse> {
     const [account] = await this.db.client
       .select()
       .from(smartAccounts)
@@ -20,16 +26,13 @@ export class WalletsService {
 
     if (!account) throw new NotFoundException('Wallet not found');
 
-    const gridAccount = await this.grid.getAccount(account.gridAccountId);
-
     return {
-      id: account.id,
-      gridAccountId: account.gridAccountId,
-      ...gridAccount.data,
+      walletAddress: account.walletAddress,
+      provider: 'privy',
     };
   }
 
-  async getBalances(userId: string) {
+  async getMeBalances(userId: string): Promise<BalancesResponse> {
     const [account] = await this.db.client
       .select()
       .from(smartAccounts)
@@ -38,7 +41,23 @@ export class WalletsService {
 
     if (!account) throw new NotFoundException('Wallet not found');
 
-    const balances = await this.grid.getBalances(account.gridAccountId);
-    return balances.data;
+    // Parallel read: tokens + a recent block reference. `lastValidBlockHeight`
+    // is the closest monotonic chain marker without a separate getSlot round
+    // trip; mobile uses it for cache-staleness signalling only.
+    const [tokens, blockhash] = await Promise.all([
+      this.solana.getTokenBalances(account.walletAddress),
+      this.solana.getRecentBlockhash(),
+    ]);
+
+    return {
+      walletAddress: account.walletAddress,
+      tokens: tokens.map((t) => ({
+        mint: t.mint,
+        amountRaw: t.amountRaw.toString(),
+        decimals: t.decimals,
+        symbol: null,
+      })),
+      fetchedAtSlot: blockhash.lastValidBlockHeight,
+    };
   }
 }

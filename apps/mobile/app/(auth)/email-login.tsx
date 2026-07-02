@@ -31,7 +31,6 @@ function EmailLoginScreen() {
   const { completeLogin, completePasskeySetup, user } = useAuth();
   const { showToast } = useToast();
   const {
-    checkPasskeys,
     registerPasskey,
     isRegistering,
     error: passkeyError,
@@ -69,16 +68,10 @@ function EmailLoginScreen() {
       const result = await verifyOtpAsync(code);
       await completeLogin(result.data, emailInput.trim(), result.token);
 
-      // Passkey check — mandatory before proceeding to dashboard
-      const accountAddress =
-        result.data?.smart_account_address || result.data?.address;
-      if (accountAddress) {
-        const hasExisting = await checkPasskeys(accountAddress);
-        if (hasExisting) {
-          completePasskeySetup();
-        } else {
-          setShowPasskeySetup(true);
-        }
+      // Only prompt passkey setup when the account has none; a returning user
+      // whose Privy account already has a linked passkey goes straight in.
+      if (result.hasPasskey) {
+        completePasskeySetup();
       } else {
         setShowPasskeySetup(true);
       }
@@ -135,7 +128,6 @@ function EmailLoginScreen() {
           bounces={false}
         >
           <View className="flex-1 px-8 py-16">
-            {/* Back button */}
             <HapticPressable
               onPress={() => router.back()}
               className="mt-8 self-start"

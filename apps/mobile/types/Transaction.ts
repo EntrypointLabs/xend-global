@@ -1,8 +1,3 @@
-import { SplTransfer } from "@sqds/grid-react-native";
-
-/**
- * Core transaction data interface
- */
 export interface Transaction {
   id: string;
   amount: number;
@@ -12,9 +7,6 @@ export interface Transaction {
   address: string;
 }
 
-/**
- * Interface for grouped transactions
- */
 export interface TransactionGroup {
   title: string;
   data: Transaction[];
@@ -129,7 +121,6 @@ export interface CreateExternalAccountRequest {
   account_type?: string;
   iban?: IbanAccount;
   account?: UsAccount;
-  // swift?: SwiftAccount; // Not supported yet
   account_owner_type?: CustomerType;
   first_name?: string;
   last_name?: string;
@@ -234,31 +225,34 @@ export interface TransferSource {
   blockchain_memo?: string;
 }
 
-// export interface SplTransfer {
-//     id: string;
-//     grid_user_id: string;
-//     main_account_address: string;
-//     mint: string;
-//     is_token_2022: boolean;
-//     signature: string;
-//     confirmation_status: ConfirmationStatus;
-//     from_address: string;
-//     to_address: string;
-//     amount: string;
-//     ui_amount: string;
-//     decimals: number;
-//     confirmed_at: string | null;
-//     created_at: string;
-//     updated_at: string;
-// }
-
-export interface ReturnDetails {
-  // Add fields as needed
+/**
+ * SPL transfer row as consumed by the Activity feed. Mirrors the snake_case
+ * shape produced by `mapTransferRowToLegacy` in `hooks/useWalletData.ts`.
+ */
+export interface SplTransfer {
+  id: string;
+  gridUserId: string;
+  mainAccountAddress: string;
+  mint: string;
+  isToken2022: boolean;
+  signature: string;
+  confirmation_status: ConfirmationStatus;
+  from_address: string;
+  to_address: string;
+  amount: string;
+  ui_amount: string;
+  decimals: number;
+  confirmed_at?: string;
+  created_at: string;
+  updated_at: string;
+  direction: "inflow" | "outflow";
 }
 
-export interface Receipt {
-  // Add fields as needed
-}
+// Add fields as needed
+export type ReturnDetails = Record<string, unknown>;
+
+// Add fields as needed
+export type Receipt = Record<string, unknown>;
 
 export interface BridgeTransfer {
   id: string;

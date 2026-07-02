@@ -58,13 +58,6 @@ export default function SendLayout() {
           headerTitle: () => getHeaderTitle("Confirm Crypto Transfer"),
         }}
       />
-      <Stack.Screen
-        name="fiatconfirm"
-        options={{
-          title: "",
-          headerTitle: () => getHeaderTitle("Confirm Fiat Transfer"),
-        }}
-      />
     </Stack>
   );
 }

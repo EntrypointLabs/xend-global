@@ -1,8 +1,11 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import { NameRegistryState, getDomainKeySync } from "@bonfida/spl-name-service";
 
+// RPC endpoint for SNS resolution. Read from the environment so it follows
+// the same devnet/mainnet toggle as the rest of the app and no provider API
+// key is embedded in the device bundle. Falls back to the public devnet RPC.
 const SOLANA_RPC_URL =
-  "https://mainnet.helius-rpc.com/?api-key=29886ba4-5153-4e0d-8405-d45f81f6b9e9";
+  process.env.EXPO_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
 
 const connection = new Connection(SOLANA_RPC_URL);
 
@@ -10,7 +13,7 @@ export function isPublicKey(address: string): boolean {
   try {
     new PublicKey(address);
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -19,7 +22,7 @@ export async function isSnsName(name: string): Promise<boolean> {
   try {
     const resolvedSns = await resolveSnsName(name);
     return resolvedSns !== null;
-  } catch (error) {
+  } catch {
     return false;
   }
 }

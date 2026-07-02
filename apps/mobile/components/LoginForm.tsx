@@ -10,7 +10,6 @@ import { ThemedTextInput } from "@/components/ui/molecules";
 import { ScreenVerificationCodeInput } from "@/components/ui/organisms";
 import { Spacing } from "@/constants/Spacing";
 import { Email } from "@/types/Auth";
-import { handleError, ErrorCode } from "@/utils/errors";
 
 interface LoginFormProps {
   onSubmit: (email: string, code?: string, error?: string) => void;
@@ -33,7 +32,7 @@ export function LoginForm({
       Email.parse(email);
       setShowCodeInput(true);
       onSubmit(email);
-    } catch (error) {
+    } catch {
       onSubmit(email, undefined, "Invalid email. Please try again.");
     }
   };
@@ -89,9 +88,7 @@ const styles = StyleSheet.create({
   container: {
     width: "100%",
   },
-  themedViewInner: {
-    // paddingHorizontal: Spacing.md,
-  },
+  themedViewInner: {},
   text: {
     textAlign: "center",
     marginBottom: Spacing.lg,

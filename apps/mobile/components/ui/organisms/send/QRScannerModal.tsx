@@ -60,6 +60,7 @@ export const QRScannerModal = forwardRef<BottomSheetModal, QRScannerModalProps>(
         onScan(address);
         handleClose();
       },
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       [onScan]
     );
 
