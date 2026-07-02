@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createId } from '@paralleldrive/cuid2';
-import { eq, and, lt, or, desc } from 'drizzle-orm';
+import { eq, and, lt, or, desc, sql } from 'drizzle-orm';
 import {
   PublicKey,
   TransactionInstruction,
@@ -376,8 +376,18 @@ export class TransferService {
       );
     }
 
-    // 5. Write the canonical row. Always written PENDING; the RPC tailer
+    // 5. Write the canonical row. Always inserted PENDING; the RPC tailer
     //    flips it to CONFIRMED or FAILED later.
+    //
+    //    The wallet's webhook subscription is already live, so between
+    //    sendRawTransaction resolving above and this write, Helius may have
+    //    delivered the confirmed transfer and TailerService may have already
+    //    INSERTed a CONFIRMED row for this signature. A plain insert would
+    //    violate UNIQUE(signature) and surface a 500 for a transfer that
+    //    actually succeeded. Upsert on signature instead: adopt the
+    //    webhook-created row by backfilling the submit-owned columns
+    //    (intent_id, submitted_at) while preserving the status guard — a
+    //    CONFIRMED/FAILED row must never regress to PENDING.
     const now = new Date();
     const [row] = await this.db.client
       .insert(transfers)
@@ -392,6 +402,18 @@ export class TransferService {
         toAddress: intent.toAddress,
         status: 'PENDING',
         submittedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: transfers.signature,
+        set: {
+          intentId: sql`COALESCE(${transfers.intentId}, excluded.intent_id)`,
+          submittedAt: sql`COALESCE(${transfers.submittedAt}, excluded.submitted_at)`,
+          status: sql`CASE
+            WHEN ${transfers.status} IN ('CONFIRMED', 'FAILED')
+              THEN ${transfers.status}
+            ELSE excluded.status
+          END`,
+        },
       })
       .returning();
 

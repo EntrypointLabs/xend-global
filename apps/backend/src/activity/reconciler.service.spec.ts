@@ -25,6 +25,10 @@ interface OutstandingRow {
   signature: string;
   smartAccountId: string;
   submittedAt: Date;
+  // Models the server-computed `submitted_at < now - PENDING_EXPIRY_MS`
+  // flag returned by the reconciler's outstanding SELECT. Defaults to
+  // false so existing cases keep their pre-expiry behavior.
+  expired?: boolean;
 }
 
 function makeFakeDb(opts: {
@@ -51,6 +55,7 @@ function makeFakeDb(opts: {
         rows: outstanding.map((r) => ({
           signature: r.signature,
           smartAccountId: r.smartAccountId,
+          expired: r.expired ?? false,
         })),
         rowCount: outstanding.length,
       });
@@ -162,6 +167,34 @@ describe('ReconcilerService.tick', () => {
     expect(updates).toHaveLength(1);
     // The UPDATE has the status guard via WHERE clause.
     expect(updates[0].payload).toMatch(/PENDING/);
+  });
+
+  it('anchors the age comparison to UTC, not the server-local timezone', async () => {
+    // `transfers.submitted_at` stores UTC wall-clock digits (Drizzle
+    // serializes the JS Date via toISOString()). The outstanding SELECT
+    // must compare against UTC — using LOCALTIMESTAMP would skew both the
+    // WHERE predicate and the `expired` flag by the server's UTC offset
+    // on any non-UTC deployment.
+    const { db, calls } = makeFakeDb({ outstanding: [] });
+    const reconciler = new ReconcilerService(
+      db,
+      makeFakeSolana(),
+      new TailerService(db),
+    );
+
+    await reconciler.tick();
+
+    const select = calls.find(
+      (c) =>
+        typeof c.payload === 'string' &&
+        c.payload.includes('SELECT') &&
+        c.payload.includes('transfers') &&
+        c.payload.includes('PENDING'),
+    );
+    expect(select).toBeDefined();
+    const sql = select!.payload as string;
+    expect(sql).toContain("AT TIME ZONE 'UTC'");
+    expect(sql).not.toContain('LOCALTIMESTAMP');
   });
 
   it('ignores rows younger than 30s', async () => {
@@ -293,6 +326,72 @@ describe('ReconcilerService.tick', () => {
     await reconciler.tick();
     // 'processed' is below 'confirmed' threshold — no UPDATE issued.
     // (The outstanding-poll SELECT does fire; assert no UPDATE.)
+    const updates = calls.filter(
+      (c) => typeof c.payload === 'string' && c.payload.includes('UPDATE'),
+    );
+    expect(updates).toHaveLength(0);
+  });
+
+  it('force-fails a null-status row the cluster never saw once it is expired', async () => {
+    const sig = 'sig-dropped';
+    const { db, calls } = makeFakeDb({
+      outstanding: [
+        {
+          signature: sig,
+          smartAccountId: 'sa1',
+          submittedAt: new Date(Date.now() - 200_000),
+          expired: true,
+        },
+      ],
+    });
+    const solana = makeFakeSolana({
+      getSignatureStatuses: jest.fn().mockResolvedValue([
+        {
+          signature: sig,
+          slot: null,
+          confirmationStatus: null,
+          err: null,
+        },
+      ]),
+    });
+    const reconciler = new ReconcilerService(db, solana, new TailerService(db));
+
+    await reconciler.tick();
+    const failedUpdates = calls.filter(
+      (c) =>
+        typeof c.payload === 'string' &&
+        c.payload.includes('FAILED') &&
+        c.payload.includes('failure_reason'),
+    );
+    expect(failedUpdates).toHaveLength(1);
+    expect(failedUpdates[0].payload).toMatch(/BLOCKHASH_EXPIRED/);
+  });
+
+  it('leaves a null-status row PENDING while it is not yet expired', async () => {
+    const sig = 'sig-unknown-young';
+    const { db, calls } = makeFakeDb({
+      outstanding: [
+        {
+          signature: sig,
+          smartAccountId: 'sa1',
+          submittedAt: new Date(Date.now() - 60_000),
+          expired: false,
+        },
+      ],
+    });
+    const solana = makeFakeSolana({
+      getSignatureStatuses: jest.fn().mockResolvedValue([
+        {
+          signature: sig,
+          slot: null,
+          confirmationStatus: null,
+          err: null,
+        },
+      ]),
+    });
+    const reconciler = new ReconcilerService(db, solana, new TailerService(db));
+
+    await reconciler.tick();
     const updates = calls.filter(
       (c) => typeof c.payload === 'string' && c.payload.includes('UPDATE'),
     );

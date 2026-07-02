@@ -88,7 +88,7 @@ function makeFakeDb(store: FakeStore): DbService {
       const collection = collectionFor(tbl);
       return {
         values: (vals: Record<string, unknown>) => {
-          const row =
+          const build = () =>
             collection === 'users'
               ? {
                   id: `u_${store.users.length + 1}`,
@@ -105,11 +105,33 @@ function makeFakeDb(store: FakeStore): DbService {
                   createdAt: new Date(),
                   updatedAt: new Date(),
                 };
-          (store[collection] as Record<string, unknown>[]).push(row);
+          const insertRow = () => {
+            const row = build();
+            (store[collection] as Record<string, unknown>[]).push(row);
+            return row;
+          };
           return {
-            returning: () => Promise.resolve([row]),
+            // Models INSERT ... ON CONFLICT (user_id) DO UPDATE for
+            // smart_accounts: if a row with the same userId exists, patch
+            // it with `set`; otherwise insert. Match-all is fine because
+            // tests keep at most one smart_account row.
+            onConflictDoUpdate: (cfg: { set: Record<string, unknown> }) => {
+              const rows = store[collection] as Record<string, unknown>[];
+              const conflict =
+                collection === 'smartAccounts'
+                  ? rows.find((r) => r.userId === vals.userId)
+                  : undefined;
+              const row = conflict ?? insertRow();
+              if (conflict) Object.assign(conflict, cfg.set);
+              return {
+                returning: () => Promise.resolve([row]),
+                then: (resolve: (v: unknown) => unknown) =>
+                  Promise.resolve([row]).then(resolve),
+              };
+            },
+            returning: () => Promise.resolve([insertRow()]),
             then: (resolve: (v: unknown) => unknown) =>
-              Promise.resolve([row]).then(resolve),
+              Promise.resolve([insertRow()]).then(resolve),
           };
         },
       };
@@ -381,6 +403,60 @@ describe('AuthService.exchange', () => {
     await service.exchange('valid.privy.token');
     // The smart_account already existed — no INSERT, no registration.
     expect(registerWebhookAddress).not.toHaveBeenCalled();
+  });
+
+  it('existing user with a NEW Privy DID + wallet upserts in place (no lockout)', async () => {
+    const reAuthUser: WalletProviderUser = {
+      providerUserId: 'did:privy:NEWdid999',
+      email: validPrivyUser.email,
+      walletAddress: 'SoLAnAaNeWwAlLeT2222222222222222222222222222',
+    };
+    const wallet = {
+      verifyIdToken: jest.fn().mockResolvedValue(reAuthUser),
+      getUser: jest.fn(),
+    } as unknown as WalletProvider;
+    const seedStore: FakeStore = {
+      users: [
+        {
+          id: 'u_existing',
+          email: validPrivyUser.email,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-01'),
+        },
+      ],
+      smartAccounts: [
+        {
+          id: 'sa_existing',
+          userId: 'u_existing',
+          walletAddress: validPrivyUser.walletAddress,
+          provider: 'privy',
+          providerUserId: validPrivyUser.providerUserId,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-01'),
+        },
+      ],
+    };
+    const { rpc, registerWebhookAddress } = makeFakeSolana();
+    const { service, store } = makeService({
+      wallet,
+      store: seedStore,
+      solana: rpc,
+    });
+
+    const result = await service.exchange('valid.privy.token');
+
+    expect(result.user.id).toBe('u_existing');
+    expect(result.user.isNewUser).toBe(false);
+    // No duplicate smart_account row — the existing one was adopted.
+    expect(store.smartAccounts).toHaveLength(1);
+    expect(store.smartAccounts[0].providerUserId).toBe(
+      reAuthUser.providerUserId,
+    );
+    expect(store.smartAccounts[0].walletAddress).toBe(reAuthUser.walletAddress);
+    // The new wallet address gets its webhook registered.
+    expect(registerWebhookAddress).toHaveBeenCalledWith(
+      reAuthUser.walletAddress,
+    );
   });
 
   it('unknown adapter error maps to 502 PRIVY_UNAVAILABLE (defensive)', async () => {

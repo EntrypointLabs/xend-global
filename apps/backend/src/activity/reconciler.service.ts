@@ -13,6 +13,16 @@ import { TailerService } from './tailer.service';
 const RECONCILE_BATCH = 256;
 /** Outstanding-PENDING age threshold before the cron tick will touch a row. */
 const PENDING_AGE_MS = 30_000;
+/**
+ * Max time a PENDING row whose signature the cluster still does not know
+ * (null status, no err) may stay PENDING before being force-failed. A
+ * Solana blockhash is valid for ~150 slots (~60-90s); once a signature
+ * has not landed well past that window it was dropped from the mempool
+ * or its blockhash expired and it will never land. Force-failing these
+ * stops them from occupying the bounded, oldest-first reconcile batch
+ * forever (starving newer PENDING rows).
+ */
+const PENDING_EXPIRY_MS = 120_000;
 
 /**
  * The safety net for the webhook hot path. Two duties:
@@ -120,24 +130,32 @@ export class ReconcilerService implements OnModuleInit {
   async tick(): Promise<void> {
     const t0 = Date.now();
 
-    // Compute the cutoff server-side using LOCALTIMESTAMP, which
-    // returns `timestamp without time zone` in the server's local time.
-    // The `transfers.submitted_at` column is also `timestamp without
-    // time zone`, so both sides of the comparison live in the same
-    // naive-time space. Passing a JS Date here would round-trip through
-    // timestamptz and silently shift by the server's UTC offset under
-    // non-UTC timezones.
+    // Compute the cutoff server-side using `now() AT TIME ZONE 'UTC'`,
+    // which yields the current UTC wall-clock as `timestamp without time
+    // zone`. The `transfers.submitted_at` column is also `timestamp
+    // without time zone`, but it is written by /transfers/submit as a JS
+    // Date, which Drizzle serializes via `toISOString()` — i.e. the UTC
+    // wall-clock digits. Anchoring the cutoff to UTC (rather than
+    // `LOCALTIMESTAMP`, which follows the server's TimeZone GUC) keeps
+    // both sides of the comparison in the same zone on any deployment.
     const outstanding = (await this.db.client.execute(sql`
-      SELECT signature, smart_account_id AS "smartAccountId"
+      SELECT
+        signature,
+        smart_account_id AS "smartAccountId",
+        submitted_at < (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${PENDING_EXPIRY_MS / 1000}`)} seconds'
+          AS "expired"
       FROM transfers
       WHERE status = 'PENDING'
-        AND submitted_at < LOCALTIMESTAMP - INTERVAL '${sql.raw(`${PENDING_AGE_MS / 1000}`)} seconds'
+        AND submitted_at < (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${PENDING_AGE_MS / 1000}`)} seconds'
       ORDER BY submitted_at ASC
       LIMIT ${sql.raw(`${RECONCILE_BATCH}`)}
     `)) as unknown as {
-      rows: { signature: string; smartAccountId: string }[];
+      rows: { signature: string; smartAccountId: string; expired: boolean }[];
     };
     const rows = outstanding.rows ?? [];
+    const expiredBySignature = new Map(
+      rows.map((r) => [r.signature, r.expired]),
+    );
 
     if (rows.length === 0) {
       this.logger.debug(
@@ -201,8 +219,27 @@ export class ReconcilerService implements OnModuleInit {
         }
         finalized++;
         this.reconcileFinalizedCount++;
+      } else if (
+        status.confirmationStatus === null &&
+        expiredBySignature.get(status.signature) === true
+      ) {
+        // Cluster has never seen this signature (null status, no err) and
+        // the row has aged past the blockhash lifetime — the transaction
+        // was dropped or its blockhash expired and will never land.
+        // Finalize as FAILED so it stops occupying the oldest-first batch.
+        await this.db.client.execute(sql`
+          UPDATE transfers
+          SET status = 'FAILED'::transfer_status,
+              failure_reason = ${JSON.stringify({ code: 'BLOCKHASH_EXPIRED' })},
+              confirmed_at = NOW()
+          WHERE signature = ${status.signature}
+            AND status = 'PENDING'
+        `);
+        failed++;
+        this.reconcileFinalizedCount++;
       }
-      // else: still in flight — leave PENDING; the next tick checks again.
+      // else: still in flight (or not yet aged past expiry) — leave
+      // PENDING; the next tick checks again.
     }
 
     const duration = Date.now() - t0;
