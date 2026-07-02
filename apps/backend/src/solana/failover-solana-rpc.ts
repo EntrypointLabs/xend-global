@@ -96,53 +96,41 @@ export class FailoverSolanaRpc implements SolanaRpc {
   }
 
   /**
-   * Stream confirmed transfers. Attempts primary first; if priming the
-   * iterator (first page) throws, retries against the fallback adapter
-   * and yields from there. Mid-stream failover is NOT supported (see
-   * class doc).
+   * Stream confirmed transfers. Attempts primary first; if the *first*
+   * page errors, falls back to the public adapter and yields from
+   * there. The adapters implement this as an async generator, so the
+   * real RPC call (getSignaturesForAddress) only runs — and only
+   * rejects — on the first `.next()`; the failover therefore hangs off
+   * the first pull, not off iterator construction. Mid-stream failover
+   * is NOT supported (see class doc): once the primary has yielded any
+   * event, its errors propagate.
    */
-  streamConfirmedTransfers(
+  async *streamConfirmedTransfers(
     owner: WalletAddress,
     sinceSlot: bigint,
   ): AsyncIterable<ConfirmedTransferEvent> {
-    const primary = this.primary;
-    const fallback = this.fallback;
-    const logger = this.logger;
-    return {
-      [Symbol.asyncIterator](): AsyncIterator<ConfirmedTransferEvent> {
-        let inner: AsyncIterator<ConfirmedTransferEvent> | undefined;
-        let primed = false;
-        const prime = (): void => {
-          if (primed) return;
-          try {
-            inner = primary
-              .streamConfirmedTransfers(owner, sinceSlot)
-              [Symbol.asyncIterator]();
-          } catch (err) {
-            logger.warn(
-              `Helius streamConfirmedTransfers failed at prime; falling back to public mainnet`,
-              err,
-            );
-            inner = fallback
-              .streamConfirmedTransfers(owner, sinceSlot)
-              [Symbol.asyncIterator]();
-          }
-          primed = true;
-        };
-        return {
-          next(): Promise<IteratorResult<ConfirmedTransferEvent>> {
-            try {
-              prime();
-            } catch (err) {
-              return Promise.reject(
-                err instanceof Error ? err : new Error(String(err)),
-              );
-            }
-            return inner!.next();
-          },
-        };
-      },
-    };
+    let iterator = this.primary
+      .streamConfirmedTransfers(owner, sinceSlot)
+      [Symbol.asyncIterator]();
+
+    let first: IteratorResult<ConfirmedTransferEvent>;
+    try {
+      first = await iterator.next();
+    } catch (err) {
+      this.logger.warn(
+        `Helius streamConfirmedTransfers failed on first page; falling back to public mainnet`,
+        err,
+      );
+      iterator = this.fallback
+        .streamConfirmedTransfers(owner, sinceSlot)
+        [Symbol.asyncIterator]();
+      first = await iterator.next();
+    }
+
+    while (!first.done) {
+      yield first.value;
+      first = await iterator.next();
+    }
   }
 
   // ── Control plane (Helius-only) ───────────────────────────────────

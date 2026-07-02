@@ -193,7 +193,7 @@ describe('FailoverSolanaRpc', () => {
       expect(fallback.streamConfirmedTransfers).not.toHaveBeenCalled();
     });
 
-    it('falls back when primary throws synchronously while priming', async () => {
+    it('falls back when the primary generator rejects on the first page', async () => {
       const event = {
         signature: 'sigF',
         slot: 200n,
@@ -203,10 +203,18 @@ describe('FailoverSolanaRpc', () => {
         toAddress: 'b',
         confirmedAt: new Date(),
       };
+      // A real adapter is an async generator: calling it and taking its
+      // iterator never throw; the RPC error surfaces only on the first
+      // `.next()` (after an await inside the body). The failover must
+      // trigger on that first pull, not on iterator construction.
       const primary = makeStub({
-        streamConfirmedTransfers: jest.fn().mockImplementation(() => {
-          throw new Error('helius down');
-        }),
+        streamConfirmedTransfers: jest.fn().mockImplementation(
+          // eslint-disable-next-line require-yield
+          async function* (): AsyncGenerator<never> {
+            await Promise.resolve();
+            throw new Error('helius down');
+          },
+        ),
       });
       const fallback = makeStub({
         streamConfirmedTransfers: jest.fn().mockImplementation(
@@ -222,6 +230,40 @@ describe('FailoverSolanaRpc', () => {
         out.push(e);
       }
       expect(out).toEqual([event]);
+      expect(fallback.streamConfirmedTransfers).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT fall back once the primary has yielded (mid-stream errors propagate)', async () => {
+      const event = {
+        signature: 'sigMid',
+        slot: 300n,
+        mint: 'mint',
+        amountRaw: 3n,
+        fromAddress: 'a',
+        toAddress: 'b',
+        confirmedAt: new Date(),
+      };
+      const primary = makeStub({
+        streamConfirmedTransfers: jest.fn().mockImplementation(
+          // eslint-disable-next-line @typescript-eslint/require-await
+          async function* () {
+            yield event;
+            throw new Error('helius down mid-stream');
+          },
+        ),
+      });
+      const fallback = makeStub();
+      const rpc = makeFailover(primary, fallback);
+      const out: unknown[] = [];
+      await expect(
+        (async () => {
+          for await (const e of rpc.streamConfirmedTransfers('owner', 0n)) {
+            out.push(e);
+          }
+        })(),
+      ).rejects.toThrow('helius down mid-stream');
+      expect(out).toEqual([event]);
+      expect(fallback.streamConfirmedTransfers).not.toHaveBeenCalled();
     });
   });
 
