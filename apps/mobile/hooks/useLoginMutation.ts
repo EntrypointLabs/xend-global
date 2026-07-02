@@ -47,6 +47,13 @@ export function useLoginMutation() {
       if (!privyLoginUser) {
         throw new Error("Privy loginWithCode returned no user");
       }
+      // Read passkey status off the user Privy just returned — the reactive
+      // `usePrivy().user` hasn't re-rendered yet, so a stale closure would
+      // wrongly report "no passkey" and re-prompt returning users.
+      const hasPasskey =
+        privyLoginUser.linked_accounts?.some(
+          (account) => account.type === "passkey"
+        ) ?? false;
       const idToken = await getIdentityToken();
       if (!idToken) {
         throw new Error(
@@ -63,7 +70,7 @@ export function useLoginMutation() {
         smart_account_address: exchange.user.walletAddress,
         privyWalletAddress: embeddedSolana.wallets?.[0]?.address ?? null,
       };
-      return { data, token: exchange.token };
+      return { data, token: exchange.token, hasPasskey };
     },
   });
 

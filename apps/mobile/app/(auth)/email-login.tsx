@@ -31,7 +31,6 @@ function EmailLoginScreen() {
   const { completeLogin, completePasskeySetup, user } = useAuth();
   const { showToast } = useToast();
   const {
-    checkPasskeys,
     registerPasskey,
     isRegistering,
     error: passkeyError,
@@ -69,16 +68,10 @@ function EmailLoginScreen() {
       const result = await verifyOtpAsync(code);
       await completeLogin(result.data, emailInput.trim(), result.token);
 
-      // Passkey check is mandatory before proceeding to the dashboard.
-      // smart_account_address is the embedded Solana wallet address.
-      const accountAddress = result.data?.smart_account_address;
-      if (accountAddress) {
-        const hasExisting = await checkPasskeys(accountAddress);
-        if (hasExisting) {
-          completePasskeySetup();
-        } else {
-          setShowPasskeySetup(true);
-        }
+      // Only prompt passkey setup when the account has none; a returning user
+      // whose Privy account already has a linked passkey goes straight in.
+      if (result.hasPasskey) {
+        completePasskeySetup();
       } else {
         setShowPasskeySetup(true);
       }
