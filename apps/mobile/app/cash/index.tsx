@@ -12,20 +12,40 @@ import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { SendFlowModal } from "@/components/ui/organisms/send/SendFlowModal";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
-import { useAuth } from "@/contexts/AuthContext";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
+import { useToast } from "@/contexts/ToastContext";
 import BalanceView from "@/components/BalanceView";
+import { useBalances } from "@/hooks/useBalances";
+import { useWalletAddress } from "@/hooks/useWalletAddress";
 
 export default function CashScreen() {
   const router = useRouter();
-  const { user } = useAuth();
   const { hideAllModals } = useModalFlow();
+  const { showToast } = useToast();
+  const { totalDisplay, usdc } = useBalances();
+  const address = useWalletAddress();
 
   // Modal State
   const [isSendModalVisible, setIsSendModalVisible] = useState(false);
   const [isReceiveModalVisible, setIsReceiveModalVisible] = useState(false);
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
   const qrCodeModalRef = useRef<BottomSheetModal>(null);
+
+  // useBalances defaults `usdc` to 0, so the empty-wallet case renders as
+  // "0 USDC" / "0.00" without an explicit null guard.
+  const usdcLabel = `${usdc.toLocaleString("en-US", {
+    maximumFractionDigits: 4,
+  })} USDC`;
+  const usdcAmount = usdc.toFixed(2);
+
+  // The address is null for a beat on cold start; don't open a blank QR.
+  const handleOpenQRCode = () => {
+    if (!address) {
+      showToast("Preparing your address…");
+      return;
+    }
+    qrCodeModalRef.current?.present();
+  };
 
   const actionItems = useMemo(
     () => [
@@ -82,7 +102,7 @@ export default function CashScreen() {
               Balance
             </Typography>
 
-            <BalanceView weight="700" variant="h2" amount="4.66" />
+            <BalanceView weight="700" variant="h2" amount={totalDisplay} />
           </View>
 
           {/* USDC Card */}
@@ -101,10 +121,14 @@ export default function CashScreen() {
                   USDC
                 </Typography>
                 <Typography weight="600" className="text-black/30">
-                  4.6568 USDC
+                  {usdcLabel}
                 </Typography>
               </View>
-              <BalanceView weight="600" className="text-lg" amount="4.66" />
+              <BalanceView
+                weight="600"
+                className="text-lg"
+                amount={usdcAmount}
+              />
             </View>
 
             <View className="my-2 h-px w-full border-t border-dashed border-gray-200 bg-gray-100" />
@@ -184,10 +208,10 @@ export default function CashScreen() {
           setIsReceiveModalVisible(false);
           hideAllModals(); // Ensure flow context is cleared if needed
         }}
-        onOpenQRCode={() => qrCodeModalRef.current?.present()}
+        onOpenQRCode={handleOpenQRCode}
       />
 
-      <QRCodeModal ref={qrCodeModalRef} walletAddress={user?.address || ""} />
+      <QRCodeModal ref={qrCodeModalRef} walletAddress={address ?? ""} />
     </ScreenLayout>
   );
 }
