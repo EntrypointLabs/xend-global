@@ -44,12 +44,22 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    AuthStorage.getHasPasskey().then((hasPasskey) => {
-      if (cancelled) return;
-      setEnabled(hasPasskey);
-      setIsLocked(hasPasskey);
-      setResolved(true);
-    });
+    AuthStorage.getHasPasskey()
+      .then((hasPasskey) => {
+        if (cancelled) return;
+        setEnabled(hasPasskey);
+        setIsLocked(hasPasskey);
+        setResolved(true);
+      })
+      // A failed keychain read must fail open, not strand an authenticated
+      // user behind a lock whose prompt never fires. The Privy JWT still
+      // guards the session.
+      .catch(() => {
+        if (cancelled) return;
+        setEnabled(false);
+        setIsLocked(false);
+        setResolved(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -89,6 +99,10 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
         setIsLocked(false);
         return true;
       }
+      return false;
+    } catch {
+      // A thrown biometric error is a failed attempt, not an unrecoverable
+      // lock — return false so LockScreen shows its retry UI.
       return false;
     } finally {
       authenticatingRef.current = false;
