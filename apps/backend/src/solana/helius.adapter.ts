@@ -65,6 +65,14 @@ export class HeliusAdapter implements SolanaRpc, OnModuleInit {
   private webhookSecret: string | undefined;
   private webhookId: string | undefined;
 
+  // Per-process serialization for the webhook address list. The list is
+  // a shared read-modify-write (GET current -> append/filter -> PUT
+  // full), so two concurrent mutations would each read the same list,
+  // apply only their own change, and clobber each other on PUT (lost
+  // update). Chaining every mutation through this promise queue makes
+  // each fetch+PUT observe the previous mutation's result.
+  private webhookMutationQueue: Promise<void> = Promise.resolve();
+
   constructor(private readonly config: ConfigService) {}
 
   onModuleInit() {
@@ -115,29 +123,49 @@ export class HeliusAdapter implements SolanaRpc, OnModuleInit {
 
   // ── Webhook control plane ─────────────────────────────────────────
 
-  async registerWebhookAddress(walletAddress: WalletAddress): Promise<void> {
-    const webhook = await this.fetchWebhook();
-    if (webhook.accountAddresses.includes(walletAddress)) {
-      this.logger.debug(
-        `Webhook already includes ${walletAddress}; skipping update`,
+  registerWebhookAddress(walletAddress: WalletAddress): Promise<void> {
+    return this.enqueueWebhookMutation(async () => {
+      const webhook = await this.fetchWebhook();
+      if (webhook.accountAddresses.includes(walletAddress)) {
+        this.logger.debug(
+          `Webhook already includes ${walletAddress}; skipping update`,
+        );
+        return;
+      }
+      const next = [...webhook.accountAddresses, walletAddress];
+      await this.editWebhookAddresses(webhook.webhookID, next);
+      this.logger.log(
+        `Registered ${walletAddress} on Helius webhook ${webhook.webhookID} (now ${next.length} addresses)`,
       );
-      return;
-    }
-    const next = [...webhook.accountAddresses, walletAddress];
-    await this.editWebhookAddresses(webhook.webhookID, next);
-    this.logger.log(
-      `Registered ${walletAddress} on Helius webhook ${webhook.webhookID} (now ${next.length} addresses)`,
-    );
+    });
   }
 
-  async unregisterWebhookAddress(walletAddress: WalletAddress): Promise<void> {
-    const webhook = await this.fetchWebhook();
-    if (!webhook.accountAddresses.includes(walletAddress)) return;
-    const next = webhook.accountAddresses.filter((a) => a !== walletAddress);
-    await this.editWebhookAddresses(webhook.webhookID, next);
-    this.logger.log(
-      `Unregistered ${walletAddress} from Helius webhook ${webhook.webhookID}`,
+  unregisterWebhookAddress(walletAddress: WalletAddress): Promise<void> {
+    return this.enqueueWebhookMutation(async () => {
+      const webhook = await this.fetchWebhook();
+      if (!webhook.accountAddresses.includes(walletAddress)) return;
+      const next = webhook.accountAddresses.filter((a) => a !== walletAddress);
+      await this.editWebhookAddresses(webhook.webhookID, next);
+      this.logger.log(
+        `Unregistered ${walletAddress} from Helius webhook ${webhook.webhookID}`,
+      );
+    });
+  }
+
+  /**
+   * Run `mutation` after all previously-enqueued webhook mutations have
+   * settled, so the fetch+PUT critical section is never interleaved.
+   * A rejected mutation does not poison the queue for later callers.
+   */
+  private enqueueWebhookMutation(mutation: () => Promise<void>): Promise<void> {
+    const run = this.webhookMutationQueue.then(mutation, mutation);
+    // Keep the queue alive regardless of this mutation's outcome; the
+    // caller still observes the real result via `run`.
+    this.webhookMutationQueue = run.then(
+      () => undefined,
+      () => undefined,
     );
+    return run;
   }
 
   verifyWebhookSignature(rawBody: Buffer, signature: string): void {
