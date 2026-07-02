@@ -1,3 +1,17 @@
+/**
+ * Whether a Privy user has a passkey among its linked accounts — the single
+ * definition of "this account has a passkey", used by the passkey hook, the
+ * login mutation, and the app lock.
+ */
+export function hasLinkedPasskey(
+  user?: { linked_accounts?: readonly { type: string }[] } | null
+): boolean {
+  return (
+    user?.linked_accounts?.some((account) => account.type === "passkey") ??
+    false
+  );
+}
+
 export const AUTH_STORAGE_KEYS = {
   USER: "auth_user",
   EMAIL: "auth_email",
