@@ -3,6 +3,8 @@ import {
   Controller,
   Headers,
   HttpCode,
+  HttpException,
+  HttpStatus,
   Inject,
   Logger,
   Post,
@@ -44,7 +46,12 @@ function killSwitchActive(): boolean {
  *   5. Return 200 with `{ processed, skipped }`.
  *
  * Helius retries on non-2xx, so the receiver must be idempotent under
- * retry; the TailerService's ON CONFLICT clause provides that.
+ * retry; the TailerService's ON CONFLICT clause provides that. If any
+ * owned-wallet event fails to persist we must NOT acknowledge (200):
+ * an inbound RECEIVE has no PENDING row for the reconciler to recover,
+ * so a dropped delivery is permanent data loss. We throw to return 500
+ * and let Helius redeliver the whole batch — the succeeded events are
+ * collapsed by ON CONFLICT on redelivery.
  */
 @Controller('webhooks')
 export class WebhookController {
@@ -119,6 +126,7 @@ export class WebhookController {
 
     let processed = 0;
     let skipped = 0;
+    let failed = 0;
     for (const evt of events) {
       // Prefer SEND side when the wallet is ours as sender (matches
       // the prepare/submit path's direction assignment).
@@ -143,13 +151,23 @@ export class WebhookController {
         this.reconciler.recordWebhookFinalization();
         processed++;
       } catch (err) {
-        // A per-event error must not poison the whole batch.
+        // Persisting an owned event failed. Do NOT swallow this: an
+        // inbound RECEIVE has no PENDING row the reconciler can recover
+        // from, so acknowledging (200) would lose it permanently. Record
+        // the failure and force a non-2xx below so Helius redelivers.
         this.logger.error(
           `Failed to upsert transfer sig=${evt.signature}: ${(err as Error).message}`,
           err,
         );
-        skipped++;
+        failed++;
       }
+    }
+
+    if (failed > 0) {
+      throw new HttpException(
+        `Failed to persist ${failed} owned webhook event(s); retry requested`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
 
     return { processed, skipped };

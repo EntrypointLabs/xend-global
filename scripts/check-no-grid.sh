@@ -33,6 +33,12 @@ FORBIDDEN_PATTERNS=(
   "from ['\"]ethers['\"]"
   'passkey-callback'
   'smartAccount\.ts'
+  # No provider RPC URL with a hardcoded api-key literal may live in source —
+  # it would ship in the device bundle (or leak the key in the repo). Matches
+  # a real key value (hex/UUID-shaped, 12+ chars) after `api-key=`, so the
+  # backend adapter (which reads the key from env) and test fixtures using a
+  # `test` placeholder are not flagged. Adapters read the key from env.
+  'helius-rpc\.com/\?api-key=[0-9a-fA-F-]{12,}'
 )
 
 # KYC carve-out — these paths may legitimately reference Grid until the
