@@ -150,8 +150,13 @@ export async function* streamConfirmedTransfersViaConnection(
   // tailer_state.last_indexed_slot accumulation).
   const collected: { signature: string; slot: number }[] = [];
 
-  // Stop walking when we reach the sinceSlot bookmark; Helius's `until`
-  // param is a signature, not a slot, so we filter manually.
+  // Stop walking when we pass below the sinceSlot bookmark; Helius's
+  // `until` param is a signature, not a slot, so we filter manually.
+  // The lower bound is inclusive of the bookmark slot itself: a second
+  // confirmed transfer landing in the same slot as an already-indexed
+  // one (whose webhook was lost) must still be re-examined on replay.
+  // Re-emitting already-indexed same-slot signatures is harmless — the
+  // UPSERT's ON CONFLICT(signature) collapses the duplicate.
   for (;;) {
     const page = await conn.getSignaturesForAddress(
       ownerPk,
@@ -161,7 +166,7 @@ export async function* streamConfirmedTransfersViaConnection(
     if (page.length === 0) break;
     let hitBookmark = false;
     for (const entry of page) {
-      if (BigInt(entry.slot) <= sinceSlot) {
+      if (BigInt(entry.slot) < sinceSlot) {
         hitBookmark = true;
         continue;
       }
