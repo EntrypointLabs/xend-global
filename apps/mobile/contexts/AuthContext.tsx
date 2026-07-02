@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { router } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import * as Sentry from "@sentry/react-native";
 import {
   useEmbeddedSolanaWallet,
@@ -30,6 +31,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [needsTokenRefresh, setNeedsTokenRefresh] = useState(false);
   const [pendingPasskeySetup, setPendingPasskeySetup] = useState(false);
+
+  const queryClient = useQueryClient();
 
   const { sendCode, loginWithCode } = useLoginWithEmail();
   const { getIdentityToken } = useIdentityToken();
@@ -262,6 +265,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       await AuthStorage.clearAuthData();
+
+      // Drop all cached queries so the next user's session doesn't read the
+      // previous user's balances/activity from cache.
+      queryClient.clear();
 
       setIsAuthenticated(false);
       setUser(null);

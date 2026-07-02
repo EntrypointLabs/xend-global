@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { View } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { ThemedScreen } from "@/components/ui/layout";
 import { ThemedText, IconSymbol, LoadingSpinner } from "@/components/ui/atoms";
 import { IconSymbolName } from "@/components/ui/atoms/IconSymbol";
@@ -34,6 +35,7 @@ export default function ConfirmScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const { showToast } = useToast();
   const embeddedSolana = useEmbeddedSolanaWallet();
+  const queryClient = useQueryClient();
 
   const { amount, recipient, name, type, title } = useLocalSearchParams<{
     amount: string;
@@ -139,6 +141,11 @@ export default function ConfirmScreen() {
         }
         throw err;
       }
+
+      // Refresh activity + balances so the new transfer and debited balance
+      // show on return. Fire-and-forget: don't block navigation to /success.
+      queryClient.invalidateQueries({ queryKey: ["transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["balances"] });
 
       router.push({
         pathname: "/success",
