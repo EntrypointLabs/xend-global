@@ -169,6 +169,34 @@ describe('ReconcilerService.tick', () => {
     expect(updates[0].payload).toMatch(/PENDING/);
   });
 
+  it('anchors the age comparison to UTC, not the server-local timezone', async () => {
+    // `transfers.submitted_at` stores UTC wall-clock digits (Drizzle
+    // serializes the JS Date via toISOString()). The outstanding SELECT
+    // must compare against UTC — using LOCALTIMESTAMP would skew both the
+    // WHERE predicate and the `expired` flag by the server's UTC offset
+    // on any non-UTC deployment.
+    const { db, calls } = makeFakeDb({ outstanding: [] });
+    const reconciler = new ReconcilerService(
+      db,
+      makeFakeSolana(),
+      new TailerService(db),
+    );
+
+    await reconciler.tick();
+
+    const select = calls.find(
+      (c) =>
+        typeof c.payload === 'string' &&
+        c.payload.includes('SELECT') &&
+        c.payload.includes('transfers') &&
+        c.payload.includes('PENDING'),
+    );
+    expect(select).toBeDefined();
+    const sql = select!.payload as string;
+    expect(sql).toContain("AT TIME ZONE 'UTC'");
+    expect(sql).not.toContain('LOCALTIMESTAMP');
+  });
+
   it('ignores rows younger than 30s', async () => {
     const { db, calls } = makeFakeDb({
       outstanding: [], // fake db only returns rows the SELECT predicate would
