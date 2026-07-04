@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { StorageService } from "@/utils/storage";
+import { StorageService, userScopedKey } from "@/utils/storage";
 import { AUTH_STORAGE_KEYS } from "@/utils/auth";
 import { useUserId } from "@/hooks/useUserId";
 
@@ -11,7 +11,7 @@ export interface Contact {
 // Scoped to the signed-in user so switching accounts on one device keeps each
 // person's address book separate — and intact when they sign back in.
 function addressBookKey(userId: string) {
-  return `${AUTH_STORAGE_KEYS.ADDRESS_BOOK}:${userId}`;
+  return userScopedKey(AUTH_STORAGE_KEYS.ADDRESS_BOOK, userId);
 }
 
 export function useContacts() {
