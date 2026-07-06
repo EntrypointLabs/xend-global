@@ -69,8 +69,8 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
     return (
       <BottomSheetModal
         ref={ref}
-        index={1}
         snapPoints={snapPoints}
+        enableDynamicSizing={false}
         backdropComponent={renderBackdrop}
         enablePanDownToClose
         handleIndicatorStyle={{ display: "none" }}

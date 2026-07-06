@@ -109,8 +109,8 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
       <>
         <BottomSheetModal
           ref={ref}
-          index={1}
           snapPoints={snapPoints}
+          enableDynamicSizing={false}
           onChange={handleSheetChanges}
           backdropComponent={renderBackdrop}
           enablePanDownToClose={true}

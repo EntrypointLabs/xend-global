@@ -194,9 +194,7 @@ export default function CashScreen() {
         onClose={() => setIsSendModalVisible(false)}
         onSendToWallet={() => {
           setIsSendModalVisible(false);
-          // Short delay to allow animation to start closing before opening new one
-          // or just open it. ActionModal handles mounting.
-          setTimeout(() => sendFlowModalRef.current?.present(), 100);
+          sendFlowModalRef.current?.present();
         }}
       />
 

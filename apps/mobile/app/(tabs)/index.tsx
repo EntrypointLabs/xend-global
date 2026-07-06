@@ -168,9 +168,7 @@ function HomeScreenContent() {
         onClose={hideAllModals}
         onSendToWallet={() => {
           hideAllModals();
-          // Short delay to allow animation to start closing before opening new one
-          // or just open it. ActionModal handles mounting.
-          setTimeout(() => sendFlowModalRef.current?.present(), 100);
+          sendFlowModalRef.current?.present();
         }}
       />
 
