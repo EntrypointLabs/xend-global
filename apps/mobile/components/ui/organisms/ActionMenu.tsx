@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { View, StyleSheet, Image } from "react-native";
+import { View, StyleSheet, Image, Platform } from "react-native";
 import { BlurView } from "expo-blur";
 import Animated, {
   FadeIn,
@@ -50,17 +50,28 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
 
   return (
     <View className="absolute inset-0 z-[1000] items-end justify-end">
-      <AnimatedBlurView
-        intensity={44.2}
-        tint="light"
-        // MEASURED-LAYOUT (absoluteFill)
-        style={StyleSheet.absoluteFill}
-        entering={FadeIn}
-        exiting={FadeOut}
-        experimentalBlurMethod="dimezisBlurView"
-      >
-        <HapticPressable className="flex-1" onPress={onClose} />
-      </AnimatedBlurView>
+      {Platform.OS === "ios" ? (
+        <AnimatedBlurView
+          intensity={44.2}
+          tint="light"
+          // MEASURED-LAYOUT (absoluteFill)
+          style={StyleSheet.absoluteFill}
+          entering={FadeIn}
+          exiting={FadeOut}
+        >
+          <HapticPressable className="flex-1" onPress={onClose} />
+        </AnimatedBlurView>
+      ) : (
+        // Android's snapshot blur renders transparent here; a light scrim gives
+        // the same frosted-light read behind the menu labels.
+        <Animated.View
+          className="absolute inset-0 bg-white/90"
+          entering={FadeIn}
+          exiting={FadeOut}
+        >
+          <HapticPressable className="flex-1" onPress={onClose} />
+        </Animated.View>
+      )}
 
       <View
         className="absolute right-4 flex flex-col items-end"

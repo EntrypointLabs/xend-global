@@ -19,16 +19,16 @@ export interface ActionPillProps {
 
 export function ActionPill({ items, containerStyle }: ActionPillProps) {
   const shadowStyle = {
-    shadowColor: "#CECECE",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 1,
+    shadowRadius: 16,
+    elevation: 6,
   };
 
   return (
     <View
-      className="flex-row items-center gap-7 rounded-full bg-white px-5 py-3"
+      className="flex-row items-center gap-7 rounded-full border border-black/5 bg-white px-5 py-3"
       // PLATFORM-SHADOW
       style={[shadowStyle, containerStyle]}
     >

@@ -19,7 +19,7 @@ export function ThemedScreen({
   useSafeArea = true,
   safeAreaEdges = ["top", "right", "bottom", "left"],
 }: ThemedScreenProps) {
-  const containerClass = cn("flex-1 bg-white/90", className);
+  const containerClass = cn("flex-1 bg-white", className);
 
   const content = (
     <>
