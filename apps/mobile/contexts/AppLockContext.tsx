@@ -13,6 +13,12 @@ import { usePrivy } from "@privy-io/expo";
 import { AuthStorage } from "@/utils/storage/authStorage";
 import { hasLinkedPasskey } from "@/utils/auth";
 
+// Dev-only escape hatch for automated / e2e testing, where a fingerprint can't
+// be supplied. Safe to commit: gated behind `__DEV__`, so a release build can
+// never bypass the lock even if the env var leaks into production config.
+const APP_LOCK_DISABLED =
+  __DEV__ && process.env.EXPO_PUBLIC_DISABLE_APP_LOCK === "true";
+
 interface AppLockContextType {
   /** True while the authenticated app should stay hidden behind the lock. */
   isLocked: boolean;
@@ -125,7 +131,7 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppLockContext.Provider
       value={{
-        isLocked,
+        isLocked: APP_LOCK_DISABLED ? false : isLocked,
         isAuthenticating,
         promptReady: resolved && enabled,
         authenticate,
