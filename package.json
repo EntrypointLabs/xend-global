@@ -9,11 +9,13 @@
     "check-types": "turbo run check-types",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "prepare": "husky"
+    "prepare": "husky",
+    "postinstall": "patch-package"
   },
   "devDependencies": {
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
+    "patch-package": "^8.0.1",
     "prettier": "^3.7.4",
     "turbo": "^2.7.2",
     "typescript": "5.9.2"
