@@ -8,10 +8,9 @@ import {
   TouchableWithoutFeedback,
 } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
-import { BlurView } from "expo-blur";
+import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { ThemedText } from "@/components/ui/atoms";
 import { useThemeColor } from "@/hooks/useThemeColor";
-import { useBlurTarget } from "@/contexts/BlurTargetContext";
 import Animated, {
   useSharedValue,
   // useAnimatedStyle,
@@ -78,7 +77,6 @@ export function ActionModal({
 }: ActionModalProps): ReactElement {
   const backgroundColor = useThemeColor({}, "background");
   const textColor = useThemeColor({}, "text");
-  const blurTargetRef = useBlurTarget();
 
   const translateY = useSharedValue(0);
 
@@ -129,16 +127,7 @@ export function ActionModal({
           activeOpacity={1}
           onPress={onClose}
         >
-          <BlurView
-            intensity={44.2}
-            tint="light"
-            // Real frost on both: iOS blurs natively; Android blurs the app
-            // content (the separate native-Modal window makes this BlurView a
-            // sibling of the BlurTargetView, so no self-reference).
-            experimentalBlurMethod="dimezisBlurView"
-            blurTarget={blurTargetRef ?? undefined}
-            style={[styles.overlay, StyleSheet.absoluteFill]}
-          >
+          <FrostBlurView style={[styles.overlay, StyleSheet.absoluteFill]}>
             <TouchableWithoutFeedback>
               <GestureDetector gesture={pan}>
                 {/* REANIMATED-EXCEPTION */}
@@ -188,7 +177,7 @@ export function ActionModal({
                 </Animated.View>
               </GestureDetector>
             </TouchableWithoutFeedback>
-          </BlurView>
+          </FrostBlurView>
         </TouchableOpacity>
       </GestureHandlerRootView>
     </Modal>

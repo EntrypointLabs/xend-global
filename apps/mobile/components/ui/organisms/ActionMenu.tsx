@@ -1,12 +1,11 @@
 import React, { useMemo } from "react";
 import { Modal, View, StyleSheet, Image } from "react-native";
-import { BlurView } from "expo-blur";
+import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import Animated, { SlideInDown, SlideOutDown } from "react-native-reanimated";
 import { Typography } from "../atoms/Typography";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import HapticPressable from "../atoms/HapticPressable";
-import { useBlurTarget } from "@/contexts/BlurTargetContext";
 
 interface ActionMenuProps {
   visible: boolean;
@@ -16,7 +15,6 @@ interface ActionMenuProps {
 export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
   const { showSendModal, showReceiveModal } = useModalFlow();
   const insets = useSafeAreaInsets();
-  const blurTargetRef = useBlurTarget();
 
   const menus = useMemo(() => {
     return [
@@ -50,20 +48,12 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
       onRequestClose={onClose}
     >
       <View className="flex-1 items-end justify-end">
-        <BlurView
-          intensity={44.2}
-          tint="light"
-          // Real frost on both platforms: iOS blurs natively; Android blurs the
-          // app content via blurTarget. The native Modal makes this a separate
-          // window so the BlurView is a sibling of the BlurTargetView — a
-          // BlurView nested inside its own blur target renders blank.
-          experimentalBlurMethod="dimezisBlurView"
-          blurTarget={blurTargetRef ?? undefined}
+        <FrostBlurView
           // MEASURED-LAYOUT (absoluteFill)
           style={StyleSheet.absoluteFill}
         >
           <HapticPressable className="flex-1" onPress={onClose} />
-        </BlurView>
+        </FrostBlurView>
 
         <View
           className="absolute right-4 flex flex-col items-end"

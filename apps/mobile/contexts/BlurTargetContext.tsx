@@ -15,6 +15,11 @@ export function useBlurTarget(): BlurTargetRef | null {
   return useContext(BlurTargetContext);
 }
 
+/**
+ * Provides the blur-target ref. Must sit ABOVE the bottom-sheet portal provider
+ * so sheet backdrops (which render in that portal, outside the screen tree) can
+ * still read the ref.
+ */
 export function BlurTargetProvider({
   children,
 }: {
@@ -23,9 +28,20 @@ export function BlurTargetProvider({
   const ref = useRef<View>(null);
   return (
     <BlurTargetContext.Provider value={ref}>
-      <BlurTargetView ref={ref} style={{ flex: 1 }}>
-        {children}
-      </BlurTargetView>
+      {children}
     </BlurTargetContext.Provider>
+  );
+}
+
+/**
+ * Wraps the app content in the actual BlurTargetView that BlurViews snapshot.
+ * Place it around the screen output; the provider above supplies the ref.
+ */
+export function BlurTargetHost({ children }: { children: React.ReactNode }) {
+  const ref = useBlurTarget();
+  return (
+    <BlurTargetView ref={ref ?? undefined} style={{ flex: 1 }}>
+      {children}
+    </BlurTargetView>
   );
 }
