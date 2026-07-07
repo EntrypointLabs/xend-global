@@ -36,7 +36,12 @@ function HomeScreenContent() {
     isSendModalVisible,
   } = useModalFlow();
   const { showToast } = useToast();
-  const { totalDisplay, decimalsByMint } = useBalances();
+  const {
+    totalDisplay,
+    decimalsByMint,
+    isError: isBalanceError,
+    refetch: refetchBalances,
+  } = useBalances();
   const { data, isLoading } = useTransfersInfinite();
   const address = useWalletAddress();
   const { name: walletName } = useWalletName();
@@ -102,11 +107,28 @@ function HomeScreenContent() {
                 <Ionicons name="remove-circle" size={12} color="#999" /> 100%
               </Typography>
             </View>
-            <BalanceView
-              weight="700"
-              className="text-[40px] leading-[140%]"
-              amount={totalDisplay}
-            />
+            {isBalanceError ? (
+              <HapticPressable
+                className="flex-row items-center gap-1.5 self-start py-2"
+                onPress={() => refetchBalances()}
+              >
+                <Typography weight="700" className="text-[40px] leading-[140%]">
+                  ——
+                </Typography>
+                <View className="flex-row items-center gap-1 rounded-full bg-black/5 px-2.5 py-1">
+                  <Ionicons name="refresh" size={14} color="#999" />
+                  <Typography weight="500" className="text-sm text-black/40">
+                    Couldn't load balance. Tap to retry
+                  </Typography>
+                </View>
+              </HapticPressable>
+            ) : (
+              <BalanceView
+                weight="700"
+                className="text-[40px] leading-[140%]"
+                amount={totalDisplay}
+              />
+            )}
           </View>
 
           {entries.length === 0 && !isLoading && (
