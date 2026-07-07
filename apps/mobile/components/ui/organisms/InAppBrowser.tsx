@@ -8,6 +8,7 @@ import {
 import { WebView } from "react-native-webview";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { IconSymbol } from "@/components/ui/atoms";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface InAppBrowserProps {
   visible: boolean;
@@ -25,12 +26,18 @@ export function InAppBrowser({
 }: InAppBrowserProps) {
   const [isLoading, setIsLoading] = useState(true);
   const textColor = useThemeColor({}, "text");
+  const insets = useSafeAreaInsets();
 
   if (!visible) return null;
 
   return (
     <View className="absolute inset-0 z-[1000] bg-black/50">
-      <View className="h-[60px] flex-row items-center justify-end bg-white px-6">
+      <View
+        className="flex-row items-center justify-end bg-white px-6"
+        // MEASURED-LAYOUT (top inset so the close button clears the Android
+        // status bar under edge-to-edge)
+        style={{ paddingTop: insets.top, height: 60 + insets.top }}
+      >
         <TouchableOpacity onPress={onClose} className="p-2">
           <IconSymbol name="xmark" size={24} color={textColor} />
         </TouchableOpacity>

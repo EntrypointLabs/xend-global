@@ -21,7 +21,9 @@ export function CurrencySwitcher({
 
   const selectedBackgroundColor = backgroundColor;
   const colorInstance = tinycolor(backgroundColor);
-  const unselectedBackgroundColor = colorInstance.setAlpha(0.1).toRgbString();
+  // Slightly more opaque than the iOS design so the container still reads on
+  // Android, where expo-blur renders no blur to reinforce it.
+  const unselectedBackgroundColor = colorInstance.setAlpha(0.2).toRgbString();
   const unselectedTextColor = backgroundColor;
 
   const handleCurrencyChange = (currency: Currency) => {
