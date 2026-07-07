@@ -14,6 +14,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/utils/cn";
 import { ModalFlowProvider } from "@/contexts/ModalFlowContext";
 import { ToastProvider } from "@/contexts/ToastContext";
+import { BlurTargetProvider } from "@/contexts/BlurTargetContext";
 import * as Sentry from "@sentry/react-native";
 import { sentryApiResponse } from "@/types/Sentry";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -130,7 +131,9 @@ function AuthLayout() {
     <ScreenThemeProvider>
       <ModalFlowProvider>
         <ToastProvider>
-          <Slot />
+          <BlurTargetProvider>
+            <Slot />
+          </BlurTargetProvider>
           <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
         </ToastProvider>
       </ModalFlowProvider>

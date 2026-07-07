@@ -11,6 +11,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { BlurView } from "expo-blur";
 import { ThemedText } from "@/components/ui/atoms";
 import { useThemeColor } from "@/hooks/useThemeColor";
+import { useBlurTarget } from "@/contexts/BlurTargetContext";
 import Animated, {
   useSharedValue,
   // useAnimatedStyle,
@@ -77,6 +78,7 @@ export function ActionModal({
 }: ActionModalProps): ReactElement {
   const backgroundColor = useThemeColor({}, "background");
   const textColor = useThemeColor({}, "text");
+  const blurTargetRef = useBlurTarget();
 
   const translateY = useSharedValue(0);
 
@@ -129,13 +131,13 @@ export function ActionModal({
         >
           <BlurView
             intensity={44.2}
-            style={[
-              styles.overlay,
-              { backgroundColor: "rgba(189, 189, 189, 1)" },
-              StyleSheet.absoluteFill,
-            ]}
-            tint="dark"
+            tint="light"
+            // Real frost on both: iOS blurs natively; Android blurs the app
+            // content (the separate native-Modal window makes this BlurView a
+            // sibling of the BlurTargetView, so no self-reference).
             experimentalBlurMethod="dimezisBlurView"
+            blurTarget={blurTargetRef ?? undefined}
+            style={[styles.overlay, StyleSheet.absoluteFill]}
           >
             <TouchableWithoutFeedback>
               <GestureDetector gesture={pan}>
