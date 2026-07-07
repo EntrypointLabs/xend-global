@@ -2,11 +2,11 @@ import React, { forwardRef, useCallback, useMemo, useState } from "react";
 import { View, Image } from "react-native";
 import { Toggle } from "@/components/ui/atoms/Toggle";
 import {
-  BottomSheetBackdrop,
   BottomSheetBackdropProps,
   BottomSheetModal,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
@@ -24,14 +24,7 @@ export const NotificationsSheet = forwardRef<
   const [enabled, setEnabled] = useState(initialEnabled);
 
   const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.4}
-      />
-    ),
+    (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
     []
   );
 

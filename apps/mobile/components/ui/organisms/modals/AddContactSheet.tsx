@@ -8,12 +8,12 @@ import React, {
 } from "react";
 import { View, Keyboard } from "react-native";
 import {
-  BottomSheetBackdrop,
   BottomSheetBackdropProps,
   BottomSheetModal,
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
@@ -54,14 +54,7 @@ export const AddContactSheet = forwardRef<
   }));
 
   const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.4}
-      />
-    ),
+    (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
     []
   );
 

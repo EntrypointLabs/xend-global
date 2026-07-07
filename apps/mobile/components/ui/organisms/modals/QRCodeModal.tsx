@@ -3,9 +3,9 @@ import { View } from "react-native";
 import {
   BottomSheetModal,
   BottomSheetView,
-  BottomSheetBackdrop,
   BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
+import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
 import QRCode from "react-native-qrcode-svg";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
@@ -28,14 +28,7 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
     const [isHideWalletEnabled, setIsHideWalletEnabled] = useState(false);
 
     const renderBackdrop = useCallback(
-      (props: BottomSheetBackdropProps) => (
-        <BottomSheetBackdrop
-          {...props}
-          disappearsOnIndex={-1}
-          appearsOnIndex={0}
-          opacity={0.5}
-        />
-      ),
+      (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
       []
     );
 
