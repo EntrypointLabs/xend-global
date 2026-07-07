@@ -22,6 +22,12 @@ const MAPPING: Record<
   "chevron.left.forwardslash.chevron.right": "code",
   "chevron.right": "chevron-right",
   "checkmark.circle": "check-circle",
+  "arrow.up.right": "arrow-outward",
+  "chevron.down": "expand-more",
+  faceid: "face",
+  "info.circle": "info",
+  plus: "add",
+  xmark: "close",
 };
 
 export type IconSymbolName = string;
