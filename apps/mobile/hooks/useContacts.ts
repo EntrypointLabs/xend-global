@@ -1,23 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { StorageService } from "@/utils/storage";
+import { StorageService, userScopedKey } from "@/utils/storage";
 import { AUTH_STORAGE_KEYS } from "@/utils/auth";
+import { useUserId } from "@/hooks/useUserId";
 
 export interface Contact {
   name: string;
   address: string;
 }
 
-const QUERY_KEY = ["contacts"] as const;
+// Scoped to the signed-in user so switching accounts on one device keeps each
+// person's address book separate — and intact when they sign back in.
+function addressBookKey(userId: string) {
+  return userScopedKey(AUTH_STORAGE_KEYS.ADDRESS_BOOK, userId);
+}
 
 export function useContacts() {
   const queryClient = useQueryClient();
+  const userId = useUserId();
+  const queryKey = ["contacts", userId] as const;
+  const storageKey = userId ? addressBookKey(userId) : null;
 
   const query = useQuery({
-    queryKey: QUERY_KEY,
+    queryKey,
+    enabled: !!storageKey,
     queryFn: async () => {
-      const stored = await StorageService.getItem<Contact[]>(
-        AUTH_STORAGE_KEYS.ADDRESS_BOOK
-      );
+      if (!storageKey) return [];
+      const stored = await StorageService.getItem<Contact[]>(storageKey);
       return stored ?? [];
     },
     staleTime: Infinity,
@@ -25,31 +33,29 @@ export function useContacts() {
 
   const addMutation = useMutation({
     mutationFn: async (contact: Contact) => {
+      if (!storageKey) return [];
       const current =
-        (await StorageService.getItem<Contact[]>(
-          AUTH_STORAGE_KEYS.ADDRESS_BOOK
-        )) ?? [];
+        (await StorageService.getItem<Contact[]>(storageKey)) ?? [];
       const next = [...current, contact];
-      await StorageService.setItem(AUTH_STORAGE_KEYS.ADDRESS_BOOK, next);
+      await StorageService.setItem(storageKey, next);
       return next;
     },
     onSuccess: (next) => {
-      queryClient.setQueryData(QUERY_KEY, next);
+      queryClient.setQueryData(queryKey, next);
     },
   });
 
   const removeMutation = useMutation({
     mutationFn: async (address: string) => {
+      if (!storageKey) return [];
       const current =
-        (await StorageService.getItem<Contact[]>(
-          AUTH_STORAGE_KEYS.ADDRESS_BOOK
-        )) ?? [];
+        (await StorageService.getItem<Contact[]>(storageKey)) ?? [];
       const next = current.filter((c) => c.address !== address);
-      await StorageService.setItem(AUTH_STORAGE_KEYS.ADDRESS_BOOK, next);
+      await StorageService.setItem(storageKey, next);
       return next;
     },
     onSuccess: (next) => {
-      queryClient.setQueryData(QUERY_KEY, next);
+      queryClient.setQueryData(queryKey, next);
     },
   });
 
@@ -61,18 +67,17 @@ export function useContacts() {
       originalAddress: string;
       contact: Contact;
     }) => {
+      if (!storageKey) return [];
       const current =
-        (await StorageService.getItem<Contact[]>(
-          AUTH_STORAGE_KEYS.ADDRESS_BOOK
-        )) ?? [];
+        (await StorageService.getItem<Contact[]>(storageKey)) ?? [];
       const next = current.map((c) =>
         c.address === originalAddress ? contact : c
       );
-      await StorageService.setItem(AUTH_STORAGE_KEYS.ADDRESS_BOOK, next);
+      await StorageService.setItem(storageKey, next);
       return next;
     },
     onSuccess: (next) => {
-      queryClient.setQueryData(QUERY_KEY, next);
+      queryClient.setQueryData(queryKey, next);
     },
   });
 

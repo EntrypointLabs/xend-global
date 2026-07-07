@@ -118,34 +118,38 @@ function EmailLoginScreen() {
       <View className="flex-1">
         <GradientBackground />
 
-        <ScrollView
-          className="flex-1"
-          contentContainerClassName="flex-grow"
-          keyboardShouldPersistTaps="handled"
-          bounces={false}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1 }}
         >
-          <View className="flex-1 px-8 py-16">
-            <HapticPressable
-              onPress={() => router.back()}
-              className="mt-8 self-start"
-            >
-              <Typography weight="500" className="text-lg text-white">
-                {"< Back"}
-              </Typography>
-            </HapticPressable>
+          <ScrollView
+            className="flex-1"
+            contentContainerClassName="flex-grow"
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            bounces={false}
+          >
+            <View className="flex-1 px-8 py-16">
+              <HapticPressable
+                onPress={() => router.back()}
+                className="mt-8 self-start"
+              >
+                <Typography weight="500" className="text-lg text-white">
+                  {"< Back"}
+                </Typography>
+              </HapticPressable>
 
-            <View className="flex-1 justify-end">
-              {!otpSent ? (
-                // State 1: Email input
-                <View>
-                  <Typography weight="600" className="mb-8 text-3xl text-white">
-                    Enter your email
-                  </Typography>
+              <View className="flex-1 justify-end">
+                {!otpSent ? (
+                  // State 1: Email input
+                  <View>
+                    <Typography
+                      weight="600"
+                      className="mb-8 text-3xl text-white"
+                    >
+                      Enter your email
+                    </Typography>
 
-                  <KeyboardAvoidingView
-                    behavior={Platform.OS === "ios" ? "padding" : undefined}
-                    style={{ flex: 1 }}
-                  >
                     <ThemedTextInput
                       value={emailInput}
                       onChangeText={(text) => {
@@ -162,84 +166,87 @@ function EmailLoginScreen() {
                       returnKeyType="go"
                       editable={!isSendingOtp}
                     />
-                  </KeyboardAvoidingView>
 
-                  {emailError && (
-                    <Typography
-                      weight="400"
-                      className="mt-2 text-sm text-red-400"
-                    >
-                      {emailError}
-                    </Typography>
-                  )}
-
-                  <HapticPressable
-                    onPress={handleSendOtp}
-                    disabled={isSendingOtp || !emailInput.trim()}
-                    className="mt-6 items-center justify-center rounded-full bg-white p-4"
-                    style={{
-                      opacity: isSendingOtp || !emailInput.trim() ? 0.5 : 1,
-                    }}
-                  >
-                    {isSendingOtp ? (
-                      <ActivityIndicator color="#000" />
-                    ) : (
-                      <Typography weight="600" className="text-lg text-black">
-                        Continue
+                    {emailError && (
+                      <Typography
+                        weight="400"
+                        className="mt-2 text-sm text-red-400"
+                      >
+                        {emailError}
                       </Typography>
                     )}
-                  </HapticPressable>
-                </View>
-              ) : (
-                // State 2: OTP input
-                <View>
-                  <Typography weight="600" className="mb-2 text-3xl text-white">
-                    Enter the code
-                  </Typography>
-                  <Typography
-                    weight="400"
-                    className="mb-8 text-base text-[#8FE5F6]"
-                  >
-                    Sent to {emailInput.trim()}
-                  </Typography>
 
-                  <ScreenVerificationCodeInput
-                    onCodeComplete={handleVerifyOtp}
-                  />
-
-                  {verifyError && (
+                    <HapticPressable
+                      onPress={handleSendOtp}
+                      disabled={isSendingOtp || !emailInput.trim()}
+                      className="mt-6 items-center justify-center rounded-full bg-white p-4"
+                      style={{
+                        opacity: isSendingOtp || !emailInput.trim() ? 0.5 : 1,
+                      }}
+                    >
+                      {isSendingOtp ? (
+                        <ActivityIndicator color="#000" />
+                      ) : (
+                        <Typography weight="600" className="text-lg text-black">
+                          Continue
+                        </Typography>
+                      )}
+                    </HapticPressable>
+                  </View>
+                ) : (
+                  // State 2: OTP input
+                  <View>
+                    <Typography
+                      weight="600"
+                      className="mb-2 text-3xl text-white"
+                    >
+                      Enter the code
+                    </Typography>
                     <Typography
                       weight="400"
-                      className="mt-2 text-sm text-red-400"
+                      className="mb-8 text-base text-[#8FE5F6]"
                     >
-                      {verifyError}
+                      Sent to {emailInput.trim()}
                     </Typography>
-                  )}
 
-                  {isVerifying && (
-                    <ActivityIndicator color="#fff" className="mt-4" />
-                  )}
+                    <ScreenVerificationCodeInput
+                      onCodeComplete={handleVerifyOtp}
+                    />
 
-                  <HapticPressable
-                    onPress={resend}
-                    disabled={isDisabled}
-                    className="mt-6 items-center"
-                  >
-                    <Typography
-                      weight="500"
-                      className="text-base text-white"
-                      style={{ opacity: isDisabled ? 0.5 : 1 }}
+                    {verifyError && (
+                      <Typography
+                        weight="400"
+                        className="mt-2 text-sm text-red-400"
+                      >
+                        {verifyError}
+                      </Typography>
+                    )}
+
+                    {isVerifying && (
+                      <ActivityIndicator color="#fff" className="mt-4" />
+                    )}
+
+                    <HapticPressable
+                      onPress={resend}
+                      disabled={isDisabled}
+                      className="mt-6 items-center"
                     >
-                      {countdown
-                        ? `Resend code in ${countdown}s`
-                        : "Resend code"}
-                    </Typography>
-                  </HapticPressable>
-                </View>
-              )}
+                      <Typography
+                        weight="500"
+                        className="text-base text-white"
+                        style={{ opacity: isDisabled ? 0.5 : 1 }}
+                      >
+                        {countdown
+                          ? `Resend code in ${countdown}s`
+                          : "Resend code"}
+                      </Typography>
+                    </HapticPressable>
+                  </View>
+                )}
+              </View>
             </View>
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </KeyboardAvoidingView>
 
         <PasskeySetupModal
           visible={showPasskeySetup}

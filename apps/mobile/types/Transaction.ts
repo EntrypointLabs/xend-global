@@ -1,17 +1,3 @@
-export interface Transaction {
-  id: string;
-  amount: number;
-  status: ConfirmationStatus | TransferState;
-  type: "sent" | "received" | "bridge";
-  date: Date;
-  address: string;
-}
-
-export interface TransactionGroup {
-  title: string;
-  data: Transaction[];
-}
-
 export interface SmartAccountDetails {
   smart_account_address: string;
   currency: Currency;
@@ -92,8 +78,6 @@ export type PaymentRail =
   | "Solana"
   | "Stellar"
   | "Tron";
-
-export type ConfirmationStatus = "pending" | "confirmed" | "failed";
 
 export type TransferState =
   | "awaiting_funds"
@@ -224,63 +208,6 @@ export interface TransferSource {
   uetr?: string;
   blockchain_memo?: string;
 }
-
-/**
- * SPL transfer row as consumed by the Activity feed. Mirrors the snake_case
- * shape produced by `mapTransferRowToLegacy` in `hooks/useWalletData.ts`.
- */
-export interface SplTransfer {
-  id: string;
-  gridUserId: string;
-  mainAccountAddress: string;
-  mint: string;
-  isToken2022: boolean;
-  signature: string;
-  confirmation_status: ConfirmationStatus;
-  from_address: string;
-  to_address: string;
-  amount: string;
-  ui_amount: string;
-  decimals: number;
-  confirmed_at?: string;
-  created_at: string;
-  updated_at: string;
-  direction: "inflow" | "outflow";
-}
-
-// Add fields as needed
-export type ReturnDetails = Record<string, unknown>;
-
-// Add fields as needed
-export type Receipt = Record<string, unknown>;
-
-export interface BridgeTransfer {
-  id: string;
-  state: TransferState;
-  on_behalf_of: string;
-  source_deposit_instructions?: TransferSourceDepositInstructions;
-  amount: string;
-  client_reference_id?: string;
-  currency?: Currency;
-  developer_fee: string;
-  source: TransferSource;
-  destination: TransferDestination;
-  receipt: Receipt;
-  blockchain_memo?: string;
-  return_details?: ReturnDetails;
-  created_at: string;
-  updated_at: string;
-}
-
-export type Transfer =
-  | {
-      Spl: SplTransfer;
-    }
-  | {
-      Bridge: BridgeTransfer;
-    };
-
-export type TransferResponse = Transfer[];
 
 export interface ExternalAccountMapping {
   grid_user_id: string;

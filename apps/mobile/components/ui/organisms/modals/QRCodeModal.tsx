@@ -1,11 +1,11 @@
 import React, { useMemo, useCallback, forwardRef, useState, memo } from "react";
-import { View, Pressable } from "react-native";
+import { View } from "react-native";
 import {
   BottomSheetModal,
   BottomSheetView,
-  BottomSheetBackdrop,
   BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
+import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
 import QRCode from "react-native-qrcode-svg";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
@@ -14,12 +14,8 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useToast } from "@/contexts/ToastContext";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-} from "react-native-reanimated";
 import { cn } from "@/utils/cn";
+import { Toggle } from "@/components/ui/atoms/Toggle";
 
 interface QRCodeModalProps {
   walletAddress: string;
@@ -30,30 +26,9 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
     const snapPoints = useMemo(() => ["94%"], []);
     const { showToast } = useToast();
     const [isHideWalletEnabled, setIsHideWalletEnabled] = useState(false);
-    const translateX = useSharedValue(0);
-
-    const animatedStyle = useAnimatedStyle(() => {
-      return {
-        transform: [{ translateX: translateX.value }],
-      };
-    });
-
-    const handleToggle = () => {
-      const newValue = !isHideWalletEnabled;
-      setIsHideWalletEnabled(newValue);
-      translateX.value = withTiming(newValue ? 20 : 0);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    };
 
     const renderBackdrop = useCallback(
-      (props: BottomSheetBackdropProps) => (
-        <BottomSheetBackdrop
-          {...props}
-          disappearsOnIndex={-1}
-          appearsOnIndex={0}
-          opacity={0.5}
-        />
-      ),
+      (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
       []
     );
 
@@ -69,8 +44,8 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
     return (
       <BottomSheetModal
         ref={ref}
-        index={1}
         snapPoints={snapPoints}
+        enableDynamicSizing={false}
         backdropComponent={renderBackdrop}
         enablePanDownToClose
         handleIndicatorStyle={{ display: "none" }}
@@ -142,19 +117,10 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
                 </View>
               </View>
             </View>
-            <Pressable onPress={handleToggle}>
-              <View
-                className={cn(
-                  `h-7 w-16 justify-center rounded-full`,
-                  isHideWalletEnabled ? "bg-[#3B82F6]" : "bg-black/10 px-0.5"
-                )}
-              >
-                <Animated.View
-                  style={animatedStyle}
-                  className="h-6 w-10 rounded-full bg-white shadow-sm"
-                />
-              </View>
-            </Pressable>
+            <Toggle
+              value={isHideWalletEnabled}
+              onValueChange={setIsHideWalletEnabled}
+            />
           </View>
 
           <View className="mx-6 mb-8">

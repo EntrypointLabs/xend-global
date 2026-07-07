@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { BlurView } from "expo-blur";
+import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
@@ -67,12 +67,7 @@ export function EditWalletModal({
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <BlurView
-        intensity={20}
-        tint="dark"
-        style={StyleSheet.absoluteFill}
-        experimentalBlurMethod="dimezisBlurView"
-      >
+      <FrostBlurView style={StyleSheet.absoluteFill}>
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={() => {
@@ -132,7 +127,7 @@ export function EditWalletModal({
             </View>
           </Pressable>
         </KeyboardAvoidingView>
-      </BlurView>
+      </FrostBlurView>
     </Modal>
   );
 }

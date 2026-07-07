@@ -8,7 +8,7 @@ import {
   TouchableWithoutFeedback,
 } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
-import { BlurView } from "expo-blur";
+import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { ThemedText } from "@/components/ui/atoms";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import Animated, {
@@ -127,16 +127,7 @@ export function ActionModal({
           activeOpacity={1}
           onPress={onClose}
         >
-          <BlurView
-            intensity={44.2}
-            style={[
-              styles.overlay,
-              { backgroundColor: "rgba(189, 189, 189, 1)" },
-              StyleSheet.absoluteFill,
-            ]}
-            tint="dark"
-            experimentalBlurMethod="dimezisBlurView"
-          >
+          <FrostBlurView style={[styles.overlay, StyleSheet.absoluteFill]}>
             <TouchableWithoutFeedback>
               <GestureDetector gesture={pan}>
                 {/* REANIMATED-EXCEPTION */}
@@ -186,7 +177,7 @@ export function ActionModal({
                 </Animated.View>
               </GestureDetector>
             </TouchableWithoutFeedback>
-          </BlurView>
+          </FrostBlurView>
         </TouchableOpacity>
       </GestureHandlerRootView>
     </Modal>

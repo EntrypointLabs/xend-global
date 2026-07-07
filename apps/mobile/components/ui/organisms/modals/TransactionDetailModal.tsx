@@ -1,36 +1,59 @@
 import React from "react";
-import {
-  View,
-  Image,
-  TouchableOpacity,
-  ImageSourcePropType,
-} from "react-native";
+import { View, Image, TouchableOpacity } from "react-native";
 import { ActionModal } from "../ActionModal";
-import { ActivityItemProps } from "../ActivityItem";
-import {
-  FontAwesome6,
-  Ionicons,
-  MaterialCommunityIcons,
-} from "@expo/vector-icons";
+import { iconForMint } from "../ActivityItem";
+import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { notificationAsync, NotificationFeedbackType } from "expo-haptics";
 import { formatAmount } from "@/utils/solana";
 import { truncateAddress } from "@/utils/helper";
+import { cn } from "@/utils/cn";
 import { Typography } from "../../atoms/Typography";
 import { format } from "date-fns";
 import HapticPressable from "../../atoms/HapticPressable";
+import { useContacts } from "@/hooks/useContacts";
+import { statusLabel, type ActivityEntry } from "@/utils/activity";
 
 interface TransactionDetailModalProps {
   visible: boolean;
   onClose: () => void;
-  item: ActivityItemProps | null;
+  item: ActivityEntry | null;
 }
+
+type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
+
+const STATUS_META: Record<
+  ActivityEntry["status"],
+  { label: string; color: string; icon: IoniconName; textClass: string }
+> = {
+  confirmed: {
+    label: "Completed",
+    color: "#34C759",
+    icon: "checkmark-circle",
+    textClass: "text-success",
+  },
+  pending: {
+    label: "Pending",
+    color: "#FF9500",
+    icon: "time",
+    textClass: "text-[#FF9500]",
+  },
+  failed: {
+    label: "Failed",
+    color: "#FF3B30",
+    icon: "close-circle",
+    textClass: "text-destructive",
+  },
+};
+
+const USDC_MINT = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS;
 
 export function TransactionDetailModal({
   visible,
   onClose,
   item,
 }: TransactionDetailModalProps) {
+  const { contacts } = useContacts();
   const copyIconColor = "rgba(0,0,0,0.3)";
 
   if (!item) return null;
@@ -40,9 +63,16 @@ export function TransactionDetailModal({
     notificationAsync(NotificationFeedbackType.Success);
   };
 
-  const transactionType = item.side === "send" ? "Sent" : "Received";
-  const amount = formatAmount(item.amount, item.token.decimal);
-  const date = format(new Date(item.date), "MMM d, yyyy 'at' h:mma");
+  const status = STATUS_META[item.status];
+  const amount = formatAmount(item.amountRaw, item.decimals);
+  const symbol = USDC_MINT && item.mint === USDC_MINT ? "USDC" : "";
+  const date = format(new Date(item.createdAt), "MMM d, yyyy 'at' h:mma");
+  const signature = item.signature;
+
+  const counterpartyLabel = item.direction === "send" ? "To" : "From";
+  const contact = contacts.find((c) => c.address === item.counterparty);
+  const counterpartyDisplay =
+    contact?.name ?? truncateAddress(item.counterparty);
 
   const rowClass = "flex-row justify-between items-center py-2";
   return (
@@ -57,20 +87,21 @@ export function TransactionDetailModal({
 
         <View className="relative mb-3">
           <Image
-            source={item.token.icon as ImageSourcePropType}
+            source={iconForMint(item.mint)}
             className="h-16 w-16 rounded-full"
           />
           <View className="absolute right-0 top-0 overflow-hidden rounded-full bg-white">
-            <Ionicons name="checkmark-circle" size={16} color="#34C759" />
+            <Ionicons name={status.icon} size={16} color={status.color} />
           </View>
         </View>
 
         <Typography weight="600" className="mb-1 text-sm text-black/30">
-          {transactionType}
+          {statusLabel(item)}
         </Typography>
 
         <Typography weight="700" className="mb-1 text-3xl">
-          {amount} {item.token.symbol}
+          {amount}
+          {symbol ? ` ${symbol}` : ""}
         </Typography>
 
         <Typography weight="600" className="mb-4 text-sm text-black/30">
@@ -81,21 +112,23 @@ export function TransactionDetailModal({
           <View className={rowClass}>
             <Typography weight="600">Status</Typography>
             <View className="flex-row items-center">
-              <Typography className="mr-1 text-success">Completed</Typography>
-              <Ionicons name="checkmark-circle" size={14} color="#34C759" />
+              <Typography className={cn("mr-1", status.textClass)}>
+                {status.label}
+              </Typography>
+              <Ionicons name={status.icon} size={14} color={status.color} />
             </View>
           </View>
 
           <View className={rowClass}>
             <Typography weight="600" className="text-black/30">
-              From
+              {counterpartyLabel}
             </Typography>
             <TouchableOpacity
               className="flex-row items-center"
-              onPress={() => copyToClipboard("CZ2R...K4Aj")}
+              onPress={() => copyToClipboard(item.counterparty)}
             >
               <Typography weight="600" className="mr-1">
-                CZ2R...K4Aj
+                {counterpartyDisplay}
               </Typography>
               <Ionicons name="copy-outline" size={14} color={copyIconColor} />
             </TouchableOpacity>
@@ -105,15 +138,21 @@ export function TransactionDetailModal({
             <Typography weight="600" className="text-black/30">
               Onchain transaction
             </Typography>
-            <TouchableOpacity
-              className="flex-row items-center"
-              onPress={() => copyToClipboard(item.transactionHash)}
-            >
-              <Typography weight="600" className="mr-1">
-                {truncateAddress(item.transactionHash)}
+            {signature ? (
+              <TouchableOpacity
+                className="flex-row items-center"
+                onPress={() => copyToClipboard(signature)}
+              >
+                <Typography weight="600" className="mr-1">
+                  {truncateAddress(signature)}
+                </Typography>
+                <Ionicons name="copy-outline" size={14} color={copyIconColor} />
+              </TouchableOpacity>
+            ) : (
+              <Typography weight="600" className="text-black/30">
+                Pending
               </Typography>
-              <Ionicons name="copy-outline" size={14} color={copyIconColor} />
-            </TouchableOpacity>
+            )}
           </View>
 
           <View className={rowClass}>
@@ -132,22 +171,6 @@ export function TransactionDetailModal({
               </Typography>
             </View>
           </View>
-
-          {item.incognito && (
-            <View className={rowClass}>
-              <View className="flex-row items-center gap-1">
-                <Typography weight="600" className="text-black/30">
-                  Hide My Wallet
-                </Typography>
-                <MaterialCommunityIcons
-                  name="shield-half-full"
-                  size={13}
-                  color="rgba(0,0,0,0.3)"
-                />
-              </View>
-              <Typography weight="600">Enabled</Typography>
-            </View>
-          )}
         </View>
       </View>
     </ActionModal>

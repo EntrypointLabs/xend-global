@@ -9,9 +9,9 @@ import { View, Dimensions, Keyboard } from "react-native";
 import {
   BottomSheetModal,
   BottomSheetView,
-  BottomSheetBackdrop,
   BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
+import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -47,14 +47,7 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
     const translateX = useSharedValue(0);
 
     const renderBackdrop = useCallback(
-      (props: BottomSheetBackdropProps) => (
-        <BottomSheetBackdrop
-          {...props}
-          disappearsOnIndex={-1}
-          appearsOnIndex={0}
-          opacity={0.5}
-        />
-      ),
+      (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
       []
     );
 
@@ -109,8 +102,8 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
       <>
         <BottomSheetModal
           ref={ref}
-          index={1}
           snapPoints={snapPoints}
+          enableDynamicSizing={false}
           onChange={handleSheetChanges}
           backdropComponent={renderBackdrop}
           enablePanDownToClose={true}

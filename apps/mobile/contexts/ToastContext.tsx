@@ -7,7 +7,6 @@ import React, {
   useState,
 } from "react";
 import { Animated, View } from "react-native";
-import { BlurView } from "expo-blur";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { setToastHandler } from "@/utils/toast";
@@ -107,22 +106,23 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             },
           ]}
         >
-          <BlurView
-            intensity={40}
-            tint="dark"
-            className="overflow-hidden rounded-full border"
-            style={{ borderColor: "rgba(255, 255, 255, 0.50)" }}
+          <View
+            className="flex-row items-center rounded-full border border-black/5 bg-white px-4 py-2.5"
+            // PLATFORM-SHADOW: lifts the pill off same-colored content so it
+            // stays visible on both iOS and Android (no reliable blur on Android).
+            style={{
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.12,
+              shadowRadius: 12,
+              elevation: 6,
+            }}
           >
-            <View
-              className="flex-row items-center px-4 py-2.5"
-              style={{ backgroundColor: "rgba(255, 255, 255, 0.80)" }}
-            >
-              {toast.icon && <View className="mr-2">{toast.icon}</View>}
-              <Typography weight="600" className="text-sm text-black">
-                {toast.label}
-              </Typography>
-            </View>
-          </BlurView>
+            {toast.icon && <View className="mr-2">{toast.icon}</View>}
+            <Typography weight="600" className="text-sm text-black">
+              {toast.label}
+            </Typography>
+          </View>
         </Animated.View>
       )}
     </ToastContext.Provider>

@@ -2,7 +2,7 @@ import React from "react";
 import { View, ActivityIndicator, Modal, StyleSheet } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
-import { BlurView } from "expo-blur";
+import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { cn } from "@/utils/cn";
 
@@ -34,16 +34,7 @@ export function PasskeySetupModal({
       animationType="fade"
       statusBarTranslucent
     >
-      <BlurView
-        intensity={44.2}
-        style={[
-          StyleSheet.absoluteFill,
-          styles.overlay,
-          { backgroundColor: "rgba(189, 189, 189, 1)" },
-        ]}
-        tint="dark"
-        experimentalBlurMethod="dimezisBlurView"
-      >
+      <FrostBlurView style={[StyleSheet.absoluteFill, styles.overlay]}>
         <View style={[styles.modalContainer, { backgroundColor }]}>
           <View className="items-center">
             <View className="mb-4">
@@ -124,7 +115,7 @@ export function PasskeySetupModal({
             )}
           </View>
         </View>
-      </BlurView>
+      </FrostBlurView>
     </Modal>
   );
 }

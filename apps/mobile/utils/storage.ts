@@ -2,6 +2,18 @@ import * as SecureStore from "expo-secure-store";
 import * as Sentry from "@sentry/react-native";
 
 /**
+ * Compose a per-user SecureStore key. SecureStore keys may contain only
+ * `[A-Za-z0-9._-]`, so a raw `:` separator — or a userId carrying other
+ * characters (e.g. a Privy DID `did:privy:…`) — makes get/set throw
+ * "Invalid key provided to SecureStore". Use a `.` separator and sanitize
+ * the id so the key is always valid.
+ */
+export function userScopedKey(prefix: string, userId: string): string {
+  const safeUserId = userId.replace(/[^A-Za-z0-9._-]/g, "_");
+  return `${prefix}.${safeUserId}`;
+}
+
+/**
  * Storage service for handling secure storage operations
  */
 export class StorageService {

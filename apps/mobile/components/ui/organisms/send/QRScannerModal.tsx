@@ -3,9 +3,9 @@ import { View } from "react-native";
 import {
   BottomSheetModal,
   BottomSheetView,
-  BottomSheetBackdrop,
   BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
+import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
 import {
   CameraView,
   useCameraPermissions,
@@ -28,14 +28,7 @@ export const QRScannerModal = forwardRef<BottomSheetModal, QRScannerModalProps>(
     const hasScanned = useRef(false);
 
     const renderBackdrop = useCallback(
-      (props: BottomSheetBackdropProps) => (
-        <BottomSheetBackdrop
-          {...props}
-          disappearsOnIndex={-1}
-          appearsOnIndex={0}
-          opacity={0.5}
-        />
-      ),
+      (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
       []
     );
 
@@ -151,12 +144,14 @@ const RenderContent = ({
         </View>
       </View>
 
-      <Typography
-        weight="500"
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl text-white"
+      <View
+        className="absolute inset-0 items-center justify-center"
+        pointerEvents="none"
       >
-        Scan a QR code
-      </Typography>
+        <Typography weight="500" className="text-2xl text-white">
+          Scan a QR code
+        </Typography>
+      </View>
     </View>
   );
 };

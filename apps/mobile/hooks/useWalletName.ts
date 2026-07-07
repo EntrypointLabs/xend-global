@@ -1,19 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { StorageService } from "@/utils/storage";
+import { StorageService, userScopedKey } from "@/utils/storage";
 import { AUTH_STORAGE_KEYS } from "@/utils/auth";
+import { useUserId } from "@/hooks/useUserId";
 
-const QUERY_KEY = ["walletName"] as const;
 const DEFAULT_NAME = "Wallet";
+
+// Scoped to the signed-in user so each account keeps its own wallet name.
+function walletNameKey(userId: string) {
+  return userScopedKey(AUTH_STORAGE_KEYS.WALLET_NAME, userId);
+}
 
 export function useWalletName() {
   const queryClient = useQueryClient();
+  const userId = useUserId();
+  const queryKey = ["walletName", userId] as const;
+  const storageKey = userId ? walletNameKey(userId) : null;
 
   const query = useQuery({
-    queryKey: QUERY_KEY,
+    queryKey,
+    enabled: !!storageKey,
     queryFn: async () => {
-      const stored = await StorageService.getItem<string>(
-        AUTH_STORAGE_KEYS.WALLET_NAME
-      );
+      if (!storageKey) return DEFAULT_NAME;
+      const stored = await StorageService.getItem<string>(storageKey);
       return stored ?? DEFAULT_NAME;
     },
     staleTime: Infinity,
@@ -21,11 +29,12 @@ export function useWalletName() {
 
   const mutation = useMutation({
     mutationFn: async (name: string) => {
-      await StorageService.setItem(AUTH_STORAGE_KEYS.WALLET_NAME, name);
+      if (!storageKey) return name;
+      await StorageService.setItem(storageKey, name);
       return name;
     },
     onSuccess: (name) => {
-      queryClient.setQueryData(QUERY_KEY, name);
+      queryClient.setQueryData(queryKey, name);
     },
   });
 
