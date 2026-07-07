@@ -22,7 +22,12 @@ export default function CashScreen() {
   const router = useRouter();
   const { hideAllModals } = useModalFlow();
   const { showToast } = useToast();
-  const { totalDisplay, usdc } = useBalances();
+  const {
+    totalDisplay,
+    usdc,
+    isError: isBalanceError,
+    refetch: refetchBalances,
+  } = useBalances();
   const address = useWalletAddress();
 
   // Modal State
@@ -32,10 +37,13 @@ export default function CashScreen() {
   const qrCodeModalRef = useRef<BottomSheetModal>(null);
 
   // useBalances defaults `usdc` to 0, so the empty-wallet case renders as
-  // "0 USDC" / "0.00" without an explicit null guard.
-  const usdcLabel = `${usdc.toLocaleString("en-US", {
-    maximumFractionDigits: 4,
-  })} USDC`;
+  // "0 USDC" / "0.00" without an explicit null guard. On a failed fetch the
+  // total is likewise 0, so show a neutral placeholder rather than a bogus zero.
+  const usdcLabel = isBalanceError
+    ? "USDC"
+    : `${usdc.toLocaleString("en-US", {
+        maximumFractionDigits: 4,
+      })} USDC`;
   const usdcAmount = usdc.toFixed(2);
 
   // The address is null for a beat on cold start; don't open a blank QR.
@@ -102,7 +110,24 @@ export default function CashScreen() {
               Balance
             </Typography>
 
-            <BalanceView weight="700" variant="h2" amount={totalDisplay} />
+            {isBalanceError ? (
+              <HapticPressable
+                className="flex-row items-center gap-1.5 self-start"
+                onPress={() => refetchBalances()}
+              >
+                <Typography weight="700" variant="h2">
+                  ——
+                </Typography>
+                <View className="flex-row items-center gap-1 rounded-full bg-black/5 px-2.5 py-1">
+                  <Ionicons name="refresh" size={14} color="#999" />
+                  <Typography weight="500" className="text-sm text-black/40">
+                    Couldn't load. Tap to retry
+                  </Typography>
+                </View>
+              </HapticPressable>
+            ) : (
+              <BalanceView weight="700" variant="h2" amount={totalDisplay} />
+            )}
           </View>
 
           {/* USDC Card */}
@@ -124,11 +149,17 @@ export default function CashScreen() {
                   {usdcLabel}
                 </Typography>
               </View>
-              <BalanceView
-                weight="600"
-                className="text-lg"
-                amount={usdcAmount}
-              />
+              {isBalanceError ? (
+                <Typography weight="600" className="text-lg text-black/30">
+                  —
+                </Typography>
+              ) : (
+                <BalanceView
+                  weight="600"
+                  className="text-lg"
+                  amount={usdcAmount}
+                />
+              )}
             </View>
 
             <View className="my-2 h-px w-full border-t border-dashed border-gray-200 bg-gray-100" />
