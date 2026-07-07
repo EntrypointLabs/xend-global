@@ -1,5 +1,6 @@
 import React, { forwardRef, useCallback, useMemo, useState } from "react";
-import { Switch, View, Image } from "react-native";
+import { View, Image } from "react-native";
+import { Toggle } from "@/components/ui/atoms/Toggle";
 import {
   BottomSheetBackdrop,
   BottomSheetBackdropProps,
@@ -97,13 +98,7 @@ export const NotificationsSheet = forwardRef<
           <Typography weight="600" className="text-base text-black">
             Allow notifications
           </Typography>
-          <Switch
-            value={enabled}
-            onValueChange={handleChange}
-            trackColor={{ false: "#00000020", true: "#000000" }}
-            thumbColor="#FFFFFF"
-            ios_backgroundColor="#00000020"
-          />
+          <Toggle value={enabled} onValueChange={handleChange} />
         </View>
       </BottomSheetView>
     </BottomSheetModal>
