@@ -186,6 +186,13 @@ function makeSolana(opts: Partial<SolanaRpc>): SolanaRpc {
     getSignatureStatuses:
       opts.getSignatureStatuses ?? jest.fn().mockResolvedValue([]),
     accountExists: opts.accountExists ?? jest.fn().mockResolvedValue(true),
+    getMinimumBalanceForRentExemption:
+      opts.getMinimumBalanceForRentExemption ??
+      jest.fn().mockResolvedValue(2_039_280n),
+    getTokenAccountOwner:
+      opts.getTokenAccountOwner ?? jest.fn().mockResolvedValue(null),
+    getTokenAccountBalanceRaw:
+      opts.getTokenAccountBalanceRaw ?? jest.fn().mockResolvedValue('0'),
     streamConfirmedTransfers:
       opts.streamConfirmedTransfers ??
       ((() => {

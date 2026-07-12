@@ -66,6 +66,13 @@ export const webhookDeliveryStatusEnum = pgEnum('webhook_delivery_status', [
   'exhausted',
 ]);
 
+// Settlement provider names (ADR 0015). 'blockradar' is pre-allocated; the
+// Blockradar adapter ships in Phase 8 behind the same seam.
+export const settlementProviderEnum = pgEnum('settlement_provider', [
+  'direct_usdc',
+  'blockradar',
+]);
+
 // ---------- Tables ----------
 
 export const users = pgTable('users', {
@@ -445,11 +452,16 @@ export const webhookDeliveries = pgTable(
 );
 
 /**
- * settlement_accounts — deterministic per-Merchant settlement Accounts
- * derived from one Xend authority. derivation_seed is the seed input for
- * createAccountWithSeed (the Merchant cuid2 fits the 32-byte limit).
- * Derivation and funding happen at provisioning time, off this schema's
- * critical path, so address and provisioned_at are nullable until then.
+ * settlement_accounts — per-Merchant settlement endpoints behind the
+ * SettlementProvider layer (ADR 0015). This table is a READ MODEL: the
+ * chain is the source of truth and a Merchant's owed balance is their
+ * on-chain USDC balance (no pooled ledger). `address` is the classic-SPL
+ * USDC token account settlements land in (the TransferChecked destination,
+ * REQ-PLAIN-SPL). `provider`/`currency`/`provider_reference`/`payout_config`
+ * are the polymorphic settlement reference; `authority_address` is the
+ * attribution root the address is enumerable from (the Xend authority for
+ * direct-USDC, the Blockradar master wallet in Phase 8, null for a recorded
+ * merchant-own address). Columns are nullable until provisioning completes.
  */
 export const settlementAccounts = pgTable('settlement_accounts', {
   id: text('id')
@@ -460,7 +472,10 @@ export const settlementAccounts = pgTable('settlement_accounts', {
     .unique()
     .references(() => merchants.id),
   address: text('address').unique(),
-  derivationSeed: text('derivation_seed').notNull(),
+  provider: settlementProviderEnum('provider'),
+  currency: text('currency'),
+  providerReference: text('provider_reference'),
+  payoutConfig: text('payout_config'),
   authorityAddress: text('authority_address'),
   provisionedAt: timestamp('provisioned_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),

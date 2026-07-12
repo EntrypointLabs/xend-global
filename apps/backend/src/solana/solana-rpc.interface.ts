@@ -64,6 +64,32 @@ export interface SolanaRpc {
   accountExists(address: WalletAddress): Promise<boolean>;
 
   /**
+   * Rent-exempt minimum balance (lamports) for an account of `space`
+   * bytes. Used by settlement-endpoint provisioning to fund the new
+   * classic-SPL token account. A plain read, safe on either leg.
+   * SDK-neutral: takes/returns bigint so kit-side callers stay inside the
+   * owned seam rather than reaching for a raw kit RPC client (ADR 0020).
+   */
+  getMinimumBalanceForRentExemption(space: bigint): Promise<bigint>;
+
+  /**
+   * The owner (controlling wallet) of an SPL token account, or null when
+   * the account does not exist or is not a parseable token account. Used by
+   * the direct-USDC refund path to confirm a settlement endpoint is
+   * authority-owned before authority-signing a reverse. Plain read.
+   */
+  getTokenAccountOwner(address: WalletAddress): Promise<string | null>;
+
+  /**
+   * Raw u64 amount (as a string) held by a specific SPL token account, or
+   * '0' when absent/unreadable. Used by the settlement provider's
+   * reconciliation report() to read a single endpoint token account
+   * (getTokenBalances is owner-scoped and would commingle per-Merchant
+   * authority-owned endpoints). Plain read.
+   */
+  getTokenAccountBalanceRaw(tokenAccount: WalletAddress): Promise<string>;
+
+  /**
    * Async iterator over confirmed SPL token transfers for an owner
    * since a slot. Boot-time replay + reconciliation safety net for the
    * webhook hot path.

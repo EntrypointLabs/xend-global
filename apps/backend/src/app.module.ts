@@ -16,6 +16,7 @@ import { CountersModule } from './counters/counters.module';
 import { CapabilityModule } from './capability/capability.module';
 import { PaymentModule } from './payment/payment.module';
 import { SessionModule } from './session/session.module';
+import { SettlementModule } from './settlement/settlement.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { SessionModule } from './session/session.module';
     CapabilityModule,
     PaymentModule,
     SessionModule,
+    SettlementModule,
   ],
   controllers: [AppController],
   providers: [AppService],

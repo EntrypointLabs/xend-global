@@ -118,6 +118,9 @@ function makeFakeSolana(overrides: Partial<SolanaRpc> = {}): SolanaRpc {
     sendRawTransaction: jest.fn(),
     getSignatureStatuses: jest.fn().mockResolvedValue([]),
     accountExists: jest.fn(),
+    getMinimumBalanceForRentExemption: jest.fn(),
+    getTokenAccountOwner: jest.fn(),
+    getTokenAccountBalanceRaw: jest.fn(),
     streamConfirmedTransfers: jest.fn().mockImplementation(async function* () {
       // empty by default
     }),

@@ -300,6 +300,56 @@ function extractTokenTransfers(
   return events;
 }
 
+export async function getMinimumBalanceForRentExemptionViaConnection(
+  conn: Connection,
+  space: bigint,
+): Promise<bigint> {
+  // Rent-exempt minimum for an account of `space` bytes. web3.js takes a
+  // number; account sizes are tiny (a token account is 165 bytes) so the
+  // Number() narrowing is safe. The seam is SDK-neutral, returning bigint.
+  const lamports = await conn.getMinimumBalanceForRentExemption(Number(space));
+  return BigInt(lamports);
+}
+
+export async function getTokenAccountOwnerViaConnection(
+  conn: Connection,
+  address: WalletAddress,
+): Promise<string | null> {
+  // Reads the SPL token account's owner (the wallet that controls it).
+  // Returns null when the account does not exist or is not a parseable
+  // token account. Used by the direct-USDC refund path to confirm the
+  // settlement endpoint is authority-owned before authority-signing a
+  // reverse; a merchant-own endpoint (different owner) is not refundable.
+  const info = await conn.getParsedAccountInfo(
+    new PublicKey(address),
+    'confirmed',
+  );
+  const data = info.value?.data;
+  if (data && typeof data === 'object' && 'parsed' in data) {
+    const parsed = (data as { parsed?: { info?: { owner?: string } } }).parsed;
+    if (parsed?.info?.owner) return parsed.info.owner;
+  }
+  return null;
+}
+
+export async function getTokenAccountBalanceRawViaConnection(
+  conn: Connection,
+  tokenAccount: WalletAddress,
+): Promise<string> {
+  // Raw u64 amount held by a specific SPL token account. Used by the
+  // settlement provider's reconciliation report(). Returns '0' when the
+  // account is absent or unreadable.
+  try {
+    const res = await conn.getTokenAccountBalance(
+      new PublicKey(tokenAccount),
+      'confirmed',
+    );
+    return res.value.amount;
+  } catch {
+    return '0';
+  }
+}
+
 export async function getSignatureStatusesViaConnection(
   conn: Connection,
   signatures: string[],
