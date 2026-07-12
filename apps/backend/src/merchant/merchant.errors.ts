@@ -55,3 +55,42 @@ export class SettlementDestinationMissingError extends Error {
     this.name = 'SettlementDestinationMissingError';
   }
 }
+
+export class RefundNotFoundError extends Error {
+  readonly code = 'REFUND_NOT_FOUND';
+  constructor(message: string) {
+    super(message);
+    this.name = 'RefundNotFoundError';
+  }
+}
+
+/** The requested refund amount exceeds the remaining refundable balance. */
+export class RefundAmountExceedsRefundableError extends Error {
+  readonly code = 'REFUND_AMOUNT_EXCEEDS_REFUNDABLE';
+  constructor(message: string) {
+    super(message);
+    this.name = 'RefundAmountExceedsRefundableError';
+  }
+}
+
+/**
+ * The settlement provider for this Merchant does not advertise reverse
+ * support. The Blockradar/naira reverse flow stays capability-gated until
+ * Phase 8 confirms it; the direct-USDC path works now.
+ */
+export class RefundNotSupportedError extends Error {
+  readonly code = 'REFUND_NOT_SUPPORTED';
+  constructor(message: string) {
+    super(message);
+    this.name = 'RefundNotSupportedError';
+  }
+}
+
+/** The payment is not settlement-confirmed, so it cannot be reversed. */
+export class PaymentNotRefundableError extends Error {
+  readonly code = 'PAYMENT_NOT_REFUNDABLE';
+  constructor(message: string) {
+    super(message);
+    this.name = 'PaymentNotRefundableError';
+  }
+}
