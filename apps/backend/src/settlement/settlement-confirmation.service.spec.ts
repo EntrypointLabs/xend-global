@@ -76,6 +76,33 @@ function makeDb(cfg: {
   return { client } as unknown as DbService;
 }
 
+function makeExecDb(cfg: {
+  settling?: unknown[];
+  authorized?: unknown[];
+  orphanHit?: boolean;
+  reapRowCount?: number;
+  captured?: string[];
+}): DbService {
+  const execute = jest.fn((stmt: unknown) => {
+    const str = JSON.stringify(stmt);
+    cfg.captured?.push(str);
+    if (str.includes('UPDATE payment_attempts')) {
+      return Promise.resolve({ rowCount: cfg.reapRowCount ?? 1 });
+    }
+    if (str.includes('FROM transfers')) {
+      return Promise.resolve({ rows: cfg.orphanHit ? [{ n: 1 }] : [] });
+    }
+    if (str.includes("status = 'settling'")) {
+      return Promise.resolve({ rows: cfg.settling ?? [] });
+    }
+    if (str.includes("status = 'authorized'")) {
+      return Promise.resolve({ rows: cfg.authorized ?? [] });
+    }
+    return Promise.resolve({ rows: [], rowCount: 0 });
+  });
+  return { client: { execute } } as unknown as DbService;
+}
+
 function makeProvider(completion: SettlementCompletion): {
   provider: SettlementProvider;
   handleIncomingSettlement: jest.Mock;
@@ -342,6 +369,122 @@ describe('SettlementConfirmationService', () => {
       expect(events).toHaveLength(1);
       expect(events[0].topic).toBe('payment.failed');
       expect(events[0].correlationId).toBe('pi_1');
+    });
+  });
+
+  describe('reconcileSettling (the sweep)', () => {
+    it('settling leg force-fails a null-status attempt past blockhash expiry with BLOCKHASH_EXPIRED', async () => {
+      const { provider } = makeProvider({ status: 'complete' });
+      const { intents } = makeIntents();
+      const { publisher } = makePublisher();
+      const service = makeService({
+        db: makeExecDb({
+          settling: [{ txSignature: 'sig-x', intentId: 'pi_1', expired: true }],
+        }),
+        solana: makeSolana([
+          {
+            signature: 'sig-x',
+            slot: null,
+            confirmationStatus: null,
+            err: null,
+          },
+        ]),
+        intents,
+        provider,
+        publisher,
+      });
+      const failed = jest
+        .spyOn(service, 'finalizeFailed')
+        .mockResolvedValue(undefined);
+
+      await service.reconcileSettling();
+
+      expect(failed).toHaveBeenCalledWith('pi_1', 'sig-x', {
+        code: 'BLOCKHASH_EXPIRED',
+      });
+    });
+
+    it('reaper force-fails an aged authorized attempt with ATTEMPT_ABANDONED and publishes no event', async () => {
+      const { provider } = makeProvider({ status: 'complete' });
+      const { intents } = makeIntents();
+      const { publisher, publish } = makePublisher();
+      const captured: string[] = [];
+      const service = makeService({
+        db: makeExecDb({
+          authorized: [
+            {
+              id: 'att_1',
+              intentId: 'pi_1',
+              messageBase64: null,
+              merchantId: 'm_1',
+              usdcSettlementRaw: '1000000',
+            },
+          ],
+          captured,
+        }),
+        intents,
+        provider,
+        publisher,
+      });
+
+      await service.reconcileSettling();
+
+      const reapUpdate = captured.find((s) =>
+        s.includes('UPDATE payment_attempts'),
+      );
+      expect(reapUpdate).toContain('ATTEMPT_ABANDONED');
+      expect(publish).not.toHaveBeenCalled();
+    });
+
+    it('leaves a freshly-pinned authorized attempt untouched (not returned by the window query)', async () => {
+      const { provider } = makeProvider({ status: 'complete' });
+      const { intents } = makeIntents();
+      const { publisher } = makePublisher();
+      const captured: string[] = [];
+      const service = makeService({
+        db: makeExecDb({ authorized: [], settling: [], captured }),
+        intents,
+        provider,
+        publisher,
+      });
+
+      await service.reconcileSettling();
+
+      expect(
+        captured.find((s) => s.includes('UPDATE payment_attempts')),
+      ).toBeUndefined();
+    });
+
+    it('reaps a pinned attempt with a confirmed inbound of the exact amount as ATTEMPT_ORPHAN_SUSPECTED', async () => {
+      const { provider } = makeProvider({ status: 'complete' });
+      const { intents } = makeIntents();
+      const { publisher } = makePublisher();
+      const captured: string[] = [];
+      const service = makeService({
+        db: makeExecDb({
+          authorized: [
+            {
+              id: 'att_1',
+              intentId: 'pi_1',
+              messageBase64: 'pinned',
+              merchantId: 'm_1',
+              usdcSettlementRaw: '1000000',
+            },
+          ],
+          orphanHit: true,
+          captured,
+        }),
+        intents,
+        provider,
+        publisher,
+      });
+
+      await service.reconcileSettling();
+
+      const reapUpdate = captured.find((s) =>
+        s.includes('UPDATE payment_attempts'),
+      );
+      expect(reapUpdate).toContain('ATTEMPT_ORPHAN_SUSPECTED');
     });
   });
 });

@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, eq } from 'drizzle-orm';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { and, eq, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { paymentAttempts, payments, transfers } from '../db/schema';
 import { SOLANA_RPC, type SolanaRpc } from '../solana/solana-rpc.interface';
@@ -15,6 +16,12 @@ import { SettlementRouter } from './settlement-router';
 import type { SettlementCompletion } from './settlement-provider.interface';
 
 type FailureReason = string | { code: string; [key: string]: unknown };
+
+/** The blockhash-expiry window: an attempt older than this is definitively
+ *  dead (its pinned blockhash can no longer land), mirroring the activity
+ *  reconciler's PENDING_EXPIRY_MS. */
+const BLOCKHASH_EXPIRY_SECONDS = 120;
+const REAP_BATCH = 256;
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -234,6 +241,153 @@ export class SettlementConfirmationService implements OnModuleInit {
     this.logger.log(
       `settlement.confirm intent_id=${intentId} outcome=failed reason=${reasonText}`,
     );
+  }
+
+  /**
+   * The settlement sweep: the tail safety net behind the active poll AND the
+   * guard-completeness fix. Two legs over bounded batches:
+   *
+   *   (a) Settling leg (tail of the confirmation race): settling attempts
+   *       with a signature are resolved via getSignatureStatuses; a null
+   *       status past the blockhash-expiry window is force-failed
+   *       (BLOCKHASH_EXPIRED), the "definitively dead" signal that frees the
+   *       one-live-attempt partial unique index for a signature-first retry.
+   *
+   *   (b) Stuck-authorized reaper (guard completeness): authorized attempts
+   *       older than the same window are force-failed, freeing the index.
+   *       Covers abandon-after-pin AND the crash window between the relayer
+   *       broadcast and the signature-record UPDATE.
+   *
+   * The durable invariant is NEVER reap before the window closes: any
+   * broadcast whose signature went unrecorded is by then either dead (its
+   * pinned blockhash expired) or already landed and observable by the tailer
+   * as a confirmed transfer, and the relayer's bounded LRU replay guard
+   * refuses an immediate duplicate co-sign.
+   */
+  @Cron(CronExpression.EVERY_30_SECONDS)
+  async reconcileSettling(): Promise<void> {
+    await this.sweepSettlingLeg();
+    await this.reapAuthorized();
+  }
+
+  private async sweepSettlingLeg(): Promise<void> {
+    const rows = (await this.db.client.execute(sql`
+      SELECT
+        pa.tx_signature AS "txSignature",
+        pa.intent_id AS "intentId",
+        pa.updated_at < (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${BLOCKHASH_EXPIRY_SECONDS}`)} seconds'
+          AS "expired"
+      FROM payment_attempts pa
+      WHERE pa.status = 'settling' AND pa.tx_signature IS NOT NULL
+      ORDER BY pa.updated_at ASC
+      LIMIT ${sql.raw(`${REAP_BATCH}`)}
+    `)) as unknown as {
+      rows: { txSignature: string; intentId: string; expired: boolean }[];
+    };
+    for (const row of rows.rows) {
+      const [status] = await this.solana.getSignatureStatuses([
+        row.txSignature,
+      ]);
+      if (
+        status?.confirmationStatus === 'confirmed' ||
+        status?.confirmationStatus === 'finalized'
+      ) {
+        await this.finalizeSucceeded(row.intentId, row.txSignature);
+      } else if (status?.err) {
+        await this.finalizeFailed(row.intentId, row.txSignature, {
+          code: 'CHAIN_ERROR',
+          err: status.err,
+        });
+      } else if (row.expired) {
+        await this.finalizeFailed(row.intentId, row.txSignature, {
+          code: 'BLOCKHASH_EXPIRED',
+        });
+      }
+    }
+  }
+
+  private async reapAuthorized(): Promise<void> {
+    const rows = (await this.db.client.execute(sql`
+      SELECT
+        pa.id AS "id",
+        pa.intent_id AS "intentId",
+        pa.message_base64 AS "messageBase64",
+        pi.merchant_id AS "merchantId",
+        pi.usdc_settlement_raw AS "usdcSettlementRaw"
+      FROM payment_attempts pa
+      JOIN payment_intents pi ON pi.id = pa.intent_id
+      WHERE pa.status = 'authorized'
+        AND pa.updated_at < (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${BLOCKHASH_EXPIRY_SECONDS}`)} seconds'
+      ORDER BY pa.updated_at ASC
+      LIMIT ${sql.raw(`${REAP_BATCH}`)}
+    `)) as unknown as {
+      rows: {
+        id: string;
+        intentId: string;
+        messageBase64: string | null;
+        merchantId: string;
+        usdcSettlementRaw: string;
+      }[];
+    };
+    for (const row of rows.rows) {
+      // Refinement (crash+landed sub-case): if the attempt was pinned (has a
+      // message) but never got a signature, its broadcast may have landed
+      // under a signature we never recorded. Before silently freeing the
+      // index, check the endpoint for a confirmed inbound transfer of the
+      // exact amount inside the window; on a hit reap with a distinct code +
+      // an ops alert. Accepted pilot-ops residual: an authority-owned endpoint
+      // is shared by owner, so this heuristic is amount-and-window scoped, not
+      // signature-exact.
+      const orphanSuspected =
+        row.messageBase64 != null &&
+        (await this.hasSuspectedOrphanInbound(
+          row.merchantId,
+          row.usdcSettlementRaw,
+        ));
+      const code = orphanSuspected
+        ? 'ATTEMPT_ORPHAN_SUSPECTED'
+        : 'ATTEMPT_ABANDONED';
+      const reaped = (await this.db.client.execute(sql`
+        UPDATE payment_attempts
+        SET status = 'failed',
+            failure_reason = ${JSON.stringify({ code })},
+            updated_at = NOW()
+        WHERE id = ${row.id} AND status = 'authorized'
+      `)) as unknown as { rowCount: number };
+      if (reaped.rowCount === 0) continue;
+      if (orphanSuspected) {
+        this.logger.warn(
+          `settlement.reap.orphan_suspected attempt_id=${row.id} intent_id=${row.intentId} merchant_id=${row.merchantId} amount_raw=${row.usdcSettlementRaw}`,
+        );
+      }
+      this.logger.log(
+        `settlement.reap attempt_id=${row.id} intent_id=${row.intentId} reason=${code}`,
+      );
+    }
+  }
+
+  private async hasSuspectedOrphanInbound(
+    merchantId: string,
+    amountRaw: string,
+  ): Promise<boolean> {
+    let endpoint: string;
+    try {
+      ({ address: endpoint } =
+        await this.provisioning.getSettlementAddressForSettlement(merchantId));
+    } catch {
+      return false;
+    }
+    const hit = (await this.db.client.execute(sql`
+      SELECT 1
+      FROM transfers
+      WHERE to_address = ${endpoint}
+        AND amount_raw = ${amountRaw}
+        AND status = 'CONFIRMED'
+        AND kind = 'transfer'
+        AND confirmed_at > (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${BLOCKHASH_EXPIRY_SECONDS}`)} seconds'
+      LIMIT 1
+    `)) as unknown as { rows: unknown[] };
+    return hit.rows.length > 0;
   }
 
   /**
