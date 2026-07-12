@@ -63,6 +63,7 @@ You do **not** need an ADR for routine choices like file naming, single-feature 
 | [0012](./0012-pay-platform-topology.md)             | Pay platform topology: managed Kafka + Redis, extracted fee-payer relayer, modular core             | Accepted | Backend / Infrastructure |
 | [0013](./0013-session-model.md)                     | Merchant-scoped Sessions: opaque server-side tokens with rotation and velocity caps                 | Accepted | Backend / Security       |
 | [0015](./0015-settlement-provider-layer.md)         | Settlement provider layer: pluggable SettlementProvider, single-root attribution, refund-in-reverse | Accepted | Backend / Pay            |
+| [0016](./0016-checkout-postmessage-protocol.md)     | Checkout result transport: versioned postMessage protocol and surface security posture              | Accepted | Frontend / Checkout      |
 | [0020](./0020-solana-sdk-coexistence.md)            | Two Solana toolchains: @solana/kit for new money-moving code, web3.js retained                      | Accepted | Backend / Solana         |
 
 > 0014 is reserved for a conditional relayer decision (Kora reversal) and may remain an intentional gap; 0016-0019 are allocated to in-flight phases.
