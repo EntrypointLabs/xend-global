@@ -20,6 +20,7 @@ import { SettlementModule } from './settlement/settlement.module';
 import { FxModule } from './fx/fx.module';
 import { MerchantModule } from './merchant/merchant.module';
 import { CheckoutModule } from './checkout/checkout.module';
+import { WebhookModule } from './webhook/webhook.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { CheckoutModule } from './checkout/checkout.module';
     FxModule,
     MerchantModule,
     CheckoutModule,
+    WebhookModule,
   ],
   controllers: [AppController],
   providers: [AppService],
