@@ -12,6 +12,8 @@ import { TransferModule } from './transfer/transfer.module';
 import { ActivityModule } from './activity/activity.module';
 import { RedisModule } from './redis/redis.module';
 import { EventsModule } from './events/events.module';
+import { CountersModule } from './counters/counters.module';
+import { CapabilityModule } from './capability/capability.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { EventsModule } from './events/events.module';
     ActivityModule,
     RedisModule,
     EventsModule,
+    CountersModule,
+    CapabilityModule,
   ],
   controllers: [AppController],
   providers: [AppService],

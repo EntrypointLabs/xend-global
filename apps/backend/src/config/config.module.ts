@@ -44,9 +44,11 @@ import * as Joi from 'joi';
         HELIUS_WEBHOOK_ID: Joi.string().optional().allow(''),
 
         // Stablecoin mints — backend computes the Balance sum over this
-        // set server-side.
+        // set server-side. USDC is required and non-empty: the capacity
+        // engine reads live USDC Balance for every money decision, so a
+        // present-but-empty value must fail at boot rather than read zero.
         EXPO_PUBLIC_USDT_MINT_ADDRESS: Joi.string().optional().allow(''),
-        EXPO_PUBLIC_USDC_MINT_ADDRESS: Joi.string().optional().allow(''),
+        EXPO_PUBLIC_USDC_MINT_ADDRESS: Joi.string().required(),
 
         // Redis: Session and rate-limit state (managed in cloud, docker-compose
         // locally). rediss:// for TLS-terminated managed instances.
@@ -65,6 +67,14 @@ import * as Joi from 'joi';
           .default('plain'),
         KAFKA_SASL_USERNAME: Joi.string().optional().allow(''),
         KAFKA_SASL_PASSWORD: Joi.string().optional().allow(''),
+
+        // Capacity tiers: JSON table of tier bands; amounts are raw u64
+        // strings in USDC minor units. Pilot default: 50 USDC per payment,
+        // 200/day, 1000/month. Tunable without a code change.
+        CAPACITY_TIERS: Joi.string().default(
+          '{"tier0":{"perPaymentMaxRaw":"50000000","dailyCapRaw":"200000000","monthlyCapRaw":"1000000000"}}',
+        ),
+        CAPACITY_DEFAULT_TIER: Joi.string().default('tier0'),
 
         // CORS: browser origins allowed to call this API. The mobile app is
         // not a browser and is unaffected. pay.xend.global is the Checkout
