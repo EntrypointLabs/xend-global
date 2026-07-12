@@ -98,6 +98,28 @@ _Avoid_: domain, handle, username, ENS
 A saved **Address** plus a label, in the **Consumer**'s address book. Not a social connection; not a directory entry; not a stored input form — purely a personal shortcut for frequent destinations.
 _Avoid_: recipient, payee, friend, merchant, connection
 
+### Commerce
+
+**Merchant**:
+An online store that accepts **Payments** from a **Consumer**'s **Balance** through **Checkout**. Hand-picked at pilot. A **Merchant** is not a **Contact**; it never appears in the address book.
+_Avoid_: vendor, store (in code), business, seller
+
+**Payment**:
+A **Consumer** paying a **Merchant** from their **Balance** through **Checkout**. The **Merchant**-facing counterpart of a **Spend**: it rides the same rails and appears in the **Consumer**'s **Activity**. Settles to the **Merchant**'s settlement **Account** in digital dollars.
+_Avoid_: transaction, charge, order, purchase (in code)
+
+**Checkout**:
+The Xend-hosted surface (pay.xend.global) where a **Consumer** approves a **Payment** with their **Passkey**, or with one tap when a **Session** is active. Sits next to card and Apple Pay buttons on the **Merchant**'s page.
+_Avoid_: payment page, widget, popup (in user-facing copy), iframe
+
+**Session**:
+A **Merchant**-scoped recognition that a **Consumer** already completed the **Passkey** ceremony for that **Merchant**. Lets repeat **Payments** skip the ceremony for a one-tap confirm. It expires, and the **Consumer** can revoke it at any time; a revoked **Session** forces the full ceremony again.
+_Avoid_: token, login, remember-me, refresh token (in user-facing copy)
+
+**Payout**:
+Movement of settled **Payment** funds from a **Merchant**'s settlement **Account** to the **Merchant**'s bank account in local currency. A later, gated capability.
+_Avoid_: withdrawal, off-ramp (in user-facing copy), settlement (as a synonym for Payout)
+
 ## Relationships
 
 - A **Consumer** has exactly one **Account**
@@ -110,6 +132,10 @@ _Avoid_: recipient, payee, friend, merchant, connection
 - A **Spend** flows from the **Account** to an **Address** — specified directly, via an **SNS Name**, or by picking a **Contact**
 - A **Spending Limit** is checked before a **Spend** executes
 - Every **Spend**, **Receive**, and non-money event in an **Account** produces an **Activity**; the **Account**'s **Activities** feed is the unified, reverse-chronological list
+- A **Payment** flows from a **Consumer**'s **Account** to a **Merchant**'s settlement **Account**, approved through **Checkout**
+- A **Payment** is a **Spend** whose counterparty is a **Merchant**; it appears in the **Consumer**'s **Activities** like any other **Spend**
+- A **Session** binds one **Consumer** to one **Merchant** and lets repeat **Payments** skip the **Passkey** ceremony until it expires or is revoked
+- A **Payout** moves settled **Payment** funds from a **Merchant**'s settlement **Account** to that **Merchant**'s bank account
 
 ## Example dialogue
 
@@ -125,3 +151,4 @@ _Avoid_: recipient, payee, friend, merchant, connection
 - "Wallet" appears in some UI copy (e.g. Spending Limits help text: "your wallet can handle...") — flagged as a mistake to fix. The term is **Account**.
 - Email is part of auth but **not** a payment destination today — Consumer-to-Consumer Spend by email is TBD. For now, destinations are **Address** or **SNS Name** only.
 - "History" appears in code as a route filename, type, and screen name (`history.tsx`, `History`, `HistoryScreen`) — flagged as legacy naming. The user-facing concept is **Activity** / **Activities** (matches the tab header and `ActivityList` component).
+- "Spend" vs "Payment", resolved: **Spend** remains the Consumer-side umbrella for any outflow (P2P or merchant); a **Payment** is the specialization where the counterparty is a **Merchant** via **Checkout**. Every **Payment** is a **Spend** and lands in **Activity**, but not every **Spend** is a **Payment** (a P2P **Send** is not). **Send** stays the P2P action verb; **Checkout** is the surface where a **Payment** is approved.
