@@ -65,6 +65,11 @@ import * as Joi from 'joi';
           .default('plain'),
         KAFKA_SASL_USERNAME: Joi.string().optional().allow(''),
         KAFKA_SASL_PASSWORD: Joi.string().optional().allow(''),
+
+        // CORS: browser origins allowed to call this API. The mobile app is
+        // not a browser and is unaffected. pay.xend.global is the Checkout
+        // surface; localhost entries cover local web dev.
+        CORS_ALLOWED_ORIGINS: Joi.string().default('https://pay.xend.global'),
       }),
     }),
   ],
