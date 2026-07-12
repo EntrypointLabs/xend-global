@@ -77,6 +77,10 @@ function makeFakeDb(store: FakeStore): DbService {
       return Promise.resolve(rows);
     };
     const chain: Record<string, unknown> = {
+      // list() LEFT JOINs payments -> merchants for display columns; the fake
+      // returns pre-flattened rows (a row may carry merchantName directly), so
+      // the join is a structural no-op here.
+      leftJoin: () => chain,
       where: () => chain,
       orderBy: () => {
         ctx.orderDesc = true;
@@ -619,5 +623,74 @@ describe('TransferService.list', () => {
     expect(row.memo).toBeNull();
     expect(typeof row.createdAt).toBe('string');
     expect(typeof row.confirmedAt).toBe('string');
+  });
+
+  it('maps a settlement transfer (kind=payment) with the joined merchant name', async () => {
+    const solana = makeSolana({});
+    const account = makeAccount();
+    const paymentRow = {
+      id: 't_pay',
+      smartAccountId: account.id,
+      intentId: null,
+      signature: 'sig_pay',
+      direction: 'SEND',
+      mint: usdcMint,
+      amountRaw: '50000000',
+      fromAddress: account.walletAddress,
+      toAddress: Keypair.generate().publicKey.toBase58(),
+      status: 'CONFIRMED',
+      slot: null,
+      createdAt: new Date('2026-02-01'),
+      submittedAt: null,
+      confirmedAt: new Date('2026-02-01'),
+      failureReason: null,
+      kind: 'payment',
+      paymentId: 'pay_1',
+      // Pre-flattened join column (merchants.display_name).
+      merchantName: 'Cafe Neo',
+    } as unknown as TransfersRow;
+    const store: FakeStore = {
+      smartAccounts: [account],
+      transfers: [paymentRow],
+    };
+    const { service } = makeService({ solana, account, store });
+
+    const out = await service.list('u_test');
+    expect(out.transfers[0].kind).toBe('payment');
+    expect(out.transfers[0].merchantName).toBe('Cafe Neo');
+  });
+
+  it('maps a plain transfer to kind=transfer with a null merchant name', async () => {
+    const solana = makeSolana({});
+    const account = makeAccount();
+    const store: FakeStore = {
+      smartAccounts: [account],
+      transfers: [
+        {
+          id: 't_plain',
+          smartAccountId: account.id,
+          intentId: null,
+          signature: null,
+          direction: 'RECEIVE',
+          mint: usdcMint,
+          amountRaw: '500000',
+          fromAddress: Keypair.generate().publicKey.toBase58(),
+          toAddress: account.walletAddress,
+          status: 'CONFIRMED',
+          slot: null,
+          createdAt: new Date('2026-01-01'),
+          submittedAt: null,
+          confirmedAt: new Date('2026-01-01'),
+          failureReason: null,
+          kind: 'transfer',
+          paymentId: null,
+        },
+      ],
+    };
+    const { service } = makeService({ solana, account, store });
+
+    const out = await service.list('u_test');
+    expect(out.transfers[0].kind).toBe('transfer');
+    expect(out.transfers[0].merchantName).toBeNull();
   });
 });

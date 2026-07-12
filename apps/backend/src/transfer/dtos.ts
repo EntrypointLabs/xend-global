@@ -58,6 +58,11 @@ export const TransferRowSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'FAILED']),
   signature: z.string().nullable(),
   memo: z.string().nullable(),
+  // Activity discriminant: a plain send/receive vs a settled Payment. Literals
+  // bind to Phase 4's transfer_kind pgEnum, which is LOWERCASE; do not uppercase
+  // to match the SEND/RECEIVE direction enum or Zod rejects every real row.
+  kind: z.enum(['transfer', 'payment']),
+  merchantName: z.string().nullable(),
   createdAt: z.string().datetime(),
   confirmedAt: z.string().datetime().nullable(),
 });

@@ -28,6 +28,8 @@ function makeRow(overrides: Partial<TransferRow> = {}): TransferRow {
     status: "CONFIRMED",
     signature: "sig-1",
     memo: null,
+    kind: "transfer",
+    merchantName: null,
     createdAt: "2026-07-02T10:00:00.000Z",
     confirmedAt: "2026-07-02T10:00:05.000Z",
     ...overrides,
@@ -39,6 +41,8 @@ function makeEntry(overrides: Partial<ActivityEntry> = {}): ActivityEntry {
     id: "e1",
     direction: "send",
     status: "confirmed",
+    kind: "transfer",
+    merchantName: null,
     mint: USDC_MINT,
     amountRaw: "1000000",
     decimals: 6,
@@ -124,6 +128,21 @@ describe("mapTransferRowToActivityEntry", () => {
     expect(entry.amountRaw).toBe("42");
     expect(entry.memo).toBe("lunch");
   });
+
+  it("maps a payment row to kind=payment, carrying the merchant name through", () => {
+    const entry = mapTransferRowToActivityEntry(
+      makeRow({ kind: "payment", merchantName: "Cafe Neo" }),
+      ctx
+    );
+    expect(entry.kind).toBe("payment");
+    expect(entry.merchantName).toBe("Cafe Neo");
+  });
+
+  it("maps a plain transfer row to kind=transfer with a null merchant name", () => {
+    const entry = mapTransferRowToActivityEntry(makeRow(), ctx);
+    expect(entry.kind).toBe("transfer");
+    expect(entry.merchantName).toBeNull();
+  });
 });
 
 describe("groupIntoSections", () => {
@@ -179,6 +198,18 @@ describe("statusLabel", () => {
     expect(
       statusLabel(makeEntry({ status: "confirmed", direction: "receive" }))
     ).toBe("Received");
+  });
+
+  it("labels a confirmed payment as Paid", () => {
+    expect(
+      statusLabel(makeEntry({ kind: "payment", status: "confirmed" }))
+    ).toBe("Paid");
+  });
+
+  it("labels a pending payment as Paying…", () => {
+    expect(statusLabel(makeEntry({ kind: "payment", status: "pending" }))).toBe(
+      "Paying…"
+    );
   });
 });
 
