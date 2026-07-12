@@ -2,10 +2,13 @@ export {
   CHECKOUT_PROTOCOL_VERSION,
   CHECKOUT_ORIGIN,
   CheckoutMessageType,
-  CheckoutStatusSchema,
-  CheckoutEnvelopeSchema,
   buildResult,
   buildCancel,
+} from './build';
+
+export {
+  CheckoutStatusSchema,
+  CheckoutEnvelopeSchema,
   parseCheckoutMessage,
 } from './envelope';
 
