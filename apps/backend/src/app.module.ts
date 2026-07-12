@@ -19,6 +19,7 @@ import { SessionModule } from './session/session.module';
 import { SettlementModule } from './settlement/settlement.module';
 import { FxModule } from './fx/fx.module';
 import { MerchantModule } from './merchant/merchant.module';
+import { CheckoutModule } from './checkout/checkout.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { MerchantModule } from './merchant/merchant.module';
     SettlementModule,
     FxModule,
     MerchantModule,
+    CheckoutModule,
   ],
   controllers: [AppController],
   providers: [AppService],

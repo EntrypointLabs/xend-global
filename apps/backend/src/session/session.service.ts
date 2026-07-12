@@ -167,6 +167,38 @@ export class SessionService implements OnModuleInit {
     return session;
   }
 
+  /**
+   * Non-destructive recognition check for the checkout summary. Reads the same
+   * validity conditions as {@link validate} (hash lookup, revocation, absolute
+   * expiry, sliding window, merchant match) but writes NOTHING: no
+   * last_used_at update, no store.touch, no rotation. Recognition must not
+   * refresh the sliding window. Returns false on any failure or absent token.
+   */
+  async peek(rawToken: string, merchantId: string): Promise<boolean> {
+    const [session] = await this.db.client
+      .select()
+      .from(sessions)
+      .where(eq(sessions.tokenHash, this.hash(rawToken)))
+      .limit(1);
+
+    const now = Date.now();
+    if (
+      !session ||
+      session.revokedAt ||
+      session.expiresAt.getTime() <= now ||
+      session.merchantId !== merchantId
+    ) {
+      return false;
+    }
+
+    const active = await this.store.isActive(session.id);
+    if (!active) {
+      const slidingMs = this.slidingSeconds * 1000;
+      if (session.lastUsedAt.getTime() < now - slidingMs) return false;
+    }
+    return true;
+  }
+
   async rotate(sessionId: string): Promise<string> {
     const token = this.mintToken();
     const [updated] = await this.db.client
