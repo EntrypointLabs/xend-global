@@ -10,7 +10,7 @@ import { SessionController } from './session.controller';
 /**
  * Merchant-scoped Sessions. RATE_COUNTER comes from the shared CountersModule,
  * NOT from the capability engine, so this module never imports it and the
- * module graph stays acyclic with no forwardRef.
+ * module graph stays acyclic with no circular-dependency workaround.
  */
 @Module({
   imports: [RedisModule, EventsModule, CountersModule],

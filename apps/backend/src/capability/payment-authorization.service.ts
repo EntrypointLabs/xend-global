@@ -9,6 +9,7 @@ import {
   IntentExpiredError,
   IntentStateConflictError,
 } from '../payment/payment.errors';
+import { SessionService } from '../session/session.service';
 import { CapacityService } from './capacity.service';
 
 /** Postgres unique-violation SQLSTATE, surfaced by node-postgres. */
@@ -17,24 +18,31 @@ function pgErrorCode(err: unknown): string | undefined {
   return e?.code ?? e?.cause?.code;
 }
 
+/**
+ * Exactly one of consumerId / sessionToken must be provided: consumerId for
+ * the first-payment ceremony, sessionToken for the one-tap repeat path.
+ */
 export interface AuthorizeParams {
   intentId: string;
-  consumerId: string;
+  consumerId?: string;
+  sessionToken?: string;
 }
 
 export interface AuthorizeResult {
   intentId: string;
   attemptId: string;
   status: 'authorized';
+  /** Present only on the session path; the fresh token after rotate-on-use. */
+  rotatedSessionToken?: string;
 }
 
 /**
  * The keystone authorization path: capacity check, conditional
  * created -> authorized transition, guarded attempt insert, counter
- * recording, and the payment.authorized event, in that order. Settlement
- * (attempt -> settling/succeeded/failed, message pinning, signature-first
- * retry) is deliberately not here; the attempt row's message and signature
- * stay null until the settlement leg fills them.
+ * recording, and the payment.authorized event, in that order. A valid Session
+ * lets a repeat Payment skip the ceremony, but every Payment still passes the
+ * live capacity check; the session's own velocity caps gate first and the
+ * token rotates only after the authorization succeeds. Settlement is not here.
  */
 @Injectable()
 export class PaymentAuthorizationService {
@@ -44,11 +52,20 @@ export class PaymentAuthorizationService {
     private readonly db: DbService,
     private readonly capacity: CapacityService,
     private readonly intents: PaymentIntentService,
+    private readonly sessions: SessionService,
     @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
   ) {}
 
   async authorize(params: AuthorizeParams): Promise<AuthorizeResult> {
-    const { intentId, consumerId } = params;
+    const { intentId, sessionToken } = params;
+    if (Boolean(params.consumerId) === Boolean(sessionToken)) {
+      // A programmer error, not a domain condition: upstream callers control
+      // which path they take.
+      throw new Error(
+        'authorize requires exactly one of consumerId or sessionToken',
+      );
+    }
+
     const intent = await this.intents.findById(intentId);
 
     if (intent.status !== 'created') {
@@ -65,6 +82,22 @@ export class PaymentAuthorizationService {
         correlationId: intentId,
       });
       throw new IntentExpiredError(`intent ${intentId} expired`);
+    }
+
+    // Session path: validate, then gate on the session's own velocity caps
+    // BEFORE capacity, so the narrower gate runs first and a velocity
+    // rejection never consumes tier headroom.
+    let session: { id: string; consumerId: string } | undefined;
+    let consumerId: string;
+    if (sessionToken) {
+      session = await this.sessions.validate(sessionToken, intent.merchantId);
+      consumerId = session.consumerId;
+      await this.sessions.checkAndRecordVelocity(
+        session.id,
+        intent.usdcSettlementRaw,
+      );
+    } else {
+      consumerId = params.consumerId as string;
     }
 
     // Capacity BEFORE any write, so a rejected Payment leaves the intent
@@ -100,6 +133,13 @@ export class PaymentAuthorizationService {
       intent.usdcSettlementRaw,
     );
 
+    // Rotate only after the authorization has succeeded: a failed Payment must
+    // not invalidate the Consumer's working token.
+    let rotatedSessionToken: string | undefined;
+    if (session) {
+      rotatedSessionToken = await this.sessions.rotate(session.id);
+    }
+
     await this.events.publish({
       topic: 'payment.authorized',
       key: intentId,
@@ -117,6 +157,11 @@ export class PaymentAuthorizationService {
       `payment.authorize intent_id=${intentId} consumer_id=${consumerId} amount_raw=${intent.usdcSettlementRaw} attempt_id=${attemptId}`,
     );
 
-    return { intentId, attemptId, status: 'authorized' };
+    return {
+      intentId,
+      attemptId,
+      status: 'authorized',
+      ...(rotatedSessionToken ? { rotatedSessionToken } : {}),
+    };
   }
 }
