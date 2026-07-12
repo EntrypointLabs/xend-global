@@ -106,6 +106,19 @@ export const refundStatusEnum = pgEnum('refund_status', [
   'failed',
 ]);
 
+// Off-ramp settlement lifecycle (Phase 8). A settlement row moves
+// pending -> swept -> converting -> paid (fiat landed) | failed; a reverse
+// (refund) row moves reversing -> reversed | failed.
+export const offrampStatusEnum = pgEnum('offramp_status', [
+  'pending',
+  'swept',
+  'converting',
+  'paid',
+  'failed',
+  'reversing',
+  'reversed',
+]);
+
 // ---------- Tables ----------
 
 export const users = pgTable('users', {
@@ -607,6 +620,52 @@ export const refunds = pgTable(
   },
   (table) => ({
     paymentIdx: index('refunds_payment_idx').on(table.paymentId),
+  }),
+);
+
+/**
+ * settlement_offramps — the settlement adapter's own off-ramp lifecycle read
+ * model (Phase 8). The provider column records which adapter owns the row (the
+ * settlement provider layer has no off-ramp table to write through, so this
+ * stays local to the adapter). `signature` is the Consumer->endpoint
+ * settlement tx signature and the money-safety idempotency key for a
+ * 'settlement' row (partial-unique index below) so the convert-payout cannot
+ * double-fire. `provider_ref` is the webhook correlation handle. Amounts,
+ * rates, and the per-settlement FX spread (zero at pilot) are text — never
+ * float columns.
+ */
+export const settlementOfframps = pgTable(
+  'settlement_offramps',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => `so_${createId()}`),
+    merchantId: text('merchant_id')
+      .notNull()
+      .references(() => merchants.id),
+    paymentId: text('payment_id').references((): AnyPgColumn => payments.id),
+    provider: text('provider').notNull(),
+    signature: text('signature'),
+    providerRef: text('provider_ref').unique(),
+    direction: text('direction').notNull(),
+    usdcAmountRaw: text('usdc_amount_raw').notNull(),
+    ngnAmountMinor: text('ngn_amount_minor'),
+    fxRate: text('fx_rate'),
+    fxSpreadRaw: text('fx_spread_raw'),
+    status: offrampStatusEnum('status').notNull().default('pending'),
+    failureReason: text('failure_reason'),
+    completedAt: timestamp('completed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    merchantIdx: index('settlement_offramps_merchant_idx').on(table.merchantId),
+    // Money-safety: at most one settlement row per signature (partial unique
+    // per the transfers_pending_idx precedent) so handleIncomingSettlement is
+    // idempotent per signature and the convert-payout fires once.
+    settlementSignatureIdx: uniqueIndex('settlement_offramps_signature_idx')
+      .on(table.signature)
+      .where(sql`direction = 'settlement'`),
   }),
 );
 
