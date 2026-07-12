@@ -16,3 +16,24 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx turbo run lint check-types test
+
+  sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx turbo run build --filter=@xend/checkout-core --filter=@xend/checkout-react
+      - name: Enforce checkout-core IIFE size budget (< 15 KB gz)
+        run: node scripts/check-sdk-size.mjs
+      - name: publint
+        run: |
+          npx -y publint packages/checkout-core
+          npx -y publint packages/checkout-react
+      - name: Are the types wrong?
+        run: |
+          npx -y @arethetypeswrong/cli --pack packages/checkout-core --profile node16
+          npx -y @arethetypeswrong/cli --pack packages/checkout-react --profile node16
