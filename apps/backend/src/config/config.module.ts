@@ -101,6 +101,38 @@ import * as Joi from 'joi';
         // not a browser and is unaffected. pay.xend.global is the Checkout
         // surface; localhost entries cover local web dev.
         CORS_ALLOWED_ORIGINS: Joi.string().default('https://pay.xend.global'),
+
+        // Settlement provider layer (ADR 0015). Active cluster for the
+        // settlement money-moving code; devnet backs test mode end-to-end.
+        SOLANA_CLUSTER: Joi.string()
+          .valid('devnet', 'mainnet')
+          .default('devnet'),
+        // base58 Ed25519 secret key. Owns the direct-USDC pilot settlement
+        // token account, signs refunds (reverse()) out of it, and is the
+        // pilot attribution root. Sensitive: follows the same custody order
+        // as the relayer fee-payer key (KMS/Turnkey signer > cloud-KMS-wrapped
+        // key > raw env at pilot floor). Never logged. The Blockradar master
+        // wallet + payout credentials are a Phase 8 concern, not added here.
+        SETTLEMENT_AUTHORITY_SECRET_KEY: Joi.string().required(),
+        // Phase 3 relayer deployable base URL (internal network only).
+        RELAYER_URL: Joi.string().uri().required(),
+        // MUST equal the relayer's RELAYER_INTERNAL_AUTH_SECRET (shared secret
+        // on X-Relayer-Auth for /internal/*).
+        RELAYER_INTERNAL_AUTH_SECRET: Joi.string().required(),
+        // The relayer fee-payer pubkey (tx payerKey). Verified against the
+        // relayer's GET /health at the phase checkpoint; drift silently breaks
+        // every settlement.
+        RELAYER_FEE_PAYER_ADDRESS: Joi.string().required(),
+        // Active confirmation poll cadence and ceiling (hot path). The poll
+        // races the Helius webhook; the 30s sweep is the tail safety net.
+        SETTLEMENT_CONFIRM_POLL_INTERVAL_MS: Joi.number()
+          .integer()
+          .min(100)
+          .default(500),
+        SETTLEMENT_CONFIRM_BUDGET_MS: Joi.number()
+          .integer()
+          .min(1000)
+          .default(8000),
       }),
     }),
   ],
