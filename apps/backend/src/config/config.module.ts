@@ -181,6 +181,11 @@ import * as Joi from 'joi';
         // false (default) in every real environment: it disables the SSRF
         // private-range guard.
         WEBHOOK_ALLOW_PRIVATE_URLS: Joi.boolean().default(false),
+
+        // Internal ops console (read-only, pilot). Unset = console disabled:
+        // the guard denies every request when either value is missing.
+        CONSOLE_USER: Joi.string().optional().allow(''),
+        CONSOLE_PASSWORD: Joi.string().optional().allow(''),
       }),
     }),
   ],

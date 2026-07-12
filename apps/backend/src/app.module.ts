@@ -21,6 +21,7 @@ import { FxModule } from './fx/fx.module';
 import { MerchantModule } from './merchant/merchant.module';
 import { CheckoutModule } from './checkout/checkout.module';
 import { WebhookModule } from './webhook/webhook.module';
+import { ConsoleModule } from './console/console.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { WebhookModule } from './webhook/webhook.module';
     MerchantModule,
     CheckoutModule,
     WebhookModule,
+    ConsoleModule,
   ],
   controllers: [AppController],
   providers: [AppService],

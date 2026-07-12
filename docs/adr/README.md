@@ -68,6 +68,7 @@ You do **not** need an ADR for routine choices like file naming, single-feature 
 | [0018](./0018-sdk-publishing.md)                    | Pay with Xend SDK publishing, MIT licensing, and the fulfillment-hostile result contract            | Accepted | SDK / Packaging          |
 | [0020](./0020-solana-sdk-coexistence.md)            | Two Solana toolchains: @solana/kit for new money-moving code, web3.js retained                      | Accepted | Backend / Solana         |
 | [0021](./0021-web-styling.md)                       | Web styling: Tailwind v4 CSS-first for web surfaces, NativeWind stays mobile-only                   | Accepted | Frontend / Styling       |
+| [0022](./0022-internal-console-auth-boundary.md)    | Internal tool auth boundary: server-rendered console behind a Basic Auth guard                      | Accepted | Backend / Security       |
 | [0023](./0023-fx-offramp-quote.md)                  | NGN pricing via an executable off-ramp quote behind an owned FX provider seam                       | Accepted | Backend / Pay            |
 | [0024](./0024-privy-adoption.md)                    | Privy adopted as the consumer-side signing vendor                                                   | Accepted | Backend / Wallet         |
 
