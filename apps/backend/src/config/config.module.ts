@@ -47,6 +47,24 @@ import * as Joi from 'joi';
         // set server-side.
         EXPO_PUBLIC_USDT_MINT_ADDRESS: Joi.string().optional().allow(''),
         EXPO_PUBLIC_USDC_MINT_ADDRESS: Joi.string().optional().allow(''),
+
+        // Redis: Session and rate-limit state (managed in cloud, docker-compose
+        // locally). rediss:// for TLS-terminated managed instances.
+        REDIS_URL: Joi.string()
+          .uri({ scheme: ['redis', 'rediss'] })
+          .required(),
+
+        // Kafka: payment lifecycle events (see ADR 0012 for the topic catalog).
+        // KAFKA_BROKERS is a comma-separated host:port list. SASL vars stay
+        // blank for local docker-compose; managed brokers require them.
+        KAFKA_BROKERS: Joi.string().required(),
+        KAFKA_CLIENT_ID: Joi.string().default('xend-backend'),
+        KAFKA_SSL: Joi.boolean().default(false),
+        KAFKA_SASL_MECHANISM: Joi.string()
+          .valid('plain', 'scram-sha-256', 'scram-sha-512')
+          .default('plain'),
+        KAFKA_SASL_USERNAME: Joi.string().optional().allow(''),
+        KAFKA_SASL_PASSWORD: Joi.string().optional().allow(''),
       }),
     }),
   ],

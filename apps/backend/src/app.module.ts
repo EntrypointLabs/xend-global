@@ -10,6 +10,8 @@ import { SolanaModule } from './solana/solana.module';
 import { KycModule } from './kyc/kyc.module';
 import { TransferModule } from './transfer/transfer.module';
 import { ActivityModule } from './activity/activity.module';
+import { RedisModule } from './redis/redis.module';
+import { EventsModule } from './events/events.module';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { ActivityModule } from './activity/activity.module';
     KycModule,
     TransferModule,
     ActivityModule,
+    RedisModule,
+    EventsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
