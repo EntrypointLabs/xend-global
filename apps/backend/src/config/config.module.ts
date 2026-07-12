@@ -133,6 +133,54 @@ import * as Joi from 'joi';
           .integer()
           .min(1000)
           .default(8000),
+
+        // Internal ops surface (webhook endpoint registration, manual
+        // redelivery). Not a merchant credential; not the consumer JWT.
+        INTERNAL_API_SECRET: Joi.string().required(),
+
+        // FX: off-ramp partner executable quote, pinned at intent creation.
+        // FX_PARTNER_QUOTE_URL absent -> pilot uses FX_PILOT_STATIC_RATE
+        // (devnet). Staleness cap: reject creation if no fresh-or-cached
+        // quote inside the window rather than misprice.
+        FX_PARTNER_QUOTE_URL: Joi.string().uri().optional().allow(''),
+        FX_PILOT_STATIC_RATE: Joi.string()
+          .pattern(/^\d+(\.\d+)?$/)
+          .default('1600.00'),
+        FX_RATE_DECIMALS: Joi.number().integer().min(2).max(12).default(6),
+        FX_STALENESS_CAP_SECONDS: Joi.number().integer().min(1).default(900),
+        FX_QUOTE_TIMEOUT_MS: Joi.number().integer().min(200).default(3000),
+
+        // Checkout HTTP surface: session cookie + signed return URLs
+        // (redirect-completion mode).
+        CHECKOUT_RETURN_URL_SECRET: Joi.string().required(),
+        CHECKOUT_RETURN_URL_TTL_SECONDS: Joi.number()
+          .integer()
+          .min(60)
+          .default(900),
+        CHECKOUT_SESSION_COOKIE: Joi.string().default('xend_checkout_session'),
+
+        // Outbound webhooks.
+        WEBHOOK_DELIVERY_TIMEOUT_MS: Joi.number()
+          .integer()
+          .min(1000)
+          .default(10000),
+        WEBHOOK_MAX_ATTEMPTS: Joi.number().integer().min(1).default(12),
+        WEBHOOK_RETRY_BASE_SECONDS: Joi.number().integer().min(1).default(30),
+        WEBHOOK_RETRY_MAX_SECONDS: Joi.number().integer().min(1).default(21600),
+        WEBHOOK_REPLAY_TOLERANCE_SECONDS: Joi.number()
+          .integer()
+          .min(30)
+          .default(300),
+        WEBHOOK_RESPONSE_BODY_MAX: Joi.number()
+          .integer()
+          .min(256)
+          .default(2048),
+        WEBHOOK_CONSUMER_GROUP: Joi.string().default('webhook-dispatcher'),
+
+        // Test-only escape hatch so E2E can deliver to 127.0.0.1. MUST be
+        // false (default) in every real environment: it disables the SSRF
+        // private-range guard.
+        WEBHOOK_ALLOW_PRIVATE_URLS: Joi.boolean().default(false),
       }),
     }),
   ],

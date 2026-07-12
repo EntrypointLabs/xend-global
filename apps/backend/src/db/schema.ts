@@ -80,6 +80,32 @@ export const settlementProviderEnum = pgEnum('settlement_provider', [
   'blockradar',
 ]);
 
+// Discriminates how a webhook delivery was materialized: 'event' rows are
+// created automatically from a consumed Kafka lifecycle event (at most one
+// per endpoint+event, so at-least-once re-consume is idempotent), 'manual'
+// rows are operator redeliveries (unbounded, exempt from the auto index).
+export const webhookDeliveryOriginEnum = pgEnum('webhook_delivery_origin', [
+  'event',
+  'manual',
+]);
+
+// Merchant KYB verification state. Gates LIVE-mode key issuance only; test
+// keys are never gated (KYB never blocks developer experience, only real
+// money). Stamped by the manual ops action after registration, beneficial
+// ownership, and sanctions checks are done off-system.
+export const kybStatusEnum = pgEnum('kyb_status', [
+  'pending',
+  'verified',
+  'rejected',
+]);
+
+export const refundStatusEnum = pgEnum('refund_status', [
+  'pending',
+  'processing',
+  'succeeded',
+  'failed',
+]);
+
 // ---------- Tables ----------
 
 export const users = pgTable('users', {
@@ -219,6 +245,16 @@ export const merchants = pgTable('merchants', {
   status: merchantStatusEnum('status').notNull().default('active'),
   intentTtlMinutes: integer('intent_ttl_minutes'),
   allowedOrigins: text('allowed_origins').array(),
+  // KYB gates LIVE-mode key issuance only; test keys are never gated. Stamped
+  // by the manual stage-2 ops action after off-system checks complete.
+  kybStatus: kybStatusEnum('kyb_status').notNull().default('pending'),
+  kybVerifiedAt: timestamp('kyb_verified_at'),
+  // Per-Merchant revenue fields, both zero at pilot. flat_fee_bps is a flat
+  // basis-point fee; fx_spread_bps is the spread booked on the naira
+  // conversion at settlement. Whether both stack on one naira Payment is an
+  // open commercial call, so both are carried as first-class fields.
+  flatFeeBps: integer('flat_fee_bps').notNull().default(0),
+  fxSpreadBps: integer('fx_spread_bps').notNull().default(0),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -276,6 +312,13 @@ export const paymentIntents = pgTable(
     fxQuotedAt: timestamp('fx_quoted_at'),
     merchantReference: text('merchant_reference'),
     idempotencyKey: text('idempotency_key'),
+    // The cluster/mode the intent was created under; devnet-safe default.
+    mode: apiKeyModeEnum('mode').notNull().default('test'),
+    // Merchant-supplied redirect targets, SSRF-validated at creation and
+    // consumed by redirect-completion mode (the signing leg is the checkout
+    // surface's; these are the stored base URLs).
+    returnUrl: text('return_url'),
+    cancelUrl: text('cancel_url'),
     expiresAt: timestamp('expires_at').notNull(),
     authorizedAt: timestamp('authorized_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -421,6 +464,9 @@ export const webhookEndpoints = pgTable(
     secretSecondary: text('secret_secondary'),
     enabled: boolean('enabled').notNull().default(true),
     eventTypes: text('event_types').array(),
+    // An endpoint delivers only events created under its own mode, so a test
+    // endpoint never receives live events and vice versa.
+    mode: apiKeyModeEnum('mode').notNull().default('test'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -453,12 +499,19 @@ export const webhookDeliveries = pgTable(
     responseBody: text('response_body'),
     durationMs: integer('duration_ms'),
     status: webhookDeliveryStatusEnum('status').notNull().default('pending'),
+    origin: webhookDeliveryOriginEnum('origin').notNull().default('event'),
     nextRetryAt: timestamp('next_retry_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
     endpointIdx: index('webhook_deliveries_endpoint_idx').on(table.endpointId),
     eventIdx: index('webhook_deliveries_event_idx').on(table.eventId),
+    // At most one automatic delivery per (endpoint, event); Kafka is
+    // at-least-once, so re-consuming the same lifecycle event must not
+    // enqueue a second delivery. Manual redeliveries are exempt.
+    autoDeliveryIdx: uniqueIndex('webhook_deliveries_auto_idx')
+      .on(table.endpointId, table.eventId)
+      .where(sql`origin = 'event'`),
   }),
 );
 
@@ -492,6 +545,70 @@ export const settlementAccounts = pgTable('settlement_accounts', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+/**
+ * idempotency_keys — Stripe-semantics response snapshot for merchant-facing
+ * writes. A replay of the same (merchant, key) with the same request body
+ * returns the byte-identical stored response and never re-runs the write; a
+ * reuse of the same key with a different body is a 409. request_hash is the
+ * SHA-256 hex of the canonical request; response_body is the exact JSON
+ * returned, replayed verbatim.
+ */
+export const idempotencyKeys = pgTable(
+  'idempotency_keys',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    merchantId: text('merchant_id')
+      .notNull()
+      .references(() => merchants.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    responseStatus: integer('response_status').notNull(),
+    responseBody: text('response_body').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    merchantKeyIdx: uniqueIndex('idempotency_keys_merchant_key_idx').on(
+      table.merchantId,
+      table.idempotencyKey,
+    ),
+  }),
+);
+
+/**
+ * refunds — an ops-initiated, partial-capable reversal of a succeeded
+ * Payment. The reversal runs through Phase 4's SettlementProvider.reverse()
+ * at the provider's live rate at refund time; provider_reference is the
+ * reverse() signature. The payment<->refund linkage is preserved via
+ * payment_id, and the durable row is written before the provider call so a
+ * crash never loses a refund in flight.
+ */
+export const refunds = pgTable(
+  'refunds',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => `rf_${createId()}`),
+    paymentId: text('payment_id')
+      .notNull()
+      .references(() => payments.id),
+    merchantId: text('merchant_id')
+      .notNull()
+      .references(() => merchants.id),
+    status: refundStatusEnum('status').notNull().default('pending'),
+    amountUsdcRaw: text('amount_usdc_raw').notNull(),
+    reason: text('reason'),
+    providerReference: text('provider_reference'),
+    idempotencyKey: text('idempotency_key'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    paymentIdx: index('refunds_payment_idx').on(table.paymentId),
+  }),
+);
 
 // ---------- Relations ----------
 
@@ -601,3 +718,14 @@ export const webhookEndpointsRelations = relations(
     deliveries: many(webhookDeliveries),
   }),
 );
+
+export const refundsRelations = relations(refunds, ({ one }) => ({
+  payment: one(payments, {
+    fields: [refunds.paymentId],
+    references: [payments.id],
+  }),
+  merchant: one(merchants, {
+    fields: [refunds.merchantId],
+    references: [merchants.id],
+  }),
+}));

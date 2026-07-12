@@ -50,6 +50,13 @@
       "when": 1784217600000,
       "tag": "0006_settlement_activity_linkage",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784304000000,
+      "tag": "0007_merchant_api_webhooks",
+      "breakpoints": true
     }
   ]
 }
