@@ -224,6 +224,20 @@ describe('WebhookDispatcherService.handle', () => {
     await expect(svc.handle(event())).rejects.toThrow(/not yet committed/);
   });
 
+  it('materializes a failed event without a payments row (failure writes none)', async () => {
+    const db = makeDb({
+      intent: intentRow({ status: 'failed' }),
+      payment: null,
+      account: accountRow(),
+      endpoints: [endpointRow()],
+    });
+    const delivery = makeDelivery({ id: 'wd1' });
+    const svc = new WebhookDispatcherService(consumer, db, delivery, config);
+    await svc.handle(event({ topic: 'payment.failed' }));
+    expect(delivery.createDelivery).toHaveBeenCalledTimes(1);
+    expect(delivery.attempt).toHaveBeenCalledTimes(1);
+  });
+
   it('materializes an expired event without requiring a payments row', async () => {
     const db = makeDb({
       intent: intentRow({ status: 'expired' }),

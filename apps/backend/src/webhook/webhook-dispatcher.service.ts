@@ -73,14 +73,16 @@ export class WebhookDispatcherService implements OnModuleInit {
         .from(payments)
         .where(eq(payments.intentId, intentId))
         .limit(1);
-      // Phase 4 commits the payments row before publishing; a throw here
-      // covers the rare race by leaving the offset uncommitted for redelivery.
-      if (!row) {
+      payment = row ?? null;
+      // Phase 4 writes the payments row only on settlement success and commits
+      // it before publishing payment.succeeded, so its absence there is the
+      // rare race: throw to leave the offset uncommitted for redelivery. A
+      // failed settlement writes no payments row, so absence is expected there.
+      if (type === 'payment.succeeded' && !payment) {
         throw new Error(
           `payments row for intent ${intentId} not yet committed`,
         );
       }
-      payment = row;
     }
 
     const eventId = buildEventId(type, intentId);
