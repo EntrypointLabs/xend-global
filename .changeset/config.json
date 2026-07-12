@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": [
+    "@xend/ui",
+    "@xend/eslint-config",
+    "@xend/typescript-config",
+    "@xend/checkout-protocol"
+  ]
+}

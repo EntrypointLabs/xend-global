@@ -1,0 +1,59 @@
+{
+  "name": "@xend/checkout-core",
+  "version": "0.0.0",
+  "description": "Pay with Xend checkout button and result relay. Framework-agnostic, zero runtime dependencies.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./webhook": {
+      "import": {
+        "types": "./dist/webhook/verify.d.mts",
+        "default": "./dist/webhook/verify.mjs"
+      },
+      "require": {
+        "types": "./dist/webhook/verify.d.cts",
+        "default": "./dist/webhook/verify.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "unpkg": "./dist/xend-checkout.iife.js",
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run",
+    "size": "node ../../scripts/check-sdk-size.mjs"
+  },
+  "devDependencies": {
+    "@xend/checkout-protocol": "*",
+    "@xend/eslint-config": "*",
+    "@xend/typescript-config": "*",
+    "@types/node": "^22.15.3",
+    "eslint": "^9.39.1",
+    "tsdown": "^0.22.5",
+    "typescript": "5.9.2",
+    "vitest": "^4.1.10"
+  }
+}
