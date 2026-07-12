@@ -60,6 +60,31 @@ export const smartAccounts = pgTable('smart_accounts', {
 });
 
 /**
+ * Mirrored WebAuthn credential metadata, captured at enrollment and on
+ * login. Vendor hedge: if the wallet vendor is unavailable or swapped,
+ * the credential inventory survives. public_key is nullable because the
+ * server-side vendor SDK omits it; the client supplies it at enrollment.
+ */
+export const passkeyCredentials = pgTable(
+  'passkey_credentials',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    credentialId: text('credential_id').notNull().unique(),
+    publicKey: text('public_key'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index('passkey_credentials_user_idx').on(table.userId),
+  }),
+);
+
+/**
  * transfers:
  *   - intent_id: idempotency key returned by /transfers/prepare and
  *     replayed by /transfers/submit. UNIQUE but nullable.
@@ -121,12 +146,23 @@ export const tailerState = pgTable('tailer_state', {
 
 // ---------- Relations ----------
 
-export const usersRelations = relations(users, ({ one }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
   smartAccount: one(smartAccounts, {
     fields: [users.id],
     references: [smartAccounts.userId],
   }),
+  passkeyCredentials: many(passkeyCredentials),
 }));
+
+export const passkeyCredentialsRelations = relations(
+  passkeyCredentials,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [passkeyCredentials.userId],
+      references: [users.id],
+    }),
+  }),
+);
 
 export const smartAccountsRelations = relations(
   smartAccounts,

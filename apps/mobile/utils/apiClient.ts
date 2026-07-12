@@ -24,6 +24,22 @@ export const ExchangeResponseSchema = z.object({
 });
 export type ExchangeResponse = z.infer<typeof ExchangeResponseSchema>;
 
+// Mirrors `MirrorPasskeyCredentialSchema` in apps/backend/src/auth/dtos.ts.
+export const MirrorPasskeyCredentialRequestSchema = z.object({
+  credentialId: z.string().min(1).max(1024),
+  publicKey: z.string().min(1).max(4096).optional(),
+});
+export type MirrorPasskeyCredentialRequest = z.infer<
+  typeof MirrorPasskeyCredentialRequestSchema
+>;
+
+export const MirrorPasskeyCredentialResponseSchema = z.object({
+  mirrored: z.boolean(),
+});
+export type MirrorPasskeyCredentialResponse = z.infer<
+  typeof MirrorPasskeyCredentialResponseSchema
+>;
+
 // Mirrors apps/backend/src/wallets/dtos.ts.
 export const WalletResponseSchema = z.object({
   walletAddress: z.string(),
@@ -234,6 +250,21 @@ class BackendClient {
       body: JSON.stringify(ExchangeRequestSchema.parse(req)),
     });
     return ExchangeResponseSchema.parse(raw);
+  }
+
+  /** POST /auth/passkey-credentials — mirror a freshly enrolled passkey
+   *  credential (credentialId + optional publicKey) for the authenticated
+   *  Consumer. Called fire-and-forget from the enrollment hook; a failure
+   *  must never block or surface in enrollment. */
+  async mirrorPasskeyCredential(
+    req: MirrorPasskeyCredentialRequest
+  ): Promise<MirrorPasskeyCredentialResponse> {
+    const raw = await this.request<unknown>("/auth/passkey-credentials", {
+      method: "POST",
+      body: JSON.stringify(MirrorPasskeyCredentialRequestSchema.parse(req)),
+      auth: true,
+    });
+    return MirrorPasskeyCredentialResponseSchema.parse(raw);
   }
 
   /** GET /wallet/me — returns the authenticated user's Privy embedded

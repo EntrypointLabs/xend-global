@@ -19,6 +19,12 @@ import {
   PrivyUserShapeError,
 } from './privy.errors';
 
+/** Passkey member of Privy's linkedAccounts union (not exported by name). */
+type PasskeyLinkedAccount = Extract<
+  User['linkedAccounts'][number],
+  { type: 'passkey' }
+>;
+
 /**
  * Concrete WalletProvider backed by `@privy-io/server-auth`.
  *
@@ -153,10 +159,19 @@ export class PrivyAdapter implements WalletProvider, OnModuleInit {
     const embedded = solanaWallets.find((w) => w.walletClientType === 'privy');
     const chosen = embedded ?? solanaWallets[0];
 
+    // Mirror any linked passkey credentials. @privy-io/server-auth's
+    // PasskeyAccount exposes credentialId only (no public_key), so this
+    // path captures the credential ID; the client backfills the public
+    // key at enrollment.
+    const passkeys = user.linkedAccounts
+      .filter((acct): acct is PasskeyLinkedAccount => acct.type === 'passkey')
+      .map((acct) => ({ credentialId: acct.credentialId }));
+
     return {
       providerUserId: user.id,
       email,
       walletAddress: chosen.address,
+      passkeys,
     };
   }
 

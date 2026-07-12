@@ -15,10 +15,18 @@ export type ProviderUserId = string;
 /** DI token for the active WalletProvider binding. */
 export const WALLET_PROVIDER = Symbol('WalletProvider');
 
+export interface PasskeyCredentialMetadata {
+  credentialId: string;
+  /** Absent via @privy-io/server-auth; the SDK drops public_key. */
+  publicKey?: string;
+}
+
 export interface WalletProviderUser {
   providerUserId: ProviderUserId;
   email: string;
   walletAddress: WalletAddress;
+  /** Mirrored WebAuthn credentials; empty array when none are linked. */
+  passkeys: PasskeyCredentialMetadata[];
 }
 
 export interface SignatureRequest {
