@@ -1,0 +1,185 @@
+import { createHmac } from "node:crypto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { verifyWebhook, WebhookVerificationError } from "../webhook/verify";
+import fixture from "./fixtures/phase6-webhook.json";
+
+const SECRET = "whsec_test_5f3a9c2b7e1d4680";
+const BODY = JSON.stringify({
+  id: "evt_1",
+  type: "payment.succeeded",
+  data: { reference: "pi_1" },
+});
+const NOW = 1_752_000_500;
+
+function v1(body: string, secret: string, t: number): string {
+  return createHmac("sha256", secret).update(`${t}.${body}`).digest("hex");
+}
+
+function header(body: string, secret: string, t: number): string {
+  return `t=${t},v1=${v1(body, secret, t)}`;
+}
+
+function expectCode(fn: () => unknown, code: string): void {
+  try {
+    fn();
+    throw new Error("expected verifyWebhook to throw");
+  } catch (err) {
+    expect(err).toBeInstanceOf(WebhookVerificationError);
+    expect((err as WebhookVerificationError).code).toBe(code);
+  }
+}
+
+describe("verifyWebhook", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW * 1000);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns the parsed payload for a valid signature", () => {
+    const result = verifyWebhook(
+      BODY,
+      { "xend-signature": header(BODY, SECRET, NOW) },
+      SECRET,
+    );
+    expect(result).toEqual(JSON.parse(BODY));
+  });
+
+  it("reads the signature header case-insensitively and accepts a Buffer body", () => {
+    const result = verifyWebhook(
+      Buffer.from(BODY, "utf8"),
+      { "Xend-Signature": header(BODY, SECRET, NOW) },
+      SECRET,
+    );
+    expect(result).toEqual(JSON.parse(BODY));
+  });
+
+  it("rejects a tampered body", () => {
+    const h = header(BODY, SECRET, NOW);
+    expectCode(
+      () => verifyWebhook(BODY + " ", { "xend-signature": h }, SECRET),
+      "INVALID_SIGNATURE",
+    );
+  });
+
+  it("rejects a wrong secret", () => {
+    expectCode(
+      () =>
+        verifyWebhook(
+          BODY,
+          { "xend-signature": header(BODY, SECRET, NOW) },
+          "whsec_wrong",
+        ),
+      "INVALID_SIGNATURE",
+    );
+  });
+
+  it("rejects a missing header", () => {
+    expectCode(() => verifyWebhook(BODY, {}, SECRET), "MISSING_HEADERS");
+  });
+
+  it("rejects a malformed header (no t=)", () => {
+    expectCode(
+      () =>
+        verifyWebhook(
+          BODY,
+          { "xend-signature": `v1=${v1(BODY, SECRET, NOW)}` },
+          SECRET,
+        ),
+      "MALFORMED_HEADER",
+    );
+  });
+
+  it("rejects a malformed header (no v1=)", () => {
+    expectCode(
+      () => verifyWebhook(BODY, { "xend-signature": `t=${NOW}` }, SECRET),
+      "MALFORMED_HEADER",
+    );
+  });
+
+  it("rejects a timestamp too far in the past", () => {
+    const stale = NOW - 400;
+    expectCode(
+      () =>
+        verifyWebhook(
+          BODY,
+          { "xend-signature": header(BODY, SECRET, stale) },
+          SECRET,
+        ),
+      "TIMESTAMP_OUT_OF_TOLERANCE",
+    );
+  });
+
+  it("rejects a timestamp too far in the future", () => {
+    const future = NOW + 400;
+    expectCode(
+      () =>
+        verifyWebhook(
+          BODY,
+          { "xend-signature": header(BODY, SECRET, future) },
+          SECRET,
+        ),
+      "TIMESTAMP_OUT_OF_TOLERANCE",
+    );
+  });
+
+  it("verifies when only the second v1 (rotated secret) matches", () => {
+    const rotated = createHmac("sha256", SECRET)
+      .update(`${NOW}.${BODY}`)
+      .digest("hex");
+    const stale = createHmac("sha256", "whsec_old")
+      .update(`${NOW}.${BODY}`)
+      .digest("hex");
+    const h = `t=${NOW},v1=${stale},v1=${rotated}`;
+    expect(verifyWebhook(BODY, { "xend-signature": h }, SECRET)).toEqual(
+      JSON.parse(BODY),
+    );
+  });
+
+  it("treats an odd-length / non-hex v1 candidate as a non-match, not an error", () => {
+    const good = v1(BODY, SECRET, NOW);
+    const h = `t=${NOW},v1=zzz,v1=abc,v1=${good}`;
+    expect(verifyWebhook(BODY, { "xend-signature": h }, SECRET)).toEqual(
+      JSON.parse(BODY),
+    );
+  });
+
+  it("verifies over raw bytes even with insignificant whitespace", () => {
+    const spaced = '{ "id" :  "evt_ws" }';
+    const h = header(spaced, SECRET, NOW);
+    expect(verifyWebhook(spaced, { "xend-signature": h }, SECRET)).toEqual({
+      id: "evt_ws",
+    });
+  });
+
+  it("fails if the secret is normalized (prefix stripped or base64-decoded)", () => {
+    const h = header(BODY, SECRET, NOW);
+    // Prefix stripped: a signer that removed whsec_ would produce this.
+    const stripped = SECRET.slice("whsec_".length);
+    const strippedHeader = `t=${NOW},v1=${v1(BODY, stripped, NOW)}`;
+    expectCode(
+      () => verifyWebhook(BODY, { "xend-signature": strippedHeader }, SECRET),
+      "INVALID_SIGNATURE",
+    );
+    // Our helper must use the FULL secret, so the correct full-secret header still passes.
+    expect(verifyWebhook(BODY, { "xend-signature": h }, SECRET)).toEqual(
+      JSON.parse(BODY),
+    );
+  });
+
+  it("verifies a signature generated by Phase 6 webhook-signer.ts (byte-level interop)", () => {
+    vi.setSystemTime(fixture.t * 1000);
+    const result = verifyWebhook(
+      fixture.rawBody,
+      fixture.headers,
+      fixture.secret,
+    ) as { id: string; data: { reference: string; status: string } };
+    expect(result.id).toBe("evt_p7_interop_0001");
+    expect(result.data).toEqual({
+      reference: "pi_p7_interop_abc",
+      status: "succeeded",
+    });
+  });
+});
