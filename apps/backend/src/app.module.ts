@@ -14,6 +14,7 @@ import { RedisModule } from './redis/redis.module';
 import { EventsModule } from './events/events.module';
 import { CountersModule } from './counters/counters.module';
 import { CapabilityModule } from './capability/capability.module';
+import { PaymentModule } from './payment/payment.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { CapabilityModule } from './capability/capability.module';
     EventsModule,
     CountersModule,
     CapabilityModule,
+    PaymentModule,
   ],
   controllers: [AppController],
   providers: [AppService],

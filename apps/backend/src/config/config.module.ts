@@ -76,6 +76,14 @@ import * as Joi from 'joi';
         ),
         CAPACITY_DEFAULT_TIER: Joi.string().default('tier0'),
 
+        // Payment intent TTL: how long an unauthorized intent stays payable.
+        // Merchants can override per row (merchants.intent_ttl_minutes).
+        PAYMENT_INTENT_TTL_MINUTES: Joi.number()
+          .integer()
+          .min(5)
+          .max(1440)
+          .default(60),
+
         // CORS: browser origins allowed to call this API. The mobile app is
         // not a browser and is unaffected. pay.xend.global is the Checkout
         // surface; localhost entries cover local web dev.

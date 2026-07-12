@@ -1,7 +1,12 @@
 import { Module } from '@nestjs/common';
 import { SolanaModule } from '../solana/solana.module';
+import { WalletModule } from '../wallet/wallet.module';
+import { EventsModule } from '../events/events.module';
 import { CountersModule } from '../counters/counters.module';
+import { PaymentModule } from '../payment/payment.module';
 import { CapacityService } from './capacity.service';
+import { IdentityService } from './identity.service';
+import { PaymentAuthorizationService } from './payment-authorization.service';
 
 /**
  * The Identity and Capability engine. RATE_COUNTER comes from the shared
@@ -9,8 +14,14 @@ import { CapacityService } from './capacity.service';
  * without a Capability<->Session cycle.
  */
 @Module({
-  imports: [SolanaModule, CountersModule],
-  providers: [CapacityService],
-  exports: [CapacityService],
+  imports: [
+    SolanaModule,
+    WalletModule,
+    EventsModule,
+    CountersModule,
+    PaymentModule,
+  ],
+  providers: [CapacityService, IdentityService, PaymentAuthorizationService],
+  exports: [CapacityService, IdentityService, PaymentAuthorizationService],
 })
 export class CapabilityModule {}
