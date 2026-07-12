@@ -186,6 +186,20 @@ import * as Joi from 'joi';
         // the guard denies every request when either value is missing.
         CONSOLE_USER: Joi.string().optional().allow(''),
         CONSOLE_PASSWORD: Joi.string().optional().allow(''),
+        // Blockradar naira settlement adapter (ADR 0019, Phase 8). The three
+        // Solana confirmations are UNCONFIRMED against docs.blockradar.co
+        // (Flag #2), so the leg ships STUBBED OFF: BLOCKRADAR_SOLANA_NATIVE_ENABLED
+        // (default false) gates the real off-ramp/reverse calls, and the creds
+        // stay OPTIONAL until it is flipped on — the adapter fails loud at boot
+        // only when enabled, so requiring them here would break boot for the
+        // USDC-only pilot. BLOCKRADAR_REFUND_SUPPORTED defaults false because
+        // confirmation (c) (per-Merchant reverse) is unconfirmed, so Phase 6's
+        // capability gate keeps naira refunds at REFUND_NOT_SUPPORTED (manual-ops).
+        BLOCKRADAR_API_KEY: Joi.string().optional().allow(''),
+        BLOCKRADAR_WEBHOOK_SECRET: Joi.string().optional().allow(''),
+        BLOCKRADAR_MASTER_WALLET_ID: Joi.string().optional().allow(''),
+        BLOCKRADAR_REFUND_SUPPORTED: Joi.boolean().default(false),
+        BLOCKRADAR_SOLANA_NATIVE_ENABLED: Joi.boolean().default(false),
       }),
     }),
   ],

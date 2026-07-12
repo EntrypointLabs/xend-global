@@ -57,6 +57,13 @@
       "when": 1784304000000,
       "tag": "0007_merchant_api_webhooks",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784390400000,
+      "tag": "0008_settlement_offramps",
+      "breakpoints": true
     }
   ]
 }
