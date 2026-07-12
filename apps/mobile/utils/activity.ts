@@ -9,6 +9,10 @@ export interface ActivityEntry {
   id: string;
   direction: "send" | "receive";
   status: "pending" | "confirmed" | "failed";
+  // A plain send/receive vs a settled merchant Payment. Lowercase, matching
+  // the backend transfer_kind wire literal.
+  kind: "transfer" | "payment";
+  merchantName: string | null;
   mint: string;
   amountRaw: string;
   decimals: number;
@@ -49,6 +53,8 @@ export function mapTransferRowToActivityEntry(
     id: row.id,
     direction,
     status: row.status.toLowerCase() as ActivityEntry["status"],
+    kind: row.kind === "payment" ? "payment" : "transfer",
+    merchantName: row.merchantName,
     mint: row.mint,
     amountRaw: row.amountRaw,
     decimals: ctx.decimalsByMint[row.mint] ?? DEFAULT_DECIMALS,
@@ -99,6 +105,11 @@ export function groupIntoSections(entries: ActivityEntry[]): ActivitySection[] {
 
 /** Short human label for a row's status/direction. */
 export function statusLabel(entry: ActivityEntry): string {
+  if (entry.kind === "payment") {
+    if (entry.status === "pending") return "Paying…";
+    if (entry.status === "failed") return "Failed";
+    return "Paid";
+  }
   if (entry.status === "pending") return "Sending…";
   if (entry.status === "failed") return "Failed";
   return entry.direction === "send" ? "Sent" : "Received";
