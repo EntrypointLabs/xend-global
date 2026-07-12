@@ -4,6 +4,8 @@ interface ResultProps {
   status: CheckoutStatus;
   /** Rare server-side confirmation timeout; a neutral receipt-coming state, never an error. */
   pending?: boolean;
+  /** Popup opener was severed (COOP); guide the Consumer back to the store instead of hanging. */
+  severed?: boolean;
 }
 
 function SuccessCheck() {
@@ -78,15 +80,20 @@ function copyFor(
  * Terminal state. Success shows the green checkmark; every other outcome is
  * neutral. Copy says receipt, never a transaction reference.
  */
-export function Result({ status, pending = false }: ResultProps) {
+export function Result({
+  status,
+  pending = false,
+  severed = false,
+}: ResultProps) {
   const isSuccess = status === 'succeeded' && !pending;
-  const { title, detail } = copyFor(status, pending);
+  const base = copyFor(status, pending);
+  const detail = severed ? 'You can head back to the store.' : base.detail;
 
   return (
     <div className="bg-brand-black flex h-full flex-col items-center justify-center px-8 text-center">
       {isSuccess ? <SuccessCheck /> : <NeutralDot />}
       <h1 className="text-brand-ink mt-6 text-xl font-semibold tracking-tight">
-        {title}
+        {base.title}
       </h1>
       <p className="text-brand-muted mt-2 text-sm leading-relaxed">{detail}</p>
     </div>

@@ -28,6 +28,12 @@ export interface IntentView {
   sessionRecognized: boolean;
   expiresAt: string;
   livemode: boolean;
+  /**
+   * Backend-signed cancel return URL for redirect mode, used when a Consumer
+   * backs out before authorize (no authorize response exists yet). Phase 6 signs
+   * it at intent creation; absent for popup-only intents.
+   */
+  cancelUrl?: string | null;
 }
 
 export interface AuthorizeInput {

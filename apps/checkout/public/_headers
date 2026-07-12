@@ -1,0 +1,11 @@
+# Security-header posture for the pay.xend.global static host (ADR 0016).
+# Served by the CDN deploy target (Cloudflare Pages / Netlify _headers). If the
+# surface is ever fronted by a different host, apply this identical header set there.
+# Ownership note: ADR 0012 governs the backend API origin's CORS/COOP; this file
+# governs the checkout static host only. The two must not be conflated.
+/*
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer

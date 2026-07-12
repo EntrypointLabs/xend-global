@@ -12,6 +12,7 @@ import {
   postResultToOpener,
   postCancelToOpener,
 } from './messaging/postMessage';
+import { completeByRedirect } from './messaging/redirect';
 import { LoadingShell } from './screens/LoadingShell';
 import { ConfirmSheet } from './screens/ConfirmSheet';
 import { InsufficientBalance } from './screens/InsufficientBalance';
@@ -37,7 +38,7 @@ type Phase =
   | { kind: 'authorizing'; intent: IntentView }
   | { kind: 'insufficient'; intent: IntentView }
   | { kind: 'pending' }
-  | { kind: 'result'; status: CheckoutStatus }
+  | { kind: 'result'; status: CheckoutStatus; severed?: boolean }
   | { kind: 'fatal' };
 
 export function App() {
@@ -55,19 +56,67 @@ export function App() {
     }
   }, []);
 
+  // Deliver a terminal result. Redirect mode navigates to the backend-signed
+  // return URL when one exists (a dead intent has none, so it renders in place).
+  // Popup mode posts to the exact merchant origin and, if the opener is severed,
+  // falls back to a return-to-store state rather than hanging.
+  const deliverResult = useCallback(
+    (intent: IntentView, status: CheckoutStatus, redirectUrl?: string) => {
+      if (!launch) return;
+      if (launch.mode === 'redirect') {
+        if (redirectUrl) {
+          completeByRedirect(redirectUrl);
+          return;
+        }
+        setPhase({ kind: 'result', status });
+        return;
+      }
+      const posted = postResultToOpener(
+        intent.merchantOrigin,
+        launch.nonce,
+        intent.reference,
+        status,
+      );
+      setPhase({ kind: 'result', status, severed: !posted });
+    },
+    [launch],
+  );
+
+  // Deliver a user-initiated cancel. Redirect mode navigates to the signed
+  // cancelUrl carried on the intent; if none exists it renders canceled in place.
+  const deliverCancel = useCallback(
+    (intent: IntentView) => {
+      if (!launch) return;
+      if (launch.mode === 'redirect') {
+        const cancelUrl = intent.cancelUrl;
+        if (cancelUrl) {
+          completeByRedirect(cancelUrl);
+          return;
+        }
+        setPhase({ kind: 'result', status: 'canceled' });
+        return;
+      }
+      const posted = postCancelToOpener(
+        intent.merchantOrigin,
+        launch.nonce,
+        intent.reference,
+      );
+      setPhase({ kind: 'result', status: 'canceled', severed: !posted });
+    },
+    [launch],
+  );
+
   // Fetch the intent once a reference is present.
   useEffect(() => {
     if (!launch || launch.reference === null) return;
     let stale = false;
-    const { nonce, reference } = launch;
+    const reference = launch.reference;
 
     getIntent(reference)
       .then((intent) => {
         if (stale) return;
         if (isNonPayable(intent.status)) {
-          const status = intent.status as CheckoutStatus;
-          postResultToOpener(intent.merchantOrigin, nonce, reference, status);
-          setPhase({ kind: 'result', status });
+          deliverResult(intent, intent.status as CheckoutStatus);
           return;
         }
         setPhase(
@@ -83,19 +132,18 @@ export function App() {
     return () => {
       stale = true;
     };
-  }, [launch]);
+  }, [launch, deliverResult]);
 
   const runAuthorize = useCallback(
     async (intent: IntentView, providerToken?: string) => {
       if (!launch) return;
-      const { nonce } = launch;
-      const reference = intent.reference;
-      const origin = intent.merchantOrigin;
       setPhase({ kind: 'authorizing', intent });
       try {
-        const result = await authorize({ reference, providerToken });
-        postResultToOpener(origin, nonce, reference, result.status);
-        setPhase({ kind: 'result', status: result.status });
+        const result = await authorize({
+          reference: intent.reference,
+          providerToken,
+        });
+        deliverResult(intent, result.status, result.redirectUrl);
       } catch (err) {
         if (err instanceof CheckoutApiError) {
           if (err.code === 'INSUFFICIENT_BALANCE') {
@@ -103,8 +151,7 @@ export function App() {
             return;
           }
           if (err.code === 'INTENT_EXPIRED') {
-            postResultToOpener(origin, nonce, reference, 'expired');
-            setPhase({ kind: 'result', status: 'expired' });
+            deliverResult(intent, 'expired');
             return;
           }
           if (err.code === 'PAYMENT_PROCESSING') {
@@ -112,25 +159,10 @@ export function App() {
             return;
           }
         }
-        postResultToOpener(origin, nonce, reference, 'failed');
-        setPhase({ kind: 'result', status: 'failed' });
+        deliverResult(intent, 'failed');
       }
     },
-    [launch],
-  );
-
-  const cancel = useCallback(
-    (intent: IntentView) => {
-      if (launch) {
-        postCancelToOpener(
-          intent.merchantOrigin,
-          launch.nonce,
-          intent.reference,
-        );
-      }
-      setPhase({ kind: 'result', status: 'canceled' });
-    },
-    [launch],
+    [launch, deliverResult],
   );
 
   switch (phase.kind) {
@@ -142,15 +174,17 @@ export function App() {
     case 'pending':
       return <Result status="succeeded" pending />;
     case 'result':
-      return <Result status={phase.status} />;
+      return <Result status={phase.status} severed={phase.severed} />;
     case 'insufficient':
-      return <InsufficientBalance onCancel={() => cancel(phase.intent)} />;
+      return (
+        <InsufficientBalance onCancel={() => deliverCancel(phase.intent)} />
+      );
     case 'confirm':
       return (
         <ConfirmSheet
           intent={phase.intent}
           onConfirm={() => runAuthorize(phase.intent)}
-          onCancel={() => cancel(phase.intent)}
+          onCancel={() => deliverCancel(phase.intent)}
         />
       );
     case 'ceremony':
@@ -161,7 +195,7 @@ export function App() {
             onComplete={(result: CeremonyResult) =>
               runAuthorize(phase.intent, result.providerToken)
             }
-            onCancel={() => cancel(phase.intent)}
+            onCancel={() => deliverCancel(phase.intent)}
           />
         </Suspense>
       );
