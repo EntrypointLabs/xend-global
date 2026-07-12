@@ -30,6 +30,7 @@ import { SOLANA_RPC, type SolanaRpc } from '../solana/solana-rpc.interface';
 import { PaymentIntentService } from '../payment/payment-intent.service';
 import { SettlementProvisioningService } from './settlement-provisioning.service';
 import { RelayerClient } from './relayer.client';
+import { SettlementConfirmationService } from './settlement-confirmation.service';
 import {
   AttemptAlreadyLiveError,
   IntentNotSettleableError,
@@ -64,6 +65,7 @@ export class SettlementService implements OnModuleInit {
     private readonly intents: PaymentIntentService,
     private readonly provisioning: SettlementProvisioningService,
     private readonly relayer: RelayerClient,
+    private readonly confirmation: SettlementConfirmationService,
   ) {}
 
   onModuleInit(): void {
@@ -262,6 +264,18 @@ export class SettlementService implements OnModuleInit {
       );
     }
     await this.intents.transition(intentId, 'authorized', 'settling', {});
+
+    // Kick off the active confirmation poll detached from the submit
+    // response path (the hot path races the Helius webhook; the 30s sweep is
+    // the tail). Failures are logged, never surfaced to the caller here.
+    void this.confirmation
+      .awaitConfirmation(intentId, signature)
+      .catch((err) =>
+        this.logger.error(
+          `settlement.confirm.detached_failed intent_id=${intentId} signature=${signature}`,
+          err,
+        ),
+      );
 
     this.logger.log(
       `settlement.submit intent_id=${intentId} attempt_id=${attempt.id} signature=${signature}`,

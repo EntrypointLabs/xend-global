@@ -562,6 +562,8 @@ describe('TransferService.list', () => {
         submittedAt: null,
         confirmedAt: null,
         failureReason: null,
+        kind: 'transfer',
+        paymentId: null,
       });
     }
     const { service } = makeService({ solana, account, store });
@@ -596,6 +598,8 @@ describe('TransferService.list', () => {
           submittedAt: null,
           confirmedAt: new Date('2026-01-01'),
           failureReason: null,
+          kind: 'transfer',
+          paymentId: null,
         },
       ],
     };

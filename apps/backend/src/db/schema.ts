@@ -31,6 +31,13 @@ export const transferStatusEnum = pgEnum('transfer_status', [
   'FAILED',
 ]);
 
+// Discriminates a Consumer's Activity row: a plain send/receive vs a
+// Payment settlement (correlated to a payments row by settlement signature).
+export const transferKindEnum = pgEnum('transfer_kind', [
+  'transfer',
+  'payment',
+]);
+
 export const merchantStatusEnum = pgEnum('merchant_status', [
   'active',
   'suspended',
@@ -163,6 +170,10 @@ export const transfers = pgTable(
     submittedAt: timestamp('submitted_at'),
     confirmedAt: timestamp('confirmed_at'),
     failureReason: text('failure_reason'),
+    // Activity linkage for Pay: a settlement transfer carries kind='payment'
+    // and the payment_id it settled, correlated by signature at confirmation.
+    kind: transferKindEnum('kind').notNull().default('transfer'),
+    paymentId: text('payment_id').references((): AnyPgColumn => payments.id),
   },
   (table) => ({
     // Partial index powering the ReconcilerService poll: scans only

@@ -429,9 +429,9 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
     await reconciler.onModuleInit();
 
     expect(streamFn).toHaveBeenCalledWith(wallet, 100n);
-    // The single replayed event triggered an UPSERT on transfers and
-    // tailer_state (2 executes).
-    expect(calls.filter((c) => c.kind === 'execute')).toHaveLength(2);
+    // The single replayed event triggered a payment-correlation SELECT plus
+    // UPSERTs on transfers and tailer_state (3 executes).
+    expect(calls.filter((c) => c.kind === 'execute')).toHaveLength(3);
   });
 
   it('boot replay with no smart_accounts is a no-op', async () => {
@@ -476,7 +476,8 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
 
     await reconciler.onModuleInit();
     expect(streamFn).toHaveBeenCalledTimes(2);
-    // wallet2 replay produced an event → 2 executes (transfers + tailer_state)
-    expect(calls.filter((c) => c.kind === 'execute')).toHaveLength(2);
+    // wallet2 replay produced an event → 3 executes (correlation SELECT +
+    // transfers UPSERT + tailer_state UPSERT).
+    expect(calls.filter((c) => c.kind === 'execute')).toHaveLength(3);
   });
 });

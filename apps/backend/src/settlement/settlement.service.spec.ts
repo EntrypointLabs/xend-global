@@ -20,6 +20,7 @@ import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { PaymentIntentService } from '../payment/payment-intent.service';
 import type { SettlementProvisioningService } from './settlement-provisioning.service';
 import type { CosignRequest, RelayerClient } from './relayer.client';
+import type { SettlementConfirmationService } from './settlement-confirmation.service';
 import { SettlementService } from './settlement.service';
 import {
   IntentNotSettleableError,
@@ -157,12 +158,19 @@ function makeSolana(overrides: Partial<SolanaRpc> = {}): SolanaRpc {
   } as unknown as SolanaRpc;
 }
 
+function makeConfirmation(): SettlementConfirmationService {
+  return {
+    awaitConfirmation: jest.fn().mockResolvedValue(undefined),
+  } as unknown as SettlementConfirmationService;
+}
+
 function makeService(deps: {
   db: DbService;
   solana: SolanaRpc;
   intents: PaymentIntentService;
   provisioning: SettlementProvisioningService;
   relayer: RelayerClient;
+  confirmation?: SettlementConfirmationService;
 }): SettlementService {
   const service = new SettlementService(
     deps.db,
@@ -171,6 +179,7 @@ function makeService(deps: {
     deps.intents,
     deps.provisioning,
     deps.relayer,
+    deps.confirmation ?? makeConfirmation(),
   );
   service.onModuleInit();
   return service;

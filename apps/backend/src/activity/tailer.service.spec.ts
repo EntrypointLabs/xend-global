@@ -29,7 +29,10 @@ interface SmartAccountRow {
   walletAddress: string;
 }
 
-function makeFakeDb(ownedAccounts: SmartAccountRow[] = []): {
+function makeFakeDb(
+  ownedAccounts: SmartAccountRow[] = [],
+  correlatedPaymentId?: string,
+): {
   db: DbService;
   calls: FakeDbCall[];
 } {
@@ -43,6 +46,14 @@ function makeFakeDb(ownedAccounts: SmartAccountRow[] = []): {
         ? JSON.stringify(stmt)
         : String(stmt);
     calls.push({ sql: str, params: [] });
+    // The signature->payment correlation lookup (the only query joining
+    // payments) returns the configured payment id.
+    if (str.includes('JOIN payments')) {
+      return Promise.resolve({
+        rows: correlatedPaymentId ? [{ payment_id: correlatedPaymentId }] : [],
+        rowCount: correlatedPaymentId ? 1 : 0,
+      });
+    }
     return Promise.resolve({ rows: [], rowCount: 0 });
   });
   const makeSelect = () => {
@@ -130,16 +141,53 @@ describe('TailerService.upsertConfirmedTransfer', () => {
     );
 
     expect(direction).toBe('RECEIVE');
-    // 2 executes: one for transfers UPSERT, one for tailer_state UPSERT.
-    expect(calls).toHaveLength(2);
+    // 3 executes: correlation SELECT, transfers UPSERT, tailer_state UPSERT.
+    expect(calls).toHaveLength(3);
+    // The correlation lookup joins payments by signature.
+    expect(calls[0].sql).toMatch(/payment_attempts/);
+    expect(calls[0].sql).toMatch(/JOIN payments/);
     // The transfers UPSERT carries the status guard CASE clause.
-    expect(calls[0].sql).toMatch(/INSERT INTO transfers/);
-    expect(calls[0].sql).toMatch(/ON CONFLICT/);
-    expect(calls[0].sql).toMatch(/CASE/);
-    expect(calls[0].sql).toMatch(/CONFIRMED.*FAILED/);
+    expect(calls[1].sql).toMatch(/INSERT INTO transfers/);
+    expect(calls[1].sql).toMatch(/ON CONFLICT/);
+    expect(calls[1].sql).toMatch(/CASE/);
+    expect(calls[1].sql).toMatch(/CONFIRMED.*FAILED/);
     // tailer_state UPSERT uses GREATEST to never regress the bookmark.
-    expect(calls[1].sql).toMatch(/INSERT INTO tailer_state/);
-    expect(calls[1].sql).toMatch(/GREATEST/);
+    expect(calls[2].sql).toMatch(/INSERT INTO tailer_state/);
+    expect(calls[2].sql).toMatch(/GREATEST/);
+  });
+
+  it("correlates a confirmed transfer to a Payment (kind='payment' + payment_id) when the signature matches", async () => {
+    const { db, calls } = makeFakeDb([], 'pay_123');
+    const tailer = new TailerService(db);
+    const evt: ConfirmedTransferEvent = {
+      signature: 'sig-pay',
+      slot: 42n,
+      mint: 'USDC',
+      amountRaw: 1_000_000n,
+      fromAddress: SENDER_WALLET,
+      toAddress: OWNED_WALLET,
+      confirmedAt: new Date(),
+    };
+    await tailer.upsertConfirmedTransfer(evt, 'sa_test', OWNED_WALLET);
+    // The transfers INSERT carries the payment linkage param.
+    expect(calls[1].sql).toContain('pay_123');
+  });
+
+  it("leaves a transfer with no matching payment as kind='transfer'", async () => {
+    const { db, calls } = makeFakeDb([]);
+    const tailer = new TailerService(db);
+    const evt: ConfirmedTransferEvent = {
+      signature: 'sig-plain',
+      slot: 43n,
+      mint: 'USDC',
+      amountRaw: 1_000_000n,
+      fromAddress: SENDER_WALLET,
+      toAddress: OWNED_WALLET,
+      confirmedAt: new Date(),
+    };
+    await tailer.upsertConfirmedTransfer(evt, 'sa_test', OWNED_WALLET);
+    // No payment id embedded; the row stays a plain transfer.
+    expect(calls[1].sql).not.toContain('pay_');
   });
 
   it('assigns SEND when ownedWallet is the sender', async () => {
@@ -286,10 +334,10 @@ describe('WebhookController POST /webhooks/helius', () => {
 
     expect(res.processed).toBe(1);
     expect(res.skipped).toBe(0);
-    // 2 execute() calls: transfers UPSERT + tailer_state UPSERT.
-    expect(calls).toHaveLength(2);
-    expect(calls[0].sql).toMatch(/INSERT INTO transfers/);
-    expect(calls[0].sql).toMatch(/CASE/);
+    // 3 execute() calls: correlation SELECT, transfers UPSERT, tailer_state UPSERT.
+    expect(calls).toHaveLength(3);
+    expect(calls[1].sql).toMatch(/INSERT INTO transfers/);
+    expect(calls[1].sql).toMatch(/CASE/);
   });
 
   it('returns 401 (HttpException UNAUTHORIZED) when HMAC fails; no DB writes', async () => {
@@ -373,9 +421,10 @@ describe('WebhookController POST /webhooks/helius', () => {
     await controller.receive(req, 'auth-header', '', sampleHeliusBody);
     await controller.receive(req, 'auth-header', '', sampleHeliusBody);
 
-    // 2 deliveries × 2 statements each = 4 calls. All four contain the
+    // 2 deliveries × 3 statements each (correlation SELECT + transfers UPSERT
+    // + tailer_state UPSERT) = 6 calls. The two UPSERTs per delivery carry the
     // ON CONFLICT clause, so a real DB collapses them to a single row.
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(6);
     expect(calls.filter((c) => /ON CONFLICT/.test(c.sql))).toHaveLength(4);
   });
 

@@ -39,6 +39,23 @@ export class TailerService {
     const direction: 'SEND' | 'RECEIVE' =
       evt.fromAddress === ownedWallet ? 'SEND' : 'RECEIVE';
 
+    // Correlate the confirmed transfer to a Payment by SIGNATURE (the only
+    // stable join key across settlement providers; the destination at best
+    // identifies the Merchant endpoint, never the individual Payment). If a
+    // payments row exists for this settlement signature, the Consumer's
+    // Activity row is a Payment. Convergent with finalizeSucceeded: whichever
+    // runs once both rows exist writes the same linkage.
+    const correlation = (await this.db.client.execute(sql`
+      SELECT pay.id AS payment_id
+      FROM payment_attempts pa
+      JOIN payment_intents pi ON pi.id = pa.intent_id
+      JOIN payments pay ON pay.intent_id = pi.id
+      WHERE pa.tx_signature = ${evt.signature}
+      LIMIT 1
+    `)) as unknown as { rows: { payment_id: string }[] };
+    const paymentId = correlation.rows[0]?.payment_id ?? null;
+    const kind: 'transfer' | 'payment' = paymentId ? 'payment' : 'transfer';
+
     // The CASE in the DO UPDATE clause is the load-bearing status guard:
     // if the existing row is already CONFIRMED or FAILED, keep that
     // status (do not regress); otherwise take the incoming status.
@@ -48,7 +65,8 @@ export class TailerService {
     await this.db.client.execute(sql`
       INSERT INTO transfers (
         id, smart_account_id, signature, direction, mint, amount_raw,
-        from_address, to_address, status, slot, confirmed_at, created_at
+        from_address, to_address, status, slot, confirmed_at, created_at,
+        kind, payment_id
       ) VALUES (
         ${this.generateId()},
         ${smartAccountId},
@@ -61,7 +79,9 @@ export class TailerService {
         'CONFIRMED'::transfer_status,
         ${evt.slot.toString()}::bigint,
         ${evt.confirmedAt.toISOString()}::timestamp,
-        NOW()
+        NOW(),
+        ${kind}::transfer_kind,
+        ${paymentId}
       )
       ON CONFLICT (signature) DO UPDATE SET
         status = CASE
@@ -70,7 +90,14 @@ export class TailerService {
           ELSE EXCLUDED.status
         END,
         confirmed_at = COALESCE(transfers.confirmed_at, EXCLUDED.confirmed_at),
-        slot = COALESCE(transfers.slot, EXCLUDED.slot)
+        slot = COALESCE(transfers.slot, EXCLUDED.slot),
+        -- Promote to a Payment when this delivery carries a linkage; never
+        -- regress a row that is already linked.
+        kind = CASE
+          WHEN EXCLUDED.payment_id IS NOT NULL THEN 'payment'::transfer_kind
+          ELSE transfers.kind
+        END,
+        payment_id = COALESCE(transfers.payment_id, EXCLUDED.payment_id)
     `);
 
     // Update the per-wallet bookmark. Take MAX so out-of-order events
