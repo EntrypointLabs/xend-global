@@ -118,7 +118,7 @@ function HomeScreenContent() {
                 <View className="flex-row items-center gap-1 rounded-full bg-black/5 px-2.5 py-1">
                   <Ionicons name="refresh" size={14} color="#999" />
                   <Typography weight="500" className="text-sm text-black/40">
-                    Couldn't load balance. Tap to retry
+                    Couldn&apos;t load balance. Tap to retry
                   </Typography>
                 </View>
               </HapticPressable>
