@@ -17,6 +17,8 @@ import { CapabilityModule } from './capability/capability.module';
 import { PaymentModule } from './payment/payment.module';
 import { SessionModule } from './session/session.module';
 import { SettlementModule } from './settlement/settlement.module';
+import { FxModule } from './fx/fx.module';
+import { MerchantModule } from './merchant/merchant.module';
 
 @Module({
   imports: [
@@ -36,6 +38,8 @@ import { SettlementModule } from './settlement/settlement.module';
     PaymentModule,
     SessionModule,
     SettlementModule,
+    FxModule,
+    MerchantModule,
   ],
   controllers: [AppController],
   providers: [AppService],

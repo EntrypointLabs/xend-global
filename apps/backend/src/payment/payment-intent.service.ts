@@ -32,6 +32,11 @@ export interface CreateIntentParams {
   fxQuotedAt?: Date;
   merchantReference?: string;
   idempotencyKey?: string;
+  /** The api-key mode the intent is created under; defaults to test. */
+  mode?: 'test' | 'live';
+  /** Merchant-supplied redirect targets, SSRF-validated by the caller. */
+  returnUrl?: string;
+  cancelUrl?: string;
 }
 
 /**
@@ -106,6 +111,9 @@ export class PaymentIntentService {
           fxQuotedAt: params.fxQuotedAt ?? null,
           merchantReference: params.merchantReference ?? null,
           idempotencyKey: params.idempotencyKey ?? null,
+          mode: params.mode ?? 'test',
+          returnUrl: params.returnUrl ?? null,
+          cancelUrl: params.cancelUrl ?? null,
           expiresAt,
         })
         .returning();
