@@ -84,6 +84,19 @@ import * as Joi from 'joi';
           .max(1440)
           .default(60),
 
+        // Session policy: opaque merchant-scoped tokens. Values are
+        // tunable without a code change; velocity caps must sit at or
+        // below tier caps (enforced at boot).
+        SESSION_ABSOLUTE_TTL_DAYS: Joi.number().integer().min(1).default(90),
+        SESSION_SLIDING_WINDOW_DAYS: Joi.number().integer().min(1).default(30),
+        SESSION_VELOCITY_MAX_PAYMENTS_PER_DAY: Joi.number()
+          .integer()
+          .min(1)
+          .default(5),
+        SESSION_VELOCITY_MAX_AMOUNT_RAW_PER_DAY: Joi.string()
+          .pattern(/^\d+$/)
+          .default('100000000'),
+
         // CORS: browser origins allowed to call this API. The mobile app is
         // not a browser and is unaffected. pay.xend.global is the Checkout
         // surface; localhost entries cover local web dev.

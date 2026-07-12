@@ -61,6 +61,7 @@ You do **not** need an ADR for routine choices like file naming, single-feature 
 | [0010](./0010-no-load-bearing-provider.md)          | No load-bearing external provider: owned interfaces per provider category                 | Accepted | Backend / Providers      |
 | [0011](./0011-expo-56-upgrade.md)                   | Upgrade Expo SDK from 54 to 56 for Privy compatibility                                    | Accepted | Mobile / Expo            |
 | [0012](./0012-pay-platform-topology.md)             | Pay platform topology: managed Kafka + Redis, extracted fee-payer relayer, modular core   | Accepted | Backend / Infrastructure |
+| [0013](./0013-session-model.md)                     | Merchant-scoped Sessions: opaque server-side tokens with rotation and velocity caps       | Accepted | Backend / Security       |
 
 ## Generating new ADR numbers
 
