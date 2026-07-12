@@ -107,3 +107,13 @@ The topology this ratifies:
 - `apps/backend/src/wallet/wallet-provider.interface.ts` (the adapter-seam pattern the vendor rule references)
 
 This ADR supersedes nothing.
+
+## Update 2026-07-12 (relayer facts surfaced during Phase 3 build)
+
+Three clarifications from building the fee-payer relayer (`apps/relayer`). These are notes, not a reversal; the topology above stands.
+
+1. **The co-sign instruction allowlist deliberately EXCLUDES the System program.** The relayer co-signs only ComputeBudget, SPL Token (a single `TransferChecked`), and idempotent Associated-Token-create instructions. Research listed System for settlement-account creation, but a System lamport transfer from the fee payer is precisely the drain vector a fee sponsor must refuse. Settlement-account provisioning is a separate Phase 4 ops path, funded outside the payment hot path, and is never co-signed here. The fee payer is additionally rejected if it appears as a writable account in any instruction (so a fee-payer-funded ATA create is refused, closing the rent-refund farming vector).
+
+2. **The relayer has the smallest possible credential surface.** It gets NO Postgres, Drizzle, Kafka, or Redis client or credential; its complete credential inventory is its fee-payer key, its own Helius RPC access, and its internal-auth secret. Payment lifecycle events and domain state remain owned by the Identity and Capability API and the settlement layer, which call the relayer and record the returned signature. Consequently the relayer's per-Consumer / per-merchant / global caps and its per-intent replay guard are in-memory and single-instance for the pilot; the Redis re-introduction trigger recorded above (and in `research/ARCHITECTURE.md` 1.4) applies to the relayer's caps when it scales past one instance. The authoritative single-live-attempt guard is Phase 4's `payment_attempts` partial unique index, not the relayer's replay guard.
+
+3. **Kora adopt-vs-build spike outcome ratified: build a thin NestJS relayer.** The timeboxed spike (`docs/specs/relayer-kora-adopt-vs-build.md`) chose to build a thin NestJS relayer over adopting the Solana Foundation's Kora, on solo-operator ops burden, with Kora as the documented alternative. The relayer's allowlist / caps / fee-ceiling design is expressed as one typed config object (`apps/relayer/src/relayer-config.ts`) whose fields map one-to-one onto Kora's config, so an adopt-Kora reversal would reuse the design and swap only the co-sign implementation (recorded then in a new ADR 0014, since 0013 belongs to Phase 2's session model).

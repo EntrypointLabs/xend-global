@@ -33,3 +33,29 @@ services:
       interval: 10s
       timeout: 10s
       retries: 12
+
+  # Fee-payer relayer: separate deployable, its own env (incl. the fee-payer
+  # key). The healthcheck AUTHENTICATES because /health sits behind the
+  # correlation middleware and the internal-auth guard like every other
+  # route (no unauthenticated route exists). The probe runs inside the
+  # container and reads the secret from the container's own env, so nothing
+  # new is exposed. Uses Node's built-in fetch (no curl dependency).
+  relayer:
+    build:
+      context: .
+      dockerfile: apps/relayer/Dockerfile
+    ports:
+      - "8787:8787"
+    env_file:
+      - apps/relayer/.env
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:8787/health',{headers:{'x-correlation-id':'relayer-compose-healthcheck','x-relayer-auth':process.env.RELAYER_INTERNAL_AUTH_SECRET}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
