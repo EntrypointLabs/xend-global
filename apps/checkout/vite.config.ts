@@ -7,4 +7,7 @@ export default defineConfig({
   build: {
     target: 'es2022',
   },
+  optimizeDeps: {
+    exclude: ['@solana/kit', '@solana-program/token', '@privy-io/react-auth'],
+  },
 });
