@@ -29,5 +29,16 @@ export interface XendButtonConfig {
   onResult: (result: CheckoutResult) => void;
   onUnresolved?: (u: CheckoutUnresolved) => void;
   onReady?: () => void;
-  theme?: "dark";
+  /**
+   * How the checkout is presented. "modal" (default) draws the frosted glass
+   * sheet in the merchant page. "popup" opens a separate window; "redirect"
+   * navigates the full page. Webviews / blocked popups fall back automatically.
+   */
+  presentation?: "modal" | "popup" | "redirect";
+  /** Backend base URL for the checkout summary + authorize (required for "modal"). */
+  apiBase?: string;
+  /** Sheet material. "auto" (default) follows the viewer's light/dark preference. */
+  theme?: "auto" | "light" | "dark";
+  /** DEV/demo only: resolve confirm to success without a real passkey ceremony. */
+  devSimulateAuthorize?: boolean;
 }
