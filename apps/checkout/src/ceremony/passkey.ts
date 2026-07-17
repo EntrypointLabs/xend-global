@@ -1,9 +1,14 @@
-import { useCallback } from 'react';
-import { useLoginWithPasskey, usePrivy } from '@privy-io/react-auth';
+import { useCallback, useRef } from 'react';
+import {
+  useLoginWithPasskey,
+  useSignupWithPasskey,
+  useIdentityToken,
+  usePrivy,
+} from '@privy-io/react-auth';
 import { RP_ORIGIN } from '../lib/config';
 
 export interface CeremonyResult {
-  /** The provider identity token, passed to authorize as providerToken. */
+  /** The provider IDENTITY token, passed to authorize as providerToken. */
   providerToken: string;
 }
 
@@ -25,22 +30,43 @@ const CEREMONY_LOGIN_OPTIONS: {
 
 /**
  * The single vendor seam. All Privy web SDK usage lives on this code-split
- * ceremony path and nowhere else in the app.
+ * ceremony path and nowhere else in the app. The backend verifies the Privy
+ * IDENTITY token (client.getUser({ idToken })), so we hand it that, not the
+ * access token. The identity token lands in state a beat after login resolves,
+ * so we poll a ref for it. (Requires "identity tokens" enabled on the Privy app.)
  */
 export function usePasskeyCeremony() {
+  const { authenticated } = usePrivy();
   const { loginWithPasskey } = useLoginWithPasskey();
-  const { getAccessToken } = usePrivy();
+  const { signupWithPasskey } = useSignupWithPasskey();
+  const { identityToken } = useIdentityToken();
+  const tokenRef = useRef<string | null>(identityToken);
+  const authedRef = useRef<boolean>(authenticated);
+  tokenRef.current = identityToken;
+  authedRef.current = authenticated;
+
+  const awaitIdentityToken = useCallback(async (): Promise<string> => {
+    for (let i = 0; i < 40; i++) {
+      if (tokenRef.current) return tokenRef.current;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error('No identity token after the passkey ceremony');
+  }, []);
 
   const runCeremony = useCallback(async (): Promise<CeremonyResult> => {
-    // Invoked first thing inside the click handler with no awaited fetch before
-    // it, so Safari user activation stays valid.
-    await loginWithPasskey(CEREMONY_LOGIN_OPTIONS);
-    const providerToken = await getAccessToken();
-    if (!providerToken) {
-      throw new Error('No provider token after the passkey ceremony');
-    }
-    return { providerToken };
-  }, [loginWithPasskey, getAccessToken]);
+    // Already authenticated (persisted Privy session) -> reuse the token, no
+    // prompt. Otherwise loginWithPasskey runs first (no awaited fetch before it,
+    // so Safari user activation stays valid).
+    if (!authedRef.current) await loginWithPasskey(CEREMONY_LOGIN_OPTIONS);
+    return { providerToken: await awaitIdentityToken() };
+  }, [loginWithPasskey, awaitIdentityToken]);
 
-  return { runCeremony };
+  // First-time consumer: enrol a new passkey (rp.id from Privy config), then
+  // the same identity-token handoff as the login path.
+  const runSignup = useCallback(async (): Promise<CeremonyResult> => {
+    if (!authedRef.current) await signupWithPasskey();
+    return { providerToken: await awaitIdentityToken() };
+  }, [signupWithPasskey, awaitIdentityToken]);
+
+  return { runCeremony, runSignup };
 }
