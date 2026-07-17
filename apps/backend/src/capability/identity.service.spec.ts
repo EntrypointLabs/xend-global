@@ -1,3 +1,4 @@
+import type { ConfigService } from '@nestjs/config';
 import type { DbService } from '../db/db.service';
 import type {
   WalletProvider,
@@ -5,6 +6,13 @@ import type {
 } from '../wallet/wallet-provider.interface';
 import { passkeyCredentials, smartAccounts, users } from '../db/schema';
 import { IdentityService } from './identity.service';
+
+/** NODE_ENV stub; defaults to a non-development value (production path). */
+function makeConfig(nodeEnv: string = 'test'): ConfigService {
+  return {
+    get: (key: string) => (key === 'NODE_ENV' ? nodeEnv : undefined),
+  } as unknown as ConfigService;
+}
 
 type UsersRow = typeof users.$inferSelect;
 type SmartAccountsRow = typeof smartAccounts.$inferSelect;
@@ -90,7 +98,7 @@ describe('IdentityService.resolveByCredentialId', () => {
       users: [userRow()],
       smartAccounts: [accountRow()],
     });
-    const service = new IdentityService(db, wallet);
+    const service = new IdentityService(db, wallet, makeConfig());
 
     const profile = await service.resolveByCredentialId('cred_1');
 
@@ -108,7 +116,7 @@ describe('IdentityService.resolveByCredentialId', () => {
       getUser: jest.fn(),
     } as unknown as WalletProvider;
     const db = makeFakeDb({ passkeyCredentials: [] });
-    const service = new IdentityService(db, wallet);
+    const service = new IdentityService(db, wallet, makeConfig());
     await expect(service.resolveByCredentialId('ghost')).rejects.toMatchObject({
       code: 'UNKNOWN_CONSUMER',
     });
@@ -126,7 +134,7 @@ describe('IdentityService.resolveByProviderToken', () => {
       users: [userRow()],
       smartAccounts: [accountRow()],
     });
-    const service = new IdentityService(db, wallet);
+    const service = new IdentityService(db, wallet, makeConfig());
 
     const profile = await service.resolveByProviderToken('token');
 
@@ -141,9 +149,95 @@ describe('IdentityService.resolveByProviderToken', () => {
       getUser: jest.fn(),
     } as unknown as WalletProvider;
     const db = makeFakeDb({ smartAccounts: [] });
-    const service = new IdentityService(db, wallet);
+    const service = new IdentityService(db, wallet, makeConfig());
     await expect(service.resolveByProviderToken('token')).rejects.toMatchObject(
       { code: 'UNKNOWN_CONSUMER' },
     );
   });
+
+  it('auto-provisions a Consumer when NODE_ENV=development and no Account exists (TEST ONLY)', async () => {
+    const wallet = {
+      verifyIdToken: jest.fn().mockResolvedValue(providerUser),
+      getUser: jest.fn(),
+    } as unknown as WalletProvider;
+    const { db, store } = makeStatefulDb();
+    const service = new IdentityService(db, wallet, makeConfig('development'));
+
+    const profile = await service.resolveByProviderToken('token');
+
+    // A users row and a smart_accounts row are written (the /auth/exchange
+    // insert shape), and the resolved profile points at them.
+    expect(store.users).toHaveLength(1);
+    expect(store.smartAccounts).toHaveLength(1);
+    expect(store.users[0].email).toBe('a@b.com');
+    expect(store.smartAccounts[0].providerUserId).toBe('p1');
+    expect(store.smartAccounts[0].walletAddress).toBe('Wallet1');
+    expect(profile).toEqual({
+      consumerId: store.users[0].id,
+      accountAddress: 'Wallet1',
+      email: 'a@b.com',
+    });
+  });
 });
+
+/**
+ * A minimal stateful fake DB: `select` returns whatever the per-table store
+ * currently holds (the `where` clause is a no-op), and `insert` mutates the
+ * store. Enough to exercise the dev auto-provision write-then-read path.
+ */
+function makeStatefulDb(): {
+  db: DbService;
+  store: { users: UsersRow[]; smartAccounts: SmartAccountsRow[] };
+} {
+  const store: { users: UsersRow[]; smartAccounts: SmartAccountsRow[] } = {
+    users: [],
+    smartAccounts: [],
+  };
+  let nextId = 0;
+  const client = {
+    select: () => ({
+      from: (tbl: unknown) => {
+        const rows =
+          tbl === users
+            ? store.users
+            : tbl === smartAccounts
+              ? store.smartAccounts
+              : [];
+        const chain = {
+          where: () => chain,
+          limit: () => Promise.resolve(rows),
+        };
+        return chain;
+      },
+    }),
+    insert: (tbl: unknown) => ({
+      values: (vals: Record<string, unknown>) => {
+        if (tbl === users) {
+          const row = userRow({
+            id: `u_new_${nextId++}`,
+            email: vals.email as string,
+          });
+          return {
+            returning: () => {
+              store.users.push(row);
+              return Promise.resolve([row]);
+            },
+          };
+        }
+        const acct = accountRow({
+          id: `sa_new_${nextId++}`,
+          userId: vals.userId as string,
+          walletAddress: vals.walletAddress as string,
+          providerUserId: vals.providerUserId as string,
+        });
+        return {
+          onConflictDoUpdate: () => {
+            store.smartAccounts.push(acct);
+            return Promise.resolve(undefined);
+          },
+        };
+      },
+    }),
+  };
+  return { db: { client } as unknown as DbService, store };
+}

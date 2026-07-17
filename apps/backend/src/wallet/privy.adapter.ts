@@ -25,6 +25,13 @@ type PasskeyLinkedAccount = Extract<
   { type: 'passkey' }
 >;
 
+// TEST ONLY — never production. A fixed, syntactically valid base58 devnet
+// Solana pubkey used as a placeholder wallet address for a passkey-only Privy
+// identity that has no embedded Solana wallet yet. Only ever read on the
+// NODE_ENV==='development' branch below.
+const DEV_PLACEHOLDER_SOLANA_ADDRESS =
+  'ECwAKvHiqpyUMC4q1MTeMErnpgk4QNrU3KDPCxCrWNZk';
+
 /**
  * Concrete WalletProvider backed by `@privy-io/server-auth`.
  *
@@ -136,11 +143,23 @@ export class PrivyAdapter implements WalletProvider, OnModuleInit {
    * one is present.
    */
   private userToProviderUser(user: User): WalletProviderUser {
-    const email = user.email?.address;
+    // TEST ONLY — never production. Local checkout testing uses a minimal
+    // passkey-only Privy identity (no email, no Solana wallet). Under
+    // NODE_ENV==='development' only, fall back to deterministic placeholders
+    // so the shape check does not reject it. Every non-development environment
+    // keeps the strict PrivyUserShapeError behaviour below.
+    const isDev = this.config.get<string>('NODE_ENV') === 'development';
+
+    let email = user.email?.address;
     if (!email) {
-      throw new PrivyUserShapeError(
-        `Privy user ${user.id} has no linked email; email login required in dashboard`,
-      );
+      if (isDev) {
+        // TEST ONLY — never production. Deterministic per-DID placeholder.
+        email = `${user.id}@devtest.local`;
+      } else {
+        throw new PrivyUserShapeError(
+          `Privy user ${user.id} has no linked email; email login required in dashboard`,
+        );
+      }
     }
 
     const solanaWallets = user.linkedAccounts.filter(
@@ -148,16 +167,25 @@ export class PrivyAdapter implements WalletProvider, OnModuleInit {
         acct.type === 'wallet' && acct.chainType === 'solana',
     );
 
+    let walletAddress: string;
     if (solanaWallets.length === 0) {
-      throw new PrivyUserShapeError(
-        `Privy user ${user.id} has no Solana wallet linked`,
+      if (isDev) {
+        // TEST ONLY — never production. Fixed valid base58 devnet placeholder.
+        walletAddress = DEV_PLACEHOLDER_SOLANA_ADDRESS;
+      } else {
+        throw new PrivyUserShapeError(
+          `Privy user ${user.id} has no Solana wallet linked`,
+        );
+      }
+    } else {
+      // Prefer the embedded wallet (created by Privy) over any external
+      // wallets the user may have linked.
+      const embedded = solanaWallets.find(
+        (w) => w.walletClientType === 'privy',
       );
+      const chosen = embedded ?? solanaWallets[0];
+      walletAddress = chosen.address;
     }
-
-    // Prefer the embedded wallet (created by Privy) over any external
-    // wallets the user may have linked.
-    const embedded = solanaWallets.find((w) => w.walletClientType === 'privy');
-    const chosen = embedded ?? solanaWallets[0];
 
     // Mirror any linked passkey credentials. @privy-io/server-auth's
     // PasskeyAccount exposes credentialId only (no public_key), so this
@@ -170,7 +198,7 @@ export class PrivyAdapter implements WalletProvider, OnModuleInit {
     return {
       providerUserId: user.id,
       email,
-      walletAddress: chosen.address,
+      walletAddress,
       passkeys,
     };
   }

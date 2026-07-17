@@ -201,6 +201,78 @@ export class SettlementConfirmationService implements OnModuleInit {
     await this.finalizeIntentSucceeded(payment.intentId, paymentId, completion);
   }
 
+  /**
+   * TEST ONLY — never production. Dev short-circuit for local checkout: with no
+   * funded relayer/settlement authority on devnet, a real settlement tx never
+   * confirms and /checkout/authorize would time out (PAYMENT_PROCESSING). This
+   * drives the authorized intent straight to a terminal SUCCEEDED with a fake
+   * signature and no on-chain activity, retiring the live attempt, writing the
+   * payments row, and publishing the SAME payment.succeeded event a real
+   * confirmation would (via the single finalizeIntentSucceeded publish site).
+   * Hard-gated on NODE_ENV==='development'.
+   */
+  async devForceSettleSucceeded(intentId: string): Promise<void> {
+    if (this.config.get<string>('NODE_ENV') !== 'development') {
+      throw new Error('devForceSettleSucceeded is dev-only');
+    }
+    const intent = await this.intents.findById(intentId);
+    const consumerId = intent.consumerId;
+    if (!consumerId) {
+      throw new Error(`intent ${intentId} has no consumer`);
+    }
+    const fakeSignature = `devtest_sig_${intentId}`;
+
+    // Retire the live authorized attempt with the fake signature so the
+    // settlement reaper never touches it (there is no on-chain tx to confirm).
+    await this.db.client
+      .update(paymentAttempts)
+      .set({
+        txSignature: fakeSignature,
+        status: 'succeeded',
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(paymentAttempts.intentId, intentId),
+          eq(paymentAttempts.status, 'authorized'),
+        ),
+      );
+
+    // The shared succeeded finalize transitions settling->succeeded, so move
+    // the intent into settling first (mirrors the real submit leg).
+    await this.intents.transition(intentId, 'authorized', 'settling', {});
+
+    // Idempotent payments row (mirrors finalizeSucceeded step d).
+    await this.db.client
+      .insert(payments)
+      .values({
+        intentId,
+        merchantId: intent.merchantId,
+        consumerId,
+        usdcSettlementRaw: intent.usdcSettlementRaw,
+        txSignature: fakeSignature,
+        settledAt: new Date(),
+      })
+      .onConflictDoNothing({ target: payments.intentId });
+    const [payment] = await this.db.client
+      .select({ id: payments.id })
+      .from(payments)
+      .where(eq(payments.intentId, intentId))
+      .limit(1);
+    if (!payment) {
+      return;
+    }
+
+    await this.finalizeIntentSucceeded(intentId, payment.id, {
+      status: 'complete',
+      ngnSettledMinor: intent.ngnDisplayMinor ?? undefined,
+      providerTxRef: fakeSignature,
+    });
+    this.logger.log(
+      `settlement.confirm intent_id=${intentId} outcome=succeeded (DEV force short-circuit)`,
+    );
+  }
+
   /** Idempotent failure finalize (rowCount-guarded, publishes payment.failed). */
   async finalizeFailed(
     intentId: string,
