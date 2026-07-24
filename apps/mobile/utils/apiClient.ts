@@ -2,6 +2,14 @@ import { z } from "zod";
 
 import { handleError, ErrorCode } from "@/utils/errors";
 import { AuthStorage } from "@/utils/storage/authStorage";
+import {
+  SEED_DEMO,
+  seedBalances,
+  seedPrepareTransfer,
+  seedSessions,
+  seedTransfers,
+  seedWallet,
+} from "@/utils/devSeed";
 
 /**
  * /auth/exchange request + response. Mirrors `ExchangeRequestSchema` and
@@ -299,6 +307,7 @@ class BackendClient {
   /** GET /wallet/me — returns the authenticated user's Privy embedded
    *  Solana wallet address. */
   async getWallet(): Promise<WalletResponse> {
+    if (SEED_DEMO) return seedWallet();
     const raw = await this.request<unknown>("/wallet/me", {
       method: "GET",
       auth: true,
@@ -310,6 +319,7 @@ class BackendClient {
    *  client filters for headline currencies (USDC + USDT); the full list is
    *  preserved so a future Investments screen can list every mint. */
   async getBalances(): Promise<BalancesResponse> {
+    if (SEED_DEMO) return seedBalances();
     const raw = await this.request<unknown>("/wallet/me/balances", {
       method: "GET",
       auth: true,
@@ -323,6 +333,7 @@ class BackendClient {
   async prepareTransfer(
     req: PrepareTransferRequest
   ): Promise<PrepareTransferResponse> {
+    if (SEED_DEMO) return seedPrepareTransfer();
     const raw = await this.request<unknown>("/transfers/prepare", {
       method: "POST",
       body: JSON.stringify(PrepareTransferRequestSchema.parse(req)),
@@ -351,6 +362,7 @@ class BackendClient {
     cursor?: string;
     limit?: number;
   }): Promise<TransferListResponse> {
+    if (SEED_DEMO) return seedTransfers();
     const search = new URLSearchParams();
     if (req?.cursor) search.set("cursor", req.cursor);
     if (req?.limit != null) search.set("limit", String(req.limit));
@@ -365,6 +377,7 @@ class BackendClient {
   /** GET /consumers/me/sessions — the merchant Sessions the signed-in
    *  Consumer has granted. Powers Settings > Connected Merchants. */
   async listSessions(): Promise<ListSessionsResponse> {
+    if (SEED_DEMO) return seedSessions();
     const raw = await this.request<unknown>("/consumers/me/sessions", {
       method: "GET",
       auth: true,

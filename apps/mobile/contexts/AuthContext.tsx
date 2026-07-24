@@ -13,6 +13,7 @@ import { AccountInfo, AuthContextType } from "@/types/Auth";
 import { AuthStorage } from "@/utils/storage/authStorage";
 import { apiClient } from "@/utils/apiClient";
 import { isJwtExpired } from "@/utils/jwt";
+import { SEED_DEMO, SEED_USER } from "@/utils/devSeed";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -45,6 +46,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const initializeAuth = async () => {
+      // Demo seed: drop straight into an authed session without Privy/backend.
+      if (SEED_DEMO) {
+        setUser(SEED_USER);
+        setEmail(SEED_USER.email);
+        setWallet(SEED_USER.walletAddress);
+        setIsAuthenticated(true);
+        setIsLoading(false);
+        return;
+      }
       try {
         const storedUser = await AuthStorage.getUser();
         setUser(storedUser);
