@@ -139,3 +139,42 @@ after passkey auth, for the same Privy app.
   jump straight to the B5 glass-modal iframe?
 - **C.** Merchant provisioning: a one-off script now, or a small authority-signed admin
   endpoint we keep?
+
+## Deferred settlement-lifecycle durability findings (do with B4)
+
+Two PR-review findings on the settlement money path are deep reorders that belong
+with this settlement work, not a quick review pass. Context gathered while
+triaging PR #59:
+
+- **Broadcast-vs-signature durability** (`settlement.service.ts` submit path). The
+  relayer `cosign()` validates + co-signs + **broadcasts** and only then does the
+  backend persist `txSignature` + move the attempt to `settling`. A crash in that
+  window leaves USDC moved on-chain with no recorded signature and the attempt
+  stuck `authorized`; the reaper can only fail it. The relayer's replay guard is an
+  **in-memory bounded LRU** (`cosign.service.ts`), and the relayer has **no
+  datastore** (no Redis/pg — deliberately stateless), so a durable
+  intent→signature registry is not available without adding infra. Realistic fixes:
+  (a) split `cosign` from `broadcast` so the backend persists the fully-signed tx +
+  signature before broadcast and a retry re-broadcasts idempotently within the
+  blockhash window, or (b) a reaper chain-reconciliation that queries the chain for
+  a confirmed transfer matching the pinned message + settlement account and adopts
+  its signature. (a) prevents the window; (b) recovers after it.
+- **Finalize resumability** (`settlement-confirmation.service.ts` `finalizeSucceeded`).
+  The attempt is claimed `settling→succeeded` FIRST (to gate the provider call), so
+  if any later step (provider completion, payment insert, transfer correlation,
+  intent transition, webhook publish) throws, retries hit `claimed.length === 0` and
+  the 30s sweeper (which queries attempts still `settling`) can no longer see it —
+  the intent is stranded `settling` with no payment row and no webhook even though
+  the attempt is terminal. Realistic fixes: (a) claim the attempt `succeeded` LAST
+  and publish before the terminal intent transition, leaning on the existing
+  idempotency contracts (provider idempotent-per-signature, payment
+  `onConflictDoNothing`, transition rowCount-guarded, webhook at-least-once + dedup)
+  so the sweeper re-drives any crash to completion; or (b) keep claim-first, resume
+  the idempotent tail on re-entry, and extend the sweeper to also pick up intents
+  stuck `settling` whose attempt is already `succeeded`.
+
+Not settlement-lifecycle but also worth tracking from the same review: the backend
+jest suite has an intermittent **`SIGSEGV` worker crash** (~1 in 6 local runs,
+native, pointing at `privy.adapter.spec.ts` under parallel workers) that can
+occasionally redden CI regardless of code. Cheap mitigation: run backend jest with
+`--maxWorkers=1` in CI; real fix: track down the crashing native binding.
