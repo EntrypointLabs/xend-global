@@ -55,7 +55,7 @@ The plain npm entry (`@xend/checkout-core`) exposes `mountXendButton` for non-Re
 
 ## 2. Create the intent on your server
 
-Money never travels through the browser, so `createIntent` calls your own server, and your server calls the Pay with Xend merchant API. Create the intent with `POST /payment_intents` and return only the resulting `reference` to the browser. The request and response shapes are the merchant API's contract (Phase 6 merchant API reference); the SDK needs only `{ reference }` back.
+Money never travels through the browser, so `createIntent` calls your own server, and your server calls the Pay with Xend merchant API. Create the intent with `POST /v1/payment_intents` (amount is a minor-unit string, currency is `NGN` or `USDC`); the response's `id` is what you hand back to the browser as the SDK's `{ reference }`. The full request and response shapes are the merchant API's contract (Phase 6 merchant API reference).
 
 "Your server" is any server-side execution context, not necessarily a standalone REST route. A route handler works, and in React a Server Action works just as well and is usually cleaner. The only rule is that the call runs server-side, where your secret key is safe and the amount is resolved from your own data.
 
@@ -64,17 +64,17 @@ Money never travels through the browser, so `createIntent` calls your own server
 ```ts
 // Your server. XEND_SECRET_KEY is a server-only secret, never shipped to the browser.
 app.post("/api/pay/intent", async (req, res) => {
-  const intent = await fetch("https://api.xend.global/payment_intents", {
+  const resp = await fetch("https://api.xend.global/v1/payment_intents", {
     method: "POST",
     headers: {
       authorization: `Bearer ${process.env.XEND_SECRET_KEY}`,
       "content-type": "application/json",
     },
-    // Amount and currency live here, server-side. See the merchant API reference.
-    body: JSON.stringify({ amount: 500000, currency: "usd" }),
+    // Amount (minor units, as a string) and currency live here, server-side.
+    body: JSON.stringify({ amount: "500000", currency: "NGN" }),
   });
-  const { reference } = await intent.json();
-  res.json({ reference }); // the only thing the browser receives
+  const intent = await resp.json(); // { id: "pi_...", ... }
+  res.json({ reference: intent.id }); // the SDK's createIntent needs { reference }
 });
 ```
 
@@ -91,16 +91,17 @@ export async function createXendIntent(cartId: string) {
   // shopper cannot tamper with. See the caveat below.
   const cart = await getCart(cartId);
 
-  const res = await fetch("https://api.xend.global/payment_intents", {
+  const res = await fetch("https://api.xend.global/v1/payment_intents", {
     method: "POST",
     headers: {
       authorization: `Bearer ${process.env.XEND_SECRET_KEY}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify({ amount: cart.totalMinor, currency: "NGN" }),
+    // amount is a minor-unit string; currency is "NGN" or "USDC".
+    body: JSON.stringify({ amount: String(cart.totalMinor), currency: "NGN" }),
   });
-  const { reference } = await res.json();
-  return { reference }; // the only value that crosses back to the browser
+  const intent = await res.json(); // { id: "pi_...", ... }
+  return { reference: intent.id }; // the SDK's createIntent contract
 }
 ```
 
