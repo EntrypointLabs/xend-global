@@ -409,9 +409,9 @@ describe('SettlementConfirmationService', () => {
       });
     });
 
-    it('reaper force-fails an aged authorized attempt with ATTEMPT_ABANDONED and publishes no event', async () => {
+    it('reaper fails an aged authorized attempt (ATTEMPT_ABANDONED) and frees + notifies the parent intent', async () => {
       const { provider } = makeProvider({ status: 'complete' });
-      const { intents } = makeIntents();
+      const { intents, transition } = makeIntents();
       const { publisher, publish } = makePublisher();
       const captured: string[] = [];
       const service = makeService({
@@ -438,7 +438,19 @@ describe('SettlementConfirmationService', () => {
         s.includes('UPDATE payment_attempts'),
       );
       expect(reapUpdate).toContain('ATTEMPT_ABANDONED');
-      expect(publish).not.toHaveBeenCalled();
+      // The stranded intent is freed to a terminal state (never left authorized
+      // with no live attempt) and the merchant is notified.
+      expect(transition).toHaveBeenCalledWith(
+        'pi_1',
+        'authorized',
+        'failed',
+        {},
+      );
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(publish.mock.calls[0][0]).toMatchObject({
+        topic: 'payment.failed',
+        payload: { intentId: 'pi_1', reason: 'ATTEMPT_ABANDONED' },
+      });
     });
 
     it('leaves a freshly-pinned authorized attempt untouched (not returned by the window query)', async () => {
@@ -462,8 +474,8 @@ describe('SettlementConfirmationService', () => {
 
     it('reaps a pinned attempt with a confirmed inbound of the exact amount as ATTEMPT_ORPHAN_SUSPECTED', async () => {
       const { provider } = makeProvider({ status: 'complete' });
-      const { intents } = makeIntents();
-      const { publisher } = makePublisher();
+      const { intents, transition } = makeIntents();
+      const { publisher, publish } = makePublisher();
       const captured: string[] = [];
       const service = makeService({
         db: makeExecDb({
@@ -490,6 +502,10 @@ describe('SettlementConfirmationService', () => {
         s.includes('UPDATE payment_attempts'),
       );
       expect(reapUpdate).toContain('ATTEMPT_ORPHAN_SUSPECTED');
+      // Money may have landed: the intent stays authorized for ops. No
+      // auto-fail transition, no merchant-facing failure event.
+      expect(transition).not.toHaveBeenCalled();
+      expect(publish).not.toHaveBeenCalled();
     });
   });
 });

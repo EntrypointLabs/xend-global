@@ -428,9 +428,34 @@ export class SettlementConfirmationService implements OnModuleInit {
       `)) as unknown as { rowCount: number };
       if (reaped.rowCount === 0) continue;
       if (orphanSuspected) {
+        // Money may have landed under a signature we never recorded: leave the
+        // intent `authorized` for ops to resolve manually. Auto-failing here
+        // could tell the merchant the payment failed after they were paid.
         this.logger.warn(
           `settlement.reap.orphan_suspected attempt_id=${row.id} intent_id=${row.intentId} merchant_id=${row.merchantId} amount_raw=${row.usdcSettlementRaw}`,
         );
+      } else {
+        // Clean abandonment: free the parent intent so it is not stranded
+        // `authorized` with no live attempt (which authorize() cannot re-enter,
+        // leaving the checkout permanently stuck). Move it to terminal `failed`
+        // and notify the merchant. A conditional transition tolerates a race
+        // with any concurrent terminal write.
+        try {
+          await this.intents.transition(
+            row.intentId,
+            'authorized',
+            'failed',
+            {},
+          );
+          await this.events.publish({
+            topic: 'payment.failed',
+            key: row.intentId,
+            payload: { intentId: row.intentId, reason: code },
+            correlationId: row.intentId,
+          });
+        } catch (err) {
+          if (!(err instanceof IntentStateConflictError)) throw err;
+        }
       }
       this.logger.log(
         `settlement.reap attempt_id=${row.id} intent_id=${row.intentId} reason=${code}`,
