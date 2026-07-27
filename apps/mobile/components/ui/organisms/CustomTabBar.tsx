@@ -39,7 +39,10 @@ export function CustomTabBar({
   descriptors,
   navigation,
 }: BottomTabBarProps) {
-  const segments = useSegments();
+  // Expo Router's typed-route segment tuple comes from the gitignored
+  // `.expo/types`, absent in CI; treat segments as a plain string array so
+  // depth checks type-check without the generated route types.
+  const segments = useSegments() as string[];
   const [isActionMenuVisible, setIsActionMenuVisible] = useState(false);
 
   const fabScale = useSharedValue(1);
