@@ -57,10 +57,21 @@ export function isPrivateAddress(ip: string): boolean {
   const addr = ip.trim().toLowerCase();
   if (addr.length === 0) return true;
 
-  // IPv4-mapped / IPv4-compatible IPv6 (e.g. ::ffff:127.0.0.1): classify by
-  // the embedded IPv4.
-  const mapped = addr.match(/^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) return isPrivateIpv4(mapped[1]);
+  // IPv4-mapped / IPv4-compatible IPv6 in dotted form (e.g. ::ffff:127.0.0.1):
+  // classify by the embedded IPv4.
+  const mappedDotted = addr.match(/^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/);
+  if (mappedDotted) return isPrivateIpv4(mappedDotted[1]);
+
+  // IPv4-mapped IPv6 in hex form. Node normalizes literals like
+  // [::ffff:127.0.0.1] to ::ffff:7f00:1, which would otherwise slip past the
+  // IPv6 checks below (empty first hextet) and evade the private-range guard.
+  const mappedHex = addr.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (mappedHex) {
+    const high = parseInt(mappedHex[1], 16);
+    const low = parseInt(mappedHex[2], 16);
+    const embedded = `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+    return isPrivateIpv4(embedded);
+  }
 
   if (addr.includes('.') && !addr.includes(':')) return isPrivateIpv4(addr);
 
