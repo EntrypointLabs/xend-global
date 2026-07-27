@@ -84,25 +84,33 @@ export class PaymentAuthorizationService {
       throw new IntentExpiredError(`intent ${intentId} expired`);
     }
 
-    // Session path: validate, then gate on the session's own velocity caps
-    // BEFORE capacity, so the narrower gate runs first and a velocity
-    // rejection never consumes tier headroom.
+    // Session path: validate, then GATE (read-only) on the session's own
+    // velocity caps BEFORE capacity, so the narrower gate runs first and a
+    // velocity rejection never consumes tier headroom. The slot is recorded
+    // only after the authorization commits (below).
     let session: { id: string; consumerId: string } | undefined;
     let consumerId: string;
     if (sessionToken) {
       session = await this.sessions.validate(sessionToken, intent.merchantId);
       consumerId = session.consumerId;
-      await this.sessions.checkAndRecordVelocity(
-        session.id,
-        intent.usdcSettlementRaw,
-      );
+      await this.sessions.checkVelocity(session.id, intent.usdcSettlementRaw);
     } else {
       consumerId = params.consumerId as string;
     }
 
-    // Capacity BEFORE any write, so a rejected Payment leaves the intent
-    // untouched.
+    // Capacity check (read-only) BEFORE any write.
     await this.capacity.checkCapacity(consumerId, intent.usdcSettlementRaw);
+
+    // Reserve capacity BEFORE the authorizing transition. Recording first means
+    // a counter-write failure throws while the intent is still `created` (clean
+    // and retryable) instead of leaving it authorized-but-uncounted, which would
+    // let the amount bypass the daily/monthly caps. The narrow residual is a
+    // rare fail-safe over-count if the transition below then loses a race: a
+    // daily window self-heals and it errs toward over-restricting, never bypass.
+    await this.capacity.recordAuthorizedPayment(
+      consumerId,
+      intent.usdcSettlementRaw,
+    );
 
     // The conditional transition is the race arbiter.
     await this.intents.transition(intentId, 'created', 'authorized', {
@@ -128,15 +136,12 @@ export class PaymentAuthorizationService {
       throw err;
     }
 
-    await this.capacity.recordAuthorizedPayment(
-      consumerId,
-      intent.usdcSettlementRaw,
-    );
-
-    // Rotate only after the authorization has succeeded: a failed Payment must
-    // not invalidate the Consumer's working token.
+    // Record velocity + rotate only after the authorization has committed: a
+    // rejected Payment must neither burn a session's daily slot nor invalidate
+    // the Consumer's working token.
     let rotatedSessionToken: string | undefined;
     if (session) {
+      await this.sessions.recordVelocity(session.id, intent.usdcSettlementRaw);
       rotatedSessionToken = await this.sessions.rotate(session.id);
     }
 

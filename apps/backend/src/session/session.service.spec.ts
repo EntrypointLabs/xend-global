@@ -297,38 +297,50 @@ describe('SessionService.rotate', () => {
   });
 });
 
-describe('SessionService.checkAndRecordVelocity', () => {
-  it('records a payment within the caps', async () => {
+describe('SessionService velocity', () => {
+  it('recordVelocity consumes a slot', async () => {
     const { db } = makeFakeDb({});
     const { service, increments } = makeService({
       db,
       peek: { count: 0, totalRaw: '0' },
     });
-    await service.checkAndRecordVelocity('s1', '1000000');
+    await service.recordVelocity('s1', '1000000');
     expect(increments).toHaveLength(1);
     expect(increments[0].amountRaw).toBe('1000000');
   });
 
-  it('rejects when the payment-count cap is reached', async () => {
+  it('checkVelocity passes within the caps WITHOUT recording', async () => {
     const { db } = makeFakeDb({});
-    const { service } = makeService({
+    const { service, increments } = makeService({
+      db,
+      peek: { count: 0, totalRaw: '0' },
+    });
+    await service.checkVelocity('s1', '1000000');
+    expect(increments).toHaveLength(0);
+  });
+
+  it('checkVelocity rejects when the payment-count cap is reached', async () => {
+    const { db } = makeFakeDb({});
+    const { service, increments } = makeService({
       db,
       peek: { count: 5, totalRaw: '0' },
     });
-    await expect(
-      service.checkAndRecordVelocity('s1', '1000000'),
-    ).rejects.toMatchObject({ code: 'SESSION_VELOCITY_EXCEEDED' });
+    await expect(service.checkVelocity('s1', '1000000')).rejects.toMatchObject({
+      code: 'SESSION_VELOCITY_EXCEEDED',
+    });
+    // A rejected check never burns a slot.
+    expect(increments).toHaveLength(0);
   });
 
-  it('rejects when the amount cap would be exceeded', async () => {
+  it('checkVelocity rejects when the amount cap would be exceeded', async () => {
     const { db } = makeFakeDb({});
     const { service } = makeService({
       db,
       peek: { count: 0, totalRaw: '99000000' },
     });
-    await expect(
-      service.checkAndRecordVelocity('s1', '2000000'),
-    ).rejects.toMatchObject({ code: 'SESSION_VELOCITY_EXCEEDED' });
+    await expect(service.checkVelocity('s1', '2000000')).rejects.toMatchObject({
+      code: 'SESSION_VELOCITY_EXCEEDED',
+    });
   });
 });
 
