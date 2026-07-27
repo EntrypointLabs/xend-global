@@ -1,7 +1,6 @@
 import { useCallback, useRef } from 'react';
 import {
   useLoginWithPasskey,
-  useSignupWithPasskey,
   useIdentityToken,
   usePrivy,
 } from '@privy-io/react-auth';
@@ -38,7 +37,6 @@ const CEREMONY_LOGIN_OPTIONS: {
 export function usePasskeyCeremony() {
   const { authenticated } = usePrivy();
   const { loginWithPasskey } = useLoginWithPasskey();
-  const { signupWithPasskey } = useSignupWithPasskey();
   const { identityToken } = useIdentityToken();
   const tokenRef = useRef<string | null>(identityToken);
   const authedRef = useRef<boolean>(authenticated);
@@ -56,17 +54,12 @@ export function usePasskeyCeremony() {
   const runCeremony = useCallback(async (): Promise<CeremonyResult> => {
     // Already authenticated (persisted Privy session) -> reuse the token, no
     // prompt. Otherwise loginWithPasskey runs first (no awaited fetch before it,
-    // so Safari user activation stays valid).
+    // so Safari user activation stays valid). The checkout only AUTHENTICATES an
+    // existing consumer; identity (email + passkey + wallet) is created once in
+    // the mobile app, never here.
     if (!authedRef.current) await loginWithPasskey(CEREMONY_LOGIN_OPTIONS);
     return { providerToken: await awaitIdentityToken() };
   }, [loginWithPasskey, awaitIdentityToken]);
 
-  // First-time consumer: enrol a new passkey (rp.id from Privy config), then
-  // the same identity-token handoff as the login path.
-  const runSignup = useCallback(async (): Promise<CeremonyResult> => {
-    if (!authedRef.current) await signupWithPasskey();
-    return { providerToken: await awaitIdentityToken() };
-  }, [signupWithPasskey, awaitIdentityToken]);
-
-  return { runCeremony, runSignup };
+  return { runCeremony };
 }

@@ -12,15 +12,15 @@ interface CeremonyProps {
 }
 
 function CeremonyInner({ intent, onComplete, onCancel }: CeremonyProps) {
-  const { runCeremony, runSignup } = usePasskeyCeremony();
+  const { runCeremony } = usePasskeyCeremony();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  const run = (ceremony: () => Promise<CeremonyResult>) => {
+  const run = () => {
     setBusy(true);
     setFailed(false);
     // No awaited fetch before the ceremony call, so Safari user activation holds.
-    ceremony()
+    runCeremony()
       .then(onComplete)
       .catch(() => setFailed(true))
       .finally(() => setBusy(false));
@@ -53,21 +53,13 @@ function CeremonyInner({ intent, onComplete, onCancel }: CeremonyProps) {
           <>
             <button
               type="button"
-              onClick={() => run(runCeremony)}
+              onClick={run}
               disabled={busy}
               className="bg-brand-ink text-brand-black mt-8 w-full rounded-2xl py-4 text-base font-semibold disabled:opacity-60"
             >
               {busy
                 ? 'Waiting for confirmation'
                 : 'Continue with Face ID or fingerprint'}
-            </button>
-            <button
-              type="button"
-              onClick={() => run(runSignup)}
-              disabled={busy}
-              className="text-brand-muted mt-3 w-full py-2 text-sm disabled:opacity-60"
-            >
-              First time? Create a passkey
             </button>
           </>
         )}
