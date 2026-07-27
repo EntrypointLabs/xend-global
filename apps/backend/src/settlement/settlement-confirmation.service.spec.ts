@@ -30,11 +30,11 @@ const PAYMENT_ROW = {
   createdAt: new Date(),
 };
 
-function makeConfig(): ConfigService {
+function makeConfig(budgetMs = 15): ConfigService {
   return {
     getOrThrow: (key: string): number => {
       if (key === 'SETTLEMENT_CONFIRM_POLL_INTERVAL_MS') return 1;
-      if (key === 'SETTLEMENT_CONFIRM_BUDGET_MS') return 15;
+      if (key === 'SETTLEMENT_CONFIRM_BUDGET_MS') return budgetMs;
       throw new Error(`missing config ${key}`);
     },
   } as unknown as ConfigService;
@@ -168,10 +168,11 @@ function makeService(deps: {
   provisioning?: SettlementProvisioningService;
   provider: SettlementProvider;
   publisher: EventPublisher;
+  budgetMs?: number;
 }): SettlementConfirmationService {
   const service = new SettlementConfirmationService(
     deps.db,
-    makeConfig(),
+    makeConfig(deps.budgetMs),
     deps.solana ?? makeSolana([]),
     deps.intents,
     deps.provisioning ?? makeProvisioning(),
@@ -206,6 +207,10 @@ describe('SettlementConfirmationService', () => {
         intents,
         provider,
         publisher,
+        // Generous budget so the first poll is always reached; the confirmed
+        // status returns immediately, keeping the test instant while removing
+        // the deadline race that flaked on slower CI runners.
+        budgetMs: 5000,
       });
       const spy = jest
         .spyOn(service, 'finalizeSucceeded')
