@@ -95,6 +95,19 @@ export class DirectUsdcProvider implements SettlementProvider, OnModuleInit {
         tokenProgram: TOKEN_PROGRAM_ADDRESS,
         mint: usdcMint,
       });
+      // The ATA is a PDA; deriving it does not create it. If the merchant has
+      // never initialized their USDC ATA, settlement would build a
+      // TransferChecked to a nonexistent token account and fail at simulation
+      // for every payment. Fail loud at provisioning instead of returning an
+      // unusable destination. (Auto-creating the ATA under the authority is a
+      // possible future enhancement; the pilot uses the authority-owned variant
+      // below, so this path stays verify-only.)
+      const ataExists = await this.solana.accountExists(ata);
+      if (!ataExists) {
+        throw new SettlementAccountNotProvisionedError(
+          `merchant ${params.merchantId} has no USDC token account at ${ata}; create the USDC ATA before provisioning this settlement destination`,
+        );
+      }
       return {
         address: ata,
         providerReference: params.merchantAddress,

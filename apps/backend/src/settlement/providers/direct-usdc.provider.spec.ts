@@ -100,6 +100,24 @@ describe('DirectUsdcProvider', () => {
     expect(endpoint.payoutConfig).toBeNull();
   });
 
+  it('rejects a merchant-own address whose USDC ATA does not exist on chain', async () => {
+    const merchantWallet = Keypair.generate().publicKey.toBase58();
+    // The owner wallet exists, but its USDC ATA was never initialized: deriving
+    // the PDA must not be mistaken for the account existing, or settlement would
+    // transfer to a nonexistent token account and fail at simulation.
+    const accountExists = jest.fn((addr: string) =>
+      Promise.resolve(addr === merchantWallet),
+    );
+    const provider = makeProvider(makeSolana({ accountExists }));
+
+    await expect(
+      provider.provision({
+        merchantId: 'm_own',
+        merchantAddress: merchantWallet,
+      }),
+    ).rejects.toMatchObject({ code: 'SETTLEMENT_ACCOUNT_NOT_PROVISIONED' });
+  });
+
   it('handleIncomingSettlement returns complete synchronously (USDC landed is settlement)', async () => {
     const provider = makeProvider(makeSolana());
     const completion = await provider.handleIncomingSettlement({
