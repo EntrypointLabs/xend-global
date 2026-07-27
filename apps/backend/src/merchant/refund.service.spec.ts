@@ -242,4 +242,60 @@ describe('RefundService.refund', () => {
     expect(reverse).toHaveBeenCalledTimes(1);
     expect(second).toEqual(first);
   });
+
+  it('does not reverse again when it loses the unique-index race', async () => {
+    // Simulates a concurrent duplicate that slips past the response-snapshot
+    // idempotency layer: the refunds insert loses on the (merchant,
+    // idempotency_key) unique index (23505), so the reverse must not fire and
+    // the winner's record is returned instead.
+    const winner = {
+      id: 'rf_winner',
+      paymentId: 'pay_1',
+      merchantId: 'm1',
+      status: 'succeeded',
+      amountUsdcRaw: '1000000',
+      providerReference: 'revsig',
+      createdAt: new Date(),
+    };
+    let refundsSelects = 0;
+    const client = {
+      select: () => ({
+        from: (tbl: unknown) => {
+          let rows: unknown[] = [];
+          if (tbl === payments) rows = [payment()];
+          else if (tbl === paymentIntents) rows = [{ status: 'succeeded' }];
+          // 1st refunds select = remainder calc (none prior); 2nd = the
+          // post-23505 lookup that returns the winning refund.
+          else if (tbl === refunds)
+            rows = refundsSelects++ === 0 ? [] : [winner];
+          else if (tbl === settlementAccounts) rows = [account];
+          else if (tbl === smartAccounts) rows = [consumerAccount];
+          else throw new Error('unknown table');
+          return { where: () => whereResult(rows) };
+        },
+      }),
+      insert: () => ({
+        values: () => ({
+          returning: () =>
+            Promise.reject(
+              Object.assign(new Error('duplicate'), { code: '23505' }),
+            ),
+        }),
+      }),
+      update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
+    };
+    const db = { client } as unknown as DbService;
+    const { router, reverse } = makeProvider(true);
+    const svc = new RefundService(db, router, makeIdempotency());
+
+    const result = await svc.refund({
+      paymentId: 'pay_1',
+      idempotencyKey: 'k1',
+    });
+
+    expect(reverse).not.toHaveBeenCalled();
+    expect(result.id).toBe('rf_winner');
+    expect(result.status).toBe('succeeded');
+    expect(result.provider_reference).toBe('revsig');
+  });
 });

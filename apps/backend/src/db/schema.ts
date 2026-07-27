@@ -620,6 +620,14 @@ export const refunds = pgTable(
   },
   (table) => ({
     paymentIdx: index('refunds_payment_idx').on(table.paymentId),
+    // Data-layer backstop against a double refund: the same merchant
+    // Idempotency-Key can create at most one refund row, so a concurrent
+    // retry loses the insert (23505) before it can call provider.reverse().
+    // NULL keys are distinct in Postgres, so keyless refunds are unconstrained.
+    merchantIdemIdx: uniqueIndex('refunds_merchant_idem_idx').on(
+      table.merchantId,
+      table.idempotencyKey,
+    ),
   }),
 );
 

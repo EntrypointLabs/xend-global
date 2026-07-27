@@ -19,6 +19,12 @@ import {
 } from './merchant.errors';
 import type { RefundObject } from './refund.dtos';
 
+/** Postgres unique-violation SQLSTATE, surfaced by node-postgres. */
+function pgErrorCode(err: unknown): string | undefined {
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e?.code ?? e?.cause?.code;
+}
+
 export interface RefundParams {
   paymentId: string;
   amountUsdcRaw?: string;
@@ -139,18 +145,43 @@ export class RefundService {
       );
     }
 
-    // Durable record first, then the provider reverse (crash-safe).
-    const [refundRow] = await this.db.client
-      .insert(refunds)
-      .values({
-        paymentId: payment.id,
-        merchantId: payment.merchantId,
-        status: 'pending',
-        amountUsdcRaw: requested.toString(),
-        reason: params.reason ?? null,
-        idempotencyKey: params.idempotencyKey ?? null,
-      })
-      .returning();
+    // Durable record first, then the provider reverse (crash-safe). The insert
+    // is also the concurrency guard: the (merchant, idempotency_key) unique
+    // index means a duplicate refund request loses here (23505) BEFORE it can
+    // reverse funds a second time.
+    let refundRow: typeof refunds.$inferSelect;
+    try {
+      [refundRow] = await this.db.client
+        .insert(refunds)
+        .values({
+          paymentId: payment.id,
+          merchantId: payment.merchantId,
+          status: 'pending',
+          amountUsdcRaw: requested.toString(),
+          reason: params.reason ?? null,
+          idempotencyKey: params.idempotencyKey ?? null,
+        })
+        .returning();
+    } catch (err) {
+      // Lost the concurrent-refund race: the winning request already created
+      // the refund and is reversing (or has reversed). Return its record rather
+      // than reversing again. Without an idempotency key there is no backstop.
+      if (pgErrorCode(err) === '23505' && params.idempotencyKey) {
+        const [existing] = await this.db.client
+          .select()
+          .from(refunds)
+          .where(
+            and(
+              eq(refunds.merchantId, payment.merchantId),
+              eq(refunds.idempotencyKey, params.idempotencyKey),
+            ),
+          )
+          .limit(1);
+        if (existing)
+          return { status: 200, body: this.toRefundObject(existing) };
+      }
+      throw err;
+    }
 
     try {
       const { signature } = await provider.reverse({
@@ -191,5 +222,17 @@ export class RefundService {
         .where(eq(refunds.id, refundRow.id));
       throw err;
     }
+  }
+
+  private toRefundObject(row: typeof refunds.$inferSelect): RefundObject {
+    return {
+      id: row.id,
+      object: 'refund',
+      payment_id: row.paymentId,
+      status: row.status,
+      amount_usdc_raw: row.amountUsdcRaw,
+      provider_reference: row.providerReference,
+      created: Math.floor(row.createdAt.getTime() / 1000),
+    };
   }
 }
