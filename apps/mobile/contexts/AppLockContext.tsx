@@ -28,6 +28,13 @@ const BACKGROUND_GRACE_PERIOD_MS = 5 * 60 * 1000;
 interface AppLockContextType {
   /** True while the authenticated app should stay hidden behind the lock. */
   isLocked: boolean;
+  /**
+   * True the instant the app isn't fully active (backgrounded, or the OS
+   * app-switcher view) — independent of whether the grace period below has
+   * actually re-locked yet. Covering content on this, not on `isLocked`, is
+   * what keeps the Balance out of the OS app-switcher snapshot.
+   */
+  isObscured: boolean;
   /** The biometric sheet is currently up. */
   isAuthenticating: boolean;
   /** Lock is on and the persisted preference has loaded — safe to prompt. */
@@ -52,6 +59,7 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
   // Default locked so the app never flashes before the persisted preference
   // loads; the resolve effect drops it for users without a passkey.
   const [isLocked, setIsLocked] = useState(true);
+  const [isObscured, setIsObscured] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const authenticatingRef = useRef(false);
 
@@ -123,15 +131,24 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Re-lock only once the app has been backgrounded for longer than the
-  // grace period — not on the transient 'inactive' state the biometric
-  // prompt itself can raise (which would loop the prompt), and not on a
-  // brief trip out (e.g. opening the Privacy Policy link) and straight back.
   const backgroundedAtRef = useRef<number | null>(null);
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
-      if (!enabled || authenticatingRef.current) return;
+      if (!enabled) return;
 
+      // Obscure immediately on any non-active state — this covers the OS
+      // app-switcher snapshot the instant it's taken, before the grace-
+      // period decision below has even run.
+      setIsObscured(state !== "active");
+
+      if (authenticatingRef.current) return;
+
+      // Re-lock only once the app has been backgrounded for longer than the
+      // grace period — not on the transient 'inactive' state the biometric
+      // prompt itself can raise (which would loop the prompt), and not on a
+      // brief trip out (e.g. opening the Privacy Policy link) and straight
+      // back. Being obscured (above) already covers content during that
+      // grace window; this only decides whether Face ID is also required.
       if (state === "background") {
         backgroundedAtRef.current = Date.now();
         return;
@@ -152,6 +169,7 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
     <AppLockContext.Provider
       value={{
         isLocked: APP_LOCK_DISABLED ? false : isLocked,
+        isObscured: APP_LOCK_DISABLED ? false : isObscured,
         isAuthenticating,
         promptReady: resolved && enabled,
         authenticate,

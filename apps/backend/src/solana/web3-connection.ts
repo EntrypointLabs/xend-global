@@ -51,20 +51,22 @@ export async function getTokenBalancesViaConnection(
   const ownerPk = new PublicKey(owner);
   // Both classic SPL Token and Token-2022 can hold balances for the
   // wallet; query both program IDs and concatenate so the Balance view
-  // sums correctly.
+  // sums correctly. A Token-2022 read failure must propagate rather than
+  // be swallowed into an empty list — callers like account deletion treat
+  // this result as an exhaustive balance check, and FailoverSolanaRpc is
+  // the layer that already knows how to retry a failed read against the
+  // fallback adapter; swallowing it here would bypass that.
   const [classic, t2022] = await Promise.all([
     conn.getParsedTokenAccountsByOwner(
       ownerPk,
       { programId: TOKEN_PROGRAM_ID },
       'confirmed',
     ),
-    conn
-      .getParsedTokenAccountsByOwner(
-        ownerPk,
-        { programId: TOKEN_2022_PROGRAM_ID },
-        'confirmed',
-      )
-      .catch(() => ({ value: [] as Array<unknown> })),
+    conn.getParsedTokenAccountsByOwner(
+      ownerPk,
+      { programId: TOKEN_2022_PROGRAM_ID },
+      'confirmed',
+    ),
   ]);
 
   const collect = (
@@ -87,10 +89,7 @@ export async function getTokenBalancesViaConnection(
       };
     });
 
-  return [
-    ...collect(classic.value),
-    ...collect(t2022.value as typeof classic.value),
-  ];
+  return [...collect(classic.value), ...collect(t2022.value)];
 }
 
 export async function sendRawTransactionViaConnection(

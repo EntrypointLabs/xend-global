@@ -111,7 +111,7 @@ if (process.env.EXPO_PUBLIC_GRID_ENV === "production") {
 function AuthLayout() {
   const segments = useSegments();
   const { isAuthenticated, pendingPasskeySetup } = useAuth();
-  const { isLocked } = useAppLock();
+  const { isLocked, isObscured } = useAppLock();
   const colorScheme = useColorScheme();
 
   if (isAuthenticated === null) {
@@ -133,6 +133,11 @@ function AuthLayout() {
   // screen/modal was open) stays mounted underneath, so unlocking returns to
   // exactly where the Consumer left off instead of resetting the navigator.
   const showLock = isAuthenticated && !inAuthGroup && isLocked;
+  // Covers content the instant the app isn't active (e.g. the OS
+  // app-switcher snapshot), even during the grace period where `showLock`
+  // hasn't kicked in yet. Skipped once showLock is up — that already covers.
+  const showObscure =
+    isAuthenticated && !inAuthGroup && isObscured && !showLock;
 
   // Theming is driven by NativeWind (ThemedRoot's `dark` class) and
   // ScreenThemeProvider; the navigator inherits light/dark from the OS.
@@ -146,6 +151,11 @@ function AuthLayout() {
           <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
         </ToastProvider>
       </ModalFlowProvider>
+      {showObscure && (
+        <View style={StyleSheet.absoluteFill}>
+          <LoadingScreen />
+        </View>
+      )}
       {showLock && (
         <View style={StyleSheet.absoluteFill}>
           <LockScreen />

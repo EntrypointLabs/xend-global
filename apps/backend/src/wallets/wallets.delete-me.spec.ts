@@ -33,10 +33,16 @@ function makeFakeDb(store: FakeStore): DbService {
       }),
     }),
     update: (tbl: unknown) => ({
-      set: (values: Partial<UsersRow>) => ({
+      set: (values: Record<string, unknown>) => ({
         where: () => {
           if (tbl === users) {
             store.users = store.users.map((u) => ({ ...u, ...values }));
+          }
+          if (tbl === smartAccounts) {
+            store.smartAccounts = store.smartAccounts.map((a) => ({
+              ...a,
+              ...values,
+            }));
           }
           return Promise.resolve();
         },
@@ -99,7 +105,7 @@ describe('WalletsService.deleteMe', () => {
     );
   });
 
-  it('soft-deletes the user at zero balance', async () => {
+  it('soft-deletes the user and anonymizes the smart_accounts uniques at zero balance', async () => {
     const { service, store } = makeService({ tokens: [] });
 
     const result = await service.deleteMe('u_1');
@@ -107,6 +113,11 @@ describe('WalletsService.deleteMe', () => {
     expect(result).toEqual({ deleted: true });
     expect(store.users[0].deletedAt).not.toBeNull();
     expect(store.users[0].email).toBe('deleted-u_1@deleted.xend.internal');
+    // Frees the unique wallet_address/provider_user_id so /auth/exchange can
+    // re-insert a smart_accounts row if the same Privy identity signs in
+    // again later, instead of hitting a stale unique-constraint conflict.
+    expect(store.smartAccounts[0].walletAddress).toBe('deleted-sa_1');
+    expect(store.smartAccounts[0].providerUserId).toBe('deleted-sa_1');
   });
 
   it('treats an all-zero multi-mint balance list as deletable', async () => {

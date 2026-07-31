@@ -89,6 +89,13 @@ export class WalletsService {
    * commits to. JwtStrategy rejects any token for a soft-deleted user, so
    * this is a hard lockout regardless of how long the caller's JWT still
    * has left to live.
+   *
+   * `smart_accounts.wallet_address` / `provider_user_id` are also
+   * anonymized (not left pointing at the real values): both columns are
+   * unique, and `/auth/exchange` re-inserts a smart_accounts row keyed on
+   * the new user if the same Privy identity signs in again later. Leaving
+   * the old row's uniques intact would turn that re-registration into an
+   * unhandled 500 instead of a clean new account.
    */
   async deleteMe(userId: string): Promise<DeleteAccountResponse> {
     const [account] = await this.db.client
@@ -113,6 +120,14 @@ export class WalletsService {
         deletedAt: new Date(),
       })
       .where(eq(users.id, userId));
+
+    await this.db.client
+      .update(smartAccounts)
+      .set({
+        walletAddress: `deleted-${account.id}`,
+        providerUserId: `deleted-${account.id}`,
+      })
+      .where(eq(smartAccounts.id, account.id));
 
     return { deleted: true };
   }
