@@ -1,7 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
+import { eq } from 'drizzle-orm';
+import { DbService } from '../db/db.service';
+import { users } from '../db/schema';
 
 /**
  * JWT payload shape. The JWT identifies the user (`sub`) and pins the
@@ -16,7 +19,10 @@ export interface JwtPayload {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    private db: DbService,
+  ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -24,8 +30,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  validate(payload: JwtPayload) {
-    // This gets attached to req.user on every protected route.
+  /**
+   * This gets attached to req.user on every protected route. JWTs live for
+   * days (JWT_EXPIRES_IN), far longer than an account-deletion request
+   * should stay honored, so a live DB check against `deletedAt` — not just
+   * the token's own signature/expiry — is what actually locks a deleted
+   * account out immediately.
+   */
+  async validate(payload: JwtPayload) {
+    const [user] = await this.db.client
+      .select({ deletedAt: users.deletedAt })
+      .from(users)
+      .where(eq(users.id, payload.sub))
+      .limit(1);
+
+    if (!user || user.deletedAt) {
+      throw new UnauthorizedException();
+    }
+
     return { userId: payload.sub, walletAddress: payload.walletAddress };
   }
 }
