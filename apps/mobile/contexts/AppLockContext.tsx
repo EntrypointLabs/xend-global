@@ -19,6 +19,12 @@ import { hasLinkedPasskey } from "@/utils/auth";
 const APP_LOCK_DISABLED =
   __DEV__ && process.env.EXPO_PUBLIC_DISABLE_APP_LOCK === "true";
 
+// How long the app can sit backgrounded before it re-locks on return — long
+// enough that opening a link (e.g. the Privacy Policy / Terms & Conditions)
+// or a quick app switch doesn't force a fresh Face ID prompt every time.
+// Common banking-app grace period; tune here if product wants a different one.
+const BACKGROUND_GRACE_PERIOD_MS = 5 * 60 * 1000;
+
 interface AppLockContextType {
   /** True while the authenticated app should stay hidden behind the lock. */
   isLocked: boolean;
@@ -117,12 +123,26 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Re-lock when the app is backgrounded — but not on the transient 'inactive'
-  // state the biometric prompt itself can raise, which would loop the prompt.
+  // Re-lock only once the app has been backgrounded for longer than the
+  // grace period — not on the transient 'inactive' state the biometric
+  // prompt itself can raise (which would loop the prompt), and not on a
+  // brief trip out (e.g. opening the Privacy Policy link) and straight back.
+  const backgroundedAtRef = useRef<number | null>(null);
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
-      if (state === "background" && enabled && !authenticatingRef.current) {
-        setIsLocked(true);
+      if (!enabled || authenticatingRef.current) return;
+
+      if (state === "background") {
+        backgroundedAtRef.current = Date.now();
+        return;
+      }
+
+      if (state === "active" && backgroundedAtRef.current !== null) {
+        const backgroundedFor = Date.now() - backgroundedAtRef.current;
+        backgroundedAtRef.current = null;
+        if (backgroundedFor >= BACKGROUND_GRACE_PERIOD_MS) {
+          setIsLocked(true);
+        }
       }
     });
     return () => sub.remove();

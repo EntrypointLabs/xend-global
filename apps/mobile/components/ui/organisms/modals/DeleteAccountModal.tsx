@@ -58,11 +58,11 @@ export function DeleteAccountModal({
       <FrostBlurView style={StyleSheet.absoluteFill}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View
-          className="flex-1 items-center justify-center"
+          className="flex-1 items-end justify-end pb-6"
           pointerEvents="box-none"
         >
           <Pressable onPress={() => {}} className="w-full">
-            <View className="w-[88%] self-center rounded-3xl bg-white p-6">
+            <View className="w-[92%] self-center rounded-3xl bg-white p-6">
               <View className="mb-4 flex-row items-center justify-between">
                 <Typography weight="700" className="text-xl text-black">
                   Delete Account

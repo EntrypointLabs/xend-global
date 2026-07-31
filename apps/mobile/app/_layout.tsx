@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { Redirect, Slot, useSegments } from "expo-router";
-import { AppState, AppStateStatus, Platform, View } from "react-native";
+import {
+  AppState,
+  AppStateStatus,
+  Platform,
+  StyleSheet,
+  View,
+} from "react-native";
 
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
@@ -118,15 +124,15 @@ function AuthLayout() {
     return <Redirect href="/login" withAnchor />;
   }
 
-  // App lock: once signed in and out of the auth stack, require the biometric
-  // unlock before any app content renders.
-  if (isAuthenticated && !inAuthGroup && isLocked) {
-    return <LockScreen />;
-  }
-
   if (isAuthenticated && !pendingPasskeySetup && inAuthGroup) {
     return <Redirect href="/(tabs)" withAnchor />;
   }
+
+  // App lock: once signed in and out of the auth stack, the biometric unlock
+  // overlays the app rather than replacing it — the Slot (and whatever
+  // screen/modal was open) stays mounted underneath, so unlocking returns to
+  // exactly where the Consumer left off instead of resetting the navigator.
+  const showLock = isAuthenticated && !inAuthGroup && isLocked;
 
   // Theming is driven by NativeWind (ThemedRoot's `dark` class) and
   // ScreenThemeProvider; the navigator inherits light/dark from the OS.
@@ -140,6 +146,11 @@ function AuthLayout() {
           <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
         </ToastProvider>
       </ModalFlowProvider>
+      {showLock && (
+        <View style={StyleSheet.absoluteFill}>
+          <LockScreen />
+        </View>
+      )}
     </ScreenThemeProvider>
   );
 }
