@@ -22,6 +22,13 @@
       "when": 1748649600000,
       "tag": "0002_tailer_state",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1748736000000,
+      "tag": "0003_users_deleted_at",
+      "breakpoints": true
     }
   ]
 }

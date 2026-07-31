@@ -19,6 +19,9 @@ export enum ErrorCode {
   // Transaction errors
   INSUFFICIENT_BALANCE = "INSUFFICIENT_BALANCE",
 
+  // Account errors
+  ACCOUNT_HAS_BALANCE = "ACCOUNT_HAS_BALANCE",
+
   // Passkey errors
   PASSKEY_CHECK_FAILED = "PASSKEY_CHECK_FAILED",
   PASSKEY_REGISTRATION_FAILED = "PASSKEY_REGISTRATION_FAILED",
@@ -48,6 +51,10 @@ export const ErrorMessages: Record<ErrorCode, string> = {
 
   // Transaction errors
   [ErrorCode.INSUFFICIENT_BALANCE]: "Insufficient balance.",
+
+  // Account errors
+  [ErrorCode.ACCOUNT_HAS_BALANCE]:
+    "Send or withdraw your full Balance before deleting your account.",
 
   // Passkey errors
   [ErrorCode.PASSKEY_CHECK_FAILED]:
