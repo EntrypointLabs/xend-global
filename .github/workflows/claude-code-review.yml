@@ -35,4 +35,3 @@ jobs:
             leave a short summary comment saying so instead of forcing findings.
           claude_args: |
             --max-turns 8
-          show_full_output: true
