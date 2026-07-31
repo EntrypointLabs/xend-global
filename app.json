@@ -4,5 +4,10 @@
   },
   "ios": {
     "bundleIdentifier": "com.igifted.turborepo"
+  },
+  "extra": {
+    "eas": {
+      "projectId": "12867b7e-4203-4705-a353-ee1631a0ecda"
+    }
   }
 }
