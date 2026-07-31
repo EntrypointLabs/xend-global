@@ -40,4 +40,5 @@ jobs:
             comments on the relevant lines where possible. If you find nothing significant, leave a short
             summary comment saying so instead of forcing findings.
           claude_args: |
-            --max-turns 25
+            --max-turns 8
+            --model claude-sonnet-5
