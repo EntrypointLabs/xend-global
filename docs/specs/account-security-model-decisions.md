@@ -109,14 +109,31 @@ support via `signupWithPasskey`) because S1 must work on a laptop for everyday
 spends, and S1 alone can never exceed the spending limit. The possession factor
 sits on S2, which is what Fuse gets from its Secure Enclave device key.
 
-### D5. Spending limit carries the everyday UX
+### D5. Spending limits are optional, and the two-signature path is the floor
 
-A spending limit assigned to S1 covering the everyday band. Inside it, a spend is
-one instruction and one signature. Outside it, execution escalates to
-`transaction_execute_sync` with S1 plus S2.
+Corrected. Earlier drafts assumed every Account has a spending limit and treated the
+single-signature path as the default. That is backwards, and it is not what Fuse
+does: in Fuse every transaction needs two keys, and a Spending Limit is an **opt-in
+that lets you spend without the 2FA key**. Their wallet ships no default limit on
+ordinary transfers; the $2,000 daily cap belongs to the Fuse card, not the wallet.
 
-The band must be set so typical checkout payments fall inside it. Amount and period
-are **Open**.
+So the model is:
+
+- **The floor is S1 plus S2.** Any Spend an Account cannot justify under a policy
+  requires two signatures. This always works and is always available.
+- **A spending limit is an optional policy** that carves out a single-signature fast
+  path. An Account may have zero, one, or several.
+- Xend **does** provision a default one at creation, because unlike Fuse we are a
+  payments app where small P2P Spends are the dominant case and a second factor on a
+  $6 Send would destroy the product. The amount and period are **Open** (O3).
+- A Consumer can raise it, lower it, or delete it outright. **An Account with no
+  spending limit is a valid, higher-security state, not an error.** Every Spend then
+  takes two signatures.
+
+The consequence for the code: the spend path must **resolve at runtime** whether a
+spending-limit policy exists whose constraints admit this amount and destination.
+Nothing may assume one is present. `SpendingLimit | null` is the type, and the
+two-signature path is the fallback, not the exception.
 
 ### D5b. Per-policy signer sets scope S3 out of spending
 
@@ -560,17 +577,23 @@ Nobody ships the zero-interaction platform-store pattern at consumer scale. The 
 production React Native precedent is Rally Protocol, which is small, and Google's own
 largest Block Store adopter treats the dependency as optional.
 
-### Two bugs already in the repo
+### One real issue in the repo, and one false alarm
 
-- **`expo-secure-store` never sets `kSecAttrSynchronizable`.** Confirmed by reading
-  `SecureStoreModule.swift` in the installed 56.0.4, and by an Expo maintainer:
-  keychain syncing to iCloud is not implemented. So **anything currently written
-  through it does not survive device loss**, contrary to what the recovery story
-  assumes.
-- **`android:allowBackup` defaults to true.** `expo-secure-store` on Android is
-  SharedPreferences wrapped by a non-exportable AndroidKeyStore key, so Auto Backup
-  currently ships a restore that produces undecryptable ciphertext on a new device.
-  Set `android:allowBackup="false"` or add `dataExtractionRules`.
+**Real: `expo-secure-store` never sets `kSecAttrSynchronizable`.** Verified directly
+against the installed package: the attribute appears nowhere in its iOS sources, and
+an Expo maintainer confirms iCloud keychain syncing is not implemented. So anything
+written through it **does not survive device loss**. Fine for a device-scoped cache,
+fatal for anything the recovery story leans on, so S3 cannot use it.
+
+**False alarm: Android backup.** Research flagged `android:allowBackup="true"` as
+shipping a restore that produces undecryptable ciphertext, since Android
+`expo-secure-store` is SharedPreferences wrapped by a non-exportable Keystore key.
+Correct as generic Android advice, wrong here. `expo-secure-store` ships its own
+library-level exclusions, already merged into our manifest via
+`android:fullBackupContent="@xml/secure_store_backup_rules"` and
+`android:dataExtractionRules="@xml/secure_store_data_extraction_rules"`. Both exclude
+`sharedpref` path `SecureStore` from cloud backup and device transfer. No change
+needed. Recorded so nobody re-raises it.
 
 ### Open question this raises about S1
 
