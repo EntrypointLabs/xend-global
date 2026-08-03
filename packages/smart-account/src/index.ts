@@ -15,6 +15,16 @@ export {
 } from "./pda.js";
 
 export {
+  buildSpend,
+  resolveSpendRoute,
+  type BuildSpendParams,
+  type SpendingLimit,
+  type SpendRequest,
+  type SpendRoute,
+  type TwoSignatureReason,
+} from "./spend.js";
+
+export {
   ACCOUNT_THRESHOLD,
   SETTINGS_TIME_LOCK_SECONDS,
   type AccountAddresses,
