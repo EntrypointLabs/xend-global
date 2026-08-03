@@ -98,6 +98,26 @@ S3 therefore cannot move money on any path. Its authority is confined to changin
 the signer set, which is time-locked and notifiable. That is what makes a shared
 anchor between S1 and S3 survivable rather than fatal.
 
+Policies are **required**, not an optimization. Runtime testing against the deployed
+bytecode established two things that force it:
+
+1. Vote-only permissions do not stop a signer contributing to a spend. S1 plus S3
+   spent successfully through the Settings consensus. Only a policy signer set
+   excludes S3.
+2. Synchronous execution requires the consensus account's `time_lock` to be 0
+   (`TimeLockNotZero`, 6051). A time-locked Settings cannot carry spends at all, so
+   the Settings time lock and one-transaction spends coexist only because the spend
+   runs under a policy whose own `time_lock` is 0.
+
+### Verified against the deployed program
+
+Run against real mainnet-and-devnet bytecode in LiteSVM. Account creation, threshold
+enforcement, a 2-signer spend in one transaction (23,264 CU), settings time lock
+delay and release, per-policy signer sets, and a synchronous policy spend while the
+Account is time-locked all pass. An Account costs **0.00252452 SOL** to create,
+almost entirely settings-account rent, with a 0 creation fee. Detail and the
+one failing assumption are recorded in the spec.
+
 ### Consequences
 
 - ✅ **Good:** An inbox compromise yields one signer and cannot move funds. That is
