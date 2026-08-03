@@ -321,8 +321,16 @@ Must-dos:
 - Decide policy-update authority before creating the first sub-org. The parent org
   is read-only over sub-orgs and narrowing the root quorum is one-way without the
   end user.
-- Plan on extracting Turnkey's 64-byte signature and splicing it with web3.js
-  `addSignature` rather than assuming foreign signatures survive.
+- Use `SIGN_TRANSACTION_V2`. It **preserves** a pre-existing signature, so no
+  client-side splicing is needed. Turnkey's own `withFeePayer.ts` example feeds the
+  already-signed output of one call into a second, and `broadcast()` does not
+  re-sign, so the example can only work if signatures survive. Proven by
+  demonstration rather than by written contract, so smoke-test it on devnet against
+  a real partially-signed Squads transaction before relying on it.
+- Do **not** use Turnkey's shipped React Native stamper. It generates the P-256 key
+  in JS, stores it via `react-native-keychain`, and reads it back into memory to
+  sign. Software-held and extractable, which forfeits the possession anchor. There
+  is no Secure Enclave or StrongBox support anywhere in the SDK.
 
 Accepted consequence: with the opt-outs set, a lost S2 is permanently unrecoverable.
 The 2-of-3 absorbs it via S1 plus S3, which makes S3 load-bearing rather than
@@ -417,3 +425,43 @@ this document wrongly listed them as dead code.
 Fuse key explainer screenshots, captured from a live account, in
 `docs/design/references/fuse/`. Their Active Key / Recovery Key information
 architecture maps onto this signer set without modification.
+
+## Turnkey integration notes
+
+Verified against the published packages' type definitions (`@turnkey/http@5.0.0`,
+`@turnkey/core@2.3.0`, `@turnkey/api-key-stamper@0.6.8`,
+`@turnkey/react-native-wallet-kit@2.1.0`, `@turnkey/crypto@2.10.1`).
+
+### The stamp we have to produce
+
+| Element        | Value                                                  |
+| -------------- | ------------------------------------------------------ |
+| Header         | `X-Stamp`                                              |
+| Signed content | the exact JSON POST body string, byte for byte         |
+| Hash           | SHA-256                                                |
+| Signature      | DER-encoded ASN.1 ECDSA, hex                           |
+| Public key     | compressed SEC1 hex, 33 bytes / 66 chars               |
+| Scheme         | `SIGNATURE_SCHEME_TK_API_P256`                         |
+| Envelope       | unpadded base64url of `{publicKey, scheme, signature}` |
+
+Both platforms produce P-256 SHA-256 DER natively, so the algorithms line up with no
+conversion. The one mismatch is the public key: Secure Enclave and Keystore hand back
+the uncompressed X9.62 point (`04 || X || Y`, 65 bytes), which must be compressed
+before registration. `@turnkey/crypto` exports `compressRawPublicKey` for this.
+
+### What has to be built
+
+1. A native module generating a non-exportable, biometric-gated P-256 key in the
+   Secure Enclave or Android Keystore and signing arbitrary payloads with it. No
+   off-the-shelf package covers this: `react-native-biometrics` uses RSA, and
+   `react-native-secure-enclave-operations` returns App Attest CBOR.
+2. A `TStamper` implementation, roughly 30 lines, wrapping that native signer.
+3. A backend enrolment endpoint. Sub-org creation is a parent-org activity, so the
+   parent API key stays server-side. The client generates the key in hardware, sends
+   only the compressed public key, the backend creates the sub-org, and then drops
+   out of the request path entirely.
+
+### Smoke test before building on it
+
+One `getWhoami` call stamped with a hardware key, to confirm the low-S normalisation
+assumption holds. Cheap, and it invalidates the whole approach if wrong.
