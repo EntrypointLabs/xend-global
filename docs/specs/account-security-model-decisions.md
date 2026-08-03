@@ -465,3 +465,48 @@ before registration. `@turnkey/crypto` exports `compressRawPublicKey` for this.
 
 One `getWhoami` call stamped with a hardware key, to confirm the low-S normalisation
 assumption holds. Cheap, and it invalidates the whole approach if wrong.
+
+### The hardware key, and why attestation is not optional
+
+Source-review and simulator-level evidence only. Nothing has run on a physical
+device yet.
+
+Recommended base: `@sbaiahmed1/react-native-biometrics@0.15.1` plus roughly 15 lines
+of noble conversion for the signature and public-key encoding.
+
+Three properties the design leans on that **the client cannot prove**:
+
+1. **The simulator silently fakes the Secure Enclave.** `SecKeyCreateRandomKey` with
+   `kSecAttrTokenIDSecureEnclave` succeeds on current simulators against a host-side
+   software implementation. A key blob generated in one simulator restores in a
+   different simulator with a different UDID and yields the same public key, and the
+   blob is 143 bytes against 284 from a real SEP. Apple DTS confirms the simulator
+   "acts like an iOS device that has no SE". At the JS layer a simulator key is
+   indistinguishable from a real one.
+2. **StrongBox falls back to TEE silently** on Android.
+3. **Per-use biometric gating is not guaranteed on iOS.** Retaining an `LAContext`
+   and passing it via `kSecUseAuthenticationContext` can collapse prompts across
+   operations, and Apple has never confirmed or denied the behaviour. Construct a
+   fresh `LAContext` at every call site and never cache the `SecKey`, but treat the
+   prompt as a UX affordance rather than the security boundary.
+
+So two things are **required**, not nice-to-have:
+
+- **Attestation at registration.** App Attest on iOS, the Keystore attestation chain
+  on Android. The backend must refuse any enrolment it cannot prove is
+  hardware-backed, or a simulator stub enrols as S2 and the possession anchor is
+  fiction.
+- **Server-side nonce, short expiry, and rate limiting per signature**, so that a
+  collapsed biometric prompt cannot become an unbounded signing oracle.
+
+Two smaller correctness notes:
+
+- Keychain survival across app uninstall is explicitly not part of Apple's API
+  contract and has flipped between releases. Depend on neither survival nor
+  deletion: keep a first-run sentinel in `NSUserDefaults`, which _is_ cleared on
+  uninstall, and delete a stale key before enrolling when the sentinel is missing
+  but a key alias exists.
+- Removing the device passcode discards the class keys, leaving
+  `WhenPasscodeSetThisDeviceOnly` items present but undecryptable. Handle an auth or
+  decryption failure on lookup exactly like `errSecItemNotFound`: re-enroll rather
+  than retry.
