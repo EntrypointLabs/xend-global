@@ -510,3 +510,73 @@ Two smaller correctness notes:
   `WhenPasscodeSetThisDeviceOnly` items present but undecryptable. Handle an auth or
   decryption failure on lookup exactly like `errSecItemNotFound`: re-enroll rather
   than retry.
+
+## The recovery signer, and the problem with D10b
+
+Source review only. Nothing verified on a physical device.
+
+### Recommended storage
+
+| Platform | Mechanism                                                                                                                                       | Notes                                                                                                                                 |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| iOS      | Synchronizable keychain item: `kSecClassGenericPassword`, `kSecAttrSynchronizable`, `kSecAttrAccessibleAfterFirstUnlock`, **no** access control | Zero entitlements, works on a free team, E2EE by default. Write two items, one synced and one `ThisDeviceOnly`, and read cloud-first. |
+| Android  | Block Store with `setShouldBackupToCloud(true)`, gated on `isEndToEndEncryptionAvailable()`                                                     | Not sufficient alone. Pair it with Drive `appDataFolder` as a **verifiable** second write behind one Google consent.                  |
+
+Library: `react-native-sensitive-info@6.1.5` with `iosSynchronizable: true` and an
+explicit `accessControl: 'none'`. Not `react-native-keychain`, which has an unfixed
+Objective-C truthiness bug where passing `cloudSync: false` sets
+`kSecAttrSynchronizable` to **true**, plus unreleased TurboModule work against RN
+0.85. On Android, vendor the roughly 60 lines of Block Store rather than depending on
+`expo-block-store` (one author, one star). Budget **1024 bytes** for key and value
+combined, not the 4096 the guide claims: the API constant disagrees with the docs.
+
+Encrypt the S3 key with AES-GCM under a key we derive **before** it leaves our code.
+Every mature wallet does this. A platform-store compromise should not immediately be
+a signer compromise.
+
+### The finding that undermines D10b
+
+**Neither platform gives a read receipt.** An iOS keychain write returns success for
+the _local_ item and sync is asynchronous with unbounded latency and no
+`synchronize()`. Block Store's `storeBytes` success means stored locally in Play
+Services; the cloud push is periodic. There is also **no API to ask whether iCloud
+Keychain is enabled**, so a user who has it off gets a silent non-backup with no
+error.
+
+D10b makes S3 mandatory at Account creation, and the lost-phone path is explicitly
+S1 plus S3. But S3 can only ever be **provisioned, not confirmed**. That is a real
+gap between what the decision assumes and what the platforms provide.
+
+Two ways out, and this needs a call:
+
+1. Keep platform backup as the default, treat it as best-effort, and promote the
+   **Recovery Email** from an upsell to a genuine second recovery signer, so the
+   Consumer holds two independent recovery paths rather than one unverifiable one.
+2. Switch S3 to an encrypted cloud **file** under a user-held secret, which is what
+   Uniswap, Coinbase Wallet, BRD, Argent and Dynamic all converged on. Verifiable,
+   at the cost of one consent screen and a user secret to remember.
+
+Nobody ships the zero-interaction platform-store pattern at consumer scale. The only
+production React Native precedent is Rally Protocol, which is small, and Google's own
+largest Block Store adopter treats the dependency as optional.
+
+### Two bugs already in the repo
+
+- **`expo-secure-store` never sets `kSecAttrSynchronizable`.** Confirmed by reading
+  `SecureStoreModule.swift` in the installed 56.0.4, and by an Expo maintainer:
+  keychain syncing to iCloud is not implemented. So **anything currently written
+  through it does not survive device loss**, contrary to what the recovery story
+  assumes.
+- **`android:allowBackup` defaults to true.** `expo-secure-store` on Android is
+  SharedPreferences wrapped by a non-exportable AndroidKeyStore key, so Auto Backup
+  currently ships a restore that produces undecryptable ciphertext on a new device.
+  Set `android:allowBackup="false"` or add `dataExtractionRules`.
+
+### Open question this raises about S1
+
+Privy's current published architecture is 2-of-2 with **both** shares server-side and
+no device share; the 2-of-3 model with a device share is legacy. Which one
+`@privy-io/expo` uses on our stack is undocumented. If a device share exists and is
+synced through iCloud Keychain, S1 and S3 would share the platform-account anchor and
+the invariant breaks. Worth asking Privy directly, along with which Drive scope their
+cloud recovery uses.
