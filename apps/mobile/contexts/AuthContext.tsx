@@ -313,8 +313,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setEmail,
         accountInfo,
         setAccountInfo,
-        keypair: null,
-        credentialsBundle: null,
         authError,
         authenticate,
         completeLogin,
