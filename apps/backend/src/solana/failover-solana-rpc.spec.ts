@@ -20,6 +20,9 @@ function makeStub(
     sendRawTransaction: jest.fn(),
     getSignatureStatuses: jest.fn(),
     accountExists: jest.fn(),
+    getMinimumBalanceForRentExemption: jest.fn(),
+    getTokenAccountOwner: jest.fn(),
+    getTokenAccountBalanceRaw: jest.fn(),
     streamConfirmedTransfers: jest.fn(),
     registerWebhookAddress: jest.fn(),
     unregisterWebhookAddress: jest.fn(),
@@ -110,6 +113,43 @@ describe('FailoverSolanaRpc', () => {
       const rpc = makeFailover(primary, fallback);
       const result = await rpc.getSignatureStatuses(['sig1']);
       expect(result).toEqual(statuses);
+    });
+
+    it('getMinimumBalanceForRentExemption: falls back on primary throw', async () => {
+      const primary = makeStub({
+        getMinimumBalanceForRentExemption: jest
+          .fn()
+          .mockRejectedValue(new Error('helius down')),
+      });
+      const fallback = makeStub({
+        getMinimumBalanceForRentExemption: jest
+          .fn()
+          .mockResolvedValue(2_039_280n),
+      });
+      const rpc = makeFailover(primary, fallback);
+      const result = await rpc.getMinimumBalanceForRentExemption(165n);
+      expect(result).toBe(2_039_280n);
+      expect(primary.getMinimumBalanceForRentExemption).toHaveBeenCalledWith(
+        165n,
+      );
+      expect(fallback.getMinimumBalanceForRentExemption).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+
+    it('getTokenAccountOwner: falls back on primary throw', async () => {
+      const primary = makeStub({
+        getTokenAccountOwner: jest
+          .fn()
+          .mockRejectedValue(new Error('helius down')),
+      });
+      const fallback = makeStub({
+        getTokenAccountOwner: jest.fn().mockResolvedValue('ownerAddr'),
+      });
+      const rpc = makeFailover(primary, fallback);
+      const result = await rpc.getTokenAccountOwner('tokenAcct');
+      expect(result).toBe('ownerAddr');
+      expect(fallback.getTokenAccountOwner).toHaveBeenCalledTimes(1);
     });
 
     it('propagates the fallback error when BOTH fail', async () => {

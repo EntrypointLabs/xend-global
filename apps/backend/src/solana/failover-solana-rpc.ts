@@ -95,6 +95,26 @@ export class FailoverSolanaRpc implements SolanaRpc {
     );
   }
 
+  async getMinimumBalanceForRentExemption(space: bigint): Promise<bigint> {
+    return this.withFallback('getMinimumBalanceForRentExemption', (rpc) =>
+      rpc.getMinimumBalanceForRentExemption(space),
+    );
+  }
+
+  async getTokenAccountOwner(address: WalletAddress): Promise<string | null> {
+    return this.withFallback('getTokenAccountOwner', (rpc) =>
+      rpc.getTokenAccountOwner(address),
+    );
+  }
+
+  async getTokenAccountBalanceRaw(
+    tokenAccount: WalletAddress,
+  ): Promise<string> {
+    return this.withFallback('getTokenAccountBalanceRaw', (rpc) =>
+      rpc.getTokenAccountBalanceRaw(tokenAccount),
+    );
+  }
+
   /**
    * Stream confirmed transfers. Attempts primary first; if the *first*
    * page errors, falls back to the public adapter and yields from

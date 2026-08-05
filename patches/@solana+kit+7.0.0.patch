@@ -1,0 +1,11 @@
+diff --git a/node_modules/@solana/kit/dist/index.browser.mjs b/node_modules/@solana/kit/dist/index.browser.mjs
+index 1260096..cb36b50 100644
+--- a/node_modules/@solana/kit/dist/index.browser.mjs
++++ b/node_modules/@solana/kit/dist/index.browser.mjs
+@@ -664,3 +664,6 @@ function sendTransactionWithoutConfirmingFactory({
+ export { airdropFactory, createAsyncGeneratorWithInitialValueAndSlotTracking, createReactiveStoreWithInitialValueAndSlotTracking, decompileTransactionMessageFetchingLookupTables, estimateAndSetComputeUnitLimitFactory, estimateAndSetResourceLimitsFactory, estimateComputeUnitLimitFactory, estimateResourceLimitsFactory, fetchAddressesForLookupTables, fillTransactionMessageProvisoryComputeUnitLimit, fillTransactionMessageProvisoryResourceLimits, sendAndConfirmDurableNonceTransactionFactory, sendAndConfirmTransactionFactory, sendTransactionWithoutConfirmingFactory };
+ //# sourceMappingURL=index.browser.mjs.map
+ //# sourceMappingURL=index.browser.mjs.map
++// patch-package shim: @solana/kit 7 dropped this but @solana-program/token 0.14 imports it.
++// Rent-exempt min = (128 account overhead + dataSize) * lamportsPerByteYear(3480) * threshold(2).
++export function getMinimumBalanceForRentExemption(dataSize) { return (BigInt(dataSize) + 128n) * 3480n * 2n; }

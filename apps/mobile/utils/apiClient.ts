@@ -2,6 +2,14 @@ import { z } from "zod";
 
 import { handleError, ErrorCode } from "@/utils/errors";
 import { AuthStorage } from "@/utils/storage/authStorage";
+import {
+  SEED_DEMO,
+  seedBalances,
+  seedPrepareTransfer,
+  seedSessions,
+  seedTransfers,
+  seedWallet,
+} from "@/utils/devSeed";
 
 /**
  * /auth/exchange request + response. Mirrors `ExchangeRequestSchema` and
@@ -23,6 +31,22 @@ export const ExchangeResponseSchema = z.object({
   }),
 });
 export type ExchangeResponse = z.infer<typeof ExchangeResponseSchema>;
+
+// Mirrors `MirrorPasskeyCredentialSchema` in apps/backend/src/auth/dtos.ts.
+export const MirrorPasskeyCredentialRequestSchema = z.object({
+  credentialId: z.string().min(1).max(1024),
+  publicKey: z.string().min(1).max(4096).optional(),
+});
+export type MirrorPasskeyCredentialRequest = z.infer<
+  typeof MirrorPasskeyCredentialRequestSchema
+>;
+
+export const MirrorPasskeyCredentialResponseSchema = z.object({
+  mirrored: z.boolean(),
+});
+export type MirrorPasskeyCredentialResponse = z.infer<
+  typeof MirrorPasskeyCredentialResponseSchema
+>;
 
 // Mirrors apps/backend/src/wallets/dtos.ts.
 export const WalletResponseSchema = z.object({
@@ -97,6 +121,11 @@ export const TransferRowSchema = z.object({
   status: z.enum(["PENDING", "CONFIRMED", "FAILED"]),
   signature: z.string().nullable(),
   memo: z.string().nullable(),
+  // Mirrors apps/backend/src/transfer/dtos.ts TransferRowSchema field-for-field.
+  // Lowercase literals bind to Phase 4's transfer_kind enum; the wire literal
+  // is the presentation literal (never uppercased).
+  kind: z.enum(["transfer", "payment"]),
+  merchantName: z.string().nullable(),
   createdAt: z.string().datetime(),
   confirmedAt: z.string().datetime().nullable(),
 });
@@ -113,6 +142,30 @@ export const TransferListResponseSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 export type TransferListResponse = z.infer<typeof TransferListResponseSchema>;
+
+/**
+ * Merchant Sessions the Consumer has granted. Mirrors Phase 2's
+ * SessionSummary (apps/backend/src/session, GET /consumers/me/sessions):
+ * one row per active merchant Session, all timestamps ISO strings.
+ */
+export const SessionSummarySchema = z.object({
+  id: z.string(),
+  merchantDisplayName: z.string(),
+  createdAt: z.string().datetime(),
+  lastUsedAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+});
+export type SessionSummary = z.infer<typeof SessionSummarySchema>;
+
+export const ListSessionsResponseSchema = z.object({
+  sessions: z.array(SessionSummarySchema),
+});
+export type ListSessionsResponse = z.infer<typeof ListSessionsResponseSchema>;
+
+export const RevokeSessionResponseSchema = z.object({
+  revoked: z.literal(true),
+});
+export type RevokeSessionResponse = z.infer<typeof RevokeSessionResponseSchema>;
 
 class ApiError extends Error {
   constructor(
@@ -241,9 +294,25 @@ class BackendClient {
     return ExchangeResponseSchema.parse(raw);
   }
 
+  /** POST /auth/passkey-credentials — mirror a freshly enrolled passkey
+   *  credential (credentialId + optional publicKey) for the authenticated
+   *  Consumer. Called fire-and-forget from the enrollment hook; a failure
+   *  must never block or surface in enrollment. */
+  async mirrorPasskeyCredential(
+    req: MirrorPasskeyCredentialRequest
+  ): Promise<MirrorPasskeyCredentialResponse> {
+    const raw = await this.request<unknown>("/auth/passkey-credentials", {
+      method: "POST",
+      body: JSON.stringify(MirrorPasskeyCredentialRequestSchema.parse(req)),
+      auth: true,
+    });
+    return MirrorPasskeyCredentialResponseSchema.parse(raw);
+  }
+
   /** GET /wallet/me — returns the authenticated user's Privy embedded
    *  Solana wallet address. */
   async getWallet(): Promise<WalletResponse> {
+    if (SEED_DEMO) return seedWallet();
     const raw = await this.request<unknown>("/wallet/me", {
       method: "GET",
       auth: true,
@@ -255,6 +324,7 @@ class BackendClient {
    *  client filters for headline currencies (USDC + USDT); the full list is
    *  preserved so a future Investments screen can list every mint. */
   async getBalances(): Promise<BalancesResponse> {
+    if (SEED_DEMO) return seedBalances();
     const raw = await this.request<unknown>("/wallet/me/balances", {
       method: "GET",
       auth: true,
@@ -280,6 +350,7 @@ class BackendClient {
   async prepareTransfer(
     req: PrepareTransferRequest
   ): Promise<PrepareTransferResponse> {
+    if (SEED_DEMO) return seedPrepareTransfer();
     const raw = await this.request<unknown>("/transfers/prepare", {
       method: "POST",
       body: JSON.stringify(PrepareTransferRequestSchema.parse(req)),
@@ -308,6 +379,7 @@ class BackendClient {
     cursor?: string;
     limit?: number;
   }): Promise<TransferListResponse> {
+    if (SEED_DEMO) return seedTransfers();
     const search = new URLSearchParams();
     if (req?.cursor) search.set("cursor", req.cursor);
     if (req?.limit != null) search.set("limit", String(req.limit));
@@ -317,6 +389,31 @@ class BackendClient {
       auth: true,
     });
     return TransferListResponseSchema.parse(raw);
+  }
+
+  /** GET /consumers/me/sessions — the merchant Sessions the signed-in
+   *  Consumer has granted. Powers Settings > Connected Merchants. */
+  async listSessions(): Promise<ListSessionsResponse> {
+    if (SEED_DEMO) return seedSessions();
+    const raw = await this.request<unknown>("/consumers/me/sessions", {
+      method: "GET",
+      auth: true,
+    });
+    return ListSessionsResponseSchema.parse(raw);
+  }
+
+  /** DELETE /consumers/me/sessions/:id — revoke a merchant Session. The
+   *  revoked Session fails validation server-side, forcing full ceremony at
+   *  the next checkout. */
+  async revokeSession(id: string): Promise<RevokeSessionResponse> {
+    const raw = await this.request<unknown>(
+      `/consumers/me/sessions/${encodeURIComponent(id)}`,
+      {
+        method: "DELETE",
+        auth: true,
+      }
+    );
+    return RevokeSessionResponseSchema.parse(raw);
   }
 }
 

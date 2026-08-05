@@ -46,18 +46,34 @@ You do **not** need an ADR for routine choices like file naming, single-feature 
 
 ## Index
 
-| #                                                   | Title                                                                                     | Status   | Domain                |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------- | --------------------- |
-| [0000](./0000-record-architectural-decisions.md)    | Record architectural decisions                                                            | Accepted | Meta                  |
-| [0001](./0001-consolidate-on-nativewind-styling.md) | Consolidate on NativeWind 4 + CSS-variable tokens as the sole styling system              | Accepted | Mobile / Styling      |
-| [0002](./0002-darkmode-class-strategy.md)           | `darkMode: "class"` strategy with `useColorScheme` from nativewind                        | Accepted | Mobile / Styling      |
-| [0003](./0003-semantic-token-taxonomy.md)           | Semantic token taxonomy: HSL CSS vars, incremental minimal set                            | Accepted | Mobile / Styling      |
-| [0004](./0004-inline-style-exceptions.md)           | Five documented inline-style exception comments                                           | Accepted | Mobile / Styling      |
-| [0005](./0005-typography-canonical-text-api.md)     | `Typography` is the canonical text component; deprecate `ThemedText`                      | Accepted | Mobile / Components   |
-| [0006](./0006-lint-enforcement-policy.md)           | Lint enforcement: `error` in reachable, `warn` elsewhere                                  | Accepted | Mobile / Quality      |
-| [0007](./0007-defer-screentheme-context-removal.md) | Defer `ScreenThemeContext` removal to a follow-up PR                                      | Accepted | Mobile / Components   |
-| [0008](./0008-style-cleanup-dependency-policy.md)   | Style-cleanup dependency policy: pin `tailwind-merge` to `^2.6.0`, no new deps            | Accepted | Mobile / Dependencies |
-| [0009](./0009-visual-regression-strategy.md)        | Visual-regression check: manual iOS + Android screenshots, no automated harness (this PR) | Accepted | Mobile / Quality      |
+| #                                                        | Title                                                                                                                     | Status   | Domain                   |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------ |
+| [0000](./0000-record-architectural-decisions.md)         | Record architectural decisions                                                                                            | Accepted | Meta                     |
+| [0001](./0001-consolidate-on-nativewind-styling.md)      | Consolidate on NativeWind 4 + CSS-variable tokens as the sole styling system                                              | Accepted | Mobile / Styling         |
+| [0002](./0002-darkmode-class-strategy.md)                | `darkMode: "class"` strategy with `useColorScheme` from nativewind                                                        | Accepted | Mobile / Styling         |
+| [0003](./0003-semantic-token-taxonomy.md)                | Semantic token taxonomy: HSL CSS vars, incremental minimal set                                                            | Accepted | Mobile / Styling         |
+| [0004](./0004-inline-style-exceptions.md)                | Five documented inline-style exception comments                                                                           | Accepted | Mobile / Styling         |
+| [0005](./0005-typography-canonical-text-api.md)          | `Typography` is the canonical text component; deprecate `ThemedText`                                                      | Accepted | Mobile / Components      |
+| [0006](./0006-lint-enforcement-policy.md)                | Lint enforcement: `error` in reachable, `warn` elsewhere                                                                  | Accepted | Mobile / Quality         |
+| [0007](./0007-defer-screentheme-context-removal.md)      | Defer `ScreenThemeContext` removal to a follow-up PR                                                                      | Accepted | Mobile / Components      |
+| [0008](./0008-style-cleanup-dependency-policy.md)        | Style-cleanup dependency policy: pin `tailwind-merge` to `^2.6.0`, no new deps                                            | Accepted | Mobile / Dependencies    |
+| [0009](./0009-visual-regression-strategy.md)             | Visual-regression check: manual iOS + Android screenshots, no automated harness (this PR)                                 | Accepted | Mobile / Quality         |
+| [0010](./0010-no-load-bearing-provider.md)               | No load-bearing external provider: owned interfaces per provider category                                                 | Accepted | Backend / Providers      |
+| [0011](./0011-expo-56-upgrade.md)                        | Upgrade Expo SDK from 54 to 56 for Privy compatibility                                                                    | Accepted | Mobile / Expo            |
+| [0012](./0012-pay-platform-topology.md)                  | Pay platform topology: managed Kafka + Redis, extracted fee-payer relayer, modular core                                   | Accepted | Backend / Infrastructure |
+| [0013](./0013-session-model.md)                          | Merchant-scoped Sessions: opaque server-side tokens with rotation and velocity caps                                       | Accepted | Backend / Security       |
+| [0015](./0015-settlement-provider-layer.md)              | Settlement provider layer: pluggable SettlementProvider, single-root attribution, refund-in-reverse                       | Accepted | Backend / Pay            |
+| [0016](./0016-checkout-postmessage-protocol.md)          | Checkout result transport: versioned postMessage protocol and surface security posture                                    | Accepted | Frontend / Checkout      |
+| [0017](./0017-webhook-contract.md)                       | Outbound merchant webhook contract: HMAC t/v1 signing, event schema, and delivery semantics                               | Accepted | Backend / Security       |
+| [0018](./0018-sdk-publishing.md)                         | Pay with Xend SDK publishing, MIT licensing, and the fulfillment-hostile result contract                                  | Accepted | SDK / Packaging          |
+| [0019](./0019-blockradar-settlement-provider-adapter.md) | Blockradar as the first SettlementProvider adapter (convert-at-settlement for naira), gated on three Solana confirmations | Accepted | Backend / Pay            |
+| [0020](./0020-solana-sdk-coexistence.md)                 | Two Solana toolchains: @solana/kit for new money-moving code, web3.js retained                                            | Accepted | Backend / Solana         |
+| [0021](./0021-web-styling.md)                            | Web styling: Tailwind v4 CSS-first for web surfaces, NativeWind stays mobile-only                                         | Accepted | Frontend / Styling       |
+| [0022](./0022-internal-console-auth-boundary.md)         | Internal tool auth boundary: server-rendered console behind a Basic Auth guard                                            | Accepted | Backend / Security       |
+| [0023](./0023-fx-offramp-quote.md)                       | NGN pricing via an executable off-ramp quote behind an owned FX provider seam                                             | Accepted | Backend / Pay            |
+| [0024](./0024-privy-adoption.md)                         | Privy adopted as the consumer-side signing vendor                                                                         | Accepted | Backend / Wallet         |
+
+> 0014 is reserved for a conditional relayer decision (Kora reversal) and may remain an intentional gap; 0016-0019 are allocated to in-flight phases.
 
 ## Generating new ADR numbers
 

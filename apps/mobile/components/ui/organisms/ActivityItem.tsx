@@ -21,14 +21,20 @@ export type ActivityItemProps = ActivityEntry & {
 
 export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
   const isSend = entry.direction === "send";
+  const isPayment = entry.kind === "payment";
   const isInactive = entry.status === "pending" || entry.status === "failed";
 
   const amount = formatAmount(entry.amountRaw, entry.decimals);
   const symbol = USDC_MINT && entry.mint === USDC_MINT ? "USDC" : "";
   const sign = isSend ? "-" : "+";
-  const label = isSend
-    ? `To: ${truncateAddress(entry.counterparty)}`
-    : `From: ${truncateAddress(entry.counterparty)}`;
+  // A Payment renders as a debit titled with the merchant's display name —
+  // never an address, no chain vocabulary. Payments arrive as SEND, so the
+  // existing debit sign + text-destructive styling apply unchanged.
+  const label = isPayment
+    ? (entry.merchantName ?? "Merchant")
+    : isSend
+      ? `To: ${truncateAddress(entry.counterparty)}`
+      : `From: ${truncateAddress(entry.counterparty)}`;
 
   const valueColorClass = isInactive
     ? "text-black/30"

@@ -16,7 +16,7 @@ import {
   TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
 import { DbService } from '../db/db.service';
-import { smartAccounts, transfers } from '../db/schema';
+import { smartAccounts, transfers, payments, merchants } from '../db/schema';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import {
@@ -464,9 +464,29 @@ export class TransferService {
       }
     }
 
+    // LEFT JOIN payments -> merchants so a settlement transfer (kind='payment',
+    // payment_id set by the tailer at confirmation) surfaces the merchant
+    // display name. Plain transfers have a null payment_id and map to
+    // kind='transfer'/merchantName=null. The join adds display columns only;
+    // ordering columns (createdAt, id) are unchanged so the cursor still holds.
     const rows = await this.db.client
-      .select()
+      .select({
+        id: transfers.id,
+        direction: transfers.direction,
+        mint: transfers.mint,
+        amountRaw: transfers.amountRaw,
+        fromAddress: transfers.fromAddress,
+        toAddress: transfers.toAddress,
+        status: transfers.status,
+        signature: transfers.signature,
+        kind: transfers.kind,
+        merchantName: merchants.displayName,
+        createdAt: transfers.createdAt,
+        confirmedAt: transfers.confirmedAt,
+      })
       .from(transfers)
+      .leftJoin(payments, eq(transfers.paymentId, payments.id))
+      .leftJoin(merchants, eq(payments.merchantId, merchants.id))
       .where(
         cursorWhere
           ? and(eq(transfers.smartAccountId, account.id), cursorWhere)
@@ -501,6 +521,9 @@ export class TransferService {
           // The transfers schema has no `memo` column yet, so expose null
           // until one is added and backfilled.
           memo: null,
+          // Defensive default: the column is notNull default 'transfer'.
+          kind: r.kind ?? 'transfer',
+          merchantName: r.merchantName ?? null,
           createdAt: r.createdAt.toISOString(),
           confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
         }),

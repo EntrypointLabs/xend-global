@@ -1,0 +1,34 @@
+@import 'tailwindcss';
+
+/*
+ * Brand tokens. Brand black is #0a0a0a, never pure black.
+ * The success token is the ONLY green on the surface and is reserved
+ * for the passkey success checkmark. Positive amounts are never green.
+ */
+@theme {
+  --color-brand-black: #0a0a0a;
+  --color-brand-ink: #f5f5f4;
+  --color-brand-muted: #a1a1aa;
+  --color-brand-line: #262626;
+  --color-brand-surface: #141414;
+  --color-success: #12b76a;
+
+  --font-display:
+    'Inter Display', 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-brand-black);
+  color: var(--color-brand-ink);
+  font-family: var(--font-display);
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}

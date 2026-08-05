@@ -1,6 +1,6 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { AuthService } from './auth.service';
+import { AuthService, CredentialConflictError } from './auth.service';
 import type { DbService } from '../db/db.service';
 import type {
   WalletProvider,
@@ -12,7 +12,7 @@ import {
   PrivyUnavailableError,
   PrivyUserShapeError,
 } from '../wallet/privy.errors';
-import { users, smartAccounts } from '../db/schema';
+import { users, smartAccounts, passkeyCredentials } from '../db/schema';
 
 /**
  * Integration tests for AuthService.exchange().
@@ -39,18 +39,28 @@ import { users, smartAccounts } from '../db/schema';
 
 type UsersRow = typeof users.$inferSelect;
 type SmartAccountsRow = typeof smartAccounts.$inferSelect;
+type PasskeyCredentialsRow = typeof passkeyCredentials.$inferSelect;
+
+type Collection = 'users' | 'smartAccounts' | 'passkeyCredentials';
 
 interface FakeStore {
   users: UsersRow[];
   smartAccounts: SmartAccountsRow[];
+  passkeyCredentials?: PasskeyCredentialsRow[];
 }
 
 function makeFakeDb(store: FakeStore): DbService {
-  // We rely on table identity (the imported `users` / `smartAccounts`
-  // symbols) to dispatch fluent calls to the right collection.
-  const collectionFor = (tbl: unknown): 'users' | 'smartAccounts' => {
+  // Seed stores may omit passkeyCredentials; normalize so the collection
+  // always exists.
+  if (!store.passkeyCredentials) store.passkeyCredentials = [];
+
+  // We rely on table identity (the imported `users` / `smartAccounts` /
+  // `passkeyCredentials` symbols) to dispatch fluent calls to the right
+  // collection.
+  const collectionFor = (tbl: unknown): Collection => {
     if (tbl === users) return 'users';
     if (tbl === smartAccounts) return 'smartAccounts';
+    if (tbl === passkeyCredentials) return 'passkeyCredentials';
     throw new Error('unknown table in fake db');
   };
 
@@ -58,7 +68,7 @@ function makeFakeDb(store: FakeStore): DbService {
   // most one row per collection (the seeded fixture), so when the
   // collection is empty the chain returns [] and the "new user" branch
   // runs.
-  const makeSelectChain = (collection: 'users' | 'smartAccounts') => {
+  const makeSelectChain = (collection: Collection) => {
     const ctx: { limit?: number } = {};
     const rowsAccessor = () => store[collection] as Record<string, unknown>[];
     const execute = () => {
@@ -86,52 +96,96 @@ function makeFakeDb(store: FakeStore): DbService {
     }),
     insert: (tbl: unknown) => {
       const collection = collectionFor(tbl);
-      return {
-        values: (vals: Record<string, unknown>) => {
-          const build = () =>
-            collection === 'users'
-              ? {
-                  id: `u_${store.users.length + 1}`,
-                  email: vals.email,
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                }
-              : {
-                  id: `sa_${store.smartAccounts.length + 1}`,
-                  userId: vals.userId,
-                  walletAddress: vals.walletAddress,
-                  provider: vals.provider ?? 'privy',
-                  providerUserId: vals.providerUserId,
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                };
-          const insertRow = () => {
-            const row = build();
-            (store[collection] as Record<string, unknown>[]).push(row);
-            return row;
+      const build = (v: Record<string, unknown>): Record<string, unknown> => {
+        if (collection === 'users') {
+          return {
+            id: `u_${store.users.length + 1}`,
+            email: v.email,
+            createdAt: new Date(),
+            updatedAt: new Date(),
           };
+        }
+        if (collection === 'smartAccounts') {
+          return {
+            id: `sa_${store.smartAccounts.length + 1}`,
+            userId: v.userId,
+            walletAddress: v.walletAddress,
+            provider: v.provider ?? 'privy',
+            providerUserId: v.providerUserId,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+        }
+        return {
+          id: `pk_${store.passkeyCredentials!.length + 1}`,
+          userId: v.userId,
+          credentialId: v.credentialId,
+          publicKey: v.publicKey ?? null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      };
+      return {
+        // `.values()` accepts one record or an array (bulk insert, used by
+        // the passkey mirror).
+        values: (vals: Record<string, unknown> | Record<string, unknown>[]) => {
+          const inputs = Array.isArray(vals) ? vals : [vals];
+          const rows = store[collection] as Record<string, unknown>[];
+          const insertAll = () =>
+            inputs.map((v) => {
+              const row = build(v);
+              rows.push(row);
+              return row;
+            });
           return {
             // Models INSERT ... ON CONFLICT (user_id) DO UPDATE for
             // smart_accounts: if a row with the same userId exists, patch
             // it with `set`; otherwise insert. Match-all is fine because
             // tests keep at most one smart_account row.
             onConflictDoUpdate: (cfg: { set: Record<string, unknown> }) => {
-              const rows = store[collection] as Record<string, unknown>[];
+              const v = inputs[0];
               const conflict =
                 collection === 'smartAccounts'
-                  ? rows.find((r) => r.userId === vals.userId)
+                  ? rows.find((r) => r.userId === v.userId)
                   : undefined;
-              const row = conflict ?? insertRow();
-              if (conflict) Object.assign(conflict, cfg.set);
+              let row: Record<string, unknown>;
+              if (conflict) {
+                Object.assign(conflict, cfg.set);
+                row = conflict;
+              } else {
+                row = build(v);
+                rows.push(row);
+              }
               return {
                 returning: () => Promise.resolve([row]),
-                then: (resolve: (v: unknown) => unknown) =>
+                then: (resolve: (val: unknown) => unknown) =>
                   Promise.resolve([row]).then(resolve),
               };
             },
-            returning: () => Promise.resolve([insertRow()]),
-            then: (resolve: (v: unknown) => unknown) =>
-              Promise.resolve([insertRow()]).then(resolve),
+            // Models INSERT ... ON CONFLICT (credential_id) DO NOTHING for
+            // the passkey mirror: replays collapse by credentialId.
+            onConflictDoNothing: () => {
+              const inserted: Record<string, unknown>[] = [];
+              for (const v of inputs) {
+                const exists =
+                  collection === 'passkeyCredentials'
+                    ? rows.some((r) => r.credentialId === v.credentialId)
+                    : false;
+                if (!exists) {
+                  const row = build(v);
+                  rows.push(row);
+                  inserted.push(row);
+                }
+              }
+              return {
+                returning: () => Promise.resolve(inserted),
+                then: (resolve: (val: unknown) => unknown) =>
+                  Promise.resolve(inserted).then(resolve),
+              };
+            },
+            returning: () => Promise.resolve(insertAll()),
+            then: (resolve: (val: unknown) => unknown) =>
+              Promise.resolve(insertAll()).then(resolve),
           };
         },
       };
@@ -203,6 +257,7 @@ const validPrivyUser: WalletProviderUser = {
   providerUserId: 'did:privy:abc123',
   email: 'user@example.com',
   walletAddress: 'SoLAnAaDdRess111111111111111111111111111111',
+  passkeys: [],
 };
 
 describe('AuthService.exchange', () => {
@@ -412,6 +467,7 @@ describe('AuthService.exchange', () => {
       providerUserId: 'did:privy:NEWdid999',
       email: validPrivyUser.email,
       walletAddress: 'SoLAnAaNeWwAlLeT2222222222222222222222222222',
+      passkeys: [],
     };
     const wallet = {
       verifyIdToken: jest.fn().mockResolvedValue(reAuthUser),
@@ -476,5 +532,177 @@ describe('AuthService.exchange', () => {
       status: HttpStatus.BAD_GATEWAY,
       response: { code: 'PRIVY_UNAVAILABLE' },
     });
+  });
+
+  it('mirrors a passkey credential on exchange (new user)', async () => {
+    const privyUserWithPasskey: WalletProviderUser = {
+      ...validPrivyUser,
+      passkeys: [{ credentialId: 'cred_login_1' }],
+    };
+    const wallet = {
+      verifyIdToken: jest.fn().mockResolvedValue(privyUserWithPasskey),
+      getUser: jest.fn(),
+    } as unknown as WalletProvider;
+    const { service, store } = makeService({ wallet });
+
+    await service.exchange('valid.privy.token');
+
+    expect(store.passkeyCredentials).toHaveLength(1);
+    expect(store.passkeyCredentials![0].credentialId).toBe('cred_login_1');
+    expect(store.passkeyCredentials![0].userId).toBe(store.users[0].id);
+  });
+
+  it('replayed exchange does not duplicate the mirror row', async () => {
+    const privyUserWithPasskey: WalletProviderUser = {
+      ...validPrivyUser,
+      passkeys: [{ credentialId: 'cred_login_1' }],
+    };
+    const wallet = {
+      verifyIdToken: jest.fn().mockResolvedValue(privyUserWithPasskey),
+      getUser: jest.fn(),
+    } as unknown as WalletProvider;
+    const seedStore: FakeStore = {
+      users: [
+        {
+          id: 'u_existing',
+          email: validPrivyUser.email,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-01'),
+          deletedAt: null,
+        },
+      ],
+      smartAccounts: [
+        {
+          id: 'sa_existing',
+          userId: 'u_existing',
+          walletAddress: validPrivyUser.walletAddress,
+          provider: 'privy',
+          providerUserId: validPrivyUser.providerUserId,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-01'),
+        },
+      ],
+      passkeyCredentials: [
+        {
+          id: 'pk_existing',
+          userId: 'u_existing',
+          credentialId: 'cred_login_1',
+          publicKey: null,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-01'),
+        },
+      ],
+    };
+    const { service, store } = makeService({ wallet, store: seedStore });
+
+    await service.exchange('valid.privy.token');
+
+    expect(store.passkeyCredentials).toHaveLength(1);
+  });
+});
+
+describe('AuthService.mirrorPasskeyCredential', () => {
+  const dummyWallet = {
+    verifyIdToken: jest.fn(),
+    getUser: jest.fn(),
+  } as unknown as WalletProvider;
+
+  it('inserts a new credential with its public key', async () => {
+    const { service, store } = makeService({ wallet: dummyWallet });
+
+    const result = await service.mirrorPasskeyCredential('u_1', {
+      credentialId: 'cred_1',
+      publicKey: 'pubkey_1',
+    });
+
+    expect(result).toEqual({ mirrored: true });
+    expect(store.passkeyCredentials).toHaveLength(1);
+    expect(store.passkeyCredentials![0]).toMatchObject({
+      userId: 'u_1',
+      credentialId: 'cred_1',
+      publicKey: 'pubkey_1',
+    });
+  });
+
+  it('backfills the public key when the stored row has none', async () => {
+    const seedStore: FakeStore = {
+      users: [],
+      smartAccounts: [],
+      passkeyCredentials: [
+        {
+          id: 'pk_1',
+          userId: 'u_1',
+          credentialId: 'cred_1',
+          publicKey: null,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-01'),
+        },
+      ],
+    };
+    const { service, store } = makeService({
+      wallet: dummyWallet,
+      store: seedStore,
+    });
+
+    const result = await service.mirrorPasskeyCredential('u_1', {
+      credentialId: 'cred_1',
+      publicKey: 'pubkey_1',
+    });
+
+    expect(result).toEqual({ mirrored: true });
+    expect(store.passkeyCredentials).toHaveLength(1);
+    expect(store.passkeyCredentials![0].publicKey).toBe('pubkey_1');
+  });
+
+  it('does not overwrite an existing public key', async () => {
+    const seedStore: FakeStore = {
+      users: [],
+      smartAccounts: [],
+      passkeyCredentials: [
+        {
+          id: 'pk_1',
+          userId: 'u_1',
+          credentialId: 'cred_1',
+          publicKey: 'original_pubkey',
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-01'),
+        },
+      ],
+    };
+    const { service, store } = makeService({
+      wallet: dummyWallet,
+      store: seedStore,
+    });
+
+    await service.mirrorPasskeyCredential('u_1', {
+      credentialId: 'cred_1',
+      publicKey: 'new_pubkey',
+    });
+
+    expect(store.passkeyCredentials![0].publicKey).toBe('original_pubkey');
+  });
+
+  it('rejects a cross-account credential claim with CredentialConflictError', async () => {
+    const seedStore: FakeStore = {
+      users: [],
+      smartAccounts: [],
+      passkeyCredentials: [
+        {
+          id: 'pk_1',
+          userId: 'u_owner',
+          credentialId: 'cred_1',
+          publicKey: null,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-01'),
+        },
+      ],
+    };
+    const { service } = makeService({ wallet: dummyWallet, store: seedStore });
+
+    await expect(
+      service.mirrorPasskeyCredential('u_intruder', {
+        credentialId: 'cred_1',
+      }),
+    ).rejects.toBeInstanceOf(CredentialConflictError);
   });
 });

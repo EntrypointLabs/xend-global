@@ -17,8 +17,11 @@ import {
 } from './solana-rpc.interface';
 import {
   accountExistsViaConnection,
+  getMinimumBalanceForRentExemptionViaConnection,
   getRecentBlockhashViaConnection,
   getSignatureStatusesViaConnection,
+  getTokenAccountBalanceRawViaConnection,
+  getTokenAccountOwnerViaConnection,
   getTokenBalancesViaConnection,
   sendRawTransactionViaConnection,
   streamConfirmedTransfersViaConnection,
@@ -108,6 +111,24 @@ export class HeliusAdapter implements SolanaRpc, OnModuleInit {
 
   accountExists(address: WalletAddress): Promise<boolean> {
     return accountExistsViaConnection(this.connection, address);
+  }
+
+  getMinimumBalanceForRentExemption(space: bigint): Promise<bigint> {
+    return getMinimumBalanceForRentExemptionViaConnection(
+      this.connection,
+      space,
+    );
+  }
+
+  getTokenAccountOwner(address: WalletAddress): Promise<string | null> {
+    return getTokenAccountOwnerViaConnection(this.connection, address);
+  }
+
+  getTokenAccountBalanceRaw(tokenAccount: WalletAddress): Promise<string> {
+    return getTokenAccountBalanceRawViaConnection(
+      this.connection,
+      tokenAccount,
+    );
   }
 
   streamConfirmedTransfers(

@@ -1,0 +1,11 @@
+node_modules
+dist
+.turbo
+certs/
+.env
+
+# Local-only checkout test harnesses (never shipped): the merchant demo embeds a
+# test API key client-side, and the IIFE is a hand-built SDK bundle.
+public/merchant-demo.html
+public/pay-modal-prototype.html
+public/xend-checkout.iife.js

@@ -83,7 +83,28 @@ describe('PrivyAdapter', () => {
         providerUserId: 'did:privy:abc123',
         email: 'user@example.com',
         walletAddress: 'SoLAnAaDdRess111111111111111111111111111111',
+        passkeys: [],
       });
+    });
+
+    it('maps linked passkey credentials to passkeys[]', async () => {
+      const adapter = makeAdapter({
+        getUser: jest.fn().mockResolvedValue({
+          ...privyUserWithEmbeddedSolana,
+          linkedAccounts: [
+            ...privyUserWithEmbeddedSolana.linkedAccounts,
+            {
+              type: 'passkey',
+              credentialId: 'cred_abc123',
+              verifiedAt: new Date(),
+              firstVerifiedAt: new Date(),
+              latestVerifiedAt: new Date(),
+            } as unknown as User['linkedAccounts'][number],
+          ],
+        }),
+      });
+      const result = await adapter.verifyIdToken('valid.id.token');
+      expect(result.passkeys).toEqual([{ credentialId: 'cred_abc123' }]);
     });
 
     it('throws InvalidPrivyTokenError on empty token', async () => {

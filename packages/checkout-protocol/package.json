@@ -1,0 +1,26 @@
+{
+  "name": "@xend/checkout-protocol",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./build": "./src/build.ts",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@xend/eslint-config": "*",
+    "@xend/typescript-config": "*",
+    "typescript": "5.9.2",
+    "vitest": "^4.1.10"
+  }
+}

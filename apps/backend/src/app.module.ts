@@ -10,6 +10,19 @@ import { SolanaModule } from './solana/solana.module';
 import { KycModule } from './kyc/kyc.module';
 import { TransferModule } from './transfer/transfer.module';
 import { ActivityModule } from './activity/activity.module';
+import { RedisModule } from './redis/redis.module';
+import { EventsModule } from './events/events.module';
+import { CountersModule } from './counters/counters.module';
+import { CapabilityModule } from './capability/capability.module';
+import { PaymentModule } from './payment/payment.module';
+import { SessionModule } from './session/session.module';
+import { SettlementModule } from './settlement/settlement.module';
+import { FxModule } from './fx/fx.module';
+import { MerchantModule } from './merchant/merchant.module';
+import { CheckoutModule } from './checkout/checkout.module';
+import { WebhookModule } from './webhook/webhook.module';
+import { ConsoleModule } from './console/console.module';
+import { TestDashboardModule } from './test-dashboard/test-dashboard.module';
 
 @Module({
   imports: [
@@ -22,6 +35,19 @@ import { ActivityModule } from './activity/activity.module';
     KycModule,
     TransferModule,
     ActivityModule,
+    RedisModule,
+    EventsModule,
+    CountersModule,
+    CapabilityModule,
+    PaymentModule,
+    SessionModule,
+    SettlementModule,
+    FxModule,
+    MerchantModule,
+    CheckoutModule,
+    WebhookModule,
+    ConsoleModule,
+    TestDashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

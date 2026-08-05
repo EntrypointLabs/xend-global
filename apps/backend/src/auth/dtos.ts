@@ -21,3 +21,17 @@ export const ExchangeResponseSchema = z.object({
   }),
 });
 export type ExchangeResponse = z.infer<typeof ExchangeResponseSchema>;
+
+/**
+ * POST /auth/passkey-credentials — the client mirrors a freshly enrolled
+ * WebAuthn credential so the credential inventory survives a wallet-vendor
+ * switch or outage. publicKey is optional: the server-side vendor SDK omits
+ * it, so the client supplies it here to backfill.
+ */
+export const MirrorPasskeyCredentialSchema = z.object({
+  credentialId: z.string().min(1).max(1024),
+  publicKey: z.string().min(1).max(4096).optional(),
+});
+export type MirrorPasskeyCredentialRequest = z.infer<
+  typeof MirrorPasskeyCredentialSchema
+>;

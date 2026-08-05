@@ -101,6 +101,12 @@ export default function SettingsScreen() {
           icon: require("@/assets/icons/spending-limt.png"),
           onPress: () => router.push("/settings/spending-limits" as never),
         },
+        {
+          label: "Connected Merchants",
+          icon: require("@/assets/icons/card.png"),
+          onPress: () =>
+            router.push("/settings/connected-merchants" as never),
+        },
       ],
     },
     {
