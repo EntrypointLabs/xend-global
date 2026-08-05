@@ -7,7 +7,6 @@ import BalanceView from "@/components/BalanceView";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
-import { useToast } from "@/contexts/ToastContext";
 import { EARN_PRODUCTS, useEarnPosition } from "@/hooks/useEarn";
 
 /**
@@ -19,7 +18,6 @@ import { EARN_PRODUCTS, useEarnPosition } from "@/hooks/useEarn";
  */
 export default function EarnScreen() {
   const router = useRouter();
-  const { showToast } = useToast();
   const { balanceDisplay, apyDisplay, lifetimeEarned, lastSevenDays } =
     useEarnPosition();
 
@@ -28,9 +26,9 @@ export default function EarnScreen() {
       <View className="flex-row items-center gap-3">
         <Image
           source={require("@/assets/icons/earn.png")}
-          className="h-10 w-10 rounded-xl"
+          className="h-9 w-9 rounded-xl"
         />
-        <Typography variant="title1" weight="600">
+        <Typography variant="title2" weight="600">
           Earn
         </Typography>
       </View>
@@ -52,20 +50,23 @@ export default function EarnScreen() {
 
       <View className="mt-6 flex-row gap-3">
         <StatCard
-          icon="sparkles-outline"
+          icon="sparkles"
           label="Lifetime Earned"
           amount={lifetimeEarned}
         />
-        <StatCard
-          icon="calendar-outline"
-          label="Last 7D"
-          amount={lastSevenDays}
-        />
+        <StatCard icon="calendar" label="Last 7D" amount={lastSevenDays} />
       </View>
 
-      <Typography variant="title2" weight="600" className="mb-3 mt-8">
-        Available products
-      </Typography>
+      <View className="mb-3 mt-8 flex-row items-baseline justify-between">
+        <Typography variant="body" weight="600">
+          Available products
+        </Typography>
+        {/* Stated inline rather than as a toast: the global toast renders in the
+            header band and collides with the screen title. */}
+        <Typography variant="caption" className="text-black/40">
+          Deposits open soon
+        </Typography>
+      </View>
 
       <ScrollView
         className="flex-1"
@@ -78,12 +79,8 @@ export default function EarnScreen() {
             className="rounded-2xl bg-black/[0.03] px-4 py-4"
           >
             <View className="flex-row items-center gap-3">
-              <View className="h-12 w-12 items-center justify-center rounded-2xl bg-black">
-                <Typography
-                  variant="title1"
-                  weight="700"
-                  className="text-white"
-                >
+              <View className="h-11 w-11 items-center justify-center rounded-2xl bg-black/80">
+                <Typography variant="body" weight="700" className="text-white">
                   {product.provider.slice(0, 1)}
                 </Typography>
               </View>
@@ -129,11 +126,14 @@ export default function EarnScreen() {
           <HapticPressable
             accessibilityRole="button"
             accessibilityLabel="Deposit into Earn"
-            onPress={() => showToast("Earn deposits open soon")}
-            className="flex-row items-center gap-2"
+            // Both actions are muted because neither is wired yet. They stay
+            // visible so the shape of the product is legible.
+            disabled
+            onPress={() => {}}
+            className="flex-row items-center gap-2 opacity-30"
           >
-            <Ionicons name="add" size={20} color="#000" />
-            <Typography variant="title2" weight="600">
+            <Ionicons name="add" size={18} color="#000" />
+            <Typography variant="body" weight="600">
               Deposit
             </Typography>
           </HapticPressable>
@@ -147,8 +147,8 @@ export default function EarnScreen() {
             onPress={() => {}}
             className="flex-row items-center gap-2 opacity-30"
           >
-            <Ionicons name="arrow-up" size={20} color="#000" />
-            <Typography variant="title2" weight="600">
+            <Ionicons name="arrow-up" size={18} color="#000" />
+            <Typography variant="body" weight="600">
               Withdraw
             </Typography>
           </HapticPressable>
@@ -170,7 +170,7 @@ function StatCard({
   return (
     <View className="flex-1 gap-6 rounded-2xl bg-black/[0.03] px-4 py-4">
       <View className="flex-row items-center gap-2">
-        <Ionicons name={icon} size={16} color="rgba(0,0,0,0.4)" />
+        <Ionicons name={icon} size={15} color="rgba(0,0,0,0.75)" />
         <Typography variant="body" weight="600">
           {label}
         </Typography>

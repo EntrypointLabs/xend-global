@@ -27,9 +27,9 @@ export default function InvestmentsScreen() {
       <View className="flex-row items-center gap-3">
         <Image
           source={require("@/assets/icons/investment.png")}
-          className="h-10 w-10 rounded-xl"
+          className="h-9 w-9 rounded-xl"
         />
-        <Typography variant="title1" weight="600">
+        <Typography variant="title2" weight="600">
           Investments
         </Typography>
       </View>
