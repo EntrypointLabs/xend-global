@@ -620,3 +620,71 @@ no device share; the 2-of-3 model with a device share is legacy. Which one
 synced through iCloud Keychain, S1 and S3 would share the platform-account anchor and
 the invariant breaks. Worth asking Privy directly, along with which Drive scope their
 cloud recovery uses.
+
+## What comparable products actually default to
+
+Surveyed for O3 and O4: Squads, Safe, Coinbase Smart Wallet (Base Account), Braavos,
+Ambire, Clave, Soul Wallet, Candide, Sequence, Rainbow, Ledger, MetaMask, Privy,
+Turnkey.
+
+### Spending limits (O3)
+
+**Not one ships a default per-period limit on ordinary transfers.** Every
+spending-limit feature found is opt-in and absent until explicitly configured, and
+the developer platforms (Privy, Turnkey) default to deny-all rather than to a
+threshold. Squads is no exception: `amount` is caller-supplied and the invariant
+rejects zero, so there is no default to inherit.
+
+So defaulting a limit **on** is a deliberate departure. It is still the right call for
+a payments app, where the dominant case is a small P2P Send and a second factor on a
+$6 payment would destroy the product, but we are not following a precedent here.
+
+| Product                 | Shape                                                                                                                                                                                    | Default                                             |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Braavos                 | Two thresholds. Below the Low Limit a weak signer alone; below the High Limit a strong (secure-enclave or passkey) signer alone; above, full multisig. 24-hour window, USDC-denominated. | Off. No published amount.                           |
+| Safe                    | Allowance Module, per-delegate. UI offers One time / 1 day / 1 week / 1 month. `resetTimeMin` is `uint16` minutes, so ~45.5 days is the ceiling.                                         | Off. Form opens on "One time" with an empty amount. |
+| Coinbase / Base Account | Spend Permissions, app-requested and user-approved, `period` in seconds. Unused allowance does not roll over.                                                                            | No wallet-wide cap.                                 |
+| Everyone else           | opt-in or absent                                                                                                                                                                         | none                                                |
+
+Braavos is the closest architectural match to ours and is worth reading directly.
+
+Two implementation details taken from the survey:
+
+- **A stronger-signer spend must not consume the limit.** Braavos does this
+  explicitly: if a transaction is validated with a stronger signer than the limit
+  required, its value is not accumulated. We get this free, because an above-limit
+  Spend runs under a different policy and never touches the spending-limit policy's
+  counter. Worth stating so nobody "fixes" it later.
+- **Unused allowance does not roll over.** Coinbase is explicit; we already set
+  `accumulateUnused: false`.
+
+### Delay on security-configuration changes (O4)
+
+Here there **is** a clear industry number, and it is not ours.
+
+| Product | Delay                                           | Notes                                      |
+| ------- | ----------------------------------------------- | ------------------------------------------ |
+| Braavos | **4 days** (`ACCOUNT_DEFAULT_ETD_SEC = 345600`) | min 1 day, max 365                         |
+| Ambire  | **3 days**                                      | recovery timelock                          |
+| Candide | **3 days**                                      | 7 and 14 day module variants also deployed |
+
+Convergence at 3 to 4 days. Our current `SETTINGS_TIME_LOCK_SECONDS` is 24 hours.
+
+Argument against simply matching them: all three are self-custody wallets where every
+action is deliberate. We are a payments app, and S2 is deliberately unrecoverable, so
+replacing a lost phone requires a settings change. Four days before a Consumer's new
+phone works is not a payments experience.
+
+Note also what the delay defends: an attacker holding S1 plus S3 rotating S2 out. A
+Consumer who has genuinely lost their phone cannot reject anyway, so the window only
+helps where they still hold S2. That argues for the shorter end.
+
+Neither Safe nor Coinbase uses a delay as a step-up at all; both are binary, one
+signature within the limit and the normal authorisation path above it.
+
+### The requirement this exposes
+
+**A time lock is worthless without a notification.** If a pending settings change sits
+for a day and the Consumer never hears about it, the delay protects nobody. Push
+notification on any pending settings change, with a one-tap reject, is therefore a
+hard requirement of D3 rather than a nice-to-have.
