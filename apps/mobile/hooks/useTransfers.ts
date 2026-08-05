@@ -6,24 +6,40 @@ import {
 } from "@tanstack/react-query";
 
 import { apiClient } from "@/utils/apiClient";
+import { fetchTransferRowsFromChain } from "@/utils/chainReads";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserId } from "@/hooks/useUserId";
+import { useWalletAddress } from "@/hooks/useWalletAddress";
 
 const PAGE_SIZE = 25;
 
 /**
  * Cursor-paginated Activity feed for the signed-in user. Gated on
  * `isAuthenticated`; the JWT scopes the fetch server-side.
+ *
+ * Falls back to Solana RPC when the backend is unreachable. The chain-derived
+ * feed is one page and carries no merchant names, but an Activity screen that
+ * shows real transfers beats one that shows an error.
  */
 export function useTransfersInfinite() {
   const { isAuthenticated } = useAuth();
   const userId = useUserId();
+  const address = useWalletAddress();
 
   return useInfiniteQuery({
     queryKey: ["transfers", userId],
-    // Arrow-wrapped: apiClient methods rely on their receiver.
-    queryFn: ({ pageParam }) =>
-      apiClient.listTransfers({ cursor: pageParam, limit: PAGE_SIZE }),
+    queryFn: async ({ pageParam }) => {
+      try {
+        // Arrow-wrapped: apiClient methods rely on their receiver.
+        return await apiClient.listTransfers({
+          cursor: pageParam,
+          limit: PAGE_SIZE,
+        });
+      } catch (error) {
+        if (!address) throw error;
+        return fetchTransferRowsFromChain(address, PAGE_SIZE);
+      }
+    },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: Boolean(isAuthenticated),

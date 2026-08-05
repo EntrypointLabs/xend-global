@@ -59,16 +59,16 @@ function HomeScreenContent() {
       },
       {
         title: "Investments",
-        subtitle: "Trade Crypto",
+        subtitle: "Your other assets",
         icon: require("@/assets/icons/investment.png"),
-        onPress: () => showToast("Coming soon"),
+        onPress: () => router.push("/investments"),
         color: "#FF9500", // Orange
       },
       {
         title: "Earn",
-        subtitle: "Up to 7.99% APY",
+        subtitle: "Yield on your balance",
         icon: require("@/assets/icons/earn.png"),
-        onPress: () => showToast("Coming soon"),
+        onPress: () => router.push("/earn"),
         color: "#AF52DE", // Purple
       },
       {

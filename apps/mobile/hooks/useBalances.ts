@@ -6,8 +6,10 @@ import {
   selectUsdc,
   selectDecimalsByMint,
 } from "@/utils/balances";
+import { fetchBalancesFromChain } from "@/utils/chainReads";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserId } from "@/hooks/useUserId";
+import { useWalletAddress } from "@/hooks/useWalletAddress";
 
 export { selectStablecoinTotal, selectUsdc, selectDecimalsByMint };
 
@@ -20,11 +22,21 @@ export { selectStablecoinTotal, selectUsdc, selectDecimalsByMint };
 export function useBalances() {
   const { isAuthenticated } = useAuth();
   const userId = useUserId();
+  const address = useWalletAddress();
 
   const query = useQuery({
     queryKey: ["balances", userId],
-    // Arrow-wrapped: apiClient methods rely on their receiver.
-    queryFn: () => apiClient.getBalances(),
+    queryFn: async () => {
+      try {
+        // Arrow-wrapped: apiClient methods rely on their receiver.
+        return await apiClient.getBalances();
+      } catch (error) {
+        // The balance is public on-chain data, so a backend outage should never
+        // blank out the home screen.
+        if (!address) throw error;
+        return fetchBalancesFromChain(address);
+      }
+    },
     enabled: Boolean(isAuthenticated),
     staleTime: 30000,
   });
