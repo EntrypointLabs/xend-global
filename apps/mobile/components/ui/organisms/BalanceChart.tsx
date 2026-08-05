@@ -80,6 +80,8 @@ export function BalanceChart({ history, className }: BalanceChartProps) {
               accessibilityLabel={`Show ${option} balance history`}
               accessibilityState={{ selected: active }}
               onPress={() => setRange(option)}
+              feedback="selection"
+              scaleOnPress={false}
               className={cn(
                 "rounded-full px-4 py-2",
                 active ? "bg-black/5" : "bg-transparent"

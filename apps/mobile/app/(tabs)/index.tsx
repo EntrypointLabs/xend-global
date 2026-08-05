@@ -104,7 +104,10 @@ function HomeScreenContent() {
                 className="flex-row items-center gap-1.5 self-start py-2"
                 onPress={() => refetchBalances()}
               >
-                <Typography weight="700" className="text-[40px] leading-[140%]">
+                <Typography
+                  weight="700"
+                  className="text-[40px] leading-[120%] tracking-[-1.1px]"
+                >
                   ——
                 </Typography>
                 <View className="flex-row items-center gap-1 rounded-full bg-black/5 px-2.5 py-1">
@@ -117,7 +120,7 @@ function HomeScreenContent() {
             ) : (
               <BalanceView
                 weight="700"
-                className="text-[40px] leading-[140%]"
+                className="text-[40px] leading-[120%] tracking-[-1.1px]"
                 amount={totalDisplay}
               />
             )}

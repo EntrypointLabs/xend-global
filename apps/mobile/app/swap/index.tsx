@@ -85,7 +85,7 @@ export default function SwapScreen() {
           <Typography
             weight="500"
             className={cn(
-              "text-[44px]",
+              "text-[44px] tracking-[-1.2px]",
               amount === "0" ? "text-black/25" : "text-black"
             )}
           >
@@ -107,6 +107,7 @@ export default function SwapScreen() {
           <HapticPressable
             accessibilityRole="button"
             accessibilityLabel="Swap direction"
+            feedback="selection"
             onPress={flip}
           >
             <Ionicons name="swap-vertical" size={22} color="#000" />
@@ -118,7 +119,10 @@ export default function SwapScreen() {
           You receive
         </Typography>
         <View className="flex-row items-center justify-between">
-          <Typography weight="500" className="text-[44px] text-black/25">
+          <Typography
+            weight="500"
+            className="text-[44px] tracking-[-1.2px] text-black/25"
+          >
             0
           </Typography>
           <TokenPill token={receiveToken} />
@@ -132,6 +136,9 @@ export default function SwapScreen() {
             accessibilityRole="button"
             accessibilityLabel={key === "⌫" ? "Delete" : key}
             onPress={() => press(key)}
+            // A keypad is picking, not committing; impact on every digit is noise.
+            feedback="selection"
+            scaleOnPress={false}
             className="w-1/3 items-center py-4"
           >
             <Typography weight="500" className="text-[26px]">
