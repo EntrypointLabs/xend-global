@@ -79,7 +79,7 @@ export function ReceiveModal({
           resizeMode="contain"
         />
         <Typography weight="600" className="mb-1 text-base">
-          Recieve
+          Receive
         </Typography>
         <Typography
           weight="500"

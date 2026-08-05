@@ -26,50 +26,57 @@
     {
       "idx": 3,
       "version": "7",
-      "when": 1783872814508,
-      "tag": "0003_passkey_credentials",
+      "when": 1748736000000,
+      "tag": "0003_users_deleted_at",
       "breakpoints": true
     },
     {
       "idx": 4,
       "version": "7",
-      "when": 1784044800000,
-      "tag": "0004_pay_platform_tables",
+      "when": 1783872814508,
+      "tag": "0004_passkey_credentials",
       "breakpoints": true
     },
     {
       "idx": 5,
       "version": "7",
-      "when": 1784131200000,
-      "tag": "0005_settlement_model",
+      "when": 1784044800000,
+      "tag": "0005_pay_platform_tables",
       "breakpoints": true
     },
     {
       "idx": 6,
       "version": "7",
-      "when": 1784217600000,
-      "tag": "0006_settlement_activity_linkage",
+      "when": 1784131200000,
+      "tag": "0006_settlement_model",
       "breakpoints": true
     },
     {
       "idx": 7,
       "version": "7",
-      "when": 1784304000000,
-      "tag": "0007_merchant_api_webhooks",
+      "when": 1784217600000,
+      "tag": "0007_settlement_activity_linkage",
       "breakpoints": true
     },
     {
       "idx": 8,
       "version": "7",
-      "when": 1784390400000,
-      "tag": "0008_settlement_offramps",
+      "when": 1784304000000,
+      "tag": "0008_merchant_api_webhooks",
       "breakpoints": true
     },
     {
       "idx": 9,
       "version": "7",
+      "when": 1784390400000,
+      "tag": "0009_settlement_offramps",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
       "when": 1784476800000,
-      "tag": "0009_refund_idempotency_unique",
+      "tag": "0010_refund_idempotency_unique",
       "breakpoints": true
     }
   ]

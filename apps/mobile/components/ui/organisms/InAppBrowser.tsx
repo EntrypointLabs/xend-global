@@ -61,9 +61,6 @@ export function InAppBrowser({
         allowsInlineMediaPlayback={true}
         javaScriptEnabled={true}
         domStorageEnabled={true}
-        allowFileAccess={true}
-        allowFileAccessFromFileURLs={true}
-        allowUniversalAccessFromFileURLs={true}
         androidHardwareAccelerationDisabled={false}
         androidLayerType="hardware"
       />

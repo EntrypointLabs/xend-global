@@ -1,5 +1,5 @@
 {
-  "name": "turbo-repo",
+  "name": "xend",
   "private": true,
   "scripts": {
     "build": "turbo run build",

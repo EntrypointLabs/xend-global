@@ -1,0 +1,44 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  claude-review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            This is PR #${{ github.event.pull_request.number }}. Get the diff with a single command,
+            `gh pr diff ${{ github.event.pull_request.number }}` — don't chain it with other commands
+            using && or ;, and don't reconstruct it manually via git log/diff/merge-base; compound bash
+            commands need approval that isn't available in this unattended run, and the local checkout's
+            merge-base with origin/main isn't reliable here anyway.
+
+            Review that diff for bugs, security issues, correctness problems, and code quality. Focus on
+            real, verifiable defects over style nits. Post your findings as a PR review with inline
+            comments on the relevant lines where possible. If you find nothing significant, leave a short
+            summary comment saying so instead of forcing findings.
+          claude_args: |
+            --max-turns 8
+            --model claude-sonnet-5

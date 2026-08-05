@@ -62,6 +62,11 @@ export const BalancesResponseSchema = z.object({
 });
 export type BalancesResponse = z.infer<typeof BalancesResponseSchema>;
 
+export const DeleteAccountResponseSchema = z.object({
+  deleted: z.literal(true),
+});
+export type DeleteAccountResponse = z.infer<typeof DeleteAccountResponseSchema>;
+
 // Mirrors apps/backend/src/transfer/dtos.ts.
 export const PrepareTransferRequestSchema = z.object({
   toAddress: z.string(),
@@ -315,6 +320,18 @@ class BackendClient {
       auth: true,
     });
     return BalancesResponseSchema.parse(raw);
+  }
+
+  /** DELETE /wallet/me — closes the Consumer's Xend account. Rejects with a
+   *  409 `{code: "ACCOUNT_HAS_BALANCE"}` while any token balance remains;
+   *  the caller is responsible for the zero-balance check and for handling
+   *  that response (see DeleteAccountModal). */
+  async deleteAccount(): Promise<DeleteAccountResponse> {
+    const raw = await this.request<unknown>("/wallet/me", {
+      method: "DELETE",
+      auth: true,
+    });
+    return DeleteAccountResponseSchema.parse(raw);
   }
 
   /** POST /transfers/prepare — backend builds an unsigned v0 transaction
