@@ -113,18 +113,33 @@ spend under a spending limit.
 
 ### D4. The signer set
 
-|             | S1                            | S2                                                  | S3                              |
-| ----------- | ----------------------------- | --------------------------------------------------- | ------------------------------- |
-| Anchor      | email inbox                   | physical possession                                 | platform account                |
-| Key holder  | Privy                         | Turnkey                                             | encrypted blob, platform-stored |
-| Unlock      | email OTP plus passkey MFA    | biometric-gated hardware key on the phone           | Apple ID or Google account      |
-| Permissions | `Initiate \| Vote \| Execute` | `Vote \| Execute`                                   | `Vote`                          |
-| Present     | every spend                   | above the spending limit, and every settings change | recovery only                   |
+Rewritten. Earlier drafts anchored S1 to the email inbox with the passkey as MFA on
+top. That is incompatible with the product: **"Pay with Xend" on a merchant page must
+prompt the passkey and nothing else.** No app, no login, no OTP. If the passkey alone
+completes the payment then the passkey alone completes S1, so S1's anchor is the
+platform account and no amount of wishing makes it the inbox.
 
-S1 stays anchored to email rather than going passkey-first (which Privy does
-support via `signupWithPasskey`) because S1 must work on a laptop for everyday
-spends, and S1 alone can never exceed the spending limit. The possession factor
-sits on S2, which is what Fuse gets from its Secure Enclave device key.
+That propagates: S3 can no longer be the platform account either, or one Apple ID
+takeover would yield S1 and S3 together.
+
+|             | S1                            | S2                                                  | S3                                   |
+| ----------- | ----------------------------- | --------------------------------------------------- | ------------------------------------ |
+| Anchor      | platform account              | physical possession                                 | email inbox                          |
+| Key holder  | Privy                         | Turnkey                                             | Xend, encrypted and server-held      |
+| Unlock      | **passkey, on its own**       | biometric-gated hardware key on the phone           | proving control of the sign-up email |
+| Permissions | `Initiate \| Vote \| Execute` | `Vote \| Execute`                                   | `Vote`                               |
+| Present     | every spend                   | above the spending limit, and every settings change | recovery only                        |
+
+Three distinct anchors: the Apple or Google account, the phone, the inbox.
+
+The payoff of the rewrite is that the friction disappears. Under the old shape the
+sign-in email unlocked S1, so a recovery email had to be a **different** address,
+which meant asking for a second one at signup. Here email does not unlock S1 at all,
+so the sign-up email is free to anchor S3. **One email, collected once.**
+
+Signup is therefore passkey-first, which Privy supports via `signupWithPasskey` and
+which creates a user with no email attached. The email is collected on a later
+onboarding screen and is simply "your email", not a "recovery email".
 
 ### D5. Spending limits are optional, and the two-signature path is the floor
 
@@ -245,19 +260,17 @@ Up to 3 recovery signers, matching Fuse. Each additional one adds pairs that can
 spend, since any Active plus any Recovery meets the threshold. Say so in the copy
 rather than hiding it.
 
-**Shared-anchor rule, relaxed by D5b.** S3 sharing an anchor with S1 (a Gmail user
-backing up to Google Block Store) was previously fatal. Under D5b, S3 cannot
-participate in spending at all, so that pair can only start a time-locked settings
-change that the Consumer is notified about and S2 can reject. Platform backup is
-therefore offered to everyone rather than pushing Gmail-on-Android users to a second
-email address. Prefer a different provider where the platform makes it free (iCloud
-for a Gmail user on iOS), but do not block on it.
+**Shared-anchor rule, inverted by D4.** Earlier drafts required the recovery email to
+**differ** from the sign-in email, because the sign-in email unlocked S1. Under D4 it
+does not: the passkey unlocks S1 and email unlocks nothing else. So the sign-up email
+is exactly the right anchor for S3, and there is no second address to ask for.
 
-This relaxation depends entirely on D5b holding. If the devnet spike (O9) shows
-policy-scoped consensus does not work as read, the strict rule comes back.
+What must not share an anchor now is S1 and S3, which is why S3 moved off the platform
+account entirely. See D10b.
 
-`CONTEXT.md` line 28 currently says the signup email "also counts as a recovery
-channel". That is now a security bug and must change.
+D5b still applies and still matters: S3 cannot participate in any spend path, so even
+a compromise reaching both S1 and S3 yields a time-locked, notified settings change
+rather than a drain.
 
 ### D10b. S3 is mandatory at Account creation
 
@@ -407,17 +420,17 @@ the time lock, which the notification story in D5b depends on.
 
 ## Open
 
-|     | Item                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| O1  | **Resolved: option B.** S2's authenticator is a Secure Enclave (iOS) or Keystore (Android) P-256 key registered as a Turnkey API-key authenticator, biometric-gated. One passkey in the product, genuinely device-bound. Remaining verification: can Turnkey's React Native SDK stamp requests with a hardware-backed key it did not itself generate.                                                                                                                                                                                                                                                                                                        |
-| O9  | **Resolved: confirmed at runtime.** A Policy carries its own signer set and threshold, and a spend executes synchronously under it while the Account is time-locked. See Runtime verification. Remaining sub-item: rejection and cancellation of a pending settings change during the time lock.                                                                                                                                                                                                                                                                                                                                                             |
-| O2  | **Resolved: creation is permissionless.** Squads was unreachable, so this was settled empirically. Mainnet `ProgramConfig` reads `smart_account_creation_fee: 0`, `smart_account_index: 502795`, and the struct carries no whitelist field (`smart_account_index`, `authority`, `smart_account_creation_fee`, `treasury`, `_reserved`). `create_smart_account` validates only that the treasury matches. The source comment about future permissioning is not reflected in the deployed program.                                                                                                                                                             |
-| O3  | Spending limit band: amount and period.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| O4  | `time_lock` duration on settings changes.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| O5  | **Resolved: 0.00252452 SOL per Account** (2,524,520 lamports), almost entirely settings-account rent. Creation fee is 0 on mainnet and devnet. Roughly 252 SOL per 100,000 Accounts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| O6  | Turnkey policy-update authority: backend in the root quorum, or `POLICY` granted to a delegated user. One-way at creation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| O7  | Confirm with Privy in writing: can support manually reset a user's wallet MFA out of band, and does disabling email login app-wide block users who already have email linked.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| O8  | **Provisional: borrow Fuse's vocabulary, revisit before the recovery screens ship.** Categories are **Active Keys** and **Recovery Keys**, exactly as Fuse has them. Individually: S1 is the **Sign-in Key**, S2 is the **Device Key**, S3 is the **Recovery Key**. Two of the three are Fuse's own words. The third could not be: Fuse's second active key is their **2FA Key**, which lives in iCloud, whereas ours is the phone-bound hardware key, so their "Device Key" describes our S2 and they have no name for a key like our S1. Flagged **to modify**, and deliberately not yet in `CONTEXT.md`, which should only take these once the UI exists. |
+|     | Item                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| O1  | **Resolved: option B.** S2's authenticator is a Secure Enclave (iOS) or Keystore (Android) P-256 key registered as a Turnkey API-key authenticator, biometric-gated. One passkey in the product, genuinely device-bound. Remaining verification: can Turnkey's React Native SDK stamp requests with a hardware-backed key it did not itself generate.                                                                                                                                            |
+| O9  | **Resolved: confirmed at runtime.** A Policy carries its own signer set and threshold, and a spend executes synchronously under it while the Account is time-locked. See Runtime verification. Remaining sub-item: rejection and cancellation of a pending settings change during the time lock.                                                                                                                                                                                                 |
+| O2  | **Resolved: creation is permissionless.** Squads was unreachable, so this was settled empirically. Mainnet `ProgramConfig` reads `smart_account_creation_fee: 0`, `smart_account_index: 502795`, and the struct carries no whitelist field (`smart_account_index`, `authority`, `smart_account_creation_fee`, `treasury`, `_reserved`). `create_smart_account` validates only that the treasury matches. The source comment about future permissioning is not reflected in the deployed program. |
+| O3  | Spending limit band: amount and period.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| O4  | `time_lock` duration on settings changes.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| O5  | **Resolved: 0.00252452 SOL per Account** (2,524,520 lamports), almost entirely settings-account rent. Creation fee is 0 on mainnet and devnet. Roughly 252 SOL per 100,000 Accounts.                                                                                                                                                                                                                                                                                                             |
+| O6  | Turnkey policy-update authority: backend in the root quorum, or `POLICY` granted to a delegated user. One-way at creation.                                                                                                                                                                                                                                                                                                                                                                       |
+| O7  | Confirm with Privy in writing: can support manually reset a user's wallet MFA out of band, and does disabling email login app-wide block users who already have email linked.                                                                                                                                                                                                                                                                                                                    |
+| O8  | **Provisional, and D4 shifted it.** Categories stay Fuse's: **Active Keys** and **Recovery Keys**. Individually S1 is now unlocked by the passkey alone, so "Sign-in Key" no longer describes it well; **Passkey** is the honest name and is already the `CONTEXT.md` term. S2 is the **Device Key** (Fuse's word, and accurate: it is the phone-bound hardware key). S3 is the **Recovery Key**. Still flagged **to modify**, and still deliberately out of `CONTEXT.md` until the UI exists.   |
 
 ## Rejected
 
@@ -581,37 +594,56 @@ D10b makes S3 mandatory at Account creation, and the lost-phone path is explicit
 S1 plus S3. But S3 can only ever be **provisioned, not confirmed**. That is a real
 gap between what the decision assumes and what the platforms provide.
 
-**Resolved: option 1, with the prompt deferred past onboarding.**
+**Resolved, and rewritten after the checkout requirement landed.**
 
-- **At Account creation, S3 provisions silently.** Generate an ed25519 keypair on
-  device, encrypt the private key, write it to a synchronizable keychain item on iOS
-  or Block Store on Android. No screen, no prompt, no second email. The Consumer
-  already signed into an Apple ID or Google account when they set up the phone.
-- **After the first successful Spend**, prompt once for a **Recovery Email** as a
-  second recovery signer. Never at signup. Asking for a second email address before
-  someone has sent their first payment is the worst possible moment for it, and at
-  that point they have nothing worth protecting anyway.
-- **Until they add one, surface it on the home screen** through the existing
-  `PromoBanner` (`apps/mobile/components/ui/molecules/PromoBanner.tsx`, already used
-  on `app/(tabs)/index.tsx` for the virtual bank account).
+The original plan put S3 in the platform store, silently, at Account creation. That is
+now wrong for two independent reasons. It shares an anchor with the passkey, and it
+does not survive the case `CONTEXT.md` explicitly names: **switching from iPhone to
+Android**. Passkeys do not cross from Apple to Google and neither does an iCloud blob,
+so an Apple ID change would take out S1 and S3 together and leave one signer with no
+way back.
 
-Two things the banner has to get right, neither of which the current usage does:
+So S3 moves off the device and off the platform account entirely:
 
-- `onClose` is a no-op today. A **permanently** dismissible prompt defeats the
-  purpose, because the whole reason to ask is that S3's backup cannot be verified.
-  Dismissal should snooze and return, not silence forever.
-- Two banners competing for one slot needs a priority rule. Recovery outranks a
-  virtual-account promo.
+**At signup we generate a spare key, encrypt it, and hold it server-side. The Consumer
+never sees it. Using it requires proving control of their email.**
 
-Rejected: switching S3 to an encrypted cloud **file** under a user-held secret, which
-is what Uniswap, Coinbase Wallet, BRD, Argent and Dynamic converged on. It is
-verifiable, which is genuinely better, but it costs a consent screen and a secret the
-Consumer has to remember, and it reintroduces the "write this down" moment the product
-exists to avoid. Revisit if the silent path proves unreliable in the field.
+| Event                             | S1 passkey | S2 phone | S3           |
+| --------------------------------- | ---------- | -------- | ------------ |
+| Lost phone, same platform account | survives   | gone     | survives     |
+| Switched iPhone to Android        | gone       | gone     | **survives** |
+| Inbox compromised                 | safe       | safe     | reachable    |
+| Platform account compromised      | reachable  | safe     | safe         |
 
-Nobody ships the zero-interaction platform-store pattern at consumer scale. The only
-production React Native precedent is Rally Protocol, which is small, and Google's own
-largest Block Store adopter treats the dependency as optional.
+Properties this buys:
+
+- Silent at creation. No screen, no seed phrase, nothing to write down.
+- Survives both a lost phone and a platform-account change.
+- Xend alone cannot use it, because it needs the email step.
+- Even with the email it **cannot spend**. D5b keeps recovery signers out of every
+  spend path, so the most it can do is participate in a settings change, which is
+  time-locked and notified.
+
+Honest characterisation: this is the Argent pattern, where the provider holds an
+encrypted recovery secret released against a second factor. It is not pure
+self-custody. Xend holds one of three signers and the weakest one, and cannot reach
+threshold alone.
+
+The alternative is a **third KMS vendor** with email auth holding it instead of us,
+which reads better commercially ("we hold none of your keys") at the cost of running a
+third vendor. It cannot be Privy or Turnkey, since either holding two signers could
+reach threshold alone. The security property is identical either way, so ship ours and
+swap later if custody becomes a commercial issue.
+
+Onboarding is therefore three steps: passkey, then the silent Turnkey and S3
+provisioning, then one screen asking for **their email**. Not "a recovery email", just
+their email. Additional recovery signers (another email, an external wallet) stay
+available later in settings for anyone who wants them.
+
+Rejected, unchanged: an encrypted cloud **file** under a user-held secret, the
+Uniswap / Coinbase Wallet / BRD / Argent / Dynamic pattern. Verifiable, but it costs a
+consent screen and a secret to remember, reintroducing the "write this down" moment
+the product exists to avoid.
 
 ### One real issue in the repo, and one false alarm
 
@@ -734,56 +766,39 @@ from iOS backups**. They are copied in, wrapped to the source device's hardware 
 so they are useless on another device but present in the blob. Only
 `WhenPasscodeSetThisDeviceOnly` is literally excluded.
 
-### The real collapse risk is our auth config, not Privy's storage
+### The passkey must be the login method, and must sync
 
-Privy ships **both** architectures and which one is live is a per-app dashboard
-setting, discriminated at runtime by `recovery_method === 'privy-v2'` (TEE) versus
-anything else (on-device). In TEE mode, which has been the default since roughly Q2
-2025, **there is no device share at all** and the wallet's only anchor is the Privy
-auth session. That is exactly the inbox anchor D4 specifies.
+An earlier draft of this section recommended `removeForLogin: true` to demote the
+passkey to MFA only, on the grounds that a passkey-as-login makes the phone S1's
+anchor. **That recommendation is withdrawn.** It would break checkout, which is the
+product.
 
-But: **if the passkey is a login method, phone possession alone satisfies Privy auth**,
-which makes S1's anchor the phone. That is already S2's anchor, so phone possession
-would yield 2 of 3 and the model fails.
+The reasoning that produced it was not wrong, only incomplete: a passkey that is
+sufficient for login does make the platform account S1's anchor. The correct response
+is not to weaken the passkey, it is to move S3 off that anchor, which D4 now does.
 
-`apps/mobile/hooks/usePasskey.ts:54` uses `useLinkWithPasskey`, which links the
-passkey as a **login method**. So the shipped configuration has exactly this collapse.
+Two properties the passkey must keep, both essential rather than incidental:
 
-The fix is in the SDK: `submitMfaEnrollment({ method: 'passkey', removeForLogin: true })`
-promotes the passkey to MFA and drops it as a standalone login factor. **The passkey
-must never be sufficient for login on its own.**
+- **It syncs.** iCloud Keychain and Google Password Manager. Without this a Consumer
+  cannot check out on a laptop without re-enrolling, which is the friction the product
+  exists to remove.
+- **It is sufficient on its own.** Tapping "Pay with Xend" on a merchant page prompts
+  the passkey and nothing else.
 
-**This does not stop the passkey syncing, and it must not.** Four different credentials
-are in play and only two of them sync, each deliberately:
+What still holds from the storage research: Privy's own device share never syncs
+(`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, and `kSecAttrSynchronizable`
+appears nowhere in `expo-secure-store`), Android is AndroidKeyStore-wrapped and
+excluded from backup, and nothing touches Block Store. Those are separate artefacts
+from the passkey and none of it constrains the passkey's syncing.
 
-| Credential         | What it is                                 | Syncs                                               |
-| ------------------ | ------------------------------------------ | --------------------------------------------------- |
-| **Passkey**        | the Consumer's WebAuthn login credential   | **yes**, iCloud Keychain or Google Password Manager |
-| Privy device share | internal wallet share, on-device mode only | no, `ThisDeviceOnly`                                |
-| S2 hardware key    | Secure Enclave or Keystore P-256           | no, by design                                       |
-| S3 recovery blob   | the recovery signer                        | **yes**, that is the recovery mechanism             |
-
-The passkey syncing is a **requirement**, not a risk to remove: without it the Consumer
-cannot check out on a laptop without re-enrolling, which is exactly the friction the
-product exists to avoid. It is also already documented that way in `CONTEXT.md`.
-
-Its syncing is what makes the platform account an anchor at all, which is why the fix
-is to stop the passkey being _sufficient_, not to stop it _syncing_. With email OTP
-plus passkey, an attacker holding the Apple ID has the passkey and the S3 blob but not
-the inbox, so S1 is never complete. One signer, safe, and the Consumer keeps full
-cross-device use because they carry both factors everywhere.
-
-Three things to lock down:
+Still to lock down:
 
 - Confirm the execution mode (Dashboard, Wallets, Advanced) or assert on
-  `recovery_method` at runtime. It changes the whole analysis and nothing surfaces it.
-- **Never enable Privy's iCloud or Google Drive recovery.** That is the one Privy
-  feature that would anchor the wallet to the Apple ID, via CloudKit rather than the
-  keychain. It is currently blocked three ways by accident: TEE mode disables it, the
-  SDK rejects user-controlled recovery for Solana wallets outright, and our iOS
-  entitlements are empty. None is a deliberate guard, so add an explicit assertion.
-- Enroll two MFA methods, since a surviving method is the only documented way to
-  unenroll a lost one.
+  `recovery_method` at runtime.
+- **Never enable Privy's iCloud or Google Drive recovery.** It is the one Privy
+  feature that would put wallet key material under the Apple ID via CloudKit,
+  alongside the passkey. Currently blocked three ways by accident, so assert it
+  explicitly.
 
 ### O7 resolved: there is no out-of-band MFA reset
 

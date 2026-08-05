@@ -8,11 +8,11 @@ import { PublicKey } from "@solana/web3.js";
  * factor wearing two hats.
  */
 export type SignerRole =
-  /** Privy, unlocked by the sign-in inbox plus passkey MFA. Present on every spend. */
+  /** Privy, unlocked by the passkey alone. Present on every spend. */
   | "primary"
   /** Turnkey, unlocked by a biometric-gated hardware key on the phone. */
   | "approval"
-  /** Platform-stored blob, unlocked by the Apple ID or Google account. Recovery only. */
+  /** Server-held and encrypted, unlocked by proving control of the email. */
   | "recovery";
 
 export interface AccountSigner {
