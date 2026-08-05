@@ -24,6 +24,7 @@ function userRow(over: Partial<UsersRow> = {}): UsersRow {
     email: 'a@b.com',
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
+    deletedAt: null,
     ...over,
   };
 }
