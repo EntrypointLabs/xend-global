@@ -821,3 +821,122 @@ Residual unknown, stated rather than hidden: Privy hints at an internal capabili
 Whatever Privy can do internally, Privy controls **one** of three signers and cannot
 reach threshold alone. That property is what makes this hold, not any assumption about
 Privy's internal controls.
+
+## O3 resolved: the spending limit band
+
+The crypto survey gave nothing (14 products, no defaults). Mainstream payments and the
+SCA regulations do, and they converge.
+
+### A framing correction first
+
+**A hardware key on the phone is not a step-up in the regulatory sense. It is
+authentication.** The FCA states it directly: digital wallets can be used "above the
+contactless payment limits without the need to enter a PIN... because they already
+apply SCA by design". So the band we are choosing governs the **un-stepped-up path
+only**, and the right analogue is the contactless exemption, not the identity gates
+Venmo and Cash App use.
+
+That distinction changes the number. Venmo's $300 and Cash App's $1,000 gate a
+one-time, SSN-grade identity check, so they must sit high enough not to block normal
+users. A hardware-key tap is repeatable and near-free, so it belongs where contactless
+PIN prompts sit.
+
+### The convergence
+
+| Source                                                  | Single                                                                                        | Cumulative                | Ratio |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------- | ----- |
+| EU RTS Art. 11 (in force)                               | EUR 50                                                                                        | EUR 150, or 5 consecutive | 3:1   |
+| UK (2021 to Mar 2026)                                   | GBP 100                                                                                       | GBP 300, or 5 consecutive | 3:1   |
+| UK industry, asked where it belongs given total freedom | GBP 100 "covers the value of most in-person transactions"; those wanting more said 150 to 250 | 450 to 600                | ~3:1  |
+| Venmo step-up                                           |                                                                                               | $300 per rolling 7 days   |       |
+
+US average debit card payment is **$41**, credit **$97** (Federal Reserve Payments
+Study, CY2024). A $100 per-transaction ceiling sits above the mean of both.
+
+### Decision
+
+**US: $100 per transaction, $300 cumulative, or 5 consecutive Spends.**
+**Nigeria: NGN 200,000 per rolling 24 hours.**
+
+The Nigerian figure is not invented. CBN's NIP authentication ladder
+(BPS/DIR/GEN/CIR/01/011) sets NGN 200,000 as the daily ceiling for OTP-grade
+authentication and reserves NGN 500,000 and NGN 1,000,000 for hardware-token-grade. A
+phone-resident hardware key is exactly the factor CBN expects at that boundary, so we
+are taking the conservative end of the band our control qualifies for.
+
+**The assumption most worth resolving before shipping in Nigeria:** this rests on our
+un-stepped path (passkey plus device) counting as two-factor. If a regulator reads it
+as one factor, CBN's analogue is the Low Security tier at **NGN 20,000 per day**, a
+tenfold difference.
+
+### The structural finding we cannot fully use
+
+Regulators do not use a calendar period. They use **"since the last application of
+strong customer authentication"**, which self-resets on every step-up. An active
+Consumer who authenticates often is never throttled; a compromised device burns a
+bounded amount and stops. No calendar or rolling window has that property, and none of
+the 14 wallets surveyed has it.
+
+**Squads cannot express it cheaply.** `SpendingLimit` resets on time
+(`period`, `last_reset`), and resetting `UsageState` on demand means a policy update,
+which is a settings change behind threshold 2 and the time lock. So we take the
+time-based period and note the gap.
+
+Partial consolation, and it is real: a stepped-up Spend runs under the above-limit
+policy and therefore **never touches the spending-limit counter**. So authenticating
+does not consume the allowance, which is the more important half of the property.
+
+### Two implementation rules taken from custodial exchanges
+
+- **Require the hardware key to disable or raise the limit.** Coinbase requires 48
+  hours to disable allowlisting; Gemini requires the 7-day hold to remove the 7-day
+  hold. A limit you can switch off with the factor it protects is not a limit.
+- **Do not let support waive it.** Kraken states this twice. It is the control that
+  actually resists social engineering.
+
+## Decision: new-recipient step-up
+
+Destination novelty is a better trigger than amount alone, and the evidence is
+stronger for it. It is the only new-payment friction any regulator mandates (UK
+Confirmation of Payee on new-payee setup, EU Verification of Payee on every transfer),
+and every serious custodial exchange has converged on it independently. Amount-based
+limits are meanwhile being dismantled: the FCA removed the UK's regulatory contactless
+limits outright on **19 March 2026** in favour of firm-set risk-based judgement.
+
+**So: require the hardware key on the first Spend to any new Address, regardless of
+amount. Remember the Address afterwards, and subsequent Spends fall back under the
+band.**
+
+**A step-up, never a delay.** The exchanges use 24 to 72 hour holds, which would
+destroy a product whose dominant case is a P2P Send to a friend. Wells Fargo has the
+right shape: a second factor on the first send to a payee, not a timer.
+
+Two refinements worth taking:
+
+- **Treat profile mutation as newness.** Citi's "untenured" definition resets on a
+  changed phone number, email, or linked account. A changed signer set should reset it
+  too.
+- Consider exempting a first Spend below roughly $20. Test-sends to a new address are
+  a near-universal habit, and forcing a hardware key on a $1 test trains Consumers to
+  resent the control.
+
+## Compliance: a Nigerian rule that may conflict with the design
+
+CBN PSP/DIR/PUB/CIR/001/001, 12 March 2026, **effective 1 July 2026**:
+
+- A **NGN 20,000 cap on all inflow and outflow in the first 24 hours** after app
+  activation, both for a new account **and for an existing account on a new device**.
+- **Mandatory device binding**: the app "shall only be enabled on one device at a
+  time", and migrating devices "shall trigger automatic re-activation and
+  authentication".
+- Online account opening and reactivation require a liveliness check plus real-time
+  BVN/NIN validation.
+
+The first-24-hours cap is straightforward to implement. **The device-binding clause is
+not, and it points at the centre of the design.** Checkout is deliberately
+multi-device: the passkey syncs precisely so a Consumer can pay from a laptop without
+re-enrolling. One-device-at-a-time is in tension with that.
+
+Open question, and it needs a legal read rather than an engineering one: whether a web
+checkout on a laptop counts as "the app" for the purposes of this circular. If it
+does, the Nigerian flow needs to diverge from the US one. Do not assume it does not.
