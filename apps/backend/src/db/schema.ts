@@ -20,6 +20,11 @@ import { createId } from '@paralleldrive/cuid2';
 
 export const walletProviderEnum = pgEnum('wallet_provider', ['privy']);
 
+export const recoveryChannelEnum = pgEnum('recovery_channel', [
+  'email',
+  'external_wallet',
+]);
+
 export const transferDirectionEnum = pgEnum('transfer_direction', [
   'SEND',
   'RECEIVE',
@@ -187,6 +192,48 @@ export const passkeyCredentials = pgTable(
  *   - submitted_at + failure_reason: written by /transfers/submit and
  *     the RPC tailer.
  */
+/**
+ * recovery_signers — the Account's recovery keys (S3 and any the Consumer adds
+ * later). One row per signer.
+ *
+ * An email signer's secret is generated at signup and held here sealed; using
+ * it requires proving control of `channel_value`. An external_wallet signer is
+ * the Consumer's own key, so `sealed_key` is null and we store only the pubkey.
+ *
+ * Invariant, enforced in RecoveryService and NOT at the data layer: an Account
+ * always keeps at least one recovery signer. The last one can be rotated but
+ * never deleted, because deleting it would leave a lost phone unrecoverable.
+ */
+export const recoverySigners = pgTable(
+  'recovery_signers',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    /** The Squads signer pubkey. What actually sits in the signer set. */
+    address: text('address').notNull().unique(),
+    channel: recoveryChannelEnum('channel').notNull(),
+    /** The email address, or the external wallet's own address. */
+    channelValue: text('channel_value').notNull(),
+    /** Null for external_wallet: the Consumer holds that key, not us. */
+    sealedKey: text('sealed_key'),
+    /** Which wrapping key sealed it, so the vault key can be rotated. */
+    sealedKeyId: text('sealed_key_id'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('recovery_signers_user_channel_idx').on(
+      table.userId,
+      table.channel,
+      table.channelValue,
+    ),
+  ],
+);
+
 export const transfers = pgTable(
   'transfers',
   {

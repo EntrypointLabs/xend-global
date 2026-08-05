@@ -940,3 +940,40 @@ re-enrolling. One-device-at-a-time is in tension with that.
 Open question, and it needs a legal read rather than an engineering one: whether a web
 checkout on a laptop counts as "the app" for the purposes of this circular. If it
 does, the Nigerian flow needs to diverge from the US one. Do not assume it does not.
+
+## D10c. An Account always keeps at least one recovery signer
+
+Fuse's rule, adopted. The sole recovery signer can be **rotated** but never
+**removed**. Adding a second is what unlocks removing the first.
+
+The reason is structural rather than cautious: S2 is deliberately unrecoverable, so
+a lost phone is recovered with S1 plus a recovery signer. An Account with zero
+recovery signers turns a lost phone from an inconvenience into permanent loss of
+funds, and it can reach that state through one settings screen.
+
+- **Sole signer**: `removable: false`. Change the email, do not delete the signer.
+- **Two or more**: all removable.
+- **Rotation mints a fresh keypair**, never a new address on the old secret. The
+  usual reason to change a recovery email is that the old one was compromised.
+- Removal returns the removed address, because the database and the on-chain signer
+  set have to change together. Deleting the row without the settings change leaves
+  them disagreeing.
+
+Enforced in `RecoveryService`, not in the database. The rule is about intent rather
+than referential integrity, and a SQL constraint would fire on the wrong side of the
+on-chain settings change.
+
+Built in `apps/backend/src/recovery/`, migration `0010_recovery_signers.sql`.
+
+### On the vault seam
+
+`RecoveryVault` seals and opens the recovery secret, with an env-key AES-256-GCM
+implementation at the pilot floor and a `keyId` on every sealed key so the custody
+order (KMS > cloud-KMS > raw env) is a migration rather than a rewrite. Same posture
+as the settlement authority signer.
+
+Be precise about what it buys: **Xend can open a sealed key**, so this is an
+operational control, not a cryptographic impossibility. The guarantee is that opening
+requires an email-verified session and is auditable, not that Xend is unable to. The
+property the design actually rests on is elsewhere, in the threshold: this signer is
+one of three, and D5b keeps it out of every spend path.
