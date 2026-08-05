@@ -87,6 +87,10 @@ ios**
 .DS_Store
 Thumbs.db
 
+# LiteSVM fixtures, fetched on demand
+packages/smart-account/test/fixtures/program.so
+packages/smart-account/test/fixtures/program-config.json
+
 # Merge and backup leftovers
 *.orig
 *.rej

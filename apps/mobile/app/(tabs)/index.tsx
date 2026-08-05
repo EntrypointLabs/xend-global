@@ -1,4 +1,5 @@
 import { View, ScrollView } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useMemo, useRef } from "react";
@@ -31,8 +32,15 @@ import type { BalanceDelta } from "@/utils/balanceDelta";
 const SUCCESS = "#34C759";
 const DESTRUCTIVE = "#FF3B30";
 
+// The tab bar and the send button float over the scroll view, anchored at
+// `insets.bottom + 8` and 50pt tall. Content has to clear them or the last card
+// sits underneath.
+const FLOATING_CHROME_HEIGHT = 8 + 50;
+const CHROME_GAP = 20;
+
 function HomeScreenContent() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const {
     showReceiveModal,
     isReceiveModalVisible,
@@ -107,7 +115,10 @@ function HomeScreenContent() {
   return (
     <ScreenLayout>
       <ScrollView
-        contentContainerClassName="grow pb-[132px]"
+        contentContainerClassName="grow"
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + FLOATING_CHROME_HEIGHT + CHROME_GAP,
+        }}
         showsVerticalScrollIndicator={false}
       >
         <View>
@@ -151,13 +162,13 @@ function HomeScreenContent() {
             <BalanceChart history={history} className="mb-6 mt-8" />
           ) : (
             !isLoading && (
-              <View className="items-center pb-6 pt-8">
+              <View className="items-center pb-2 pt-5">
                 <Typography weight="600" className="mb-2 text-center text-xl">
                   There is nothing here yet
                 </Typography>
                 <Typography
                   weight="500"
-                  className="mb-7 max-w-[250px] text-center text-sm text-black/30"
+                  className="mb-5 max-w-[250px] text-center text-sm text-black/30"
                 >
                   Deposit tokens to your address and start using Xend Wallet
                 </Typography>
