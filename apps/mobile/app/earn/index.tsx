@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useRef } from "react";
+import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { Image, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,6 +8,10 @@ import BalanceView from "@/components/BalanceView";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
+import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
+import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
+import { useModalFlow } from "@/contexts/ModalFlowContext";
+import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { EARN_PRODUCTS, useEarnPosition } from "@/hooks/useEarn";
 
 /**
@@ -18,6 +23,10 @@ import { EARN_PRODUCTS, useEarnPosition } from "@/hooks/useEarn";
  */
 export default function EarnScreen() {
   const router = useRouter();
+  const { showReceiveModal, isReceiveModalVisible, hideAllModals } =
+    useModalFlow();
+  const address = useWalletAddress();
+  const qrCodeModalRef = useRef<BottomSheetModal>(null);
   const { balanceDisplay, apyDisplay, lifetimeEarned, lastSevenDays } =
     useEarnPosition();
 
@@ -61,10 +70,8 @@ export default function EarnScreen() {
         <Typography variant="body" weight="600">
           Available products
         </Typography>
-        {/* Stated inline rather than as a toast: the global toast renders in the
-            header band and collides with the screen title. */}
         <Typography variant="caption" className="text-black/40">
-          Deposits open soon
+          Routed to Kamino
         </Typography>
       </View>
 
@@ -126,11 +133,8 @@ export default function EarnScreen() {
           <HapticPressable
             accessibilityRole="button"
             accessibilityLabel="Deposit into Earn"
-            // Both actions are muted because neither is wired yet. They stay
-            // visible so the shape of the product is legible.
-            disabled
-            onPress={() => {}}
-            className="flex-row items-center gap-2 opacity-30"
+            onPress={showReceiveModal}
+            className="flex-row items-center gap-2"
           >
             <Ionicons name="add" size={18} color="#000" />
             <Typography variant="body" weight="600">
@@ -154,6 +158,13 @@ export default function EarnScreen() {
           </HapticPressable>
         </View>
       </View>
+
+      <ReceiveModal
+        visible={isReceiveModalVisible}
+        onClose={hideAllModals}
+        onOpenQRCode={() => qrCodeModalRef.current?.present()}
+      />
+      <QRCodeModal ref={qrCodeModalRef} walletAddress={address ?? ""} />
     </ScreenLayout>
   );
 }

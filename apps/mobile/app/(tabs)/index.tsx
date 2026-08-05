@@ -2,7 +2,6 @@ import { View, ScrollView } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useMemo, useRef } from "react";
-import { ThemedText } from "@/components/ui/atoms";
 
 import { ActionCard, PromoBanner } from "@/components/ui/molecules";
 import { ScreenLayout } from "@/components/ui/layout";
@@ -11,14 +10,11 @@ import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useToast } from "@/contexts/ToastContext";
-import { TransactionList } from "@/components/ui/organisms/TransactionList";
+import { BalanceChart } from "@/components/ui/organisms/BalanceChart";
+import { useBalanceHistory } from "@/hooks/useBalanceHistory";
 import { useBalances } from "@/hooks/useBalances";
 import { useTransfersInfinite } from "@/hooks/useTransfers";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
-import {
-  groupIntoSections,
-  mapTransferRowToActivityEntry,
-} from "@/utils/activity";
 import { useWalletName } from "@/hooks/useWalletName";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { useRouter } from "expo-router";
@@ -37,12 +33,12 @@ function HomeScreenContent() {
   } = useModalFlow();
   const { showToast } = useToast();
   const {
+    total,
     totalDisplay,
-    decimalsByMint,
     isError: isBalanceError,
     refetch: refetchBalances,
   } = useBalances();
-  const { data, isLoading } = useTransfersInfinite();
+  const { isLoading } = useTransfersInfinite();
   const address = useWalletAddress();
   const { name: walletName } = useWalletName();
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
@@ -71,21 +67,21 @@ function HomeScreenContent() {
         onPress: () => router.push("/earn"),
         color: "#AF52DE", // Purple
       },
+      {
+        title: "Xend Card",
+        subtitle: "Get your free Card",
+        icon: require("@/assets/icons/card.png"),
+        onPress: () => showToast("Xend Card coming soon"),
+        color: "#000000", // Black
+      },
     ],
-    // Xend Card is intentionally absent until it exists. Advertising an action
-    // that only raises "Coming soon" is a feature a dApp Store reviewer cannot
-    // verify, which is what the first submission was rejected for.
-    [router]
+    [router, showToast]
   );
 
-  const rows = data?.pages.flatMap((page) => page.transfers) ?? [];
-  const entries = rows.slice(0, 8).map((row) =>
-    mapTransferRowToActivityEntry(row, {
-      selfAddress: address ?? "",
-      decimalsByMint,
-    })
-  );
-  const sections = groupIntoSections(entries);
+  const history = useBalanceHistory();
+  // The chart only earns its space once there is a balance to plot; a zero
+  // balance gets the call to action instead.
+  const hasBalance = total > 0;
 
   return (
     <ScreenLayout>
@@ -127,28 +123,32 @@ function HomeScreenContent() {
             )}
           </View>
 
-          {entries.length === 0 && !isLoading && (
-            <View className="items-center pb-6 pt-2">
-              <Typography weight="600" className="mb-2 text-center text-xl">
-                There is nothing here yet
-              </Typography>
-              <Typography
-                weight="500"
-                className="mb-7 max-w-[250px] text-center text-sm text-black/30"
-              >
-                Deposit tokens to your address and start using Xend Wallet
-              </Typography>
-
-              <HapticPressable
-                className="flex-row items-center gap-0.5 rounded-full bg-black p-2.5 px-3"
-                onPress={showReceiveModal}
-              >
-                <Ionicons name="arrow-down-circle" size={18} color="white" />
-                <Typography weight="500" className="text-base text-white">
-                  Receive
+          {hasBalance ? (
+            <BalanceChart history={history} className="mt-8" />
+          ) : (
+            !isLoading && (
+              <View className="items-center pb-6 pt-8">
+                <Typography weight="600" className="mb-2 text-center text-xl">
+                  There is nothing here yet
                 </Typography>
-              </HapticPressable>
-            </View>
+                <Typography
+                  weight="500"
+                  className="mb-7 max-w-[250px] text-center text-sm text-black/30"
+                >
+                  Deposit tokens to your address and start using Xend Wallet
+                </Typography>
+
+                <HapticPressable
+                  className="flex-row items-center gap-0.5 rounded-full bg-black p-2.5 px-3"
+                  onPress={showReceiveModal}
+                >
+                  <Ionicons name="arrow-down-circle" size={18} color="white" />
+                  <Typography weight="500" className="text-base text-white">
+                    Receive
+                  </Typography>
+                </HapticPressable>
+              </View>
+            )
           )}
         </View>
 
@@ -166,20 +166,11 @@ function HomeScreenContent() {
         </View>
 
         <PromoBanner
-          title="Get your Virtual Bank Account"
-          description="Receive USD and EUR for USDC"
-          onPress={() => showToast("Virtual Bank Account coming soon!")}
+          title="Earn up to 4.93% APY"
+          description="Put USDC into Earn"
+          onPress={() => router.push("/earn")}
           onClose={() => {}}
         />
-
-        {entries.length > 0 && (
-          <View className="mt-6">
-            <ThemedText type="subtitle" className="mb-4">
-              Recent Activity
-            </ThemedText>
-            <TransactionList sections={sections} />
-          </View>
-        )}
       </ScrollView>
       <SendModal
         visible={isSendModalVisible}

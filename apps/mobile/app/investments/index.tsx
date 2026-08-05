@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useRef } from "react";
+import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { Image, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,6 +8,10 @@ import BalanceView from "@/components/BalanceView";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
+import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
+import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
+import { useModalFlow } from "@/contexts/ModalFlowContext";
+import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useInvestments, type InvestmentHolding } from "@/hooks/useInvestments";
 
 /**
@@ -16,6 +21,10 @@ import { useInvestments, type InvestmentHolding } from "@/hooks/useInvestments";
  */
 export default function InvestmentsScreen() {
   const router = useRouter();
+  const { showReceiveModal, isReceiveModalVisible, hideAllModals } =
+    useModalFlow();
+  const address = useWalletAddress();
+  const qrCodeModalRef = useRef<BottomSheetModal>(null);
   const { holdings, isEmpty, isError } = useInvestments();
 
   // Priced holdings are a later evolution; until then the headline is the count
@@ -46,7 +55,7 @@ export default function InvestmentsScreen() {
       </View>
 
       {isEmpty ? (
-        <EmptyState onGetAssets={() => router.push("/cash")} />
+        <EmptyState onGetAssets={showReceiveModal} />
       ) : (
         <ScrollView
           className="mt-6 flex-1"
@@ -69,6 +78,14 @@ export default function InvestmentsScreen() {
           <Ionicons name="chevron-back" size={22} color="#000" />
         </HapticPressable>
       </View>
+
+      <ReceiveModal
+        visible={isReceiveModalVisible}
+        onClose={hideAllModals}
+        onOpenQRCode={() => qrCodeModalRef.current?.present()}
+        cryptoOnly
+      />
+      <QRCodeModal ref={qrCodeModalRef} walletAddress={address ?? ""} />
     </ScreenLayout>
   );
 }
