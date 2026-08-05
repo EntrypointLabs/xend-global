@@ -753,6 +753,26 @@ The fix is in the SDK: `submitMfaEnrollment({ method: 'passkey', removeForLogin:
 promotes the passkey to MFA and drops it as a standalone login factor. **The passkey
 must never be sufficient for login on its own.**
 
+**This does not stop the passkey syncing, and it must not.** Four different credentials
+are in play and only two of them sync, each deliberately:
+
+| Credential         | What it is                                 | Syncs                                               |
+| ------------------ | ------------------------------------------ | --------------------------------------------------- |
+| **Passkey**        | the Consumer's WebAuthn login credential   | **yes**, iCloud Keychain or Google Password Manager |
+| Privy device share | internal wallet share, on-device mode only | no, `ThisDeviceOnly`                                |
+| S2 hardware key    | Secure Enclave or Keystore P-256           | no, by design                                       |
+| S3 recovery blob   | the recovery signer                        | **yes**, that is the recovery mechanism             |
+
+The passkey syncing is a **requirement**, not a risk to remove: without it the Consumer
+cannot check out on a laptop without re-enrolling, which is exactly the friction the
+product exists to avoid. It is also already documented that way in `CONTEXT.md`.
+
+Its syncing is what makes the platform account an anchor at all, which is why the fix
+is to stop the passkey being _sufficient_, not to stop it _syncing_. With email OTP
+plus passkey, an attacker holding the Apple ID has the passkey and the S3 blob but not
+the inbox, so S1 is never complete. One signer, safe, and the Consumer keeps full
+cross-device use because they carry both factors everywhere.
+
 Three things to lock down:
 
 - Confirm the execution mode (Dashboard, Wallets, Advanced) or assert on
