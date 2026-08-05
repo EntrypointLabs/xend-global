@@ -33,6 +33,7 @@ import { verifyWebhook } from '../src/webhook/webhook-signer';
 import type { EventConsumer } from '../src/events/event-consumer.interface';
 import type { PlatformEvent } from '../src/events/event-publisher.interface';
 import { CheckoutController } from '../src/checkout/checkout.controller';
+import type { SettlementConfirmationService } from '../src/settlement/settlement-confirmation.service';
 import { verifyReturnUrl } from '../src/checkout/return-url';
 import { IdempotencyService } from '../src/merchant/idempotency.service';
 import type { PaymentIntentService } from '../src/payment/payment-intent.service';
@@ -449,6 +450,9 @@ describe('Phase 6 E2E harness: checkout surface', () => {
       sessions as unknown as SessionService,
       makeCheckoutDb(checkoutMerchant()),
       makeConfig(),
+      {
+        devForceSettleSucceeded: jest.fn(),
+      } as unknown as SettlementConfirmationService,
     );
     const summary = await controller.getSummary(makeReq(), INTENT_ID);
     expect(summary.merchantDisplayName).toBe('Acme Store');
@@ -491,6 +495,9 @@ describe('Phase 6 E2E harness: checkout surface', () => {
       sessions as unknown as SessionService,
       makeCheckoutDb(checkoutMerchant()),
       makeConfig(),
+      {
+        devForceSettleSucceeded: jest.fn(),
+      } as unknown as SettlementConfirmationService,
     );
     controller.authorizeWaitMs = 60;
     controller.authorizePollMs = 10;
@@ -569,6 +576,9 @@ describe('Phase 6 E2E harness: checkout surface', () => {
       { peek: jest.fn() } as unknown as SessionService,
       makeCheckoutDb(checkoutMerchant()),
       makeConfig(),
+      {
+        devForceSettleSucceeded: jest.fn(),
+      } as unknown as SettlementConfirmationService,
     );
     controller.authorizeWaitMs = 40;
     controller.authorizePollMs = 10;
@@ -598,6 +608,9 @@ describe('Phase 6 E2E harness: checkout surface', () => {
       { peek: jest.fn() } as unknown as SessionService,
       makeCheckoutDb(checkoutMerchant()),
       makeConfig(),
+      {
+        devForceSettleSucceeded: jest.fn(),
+      } as unknown as SettlementConfirmationService,
     );
     const { res } = makeRes();
     try {

@@ -22,6 +22,7 @@ import { MerchantModule } from './merchant/merchant.module';
 import { CheckoutModule } from './checkout/checkout.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { ConsoleModule } from './console/console.module';
+import { TestDashboardModule } from './test-dashboard/test-dashboard.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { ConsoleModule } from './console/console.module';
     CheckoutModule,
     WebhookModule,
     ConsoleModule,
+    TestDashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

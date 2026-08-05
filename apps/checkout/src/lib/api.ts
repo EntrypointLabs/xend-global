@@ -65,6 +65,7 @@ export type CheckoutErrorCode =
   | 'INSUFFICIENT_BALANCE'
   | 'INTENT_EXPIRED'
   | 'PAYMENT_PROCESSING'
+  | 'UNSUPPORTED_CURRENCY'
   | 'UNKNOWN';
 
 export class CheckoutApiError extends Error {
@@ -129,9 +130,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function getIntent(reference: string): Promise<IntentView> {
   if (useFixture) return fixtureIntent(reference);
-  return request<IntentView>(
-    `/checkout/intents/${encodeURIComponent(reference)}`,
-  );
+  const intent = await request<
+    Omit<IntentView, 'ngnDisplayMinor'> & { ngnDisplayMinor: string | null }
+  >(`/checkout/intents/${encodeURIComponent(reference)}`);
+  // This surface renders the naira amount only; USDC intents leave
+  // ngnDisplayMinor null, so fail loud here instead of crashing later on
+  // BigInt(null) inside formatNairaFromMinor.
+  const { ngnDisplayMinor } = intent;
+  if (ngnDisplayMinor === null) {
+    throw new CheckoutApiError(
+      'UNSUPPORTED_CURRENCY',
+      'this checkout supports NGN intents only',
+      400,
+    );
+  }
+  return { ...intent, ngnDisplayMinor };
 }
 
 export async function authorize(

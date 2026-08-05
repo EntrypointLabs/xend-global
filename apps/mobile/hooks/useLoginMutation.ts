@@ -1,14 +1,10 @@
 import { useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import {
-  useEmbeddedSolanaWallet,
-  useIdentityToken,
-  useLoginWithEmail,
-  usePrivy,
-} from "@privy-io/expo";
+import { useIdentityToken, useLoginWithEmail, usePrivy } from "@privy-io/expo";
 
 import { apiClient } from "@/utils/apiClient";
 import { hasLinkedPasskey } from "@/utils/auth";
+import { useEnsureSolanaWallet } from "@/hooks/useEnsureSolanaWallet";
 
 /**
  * Privy email-OTP login mutation hook.
@@ -26,7 +22,7 @@ export function useLoginMutation() {
   const { sendCode, loginWithCode } = useLoginWithEmail();
   const { getIdentityToken } = useIdentityToken();
   const { logout, user: privyUser } = usePrivy();
-  const embeddedSolana = useEmbeddedSolanaWallet();
+  const ensureSolanaWalletReady = useEnsureSolanaWallet();
 
   const sendOtpMutation = useMutation({
     mutationFn: async (email: string) => {
@@ -52,6 +48,10 @@ export function useLoginMutation() {
       // `usePrivy().user` hasn't re-rendered yet, so a stale closure would
       // wrongly report "no passkey" and re-prompt returning users.
       const hasPasskey = hasLinkedPasskey(privyLoginUser);
+      // Wait for the embedded Solana wallet to finish provisioning before the
+      // exchange, so the backend verifies an identity that already has a linked
+      // wallet (a fresh user otherwise races the wallet creation -> 422).
+      const walletAddress = await ensureSolanaWalletReady();
       const idToken = await getIdentityToken();
       if (!idToken) {
         throw new Error(
@@ -66,7 +66,7 @@ export function useLoginMutation() {
         email: exchange.user.email,
         walletAddress: exchange.user.walletAddress,
         smart_account_address: exchange.user.walletAddress,
-        privyWalletAddress: embeddedSolana.wallets?.[0]?.address ?? null,
+        privyWalletAddress: walletAddress,
       };
       return { data, token: exchange.token, hasPasskey };
     },

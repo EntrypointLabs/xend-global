@@ -73,7 +73,7 @@ Chosen option: **"Blockradar convert-at-settlement adapter behind Phase 4's seam
 
 - Plan: `.claude/plans/pay-with-xend/phases/08-p2-surfaces/PLAN.md` (tasks 8.4, 8.5, 8.6)
 - Findings ledger: `.claude/plans/pay-with-xend/PROGRESS.md` (Flags #2 and #3)
-- Source: `apps/backend/src/settlement/providers/blockradar/` (provider, webhook controller, errors, module), `apps/backend/src/settlement/settlement.module.ts` (factory-array append), `apps/backend/drizzle/0008_settlement_offramps.sql`
+- Source: `apps/backend/src/settlement/providers/blockradar/` (provider, webhook controller, errors, module), `apps/backend/src/settlement/settlement.module.ts` (factory-array append), `apps/backend/drizzle/0009_settlement_offramps.sql`
 - Contract: `.claude/plans/pay-with-xend/CONTRACTS.md` (SettlementProvider layer), `apps/backend/src/settlement/settlement-provider.interface.ts`
 - Related: [ADR-0010](./0010-no-load-bearing-provider.md) (owned-interface Grid rule), [ADR-0015](./0015-settlement-provider-layer.md) (the settlement provider layer), [ADR-0023](./0023-fx-offramp-quote.md) (FX quote seam)
 - Destination checklist: `docs/specs/merchant-payout-destination-checklist.md`

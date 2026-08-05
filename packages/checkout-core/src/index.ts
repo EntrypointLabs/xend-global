@@ -1,6 +1,7 @@
 import { renderButton, type ButtonHandle } from "./button";
 import { detectEnvironment } from "./environment";
 import { listenForResult, type ListenHandle } from "./message-listener";
+import { openModal, type CheckoutSummary } from "./modal";
 import {
   buildCheckoutUrl,
   generateNonce,
@@ -15,6 +16,34 @@ import type {
   XendButtonConfig,
 } from "./types";
 
+async function fetchSummary(
+  apiBase: string,
+  reference: string,
+): Promise<CheckoutSummary> {
+  const res = await fetch(
+    `${apiBase}/checkout/intents/${encodeURIComponent(reference)}`,
+    { credentials: "include" },
+  );
+  if (!res.ok) throw new Error(`summary ${res.status}`);
+  return (await res.json()) as CheckoutSummary;
+}
+
+async function authorizeIntent(
+  apiBase: string,
+  reference: string,
+): Promise<{ status: CheckoutStatus }> {
+  const res = await fetch(`${apiBase}/checkout/authorize`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reference }),
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    status?: CheckoutStatus;
+  };
+  return { status: body.status === "succeeded" ? "succeeded" : "failed" };
+}
+
 export type {
   CheckoutResult,
   CheckoutStatus,
@@ -26,6 +55,15 @@ export interface XendButtonHandle {
   unmount: () => void;
 }
 
+function isLoopbackHost(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname === "::1"
+  );
+}
+
 function assertHttpsOrigin(origin: string): void {
   let url: URL;
   try {
@@ -33,8 +71,13 @@ function assertHttpsOrigin(origin: string): void {
   } catch {
     throw new Error(`checkoutOrigin must be a valid URL, got: ${origin}`);
   }
-  if (url.protocol !== "https:") {
-    throw new Error(`checkoutOrigin must be https, got: ${origin}`);
+  // https everywhere, with an http carve-out for loopback hosts so a checkout
+  // running on a local dev server can be integrated against without TLS.
+  const httpLoopback = url.protocol === "http:" && isLoopbackHost(url.hostname);
+  if (url.protocol !== "https:" && !httpLoopback) {
+    throw new Error(
+      `checkoutOrigin must be https (http allowed only for localhost), got: ${origin}`,
+    );
   }
   if (url.origin !== origin.replace(/\/$/, "")) {
     throw new Error(
@@ -58,8 +101,18 @@ export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
     onResult,
     onUnresolved,
     onReady,
+    presentation = "modal",
+    apiBase,
+    theme = "auto",
+    devSimulateAuthorize = false,
   } = config;
   assertHttpsOrigin(checkoutOrigin);
+
+  // Modal (in-page glass sheet) is the default, but it needs an apiBase to
+  // fetch the summary and a browser where the ceremony can run. Webviews /
+  // Opera Mini / no-WebAuthn fall back to the redirect flow.
+  const useModal =
+    presentation === "modal" && !!apiBase && detectEnvironment().canPopup;
 
   const doc = mount.ownerDocument;
   const preconnect = doc.createElement("link");
@@ -126,8 +179,55 @@ export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
       });
   };
 
+  const handleModalClick = (): void => {
+    let reference = "";
+    let resolved = false;
+    const modal = openModal({
+      doc: mount.ownerDocument,
+      theme,
+      onConfirm: () => doConfirm(),
+      onCancel: () => doCancel(),
+    });
+    const finish = (status: CheckoutStatus): void => {
+      resolved = true;
+      modal.showResult(status);
+      onResult({ reference, status });
+      if (status === "succeeded") {
+        mount.ownerDocument.defaultView?.setTimeout(() => modal.close(), 1600);
+      }
+    };
+    const doConfirm = (): void => {
+      modal.showAuthorizing();
+      (devSimulateAuthorize
+        ? Promise.resolve({ status: "succeeded" as CheckoutStatus })
+        : authorizeIntent(apiBase as string, reference)
+      )
+        .then(({ status }) => finish(status))
+        .catch(() => modal.showError("We couldn't complete the payment."));
+    };
+    const doCancel = (): void => {
+      modal.close();
+      // A terminal result (succeeded/failed/expired) was already reported via
+      // finish(); dismissing afterwards (scrim click, "Close" button) must not
+      // report a second, contradictory onResult.
+      if (!resolved) onResult({ reference, status: "canceled" });
+    };
+    modal.showLoading();
+    button.setState("processing");
+    createIntent()
+      .then(async ({ reference: r }) => {
+        reference = r;
+        modal.showConfirm(await fetchSummary(apiBase as string, reference));
+        button.setState("ready");
+      })
+      .catch(() => {
+        modal.showError("We couldn't start the payment.");
+        button.setState("ready");
+      });
+  };
+
   const button: ButtonHandle = renderButton(mount, {
-    onClick: handleClick,
+    onClick: useModal ? handleModalClick : handleClick,
     onReady,
   });
 

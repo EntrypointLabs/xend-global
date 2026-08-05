@@ -13,6 +13,7 @@ import { AccountInfo, AuthContextType } from "@/types/Auth";
 import { AuthStorage } from "@/utils/storage/authStorage";
 import { apiClient } from "@/utils/apiClient";
 import { isJwtExpired } from "@/utils/jwt";
+import { useEnsureSolanaWallet } from "@/hooks/useEnsureSolanaWallet";
 import { SEED_DEMO, SEED_USER } from "@/utils/devSeed";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -43,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isReady: privyReady,
   } = usePrivy();
   const embeddedSolana = useEmbeddedSolanaWallet();
+  const ensureSolanaWalletReady = useEnsureSolanaWallet();
 
   useEffect(() => {
     const initializeAuth = async () => {
@@ -186,6 +188,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!loggedInUser) {
         throw new Error("Privy loginWithCode returned no user");
       }
+
+      // Wait for the embedded Solana wallet to finish provisioning before the
+      // exchange, so the backend verifies an identity that already has a linked
+      // wallet (a fresh user otherwise races the wallet creation -> 422).
+      await ensureSolanaWalletReady();
 
       const idToken = await getIdentityToken();
       if (!idToken) {

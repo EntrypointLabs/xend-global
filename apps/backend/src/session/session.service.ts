@@ -212,12 +212,18 @@ export class SessionService implements OnModuleInit {
     return token;
   }
 
-  async checkAndRecordVelocity(
-    sessionId: string,
-    amountRaw: string,
-  ): Promise<void> {
-    const key = `sess:velocity:${sessionId}:day:${this.dayStamp()}`;
-    const snap = await this.counter.peek(key);
+  private velocityKey(sessionId: string): string {
+    return `sess:velocity:${sessionId}:day:${this.dayStamp()}`;
+  }
+
+  /**
+   * Read-only velocity gate. Throws if this payment would breach the session's
+   * daily count/amount caps. Recording is a separate step (recordVelocity) run
+   * only after the authorization commits, so a rejected payment never burns a
+   * one-tap session's daily slot.
+   */
+  async checkVelocity(sessionId: string, amountRaw: string): Promise<void> {
+    const snap = await this.counter.peek(this.velocityKey(sessionId));
     if (snap.count + 1 > this.velocityMaxPayments) {
       throw new SessionVelocityExceededError(
         'session daily payment count cap reached',
@@ -231,7 +237,15 @@ export class SessionService implements OnModuleInit {
         'session daily amount cap reached',
       );
     }
-    await this.counter.increment(key, amountRaw, VELOCITY_TTL_SECONDS);
+  }
+
+  /** Consume one velocity slot. Call only after the authorization succeeds. */
+  async recordVelocity(sessionId: string, amountRaw: string): Promise<void> {
+    await this.counter.increment(
+      this.velocityKey(sessionId),
+      amountRaw,
+      VELOCITY_TTL_SECONDS,
+    );
   }
 
   async listForConsumer(consumerId: string): Promise<SessionSummary[]> {

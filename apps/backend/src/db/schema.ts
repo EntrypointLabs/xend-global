@@ -128,6 +128,10 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // Soft-delete marker for account closure. The row (and its smart_accounts /
+  // transfers) stays for the financial-recordkeeping retention the privacy
+  // policy commits to; JwtStrategy rejects any token for a user with this set.
+  deletedAt: timestamp('deleted_at'),
 });
 
 /**
@@ -620,6 +624,14 @@ export const refunds = pgTable(
   },
   (table) => ({
     paymentIdx: index('refunds_payment_idx').on(table.paymentId),
+    // Data-layer backstop against a double refund: the same merchant
+    // Idempotency-Key can create at most one refund row, so a concurrent
+    // retry loses the insert (23505) before it can call provider.reverse().
+    // NULL keys are distinct in Postgres, so keyless refunds are unconstrained.
+    merchantIdemIdx: uniqueIndex('refunds_merchant_idem_idx').on(
+      table.merchantId,
+      table.idempotencyKey,
+    ),
   }),
 );
 

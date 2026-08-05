@@ -304,6 +304,7 @@ describe('AuthService.exchange', () => {
           email: validPrivyUser.email,
           createdAt: new Date('2026-01-01'),
           updatedAt: new Date('2026-01-01'),
+          deletedAt: null,
         },
       ],
       smartAccounts: [
@@ -434,6 +435,7 @@ describe('AuthService.exchange', () => {
           email: validPrivyUser.email,
           createdAt: new Date('2026-01-01'),
           updatedAt: new Date('2026-01-01'),
+          deletedAt: null,
         },
       ],
       smartAccounts: [
@@ -478,6 +480,7 @@ describe('AuthService.exchange', () => {
           email: validPrivyUser.email,
           createdAt: new Date('2026-01-01'),
           updatedAt: new Date('2026-01-01'),
+          deletedAt: null,
         },
       ],
       smartAccounts: [
@@ -565,6 +568,7 @@ describe('AuthService.exchange', () => {
           email: validPrivyUser.email,
           createdAt: new Date('2026-01-01'),
           updatedAt: new Date('2026-01-01'),
+          deletedAt: null,
         },
       ],
       smartAccounts: [

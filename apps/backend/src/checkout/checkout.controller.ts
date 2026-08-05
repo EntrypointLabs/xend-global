@@ -34,6 +34,7 @@ import {
   SessionInvalidError,
   SessionVelocityExceededError,
 } from '../session/session.errors';
+import { SettlementConfirmationService } from '../settlement/settlement-confirmation.service';
 import { signReturnUrl } from './return-url';
 import { PaymentProcessingError } from './checkout.errors';
 import {
@@ -81,6 +82,9 @@ export class CheckoutController {
     private readonly sessions: SessionService,
     private readonly db: DbService,
     private readonly config: ConfigService,
+    // TEST ONLY — never production: used only by the dev settlement
+    // short-circuit below (gated on NODE_ENV==='development').
+    private readonly settlement: SettlementConfirmationService,
   ) {}
 
   @Get('intents/:reference')
@@ -187,6 +191,15 @@ export class CheckoutController {
         if (result.rotatedSessionToken) {
           this.setSessionCookie(res, cookieName, result.rotatedSessionToken);
         }
+      }
+
+      // TEST ONLY — never production. On devnet there is no funded relayer /
+      // settlement authority, so real settlement never confirms and the poll
+      // below would time out (PAYMENT_PROCESSING). Force the authorized intent
+      // to a terminal SUCCEEDED (fake signature, same payment.succeeded event)
+      // so local checkout resolves. Hard-gated on NODE_ENV==='development'.
+      if (this.config.get<string>('NODE_ENV') === 'development') {
+        await this.settlement.devForceSettleSucceeded(reference);
       }
 
       const terminal = await this.pollUntilTerminal(reference);

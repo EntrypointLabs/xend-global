@@ -160,7 +160,14 @@ export class CapacityService implements OnModuleInit {
         `amount ${amountRaw} would exceed monthly cap ${limits.monthlyCapRaw}`,
       );
     }
-    if (amount > BigInt(capability.balanceRaw)) {
+    // TEST ONLY — never production. The dev placeholder wallet holds no real
+    // devnet USDC, so the live-balance gate would reject every local-test
+    // payment. Skip ONLY the balance check under NODE_ENV==='development'; the
+    // tier/velocity caps above still apply. Every other environment enforces
+    // the real balance gate.
+    const devSkipBalance =
+      this.config.get<string>('NODE_ENV') === 'development';
+    if (!devSkipBalance && amount > BigInt(capability.balanceRaw)) {
       log(false);
       throw new InsufficientBalanceError(
         `amount ${amountRaw} exceeds balance ${capability.balanceRaw}`,

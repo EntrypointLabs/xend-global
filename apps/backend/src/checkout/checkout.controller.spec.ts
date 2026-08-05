@@ -7,6 +7,7 @@ import type { PaymentIntentService } from '../payment/payment-intent.service';
 import type { PaymentAuthorizationService } from '../capability/payment-authorization.service';
 import type { IdentityService } from '../capability/identity.service';
 import type { SessionService } from '../session/session.service';
+import type { SettlementConfirmationService } from '../settlement/settlement-confirmation.service';
 import {
   IntentExpiredError,
   IntentNotFoundError,
@@ -79,6 +80,10 @@ function makeConfig(): ConfigService {
           throw new Error(`unexpected key ${k}`);
       }
     },
+    // Non-development: these unit tests exercise the production (real-settlement)
+    // path and mock the intent transitions directly, so the dev short-circuit
+    // must stay off.
+    get: (k: string) => (k === 'NODE_ENV' ? 'test' : undefined),
   } as unknown as ConfigService;
 }
 
@@ -121,6 +126,7 @@ interface Fakes {
     validate: jest.Mock;
     rotate: jest.Mock;
   };
+  settlement: { devForceSettleSucceeded: jest.Mock };
 }
 
 function makeController(
@@ -136,6 +142,9 @@ function makeController(
     validate: jest.fn(),
     rotate: jest.fn(),
   };
+  const settlement = fakes.settlement ?? {
+    devForceSettleSucceeded: jest.fn(),
+  };
   const controller = new CheckoutController(
     intents as unknown as PaymentIntentService,
     auth as unknown as PaymentAuthorizationService,
@@ -143,10 +152,11 @@ function makeController(
     sessions as unknown as SessionService,
     makeDb(merchant),
     makeConfig(),
+    settlement as unknown as SettlementConfirmationService,
   );
   controller.authorizeWaitMs = 60;
   controller.authorizePollMs = 10;
-  return { controller, intents, auth, identity, sessions };
+  return { controller, intents, auth, identity, sessions, settlement };
 }
 
 async function expectRejectHttp(

@@ -16,10 +16,10 @@ function CeremonyInner({ intent, onComplete, onCancel }: CeremonyProps) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  const handleContinue = () => {
+  const run = () => {
     setBusy(true);
     setFailed(false);
-    // No awaited fetch before runCeremony, which calls loginWithPasskey first.
+    // No awaited fetch before the ceremony call, so Safari user activation holds.
     runCeremony()
       .then(onComplete)
       .catch(() => setFailed(true))
@@ -50,16 +50,18 @@ function CeremonyInner({ intent, onComplete, onCancel }: CeremonyProps) {
             </button>
           </>
         ) : (
-          <button
-            type="button"
-            onClick={handleContinue}
-            disabled={busy}
-            className="bg-brand-ink text-brand-black mt-8 w-full rounded-2xl py-4 text-base font-semibold disabled:opacity-60"
-          >
-            {busy
-              ? 'Waiting for confirmation'
-              : 'Continue with Face ID or fingerprint'}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={run}
+              disabled={busy}
+              className="bg-brand-ink text-brand-black mt-8 w-full rounded-2xl py-4 text-base font-semibold disabled:opacity-60"
+            >
+              {busy
+                ? 'Waiting for confirmation'
+                : 'Continue with Face ID or fingerprint'}
+            </button>
+          </>
         )}
 
         <button

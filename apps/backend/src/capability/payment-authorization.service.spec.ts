@@ -95,14 +95,16 @@ function makeSessions(opts: { consumerId?: string; rotated?: string } = {}) {
   const validate = jest
     .fn()
     .mockResolvedValue({ id: 'sess1', consumerId: opts.consumerId ?? 'c1' });
-  const checkAndRecordVelocity = jest.fn().mockResolvedValue(undefined);
+  const checkVelocity = jest.fn().mockResolvedValue(undefined);
+  const recordVelocity = jest.fn().mockResolvedValue(undefined);
   const rotate = jest.fn().mockResolvedValue(opts.rotated ?? 'xsess_rotated');
   const sessions = {
     validate,
-    checkAndRecordVelocity,
+    checkVelocity,
+    recordVelocity,
     rotate,
   } as unknown as SessionService;
-  return { sessions, validate, checkAndRecordVelocity, rotate };
+  return { sessions, validate, checkVelocity, recordVelocity, rotate };
 }
 
 describe('PaymentAuthorizationService.authorize (consumer path)', () => {
@@ -278,7 +280,7 @@ describe('PaymentAuthorizationService.authorize (session path)', () => {
   it('gates session velocity before the capacity check', async () => {
     const { intents } = makeIntents(intentRow());
     const { capacity, checkCapacity } = makeCapacity();
-    const { sessions, checkAndRecordVelocity } = makeSessions();
+    const { sessions, checkVelocity } = makeSessions();
     const { publisher } = makePublisher();
     const { db } = makeDb();
     const service = new PaymentAuthorizationService(
@@ -291,7 +293,7 @@ describe('PaymentAuthorizationService.authorize (session path)', () => {
 
     await service.authorize({ intentId: 'pi_1', sessionToken: 'tok' });
 
-    expect(checkAndRecordVelocity.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(checkVelocity.mock.invocationCallOrder[0]).toBeLessThan(
       checkCapacity.mock.invocationCallOrder[0],
     );
   });
@@ -322,8 +324,8 @@ describe('PaymentAuthorizationService.authorize (session path)', () => {
   it('propagates SESSION_VELOCITY_EXCEEDED before capacity is consulted', async () => {
     const { intents } = makeIntents(intentRow());
     const { capacity, checkCapacity } = makeCapacity();
-    const { sessions, checkAndRecordVelocity } = makeSessions();
-    checkAndRecordVelocity.mockRejectedValue(
+    const { sessions, checkVelocity } = makeSessions();
+    checkVelocity.mockRejectedValue(
       new SessionVelocityExceededError('too fast'),
     );
     const { publisher } = makePublisher();
@@ -340,6 +342,74 @@ describe('PaymentAuthorizationService.authorize (session path)', () => {
       service.authorize({ intentId: 'pi_1', sessionToken: 'tok' }),
     ).rejects.toMatchObject({ code: 'SESSION_VELOCITY_EXCEEDED' });
     expect(checkCapacity).not.toHaveBeenCalled();
+  });
+
+  it('reserves capacity before the authorizing transition', async () => {
+    const { intents, transition } = makeIntents(intentRow());
+    const { capacity, recordAuthorizedPayment } = makeCapacity();
+    const { sessions } = makeSessions();
+    const { publisher } = makePublisher();
+    const { db } = makeDb();
+    const service = new PaymentAuthorizationService(
+      db,
+      capacity,
+      intents,
+      sessions,
+      publisher,
+    );
+
+    await service.authorize({ intentId: 'pi_1', sessionToken: 'tok' });
+
+    expect(recordAuthorizedPayment.mock.invocationCallOrder[0]).toBeLessThan(
+      transition.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('leaves the intent unauthorized and retryable if the capacity reserve fails', async () => {
+    const { intents, transition } = makeIntents(intentRow());
+    const { capacity, recordAuthorizedPayment } = makeCapacity();
+    recordAuthorizedPayment.mockRejectedValue(new Error('counter store down'));
+    const { sessions, recordVelocity } = makeSessions();
+    const { publisher } = makePublisher();
+    const { db, insertValues } = makeDb();
+    const service = new PaymentAuthorizationService(
+      db,
+      capacity,
+      intents,
+      sessions,
+      publisher,
+    );
+
+    await expect(
+      service.authorize({ intentId: 'pi_1', sessionToken: 'tok' }),
+    ).rejects.toThrow('counter store down');
+    // Reserve failed before the transition: intent stays created (retryable),
+    // never authorized-but-uncounted, and no session slot is burned.
+    expect(transition).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
+    expect(recordVelocity).not.toHaveBeenCalled();
+  });
+
+  it('records session velocity only after the attempt commits', async () => {
+    const { intents } = makeIntents(intentRow());
+    const { capacity } = makeCapacity();
+    const { sessions, recordVelocity } = makeSessions();
+    const { publisher } = makePublisher();
+    const { db, insertValues } = makeDb();
+    const service = new PaymentAuthorizationService(
+      db,
+      capacity,
+      intents,
+      sessions,
+      publisher,
+    );
+
+    await service.authorize({ intentId: 'pi_1', sessionToken: 'tok' });
+
+    expect(recordVelocity).toHaveBeenCalledWith('sess1', '2000000');
+    expect(recordVelocity.mock.invocationCallOrder[0]).toBeGreaterThan(
+      insertValues.mock.invocationCallOrder[0],
+    );
   });
 });
 

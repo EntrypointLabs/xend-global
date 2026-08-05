@@ -1,8 +1,0 @@
-{
-  "android": {
-    "package": "com.igifted.turborepo"
-  },
-  "ios": {
-    "bundleIdentifier": "com.igifted.turborepo"
-  }
-}

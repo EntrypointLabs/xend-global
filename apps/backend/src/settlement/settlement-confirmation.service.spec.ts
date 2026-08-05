@@ -30,11 +30,11 @@ const PAYMENT_ROW = {
   createdAt: new Date(),
 };
 
-function makeConfig(): ConfigService {
+function makeConfig(budgetMs = 15): ConfigService {
   return {
     getOrThrow: (key: string): number => {
       if (key === 'SETTLEMENT_CONFIRM_POLL_INTERVAL_MS') return 1;
-      if (key === 'SETTLEMENT_CONFIRM_BUDGET_MS') return 15;
+      if (key === 'SETTLEMENT_CONFIRM_BUDGET_MS') return budgetMs;
       throw new Error(`missing config ${key}`);
     },
   } as unknown as ConfigService;
@@ -168,10 +168,11 @@ function makeService(deps: {
   provisioning?: SettlementProvisioningService;
   provider: SettlementProvider;
   publisher: EventPublisher;
+  budgetMs?: number;
 }): SettlementConfirmationService {
   const service = new SettlementConfirmationService(
     deps.db,
-    makeConfig(),
+    makeConfig(deps.budgetMs),
     deps.solana ?? makeSolana([]),
     deps.intents,
     deps.provisioning ?? makeProvisioning(),
@@ -206,6 +207,10 @@ describe('SettlementConfirmationService', () => {
         intents,
         provider,
         publisher,
+        // Generous budget so the first poll is always reached; the confirmed
+        // status returns immediately, keeping the test instant while removing
+        // the deadline race that flaked on slower CI runners.
+        budgetMs: 5000,
       });
       const spy = jest
         .spyOn(service, 'finalizeSucceeded')
@@ -404,9 +409,9 @@ describe('SettlementConfirmationService', () => {
       });
     });
 
-    it('reaper force-fails an aged authorized attempt with ATTEMPT_ABANDONED and publishes no event', async () => {
+    it('reaper fails an aged authorized attempt (ATTEMPT_ABANDONED) and frees + notifies the parent intent', async () => {
       const { provider } = makeProvider({ status: 'complete' });
-      const { intents } = makeIntents();
+      const { intents, transition } = makeIntents();
       const { publisher, publish } = makePublisher();
       const captured: string[] = [];
       const service = makeService({
@@ -433,7 +438,19 @@ describe('SettlementConfirmationService', () => {
         s.includes('UPDATE payment_attempts'),
       );
       expect(reapUpdate).toContain('ATTEMPT_ABANDONED');
-      expect(publish).not.toHaveBeenCalled();
+      // The stranded intent is freed to a terminal state (never left authorized
+      // with no live attempt) and the merchant is notified.
+      expect(transition).toHaveBeenCalledWith(
+        'pi_1',
+        'authorized',
+        'failed',
+        {},
+      );
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(publish.mock.calls[0][0]).toMatchObject({
+        topic: 'payment.failed',
+        payload: { intentId: 'pi_1', reason: 'ATTEMPT_ABANDONED' },
+      });
     });
 
     it('leaves a freshly-pinned authorized attempt untouched (not returned by the window query)', async () => {
@@ -457,8 +474,8 @@ describe('SettlementConfirmationService', () => {
 
     it('reaps a pinned attempt with a confirmed inbound of the exact amount as ATTEMPT_ORPHAN_SUSPECTED', async () => {
       const { provider } = makeProvider({ status: 'complete' });
-      const { intents } = makeIntents();
-      const { publisher } = makePublisher();
+      const { intents, transition } = makeIntents();
+      const { publisher, publish } = makePublisher();
       const captured: string[] = [];
       const service = makeService({
         db: makeExecDb({
@@ -485,6 +502,10 @@ describe('SettlementConfirmationService', () => {
         s.includes('UPDATE payment_attempts'),
       );
       expect(reapUpdate).toContain('ATTEMPT_ORPHAN_SUSPECTED');
+      // Money may have landed: the intent stays authorized for ops. No
+      // auto-fail transition, no merchant-facing failure event.
+      expect(transition).not.toHaveBeenCalled();
+      expect(publish).not.toHaveBeenCalled();
     });
   });
 });

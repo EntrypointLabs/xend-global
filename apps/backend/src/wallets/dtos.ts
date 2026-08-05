@@ -32,3 +32,8 @@ export const BalancesResponseSchema = z.object({
   fetchedAtSlot: z.number().int(),
 });
 export type BalancesResponse = z.infer<typeof BalancesResponseSchema>;
+
+export const DeleteAccountResponseSchema = z.object({
+  deleted: z.literal(true),
+});
+export type DeleteAccountResponse = z.infer<typeof DeleteAccountResponseSchema>;

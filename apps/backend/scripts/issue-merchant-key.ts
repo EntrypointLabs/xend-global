@@ -6,9 +6,15 @@
  * pilot and the future merchants.xend.global portal can never drift.
  *
  * Usage:
- *   npx ts-node scripts/issue-merchant-key.ts --name "Acme" --display "Acme Store" --mode test
+ *   npx ts-node scripts/issue-merchant-key.ts --name "Acme" --display "Acme Store" --origin https://acme.example --mode test
  *   npx ts-node scripts/issue-merchant-key.ts --merchant-id m_123 --mode live
+ *   npx ts-node scripts/issue-merchant-key.ts --merchant-id m_123 --origin https://acme.example
  *   npx ts-node scripts/issue-merchant-key.ts --mark-kyb-verified m_123
+ *
+ * --origin is the checkout page origin the popup posts its result back to
+ * (merchants.allowed_origins). Repeat it for multiple storefronts. Creating a
+ * merchant requires at least one: without it the popup callback has no valid
+ * target and silently never reaches the store.
  *
  * The raw key is printed to stdout exactly once. It is not recoverable; only
  * its SHA-256 hash and a display fingerprint are stored.
@@ -24,10 +30,36 @@ interface Args {
   mode: 'test' | 'live';
   merchantId?: string;
   markKybVerified?: string;
+  origins: string[];
+}
+
+/**
+ * Normalize to a bare origin, mirroring the SDK's checkoutOrigin rule: https
+ * only (http allowed for localhost), no path. Prevents storing a value the
+ * popup's exact-origin postMessage target would then reject.
+ */
+function assertBareOrigin(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`--origin must be a valid URL: ${value}`);
+  }
+  const isLocalhost =
+    url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLocalhost)) {
+    throw new Error(
+      `--origin must be https (http allowed only for localhost): ${value}`,
+    );
+  }
+  if (url.origin !== value.replace(/\/$/, '')) {
+    throw new Error(`--origin must be a bare origin with no path: ${value}`);
+  }
+  return url.origin;
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { mode: 'test' };
+  const args: Args = { mode: 'test', origins: [] };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     const next = () => argv[++i];
@@ -38,6 +70,12 @@ function parseArgs(argv: string[]): Args {
       case '--display':
         args.display = next();
         break;
+      case '--origin': {
+        const value = next();
+        if (!value) throw new Error('--origin requires a value');
+        args.origins.push(assertBareOrigin(value));
+        break;
+      }
       case '--mode': {
         const value = next();
         if (value !== 'test' && value !== 'live') {
@@ -86,12 +124,30 @@ async function main(): Promise<void> {
           'provide --merchant-id, or --name and --display to create a merchant',
         );
       }
+      if (args.origins.length === 0) {
+        throw new Error(
+          'provide at least one --origin (the checkout page origin, e.g. https://store.example); popup callbacks are undeliverable to an originless merchant',
+        );
+      }
       merchantId = createId();
       await client.query(
-        `INSERT INTO merchants (id, name, display_name) VALUES ($1, $2, $3)`,
-        [merchantId, args.name, args.display],
+        `INSERT INTO merchants (id, name, display_name, allowed_origins) VALUES ($1, $2, $3, $4)`,
+        [merchantId, args.name, args.display, args.origins],
       );
-      console.log(`Created merchant ${merchantId} (kyb_status=pending)`);
+      console.log(
+        `Created merchant ${merchantId} (kyb_status=pending, origins=${args.origins.join(', ')})`,
+      );
+    } else if (args.origins.length > 0) {
+      const res = await client.query(
+        `UPDATE merchants SET allowed_origins = $2, updated_at = now() WHERE id = $1 RETURNING id`,
+        [merchantId, args.origins],
+      );
+      if (res.rowCount === 0) {
+        throw new Error(`merchant ${merchantId} not found`);
+      }
+      console.log(
+        `Updated allowed_origins for ${merchantId}: ${args.origins.join(', ')}`,
+      );
     }
 
     const merchantRes = await client.query<{ kyb_status: string }>(

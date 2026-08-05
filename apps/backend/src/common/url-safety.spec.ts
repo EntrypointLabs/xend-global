@@ -32,8 +32,17 @@ describe('isPrivateAddress', () => {
     expect(isPrivateAddress('::ffff:127.0.0.1')).toBe(true);
   });
 
+  it('classifies IPv4-mapped IPv6 in hex form (Node normalizes to this)', () => {
+    // new URL('https://[::ffff:127.0.0.1]/').hostname === '[::ffff:7f00:1]'
+    expect(isPrivateAddress('::ffff:7f00:1')).toBe(true); // 127.0.0.1
+    expect(isPrivateAddress('::ffff:c0a8:1')).toBe(true); // 192.168.0.1
+    expect(isPrivateAddress('::ffff:a00:1')).toBe(true); // 10.0.0.1
+    expect(isPrivateAddress('::ffff:0:0')).toBe(true); // 0.0.0.0
+  });
+
   it('accepts a public IPv6 address', () => {
     expect(isPrivateAddress('2606:4700:4700::1111')).toBe(false);
+    expect(isPrivateAddress('::ffff:808:808')).toBe(false); // 8.8.8.8
   });
 });
 

@@ -55,24 +55,78 @@ The plain npm entry (`@xend/checkout-core`) exposes `mountXendButton` for non-Re
 
 ## 2. Create the intent on your server
 
-Money never travels through the browser, so `createIntent` calls your own server, and your server calls the Pay with Xend merchant API. Create the intent with `POST /payment_intents` and return only the resulting `reference` to the browser. The request and response shapes are the merchant API's contract (Phase 6 merchant API reference); the SDK needs only `{ reference }` back.
+Money never travels through the browser, so `createIntent` calls your own server, and your server calls the Pay with Xend merchant API. Create the intent with `POST /v1/payment_intents` (amount is a minor-unit string, currency is `NGN` or `USDC`); the response's `id` is what you hand back to the browser as the SDK's `{ reference }`. The full request and response shapes are the merchant API's contract (Phase 6 merchant API reference).
+
+"Your server" is any server-side execution context, not necessarily a standalone REST route. A route handler works, and in React a Server Action works just as well and is usually cleaner. The only rule is that the call runs server-side, where your secret key is safe and the amount is resolved from your own data.
+
+### A standalone route
 
 ```ts
 // Your server. XEND_SECRET_KEY is a server-only secret, never shipped to the browser.
 app.post("/api/pay/intent", async (req, res) => {
-  const intent = await fetch("https://api.xend.global/payment_intents", {
+  const resp = await fetch("https://api.xend.global/v1/payment_intents", {
     method: "POST",
     headers: {
       authorization: `Bearer ${process.env.XEND_SECRET_KEY}`,
       "content-type": "application/json",
     },
-    // Amount and currency live here, server-side. See the merchant API reference.
-    body: JSON.stringify({ amount: 500000, currency: "usd" }),
+    // Amount (minor units, as a string) and currency live here, server-side.
+    body: JSON.stringify({ amount: "500000", currency: "NGN" }),
   });
-  const { reference } = await intent.json();
-  res.json({ reference }); // the only thing the browser receives
+  const intent = await resp.json(); // { id: "pi_...", ... }
+  res.json({ reference: intent.id }); // the SDK's createIntent needs { reference }
 });
 ```
+
+### A Next.js Server Action
+
+You do not need a separate route. A Server Action runs on the server, so your secret key never reaches the browser, yet the button can call it straight from `createIntent`. This is the recommended path for React apps.
+
+```ts
+// app/actions/pay.ts
+"use server";
+
+export async function createXendIntent(cartId: string) {
+  // Resolve the amount on the server from your own data, keyed on an id the
+  // shopper cannot tamper with. See the caveat below.
+  const cart = await getCart(cartId);
+
+  const res = await fetch("https://api.xend.global/v1/payment_intents", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${process.env.XEND_SECRET_KEY}`,
+      "content-type": "application/json",
+    },
+    // amount is a minor-unit string; currency is "NGN" or "USDC".
+    body: JSON.stringify({ amount: String(cart.totalMinor), currency: "NGN" }),
+  });
+  const intent = await res.json(); // { id: "pi_...", ... }
+  return { reference: intent.id }; // the SDK's createIntent contract
+}
+```
+
+```tsx
+// A client component renders the button and calls the action on click.
+"use client";
+import { XendPayButton } from "@xend/checkout-react";
+import { createXendIntent } from "../actions/pay";
+
+export function Checkout({ cartId }: { cartId: string }) {
+  return (
+    <XendPayButton
+      checkoutOrigin="https://pay.xend.global"
+      createIntent={() => createXendIntent(cartId)}
+      onResult={(result) => {
+        // { reference, status }. Confirm server-side before fulfilling.
+      }}
+    />
+  );
+}
+```
+
+**Pass an identifier, never the amount.** A Server Action is callable from the client, so treat its arguments as untrusted input, exactly like a route body. Hand it a cart or order id and look the price up on the server. If the client passes the amount directly (`createXendIntent(4500000)`), it is tamperable again and the server-authoritative guarantee is gone.
+
+A Server Component can instead create the intent at render time and pass the `reference` down as a prop, which skips the click round-trip. A Server Component cannot be the click handler itself, so for the on-click `createIntent` path use a Server Action or a route handler.
 
 ## 3. Verify the webhook and fulfill
 
