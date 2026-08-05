@@ -122,3 +122,56 @@ already exist there with its App NFT, which it does.
 **Two secrets gate this and neither is on the build machine:** the portal API key
 (`DAPP_STORE_API_KEY`, from the publisher portal) and the Solana signer keypair. Both
 are held by the publisher. Everything else is ready.
+
+## Two build traps that cost several hours
+
+Both produced `errored` builds after multi-hour queue waits, which reads like a queue
+timeout and is not. Neither was catchable by typecheck, lint or tests.
+
+### `.easignore` replaces `.gitignore`, it does not extend it
+
+Adding a small `.easignore` to exclude a couple of stray directories silently stopped
+`node_modules`, `android/` and `ios/` being excluded. The upload went from 32 MB to
+**1.9 GB** and failed. Anything `.gitignore` excludes has to be repeated in
+`.easignore`; the file now says so at the top.
+
+### An undeclared import can pass every local check
+
+`utils/chainReads.ts` imported `@solana/spl-token`, which is **not** in
+`apps/mobile/package.json`. It resolved locally only because it was an **extraneous**
+transitive dependency of `@sqds/smart-account`, a package belonging to another branch
+and left in `node_modules` across a branch switch. On a clean builder it does not
+exist, so Metro failed in the Bundle JavaScript phase.
+
+Typecheck, lint, jest and even `expo export` all passed, because all four ran against
+the contaminated `node_modules`.
+
+The offending code (`prepareTransferOnChain`, `submitTransferOnChain`) was never wired
+into anything, so it was deleted rather than propped up with a new dependency.
+
+**Check imports against declared dependencies before trusting a green local run:**
+
+```sh
+# every bare import in apps/mobile must appear in a package.json
+npm ls <package>            # "extraneous" means it will not exist on the builder
+```
+
+`base64-js` also shows as undeclared in `app/(send)/confirm.tsx`, but it is a genuine
+transitive dependency of `@bonfida/spl-name-service` and hoists on a clean install.
+Undeclared-but-transitive works; undeclared-and-extraneous does not.
+
+### Getting the real error out of EAS
+
+`eas build:view` does not show it. The GraphQL API does:
+
+```sh
+SECRET=$(python3 -c "import json;print(json.load(open('$HOME/.expo/state.json'))['auth']['sessionSecret'])")
+curl -s -X POST https://api.expo.dev/graphql \
+  -H "expo-session: $SECRET" -H "Content-Type: application/json" \
+  -d '{"query":"query{builds{byId(buildId:\"<id>\"){status error{errorCode message}}}}"}'
+```
+
+### Never run `eas build --local` casually
+
+It fetches the production signing keystore to the machine. If build output is
+redirected to a file, the keystore and its passwords land there in plaintext.
