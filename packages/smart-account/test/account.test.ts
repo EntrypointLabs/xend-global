@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ACCOUNT_THRESHOLD,
+  SETTINGS_TIME_LOCK_SECONDS,
   assertSignerSet,
   buildCreateAccount,
   deriveAccountAddresses,
@@ -106,5 +107,32 @@ describe("buildCreateAccount", () => {
 
   it("threshold is 2, so no single signer can move funds", () => {
     expect(ACCOUNT_THRESHOLD).toBe(2);
+  });
+
+  it("defaults the settings time lock to 24 hours", () => {
+    expect(SETTINGS_TIME_LOCK_SECONDS).toBe(86_400);
+  });
+
+  it("applies the default time lock when none is given", () => {
+    const signers = signerSet();
+    const args = {
+      signers,
+      creator: Keypair.generate().publicKey,
+      treasury: Keypair.generate().publicKey,
+      settingsSeed: 1n,
+    };
+
+    const implicit = buildCreateAccount(args);
+    const explicit = buildCreateAccount({
+      ...args,
+      timeLockSeconds: SETTINGS_TIME_LOCK_SECONDS,
+    });
+    const different = buildCreateAccount({ ...args, timeLockSeconds: 0 });
+
+    // Omitting it must encode identically to passing the default, and a
+    // different value must change the encoding. Together those pin that the
+    // default is real rather than silently dropped.
+    expect(implicit.instruction.data).toEqual(explicit.instruction.data);
+    expect(implicit.instruction.data).not.toEqual(different.instruction.data);
   });
 });

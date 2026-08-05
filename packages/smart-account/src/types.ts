@@ -29,9 +29,19 @@ export type SignerSet = readonly [AccountSigner, AccountSigner, AccountSigner];
 export const ACCOUNT_THRESHOLD = 2;
 
 /**
- * Applies to the Settings only. Spends run under policies whose own time lock is 0,
- * because synchronous execution rejects a non-zero time lock on the consensus
- * account it is given.
+ * How long an approved change to the signer set waits before it can execute.
+ *
+ * Applies to the Settings only, and never delays a Spend: spends run under
+ * policies whose own time lock is 0, because synchronous execution rejects a
+ * non-zero time lock on the consensus account it is given.
+ *
+ * 24 hours, against an industry norm of 3 to 4 days (Braavos 4, Ambire 3,
+ * Candide 3). Those are self-custody wallets where every action is deliberate.
+ * Here the window only helps a Consumer who still holds their approval signer,
+ * since rejecting a change requires it, and such a Consumer sees the
+ * notification within minutes. Someone who has genuinely lost their phone cannot
+ * reject at all and is simply waiting, so a longer window buys them nothing and
+ * costs them a dead phone for days.
  */
 export const SETTINGS_TIME_LOCK_SECONDS = 60 * 60 * 24;
 
