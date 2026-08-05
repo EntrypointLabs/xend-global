@@ -29,7 +29,7 @@ export default function InvestmentsScreen() {
           source={require("@/assets/icons/investment.png")}
           className="h-10 w-10 rounded-xl"
         />
-        <Typography variant="h5" weight="600">
+        <Typography variant="title1" weight="600">
           Investments
         </Typography>
       </View>
@@ -41,7 +41,7 @@ export default function InvestmentsScreen() {
             : "Balance"}
         </Typography>
         {total !== "" && (
-          <BalanceView variant="h2" weight="700" amount={total} />
+          <BalanceView variant="h3" weight="700" amount={total} />
         )}
       </View>
 
@@ -50,7 +50,7 @@ export default function InvestmentsScreen() {
       ) : (
         <ScrollView
           className="mt-6 flex-1"
-          contentContainerClassName="gap-3 pb-6"
+          contentContainerClassName="gap-3 pb-28"
           showsVerticalScrollIndicator={false}
         >
           {holdings.map((holding) => (
@@ -59,7 +59,7 @@ export default function InvestmentsScreen() {
         </ScrollView>
       )}
 
-      <View className="absolute bottom-6 left-5">
+      <View className="absolute bottom-2 left-5">
         <HapticPressable
           accessibilityRole="button"
           accessibilityLabel="Go back"
@@ -84,7 +84,7 @@ function EmptyState({ onGetAssets }: { onGetAssets: () => void }) {
         </View>
       </View>
 
-      <Typography variant="title1" weight="600">
+      <Typography variant="title2" weight="600">
         There is nothing here yet
       </Typography>
       <Typography variant="body" className="text-black/40">
@@ -95,10 +95,10 @@ function EmptyState({ onGetAssets }: { onGetAssets: () => void }) {
         accessibilityRole="button"
         accessibilityLabel="Get assets"
         onPress={onGetAssets}
-        className="mt-5 flex-row items-center gap-2 rounded-full bg-black px-6 py-4"
+        className="mt-5 flex-row items-center gap-2 rounded-full bg-black px-5 py-3"
       >
         <Ionicons name="arrow-down-circle" size={18} color="#fff" />
-        <Typography variant="title2" weight="600" className="text-white">
+        <Typography variant="body" weight="600" className="text-white">
           Get Assets
         </Typography>
       </HapticPressable>
@@ -111,18 +111,18 @@ function HoldingRow({ holding }: { holding: InvestmentHolding }) {
     holding.symbol ?? `${holding.mint.slice(0, 4)}…${holding.mint.slice(-4)}`;
 
   return (
-    <View className="flex-row items-center justify-between rounded-2xl border border-black/5 px-4 py-4">
+    <View className="flex-row items-center justify-between rounded-2xl bg-black/[0.03] px-4 py-4">
       <View className="flex-row items-center gap-3">
         <View className="h-10 w-10 items-center justify-center rounded-full bg-black/5">
           <Typography variant="body" weight="600">
             {label.slice(0, 2).toUpperCase()}
           </Typography>
         </View>
-        <Typography variant="title2" weight="600">
+        <Typography variant="body" weight="600">
           {label}
         </Typography>
       </View>
-      <Typography variant="title2" weight="600">
+      <Typography variant="body" weight="600">
         {holding.amount.toLocaleString("en-US", {
           maximumFractionDigits: 4,
         })}

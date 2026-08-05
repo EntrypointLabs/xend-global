@@ -1,4 +1,5 @@
 import type { TokenBalance } from "@/utils/apiClient";
+import { getUsdcMint } from "@/utils/cluster";
 
 /**
  * Pure balance selectors. No React/React Native imports so the BigInt-safe
@@ -13,7 +14,7 @@ import type { TokenBalance } from "@/utils/apiClient";
  */
 function stablecoinMints(): Set<string> {
   const mints = new Set<string>();
-  const usdc = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS;
+  const usdc = getUsdcMint();
   const usdt = process.env.EXPO_PUBLIC_USDT_MINT_ADDRESS;
   if (usdc) mints.add(usdc);
   if (usdt) mints.add(usdt);
@@ -54,8 +55,8 @@ export function selectStablecoinTotal(
 
 /** The USDC holding as a display number (0 when absent or USDC mint unset). */
 export function selectUsdc(tokens: TokenBalance[] | undefined): number {
-  const usdcMint = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS;
-  if (!tokens || !usdcMint) return 0;
+  const usdcMint = getUsdcMint();
+  if (!tokens) return 0;
   const token = tokens.find((t) => t.mint === usdcMint);
   return token ? roundTo2(rawToNumber(token.amountRaw, token.decimals)) : 0;
 }

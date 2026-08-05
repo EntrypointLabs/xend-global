@@ -30,7 +30,7 @@ export default function EarnScreen() {
           source={require("@/assets/icons/earn.png")}
           className="h-10 w-10 rounded-xl"
         />
-        <Typography variant="h5" weight="600">
+        <Typography variant="title1" weight="600">
           Earn
         </Typography>
       </View>
@@ -47,7 +47,7 @@ export default function EarnScreen() {
             APY {apyDisplay}
           </Typography>
         </View>
-        <BalanceView variant="h2" weight="700" amount={balanceDisplay} />
+        <BalanceView variant="h3" weight="700" amount={balanceDisplay} />
       </View>
 
       <View className="mt-6 flex-row gap-3">
@@ -63,7 +63,7 @@ export default function EarnScreen() {
         />
       </View>
 
-      <Typography variant="title1" weight="600" className="mb-3 mt-8">
+      <Typography variant="title2" weight="600" className="mb-3 mt-8">
         Available products
       </Typography>
 
@@ -75,7 +75,7 @@ export default function EarnScreen() {
         {EARN_PRODUCTS.map((product) => (
           <View
             key={product.id}
-            className="rounded-2xl border border-black/5 px-4 py-4"
+            className="rounded-2xl bg-black/[0.03] px-4 py-4"
           >
             <View className="flex-row items-center gap-3">
               <View className="h-12 w-12 items-center justify-center rounded-2xl bg-black">
@@ -103,7 +103,7 @@ export default function EarnScreen() {
                     {product.apyDisplay} APY
                   </Typography>
                 </View>
-                <Typography variant="title1" weight="600">
+                <Typography variant="title2" weight="600">
                   {product.name}
                 </Typography>
               </View>
@@ -115,7 +115,7 @@ export default function EarnScreen() {
         ))}
       </ScrollView>
 
-      <View className="absolute bottom-6 left-5 right-5 flex-row items-center gap-3">
+      <View className="absolute bottom-2 left-5 right-5 flex-row items-center gap-3">
         <HapticPressable
           accessibilityRole="button"
           accessibilityLabel="Go back"
@@ -125,7 +125,7 @@ export default function EarnScreen() {
           <Ionicons name="chevron-back" size={22} color="#000" />
         </HapticPressable>
 
-        <View className="flex-1 flex-row items-center justify-around rounded-full bg-white px-4 py-4 shadow-sm">
+        <View className="ml-auto flex-row items-center gap-6 rounded-full bg-white px-6 py-4 shadow-sm">
           <HapticPressable
             accessibilityRole="button"
             accessibilityLabel="Deposit into Earn"
@@ -168,14 +168,14 @@ function StatCard({
   amount: string;
 }) {
   return (
-    <View className="flex-1 gap-6 rounded-2xl border border-black/5 px-4 py-4">
+    <View className="flex-1 gap-6 rounded-2xl bg-black/[0.03] px-4 py-4">
       <View className="flex-row items-center gap-2">
         <Ionicons name={icon} size={16} color="rgba(0,0,0,0.4)" />
         <Typography variant="body" weight="600">
           {label}
         </Typography>
       </View>
-      <BalanceView variant="title1" weight="600" amount={amount} />
+      <BalanceView variant="title2" weight="600" amount={amount} />
     </View>
   );
 }

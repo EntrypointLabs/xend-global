@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import { useBalances } from "@/hooks/useBalances";
-import { USDC_MINT } from "@/utils/cluster";
+import { getUsdcMint } from "@/utils/cluster";
 
 export interface InvestmentHolding {
   mint: string;
@@ -22,10 +22,11 @@ export interface InvestmentHolding {
 export function useInvestments() {
   const { tokens, isLoading, isError, refetch } = useBalances();
 
-  const holdings = useMemo<InvestmentHolding[]>(
-    () =>
+  const holdings = useMemo<InvestmentHolding[]>(() => {
+    const usdcMint = getUsdcMint();
+    return (
       tokens
-        .filter((token) => token.mint !== USDC_MINT)
+        .filter((token) => token.mint !== usdcMint)
         // A closed token account lingers at zero, which is not a holding.
         .filter((token) => BigInt(token.amountRaw) > 0n)
         .map((token) => ({
@@ -34,9 +35,9 @@ export function useInvestments() {
           amount: Number(token.amountRaw) / 10 ** token.decimals,
           decimals: token.decimals,
         }))
-        .sort((a, b) => b.amount - a.amount),
-    [tokens]
-  );
+        .sort((a, b) => b.amount - a.amount)
+    );
+  }, [tokens]);
 
   return {
     holdings,

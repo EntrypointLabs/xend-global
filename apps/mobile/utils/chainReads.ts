@@ -5,7 +5,7 @@ import type {
   TokenBalance,
   TransferListResponse,
 } from "@/utils/apiClient";
-import { SOLANA_RPC_URL, USDC_MINT } from "@/utils/cluster";
+import { getUsdcMint, SOLANA_RPC_URL } from "@/utils/cluster";
 
 /**
  * Reads balances and transfer history straight from Solana RPC.
@@ -67,6 +67,7 @@ export async function fetchBalancesFromChain(
     connection.getSlot(),
   ]);
 
+  const usdcMint = getUsdcMint();
   const tokens: TokenBalance[] = [...legacy.value, ...token2022.value].map(
     (entry) => {
       const info = (entry as unknown as ParsedTokenAccount).account.data.parsed
@@ -75,16 +76,16 @@ export async function fetchBalancesFromChain(
         mint: info.mint,
         amountRaw: info.tokenAmount.amount,
         decimals: info.tokenAmount.decimals,
-        symbol: info.mint === USDC_MINT ? "USDC" : null,
+        symbol: info.mint === usdcMint ? "USDC" : null,
       };
     }
   );
 
   // A wallet with no token account yet still has a zero USDC balance to show,
   // otherwise the home screen renders an empty state rather than "$0.00".
-  if (USDC_MINT && !tokens.some((t) => t.mint === USDC_MINT)) {
+  if (!tokens.some((t) => t.mint === usdcMint)) {
     tokens.push({
-      mint: USDC_MINT,
+      mint: usdcMint,
       amountRaw: "0",
       decimals: 6,
       symbol: "USDC",

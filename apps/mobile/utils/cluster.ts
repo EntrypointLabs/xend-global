@@ -29,28 +29,32 @@ export const SOLANA_RPC_URL =
 /**
  * The USDC mint for this cluster.
  *
- * An explicit override still wins, but it is checked against the cluster: a
- * devnet mint on a mainnet build is the exact misconfiguration that hid a real
- * deposit, so it is loud rather than silent.
+ * A function rather than a constant because several modules (and the tests)
+ * vary `EXPO_PUBLIC_USDC_MINT_ADDRESS` at runtime. Everything that needs the
+ * mint calls this, so there is exactly one answer: a build where one module
+ * thought USDC was the devnet mint and another thought it was the mainnet one
+ * showed the Consumer's spending balance as an investment.
+ *
+ * An explicit override wins, but a mint belonging to the other network is
+ * rejected rather than honoured, since that is the misconfiguration that hid a
+ * real deposit.
  */
-export const USDC_MINT = (() => {
+export function getUsdcMint(): string {
   const configured = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS;
   const expected = IS_MAINNET ? MAINNET_USDC : DEVNET_USDC;
 
   if (!configured) return expected;
 
-  if (configured !== expected) {
-    const wrongNetwork =
-      (IS_MAINNET && configured === DEVNET_USDC) ||
-      (!IS_MAINNET && configured === MAINNET_USDC);
-    if (wrongNetwork) {
-      console.error(
-        `[cluster] EXPO_PUBLIC_USDC_MINT_ADDRESS is the ${
-          IS_MAINNET ? "devnet" : "mainnet"
-        } USDC mint but this build targets ${CLUSTER}. Deposits will not appear. Using the ${CLUSTER} mint instead.`
-      );
-      return expected;
-    }
+  const wrongNetwork =
+    (IS_MAINNET && configured === DEVNET_USDC) ||
+    (!IS_MAINNET && configured === MAINNET_USDC);
+  if (wrongNetwork) {
+    console.error(
+      `[cluster] EXPO_PUBLIC_USDC_MINT_ADDRESS is the ${
+        IS_MAINNET ? "devnet" : "mainnet"
+      } USDC mint but this build targets ${CLUSTER}. Deposits will not appear. Using the ${CLUSTER} mint instead.`
+    );
+    return expected;
   }
   return configured;
-})();
+}
