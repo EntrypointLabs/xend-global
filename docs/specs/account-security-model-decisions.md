@@ -581,14 +581,33 @@ D10b makes S3 mandatory at Account creation, and the lost-phone path is explicit
 S1 plus S3. But S3 can only ever be **provisioned, not confirmed**. That is a real
 gap between what the decision assumes and what the platforms provide.
 
-Two ways out, and this needs a call:
+**Resolved: option 1, with the prompt deferred past onboarding.**
 
-1. Keep platform backup as the default, treat it as best-effort, and promote the
-   **Recovery Email** from an upsell to a genuine second recovery signer, so the
-   Consumer holds two independent recovery paths rather than one unverifiable one.
-2. Switch S3 to an encrypted cloud **file** under a user-held secret, which is what
-   Uniswap, Coinbase Wallet, BRD, Argent and Dynamic all converged on. Verifiable,
-   at the cost of one consent screen and a user secret to remember.
+- **At Account creation, S3 provisions silently.** Generate an ed25519 keypair on
+  device, encrypt the private key, write it to a synchronizable keychain item on iOS
+  or Block Store on Android. No screen, no prompt, no second email. The Consumer
+  already signed into an Apple ID or Google account when they set up the phone.
+- **After the first successful Spend**, prompt once for a **Recovery Email** as a
+  second recovery signer. Never at signup. Asking for a second email address before
+  someone has sent their first payment is the worst possible moment for it, and at
+  that point they have nothing worth protecting anyway.
+- **Until they add one, surface it on the home screen** through the existing
+  `PromoBanner` (`apps/mobile/components/ui/molecules/PromoBanner.tsx`, already used
+  on `app/(tabs)/index.tsx` for the virtual bank account).
+
+Two things the banner has to get right, neither of which the current usage does:
+
+- `onClose` is a no-op today. A **permanently** dismissible prompt defeats the
+  purpose, because the whole reason to ask is that S3's backup cannot be verified.
+  Dismissal should snooze and return, not silence forever.
+- Two banners competing for one slot needs a priority rule. Recovery outranks a
+  virtual-account promo.
+
+Rejected: switching S3 to an encrypted cloud **file** under a user-held secret, which
+is what Uniswap, Coinbase Wallet, BRD, Argent and Dynamic converged on. It is
+verifiable, which is genuinely better, but it costs a consent screen and a secret the
+Consumer has to remember, and it reintroduces the "write this down" moment the product
+exists to avoid. Revisit if the silent path proves unreliable in the field.
 
 Nobody ships the zero-interaction platform-store pattern at consumer scale. The only
 production React Native precedent is Rally Protocol, which is small, and Google's own
