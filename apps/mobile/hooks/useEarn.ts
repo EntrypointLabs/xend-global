@@ -25,6 +25,8 @@ export const EARN_PRODUCTS: EarnProduct[] = [
 ];
 
 export interface EarnPosition {
+  /** Display units. Drives whether the Consumer has a position at all. */
+  balance: number;
   balanceDisplay: string;
   apyDisplay: string;
   lifetimeEarned: string;
@@ -40,6 +42,7 @@ export interface EarnPosition {
  */
 export function useEarnPosition(): EarnPosition {
   return {
+    balance: 0,
     balanceDisplay: "0.00",
     // Zero while the Consumer has nothing deposited. The product's own rate is
     // on its card, which is what they are choosing between.

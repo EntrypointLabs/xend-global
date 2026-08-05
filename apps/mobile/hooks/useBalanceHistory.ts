@@ -4,6 +4,8 @@ import type { BalancePoint } from "@/components/ui/organisms/BalanceChart";
 import { useBalances } from "@/hooks/useBalances";
 import { useTransfersInfinite } from "@/hooks/useTransfers";
 import { getUsdcMint } from "@/utils/cluster";
+import { selectBalanceDelta } from "@/utils/balanceDelta";
+import type { BalanceDelta } from "@/utils/balanceDelta";
 
 /**
  * Balance over time, reconstructed by walking confirmed transfers backwards
@@ -43,7 +45,11 @@ export function useBalanceHistory(): BalancePoint[] {
     let running = usdc;
     for (const row of confirmed) {
       points.push({ at: row.at, value: running });
-      running -= row.delta;
+      // Clamped because a balance cannot go negative. Undoing the loaded
+      // transfers can drive it below zero when the set is incomplete: outflows
+      // with no confirmed USDC transfer row to replay (swaps, Earn deposits,
+      // card spends) leave their inflow unmatched.
+      running = Math.max(0, running - row.delta);
     }
     points.push({
       at: confirmed[confirmed.length - 1]!.at - 1,
@@ -52,4 +58,9 @@ export function useBalanceHistory(): BalancePoint[] {
 
     return points.reverse();
   }, [data, usdc, now]);
+}
+
+export function useBalanceDelta(history: BalancePoint[]): BalanceDelta | null {
+  const [now] = useState(() => Date.now());
+  return useMemo(() => selectBalanceDelta(history, now), [history, now]);
 }

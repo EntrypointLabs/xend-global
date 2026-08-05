@@ -9,6 +9,7 @@ export const CHART_RANGES = ["1D", "1W", "1M", "6M", "1Y"] as const;
 export type ChartRange = (typeof CHART_RANGES)[number];
 
 const BAR_COUNT = 44;
+const MIN_BAR_HEIGHT = 0.32;
 
 export interface BalancePoint {
   /** Milliseconds since epoch. */
@@ -50,7 +51,12 @@ export function BalanceChart({ history, className }: BalanceChartProps) {
 
     // A flat balance would divide by zero; render it as a level mid-height line.
     if (span === 0) return values.map(() => 0.5);
-    return values.map((v) => 0.15 + ((v - min) / span) * 0.85);
+    // The floor keeps a trough visible. It has to clear the bar's own width or
+    // `rounded-full` turns the shortest bars into dots and the run of them
+    // reads as a dotted line instead of a chart.
+    return values.map(
+      (v) => MIN_BAR_HEIGHT + ((v - min) / span) * (1 - MIN_BAR_HEIGHT)
+    );
   }, [history, range, now]);
 
   return (
@@ -83,7 +89,7 @@ export function BalanceChart({ history, className }: BalanceChartProps) {
               feedback="selection"
               scaleOnPress={false}
               className={cn(
-                "rounded-full px-4 py-2",
+                "rounded-full px-2 py-0.5",
                 active ? "bg-black/5" : "bg-transparent"
               )}
             >

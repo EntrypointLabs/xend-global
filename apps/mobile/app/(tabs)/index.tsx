@@ -11,7 +11,9 @@ import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useToast } from "@/contexts/ToastContext";
 import { BalanceChart } from "@/components/ui/organisms/BalanceChart";
-import { useBalanceHistory } from "@/hooks/useBalanceHistory";
+import { useBalanceDelta, useBalanceHistory } from "@/hooks/useBalanceHistory";
+import { useEarnPosition } from "@/hooks/useEarn";
+import { getUsdcMint } from "@/utils/cluster";
 import { useBalances } from "@/hooks/useBalances";
 import { useTransfersInfinite } from "@/hooks/useTransfers";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
@@ -22,6 +24,12 @@ import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { SendFlowModal } from "@/components/ui/organisms/send/SendFlowModal";
 import BalanceView from "@/components/BalanceView";
+import { cn } from "@/utils/cn";
+import type { BalanceDelta } from "@/utils/balanceDelta";
+
+// Ionicons takes a colour value, not a class, so the tokens are resolved here.
+const SUCCESS = "#34C759";
+const DESTRUCTIVE = "#FF3B30";
 
 function HomeScreenContent() {
   const router = useRouter();
@@ -35,14 +43,22 @@ function HomeScreenContent() {
   const {
     total,
     totalDisplay,
+    tokens,
+    usdc,
     isError: isBalanceError,
     refetch: refetchBalances,
   } = useBalances();
+  const { balance: earnBalance } = useEarnPosition();
   const { isLoading } = useTransfersInfinite();
   const address = useWalletAddress();
   const { name: walletName } = useWalletName();
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
   const qrCodeModalRef = useRef<BottomSheetModal>(null);
+
+  const usdcMint = getUsdcMint();
+  const hasOtherAssets = tokens.some(
+    (t) => t.mint !== usdcMint && Number(t.amountRaw) > 0
+  );
 
   const actions = useMemo(
     () => [
@@ -52,6 +68,7 @@ function HomeScreenContent() {
         icon: require("@/assets/icons/usdc.png"),
         onPress: () => router.push("/cash"),
         color: "#007AFF", // Blue
+        funded: usdc > 0,
       },
       {
         title: "Investments",
@@ -59,6 +76,7 @@ function HomeScreenContent() {
         icon: require("@/assets/icons/investment.png"),
         onPress: () => router.push("/investments"),
         color: "#FF9500", // Orange
+        funded: hasOtherAssets,
       },
       {
         title: "Earn",
@@ -66,6 +84,7 @@ function HomeScreenContent() {
         icon: require("@/assets/icons/earn.png"),
         onPress: () => router.push("/earn"),
         color: "#AF52DE", // Purple
+        funded: earnBalance > 0,
       },
       {
         title: "Xend Card",
@@ -73,12 +92,14 @@ function HomeScreenContent() {
         icon: require("@/assets/icons/card.png"),
         onPress: () => showToast("Xend Card coming soon"),
         color: "#000000", // Black
+        funded: false,
       },
     ],
-    [router, showToast]
+    [router, showToast, usdc, hasOtherAssets, earnBalance]
   );
 
   const history = useBalanceHistory();
+  const delta = useBalanceDelta(history);
   // The chart only earns its space once there is a balance to plot; a zero
   // balance gets the call to action instead.
   const hasBalance = total > 0;
@@ -86,18 +107,18 @@ function HomeScreenContent() {
   return (
     <ScreenLayout>
       <ScrollView
-        contentContainerClassName="grow pb-[100px]"
+        contentContainerClassName="grow pb-[132px]"
         showsVerticalScrollIndicator={false}
       >
         <View>
           <TabHeaderText>{walletName}</TabHeaderText>
 
           <View>
-            <View className="flex-row items-center gap-2">
+            <View className="flex-row items-center gap-1.5">
               <Typography weight="500" className="text-sm text-black/30">
-                Total Balance{" "}
-                <Ionicons name="remove-circle" size={12} color="#999" /> 100%
+                Total Balance
               </Typography>
+              {delta && <BalanceDeltaBadge delta={delta} />}
             </View>
             {isBalanceError ? (
               <HapticPressable
@@ -127,7 +148,7 @@ function HomeScreenContent() {
           </View>
 
           {hasBalance ? (
-            <BalanceChart history={history} className="mt-8" />
+            <BalanceChart history={history} className="mb-6 mt-8" />
           ) : (
             !isLoading && (
               <View className="items-center pb-6 pt-8">
@@ -164,6 +185,7 @@ function HomeScreenContent() {
               icon={action.icon}
               onPress={action.onPress}
               iconBackgroundColor={action.color}
+              funded={action.funded}
             />
           ))}
         </View>
@@ -194,6 +216,29 @@ function HomeScreenContent() {
 
       <QRCodeModal ref={qrCodeModalRef} walletAddress={address ?? ""} />
     </ScreenLayout>
+  );
+}
+
+function BalanceDeltaBadge({ delta }: { delta: BalanceDelta }) {
+  const flat = delta.fraction === 0;
+  const up = delta.fraction > 0;
+  return (
+    <View className="flex-row items-center gap-0.5">
+      <Ionicons
+        name={flat ? "remove-circle" : up ? "trending-up" : "trending-down"}
+        size={12}
+        color={flat ? "#999" : up ? SUCCESS : DESTRUCTIVE}
+      />
+      <Typography
+        weight="500"
+        className={cn(
+          "text-sm",
+          flat ? "text-black/30" : up ? "text-success" : "text-destructive"
+        )}
+      >
+        {delta.display}
+      </Typography>
+    </View>
   );
 }
 
