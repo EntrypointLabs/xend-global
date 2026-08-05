@@ -71,15 +71,11 @@ function HomeScreenContent() {
         onPress: () => router.push("/earn"),
         color: "#AF52DE", // Purple
       },
-      {
-        title: "Xend Card",
-        subtitle: "Get your free Card",
-        icon: require("@/assets/icons/card.png"),
-        onPress: () => showToast("Coming soon"),
-        color: "#000000", // Black
-      },
     ],
-    [showToast, router]
+    // Xend Card is intentionally absent until it exists. Advertising an action
+    // that only raises "Coming soon" is a feature a dApp Store reviewer cannot
+    // verify, which is what the first submission was rejected for.
+    [router]
   );
 
   const rows = data?.pages.flatMap((page) => page.transfers) ?? [];
