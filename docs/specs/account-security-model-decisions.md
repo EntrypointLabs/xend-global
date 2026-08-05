@@ -707,3 +707,82 @@ signature within the limit and the normal authorisation path above it.
 for a day and the Consumer never hears about it, the delay protects nobody. Push
 notification on any pending settings change, with a one-tap reject, is therefore a
 hard requirement of D3 rather than a nice-to-have.
+
+## Privy internals, verified against shipped code
+
+Read directly from the installed packages and from 0.70.6 packed off npm. Both
+identical on every point.
+
+### The anchor question: answered, and the answer is good
+
+**Privy's device share cannot reach iCloud Keychain.** Three independent reasons:
+
+1. `kSecAttrSynchronizable` appears **nowhere** in `expo-secure-store@56.0.4`.
+2. Privy writes with `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`, and Apple documents that
+   a `ThisDeviceOnly` accessibility class **cannot** be combined with syncing. So it
+   is structurally impossible, not merely unset.
+3. `kSecAttrAccessGroup` is only set when the caller passes one; Privy does not.
+
+Android is equally clean: ciphertext in `shared_prefs/SecureStore.xml` under a
+non-exportable AndroidKeyStore key, excluded from both cloud backup and device
+transfer, and **nothing** is ever written through Block Store.
+
+**So S1 and S3 do not share an anchor, and the invariant holds.**
+
+Correction to our own wording elsewhere: `ThisDeviceOnly` items are **not excluded
+from iOS backups**. They are copied in, wrapped to the source device's hardware UID,
+so they are useless on another device but present in the blob. Only
+`WhenPasscodeSetThisDeviceOnly` is literally excluded.
+
+### The real collapse risk is our auth config, not Privy's storage
+
+Privy ships **both** architectures and which one is live is a per-app dashboard
+setting, discriminated at runtime by `recovery_method === 'privy-v2'` (TEE) versus
+anything else (on-device). In TEE mode, which has been the default since roughly Q2
+2025, **there is no device share at all** and the wallet's only anchor is the Privy
+auth session. That is exactly the inbox anchor D4 specifies.
+
+But: **if the passkey is a login method, phone possession alone satisfies Privy auth**,
+which makes S1's anchor the phone. That is already S2's anchor, so phone possession
+would yield 2 of 3 and the model fails.
+
+`apps/mobile/hooks/usePasskey.ts:54` uses `useLinkWithPasskey`, which links the
+passkey as a **login method**. So the shipped configuration has exactly this collapse.
+
+The fix is in the SDK: `submitMfaEnrollment({ method: 'passkey', removeForLogin: true })`
+promotes the passkey to MFA and drops it as a standalone login factor. **The passkey
+must never be sufficient for login on its own.**
+
+Three things to lock down:
+
+- Confirm the execution mode (Dashboard, Wallets, Advanced) or assert on
+  `recovery_method` at runtime. It changes the whole analysis and nothing surfaces it.
+- **Never enable Privy's iCloud or Google Drive recovery.** That is the one Privy
+  feature that would anchor the wallet to the Apple ID, via CloudKit rather than the
+  keychain. It is currently blocked three ways by accident: TEE mode disables it, the
+  SDK rejects user-controlled recovery for Solana wallets outright, and our iOS
+  entitlements are empty. None is a deliberate guard, so add an explicit assertion.
+- Enroll two MFA methods, since a surviving method is the only documented way to
+  unenroll a lost one.
+
+### O7 resolved: there is no out-of-band MFA reset
+
+No server SDK method (`mfa` appears zero times in `@privy-io/server-auth`), no REST
+endpoint among 72 app-secret routes, no dashboard control, and MFA survives disabling
+the feature app-wide. Deleting the user is not a workaround: it destroys the wallet
+address, and Privy's own words on recovering a soft-deleted wallet are "no guarantee
+of successful recovery".
+
+The useful corollary: **nobody, not Privy support and not us, can strip a Consumer's
+wallet MFA to hijack S1.** Wallet MFA introduces no hidden second anchor, which
+strengthens the model rather than weakening it.
+
+The symmetric cost: a Consumer who loses their MFA factor loses S1 permanently. The
+2-of-3 absorbs it via S2 plus S3, but **that recovery path must work without S1**, and
+it is the one that will actually be exercised. Verify it end to end.
+
+Residual unknown, stated rather than hidden: Privy hints at an internal capability
+("requires significant internal coordination"). It does not matter to the design.
+Whatever Privy can do internally, Privy controls **one** of three signers and cannot
+reach threshold alone. That property is what makes this hold, not any assumption about
+Privy's internal controls.

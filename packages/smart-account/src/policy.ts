@@ -179,3 +179,84 @@ export function buildRejectSettingsChange({
     signer,
   });
 }
+
+export interface CreateAboveLimitPolicyParams {
+  addresses: AccountAddresses;
+  policySeed: bigint;
+  /** Both signers required for a Spend the limit does not admit. */
+  primary: PublicKey;
+  approval: PublicKey;
+  proposer: PublicKey;
+  transactionIndex: bigint;
+}
+
+/**
+ * Proposes the policy that governs Spends above the spending limit.
+ *
+ * This exists because a Spend cannot run against the Settings: synchronous execution
+ * rejects a non-zero time lock on its consensus account, and the Settings carries one
+ * for settings changes. So the above-limit path needs a consensus account of its own
+ * with a zero time lock. It also keeps the recovery signer out of the spend path,
+ * which permissions alone do not do.
+ *
+ * `instructionsConstraints` is deliberately **empty**. In the program that means no
+ * constraint checking runs at all, so the policy permits any instruction. The
+ * protection here is the threshold of 2, not an instruction allowlist. Narrowing it
+ * later (destination allowlists, merchant rules) is a policy update, not a rewrite.
+ */
+export function buildCreateAboveLimitPolicy({
+  addresses,
+  policySeed,
+  primary,
+  approval,
+  proposer,
+  transactionIndex,
+}: CreateAboveLimitPolicyParams): CreateSpendingLimitPolicyResult {
+  if (primary.equals(approval)) {
+    throw new Error("primary and approval signers must be distinct");
+  }
+
+  const policy = derivePolicyAddress(addresses.settings, policySeed);
+
+  const action: generated.SettingsAction = {
+    __kind: "PolicyCreate",
+    seed: policySeed,
+    policyCreationPayload: {
+      __kind: "ProgramInteraction",
+      fields: [
+        {
+          accountIndex: PRIMARY_ACCOUNT_INDEX,
+          instructionsConstraints: [],
+          preHook: null,
+          postHook: null,
+          spendingLimits: [],
+        },
+      ],
+    },
+    signers: [
+      { key: primary, permissions: Permissions.all() },
+      { key: approval, permissions: Permissions.all() },
+    ],
+    threshold: 2,
+    timeLock: 0,
+    startTimestamp: null,
+    expirationArgs: null,
+  };
+
+  return {
+    policy,
+    propose: [
+      instructions.createSettingsTransaction({
+        settingsPda: addresses.settings,
+        transactionIndex,
+        creator: proposer,
+        actions: [action],
+      }),
+      instructions.createProposal({
+        settingsPda: addresses.settings,
+        transactionIndex,
+        creator: proposer,
+      }),
+    ],
+  };
+}
