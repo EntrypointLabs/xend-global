@@ -10,7 +10,6 @@ import { SendModal } from "@/components/ui/organisms/modals/SendModal";
 import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
-import { useToast } from "@/contexts/ToastContext";
 import { BalanceChart } from "@/components/ui/organisms/BalanceChart";
 import { useBalanceDelta, useBalanceHistory } from "@/hooks/useBalanceHistory";
 import { useEarnPosition } from "@/hooks/useEarn";
@@ -47,7 +46,6 @@ function HomeScreenContent() {
     hideAllModals,
     isSendModalVisible,
   } = useModalFlow();
-  const { showToast } = useToast();
   const {
     total,
     totalDisplay,
@@ -98,12 +96,12 @@ function HomeScreenContent() {
         title: "Xend Card",
         subtitle: "Get your free Card",
         icon: require("@/assets/icons/card.png"),
-        onPress: () => showToast("Xend Card coming soon"),
+        onPress: () => router.push("/card"),
         color: "#000000", // Black
         funded: false,
       },
     ],
-    [router, showToast, usdc, hasOtherAssets, earnBalance]
+    [router, usdc, hasOtherAssets, earnBalance]
   );
 
   const history = useBalanceHistory();

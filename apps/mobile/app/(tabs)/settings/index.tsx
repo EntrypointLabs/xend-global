@@ -104,8 +104,7 @@ export default function SettingsScreen() {
         {
           label: "Connected Merchants",
           icon: require("@/assets/icons/card.png"),
-          onPress: () =>
-            router.push("/settings/connected-merchants" as never),
+          onPress: () => router.push("/settings/connected-merchants" as never),
         },
       ],
     },
@@ -192,6 +191,9 @@ export default function SettingsScreen() {
               <TouchableOpacity
                 className="flex-row items-center justify-between rounded-3xl bg-black p-4"
                 activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel="Learn about Xend Plus"
+                onPress={() => router.push("/plus" as never)}
               >
                 <View className="flex-row items-center">
                   <View className="mr-3 h-8 w-8 items-center justify-center">
