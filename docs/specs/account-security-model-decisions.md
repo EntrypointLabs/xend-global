@@ -94,6 +94,12 @@ Policy is itself a consensus account with its own `time_lock`, so:
 **Every spend must therefore execute under a Policy, never under the Settings
 consensus.** Verified end to end (see Runtime verification).
 
+Caught again in the package's own integration suite: a two-signature spend routed
+through the Settings **fails** on a time-locked Account, regardless of who signs. So
+the above-limit path needs its own policy carrying `[primary, approval]` at threshold
+2 with a zero time lock. Until that builder exists, a time-locked Account can only
+spend under a spending limit.
+
 ### D4. The signer set
 
 |             | S1                            | S2                                                  | S3                              |
