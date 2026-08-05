@@ -72,7 +72,7 @@ function HomeScreenContent() {
     () => [
       {
         title: "Cash",
-        subtitle: "Send and Receive",
+        subtitle: "Send and receive",
         icon: require("@/assets/icons/usdc.png"),
         onPress: () => router.push("/cash"),
         color: "#007AFF", // Blue
@@ -80,7 +80,7 @@ function HomeScreenContent() {
       },
       {
         title: "Investments",
-        subtitle: "Your other assets",
+        subtitle: "Trade crypto",
         icon: require("@/assets/icons/investment.png"),
         onPress: () => router.push("/investments"),
         color: "#FF9500", // Orange
@@ -88,7 +88,7 @@ function HomeScreenContent() {
       },
       {
         title: "Earn",
-        subtitle: "Yield on your balance",
+        subtitle: "Up to 4.93% APY",
         icon: require("@/assets/icons/earn.png"),
         onPress: () => router.push("/earn"),
         color: "#AF52DE", // Purple
