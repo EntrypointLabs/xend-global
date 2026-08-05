@@ -1,0 +1,9 @@
+# Files the EAS builder must not receive. Without this, EAS falls back to
+# .gitignore, and anything untracked here gets uploaded.
+#
+# packages/smart-account is a workspace member on another branch; the leftovers
+# on this one declare a file: dependency that is absent from this branch's
+# lockfile, which fails npm install on the builder.
+packages/smart-account/
+.gstack/
+**/*.devnet.bak
