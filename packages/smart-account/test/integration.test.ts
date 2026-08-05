@@ -23,6 +23,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   buildApproveSettingsChange,
+  buildCreateAboveLimitPolicy,
   buildCreateAccount,
   buildCreateSpendingLimitPolicy,
   buildExecuteSettingsChange,
@@ -42,13 +43,15 @@ const PROGRAM_ADDRESS = new PublicKey(
   "SMRTzfY6DfH5ik3TKiyLFfXexV8uSG3d2UksSCYdunG",
 );
 const SETTINGS_TIME_LOCK = 60;
-const POLICY_SEED = 1n;
+const LIMIT_POLICY_SEED = 1n;
+const ABOVE_LIMIT_POLICY_SEED = 2n;
 const SOL = PublicKey.default;
 
 interface Harness {
   svm: LiteSVM;
   addresses: AccountAddresses;
   policy: PublicKey;
+  abovePolicy: PublicKey;
   primary: Keypair;
   approval: Keypair;
   recovery: Keypair;
@@ -133,7 +136,11 @@ function setUp({ timeLockSeconds = SETTINGS_TIME_LOCK } = {}): Harness {
   return {
     svm,
     addresses,
-    policy: derivePolicyAddress(addresses.settings, POLICY_SEED),
+    policy: derivePolicyAddress(addresses.settings, LIMIT_POLICY_SEED),
+    abovePolicy: derivePolicyAddress(
+      addresses.settings,
+      ABOVE_LIMIT_POLICY_SEED,
+    ),
     primary,
     approval,
     recovery,
@@ -165,6 +172,41 @@ function spend(
   });
 }
 
+/** Runs a settings change end to end: propose, two approvals, warp, execute. */
+function applySettingsChange(
+  h: Harness,
+  propose: TransactionInstruction[],
+  transactionIndex: bigint,
+  policy: PublicKey,
+) {
+  expect(failed(send(h.svm, h.primary, propose, [h.primary]))).toBe(false);
+  for (const signer of [h.primary, h.approval]) {
+    const approve = buildApproveSettingsChange({
+      addresses: h.addresses,
+      transactionIndex,
+      signer: signer.publicKey,
+    });
+    expect(failed(send(h.svm, signer, [approve], [signer]))).toBe(false);
+  }
+  const clock = h.svm.getClock();
+  clock.unixTimestamp = clock.unixTimestamp + BigInt(SETTINGS_TIME_LOCK + 10);
+  h.svm.setClock(clock);
+  h.svm.expireBlockhash();
+  return send(
+    h.svm,
+    h.primary,
+    [
+      buildExecuteSettingsChange({
+        addresses: h.addresses,
+        transactionIndex,
+        signer: h.primary.publicKey,
+        policies: [policy],
+      }),
+    ],
+    [h.primary],
+  );
+}
+
 describe.skipIf(!HAVE_FIXTURES)("against deployed bytecode", () => {
   let h: Harness;
   beforeAll(() => {
@@ -186,7 +228,7 @@ describe.skipIf(!HAVE_FIXTURES)("against deployed bytecode", () => {
       BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
     const { policy, propose } = buildCreateSpendingLimitPolicy({
       addresses: h.addresses,
-      policySeed: POLICY_SEED,
+      policySeed: LIMIT_POLICY_SEED,
       terms: {
         mint: SOL,
         maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
@@ -198,40 +240,9 @@ describe.skipIf(!HAVE_FIXTURES)("against deployed bytecode", () => {
       transactionIndex,
     });
     expect(policy.equals(h.policy)).toBe(true);
-    expect(failed(send(h.svm, h.primary, propose, [h.primary]))).toBe(false);
-
-    for (const signer of [h.primary, h.approval]) {
-      const approve = buildApproveSettingsChange({
-        addresses: h.addresses,
-        transactionIndex,
-        signer: signer.publicKey,
-      });
-      expect(failed(send(h.svm, signer, [approve], [signer]))).toBe(false);
-    }
-
-    const execute = () =>
-      send(
-        h.svm,
-        h.primary,
-        [
-          buildExecuteSettingsChange({
-            addresses: h.addresses,
-            transactionIndex,
-            signer: h.primary.publicKey,
-            policies: [policy],
-          }),
-        ],
-        [h.primary],
-      );
-
-    expect(failed(execute())).toBe(true);
-
-    const clock = h.svm.getClock();
-    clock.unixTimestamp = clock.unixTimestamp + BigInt(SETTINGS_TIME_LOCK + 10);
-    h.svm.setClock(clock);
-    h.svm.expireBlockhash();
-
-    expect(failed(execute())).toBe(false);
+    expect(
+      failed(applySettingsChange(h, propose, transactionIndex, policy)),
+    ).toBe(false);
 
     const created = decode<{
       threshold: number;
@@ -273,11 +284,37 @@ describe.skipIf(!HAVE_FIXTURES)("against deployed bytecode", () => {
     expect(h.svm.getBalance(destination)).toBe(amount);
   });
 
+  it("creates the above-limit policy that carries two-signature spends", () => {
+    const transactionIndex =
+      BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
+    const { policy, propose } = buildCreateAboveLimitPolicy({
+      addresses: h.addresses,
+      policySeed: ABOVE_LIMIT_POLICY_SEED,
+      primary: h.primary.publicKey,
+      approval: h.approval.publicKey,
+      proposer: h.primary.publicKey,
+      transactionIndex,
+    });
+    expect(policy.equals(h.abovePolicy)).toBe(true);
+    expect(
+      failed(applySettingsChange(h, propose, transactionIndex, policy)),
+    ).toBe(false);
+
+    const created = decode<{
+      threshold: number;
+      timeLock: number;
+      signers: unknown[];
+    }>(h.svm, policy, accounts.Policy);
+    expect(created.threshold).toBe(2);
+    expect(created.signers).toHaveLength(2);
+    // Zero, so Spends under it execute synchronously despite the Settings lock.
+    expect(created.timeLock).toBe(0);
+  });
+
   it("cannot spend through the Settings while it carries a time lock", () => {
     // Synchronous execution requires the consensus account's time lock to be zero,
-    // so a time-locked Settings cannot carry Spends at all. This is why every Spend
-    // must run under a policy, and why the above-limit policy is still needed before
-    // an Account like this one can spend above its limit.
+    // so a time-locked Settings cannot carry Spends at all. Executing under the
+    // above-limit policy instead is the intended path and is not wired yet.
     const destination = Keypair.generate().publicKey;
     const instruction = spend(
       h,
@@ -297,8 +334,6 @@ describe.skipIf(!HAVE_FIXTURES)("against deployed bytecode", () => {
     // Vote-only permissions do NOT keep a recovery signer away from funds. This is
     // the finding that made per-policy signer sets a requirement rather than an
     // optimisation, pinned here so a program change would surface as a failure.
-    // Uses a second Account with no time lock, since a time-locked Settings refuses
-    // synchronous execution regardless of who signs.
     const open = setUp({ timeLockSeconds: 0 });
     const destination = Keypair.generate().publicKey;
     const instruction = spend(

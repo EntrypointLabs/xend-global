@@ -16,9 +16,11 @@ export {
 
 export {
   buildApproveSettingsChange,
+  buildCreateAboveLimitPolicy,
   buildCreateSpendingLimitPolicy,
   buildExecuteSettingsChange,
   buildRejectSettingsChange,
+  type CreateAboveLimitPolicyParams,
   type CreateSpendingLimitPolicyParams,
   type CreateSpendingLimitPolicyResult,
   type LimitPeriod,
