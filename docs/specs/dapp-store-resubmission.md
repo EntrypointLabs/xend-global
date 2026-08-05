@@ -87,9 +87,22 @@ is down is the wrong shape for a dApp Store app regardless.
 2. **Re-read the listing copy against what the app actually does.** The rejection was
    about the gap between the two, and the listing lives in the publisher portal rather
    than in this repo. The in-app surface now advertises only Cash, Investments and Earn.
-3. **The virtual bank account promo banner** on the home screen still raises a "coming
-   soon" toast. Left in place because that slot has planned use for the recovery-email
-   prompt, but it is a dead call to action a reviewer can tap.
+3. **Three surfaces look real and do nothing.** This is the same shape as the original
+   rejection, so it is a judgement call rather than an oversight:
+   - **Xend Card** is back in the home grid by request, and raises a "coming soon"
+     toast.
+   - **Swap** has a complete screen and a working keypad, but Review raises "Swap
+     quotes open soon". No quote provider is wired.
+   - **Earn Deposit** opens the Receive modal rather than depositing into Kamino.
+
+   A reviewer who taps any of them finds nothing behind it. Whether that matters
+   depends entirely on the listing copy: a feature the listing does not claim is a
+   teaser, and a feature it does claim is the rejection reason repeating. Reconciling
+   the two is item 2 above and it needs the portal.
+
+4. **Supply the token logos.** Kamino, SOL and USDC render as letter-in-a-circle
+   placeholders because no artwork exists in the repo. Most visible on the Swap token
+   pills, where they sit beside otherwise finished chrome.
 
 ## Decisions taken
 
@@ -101,9 +114,15 @@ inside the APK where it can be extracted and its quota burned, a worse trade tha
 rate-limited fallback. Revisit with a usage-capped key or a backend RPC proxy if
 fallback reads become load-bearing.
 
-**Xend Card: removed from the home action grid.** It only raised a "Coming soon" toast,
-precisely the unverifiable-feature pattern the submission was rejected for. It returns
-when it exists.
+**Xend Card: kept in the home action grid.** It was removed as an unverifiable feature,
+then restored by request: the grid reads as incomplete with three tiles, and the card is
+a real part of the product story. It still only raises a "Coming soon" toast, which is
+tracked as a risk above rather than treated as settled.
+
+**Home grid borders track funding.** A section with nothing in it keeps a dashed border;
+once it holds a balance the border closes to solid. Cash follows USDC, Investments any
+non-USDC holding, Earn the position. The Card has no balance to track, so it stays
+dashed until cards exist.
 
 ## Creating the submission
 
