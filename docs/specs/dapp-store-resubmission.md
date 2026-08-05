@@ -84,14 +84,41 @@ is down is the wrong shape for a dApp Store app regardless.
    and is up now, but the URL is in EAS production config and a free tunnel is not
    something to ship against. There is no deploy pipeline; the backend needs Postgres,
    Redis and Kafka. This is the largest remaining risk to a resubmission.
-2. **The client RPC is the public mainnet endpoint, which rate-limits.** It returned
-   429 on a single call during testing. Helius works but its URL carries an API key,
-   and `EXPO_PUBLIC_*` ships inside the APK where it can be extracted. Options are a
-   usage-capped key, or an RPC proxy route on the backend. The backend already uses
-   Helius server-side, so only the offline fallback and SNS lookups are affected.
-3. **"Xend Card" is still a "Coming soon" toast** on the home screen. If the listing
-   mentions a card, that is another feature a reviewer cannot verify. Either build it,
-   remove the entry, or make sure the listing does not claim it.
-4. **Re-read the listing copy against what the app actually does.** The rejection was
+2. **Re-read the listing copy against what the app actually does.** The rejection was
    about the gap between the two, and the listing lives in the publisher portal rather
-   than in this repo.
+   than in this repo. The in-app surface now advertises only Cash, Investments and Earn.
+3. **The virtual bank account promo banner** on the home screen still raises a "coming
+   soon" toast. Left in place because that slot has planned use for the recovery-email
+   prompt, but it is a dead call to action a reviewer can tap.
+
+## Decisions taken
+
+**Client RPC: stay on the public mainnet endpoint.** It rate-limits (a 429 on a single
+call during testing), but the backend is the primary path and already runs Helius with
+failover server-side (`apps/backend/src/solana/failover-solana-rpc.ts`). The client RPC
+serves only SNS resolution and the offline fallback. Embedding a Helius key would put it
+inside the APK where it can be extracted and its quota burned, a worse trade than a
+rate-limited fallback. Revisit with a usage-capped key or a backend RPC proxy if
+fallback reads become load-bearing.
+
+**Xend Card: removed from the home action grid.** It only raised a "Coming soon" toast,
+precisely the unverifiable-feature pattern the submission was rejected for. It returns
+when it exists.
+
+## Creating the submission
+
+The CLI is portal-backed now, not raw NFT minting:
+
+```sh
+DAPP_STORE_API_KEY=<portal key> npx @solana-mobile/dapp-store-cli \
+  --apk-file <path to the built APK> \
+  --keypair <path to the Solana signer> \
+  --whats-new "Xend now runs on Solana mainnet, so deposits, sends and activity reflect real balances. Investments and Earn are live."
+```
+
+The portal decides whether this lands as a first release or an update, and the app must
+already exist there with its App NFT, which it does.
+
+**Two secrets gate this and neither is on the build machine:** the portal API key
+(`DAPP_STORE_API_KEY`, from the publisher portal) and the Solana signer keypair. Both
+are held by the publisher. Everything else is ready.
