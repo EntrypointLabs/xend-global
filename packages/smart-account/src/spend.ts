@@ -100,11 +100,15 @@ export interface BuildSpendParams {
 /**
  * Builds a single instruction that executes the Spend.
  *
- * Both routes are synchronous: one transaction, no proposal accounts, no rent. The
- * two-signature route runs against the Settings, which is why the Settings time lock
- * must be zero if you ever route a Spend through it. In the intended configuration
- * Spends run under policies whose own time lock is zero, and the Settings keeps its
- * time lock for settings changes only.
+ * Both routes are synchronous: one transaction, no proposal accounts, no rent.
+ *
+ * The two-signature route currently runs against the **Settings**, and synchronous
+ * execution rejects a non-zero time lock on whichever consensus account it is given.
+ * So this route only works on an Account whose Settings time lock is zero, which is
+ * **not** the configuration D3 calls for. The intended above-limit path is an
+ * above-limit policy carrying signers `[primary, approval]` at threshold 2 and its
+ * own zero time lock; that builder does not exist yet. Until it does, an Account
+ * with a Settings time lock can only spend under a spending limit.
  */
 export function buildSpend({
   addresses,

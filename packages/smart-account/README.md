@@ -52,6 +52,15 @@ The seed is racy: another creator can claim it between the read and the send. Tr
 
 ## Tests
 
-`npm test` covers address derivation and signer-set validation. It builds real instructions against the deployed program id but does not execute them.
+Unit tests cover address derivation, signer-set validation, and spend routing.
 
-The behaviour this package depends on **was** verified against real deployed bytecode in LiteSVM: threshold enforcement, a two-signature spend in one transaction, the settings time lock, and per-policy signer sets. Those results are recorded under "Runtime verification" in [the spec](../../docs/specs/account-security-model-decisions.md). Porting that harness in here is still to do.
+The integration suite runs the **real deployed program bytecode** in LiteSVM: Account creation, the settings time lock delaying and then releasing a change, per-policy signer sets, a one-signature spend under a limit, and the constraint that a time-locked Settings cannot carry spends at all.
+
+It needs fixtures, which are gitignored and fetched on demand:
+
+```sh
+node test/fixtures/fetch-program.mjs   # pulls the ELF and ProgramConfig off devnet
+npm test
+```
+
+Without them the integration suite **skips** rather than silently passing, so a fresh clone still runs the unit tests.

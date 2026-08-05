@@ -38,10 +38,11 @@
     "@sqds/smart-account": "file:vendor/sqds-smart-account-2.1.2-80bf1f7.tgz"
   },
   "devDependencies": {
+    "@types/node": "^22.15.3",
     "@xend/eslint-config": "*",
     "@xend/typescript-config": "*",
-    "@types/node": "^22.15.3",
     "eslint": "^9.39.1",
+    "litesvm": "^0.8.0",
     "tsdown": "^0.22.5",
     "typescript": "5.9.2",
     "vitest": "^4.1.10"

@@ -15,6 +15,17 @@ export {
 } from "./pda.js";
 
 export {
+  buildApproveSettingsChange,
+  buildCreateSpendingLimitPolicy,
+  buildExecuteSettingsChange,
+  buildRejectSettingsChange,
+  type CreateSpendingLimitPolicyParams,
+  type CreateSpendingLimitPolicyResult,
+  type LimitPeriod,
+  type SpendingLimitTerms,
+} from "./policy.js";
+
+export {
   buildSpend,
   resolveSpendRoute,
   type BuildSpendParams,
