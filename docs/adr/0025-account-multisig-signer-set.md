@@ -34,6 +34,9 @@ rule still holds: each vendor SDK is reached only through its own owned adapter.
 - A signer is a key holder **plus an unlock channel**. Splitting vendors defends
   against vendor compromise, which is rare. Splitting unlock channels defends
   against account takeover, which is what actually drains consumer wallets.
+- **Checkout is passkey-only.** Tapping "Pay with Xend" on a merchant page prompts the
+  passkey and nothing else: no app, no login, no OTP. This is the product, and it
+  determines S1's anchor rather than being determined by it.
 - A consumer has exactly three identity anchors: their email inbox, their platform
   account (Apple ID or Google), and physical possession of their phone. Everything
   else collapses into one of these, so the signer set gets one per anchor.
@@ -43,15 +46,15 @@ rule still holds: each vendor SDK is reached only through its own owned adapter.
 - Everyday **Spend** must stay one tap. A second factor on a $6 P2P send would
   destroy the product.
 - No seed phrases and no crypto vocabulary. Recovery has to be expressible as
-  "back up to iCloud" or "add a recovery email".
+  "enter your email".
 - There are no users yet, so every **Account** can be created in its final shape.
   No migration, no sweep, no address change to manage.
 
 ## Considered Options
 
-1. **Squads Smart Account Program, 2-of-3, one signer per identity anchor** - Privy,
-   Turnkey, and a platform-backed recovery signer, with policies carrying the
-   everyday UX.
+1. **Squads Smart Account Program, 2-of-3, one signer per identity anchor** - Privy
+   behind a passkey, Turnkey behind a phone hardware key, and an email-gated recovery
+   signer, with policies carrying the everyday UX.
 2. **Privy wallet MFA alone** - keep the single signer, gate every signature on a
    passkey MFA challenge.
 3. **Squads V4 multisig** - the same signer set on the older, more battle-tested
@@ -68,16 +71,25 @@ transaction.
 
 ### The signer set
 
-|             | S1                            | S2                                                  | S3                              |
-| ----------- | ----------------------------- | --------------------------------------------------- | ------------------------------- |
-| Anchor      | email inbox                   | physical possession                                 | platform account                |
-| Key holder  | Privy                         | Turnkey                                             | encrypted blob, platform-stored |
-| Unlock      | email OTP plus passkey MFA    | biometric-gated hardware key on the phone           | Apple ID or Google account      |
-| Permissions | `Initiate \| Vote \| Execute` | `Vote \| Execute`                                   | `Vote`                          |
-| Present     | every spend                   | above the spending limit, and every settings change | recovery only                   |
+|             | S1                            | S2                                                  | S3                                   |
+| ----------- | ----------------------------- | --------------------------------------------------- | ------------------------------------ |
+| Anchor      | platform account              | physical possession                                 | email inbox                          |
+| Key holder  | Privy                         | Turnkey                                             | Xend, encrypted and server-held      |
+| Unlock      | passkey, on its own           | biometric-gated hardware key on the phone           | proving control of the sign-up email |
+| Permissions | `Initiate \| Vote \| Execute` | `Vote \| Execute`                                   | `Vote`                               |
+| Present     | every spend                   | above the spending limit, and every settings change | recovery only                        |
 
 Threshold 2, `settings_authority` unset (autonomous, no admin override), non-zero
 `time_lock` on settings changes.
+
+The anchors follow from the product rather than from preference. "Pay with Xend" on a
+merchant page must prompt the passkey and nothing else, so the passkey alone completes
+S1 and S1's anchor is the platform account. S3 therefore cannot also live there, which
+is why it moved server-side behind an email check. That also fixes the
+iPhone-to-Android case, where a passkey and an iCloud blob would both be lost at once.
+
+Signup is passkey-first (`signupWithPasskey`), with the email collected on a later
+onboarding screen as simply "your email". One email, once.
 
 **Invariant:** no single compromise may yield `threshold` signers. Not one vendor,
 not one inbox, not one platform account, not one device.
@@ -95,8 +107,8 @@ account. This is used to scope authority per action:
 | Settings change, signer rotation | Settings                  | S1, S2, S3 | 2         |
 
 S3 therefore cannot move money on any path. Its authority is confined to changing
-the signer set, which is time-locked and notifiable. That is what makes a shared
-anchor between S1 and S3 survivable rather than fatal.
+the signer set, which is time-locked and notifiable. That is what keeps a compromise
+reaching both S1 and S3 to a survivable event rather than a drain.
 
 Policies are **required**, not an optimization. Runtime testing against the deployed
 bytecode established two things that force it:
@@ -134,6 +146,9 @@ one failing assumption are recorded in the spec.
   above the limit, though not everyday spends.
 - ⚠️ **Bad:** Above-limit spends on a laptop require the phone, because the
   possession factor lives there. This is deliberate but it is real friction.
+- ⚠️ **Bad:** Xend holds S3, encrypted and email-gated. Not pure self-custody. It is
+  the weakest of the three signers, cannot spend under any path, and cannot reach
+  threshold alone, but it is a custody claim we now have to stand behind.
 - ⚠️ **Bad:** S2 is unrecoverable in isolation by design, since Turnkey email auth
   and recovery are disabled. A lost phone burns it, making S3 load-bearing rather
   than decorative.

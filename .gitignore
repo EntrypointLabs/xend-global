@@ -53,3 +53,7 @@ ios**
 .trae
 
 .codex
+# LiteSVM fixtures, fetched on demand
+packages/smart-account/test/fixtures/program.so
+packages/smart-account/test/fixtures/program-config.json
+.gstack/
