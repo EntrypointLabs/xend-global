@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { ScrollView, View } from "react-native";
+import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -72,9 +72,11 @@ export function FeaturePreviewScreen({
       {/* Dark to the top edge, so the status bar's own glyphs must invert. */}
       <StatusBar style="light" />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
+      {/* Fixed rather than scrolling: the whole pitch is one screenful, and a
+          scroll indicator on a page with nothing below it invites a swipe that
+          goes nowhere. */}
+      <View
+        style={{
           paddingTop: insets.top + 8,
           paddingBottom: insets.bottom + 24,
           paddingHorizontal: 20,
@@ -157,7 +159,7 @@ export function FeaturePreviewScreen({
             </Typography>
           </View>
         </Reveal>
-      </ScrollView>
+      </View>
     </View>
   );
 }
