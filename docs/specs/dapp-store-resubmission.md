@@ -1,5 +1,35 @@
 # dApp Store resubmission
 
+## The listing's own screenshots are the likeliest cause
+
+`assets/dapp-store/preview-*.png` are the four images in the store listing, and
+they advertise more than the app can do. A reviewer compares those against the
+running app, which is exactly the check the rejection cites.
+
+| Advertised in a preview                                       | State in the app                                                          |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Investments, "Trade Crypto"                                   | Works. Swap ships live Socket quotes and executes                         |
+| Earn, "Up to 7.99% APY"                                       | No deposit path. The in-app figure is 4.93%, Kamino quotes 4.37%          |
+| Xend Card, Visa mark, "Get your free Card"                    | Does not exist. Opens a "Coming soon" screen                              |
+| "Get your Virtual Bank Account, Receive USD and EUR for USDC" | Does not exist                                                            |
+| Send "To bank account, Send USDC/EURC"                        | Raises "Fiat transfers are coming soon"                                   |
+| "Receive with Hide My Wallet" toggle                          | Rendered, not implemented                                                 |
+| Activity showing Blue Bottle, Whole Foods and Uber charges    | No merchant checkout in the app; only a Connected Merchants settings list |
+
+Four or five separately unverifiable features, each shown in a screenshot. The
+network mismatch below made the balance read zero on top of that, but even on
+mainnet a reviewer could not have verified the card, the bank account, the fiat
+send or the yield.
+
+The previews are also stale: they show Recent Activity on the home screen,
+a hardcoded "100%" delta and the older card subtitles, none of which the app
+still has.
+
+**The fix is the listing, not only the code.** Reshoot the previews against the
+current build and show only what a reviewer can operate today: balance, send,
+receive, activity, investments and swap. Anything unbuilt should not appear in a
+screenshot, however clearly the app labels it "coming soon" inside.
+
 ## Why the first submission was rejected
 
 > We could not verify one or more core features described in the listing. Please
