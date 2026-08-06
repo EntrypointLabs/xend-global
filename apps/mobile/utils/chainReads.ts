@@ -27,10 +27,12 @@ const TOKEN_2022_PROGRAM_ID = new PublicKey(
 );
 
 let cached: Connection | null = null;
-function rpc(): Connection {
+/** Shared client RPC. One connection, so callers do not each open their own. */
+export function getSolanaConnection(): Connection {
   cached ??= new Connection(SOLANA_RPC_URL, "confirmed");
   return cached;
 }
+const rpc = getSolanaConnection;
 
 interface ParsedTokenAccount {
   account: {

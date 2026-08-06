@@ -7,8 +7,12 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
 import { useBalances } from "@/hooks/useBalances";
+import { useSwapQuote } from "@/hooks/useSwapQuote";
+import { useExecuteSwap } from "@/hooks/useExecuteSwap";
+import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useToast } from "@/contexts/ToastContext";
 import { getUsdcMint } from "@/utils/cluster";
+import { formatRawAmount, WRAPPED_SOL_MINT } from "@/utils/swapQuote";
 import { cn } from "@/utils/cn";
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"];
@@ -21,7 +25,8 @@ interface SwapToken {
 
 const SOL: SwapToken = {
   symbol: "SOL",
-  mint: "So11111111111111111111111111111111111111112",
+  // Socket prices native SOL under the wrapped mint on Solana.
+  mint: WRAPPED_SOL_MINT,
   decimals: 9,
 };
 
@@ -36,6 +41,7 @@ export default function SwapScreen() {
   const router = useRouter();
   const { showToast } = useToast();
   const { tokens } = useBalances();
+  const address = useWalletAddress();
 
   const usdc: SwapToken = useMemo(
     () => ({ symbol: "USDC", mint: getUsdcMint(), decimals: 6 }),
@@ -52,7 +58,42 @@ export default function SwapScreen() {
     return Number(held.amountRaw) / 10 ** held.decimals;
   }, [tokens, payToken]);
 
-  const canReview = Number(amount) > 0 && Number(amount) <= payBalance;
+  const withinBalance = Number(amount) > 0 && Number(amount) <= payBalance;
+
+  const amountRaw = useMemo(() => {
+    const parsed = Number(amount);
+    if (!Number.isFinite(parsed) || parsed <= 0) return "0";
+    return BigInt(Math.round(parsed * 10 ** payToken.decimals)).toString();
+  }, [amount, payToken.decimals]);
+
+  const { quote, isLoading, error } = useSwapQuote({
+    inputMint: payToken.mint,
+    outputMint: receiveToken.mint,
+    amountRaw,
+    userAddress: address ?? null,
+    enabled: withinBalance,
+  });
+
+  const { execute, isExecuting } = useExecuteSwap();
+
+  const confirm = async () => {
+    if (!quote) return;
+    const outcome = await execute(quote);
+    if (outcome.status === "canceled") return;
+    if (outcome.status === "failed") {
+      showToast(outcome.message);
+      return;
+    }
+    router.replace({
+      pathname: "/success",
+      params: { signature: outcome.signature },
+    });
+  };
+
+  const receiveDisplay = quote
+    ? formatRawAmount(quote.outAmountRaw, receiveToken.decimals)
+    : "0";
+  const canReview = withinBalance && !!quote;
 
   const press = (key: string) => {
     if (key === "⌫") {
@@ -121,11 +162,33 @@ export default function SwapScreen() {
         <View className="flex-row items-center justify-between">
           <Typography
             weight="500"
-            className="text-[44px] tracking-[-1.2px] text-black/25"
+            className={cn(
+              "text-[44px] tracking-[-1.2px]",
+              quote ? "text-black" : "text-black/25"
+            )}
           >
-            0
+            {receiveDisplay}
           </Typography>
           <TokenPill token={receiveToken} />
+        </View>
+
+        <View className="mt-1 h-5 justify-center">
+          {error ? (
+            <Typography variant="body" className="text-destructive">
+              {error}
+            </Typography>
+          ) : isLoading ? (
+            <Typography variant="body" className="text-black/30">
+              Finding the best price…
+            </Typography>
+          ) : quote ? (
+            <Typography variant="body" className="text-black/30">
+              At least{" "}
+              {formatRawAmount(quote.minOutAmountRaw, receiveToken.decimals)}{" "}
+              {receiveToken.symbol}
+              {quote.provider ? ` · via ${quote.provider}` : ""}
+            </Typography>
+          ) : null}
         </View>
       </View>
 
@@ -150,16 +213,16 @@ export default function SwapScreen() {
 
       <HapticPressable
         accessibilityRole="button"
-        accessibilityLabel="Review swap"
-        disabled={!canReview}
-        onPress={() => showToast("Swap quotes open soon")}
+        accessibilityLabel="Confirm swap"
+        disabled={!canReview || isExecuting}
+        onPress={confirm}
         className={cn(
           "mb-2 mt-4 items-center rounded-full py-5",
-          canReview ? "bg-black" : "bg-black/40"
+          canReview && !isExecuting ? "bg-black" : "bg-black/40"
         )}
       >
         <Typography variant="title2" weight="600" className="text-white">
-          Review
+          {isExecuting ? "Confirming…" : "Swap"}
         </Typography>
       </HapticPressable>
 
