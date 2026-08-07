@@ -1,8 +1,8 @@
-import { View, ScrollView } from "react-native";
+import { View } from "react-native";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useMemo, useRef } from "react";
-import { ThemedText } from "@/components/ui/atoms";
 
 import { ActionCard, PromoBanner } from "@/components/ui/molecules";
 import { ScreenLayout } from "@/components/ui/layout";
@@ -10,15 +10,13 @@ import { SendModal } from "@/components/ui/organisms/modals/SendModal";
 import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
-import { useToast } from "@/contexts/ToastContext";
-import { TransactionList } from "@/components/ui/organisms/TransactionList";
+import { BalanceChart } from "@/components/ui/organisms/BalanceChart";
+import { useBalanceDelta, useBalanceHistory } from "@/hooks/useBalanceHistory";
+import { useEarnPosition } from "@/hooks/useEarn";
+import { getUsdcMint } from "@/utils/cluster";
 import { useBalances } from "@/hooks/useBalances";
 import { useTransfersInfinite } from "@/hooks/useTransfers";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
-import {
-  groupIntoSections,
-  mapTransferRowToActivityEntry,
-} from "@/utils/activity";
 import { useWalletName } from "@/hooks/useWalletName";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { useRouter } from "expo-router";
@@ -26,93 +24,126 @@ import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { SendFlowModal } from "@/components/ui/organisms/send/SendFlowModal";
 import BalanceView from "@/components/BalanceView";
+import { cn } from "@/utils/cn";
+import type { BalanceDelta } from "@/utils/balanceDelta";
+
+// Ionicons takes a colour value, not a class, so the tokens are resolved here.
+const SUCCESS = "#34C759";
+const DESTRUCTIVE = "#FF3B30";
+
+// The tab bar and the send button float over the content, anchored at
+// `insets.bottom + 8` from the screen edge and 50pt tall. ScreenLayout's
+// SafeAreaView has already inset the bottom, so only the part above that inset
+// is ours to clear; adding insets.bottom again double-counts it.
+const FLOATING_CHROME_HEIGHT = 8 + 50;
+// ScreenLayout's own p-5 already sits below this, so the measured gap to the
+// chrome is comfortably larger than this number suggests.
+const CHROME_GAP = 4;
+
+// The spacing the screen was drawn with, in points, before it was made
+// scalable: `mt-8` above the chart and `mb-6` below each block.
+const CHART_GAP_ABOVE = 28;
+const SECTION_GAP = 21;
 
 function HomeScreenContent() {
   const router = useRouter();
+  const { size, typeSize, compact } = useResponsiveLayout();
   const {
     showReceiveModal,
     isReceiveModalVisible,
     hideAllModals,
     isSendModalVisible,
   } = useModalFlow();
-  const { showToast } = useToast();
   const {
+    total,
     totalDisplay,
-    decimalsByMint,
+    tokens,
+    usdc,
     isError: isBalanceError,
     refetch: refetchBalances,
   } = useBalances();
-  const { data, isLoading } = useTransfersInfinite();
+  const { balance: earnBalance } = useEarnPosition();
+  const { isLoading } = useTransfersInfinite();
   const address = useWalletAddress();
   const { name: walletName } = useWalletName();
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
   const qrCodeModalRef = useRef<BottomSheetModal>(null);
 
+  const usdcMint = getUsdcMint();
+  const hasOtherAssets = tokens.some(
+    (t) => t.mint !== usdcMint && Number(t.amountRaw) > 0
+  );
+
   const actions = useMemo(
     () => [
       {
         title: "Cash",
-        subtitle: "Send and Receive",
+        subtitle: "Send and receive",
         icon: require("@/assets/icons/usdc.png"),
         onPress: () => router.push("/cash"),
         color: "#007AFF", // Blue
+        funded: usdc > 0,
       },
       {
         title: "Investments",
-        subtitle: "Trade Crypto",
+        subtitle: "Trade crypto",
         icon: require("@/assets/icons/investment.png"),
-        onPress: () => showToast("Coming soon"),
+        onPress: () => router.push("/investments"),
         color: "#FF9500", // Orange
+        funded: hasOtherAssets,
       },
       {
         title: "Earn",
-        subtitle: "Up to 7.99% APY",
+        subtitle: "Up to 4.93% APY",
         icon: require("@/assets/icons/earn.png"),
-        onPress: () => showToast("Coming soon"),
+        onPress: () => router.push("/earn"),
         color: "#AF52DE", // Purple
+        funded: earnBalance > 0,
       },
       {
         title: "Xend Card",
         subtitle: "Get your free Card",
         icon: require("@/assets/icons/card.png"),
-        onPress: () => showToast("Coming soon"),
+        onPress: () => router.push("/card?from=/(tabs)" as never),
         color: "#000000", // Black
+        funded: false,
       },
     ],
-    [showToast, router]
+    [router, usdc, hasOtherAssets, earnBalance]
   );
 
-  const rows = data?.pages.flatMap((page) => page.transfers) ?? [];
-  const entries = rows.slice(0, 8).map((row) =>
-    mapTransferRowToActivityEntry(row, {
-      selfAddress: address ?? "",
-      decimalsByMint,
-    })
-  );
-  const sections = groupIntoSections(entries);
+  const history = useBalanceHistory();
+  const delta = useBalanceDelta(history);
+  // The chart only earns its space once there is a balance to plot; a zero
+  // balance gets the call to action instead.
+  const hasBalance = total > 0;
 
   return (
     <ScreenLayout>
-      <ScrollView
-        contentContainerClassName="grow pb-[100px]"
-        showsVerticalScrollIndicator={false}
+      <View
+        className="flex-1"
+        style={{ paddingBottom: FLOATING_CHROME_HEIGHT + CHROME_GAP }}
       >
         <View>
           <TabHeaderText>{walletName}</TabHeaderText>
 
           <View>
-            <View className="flex-row items-center gap-2">
+            <View className="flex-row items-center gap-1.5">
               <Typography weight="500" className="text-sm text-black/30">
-                Total Balance{" "}
-                <Ionicons name="remove-circle" size={12} color="#999" /> 100%
+                Total Balance
               </Typography>
+              {delta && <BalanceDeltaBadge delta={delta} />}
             </View>
             {isBalanceError ? (
               <HapticPressable
                 className="flex-row items-center gap-1.5 self-start py-2"
                 onPress={() => refetchBalances()}
               >
-                <Typography weight="700" className="text-[40px] leading-[140%]">
+                <Typography
+                  weight="700"
+                  className="leading-[120%] tracking-[-1.1px]"
+                  style={{ fontSize: size(40) }}
+                >
                   ——
                 </Typography>
                 <View className="flex-row items-center gap-1 rounded-full bg-black/5 px-2.5 py-1">
@@ -125,38 +156,79 @@ function HomeScreenContent() {
             ) : (
               <BalanceView
                 weight="700"
-                className="text-[40px] leading-[140%]"
+                className="leading-[120%] tracking-[-1.1px]"
+                style={{ fontSize: size(40) }}
                 amount={totalDisplay}
               />
             )}
           </View>
+        </View>
 
-          {entries.length === 0 && !isLoading && (
-            <View className="items-center pb-6 pt-2">
-              <Typography weight="600" className="mb-2 text-center text-xl">
+        {hasBalance ? (
+          <BalanceChart
+            history={history}
+            style={{
+              marginTop: size(CHART_GAP_ABOVE),
+              marginBottom: size(SECTION_GAP),
+            }}
+          />
+        ) : (
+          !isLoading && (
+            <View
+              className="items-center"
+              style={{
+                paddingTop: size(20),
+                paddingBottom: size(8),
+                marginBottom: size(SECTION_GAP),
+              }}
+            >
+              <Typography
+                weight="600"
+                className="text-center"
+                style={{
+                  fontSize: typeSize(compact ? 17 : 19),
+                  marginBottom: compact ? 2 : size(6),
+                }}
+              >
                 There is nothing here yet
               </Typography>
               <Typography
                 weight="500"
-                className="mb-7 max-w-[250px] text-center text-sm text-black/30"
+                className="max-w-[250px] text-center text-black/30"
+                style={{
+                  fontSize: typeSize(14),
+                  marginBottom: compact ? 6 : size(14),
+                }}
               >
                 Deposit tokens to your address and start using Xend Wallet
               </Typography>
 
               <HapticPressable
-                className="flex-row items-center gap-0.5 rounded-full bg-black p-2.5 px-3"
+                className="flex-row items-center gap-0.5 rounded-full bg-black px-3"
+                style={{ paddingVertical: size(compact ? 8 : 10) }}
                 onPress={showReceiveModal}
               >
-                <Ionicons name="arrow-down-circle" size={18} color="white" />
-                <Typography weight="500" className="text-base text-white">
+                <Ionicons
+                  name="arrow-down-circle"
+                  size={size(18)}
+                  color="white"
+                />
+                <Typography
+                  weight="500"
+                  className="text-white"
+                  style={{ fontSize: typeSize(16) }}
+                >
                   Receive
                 </Typography>
               </HapticPressable>
             </View>
-          )}
-        </View>
+          )
+        )}
 
-        <View className="mb-6 flex-row flex-wrap justify-between">
+        <View
+          className="flex-row flex-wrap justify-between"
+          style={{ marginBottom: size(SECTION_GAP) }}
+        >
           {actions.map((action, index) => (
             <ActionCard
               key={index}
@@ -165,26 +237,23 @@ function HomeScreenContent() {
               icon={action.icon}
               onPress={action.onPress}
               iconBackgroundColor={action.color}
+              funded={action.funded}
             />
           ))}
         </View>
 
         <PromoBanner
-          title="Get your Virtual Bank Account"
-          description="Receive USD and EUR for USDC"
-          onPress={() => showToast("Virtual Bank Account coming soon!")}
+          title="Earn up to 4.93% APY"
+          description="Put USDC into Earn"
+          onPress={() => router.push("/earn")}
           onClose={() => {}}
         />
 
-        {entries.length > 0 && (
-          <View className="mt-6">
-            <ThemedText type="subtitle" className="mb-4">
-              Recent Activity
-            </ThemedText>
-            <TransactionList sections={sections} />
-          </View>
-        )}
-      </ScrollView>
+        {/* Every gap above is fixed, so the leftover height lands here. A taller
+            phone gets more room between the banner and the tab bar rather than
+            a void opening up mid-screen. */}
+        <View className="flex-1" />
+      </View>
       <SendModal
         visible={isSendModalVisible}
         onClose={hideAllModals}
@@ -204,6 +273,29 @@ function HomeScreenContent() {
 
       <QRCodeModal ref={qrCodeModalRef} walletAddress={address ?? ""} />
     </ScreenLayout>
+  );
+}
+
+function BalanceDeltaBadge({ delta }: { delta: BalanceDelta }) {
+  const flat = delta.fraction === 0;
+  const up = delta.fraction > 0;
+  return (
+    <View className="flex-row items-center gap-0.5">
+      <Ionicons
+        name={flat ? "remove-circle" : up ? "trending-up" : "trending-down"}
+        size={12}
+        color={flat ? "#999" : up ? SUCCESS : DESTRUCTIVE}
+      />
+      <Typography
+        weight="500"
+        className={cn(
+          "text-sm",
+          flat ? "text-black/30" : up ? "text-success" : "text-destructive"
+        )}
+      >
+        {delta.display}
+      </Typography>
+    </View>
   );
 }
 

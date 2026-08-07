@@ -18,12 +18,18 @@ interface ReceiveModalProps {
   visible: boolean;
   onClose: () => void;
   onOpenQRCode: () => void;
+  /**
+   * Hides the fiat option. Investments holds non-USDC assets, which a bank
+   * transfer cannot deliver, so offering fiat there would dead-end.
+   */
+  cryptoOnly?: boolean;
 }
 
 export function ReceiveModal({
   visible,
   onClose,
   onOpenQRCode,
+  cryptoOnly = false,
 }: ReceiveModalProps) {
   const { accountInfo } = useAuth();
   const { hideAllModals } = useModalFlow();
@@ -51,24 +57,27 @@ export function ReceiveModal({
     router.push("/bankdetails");
   };
 
-  const receiveOptions: ActionOption[] = [
-    {
-      key: "fiat",
-      title: "Fiat",
-      description: "Receive assets via bank Account",
-      icon: bankIcon,
-      onPress: handleReceiveFromBank,
-      disabled: isBankDisabled,
-    },
-    {
-      key: "crypto",
-      title: "Crypto",
-      description: "Receive assets via wallet address",
-      icon: walletIcon,
-      onPress: handleReceiveToWallet,
-      disabled: accountInfo?.smart_account_address === null,
-    },
-  ];
+  const fiatOption: ActionOption = {
+    key: "fiat",
+    title: "Fiat",
+    description: "Receive assets via bank Account",
+    icon: bankIcon,
+    onPress: handleReceiveFromBank,
+    disabled: isBankDisabled,
+  };
+
+  const cryptoOption: ActionOption = {
+    key: "crypto",
+    title: "Crypto",
+    description: "Receive assets via wallet address",
+    icon: walletIcon,
+    onPress: handleReceiveToWallet,
+    disabled: accountInfo?.smart_account_address === null,
+  };
+
+  const receiveOptions: ActionOption[] = cryptoOnly
+    ? [cryptoOption]
+    : [fiatOption, cryptoOption];
 
   return (
     <ActionModal visible={visible} onClose={onClose}>

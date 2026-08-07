@@ -9,9 +9,13 @@ export interface ActivityEntry {
   id: string;
   direction: "send" | "receive";
   status: "pending" | "confirmed" | "failed";
-  // A plain send/receive vs a settled merchant Payment. Lowercase, matching
-  // the backend transfer_kind wire literal.
-  kind: "transfer" | "payment";
+  // A plain send/receive, a settled merchant Payment, or a non-money account
+  // event. The first two are lowercase matching the backend transfer_kind wire
+  // literal; "security" is client-side only, since CONTEXT.md defines Activity
+  // as covering non-money events too.
+  kind: "transfer" | "payment" | "security";
+  /** Set only on `security` entries: what changed on the Account. */
+  securityLabel?: string;
   merchantName: string | null;
   mint: string;
   amountRaw: string;
@@ -105,6 +109,11 @@ export function groupIntoSections(entries: ActivityEntry[]): ActivitySection[] {
 
 /** Short human label for a row's status/direction. */
 export function statusLabel(entry: ActivityEntry): string {
+  // A security event has no direction and no amount, so its label is the
+  // change itself rather than a money verb.
+  if (entry.kind === "security") {
+    return entry.securityLabel ?? "Account updated";
+  }
   if (entry.kind === "payment") {
     if (entry.status === "pending") return "Paying…";
     if (entry.status === "failed") return "Failed";
@@ -113,4 +122,36 @@ export function statusLabel(entry: ActivityEntry): string {
   if (entry.status === "pending") return "Sending…";
   if (entry.status === "failed") return "Failed";
   return entry.direction === "send" ? "Sent" : "Received";
+}
+
+/**
+ * A non-money Account event, shaped as an Activity so it sits in the same feed.
+ *
+ * Adding a recovery key is the first of these: it changes who can reach the
+ * Account, which is exactly the kind of thing a Consumer should be able to find
+ * later, and burying it in settings would hide it.
+ */
+export function securityActivityEntry(params: {
+  id: string;
+  label: string;
+  at: string;
+  self: string;
+}): ActivityEntry {
+  return {
+    id: params.id,
+    direction: "receive",
+    status: "confirmed",
+    kind: "security",
+    securityLabel: params.label,
+    merchantName: null,
+    mint: "",
+    amountRaw: "0",
+    decimals: 0,
+    self: params.self,
+    counterparty: "",
+    signature: null,
+    memo: null,
+    createdAt: params.at,
+    confirmedAt: params.at,
+  };
 }

@@ -1,0 +1,63 @@
+# WARNING: .easignore REPLACES .gitignore for EAS uploads, it does not extend it.
+# Everything .gitignore excludes must be repeated here or it lands in the archive.
+# Omitting node_modules/android/ios once took the upload from 32 MB to 1.9 GB and
+# failed the build.
+
+node_modules
+.pnp
+.pnp.js
+.pnpm-store/
+.yarn/cache
+.yarn/install-state.gz
+
+.env*
+!.env.example
+!.env.*.example
+
+*.pem
+*.key
+*.jks
+*.keystore
+*.p8
+*.p12
+*.mobileprovision
+credentials.json
+
+coverage
+.turbo
+.expo/
+expo-env.d.ts
+web-build/
+.metro-health-check*
+.eas/
+.vercel
+.next/
+out/
+build
+dist
+*.tsbuildinfo
+*.ipa
+*.apk
+*.aab
+*.log
+.DS_Store
+Thumbs.db
+/drizzle
+android**
+ios**
+/app.json
+.claude
+.trae
+.codex
+.gstack/
+.idea/
+*.swp
+*.swo
+*.orig
+*.rej
+*.bak
+
+# Not in .gitignore, but must not reach the builder either.
+# packages/smart-account is a workspace member on another branch; its leftovers
+# here are node_modules and test fixtures only.
+packages/smart-account/

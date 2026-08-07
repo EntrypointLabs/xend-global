@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 import type { TransferRow } from "@/utils/apiClient";
 import {
+  securityActivityEntry,
   ActivityEntry,
   groupIntoSections,
   mapTransferRowToActivityEntry,
@@ -306,5 +307,35 @@ describe("balance selectors", () => {
     it("returns an empty object for undefined tokens", () => {
       expect(selectDecimalsByMint(undefined)).toEqual({});
     });
+  });
+});
+
+describe("security activity", () => {
+  const entry = securityActivityEntry({
+    id: "sec-1",
+    label: "Added Recovery Key",
+    at: "2026-08-05T10:00:00.000Z",
+    self: "SelfAddr",
+  });
+
+  it("labels itself with the change rather than a money verb", () => {
+    expect(statusLabel(entry)).toBe("Added Recovery Key");
+  });
+
+  it("falls back when no label is supplied", () => {
+    expect(statusLabel({ ...entry, securityLabel: undefined })).toBe(
+      "Account updated"
+    );
+  });
+
+  it("carries no amount, so it cannot be read as money moving", () => {
+    expect(entry.amountRaw).toBe("0");
+    expect(entry.mint).toBe("");
+  });
+
+  it("groups into the feed alongside transfers", () => {
+    const sections = groupIntoSections([entry]);
+    expect(sections).toHaveLength(1);
+    expect(sections[0]!.data[0]!.id).toBe("sec-1");
   });
 });

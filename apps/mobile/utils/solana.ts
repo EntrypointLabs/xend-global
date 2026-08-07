@@ -1,11 +1,7 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import { NameRegistryState, getDomainKeySync } from "@bonfida/spl-name-service";
 
-// RPC endpoint for SNS resolution. Read from the environment so it follows
-// the same devnet/mainnet toggle as the rest of the app and no provider API
-// key is embedded in the device bundle. Falls back to the public devnet RPC.
-const SOLANA_RPC_URL =
-  process.env.EXPO_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
+import { SOLANA_RPC_URL } from "@/utils/cluster";
 
 const connection = new Connection(SOLANA_RPC_URL);
 
