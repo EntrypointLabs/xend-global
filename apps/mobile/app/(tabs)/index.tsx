@@ -1,5 +1,5 @@
-import { View, ScrollView } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { View } from "react-native";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useMemo, useRef } from "react";
@@ -31,15 +31,23 @@ import type { BalanceDelta } from "@/utils/balanceDelta";
 const SUCCESS = "#34C759";
 const DESTRUCTIVE = "#FF3B30";
 
-// The tab bar and the send button float over the scroll view, anchored at
-// `insets.bottom + 8` and 50pt tall. Content has to clear them or the last card
-// sits underneath.
+// The tab bar and the send button float over the content, anchored at
+// `insets.bottom + 8` from the screen edge and 50pt tall. ScreenLayout's
+// SafeAreaView has already inset the bottom, so only the part above that inset
+// is ours to clear; adding insets.bottom again double-counts it.
 const FLOATING_CHROME_HEIGHT = 8 + 50;
-const CHROME_GAP = 20;
+// ScreenLayout's own p-5 already sits below this, so the measured gap to the
+// chrome is comfortably larger than this number suggests.
+const CHROME_GAP = 4;
+
+// The spacing the screen was drawn with, in points, before it was made
+// scalable: `mt-8` above the chart and `mb-6` below each block.
+const CHART_GAP_ABOVE = 28;
+const SECTION_GAP = 21;
 
 function HomeScreenContent() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const { size, typeSize, compact } = useResponsiveLayout();
   const {
     showReceiveModal,
     isReceiveModalVisible,
@@ -96,7 +104,7 @@ function HomeScreenContent() {
         title: "Xend Card",
         subtitle: "Get your free Card",
         icon: require("@/assets/icons/card.png"),
-        onPress: () => router.push("/card"),
+        onPress: () => router.push("/card?from=/(tabs)" as never),
         color: "#000000", // Black
         funded: false,
       },
@@ -112,12 +120,9 @@ function HomeScreenContent() {
 
   return (
     <ScreenLayout>
-      <ScrollView
-        contentContainerClassName="grow"
-        contentContainerStyle={{
-          paddingBottom: insets.bottom + FLOATING_CHROME_HEIGHT + CHROME_GAP,
-        }}
-        showsVerticalScrollIndicator={false}
+      <View
+        className="flex-1"
+        style={{ paddingBottom: FLOATING_CHROME_HEIGHT + CHROME_GAP }}
       >
         <View>
           <TabHeaderText>{walletName}</TabHeaderText>
@@ -136,7 +141,8 @@ function HomeScreenContent() {
               >
                 <Typography
                   weight="700"
-                  className="text-[40px] leading-[120%] tracking-[-1.1px]"
+                  className="leading-[120%] tracking-[-1.1px]"
+                  style={{ fontSize: size(40) }}
                 >
                   ——
                 </Typography>
@@ -150,42 +156,79 @@ function HomeScreenContent() {
             ) : (
               <BalanceView
                 weight="700"
-                className="text-[40px] leading-[120%] tracking-[-1.1px]"
+                className="leading-[120%] tracking-[-1.1px]"
+                style={{ fontSize: size(40) }}
                 amount={totalDisplay}
               />
             )}
           </View>
-
-          {hasBalance ? (
-            <BalanceChart history={history} className="mb-6 mt-8" />
-          ) : (
-            !isLoading && (
-              <View className="items-center pb-2 pt-5">
-                <Typography weight="600" className="mb-2 text-center text-xl">
-                  There is nothing here yet
-                </Typography>
-                <Typography
-                  weight="500"
-                  className="mb-5 max-w-[250px] text-center text-sm text-black/30"
-                >
-                  Deposit tokens to your address and start using Xend Wallet
-                </Typography>
-
-                <HapticPressable
-                  className="flex-row items-center gap-0.5 rounded-full bg-black p-2.5 px-3"
-                  onPress={showReceiveModal}
-                >
-                  <Ionicons name="arrow-down-circle" size={18} color="white" />
-                  <Typography weight="500" className="text-base text-white">
-                    Receive
-                  </Typography>
-                </HapticPressable>
-              </View>
-            )
-          )}
         </View>
 
-        <View className="mb-6 flex-row flex-wrap justify-between">
+        {hasBalance ? (
+          <BalanceChart
+            history={history}
+            style={{
+              marginTop: size(CHART_GAP_ABOVE),
+              marginBottom: size(SECTION_GAP),
+            }}
+          />
+        ) : (
+          !isLoading && (
+            <View
+              className="items-center"
+              style={{
+                paddingTop: size(20),
+                paddingBottom: size(8),
+                marginBottom: size(SECTION_GAP),
+              }}
+            >
+              <Typography
+                weight="600"
+                className="text-center"
+                style={{
+                  fontSize: typeSize(compact ? 17 : 19),
+                  marginBottom: compact ? 2 : size(6),
+                }}
+              >
+                There is nothing here yet
+              </Typography>
+              <Typography
+                weight="500"
+                className="max-w-[250px] text-center text-black/30"
+                style={{
+                  fontSize: typeSize(14),
+                  marginBottom: compact ? 6 : size(14),
+                }}
+              >
+                Deposit tokens to your address and start using Xend Wallet
+              </Typography>
+
+              <HapticPressable
+                className="flex-row items-center gap-0.5 rounded-full bg-black px-3"
+                style={{ paddingVertical: size(compact ? 8 : 10) }}
+                onPress={showReceiveModal}
+              >
+                <Ionicons
+                  name="arrow-down-circle"
+                  size={size(18)}
+                  color="white"
+                />
+                <Typography
+                  weight="500"
+                  className="text-white"
+                  style={{ fontSize: typeSize(16) }}
+                >
+                  Receive
+                </Typography>
+              </HapticPressable>
+            </View>
+          )
+        )}
+
+        <View
+          className="flex-row flex-wrap justify-between"
+          style={{ marginBottom: size(SECTION_GAP) }}
+        >
           {actions.map((action, index) => (
             <ActionCard
               key={index}
@@ -205,7 +248,12 @@ function HomeScreenContent() {
           onPress={() => router.push("/earn")}
           onClose={() => {}}
         />
-      </ScrollView>
+
+        {/* Every gap above is fixed, so the leftover height lands here. A taller
+            phone gets more room between the banner and the tab bar rather than
+            a void opening up mid-screen. */}
+        <View className="flex-1" />
+      </View>
       <SendModal
         visible={isSendModalVisible}
         onClose={hideAllModals}

@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from "react";
-import { View } from "react-native";
+import { StyleProp, View, ViewStyle } from "react-native";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { cn } from "@/utils/cn";
 
@@ -10,6 +11,10 @@ export type ChartRange = (typeof CHART_RANGES)[number];
 
 const BAR_COUNT = 44;
 const MIN_BAR_HEIGHT = 0.32;
+/** The `h-20` the plot was drawn at, in points, before it was made scalable. */
+const REFERENCE_PLOT_HEIGHT = 70;
+/** The `mt-4` between the plot and the range row. */
+const REFERENCE_RANGE_GAP = 14;
 
 export interface BalancePoint {
   /** Milliseconds since epoch. */
@@ -22,6 +27,7 @@ interface BalanceChartProps {
   /** Oldest first. Fewer than two points renders the flat resting state. */
   history: BalancePoint[];
   className?: string;
+  style?: StyleProp<ViewStyle>;
 }
 
 /**
@@ -34,7 +40,8 @@ interface BalanceChartProps {
  * a uniform resting height rather than inventing a trend. That is a real state,
  * not a skeleton: a wallet funded an hour ago genuinely has no history yet.
  */
-export function BalanceChart({ history, className }: BalanceChartProps) {
+export function BalanceChart({ history, className, style }: BalanceChartProps) {
+  const { size } = useResponsiveLayout();
   const [range, setRange] = useState<ChartRange>("1D");
   // Stable per mount: calling Date.now() inside the memo is an impure render.
   const [now] = useState(() => Date.now());
@@ -60,8 +67,11 @@ export function BalanceChart({ history, className }: BalanceChartProps) {
   }, [history, range, now]);
 
   return (
-    <View className={className}>
-      <View className="h-20 flex-row items-end justify-between">
+    <View className={className} style={style}>
+      <View
+        className="flex-row items-end justify-between"
+        style={{ height: size(REFERENCE_PLOT_HEIGHT) }}
+      >
         {(bars ?? Array.from({ length: BAR_COUNT }, () => null)).map(
           (height, i) => (
             <View
@@ -76,7 +86,10 @@ export function BalanceChart({ history, className }: BalanceChartProps) {
         )}
       </View>
 
-      <View className="mt-4 flex-row items-center justify-center gap-2">
+      <View
+        className="flex-row items-center justify-center gap-2"
+        style={{ marginTop: size(REFERENCE_RANGE_GAP) }}
+      >
         {CHART_RANGES.map((option) => {
           const active = option === range;
           return (

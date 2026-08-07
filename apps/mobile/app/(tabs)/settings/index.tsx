@@ -193,7 +193,9 @@ export default function SettingsScreen() {
                 activeOpacity={0.9}
                 accessibilityRole="button"
                 accessibilityLabel="Learn about Xend Plus"
-                onPress={() => router.push("/plus" as never)}
+                onPress={() =>
+                  router.push("/plus?from=/(tabs)/settings" as never)
+                }
               >
                 <View className="flex-row items-center">
                   <View className="mr-3 h-8 w-8 items-center justify-center">

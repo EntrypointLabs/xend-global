@@ -1,7 +1,7 @@
-import React, { useEffect } from "react";
-import { View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
@@ -66,17 +66,47 @@ export function FeaturePreviewScreen({
 }: FeaturePreviewScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { from } = useLocalSearchParams<{ from?: string }>();
+
+  // Measured rather than assumed: the layout fits at every normal text size,
+  // but an accessibility size overflows, and without a scroll the rows past the
+  // fold would be unreachable rather than merely cramped.
+  const [viewport, setViewport] = useState(0);
+  const [content, setContent] = useState(0);
+  const overflows = content > viewport;
+
+  /**
+   * The root layout is a Slot rather than a Stack, so going back unmounts the
+   * tab navigator and remounts it at its initial route. Returning to the tab
+   * that opened this screen therefore has to be explicit.
+   */
+  const close = () => {
+    if (from) {
+      router.replace(from as never);
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace("/(tabs)" as never);
+  };
 
   return (
     <View className="flex-1" style={{ backgroundColor: SCREEN_BLACK }}>
       {/* Dark to the top edge, so the status bar's own glyphs must invert. */}
       <StatusBar style="light" />
 
-      {/* Fixed rather than scrolling: the whole pitch is one screenful, and a
-          scroll indicator on a page with nothing below it invites a swipe that
-          goes nowhere. */}
-      <View
-        style={{
+      {/* Fixed at every normal text size: the whole pitch is one screenful, and
+          a scroll indicator on a page with nothing below it invites a swipe
+          that goes nowhere. Scrolling unlocks only once the content genuinely
+          does not fit. */}
+      <ScrollView
+        scrollEnabled={overflows}
+        showsVerticalScrollIndicator={overflows}
+        onLayout={(e) => setViewport(e.nativeEvent.layout.height)}
+        onContentSizeChange={(_, height) => setContent(height)}
+        contentContainerStyle={{
           paddingTop: insets.top + 8,
           paddingBottom: insets.bottom + 24,
           paddingHorizontal: 20,
@@ -86,7 +116,7 @@ export function FeaturePreviewScreen({
           <HapticPressable
             accessibilityRole="button"
             accessibilityLabel="Close"
-            onPress={() => router.back()}
+            onPress={close}
             className="h-9 w-9 items-center justify-center rounded-full bg-white/10"
           >
             <Ionicons name="close" size={20} color="#FFFFFFB3" />
@@ -159,7 +189,7 @@ export function FeaturePreviewScreen({
             </Typography>
           </View>
         </Reveal>
-      </View>
+      </ScrollView>
     </View>
   );
 }
