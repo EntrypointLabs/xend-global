@@ -238,6 +238,40 @@ export const recoverySigners = pgTable(
   ],
 );
 
+/**
+ * squads_accounts — the Consumer's Squads smart account (ADR 0025).
+ *
+ * Separate from smart_accounts, which describes the Privy embedded wallet.
+ * The two coexist: Privy remains the primary signer, and its wallet is also
+ * what the pre-multisig balances sit in until they are swept across.
+ */
+export const squadsAccounts = pgTable('squads_accounts', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => createId()),
+  userId: text('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id),
+  /**
+   * Assigned by the program's global counter at creation, not derived.
+   * An Account address cannot be recomputed from its signer set, so losing
+   * this column loses the ability to re-derive the addresses below.
+   */
+  settingsSeed: bigint('settings_seed', { mode: 'bigint' }).notNull(),
+  /** Holds the signer set and threshold. Never holds money. */
+  settingsAddress: text('settings_address').notNull().unique(),
+  /** Where the money lives. This is the Consumer's address everywhere. */
+  vaultAddress: text('vault_address').notNull().unique(),
+  /** S1, the Privy embedded wallet. Present on every spend. */
+  primarySigner: text('primary_signer').notNull(),
+  /** S2, the Turnkey sub-organization's Solana address. */
+  approvalSigner: text('approval_signer').notNull(),
+  approvalSubOrgId: text('approval_sub_org_id').notNull().unique(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export const transfers = pgTable(
   'transfers',
   {

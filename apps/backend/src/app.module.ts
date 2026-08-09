@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { AccountModule } from './account/account.module';
+import { RecoveryModule } from './recovery/recovery.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule } from './config/config.module';
@@ -48,6 +50,8 @@ import { TestDashboardModule } from './test-dashboard/test-dashboard.module';
     WebhookModule,
     ConsoleModule,
     TestDashboardModule,
+    RecoveryModule,
+    AccountModule,
   ],
   controllers: [AppController],
   providers: [AppService],

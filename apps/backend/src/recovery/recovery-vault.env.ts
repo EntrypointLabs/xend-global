@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import type { RecoveryVault, SealedKey } from './recovery-vault.interface';
@@ -15,13 +15,20 @@ const KEY_ID = 'env-v1';
  * than a rewrite.
  */
 @Injectable()
-export class EnvRecoveryVault implements RecoveryVault, OnModuleInit {
+export class EnvRecoveryVault implements RecoveryVault {
   private readonly logger = new Logger(EnvRecoveryVault.name);
-  private key!: Buffer;
+  private cached?: Buffer;
 
   constructor(private readonly config: ConfigService) {}
 
-  onModuleInit(): void {
+  /**
+   * Resolved on first seal or open rather than at module init, so a deployment
+   * without a vault key boots and serves every other route. Recovery is the
+   * only thing that fails, and it fails where it is called.
+   */
+  private get key(): Buffer {
+    if (this.cached) return this.cached;
+
     const raw = this.config.getOrThrow<string>('RECOVERY_VAULT_KEY');
     const key = Buffer.from(raw, 'base64');
     if (key.length !== 32) {
@@ -29,9 +36,10 @@ export class EnvRecoveryVault implements RecoveryVault, OnModuleInit {
         `RECOVERY_VAULT_KEY must decode to 32 bytes, got ${key.length}`,
       );
     }
-    this.key = key;
+    this.cached = key;
     // Log readiness only. NEVER log the key or any sealed payload.
     this.logger.log(`recovery.vault.ready keyId=${KEY_ID}`);
+    return key;
   }
 
   seal(secretKey: Uint8Array): Promise<SealedKey> {
