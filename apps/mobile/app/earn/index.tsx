@@ -4,6 +4,8 @@ import { Image, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
+import { EARN_DEPOSITS_ENABLED } from "@/constants/Features";
+import { cn } from "@/utils/cn";
 import BalanceView from "@/components/BalanceView";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
@@ -133,8 +135,14 @@ export default function EarnScreen() {
           <HapticPressable
             accessibilityRole="button"
             accessibilityLabel="Deposit into Earn"
-            onPress={showReceiveModal}
-            className="flex-row items-center gap-2"
+            // Opening Receive would fund the wallet, not the position, which
+            // is not what a control labelled Deposit promises.
+            disabled={!EARN_DEPOSITS_ENABLED}
+            onPress={EARN_DEPOSITS_ENABLED ? showReceiveModal : () => {}}
+            className={cn(
+              "flex-row items-center gap-2",
+              !EARN_DEPOSITS_ENABLED && "opacity-30"
+            )}
           >
             <Ionicons name="add" size={18} color="#000" />
             <Typography variant="body" weight="600">
