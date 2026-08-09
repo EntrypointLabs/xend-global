@@ -13,11 +13,12 @@ import {
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
+  SystemProgram,
   TransactionMessage,
   VersionedTransaction,
   type TransactionInstruction,
 } from "@solana/web3.js";
-import { accounts } from "@sqds/smart-account";
+import { accounts, instructions, utils } from "@sqds/smart-account";
 import { LiteSVM } from "litesvm";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -166,9 +167,45 @@ function spend(
   return buildSpend({
     addresses: h.addresses,
     request: { mint: SOL, amount, destination },
-    route: { kind: "two-signature", reason: "no-spending-limit" },
+    route: {
+      kind: "two-signature",
+      reason: "no-spending-limit",
+      policy: h.abovePolicy,
+    },
     signers,
     decimals: 9,
+  });
+}
+
+/**
+ * The same Spend routed through the Settings rather than the above-limit
+ * policy. Only used to demonstrate what the policy route prevents.
+ */
+function spendViaSettings(
+  h: Harness,
+  signers: PublicKey[],
+  destination: PublicKey,
+  amount: bigint,
+): TransactionInstruction {
+  // Built against the SDK directly rather than through buildSpend, which no
+  // longer offers this route. Kept so the two findings that ruled it out stay
+  // demonstrated against the real program.
+  const transfer = SystemProgram.transfer({
+    fromPubkey: h.addresses.vault,
+    toPubkey: destination,
+    lamports: Number(amount),
+  });
+  const compiled = utils.instructionsToSynchronousTransactionDetails({
+    vaultPda: h.addresses.vault,
+    members: signers,
+    transaction_instructions: [transfer],
+  });
+  return instructions.executeTransactionSync({
+    settingsPda: h.addresses.settings,
+    accountIndex: 0,
+    numSigners: signers.length,
+    instructions: compiled.instructions,
+    instruction_accounts: compiled.accounts,
   });
 }
 
@@ -259,15 +296,19 @@ describe.skipIf(!HAVE_FIXTURES)("against deployed bytecode", () => {
     const destination = Keypair.generate().publicKey;
     const amount = BigInt(LAMPORTS_PER_SOL);
 
-    const route = resolveSpendRoute({ mint: SOL, amount, destination }, [
-      {
-        policy: h.policy,
-        mint: SOL,
-        maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
-        remainingInPeriod: BigInt(5 * LAMPORTS_PER_SOL),
-        destinations: [],
-      },
-    ]);
+    const route = resolveSpendRoute(
+      { mint: SOL, amount, destination },
+      [
+        {
+          policy: h.policy,
+          mint: SOL,
+          maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
+          remainingInPeriod: BigInt(5 * LAMPORTS_PER_SOL),
+          destinations: [],
+        },
+      ],
+      h.abovePolicy,
+    );
     expect(route.kind).toBe("spending-limit");
 
     const instruction = buildSpend({
@@ -312,11 +353,11 @@ describe.skipIf(!HAVE_FIXTURES)("against deployed bytecode", () => {
   });
 
   it("cannot spend through the Settings while it carries a time lock", () => {
-    // Synchronous execution requires the consensus account's time lock to be zero,
-    // so a time-locked Settings cannot carry Spends at all. Executing under the
-    // above-limit policy instead is the intended path and is not wired yet.
+    // Synchronous execution requires the consensus account's time lock to be
+    // zero, so a time-locked Settings cannot carry Spends at all. This is why
+    // the two-signature route runs under the above-limit policy instead.
     const destination = Keypair.generate().publicKey;
-    const instruction = spend(
+    const instruction = spendViaSettings(
       h,
       [h.primary.publicKey, h.approval.publicKey],
       destination,
@@ -336,7 +377,7 @@ describe.skipIf(!HAVE_FIXTURES)("against deployed bytecode", () => {
     // optimisation, pinned here so a program change would surface as a failure.
     const open = setUp({ timeLockSeconds: 0 });
     const destination = Keypair.generate().publicKey;
-    const instruction = spend(
+    const instruction = spendViaSettings(
       open,
       [open.primary.publicKey, open.recovery.publicKey],
       destination,
@@ -354,5 +395,41 @@ describe.skipIf(!HAVE_FIXTURES)("against deployed bytecode", () => {
       ),
     ).toBe(false);
     expect(open.svm.getBalance(destination)).toBe(BigInt(LAMPORTS_PER_SOL));
+  });
+
+  it("spends above the limit with two signatures while the Settings is time-locked", () => {
+    // The whole point of routing through the above-limit policy. Through the
+    // Settings this same Spend is rejected with TimeLockNotZero, which would
+    // leave a correctly configured Account unable to spend above its limit at
+    // all.
+    const destination = Keypair.generate().publicKey;
+    const instruction = spend(
+      h,
+      [h.primary.publicKey, h.approval.publicKey],
+      destination,
+      BigInt(3 * LAMPORTS_PER_SOL),
+    );
+
+    expect(
+      failed(send(h.svm, h.primary, [instruction], [h.primary, h.approval])),
+    ).toBe(false);
+    expect(h.svm.getBalance(destination)).toBe(BigInt(3 * LAMPORTS_PER_SOL));
+  });
+
+  it("keeps the recovery signer out of the above-limit route", () => {
+    // The policy carries its own signer set of [primary, approval], which is
+    // what actually keeps S3 away from funds. Permissions alone do not.
+    const destination = Keypair.generate().publicKey;
+    const instruction = spend(
+      h,
+      [h.primary.publicKey, h.recovery.publicKey],
+      destination,
+      BigInt(LAMPORTS_PER_SOL),
+    );
+
+    expect(
+      failed(send(h.svm, h.primary, [instruction], [h.primary, h.recovery])),
+    ).toBe(true);
+    expect(h.svm.getBalance(destination)).toBeNull();
   });
 });

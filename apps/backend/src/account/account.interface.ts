@@ -52,3 +52,42 @@ export interface SquadsAccountStore {
   findByUserId(userId: string): Promise<SquadsAccountRow | null>;
   insert(row: SquadsAccountRow): Promise<SquadsAccountRow>;
 }
+
+export const SPEND_CHAIN = Symbol('SPEND_CHAIN');
+
+/**
+ * Policy seeds, fixed per Account so both policies are derivable from the
+ * settings seed alone. Changing either orphans every Account already created
+ * under the old value, so they are constants rather than configuration.
+ */
+export const SPENDING_LIMIT_POLICY_SEED = 1n;
+export const ABOVE_LIMIT_POLICY_SEED = 2n;
+
+export interface UnsignedSpend {
+  /** Base64 wire transaction, unsigned. */
+  unsignedTxBase64: string;
+  /** Base64 compiled message, so a caller can pin what it signed. */
+  messageBase64: string;
+  route: 'spending-limit' | 'two-signature';
+  /** True when S2 must also sign, i.e. no spending limit admits the Spend. */
+  needsApprovalSignature: boolean;
+}
+
+export interface SpendChain {
+  /**
+   * Spending limits currently attached to the Account.
+   *
+   * An empty list is a valid answer and means every Spend takes the
+   * two-signature route. It must never be inferred from a failed read: a read
+   * error has to throw, or a transient RPC failure would silently downgrade
+   * the route decision to "no limits" and change how the Spend is authorised.
+   */
+  readSpendingLimits(): Promise<
+    readonly import('@xend/smart-account').SpendingLimit[]
+  >;
+
+  compile(params: {
+    instruction: import('@solana/web3.js').TransactionInstruction;
+    feePayer: import('@solana/web3.js').PublicKey;
+  }): Promise<{ unsignedTxBase64: string; messageBase64: string }>;
+}

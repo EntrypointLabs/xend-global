@@ -29,8 +29,14 @@ export interface SpendingLimit {
 export type SpendRoute =
   /** One signature from the primary signer, executed under the limit's policy. */
   | { kind: "spending-limit"; policy: PublicKey }
-  /** Two signatures, primary plus approval. Always available. */
-  | { kind: "two-signature"; reason: TwoSignatureReason };
+  /**
+   * Two signatures, primary plus approval, executed under the above-limit
+   * policy. The policy rather than the Settings, because synchronous execution
+   * rejects a non-zero time lock on its consensus account and D3 puts a 24-hour
+   * lock on the Settings. Routing this through the Settings makes every
+   * above-limit Spend impossible on a correctly configured Account.
+   */
+  | { kind: "two-signature"; reason: TwoSignatureReason; policy: PublicKey };
 
 export type TwoSignatureReason =
   | "no-spending-limit"
@@ -56,9 +62,16 @@ export interface SpendRequest {
 export function resolveSpendRoute(
   request: SpendRequest,
   limits: readonly SpendingLimit[],
+  aboveLimitPolicy: PublicKey,
 ): SpendRoute {
+  const twoSignature = (reason: TwoSignatureReason): SpendRoute => ({
+    kind: "two-signature",
+    reason,
+    policy: aboveLimitPolicy,
+  });
+
   if (limits.length === 0) {
-    return { kind: "two-signature", reason: "no-spending-limit" };
+    return twoSignature("no-spending-limit");
   }
 
   let closestReason: TwoSignatureReason = "different-mint";
@@ -84,7 +97,7 @@ export function resolveSpendRoute(
     return { kind: "spending-limit", policy: limit.policy };
   }
 
-  return { kind: "two-signature", reason: closestReason };
+  return twoSignature(closestReason);
 }
 
 export interface BuildSpendParams {
@@ -102,13 +115,12 @@ export interface BuildSpendParams {
  *
  * Both routes are synchronous: one transaction, no proposal accounts, no rent.
  *
- * The two-signature route currently runs against the **Settings**, and synchronous
- * execution rejects a non-zero time lock on whichever consensus account it is given.
- * So this route only works on an Account whose Settings time lock is zero, which is
- * **not** the configuration D3 calls for. The intended above-limit path is an
- * above-limit policy carrying signers `[primary, approval]` at threshold 2 and its
- * own zero time lock; that builder does not exist yet. Until it does, an Account
- * with a Settings time lock can only spend under a spending limit.
+ * Both routes execute under a policy, never under the Settings. Synchronous
+ * execution rejects a non-zero time lock on its consensus account, and D3 puts a
+ * 24-hour lock on the Settings, so a Settings-routed Spend cannot execute at all on
+ * a correctly configured Account. The above-limit policy carries `[primary,
+ * approval]` at threshold 2 with its own zero time lock, which is what makes the
+ * two-signature route work alongside a time-locked Settings.
  */
 export function buildSpend({
   addresses,
@@ -160,17 +172,47 @@ export function buildSpend({
     toPubkey: request.destination,
     lamports: Number(request.amount),
   });
+  // Compiled with no members, so the account indices start at the message
+  // accounts. The program strips the first `numSigners` remaining accounts
+  // before reading the message, so indices that counted the signers point past
+  // the end of what it sees and fail as InvalidTransactionMessage (6007).
   const compiled = utils.instructionsToSynchronousTransactionDetails({
     vaultPda: addresses.vault,
-    members: signers,
+    members: [],
     transaction_instructions: [transfer],
   });
+  const signerAccounts = signers.map((pubkey) => ({
+    pubkey,
+    isSigner: true,
+    isWritable: false,
+  }));
 
-  return instructions.executeTransactionSync({
-    settingsPda: addresses.settings,
+  // A ProgramInteraction policy takes a payload, not a raw transaction. Handing
+  // it one fails with ProgramInteractionAsyncPayloadNotAllowedWithSyncTransaction
+  // (6061), and routing it through the Settings instead fails the
+  // consensus_account constraint (2003) as soon as the Settings carries a time
+  // lock. The payload form is the only shape that executes.
+  return instructions.executePolicyPayloadSync({
+    policy: route.policy,
     accountIndex: PRIMARY_ACCOUNT_INDEX,
     numSigners: signers.length,
-    instructions: compiled.instructions,
-    instruction_accounts: compiled.accounts,
+    policyPayload: {
+      __kind: "ProgramInteraction",
+      fields: [
+        {
+          instructionConstraintIndices: null,
+          transactionPayload: {
+            __kind: "SyncTransaction",
+            fields: [
+              {
+                accountIndex: PRIMARY_ACCOUNT_INDEX,
+                instructions: compiled.instructions,
+              },
+            ],
+          },
+        },
+      ],
+    },
+    instruction_accounts: [...signerAccounts, ...compiled.accounts],
   });
 }

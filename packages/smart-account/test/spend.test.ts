@@ -11,6 +11,7 @@ import {
 const USDC = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
 const OTHER_MINT = Keypair.generate().publicKey;
 const addresses = deriveAccountAddresses(1n);
+const ABOVE_POLICY = Keypair.generate().publicKey;
 
 const limit = (over: Partial<SpendingLimit> = {}): SpendingLimit => ({
   policy: Keypair.generate().publicKey,
@@ -32,35 +33,44 @@ const request = (
 
 describe("resolveSpendRoute", () => {
   it("routes to two signatures when the Account has no spending limit", () => {
-    expect(resolveSpendRoute(request(1_000_000n), [])).toEqual({
+    expect(resolveSpendRoute(request(1_000_000n), [], ABOVE_POLICY)).toEqual({
       kind: "two-signature",
       reason: "no-spending-limit",
+      policy: ABOVE_POLICY,
     });
   });
 
   it("routes to one signature when a limit admits the spend", () => {
     const l = limit();
-    expect(resolveSpendRoute(request(1_000_000n), [l])).toEqual({
+    expect(resolveSpendRoute(request(1_000_000n), [l], ABOVE_POLICY)).toEqual({
       kind: "spending-limit",
       policy: l.policy,
     });
   });
 
   it("falls back to two signatures above the per-use cap", () => {
-    const route = resolveSpendRoute(request(200_000_000n), [limit()]);
+    const route = resolveSpendRoute(
+      request(200_000_000n),
+      [limit()],
+      ABOVE_POLICY,
+    );
     expect(route).toEqual({
       kind: "two-signature",
       reason: "exceeds-per-use",
+      policy: ABOVE_POLICY,
     });
   });
 
   it("falls back to two signatures when the period is spent", () => {
-    const route = resolveSpendRoute(request(50_000_000n), [
-      limit({ remainingInPeriod: 10_000_000n }),
-    ]);
+    const route = resolveSpendRoute(
+      request(50_000_000n),
+      [limit({ remainingInPeriod: 10_000_000n })],
+      ABOVE_POLICY,
+    );
     expect(route).toEqual({
       kind: "two-signature",
       reason: "exceeds-remaining",
+      policy: ABOVE_POLICY,
     });
   });
 
@@ -72,27 +82,37 @@ describe("resolveSpendRoute", () => {
         destination: Keypair.generate().publicKey,
       },
       [limit()],
+      ABOVE_POLICY,
     );
-    expect(route).toEqual({ kind: "two-signature", reason: "different-mint" });
+    expect(route).toEqual({
+      kind: "two-signature",
+      reason: "different-mint",
+      policy: ABOVE_POLICY,
+    });
   });
 
   it("honours a destination allowlist", () => {
     const allowed = Keypair.generate().publicKey;
     const l = limit({ destinations: [allowed] });
 
-    expect(resolveSpendRoute(request(1n, allowed), [l])).toEqual({
+    expect(resolveSpendRoute(request(1n, allowed), [l], ABOVE_POLICY)).toEqual({
       kind: "spending-limit",
       policy: l.policy,
     });
-    expect(resolveSpendRoute(request(1n), [l])).toEqual({
+    expect(resolveSpendRoute(request(1n), [l], ABOVE_POLICY)).toEqual({
       kind: "two-signature",
       reason: "destination-not-allowed",
+      policy: ABOVE_POLICY,
     });
   });
 
   it("picks the limit that admits the spend when several exist", () => {
     const usable = limit({ maxPerUse: 500_000_000n });
-    const route = resolveSpendRoute(request(200_000_000n), [limit(), usable]);
+    const route = resolveSpendRoute(
+      request(200_000_000n),
+      [limit(), usable],
+      ABOVE_POLICY,
+    );
     expect(route).toEqual({ kind: "spending-limit", policy: usable.policy });
   });
 });
@@ -122,11 +142,15 @@ describe("buildSpend", () => {
     expect(ix.keys.filter((k) => k.isSigner)).toHaveLength(1);
   });
 
-  it("builds a two-signature spend against the settings", () => {
+  it("builds a two-signature spend against the above-limit policy", () => {
     const ix = buildSpend({
       addresses,
       request: { mint: USDC, amount: 1_000_000n, destination: dest },
-      route: { kind: "two-signature", reason: "no-spending-limit" },
+      route: {
+        kind: "two-signature",
+        reason: "no-spending-limit",
+        policy: ABOVE_POLICY,
+      },
       signers: [primary, approval],
       decimals: 6,
     });
@@ -155,7 +179,11 @@ describe("buildSpend", () => {
       buildSpend({
         addresses,
         request: { mint: USDC, amount: 1n, destination: dest },
-        route: { kind: "two-signature", reason: "no-spending-limit" },
+        route: {
+          kind: "two-signature",
+          reason: "no-spending-limit",
+          policy: ABOVE_POLICY,
+        },
         signers: [primary],
         decimals: 6,
       }),
