@@ -107,6 +107,10 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
           onChange={handleSheetChanges}
           backdropComponent={renderBackdrop}
           enablePanDownToClose={true}
+          // The sheet keeps its full height while the keyboard is up. Letting it
+          // shrink collapses the amount step's flexible middle to nothing, and
+          // the height does not come back when the keyboard goes away.
+          keyboardBehavior="extend"
           keyboardBlurBehavior="restore"
           android_keyboardInputMode="adjustResize"
           handleIndicatorStyle={{ display: "none" }}
