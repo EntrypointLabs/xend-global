@@ -38,6 +38,10 @@ import * as Joi from 'joi';
           .uri()
           .default('https://api.turnkey.com'),
 
+        // Seals the recovery signer's secret (S3). Optional for the same
+        // reason as the Turnkey keys: recovery fails at the call, not at boot.
+        RECOVERY_VAULT_KEY: Joi.string().optional().allow(''),
+
         // Solana RPC — Helius primary, public-devnet fallback. Keep this on
         // the same cluster as HELIUS_RPC_URL to avoid cross-cluster reads.
         HELIUS_API_KEY: Joi.string().required(),
