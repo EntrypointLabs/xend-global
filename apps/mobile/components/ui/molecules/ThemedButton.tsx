@@ -7,7 +7,7 @@ import { cn } from "@/utils/cn";
 interface ThemedButtonProps {
   onPress: () => void;
   title: string;
-  variant?: "primary" | "secondary" | "outline";
+  variant?: "primary" | "secondary" | "outline" | "quiet";
   style?: ViewStyle;
   textStyle?: TextStyle;
   disabled?: boolean;
@@ -15,16 +15,23 @@ interface ThemedButtonProps {
   iconRight?: React.ReactNode;
 }
 
+/**
+ * Named against a dark surface: `primary` is the white pill that stands out on
+ * one, which makes it invisible on a light screen. `quiet` is the low-emphasis
+ * option for light surfaces, where `secondary` is what reads as the main action.
+ */
 const variantBg: Record<NonNullable<ThemedButtonProps["variant"]>, string> = {
   primary: "bg-white border-white",
   secondary: "bg-black border-black",
   outline: "bg-white/20 border border-white/20",
+  quiet: "bg-black/5 border-black/5",
 };
 
 const variantText: Record<NonNullable<ThemedButtonProps["variant"]>, string> = {
   primary: "text-black",
   secondary: "text-white",
   outline: "text-white",
+  quiet: "text-black",
 };
 
 export function ThemedButton({

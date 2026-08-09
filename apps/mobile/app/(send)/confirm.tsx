@@ -264,14 +264,16 @@ export default function ConfirmScreen() {
               <ThemedText type="jumbo">{formatAmount({ amount })}</ThemedText>
             </View>
             {renderInfo("arrow.forward", "To", recipient)}
-            {renderInfo("person", "Name", name)}
+            {/* A recipient picked from recents carries no name; an empty row
+                reads as a field that failed to load. */}
+            {name ? renderInfo("person", "Name", name) : null}
           </View>
 
           <ButtonGroup
             leftTitle="Cancel"
-            leftVariant="secondary"
+            leftVariant="quiet"
             rightTitle="Confirm"
-            rightVariant="primary"
+            rightVariant="secondary"
             leftOnPress={handleCancel}
             rightOnPress={handleConfirm}
           />

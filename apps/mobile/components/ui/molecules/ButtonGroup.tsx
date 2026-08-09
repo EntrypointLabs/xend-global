@@ -8,8 +8,8 @@ interface ButtonGroupProps {
   leftOnPress: () => void;
   rightTitle: string;
   rightOnPress: () => void;
-  leftVariant?: "primary" | "secondary" | "outline";
-  rightVariant?: "primary" | "secondary" | "outline";
+  leftVariant?: "primary" | "secondary" | "outline" | "quiet";
+  rightVariant?: "primary" | "secondary" | "outline" | "quiet";
   className?: string;
   style?: StyleProp<ViewStyle>;
 }
