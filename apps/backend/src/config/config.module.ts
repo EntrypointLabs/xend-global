@@ -24,6 +24,20 @@ import * as Joi from 'joi';
         // round-trip and to make verification offline-deterministic.
         PRIVY_VERIFICATION_KEY: Joi.string().optional().allow(''),
 
+        // Turnkey — holds the approval signer (S2 in ADR 0025). Optional so a
+        // deployment without a Turnkey organization still boots; enrolment is
+        // the only thing that needs them, and it fails at the call site.
+        //   TURNKEY_DELEGATED_PUBLIC_KEY is the backend's P-256 key. It is a
+        //   root user only during enrolment and is narrowed out of the quorum
+        //   before the sub-org is returned. See O6.
+        TURNKEY_ORGANIZATION_ID: Joi.string().optional().allow(''),
+        TURNKEY_API_PUBLIC_KEY: Joi.string().optional().allow(''),
+        TURNKEY_API_PRIVATE_KEY: Joi.string().optional().allow(''),
+        TURNKEY_DELEGATED_PUBLIC_KEY: Joi.string().optional().allow(''),
+        TURNKEY_API_BASE_URL: Joi.string()
+          .uri()
+          .default('https://api.turnkey.com'),
+
         // Solana RPC — Helius primary, public-devnet fallback. Keep this on
         // the same cluster as HELIUS_RPC_URL to avoid cross-cluster reads.
         HELIUS_API_KEY: Joi.string().required(),
