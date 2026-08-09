@@ -23,6 +23,7 @@ import {
   IncompleteSignerSetError,
 } from './account.errors';
 import { AccountService } from './account.service';
+import { SweepService } from './sweep.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { EnrolAccountSchema, type EnrolAccountDto } from './dtos';
 
@@ -36,7 +37,19 @@ export class AccountController {
   constructor(
     private readonly accounts: AccountService,
     private readonly attestation: AttestationService,
+    private readonly sweep: SweepService,
   ) {}
+
+  /**
+   * What is still sitting in the Privy wallet after enrolment.
+   *
+   * A plan only. The transfer is signed by Privy on the device, so the backend
+   * cannot move these funds and deliberately has no way to.
+   */
+  @Get('sweep')
+  getSweepPlan(@Req() req: AuthenticatedRequest) {
+    return this.sweep.plan(req.user.userId);
+  }
 
   /**
    * The challenge the device attests over. Issued per attempt, single use, and

@@ -76,6 +76,19 @@ export const EnrolAccountResponseSchema = z.object({
 });
 export type EnrolAccountResponse = z.infer<typeof EnrolAccountResponseSchema>;
 
+export const SweepPlanSchema = z.object({
+  needed: z.boolean(),
+  destination: z.string().optional(),
+  balances: z.array(
+    z.object({
+      mint: z.string(),
+      amountRaw: z.string(),
+      decimals: z.number().int(),
+    })
+  ),
+});
+export type SweepPlan = z.infer<typeof SweepPlanSchema>;
+
 export const TokenBalanceSchema = z.object({
   mint: z.string(),
   amountRaw: z.string(),
@@ -390,6 +403,15 @@ class BackendClient {
       auth: true,
     });
     return EnrolAccountResponseSchema.parse(raw);
+  }
+
+  /** GET /account/sweep — what is still in the Privy wallet after enrolment. */
+  async getSweepPlan(): Promise<SweepPlan> {
+    const raw = await this.request<unknown>("/account/sweep", {
+      method: "GET",
+      auth: true,
+    });
+    return SweepPlanSchema.parse(raw);
   }
 
   async getBalances(): Promise<BalancesResponse> {
