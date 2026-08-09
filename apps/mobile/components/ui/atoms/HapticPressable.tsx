@@ -1,27 +1,48 @@
-import React, { useCallback } from "react";
-import { Pressable, PressableProps } from "react-native";
-import Animated, {
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
+import React, { useCallback, useMemo, useRef } from "react";
+import {
+  Animated,
+  Pressable,
+  PressableProps,
+  StyleProp,
+  ViewStyle,
+} from "react-native";
+import { useReducedMotion } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 
+/**
+ * Deliberately React Native's own Animated rather than Reanimated.
+ *
+ * NativeWind resolves `className` into the same `style` prop that a Reanimated
+ * animated style occupies, and merging the two wraps the shared value in
+ * another shared value. Reanimated's `isAnimated` then walks `.value.value.…`
+ * forever and the stack overflows the moment a screen full of these mounts.
+ * A plain Animated.Value is inert to that walk.
+ */
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 /**
- * Critically damped, no overshoot. A control returning to rest should settle,
- * not bounce: bounce belongs to motion the Consumer themselves threw.
+ * Critically damped (damping = 2√(stiffness × mass)), so a control returning to
+ * rest settles instead of bouncing: bounce belongs to motion the Consumer
+ * themselves threw.
  */
-const SPRING = { dampingRatio: 1, duration: 300 } as const;
+const SPRING = {
+  stiffness: 200,
+  damping: 28.3,
+  mass: 1,
+  useNativeDriver: true,
+};
 
 const PRESSED_SCALE = 0.97;
 
 export type PressFeedback = "impact" | "selection" | "none";
 
-interface HapticPressableProps extends PressableProps {
+/**
+ * `style` narrows Pressable's own type: the `(state) => style` form cannot be
+ * composed with the animated transform, and nothing here passes it.
+ */
+interface HapticPressableProps extends Omit<PressableProps, "style"> {
   className?: string;
+  style?: StyleProp<ViewStyle>;
   /**
    * `impact` for committing actions, `selection` for choosing among options
    * (range tabs, keypads), `none` where a parent already gives feedback.
@@ -47,20 +68,24 @@ const HapticPressable = ({
   disabled,
   onPressIn,
   onPressOut,
+  style,
   ...props
 }: HapticPressableProps) => {
-  const scale = useSharedValue(1);
+  const scale = useRef(new Animated.Value(1)).current;
   const reduceMotion = useReducedMotion();
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
+  const springTo = useCallback(
+    (toValue: number) => {
+      Animated.spring(scale, { ...SPRING, toValue }).start();
+    },
+    [scale]
+  );
 
   const handlePressIn = useCallback<NonNullable<PressableProps["onPressIn"]>>(
     (event) => {
       if (!disabled) {
         if (scaleOnPress && !reduceMotion) {
-          scale.value = withSpring(PRESSED_SCALE, SPRING);
+          springTo(PRESSED_SCALE);
         }
         if (feedback === "impact") {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -70,16 +95,18 @@ const HapticPressable = ({
       }
       onPressIn?.(event);
     },
-    [disabled, feedback, onPressIn, reduceMotion, scale, scaleOnPress]
+    [disabled, feedback, onPressIn, reduceMotion, scaleOnPress, springTo]
   );
 
   const handlePressOut = useCallback<NonNullable<PressableProps["onPressOut"]>>(
     (event) => {
-      scale.value = withSpring(1, SPRING);
+      springTo(1);
       onPressOut?.(event);
     },
-    [onPressOut, scale]
+    [onPressOut, springTo]
   );
+
+  const scaleStyle = useMemo(() => ({ transform: [{ scale }] }), [scale]);
 
   return (
     <AnimatedPressable
@@ -87,7 +114,7 @@ const HapticPressable = ({
       disabled={disabled}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
-      style={[props.style, scaleOnPress ? animatedStyle : undefined]}
+      style={[style, scaleOnPress ? scaleStyle : undefined]}
     >
       {props.children}
     </AnimatedPressable>
