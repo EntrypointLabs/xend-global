@@ -1,0 +1,7 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": { "modules": ["HardwareKeyModule"] },
+  "android": {
+    "modules": ["com.giftedborg.xend.hardwarekey.HardwareKeyModule"]
+  }
+}

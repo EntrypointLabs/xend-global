@@ -67,6 +67,15 @@ export const AccountResponseSchema = z.object({
 });
 export type AccountResponse = z.infer<typeof AccountResponseSchema>;
 
+export const EnrolmentNonceSchema = z.object({ nonce: z.string() });
+export type EnrolmentNonce = z.infer<typeof EnrolmentNonceSchema>;
+
+export const EnrolAccountResponseSchema = z.object({
+  address: z.string(),
+  security: z.enum(["secure_enclave", "strongbox", "tee"]),
+});
+export type EnrolAccountResponse = z.infer<typeof EnrolAccountResponseSchema>;
+
 export const TokenBalanceSchema = z.object({
   mint: z.string(),
   amountRaw: z.string(),
@@ -352,6 +361,35 @@ class BackendClient {
       if (err?.status === 404 || err?.data?.code === "NO_ACCOUNT") return null;
       throw err;
     }
+  }
+
+  /** POST /account/enrolment/nonce — the challenge the device attests over. */
+  async requestEnrolmentNonce(): Promise<EnrolmentNonce> {
+    const raw = await this.request<unknown>("/account/enrolment/nonce", {
+      method: "POST",
+      auth: true,
+    });
+    return EnrolmentNonceSchema.parse(raw);
+  }
+
+  /**
+   * POST /account/enrolment — creates the Account.
+   *
+   * Deliberately carries no public key: the backend takes it from the
+   * attestation it verified, so this request cannot nominate one.
+   */
+  async enrolAccount(body: {
+    platform: "ios" | "android";
+    attestation: string;
+    nonce: string;
+    recoverySigner: string;
+  }): Promise<EnrolAccountResponse> {
+    const raw = await this.request<unknown>("/account/enrolment", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return EnrolAccountResponseSchema.parse(raw);
   }
 
   async getBalances(): Promise<BalancesResponse> {
