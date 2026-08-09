@@ -5,6 +5,7 @@ import { ThemedScreen } from "@/components/ui/layout";
 import { ThemedText, IconSymbol, LoadingSpinner } from "@/components/ui/atoms";
 import { IconSymbolName } from "@/components/ui/atoms/IconSymbol";
 import { router, useLocalSearchParams } from "expo-router";
+import { isUserCanceledSign } from "@/utils/signing";
 import { formatAmount } from "@/utils/helper";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { ButtonGroup } from "@/components/ui/molecules";
@@ -28,12 +29,6 @@ const USDC_MINT = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS ?? "";
  * `UserCancelled` error today; we string-match on the message/name to keep
  * a "stay on screen, prompt to retry" UX rather than a hard failure.
  */
-function isUserCanceledSign(err: unknown): boolean {
-  const msg = (err instanceof Error ? err.message : String(err)) ?? "";
-  const name = err instanceof Error ? err.name : "";
-  return /cancel|denied|aborted|dismiss/i.test(`${name} ${msg}`);
-}
-
 /**
  * A prepared-and-signed transfer waiting to be submitted. Held across
  * Confirm taps so a submit that fails ambiguously (timeout / dropped

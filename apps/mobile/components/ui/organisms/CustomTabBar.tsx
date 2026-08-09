@@ -116,7 +116,14 @@ export function CustomTabBar({
               testID: options.title,
             };
           })}
-          containerStyle={{}}
+          containerStyle={
+            isHome
+              ? {
+                  backgroundColor: "transparent",
+                  borderWidth: 0,
+                }
+              : {}
+          }
         />
 
         {isHome && (

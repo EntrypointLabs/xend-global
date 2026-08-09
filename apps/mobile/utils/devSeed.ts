@@ -5,6 +5,7 @@ import type {
   TransferListResponse,
   WalletResponse,
 } from "@/utils/apiClient";
+import { getUsdcMint } from "@/utils/cluster";
 
 /**
  * Demo seed for screenshots and offline UI work. When enabled, `AuthContext`
@@ -27,12 +28,11 @@ export const SEED_USER = {
 };
 
 // The headline total keys off this mint (see utils/balances.ts), so the demo
-// balance must use the same mint the app is configured for.
+// balance must use the same mint the app is configured for. Resolved through
+// the cluster helper rather than read raw, so the seed cannot disagree with the
+// rest of the app about which mint is USDC.
 function usdcMint(): string {
-  return (
-    process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS ??
-    "DemoUsdcMint1111111111111111111111111111111"
-  );
+  return getUsdcMint();
 }
 
 const hoursAgo = (h: number) =>

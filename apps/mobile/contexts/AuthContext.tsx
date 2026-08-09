@@ -18,6 +18,17 @@ import { SEED_DEMO, SEED_USER } from "@/utils/devSeed";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/** Privy surfaces the verified email on `linked_accounts`, not at the top level. */
+function emailArgFor(privyUser: unknown): string | null {
+  const accounts = (privyUser as { linked_accounts?: unknown[] })
+    ?.linked_accounts;
+  if (!Array.isArray(accounts)) return null;
+  const emailAccount = accounts.find(
+    (a) => (a as { type?: string })?.type === "email"
+  );
+  return (emailAccount as { address?: string })?.address ?? null;
+}
+
 /**
  * Privy-backed auth provider. Must render inside the `<PrivyProvider>` wrap
  * in `app/_layout.tsx`, since it consumes Privy hooks.
@@ -201,7 +212,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
-      const exchange = await apiClient.exchange({ privyIdToken: idToken });
+      let exchange: Awaited<ReturnType<typeof apiClient.exchange>>;
+      try {
+        exchange = await apiClient.exchange({ privyIdToken: idToken });
+      } catch (exchangeError) {
+        // Privy has already authenticated the Consumer and provisioned their
+        // wallet, so identity is settled; only our JWT is missing. Let them in
+        // on a degraded session rather than stranding them at the OTP screen,
+        // and let the existing refresh effect pick the JWT up when the backend
+        // is reachable again. Balances and activity fall back to Solana RPC in
+        // the meantime, so the wallet still works.
+        const fallbackAddress = embeddedSolana.wallets?.[0]?.address ?? null;
+        if (!fallbackAddress) throw exchangeError;
+
+        Sentry.captureException(
+          new Error(
+            `Backend exchange failed; continuing on a Privy-only session: ${exchangeError}. AuthContext`
+          )
+        );
+
+        const degradedUser = {
+          id: loggedInUser.id,
+          email: emailArgFor(loggedInUser) ?? email,
+          walletAddress: fallbackAddress,
+          smart_account_address: fallbackAddress,
+        };
+        await AuthStorage.saveUserData(degradedUser);
+        await AuthStorage.saveIsAuthenticated(true);
+
+        setUser(degradedUser);
+        setWallet(fallbackAddress);
+        setIsAuthenticated(true);
+        setAuthError(null);
+        setNeedsTokenRefresh(true);
+        return true;
+      }
 
       await AuthStorage.saveToken(exchange.token);
       await AuthStorage.saveUserData({
