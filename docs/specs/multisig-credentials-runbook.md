@@ -105,3 +105,45 @@ These do not need anything from a vendor and are tracked separately: the
 enrolment endpoint with hardware attestation, the device hardware key and its
 stamper, routing the send path through policy spends, pointing receive and
 balance at the vault, and sweeping the existing Privy balances across.
+
+## 6. Build a dev client and verify on a physical device
+
+The native key module (`apps/mobile/modules/hardware-key`) is written but has
+never run on hardware, and it cannot be verified anywhere else. That is not
+caution, it is the design: the iOS simulator satisfies
+`kSecAttrTokenIDSecureEnclave` against a host-side software implementation and
+returns a key indistinguishable from a real one at the JS layer, and Android
+falls back from StrongBox to the TEE silently. A green run on a simulator would
+prove nothing.
+
+```sh
+cd apps/mobile
+npx expo prebuild        # picks up modules/hardware-key
+eas build --profile development --platform ios      # and android
+```
+
+Then on a real phone, in order:
+
+1. **Enrolment.** Sign in and watch for `attestation.verified` in the backend
+   log. `security` must read `secure_enclave` or `strongbox`, and `tee` is
+   acceptable. Anything else, or a rejection, means the key is not where it
+   needs to be.
+2. **Biometric prompt on every signature.** Sign twice in a row. Two prompts.
+   One prompt for two signatures means the `LAContext` is being reused and the
+   possession factor is weaker than it looks.
+3. **A Spend.** The two-signature route is exercised by default because no
+   spending limit exists yet, so this also proves the Turnkey stamp.
+4. **Low-S.** If Turnkey rejects a stamp as an invalid signature, the
+   normalisation in `modules/hardware-key/src/lowS.ts` is the first place to
+   look. It is unit tested, but only against synthetic signatures.
+
+## 7. Create the spending limit, and mind the 24-hour wait
+
+Until a spending limit policy exists, **every** Spend takes the two-signature
+route and needs the phone. That is safe but not the product: D5 wants everyday
+Spends at one tap.
+
+Creating the policy is a settings change, so it is subject to the 24-hour
+Settings time lock from D3. A Consumer therefore cannot have a spending limit on
+their first day. Decide deliberately whether that is acceptable for the pilot or
+whether the time lock should start shorter and be raised.
