@@ -5,6 +5,7 @@ import {
   BottomSheetView,
   BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
+import { HIDE_MY_WALLET_ENABLED } from "@/constants/Features";
 import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
 import QRCode from "react-native-qrcode-svg";
 import * as Clipboard from "expo-clipboard";
@@ -91,37 +92,39 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
 
           <View className="h-full flex-1" />
 
-          <View className="mx-6 mb-7 flex-row items-center justify-between">
-            <View className="flex-row items-center px-2">
-              <MaterialCommunityIcons
-                name="shield-half-full"
-                size={28}
-                color="#3B82F6"
-              />
-              <View className="ml-3">
-                <Typography weight="600" className="text-base">
-                  Receive with <Typography>Hide My Wallet</Typography>
-                </Typography>
-                <View className="flex-row items-center">
-                  <Typography
-                    weight="600"
-                    className="mr-1 text-sm text-black/30"
-                  >
-                    How it works?
+          {HIDE_MY_WALLET_ENABLED && (
+            <View className="mx-6 mb-7 flex-row items-center justify-between">
+              <View className="flex-row items-center px-2">
+                <MaterialCommunityIcons
+                  name="shield-half-full"
+                  size={28}
+                  color="#3B82F6"
+                />
+                <View className="ml-3">
+                  <Typography weight="600" className="text-base">
+                    Receive with <Typography>Hide My Wallet</Typography>
                   </Typography>
-                  <Ionicons
-                    name="information-circle-outline"
-                    size={16}
-                    color="#0000004D"
-                  />
+                  <View className="flex-row items-center">
+                    <Typography
+                      weight="600"
+                      className="mr-1 text-sm text-black/30"
+                    >
+                      How it works?
+                    </Typography>
+                    <Ionicons
+                      name="information-circle-outline"
+                      size={16}
+                      color="#0000004D"
+                    />
+                  </View>
                 </View>
               </View>
+              <Toggle
+                value={isHideWalletEnabled}
+                onValueChange={setIsHideWalletEnabled}
+              />
             </View>
-            <Toggle
-              value={isHideWalletEnabled}
-              onValueChange={setIsHideWalletEnabled}
-            />
-          </View>
+          )}
 
           <View className="mx-6 mb-8">
             <HapticPressable

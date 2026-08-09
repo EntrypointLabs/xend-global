@@ -108,6 +108,56 @@ session while the existing refresh effect retries.
 This does not fix the rejection, but a wallet whose home screen blanks when one server
 is down is the wrong shape for a dApp Store app regardless.
 
+## Unverifiable surfaces are now gated
+
+`apps/mobile/constants/Features.ts` gates anything that renders but cannot finish
+what it offers. Gated rather than deleted, because the flows are built and
+wanted, they are just ahead of the backend:
+
+| Flag                                | Effect when off                                 |
+| ----------------------------------- | ----------------------------------------------- |
+| `EXPO_PUBLIC_ENABLE_HIDE_MY_WALLET` | The shielded-receive toggle leaves the QR sheet |
+| `EXPO_PUBLIC_ENABLE_EARN_DEPOSITS`  | Earn's Deposit action is disabled               |
+
+The bank rows in Send and Receive are deliberately not gated. Removing them
+leaves each modal offering a single choice, and a chooser with one option is
+friction in front of a screen the button could open directly. They keep the
+existing `isBankDisabled` treatment from KYC status.
+
+Xend Card stays. It opens a screen that says so plainly, which is a labelled
+preview rather than a dead tap. Its only problem is the listing screenshot.
+
+## Submitting, once the credentials exist
+
+Neither the portal key nor the signer keypair is on the build machine. Searched:
+shell rc files, every `.env`, `~/.config/solana`, and all keypair JSON.
+
+```sh
+# From apps/mobile, never the repo root: the root triggers `eas init` and drops
+# a stray eas.json/app.json.
+cd apps/mobile
+eas build --platform android --profile production
+
+DAPP_STORE_API_KEY=<portal key> npx @solana-mobile/dapp-store-cli \
+  --apk-file <path to the built APK> \
+  --keypair <path to the Solana signer> \
+  --whats-new "Xend now runs on Solana mainnet, so deposits, sends and activity
+    reflect real balances. Swap quotes live and settles on chain, and
+    Investments lists every asset you hold."
+```
+
+Before running it:
+
+1. **Replace the listing previews.** `assets/dapp-store/preview-*.png` still show
+   a Visa-branded card, a virtual bank account, 7.99% APY and merchant charges.
+   Fresh raw captures of the current build are in `.gstack/previews-new/`.
+   Home and Receive are the two to avoid; Swap, Investments, Activity and Send
+   show only what works.
+2. **Move the backend off the ngrok tunnel**, or accept that the reviewer is
+   testing against a laptop.
+3. **Run one real mainnet swap** on a funded device. The path is unit tested and
+   renders a live quote on the simulator, but has never settled on chain.
+
 ## Still outstanding, and these need a human
 
 1. **The backend runs on an ngrok free tunnel from a laptop.** It was up during review
