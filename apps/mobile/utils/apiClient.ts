@@ -55,6 +55,18 @@ export const WalletResponseSchema = z.object({
 });
 export type WalletResponse = z.infer<typeof WalletResponseSchema>;
 
+/**
+ * The Squads Account (ADR 0025). `address` is the vault PDA, which is the
+ * Consumer's address everywhere: QR code, deposits, balance reads. The
+ * settings account holds the signer set, never money, and is deliberately
+ * not returned.
+ */
+export const AccountResponseSchema = z.object({
+  address: z.string(),
+  signers: z.object({ primary: z.string(), approval: z.string() }),
+});
+export type AccountResponse = z.infer<typeof AccountResponseSchema>;
+
 export const TokenBalanceSchema = z.object({
   mint: z.string(),
   amountRaw: z.string(),
@@ -323,6 +335,25 @@ class BackendClient {
   /** GET /wallet/me/balances — returns the full SPL token balance list. The
    *  client filters for headline currencies (USDC + USDT); the full list is
    *  preserved so a future Investments screen can list every mint. */
+
+  /**
+   * GET /account/me — the Consumer's Squads Account, or null before one
+   * exists. A 404 is the ordinary pre-enrolment state rather than an error,
+   * so it is mapped to null instead of thrown.
+   */
+  async getAccount(): Promise<AccountResponse | null> {
+    try {
+      const raw = await this.request<unknown>("/account/me", {
+        method: "GET",
+        auth: true,
+      });
+      return AccountResponseSchema.parse(raw);
+    } catch (err: any) {
+      if (err?.status === 404 || err?.data?.code === "NO_ACCOUNT") return null;
+      throw err;
+    }
+  }
+
   async getBalances(): Promise<BalancesResponse> {
     if (SEED_DEMO) return seedBalances();
     const raw = await this.request<unknown>("/wallet/me/balances", {

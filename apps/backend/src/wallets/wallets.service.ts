@@ -1,6 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { DbService } from '../db/db.service';
-import { smartAccounts, users } from '../db/schema';
+import { smartAccounts, squadsAccounts, users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
@@ -49,6 +49,27 @@ export class WalletsService {
     };
   }
 
+  /**
+   * Where the Consumer's money actually is.
+   *
+   * The Squads vault once an Account exists, and the Privy wallet before
+   * that. Both are real at once during the migration window: the vault is the
+   * address a Consumer receives at, while any pre-multisig balance still sits
+   * in the Privy wallet until it is swept.
+   */
+  private async resolveBalanceAddress(
+    userId: string,
+    privyAddress: string,
+  ): Promise<string> {
+    const [account] = await this.db.client
+      .select({ vaultAddress: squadsAccounts.vaultAddress })
+      .from(squadsAccounts)
+      .where(eq(squadsAccounts.userId, userId))
+      .limit(1);
+
+    return account?.vaultAddress ?? privyAddress;
+  }
+
   async getMeBalances(userId: string): Promise<BalancesResponse> {
     const [account] = await this.db.client
       .select()
@@ -58,16 +79,21 @@ export class WalletsService {
 
     if (!account) throw new NotFoundException('Wallet not found');
 
+    const address = await this.resolveBalanceAddress(
+      userId,
+      account.walletAddress,
+    );
+
     // Parallel read: tokens + a recent block reference. `lastValidBlockHeight`
     // is the closest monotonic chain marker without a separate getSlot round
     // trip; mobile uses it for cache-staleness signalling only.
     const [tokens, blockhash] = await Promise.all([
-      this.solana.getTokenBalances(account.walletAddress),
+      this.solana.getTokenBalances(address),
       this.solana.getRecentBlockhash(),
     ]);
 
     return {
-      walletAddress: account.walletAddress,
+      walletAddress: address,
       tokens: tokens.map((t) => ({
         mint: t.mint,
         amountRaw: t.amountRaw.toString(),

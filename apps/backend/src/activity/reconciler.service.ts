@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { eq, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
-import { smartAccounts, tailerState } from '../db/schema';
+import { smartAccounts, squadsAccounts, tailerState } from '../db/schema';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import type {
   SignatureStatus,
@@ -67,12 +67,24 @@ export class ReconcilerService implements OnModuleInit {
    * block the rest of the boot sequence.
    */
   async replayAllWallets(): Promise<void> {
-    const wallets = await this.db.client
-      .select({
-        id: smartAccounts.id,
-        walletAddress: smartAccounts.walletAddress,
-      })
-      .from(smartAccounts);
+    // Both address families, because both can receive during the migration
+    // window: the vault is where a Consumer is told to deposit, and the Privy
+    // wallet still holds anything sent before enrolment.
+    const [privyWallets, vaults] = await Promise.all([
+      this.db.client
+        .select({
+          id: smartAccounts.id,
+          walletAddress: smartAccounts.walletAddress,
+        })
+        .from(smartAccounts),
+      this.db.client
+        .select({
+          id: squadsAccounts.id,
+          walletAddress: squadsAccounts.vaultAddress,
+        })
+        .from(squadsAccounts),
+    ]);
+    const wallets = [...privyWallets, ...vaults];
 
     if (wallets.length === 0) {
       this.logger.log('tailer.reconcile.boot wallets=0 (nothing to replay)');
