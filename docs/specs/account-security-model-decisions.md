@@ -425,10 +425,10 @@ the time lock, which the notification story in D5b depends on.
 | O1  | **Resolved: option B.** S2's authenticator is a Secure Enclave (iOS) or Keystore (Android) P-256 key registered as a Turnkey API-key authenticator, biometric-gated. One passkey in the product, genuinely device-bound. Remaining verification: can Turnkey's React Native SDK stamp requests with a hardware-backed key it did not itself generate.                                                                                                                                                                                                                                                       |
 | O9  | **Resolved: confirmed at runtime.** A Policy carries its own signer set and threshold, and a spend executes synchronously under it while the Account is time-locked. See Runtime verification. Remaining sub-item: rejection and cancellation of a pending settings change during the time lock.                                                                                                                                                                                                                                                                                                            |
 | O2  | **Resolved: creation is permissionless.** Squads was unreachable, so this was settled empirically. Mainnet `ProgramConfig` reads `smart_account_creation_fee: 0`, `smart_account_index: 502795`, and the struct carries no whitelist field (`smart_account_index`, `authority`, `smart_account_creation_fee`, `treasury`, `_reserved`). `create_smart_account` validates only that the treasury matches. The source comment about future permissioning is not reflected in the deployed program.                                                                                                            |
-| O3  | Spending limit band: amount and period.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| O3  | **Resolved: US $100 per transaction, $300 cumulative or 5 consecutive Spends; Nigeria NGN 200,000 per rolling 24 hours.** See "O3 resolved" below for the derivation. The Nigerian figure rests on passkey plus device counting as two factors, which puts us in CBN's OTP-grade tier. That reading is **accepted as a risk, not left open**: if a regulator counts the pair as one factor the analogue is the Low Security tier at NGN 20,000 per day, a tenfold difference. Revisit on a regulator's reading, not on a hunch.                                                                             |
 | O4  | **Resolved: 24 hours.** Against an industry norm of 3 to 4 days (Braavos 4, Ambire 3, Candide 3), all self-custody wallets where every action is deliberate. The window only helps a Consumer who still holds S2, because rejecting a pending change requires it, and that Consumer sees the notification within minutes. One who has genuinely lost their phone cannot reject at all and is only waiting, so a longer window buys them nothing and costs them a dead phone for days. Depends on the D3 notification requirement: without a push on any pending settings change, the delay protects nobody. |
 | O5  | **Resolved: 0.00252452 SOL per Account** (2,524,520 lamports), almost entirely settings-account rent. Creation fee is 0 on mainnet and devnet. Roughly 252 SOL per 100,000 Accounts.                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| O6  | Turnkey policy-update authority: backend in the root quorum, or `POLICY` granted to a delegated user. One-way at creation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| O6  | **Resolved: a delegated user holding `POLICY` only. Never root-quorum membership.** Root quorum can add users and authenticators, so a backend inside it could register its own authenticator on the S2 wallet and sign as S2. The backend already holds S3, so that single compromise would reach threshold and void the invariant this whole design exists to hold. A delegated `POLICY` user can change what S2 is permitted to sign and can never produce an S2 signature, because that still needs the phone's hardware key. See "O6 resolved" below.                                                  |
 | O7  | Confirm with Privy in writing: can support manually reset a user's wallet MFA out of band, and does disabling email login app-wide block users who already have email linked.                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | O8  | **Provisional, and D4 shifted it.** Categories stay Fuse's: **Active Keys** and **Recovery Keys**. Individually S1 is now unlocked by the passkey alone, so "Sign-in Key" no longer describes it well; **Passkey** is the honest name and is already the `CONTEXT.md` term. S2 is the **Device Key** (Fuse's word, and accurate: it is the phone-bound hardware key). S3 is the **Recovery Key**. Still flagged **to modify**, and still deliberately out of `CONTEXT.md` until the UI exists.                                                                                                              |
 
@@ -977,3 +977,69 @@ operational control, not a cryptographic impossibility. The guarantee is that op
 requires an email-verified session and is auditable, not that Xend is unable to. The
 property the design actually rests on is elsewhere, in the threshold: this signer is
 one of three, and D5b keeps it out of every spend path.
+
+## O6 resolved: a delegated `POLICY` user, never the root quorum
+
+Every Consumer gets a Turnkey **sub-organization**. Each sub-org has a **root quorum**:
+the users who can change that sub-org's own configuration, including its policies, its
+users and its authenticators. The parent org is read-only over its sub-orgs, so we can
+create one but cannot reach into it afterwards unless we put ourselves inside it at
+creation. Widening the quorum later needs the end user's approval. Narrowing is
+unilateral. The choice is therefore effectively permanent and has to be made before
+sub-org number one exists.
+
+Three shapes were available:
+
+| Option                        | Reach                                       | Verdict           |
+| ----------------------------- | ------------------------------------------- | ----------------- |
+| Backend in the root quorum    | Everything: policies, users, authenticators | **Disqualified**  |
+| Delegated user, `POLICY` only | Policies                                    | **Chosen**        |
+| No update authority           | Nothing without each Consumer's approval    | Rejected as rigid |
+
+### Why root-quorum membership is disqualified by our own design
+
+S3 is server-held. That is what `apps/backend/src/recovery/` does, and it is already
+built. Put the backend in the root quorum at threshold 1 and a single backend
+compromise yields S3's key material **and** the authority to register a fresh
+authenticator on the S2 wallet and sign with it. That is two of three from one
+compromise, which is precisely the invariant in ADR 0025: _no single compromise may
+yield `threshold` signers_. The option voids the reason the project exists.
+
+A delegated `POLICY` user does not have that property. Policy authority changes what
+S2 is permitted to sign. It never produces an S2 signature, because that still requires
+the biometric-gated hardware key on the Consumer's phone. A backend compromise then
+yields one signer and no way to use it.
+
+No update authority at all is the purist answer and was rejected as too rigid: the
+spending band in O3 is a first estimate on a product with no users, and freezing it at
+creation means it can never move without every Consumer approving on their own device.
+
+### The one assumption worth testing before it is load-bearing
+
+This rests on a root-quorum member at threshold 1 being able to add an authenticator to
+an existing sub-org wallet. It follows from Turnkey's documented model and from the
+already-recorded facts that the parent org is read-only and that quorum narrowing is
+one-way, but it has not been exercised against the API.
+
+**Smoke-test it before creating the first production sub-org.** The choice cannot be
+undone afterwards. If the assumption turns out to be wrong, root-quorum membership
+becomes admissible again and the decision is worth revisiting on the merits.
+
+## Sequencing: the multisig ships before the dApp Store resubmission
+
+The Account changes from a Privy embedded wallet to a Squads vault PDA, which changes
+every Consumer's receive address. ADR 0025 leans on "there are no users yet" to avoid a
+migration. A dApp Store listing is exactly the event that ends that.
+
+The cost of getting the order wrong is not the on-chain sweep, which is trivial. It is
+telling users that the address they have already saved is no longer their address, at
+the moment the product is trying to earn trust. That message does not have a good
+version.
+
+So the resubmission waits on the multisig. The critical path is the Turnkey adapter and
+the mobile wiring, not the store.
+
+**"No users yet" is already not literally true.** The dApp Store reviewer left roughly
+0.75 USDC on a mainnet Privy wallet, and internal testers hold their own. The sweep
+exists, it is just small. That is the argument for doing it now rather than evidence
+against the plan, and it is tracked as its own piece of work rather than assumed away.

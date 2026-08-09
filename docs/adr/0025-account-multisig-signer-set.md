@@ -1,7 +1,8 @@
 # 0025: The Account becomes a Squads smart account with a 2-of-3 signer set
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-02
+**Accepted:** 2026-08-09
 **Deciders:** Xend founding team
 **Tags:** mobile, wallet, security, vendor, solana
 
@@ -156,6 +157,15 @@ one failing assumption are recorded in the spec.
   limit band that must be tuned or the second factor fires on ordinary payments.
 - ⚠️ **Bad:** The program is v0.1. Audited by OtterSec and Certora and formally
   verified by Certora, but younger than V4.
+
+### This has to land before the dApp Store listing
+
+The "no users yet" driver above is not a permanent condition, it is a window. Moving
+the Account to a vault PDA changes every Consumer's receive address, so shipping the
+listing first converts a one-line migration into telling users the address they saved
+is no longer theirs. **The resubmission waits on this work**, and the residual sweep
+(roughly 0.75 USDC left by the dApp Store reviewer, plus internal testers) is tracked
+as its own task rather than assumed away.
 
 ## Pros and Cons of the Options
 
