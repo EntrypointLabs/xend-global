@@ -53,6 +53,10 @@ export class AccountService {
     private readonly turnkey: TurnkeyService,
   ) {}
 
+  findByUserId(userId: string): Promise<SquadsAccountRow | null> {
+    return this.store.findByUserId(userId);
+  }
+
   async createAccount(params: CreateAccountParams): Promise<SquadsAccountRow> {
     const existing = await this.store.findByUserId(params.userId);
     if (existing) return existing;

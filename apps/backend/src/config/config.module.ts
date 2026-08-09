@@ -42,6 +42,11 @@ import * as Joi from 'joi';
         // reason as the Turnkey keys: recovery fails at the call, not at boot.
         RECOVERY_VAULT_KEY: Joi.string().optional().allow(''),
 
+        // App Attest audience: "TEAMID.bundleid". Attestation fails closed
+        // without it, so an unset value blocks iOS enrolment rather than
+        // waving it through.
+        IOS_APP_ATTEST_APP_ID: Joi.string().optional().allow(''),
+
         // Solana RPC — Helius primary, public-devnet fallback. Keep this on
         // the same cluster as HELIUS_RPC_URL to avoid cross-cluster reads.
         HELIUS_API_KEY: Joi.string().required(),
