@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
+import { RecoveryService } from '../recovery/recovery.service';
 import { TurnkeyService } from '../turnkey/turnkey.service';
 import {
   AccountCreationError,
@@ -21,8 +22,6 @@ export interface CreateAccountParams {
   userId: string;
   /** S1. The Privy embedded wallet address, already provisioned at signup. */
   primarySigner: string;
-  /** S3. Created by RecoveryService before this runs; D10b makes it mandatory. */
-  recoverySigner: string;
   /** The device's hardware public key, which becomes S2's authenticator. */
   hardwarePublicKey: string;
 }
@@ -51,6 +50,7 @@ export class AccountService {
     @Inject(ACCOUNT_CHAIN) private readonly chain: AccountChain,
     @Inject(SQUADS_ACCOUNT_STORE) private readonly store: SquadsAccountStore,
     private readonly turnkey: TurnkeyService,
+    private readonly recovery: RecoveryService,
   ) {}
 
   findByUserId(userId: string): Promise<SquadsAccountRow | null> {
@@ -66,10 +66,24 @@ export class AccountService {
       hardwarePublicKey: params.hardwarePublicKey,
     });
 
+    // Minted here rather than accepted from the caller. D10b makes S3
+    // mandatory at creation, and a client-nominated address would hand one
+    // caller two of the three signers.
+    const email = await this.store.findUserEmail(params.userId);
+    if (!email) {
+      throw new IncompleteSignerSetError(
+        'Cannot anchor a recovery signer: the Consumer has no email on file',
+      );
+    }
+    const recovery = await this.recovery.provisionEmailSigner(
+      params.userId,
+      email,
+    );
+
     const signers: SignerAddresses = {
       primary: params.primarySigner,
       approval: approval.address,
-      recovery: params.recoverySigner,
+      recovery: recovery.address,
     };
     assertDistinctSigners(signers);
 

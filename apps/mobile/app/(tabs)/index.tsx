@@ -1,4 +1,5 @@
 import { View } from "react-native";
+import { useEnsureAccount } from "@/hooks/useEnsureAccount";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { Ionicons } from "@expo/vector-icons";
@@ -300,5 +301,8 @@ function BalanceDeltaBadge({ delta }: { delta: BalanceDelta }) {
 }
 
 export default function HomeScreen() {
+  // Home is the first authenticated screen, so it is where a Consumer without
+  // an Account gets one. Silent and once per session; see useEnsureAccount.
+  useEnsureAccount();
   return <HomeScreenContent />;
 }

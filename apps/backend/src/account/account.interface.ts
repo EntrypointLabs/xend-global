@@ -51,6 +51,14 @@ export interface SquadsAccountRow {
 export interface SquadsAccountStore {
   findByUserId(userId: string): Promise<SquadsAccountRow | null>;
   insert(row: SquadsAccountRow): Promise<SquadsAccountRow>;
+  /**
+   * The Consumer's email, which anchors the recovery signer.
+   *
+   * Read here rather than taken from the JWT, which does not carry it, and
+   * rather than from the request body, which would let a caller anchor S3 to
+   * an inbox they own.
+   */
+  findUserEmail(userId: string): Promise<string | null>;
 }
 
 export const SPEND_CHAIN = Symbol('SPEND_CHAIN');

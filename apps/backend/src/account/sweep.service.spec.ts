@@ -20,6 +20,7 @@ function store(row: SquadsAccountRow | null): SquadsAccountStore {
   return {
     findByUserId: () => Promise.resolve(row),
     insert: (r) => Promise.resolve(r),
+    findUserEmail: () => Promise.resolve('consumer@example.com'),
   };
 }
 

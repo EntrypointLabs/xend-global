@@ -1,3 +1,4 @@
+import type { RecoveryService } from '../recovery/recovery.service';
 import { TurnkeyService } from '../turnkey/turnkey.service';
 import {
   AccountCreationError,
@@ -29,6 +30,7 @@ function fakeStore(seed?: SquadsAccountRow) {
       rows.push(row);
       return Promise.resolve(row);
     },
+    findUserEmail: () => Promise.resolve('consumer@example.com'),
   };
   return { store, rows };
 }
@@ -61,13 +63,24 @@ function fakeTurnkey(address = APPROVAL) {
   return { turnkey, calls };
 }
 
+function fakeRecovery(address = RECOVERY) {
+  const calls: string[] = [];
+  const recovery = {
+    provisionEmailSigner: (userId: string) => {
+      calls.push(userId);
+      return Promise.resolve({ address });
+    },
+  } as unknown as RecoveryService;
+  return { recovery, calls };
+}
+
 function params(
   overrides: Partial<Parameters<AccountService['createAccount']>[0]> = {},
 ) {
   return {
     userId: USER,
     primarySigner: PRIMARY,
-    recoverySigner: RECOVERY,
+    email: 'consumer@example.com',
     hardwarePublicKey: '03bb',
     ...overrides,
   };
@@ -79,7 +92,12 @@ describe('AccountService.createAccount', () => {
     const { chain } = fakeChain();
     const { turnkey } = fakeTurnkey();
 
-    await new AccountService(chain, store, turnkey).createAccount(params());
+    await new AccountService(
+      chain,
+      store,
+      turnkey,
+      fakeRecovery().recovery,
+    ).createAccount(params());
 
     expect(rows[0]).toMatchObject({
       settingsSeed: 42n,
@@ -107,6 +125,7 @@ describe('AccountService.createAccount', () => {
       chain,
       store,
       turnkey,
+      fakeRecovery().recovery,
     ).createAccount(params());
 
     expect(result).toEqual(existing);
@@ -139,6 +158,7 @@ describe('AccountService.createAccount', () => {
       chain,
       store,
       turnkey,
+      fakeRecovery().recovery,
     ).createAccount(params());
 
     expect(attempts).toBe(3);
@@ -153,7 +173,12 @@ describe('AccountService.createAccount', () => {
     const { turnkey } = fakeTurnkey();
 
     await expect(
-      new AccountService(chain, store, turnkey).createAccount(params()),
+      new AccountService(
+        chain,
+        store,
+        turnkey,
+        fakeRecovery().recovery,
+      ).createAccount(params()),
     ).rejects.toBeInstanceOf(AccountCreationError);
   });
 
@@ -169,7 +194,12 @@ describe('AccountService.createAccount', () => {
     const { turnkey } = fakeTurnkey();
 
     await expect(
-      new AccountService(chain, store, turnkey).createAccount(params()),
+      new AccountService(
+        chain,
+        store,
+        turnkey,
+        fakeRecovery().recovery,
+      ).createAccount(params()),
     ).rejects.toBeInstanceOf(AccountCreationError);
     expect(attempts).toBe(1);
   });
@@ -198,7 +228,12 @@ describe('AccountService.createAccount', () => {
       },
     } as unknown as TurnkeyService;
 
-    await new AccountService(chain, store, turnkey).createAccount(params());
+    await new AccountService(
+      chain,
+      store,
+      turnkey,
+      fakeRecovery().recovery,
+    ).createAccount(params());
 
     // An Account created first and then left without S2 would be a 2-of-3
     // with two usable signers, which is threshold 1 wearing a 2-of-3 label.
@@ -213,7 +248,12 @@ describe('AccountService.createAccount', () => {
     } as unknown as TurnkeyService;
 
     await expect(
-      new AccountService(chain, store, turnkey).createAccount(params()),
+      new AccountService(
+        chain,
+        store,
+        turnkey,
+        fakeRecovery().recovery,
+      ).createAccount(params()),
     ).rejects.toThrow('turnkey down');
 
     expect(calls).toHaveLength(0);
@@ -228,7 +268,12 @@ describe('AccountService.createAccount', () => {
     const { turnkey } = fakeTurnkey(PRIMARY);
 
     await expect(
-      new AccountService(chain, store, turnkey).createAccount(params()),
+      new AccountService(
+        chain,
+        store,
+        turnkey,
+        fakeRecovery().recovery,
+      ).createAccount(params()),
     ).rejects.toBeInstanceOf(IncompleteSignerSetError);
 
     expect(calls).toHaveLength(0);
@@ -242,9 +287,12 @@ describe('AccountService.createAccount', () => {
     // D10b: S3 is mandatory at creation. Without it a lost phone is permanent
     // loss of funds rather than an inconvenience.
     await expect(
-      new AccountService(chain, store, turnkey).createAccount(
-        params({ recoverySigner: '' }),
-      ),
+      new AccountService(
+        chain,
+        store,
+        turnkey,
+        fakeRecovery('').recovery,
+      ).createAccount(params()),
     ).rejects.toBeInstanceOf(IncompleteSignerSetError);
 
     expect(calls).toHaveLength(0);

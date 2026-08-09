@@ -388,14 +388,14 @@ class BackendClient {
   /**
    * POST /account/enrolment — creates the Account.
    *
-   * Deliberately carries no public key: the backend takes it from the
-   * attestation it verified, so this request cannot nominate one.
+   * Deliberately carries neither the public key nor the recovery signer: the
+   * backend takes the key from the attestation it verified and mints the
+   * recovery signer itself, so this request cannot nominate either.
    */
   async enrolAccount(body: {
     platform: "ios" | "android";
     attestation: string;
     nonce: string;
-    recoverySigner: string;
   }): Promise<EnrolAccountResponse> {
     const raw = await this.request<unknown>("/account/enrolment", {
       method: "POST",

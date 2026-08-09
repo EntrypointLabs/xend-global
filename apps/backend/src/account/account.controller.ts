@@ -83,7 +83,6 @@ export class AccountController {
       const account = await this.accounts.createAccount({
         userId: req.user.userId,
         primarySigner: req.user.walletAddress,
-        recoverySigner: body.recoverySigner,
         hardwarePublicKey: verified.hardwarePublicKey,
       });
 

@@ -12,15 +12,17 @@ import { apiClient } from "@/utils/apiClient";
  * say) risks it expiring behind a biometric prompt and failing an enrolment
  * that was otherwise fine.
  *
- * The public key is never sent. The backend reads it out of the attestation it
- * verified, so a device cannot attest with real hardware and enrol a key it
- * generated in software.
+ * Neither the public key nor the recovery signer is sent. The backend reads the
+ * key out of the attestation it verified and mints the recovery signer itself,
+ * so a caller cannot attest with real hardware and enrol a software key, nor
+ * nominate a recovery address it already controls. Either would hand one party
+ * two of the three signers.
  */
 export function useEnrolAccount() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ recoverySigner }: { recoverySigner: string }) => {
+    mutationFn: async () => {
       const { nonce } = await apiClient.requestEnrolmentNonce();
 
       let attestation: string;
@@ -37,7 +39,6 @@ export function useEnrolAccount() {
         platform: devicePlatform(),
         attestation,
         nonce,
-        recoverySigner,
       });
     },
     onSuccess: () => {
