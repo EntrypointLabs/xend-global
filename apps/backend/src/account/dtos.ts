@@ -23,6 +23,7 @@ export const AccountResponseSchema = z.object({
   /** The vault PDA. The Consumer's address everywhere. */
   address: z.string(),
   signers: z.object({ primary: z.string(), approval: z.string() }),
+  approvalSubOrgId: z.string(),
 });
 
 export type AccountResponse = z.infer<typeof AccountResponseSchema>;

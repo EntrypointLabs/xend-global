@@ -12,6 +12,9 @@ import { ButtonGroup } from "@/components/ui/molecules";
 import { useToast } from "@/contexts/ToastContext";
 import * as Sentry from "@sentry/react-native";
 import { useEmbeddedSolanaWallet } from "@privy-io/expo";
+import { useAccount } from "@/hooks/useAccount";
+import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
+import { Buffer } from "buffer";
 import {
   apiClient,
   PrepareTransferResponse,
@@ -44,6 +47,7 @@ export default function ConfirmScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const { showToast } = useToast();
   const embeddedSolana = useEmbeddedSolanaWallet();
+  const { data: account } = useAccount();
   const queryClient = useQueryClient();
   const pendingSubmission = useRef<PendingSubmission | null>(null);
 
@@ -154,6 +158,22 @@ export default function ConfirmScreen() {
             params: { transaction: tx },
           });
           signedBase64 = fromByteArray(signedTransaction.serialize());
+
+          // Above the spending limit the vault needs the approval signer too.
+          // Turnkey preserves the signature already on the transaction, so the
+          // primary signs first and this adds to it rather than replacing it.
+          // Submitting one signature short is rejected on chain, not refused.
+          if (prep.needsApprovalSignature) {
+            if (!account) throw new Error("Account not loaded");
+            const signedHex = await signWithApprovalSigner({
+              organizationId: account.approvalSubOrgId,
+              signWith: account.signers.approval,
+              unsignedTransaction: Buffer.from(
+                toByteArray(signedBase64)
+              ).toString("hex"),
+            });
+            signedBase64 = Buffer.from(signedHex, "hex").toString("base64");
+          }
         } catch (err) {
           if (isUserCanceledSign(err)) {
             showToast("Sign again to send");

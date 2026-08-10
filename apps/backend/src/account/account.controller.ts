@@ -110,6 +110,10 @@ export class AccountController {
         primary: account.primarySigner,
         approval: account.approvalSigner,
       },
+      // The device stamps Turnkey requests itself, so it needs to know which
+      // sub-organization it is talking to. Not a secret: holding it proves
+      // nothing without the hardware key that signs for it.
+      approvalSubOrgId: account.approvalSubOrgId,
     };
   }
 }

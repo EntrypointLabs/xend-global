@@ -64,6 +64,8 @@ export type WalletResponse = z.infer<typeof WalletResponseSchema>;
 export const AccountResponseSchema = z.object({
   address: z.string(),
   signers: z.object({ primary: z.string(), approval: z.string() }),
+  /** The Consumer's Turnkey sub-organization, which the device stamps against. */
+  approvalSubOrgId: z.string(),
 });
 export type AccountResponse = z.infer<typeof AccountResponseSchema>;
 
@@ -125,6 +127,12 @@ export const PrepareTransferResponseSchema = z.object({
   unsignedTxBase64: z.string(),
   feeLamports: z.number().int().nonnegative(),
   expiresAt: z.string().datetime(),
+  /**
+   * Present once the Consumer has a Squads Account. True means the approval
+   * signer must also sign before this can land, and submitting without it is
+   * rejected on chain rather than refused politely.
+   */
+  needsApprovalSignature: z.boolean().optional(),
 });
 export type PrepareTransferResponse = z.infer<
   typeof PrepareTransferResponseSchema
