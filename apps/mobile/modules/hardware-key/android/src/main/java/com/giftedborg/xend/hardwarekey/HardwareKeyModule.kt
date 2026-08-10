@@ -4,6 +4,7 @@ import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
@@ -151,7 +152,7 @@ class HardwareKeyModule : Module() {
       .setNegativeButtonText("Cancel")
       // Class 3 only. Class 2 biometrics cannot release a Keystore key, and
       // asking for a weaker class here would fail at CryptoObject time.
-      .setAllowedAuthenticators(BiometricPrompt.Authenticators.BIOMETRIC_STRONG)
+      .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
       .build()
 
     activity.runOnUiThread {
