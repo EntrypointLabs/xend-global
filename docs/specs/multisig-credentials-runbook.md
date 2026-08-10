@@ -33,9 +33,20 @@ Sign up, create the parent organization, and generate an API key pair for it.
 | `TURNKEY_DELEGATED_PUBLIC_KEY` | The backend's own P-256 public key             |
 | `TURNKEY_API_BASE_URL`         | Only to point at Turnkey staging               |
 
-The delegated key is a second, separate P-256 keypair the backend owns. It is a
-root user on each Consumer's sub-organization only for the length of enrolment,
-then narrowed out of the quorum before the sub-org is returned.
+The delegated key is a second, separate P-256 keypair the backend owns, and its
+private half signs every activity scoped to a Consumer's sub-organization. The
+parent key cannot: a parent organization is read-only over its sub-orgs, so its
+signature carries no authority inside one.
+
+```sh
+cd apps/backend
+node scripts/generate-turnkey-delegated-key.mjs
+```
+
+**Generate it once and never regenerate it.** The public half is registered as a
+root user in every sub-organization at creation, so a new keypair would have no
+authority in any Account that already exists: their policies could never be
+updated again. It is a long-lived secret, not a rotating one.
 
 ### 2a. Before the first production sub-organization: one smoke test
 
@@ -45,13 +56,21 @@ register its own authenticator on the S2 wallet, and the backend already holds
 S3, so one compromise would reach threshold.
 
 That reasoning follows Turnkey's documented model but has not been exercised
-against their API. Confirm it on a throwaway sub-organization first:
+against their API. Settle it on a throwaway sub-organization:
 
-1. Create a sub-org with the backend key in the root quorum.
-2. Try to add a new authenticator to its wallet using only that key.
-3. If it succeeds, O6 stands as decided and nothing changes.
-4. If it fails, root-quorum membership is admissible again and O6 is worth
-   reopening on the merits before any real Consumer exists.
+```sh
+cd apps/backend
+node --env-file=.env scripts/smoke-test-o6.mjs
+```
+
+It creates a sub-org with the backend key in the root quorum, tries to add an
+API key to the _other_ root user signed only by that key, and deletes the
+sub-org either way. No Consumer is involved and nothing production is touched.
+
+- **Succeeds** — O6 stands as decided. Nothing changes; the adapter already
+  narrows the backend out of the quorum at enrolment.
+- **Fails** — root-quorum membership is less dangerous than assumed, and O6 is
+  worth reopening on the merits before any real Consumer exists.
 
 Widening a root quorum later needs the end user's approval. Narrowing is
 unilateral. So this is decided once, per Consumer, forever.
