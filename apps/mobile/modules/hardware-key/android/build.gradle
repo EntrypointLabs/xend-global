@@ -1,0 +1,22 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.giftedborg.xend'
+version = '0.1.0'
+
+android {
+  namespace "com.giftedborg.xend.hardwarekey"
+  defaultConfig {
+    // Key attestation with a challenge needs 24; StrongBox (28) and
+    // setUserAuthenticationParameters (30) are guarded at runtime.
+    minSdkVersion 24
+  }
+}
+
+dependencies {
+  // The approval key is auth-bound, so signing has to run inside a
+  // BiometricPrompt CryptoObject. Without this the key cannot be used at all.
+  implementation "androidx.biometric:biometric:1.1.0"
+}
