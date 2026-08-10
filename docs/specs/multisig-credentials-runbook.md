@@ -72,6 +72,10 @@ sub-org either way. No Consumer is involved and nothing production is touched.
 - **Fails** — root-quorum membership is less dangerous than assumed, and O6 is
   worth reopening on the merits before any real Consumer exists.
 
+**Run on 2026-08-10: it succeeded.** A root-quorum member can mint an
+authenticator on another user, so O6 stands and this step is done. Re-run it only
+if Turnkey changes its permission model.
+
 Widening a root quorum later needs the end user's approval. Narrowing is
 unilateral. So this is decided once, per Consumer, forever.
 

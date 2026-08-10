@@ -1014,16 +1014,21 @@ No update authority at all is the purist answer and was rejected as too rigid: t
 spending band in O3 is a first estimate on a product with no users, and freezing it at
 creation means it can never move without every Consumer approving on their own device.
 
-### The one assumption worth testing before it is load-bearing
+### Confirmed against the live API, 2026-08-10
 
-This rests on a root-quorum member at threshold 1 being able to add an authenticator to
-an existing sub-org wallet. It follows from Turnkey's documented model and from the
-already-recorded facts that the parent org is read-only and that quorum narrowing is
-one-way, but it has not been exercised against the API.
+The assumption underneath this was that a root-quorum member at threshold 1 can add an
+authenticator to another user in the same sub-organization. It was reasoned from
+Turnkey's documented model rather than exercised, and the choice cannot be undone once
+real sub-organizations exist, so it was tested first.
 
-**Smoke-test it before creating the first production sub-org.** The choice cannot be
-undone afterwards. If the assumption turns out to be wrong, root-quorum membership
-becomes admissible again and the decision is worth revisiting on the merits.
+Run on a throwaway sub-organization via `apps/backend/scripts/smoke-test-o6.mjs`:
+`createApiKeys` against the _other_ root user, signed only by the delegated key,
+**succeeded**. A root-quorum backend can therefore mint itself an authenticator on the
+approval-signer wallet, and combined with the server-held S3 that is two of three from
+one compromise.
+
+**O6 stands exactly as decided.** The backend is never left in a Consumer's root
+quorum, and `TurnkeyService` proves the narrowing rather than assuming it.
 
 ## Sequencing: the multisig ships before the dApp Store resubmission
 
