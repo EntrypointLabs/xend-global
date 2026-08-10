@@ -28,6 +28,7 @@ import {
   buildCreateAccount,
   buildCreateSpendingLimitPolicy,
   buildExecuteSettingsChange,
+  buildSetTimeLock,
   buildSpend,
   derivePolicyAddress,
   resolveSpendRoute,
@@ -431,5 +432,153 @@ describe.skipIf(!HAVE_FIXTURES)("against deployed bytecode", () => {
       failed(send(h.svm, h.primary, [instruction], [h.primary, h.recovery])),
     ).toBe(true);
     expect(h.svm.getBalance(destination)).toBeNull();
+  });
+});
+
+/*
+ * Provisioning order.
+ *
+ * Policies are created by a settings change, and a settings change waits out the
+ * Settings time lock. An Account created with the 24-hour lock from D3 therefore
+ * has no policies for 24 hours, and since every Spend executes under a policy,
+ * it cannot spend at all during that window. Not "no one-tap for a day": no
+ * money movement for a day, on a payments app, starting at signup.
+ *
+ * The way out is ordering: create at time lock 0, add both policies while
+ * changes execute immediately, then raise the lock as the last change. These
+ * assert that the order works and that the lock really is on afterwards.
+ */
+describe.skipIf(!HAVE_FIXTURES)("provisioning order", () => {
+  const DAY = 24 * 60 * 60;
+
+  function settingsOfOpen(h: Harness) {
+    return decode<{
+      timeLock: number;
+      transactionIndex: { toString(): string };
+    }>(h.svm, h.addresses.settings, accounts.Settings);
+  }
+
+  /** Executes a settings change on an Account whose time lock is 0. */
+  function applyImmediately(
+    h: Harness,
+    propose: TransactionInstruction[],
+    transactionIndex: bigint,
+    policies: PublicKey[] = [],
+  ) {
+    expect(failed(send(h.svm, h.primary, propose, [h.primary]))).toBe(false);
+    for (const signer of [h.primary, h.approval]) {
+      const approve = buildApproveSettingsChange({
+        addresses: h.addresses,
+        transactionIndex,
+        signer: signer.publicKey,
+      });
+      expect(failed(send(h.svm, signer, [approve], [signer]))).toBe(false);
+    }
+    h.svm.expireBlockhash();
+    return send(
+      h.svm,
+      h.primary,
+      [
+        buildExecuteSettingsChange({
+          addresses: h.addresses,
+          transactionIndex,
+          signer: h.primary.publicKey,
+          policies,
+        }),
+      ],
+      [h.primary],
+    );
+  }
+
+  it("adds both policies and then raises the lock, with no waiting", () => {
+    const h = setUp({ timeLockSeconds: 0 });
+
+    const limitIndex =
+      BigInt(settingsOfOpen(h).transactionIndex.toString()) + 1n;
+    const { propose: proposeLimit } = buildCreateSpendingLimitPolicy({
+      addresses: h.addresses,
+      policySeed: LIMIT_POLICY_SEED,
+      limitSigner: h.primary.publicKey,
+      proposer: h.primary.publicKey,
+      transactionIndex: limitIndex,
+      terms: {
+        mint: SOL,
+        maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
+        maxPerPeriod: BigInt(5 * LAMPORTS_PER_SOL),
+        period: "Daily",
+        destinations: [],
+      },
+    });
+    expect(
+      failed(applyImmediately(h, proposeLimit, limitIndex, [h.policy])),
+    ).toBe(false);
+
+    const aboveIndex =
+      BigInt(settingsOfOpen(h).transactionIndex.toString()) + 1n;
+    const { propose: proposeAbove } = buildCreateAboveLimitPolicy({
+      addresses: h.addresses,
+      policySeed: ABOVE_LIMIT_POLICY_SEED,
+      primary: h.primary.publicKey,
+      approval: h.approval.publicKey,
+      proposer: h.primary.publicKey,
+      transactionIndex: aboveIndex,
+    });
+    expect(
+      failed(applyImmediately(h, proposeAbove, aboveIndex, [h.abovePolicy])),
+    ).toBe(false);
+
+    // Both policies exist before the Account is ever locked down.
+    expect(h.svm.getAccount(h.policy)).not.toBeNull();
+    expect(h.svm.getAccount(h.abovePolicy)).not.toBeNull();
+    expect(settingsOfOpen(h).timeLock).toBe(0);
+
+    // The lock goes on last. The lock in force while this executes is still
+    // the old one, which is why it does not block itself.
+    const lockIndex =
+      BigInt(settingsOfOpen(h).transactionIndex.toString()) + 1n;
+    expect(
+      failed(
+        applyImmediately(
+          h,
+          buildSetTimeLock({
+            addresses: h.addresses,
+            seconds: DAY,
+            proposer: h.primary.publicKey,
+            transactionIndex: lockIndex,
+          }),
+          lockIndex,
+        ),
+      ),
+    ).toBe(false);
+    expect(settingsOfOpen(h).timeLock).toBe(DAY);
+
+    // And the Account can spend on both routes from its very first minute,
+    // which is the whole point of the ordering.
+    const underLimit = Keypair.generate().publicKey;
+    const oneSig = buildSpend({
+      addresses: h.addresses,
+      request: {
+        mint: SOL,
+        amount: BigInt(LAMPORTS_PER_SOL),
+        destination: underLimit,
+      },
+      route: { kind: "spending-limit", policy: h.policy },
+      signers: [h.primary.publicKey],
+      decimals: 9,
+    });
+    expect(failed(send(h.svm, h.primary, [oneSig], [h.primary]))).toBe(false);
+    expect(h.svm.getBalance(underLimit)).toBe(BigInt(LAMPORTS_PER_SOL));
+
+    const aboveLimit = Keypair.generate().publicKey;
+    const twoSig = spend(
+      h,
+      [h.primary.publicKey, h.approval.publicKey],
+      aboveLimit,
+      BigInt(3 * LAMPORTS_PER_SOL),
+    );
+    expect(
+      failed(send(h.svm, h.primary, [twoSig], [h.primary, h.approval])),
+    ).toBe(false);
+    expect(h.svm.getBalance(aboveLimit)).toBe(BigInt(3 * LAMPORTS_PER_SOL));
   });
 });

@@ -1048,3 +1048,55 @@ the mobile wiring, not the store.
 0.75 USDC on a mainnet Privy wallet, and internal testers hold their own. The sweep
 exists, it is just small. That is the argument for doing it now rather than evidence
 against the plan, and it is tracked as its own piece of work rather than assumed away.
+
+## The provisioning gap, and the order that closes it
+
+Found while wiring the send path, and it is the largest remaining piece of work.
+
+**Nothing creates the policies on chain.** `SpendService` derives the above-limit
+policy address and routes every two-signature Spend through it, and
+`buildCreateSpendingLimitPolicy` / `buildCreateAboveLimitPolicy` exist and are
+tested, but no application code calls either. Until that is fixed an enrolled
+Consumer cannot spend at all: the one-signature route has no limit to draw on,
+and the two-signature route executes against a policy account that does not
+exist.
+
+### Why the obvious order does not work
+
+A policy is created by a settings change, and a settings change waits out the
+Settings time lock. D3 puts that lock at 24 hours. So an Account created in its
+final shape has no policies for a day, and since **every** Spend executes under a
+policy, it cannot move money for a day. On a payments app, starting at signup.
+
+### The order that does work, proven against the deployed program
+
+1. Create the Account with `timeLock: 0`.
+2. Create the spending-limit policy. Applies immediately.
+3. Create the above-limit policy. Applies immediately.
+4. `buildSetTimeLock` to 24 hours, last.
+
+The lock in force when step 4 executes is still the old one, which is why it does
+not block itself. Verified in `packages/smart-account/test/integration.test.ts`
+("provisioning order"): both policies exist, the lock reads 86400 afterwards, and
+both a one-signature and a two-signature Spend succeed immediately after.
+
+### What makes it real work rather than a small change
+
+Every settings change needs threshold-2 approvals, which means S1 **and** S2.
+Both live on the Consumer's device: S1 in Privy, S2 behind the hardware key. The
+backend holds neither, deliberately, so it cannot run provisioning on its own.
+
+Provisioning is therefore a device-driven flow that runs once after enrolment:
+four settings changes, each signed by Privy and stamped by Turnkey. The backend
+can build the instructions; it cannot approve them.
+
+**Do not shortcut this by giving the backend a temporary signer.** It already
+holds S3, so a backend that could also approve settings changes would hold two of
+three, which is the invariant O6 exists to protect.
+
+### Until it lands
+
+Accounts are still created with the 24-hour lock, deliberately. Creating them
+open would leave every Account permanently unlocked whenever provisioning failed,
+and Spends fail either way while the policies are missing. A weaker Account that
+still cannot spend is worse than a correct one that cannot spend yet.

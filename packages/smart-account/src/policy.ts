@@ -260,3 +260,53 @@ export function buildCreateAboveLimitPolicy({
     ],
   };
 }
+
+export interface SetTimeLockParams {
+  addresses: AccountAddresses;
+  /** Seconds. `SETTINGS_TIME_LOCK_SECONDS` is the value D3 settled on. */
+  seconds: number;
+  /** Proposes the change. Must be a signer with `Initiate`. */
+  proposer: PublicKey;
+  /** The Settings account's current `transactionIndex`, plus one. */
+  transactionIndex: bigint;
+}
+
+/**
+ * Raises (or lowers) the Settings time lock.
+ *
+ * This exists because of an ordering problem. Policies are created by a
+ * settings change, and a settings change waits out the current time lock, so an
+ * Account created with D3's 24-hour lock has no policies for 24 hours. Every
+ * Spend executes under a policy, so that Account cannot move money at all for
+ * its first day.
+ *
+ * Provisioning therefore runs at a zero time lock and calls this last: create
+ * the Account open, add both policies while changes apply immediately, then
+ * close it. The lock in force when the change executes is the old one, which is
+ * what makes the final step immediate rather than self-blocking.
+ */
+export function buildSetTimeLock({
+  addresses,
+  seconds,
+  proposer,
+  transactionIndex,
+}: SetTimeLockParams): TransactionInstruction[] {
+  const action: generated.SettingsAction = {
+    __kind: "SetTimeLock",
+    newTimeLock: seconds,
+  };
+
+  return [
+    instructions.createSettingsTransaction({
+      settingsPda: addresses.settings,
+      transactionIndex,
+      creator: proposer,
+      actions: [action],
+    }),
+    instructions.createProposal({
+      settingsPda: addresses.settings,
+      transactionIndex,
+      creator: proposer,
+    }),
+  ];
+}

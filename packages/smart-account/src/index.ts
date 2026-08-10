@@ -20,10 +20,12 @@ export {
   buildCreateSpendingLimitPolicy,
   buildExecuteSettingsChange,
   buildRejectSettingsChange,
+  buildSetTimeLock,
   type CreateAboveLimitPolicyParams,
   type CreateSpendingLimitPolicyParams,
   type CreateSpendingLimitPolicyResult,
   type LimitPeriod,
+  type SetTimeLockParams,
   type SpendingLimitTerms,
 } from "./policy.js";
 
