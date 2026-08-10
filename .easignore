@@ -43,8 +43,14 @@ dist
 .DS_Store
 Thumbs.db
 /drizzle
-android**
-ios**
+# Anchored to the app, deliberately. An unanchored `android**` / `ios**` also
+# matches apps/mobile/modules/*/android and .../ios, which would silently drop
+# the hardware-key native module from the upload and leave the build linking
+# nothing. EAS regenerates these two from the config anyway.
+/android/
+/ios/
+apps/mobile/android/
+apps/mobile/ios/
 /app.json
 .claude
 .trae
