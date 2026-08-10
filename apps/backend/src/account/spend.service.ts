@@ -101,6 +101,7 @@ export class SpendService {
 
     return {
       ...unsigned,
+      vaultAddress: addresses.vault.toBase58(),
       route: route.kind,
       /** Mobile needs this to know whether to ask Turnkey for a signature. */
       needsApprovalSignature: route.kind === 'two-signature',

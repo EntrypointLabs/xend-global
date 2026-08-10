@@ -45,10 +45,17 @@ export class Web3SpendChain implements SpendChain, OnModuleInit {
   async compile(params: {
     instruction: TransactionInstruction;
     feePayer: PublicKey;
-  }): Promise<{ unsignedTxBase64: string; messageBase64: string }> {
+  }): Promise<{
+    unsignedTxBase64: string;
+    messageBase64: string;
+    blockhash: string;
+    lastValidBlockHeight: number;
+  }> {
     let blockhash: string;
+    let lastValidBlockHeight: number;
     try {
-      ({ blockhash } = await this.rpc.getLatestBlockhash('confirmed'));
+      ({ blockhash, lastValidBlockHeight } =
+        await this.rpc.getLatestBlockhash('confirmed'));
     } catch (cause) {
       throw new AccountCreationError(
         `Could not read a blockhash: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -66,6 +73,8 @@ export class Web3SpendChain implements SpendChain, OnModuleInit {
         new VersionedTransaction(message).serialize(),
       ).toString('base64'),
       messageBase64: Buffer.from(message.serialize()).toString('base64'),
+      blockhash,
+      lastValidBlockHeight,
     };
   }
 }

@@ -47,6 +47,8 @@ function chain(limits: readonly SpendingLimit[] = []) {
       return Promise.resolve({
         unsignedTxBase64: 'dHg=',
         messageBase64: 'bXNn',
+        blockhash: 'BlockHash11111111111111111111111111111111111',
+        lastValidBlockHeight: 100,
       });
     },
   };

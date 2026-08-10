@@ -1,5 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { Keypair, VersionedTransaction } from '@solana/web3.js';
+import type { AccountService } from '../account/account.service';
+import type { SpendService } from '../account/spend.service';
 import { TransferService } from './transfer.service';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
@@ -215,6 +217,7 @@ function makeService(opts: {
   solana: SolanaRpc;
   config?: ConfigService;
   account?: SmartAccountsRow;
+  squadsAccount?: unknown;
 }) {
   const account = opts.account ?? makeAccount();
   const store: FakeStore = opts.store ?? {
@@ -223,7 +226,23 @@ function makeService(opts: {
   };
   const db = makeFakeDb(store);
   const config = opts.config ?? makeConfig();
-  const service = new TransferService(db, config, opts.solana);
+  // No Squads Account by default, so these tests exercise the pre-multisig
+  // Privy path they were written for. The vault path has its own coverage.
+  const accounts = {
+    findByUserId: () => Promise.resolve(opts.squadsAccount ?? null),
+  } as unknown as AccountService;
+  const spends = {
+    prepare: () =>
+      Promise.reject(new Error('SpendService should not be reached here')),
+  } as unknown as SpendService;
+
+  const service = new TransferService(
+    db,
+    config,
+    opts.solana,
+    accounts,
+    spends,
+  );
   return { service, store, account };
 }
 

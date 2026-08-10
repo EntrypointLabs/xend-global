@@ -76,6 +76,10 @@ export interface UnsignedSpend {
   unsignedTxBase64: string;
   /** Base64 compiled message, so a caller can pin what it signed. */
   messageBase64: string;
+  /** The vault the Spend leaves from. */
+  vaultAddress: string;
+  blockhash: string;
+  lastValidBlockHeight: number;
   route: 'spending-limit' | 'two-signature';
   /** True when S2 must also sign, i.e. no spending limit admits the Spend. */
   needsApprovalSignature: boolean;
@@ -97,5 +101,10 @@ export interface SpendChain {
   compile(params: {
     instruction: import('@solana/web3.js').TransactionInstruction;
     feePayer: import('@solana/web3.js').PublicKey;
-  }): Promise<{ unsignedTxBase64: string; messageBase64: string }>;
+  }): Promise<{
+    unsignedTxBase64: string;
+    messageBase64: string;
+    blockhash: string;
+    lastValidBlockHeight: number;
+  }>;
 }

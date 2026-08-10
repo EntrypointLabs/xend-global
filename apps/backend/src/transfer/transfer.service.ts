@@ -15,6 +15,8 @@ import {
   getAssociatedTokenAddressSync,
   TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
+import { AccountService } from '../account/account.service';
+import { SpendService } from '../account/spend.service';
 import { DbService } from '../db/db.service';
 import { smartAccounts, transfers, payments, merchants } from '../db/schema';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
@@ -90,6 +92,8 @@ export class TransferService {
     private readonly db: DbService,
     private readonly config: ConfigService,
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
+    private readonly accounts: AccountService,
+    private readonly spends: SpendService,
   ) {
     // Pull the stablecoin mint allowlist from env so devnet vs mainnet
     // mints can swap without code changes.
@@ -116,6 +120,16 @@ export class TransferService {
       .where(eq(smartAccounts.userId, userId))
       .limit(1);
     if (!account) throw new NotFoundException('Wallet not found');
+
+    // Once an Account exists the money is in its vault, not in the Privy
+    // wallet, so building a transfer from the Privy wallet would produce a
+    // transaction that cannot be funded. The vault is a PDA with no key, so it
+    // cannot be a plain SPL transfer either: it has to go through the Squads
+    // spend path, which is what SpendService builds.
+    const squads = await this.accounts.findByUserId(userId);
+    if (squads) {
+      return this.prepareVaultSpend(userId, account.id, req);
+    }
 
     const fromAddress = account.walletAddress;
 
@@ -280,6 +294,72 @@ export class TransferService {
       // (~2_039_280 lamports) is deliberately excluded here.
       feeLamports: 5000,
       expiresAt: new Date(expiresAt).toISOString(),
+    };
+  }
+
+  /**
+   * Builds a Spend out of the Squads vault.
+   *
+   * The returned transaction may still need the approval signer, which the
+   * caller learns from `needsApprovalSignature`. Submitting it with only the
+   * primary signature is rejected on chain rather than politely refused, so
+   * that flag is not advisory.
+   */
+  private async prepareVaultSpend(
+    userId: string,
+    smartAccountId: string,
+    req: { toAddress: string; mint: string; amountRaw: string; memo?: string },
+  ): Promise<PrepareResponse> {
+    try {
+      new PublicKey(req.toAddress);
+    } catch {
+      throw new InvalidRecipientError('toAddress is not a valid Solana pubkey');
+    }
+    if (!this.mintAllowlist.has(req.mint)) {
+      throw new UnsupportedMintError(
+        `mint ${req.mint} not in supported set for v1`,
+      );
+    }
+
+    const spend = await this.spends.prepare({
+      userId,
+      destination: req.toAddress,
+      mint: req.mint,
+      amountRaw: req.amountRaw,
+      // Both allowlisted stablecoins are 6 decimals on Solana; the allowlist
+      // check above is what keeps that true.
+      decimals: 6,
+    });
+
+    const intentId = createId();
+    const now = Date.now();
+    const expiresAt =
+      now + Math.min(BLOCKHASH_LIFETIME_SLOTS * SLOT_MS, INTENT_TTL_MS);
+
+    this.intents.set(intentId, {
+      intentId,
+      smartAccountId,
+      walletAddress: spend.vaultAddress,
+      toAddress: req.toAddress,
+      mint: req.mint,
+      amountRaw: req.amountRaw,
+      memo: req.memo,
+      blockhash: spend.blockhash,
+      lastValidBlockHeight: spend.lastValidBlockHeight,
+      messageBase64: spend.messageBase64,
+      createdAt: now,
+      expiresAt,
+    });
+    this.pruneIntents();
+
+    return {
+      intentId,
+      unsignedTxBase64: spend.unsignedTxBase64,
+      // 5000 lamports per signature; a two-signature Spend costs twice a
+      // single-signature one.
+      feeLamports: spend.needsApprovalSignature ? 10000 : 5000,
+      expiresAt: new Date(expiresAt).toISOString(),
+      needsApprovalSignature: spend.needsApprovalSignature,
     };
   }
 
