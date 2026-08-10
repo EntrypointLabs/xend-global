@@ -34,6 +34,7 @@ import * as Joi from 'joi';
         TURNKEY_API_PUBLIC_KEY: Joi.string().optional().allow(''),
         TURNKEY_API_PRIVATE_KEY: Joi.string().optional().allow(''),
         TURNKEY_DELEGATED_PUBLIC_KEY: Joi.string().optional().allow(''),
+        TURNKEY_DELEGATED_PRIVATE_KEY: Joi.string().optional().allow(''),
         TURNKEY_API_BASE_URL: Joi.string()
           .uri()
           .default('https://api.turnkey.com'),

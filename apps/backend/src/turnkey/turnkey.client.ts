@@ -18,32 +18,58 @@ import { TurnkeyApi, TurnkeyRootUser } from './turnkey.interface';
 @Injectable()
 export class TurnkeySdkClient implements TurnkeyApi {
   private readonly logger = new Logger(TurnkeySdkClient.name);
-  private cached?: TurnkeyApiClient;
+  private parentClient?: TurnkeyApiClient;
+  private delegatedClient?: TurnkeyApiClient;
 
   constructor(private readonly config: ConfigService) {}
 
-  private get client(): TurnkeyApiClient {
-    if (this.cached) return this.cached;
+  /**
+   * Signs with the parent organization's API key.
+   *
+   * Only creating a sub-organization goes through this. The parent is
+   * read-only over its sub-organizations, so it cannot sign anything scoped to
+   * one of them.
+   */
+  private get parent(): TurnkeyApiClient {
+    this.parentClient ??= this.build(
+      this.require('TURNKEY_API_PUBLIC_KEY'),
+      this.require('TURNKEY_API_PRIVATE_KEY'),
+    );
+    return this.parentClient;
+  }
 
-    const apiPublicKey = this.require('TURNKEY_API_PUBLIC_KEY');
-    const apiPrivateKey = this.require('TURNKEY_API_PRIVATE_KEY');
+  /**
+   * Signs with the delegated key, which is the backend's root user inside each
+   * sub-organization for the length of enrolment.
+   *
+   * Everything scoped to a sub-organization has to be signed by this rather
+   * than by the parent key, because the parent is not a member of the sub-org's
+   * quorum and its signature carries no authority there.
+   */
+  private get delegated(): TurnkeyApiClient {
+    this.delegatedClient ??= this.build(
+      this.require('TURNKEY_DELEGATED_PUBLIC_KEY'),
+      this.require('TURNKEY_DELEGATED_PRIVATE_KEY'),
+    );
+    return this.delegatedClient;
+  }
+
+  private build(apiPublicKey: string, apiPrivateKey: string): TurnkeyApiClient {
     const defaultOrganizationId = this.require('TURNKEY_ORGANIZATION_ID');
     const apiBaseUrl = this.config.get<string>(
       'TURNKEY_API_BASE_URL',
       'https://api.turnkey.com',
     );
 
-    this.cached = new Turnkey({
+    this.logger.log(
+      `turnkey.client.ready organizationId=${defaultOrganizationId}`,
+    );
+    return new Turnkey({
       apiBaseUrl,
       apiPublicKey,
       apiPrivateKey,
       defaultOrganizationId,
     }).apiClient();
-
-    this.logger.log(
-      `turnkey.client.ready organizationId=${defaultOrganizationId}`,
-    );
-    return this.cached;
   }
 
   async createSubOrganization(params: {
@@ -56,7 +82,7 @@ export class TurnkeySdkClient implements TurnkeyApi {
     disableOtpEmailAuth: boolean;
     disableSmsAuth: boolean;
   }) {
-    const result = await this.client.createSubOrganization(
+    const result = await this.parent.createSubOrganization(
       params as Parameters<TurnkeyApiClient['createSubOrganization']>[0],
     );
     return {
@@ -74,7 +100,7 @@ export class TurnkeySdkClient implements TurnkeyApi {
     condition: string;
     notes: string;
   }) {
-    const result = await this.client.createPolicy(params);
+    const result = await this.delegated.createPolicy(params);
     return { policyId: result.policyId };
   }
 
@@ -83,11 +109,11 @@ export class TurnkeySdkClient implements TurnkeyApi {
     threshold: number;
     userIds: string[];
   }) {
-    return this.client.updateRootQuorum(params);
+    return this.delegated.updateRootQuorum(params);
   }
 
   async getRootQuorum(params: { organizationId: string }) {
-    const { configs } = await this.client.getOrganizationConfigs(params);
+    const { configs } = await this.delegated.getOrganizationConfigs(params);
     const quorum = configs?.quorum;
 
     // An absent quorum must not read as an empty one. Empty would look like a
