@@ -25,18 +25,28 @@ import { useSweepToVault } from "@/hooks/useSweepToVault";
  * arrived". Which step threw is the whole diagnosis, so it is reported.
  */
 export function useEnsureAccount() {
-  const { data: account, isLoading } = useAccount();
+  const { data: account, isSuccess } = useAccount();
   const enrol = useEnrolAccount();
   const sweep = useSweepToVault();
   const attempted = useRef(false);
 
   useEffect(() => {
-    if (isLoading || attempted.current) return;
+    // Gated on isSuccess, not on !isLoading. The account query is disabled
+    // until a Consumer is signed in, and a disabled react-query reports
+    // isLoading false with undefined data -- indistinguishable from "fetched,
+    // no Account". Acting on that fired enrolment before there was a token to
+    // send, and because the guard below is once per session, the 401 it earned
+    // then blocked the real attempt for the rest of the session.
+    //
+    // isSuccess is only true once the query resolved, and getAccount maps the
+    // pre-enrolment 404 to null, so null here means a confirmed absence rather
+    // than an unknown.
+    if (!isSuccess || attempted.current) return;
 
     attempted.current = true;
 
     const run = async () => {
-      if (!account) {
+      if (account === null) {
         try {
           await enrol.mutateAsync();
         } catch (err) {
@@ -57,7 +67,7 @@ export function useEnsureAccount() {
       // app start rather than in a loop here: enrolment costs a biometric
       // prompt and an on-chain account.
     });
-  }, [account, isLoading, enrol, sweep]);
+  }, [account, isSuccess, enrol, sweep]);
 
   return {
     account,
