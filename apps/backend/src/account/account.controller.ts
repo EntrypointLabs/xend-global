@@ -4,6 +4,7 @@ import {
   Get,
   HttpException,
   HttpStatus,
+  Logger,
   Post,
   Req,
   UseGuards,
@@ -34,6 +35,8 @@ interface AuthenticatedRequest extends Request {
 @Controller('account')
 @UseGuards(AuthGuard('jwt'))
 export class AccountController {
+  private readonly logger = new Logger(AccountController.name);
+
   constructor(
     private readonly accounts: AccountService,
     private readonly attestation: AttestationService,
@@ -91,6 +94,15 @@ export class AccountController {
         security: verified.security,
       };
     } catch (err) {
+      // toHttp deliberately flattens everything into "could not create the
+      // Account", which is right for the caller and useless for us. By the
+      // time enrolment fails here a Turnkey sub-organization already exists,
+      // so the cause is worth more than the status code.
+      this.logger.error(
+        `account.enrolment_failed userId=${req.user.userId}: ${
+          err instanceof Error ? (err.stack ?? err.message) : String(err)
+        }`,
+      );
       throw toHttp(err);
     }
   }
