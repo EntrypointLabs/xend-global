@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AttestationModule } from '../attestation/attestation.module';
 import { DbModule } from '../db/db.module';
+import { RecoveryModule } from '../recovery/recovery.module';
 import { SettlementModule } from '../settlement/settlement.module';
 import { SolanaModule } from '../solana/solana.module';
 import { TurnkeyModule } from '../turnkey/turnkey.module';
@@ -25,6 +26,7 @@ import { DrizzleSquadsAccountStore } from './squads-account.store';
     SettlementModule,
     AttestationModule,
     SolanaModule,
+    RecoveryModule,
   ],
   controllers: [AccountController],
   providers: [
