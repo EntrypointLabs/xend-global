@@ -39,15 +39,32 @@ export class AttestationService {
   ): Promise<VerifiedAttestation> {
     const spent = await this.nonces.consume(userId, request.nonce);
     if (!spent) {
+      this.logger.warn(
+        `attestation.rejected userId=${userId} reason=nonce platform=${request.platform}`,
+      );
       throw new AttestationNonceError(
         'attestation nonce is unknown, expired or already used',
       );
     }
 
-    const verified =
-      request.platform === 'ios'
-        ? await this.ios.verify(request.attestation, request.nonce)
-        : await this.android.verify(request.attestation, request.nonce);
+    // A rejection here is the single most likely reason an enrolment produced
+    // nothing, and it is otherwise invisible: the controller turns it into a
+    // 401 and the device is built to fail quietly. Log it before rethrowing so
+    // the reason survives.
+    let verified: VerifiedAttestation;
+    try {
+      verified =
+        request.platform === 'ios'
+          ? await this.ios.verify(request.attestation, request.nonce)
+          : await this.android.verify(request.attestation, request.nonce);
+    } catch (err) {
+      this.logger.warn(
+        `attestation.rejected userId=${userId} platform=${request.platform}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      throw err;
+    }
 
     this.logger.log(
       `attestation.verified userId=${userId} security=${verified.security}`,
