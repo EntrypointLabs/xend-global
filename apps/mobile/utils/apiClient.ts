@@ -269,6 +269,13 @@ class BackendClient {
 
       if (options.method === "GET") {
         delete fetchOptions.body;
+      } else if (fetchOptions.body === undefined) {
+        // React Native's fetch puts a single NUL byte on the wire for a POST
+        // with no body (Content-Length: 1). Paired with the JSON content type
+        // above, Express rejects it as malformed JSON before any guard or
+        // handler runs, so the route 400s and nothing is logged. An explicit
+        // empty object is the smallest thing that parses.
+        fetchOptions.body = "{}";
       }
 
       const response = await fetch(url, fetchOptions);
