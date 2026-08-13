@@ -78,6 +78,20 @@
       "when": 1784476800000,
       "tag": "0010_refund_idempotency_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784563200000,
+      "tag": "0010_recovery_signers",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784649600000,
+      "tag": "0011_squads_accounts",
+      "breakpoints": true
     }
   ]
 }
