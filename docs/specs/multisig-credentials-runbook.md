@@ -79,15 +79,29 @@ if Turnkey changes its permission model.
 Widening a root quorum later needs the end user's approval. Narrowing is
 unilateral. So this is decided once, per Consumer, forever.
 
-### 2b. Confirm the signature question
+### 2b. The signature question, settled
 
-`SIGN_TRANSACTION_V2` is believed to preserve a signature already on the
-transaction, which is what lets S1 and S2 co-sign a Squads spend without
-client-side splicing. Turnkey's own `withFeePayer.ts` example can only work if
-that holds, but it is proven by demonstration rather than by written contract.
+Nothing to do here. This was an open item and the docs closed it.
 
-Smoke-test it on devnet against a real partially-signed Squads transaction
-before the send path depends on it.
+The send path used to assume `SIGN_TRANSACTION_V2` preserves a signature already
+on the transaction, which would let S1 sign first and S2 add to it. It does not
+promise that. The activity is specified as unsigned payload in, signed
+transaction out, and Turnkey ships a separate `addSignature` precisely because
+this one is not additive.
+
+`addSignature` is not the escape hatch: it skips the Policy Engine entirely.
+Reaching for it would leave S2 producing a signature no policy ever evaluated,
+which is the whole reason S2 exists.
+
+So the order is now S2 first, S1 second. Turnkey's policy sees the clean payload
+it is being asked to approve, and the primary fills its own signature slot
+afterwards via web3.js, whose `sign()` writes only its own index and leaves the
+rest of the array intact. That is a defined library behaviour rather than an
+undocumented vendor one, which is the point of the swap.
+
+Turnkey's docs also state one Turnkey signer per transaction. That appears in
+the sponsored/fee-payer context and does not bind us: only S2 is a Turnkey
+signer here.
 
 ## 3. Ask Privy two questions in writing
 

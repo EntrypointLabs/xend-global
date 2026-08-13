@@ -8,11 +8,14 @@ import { stamp } from "./stamper";
  * signer, and a backend that could also sign as S2 would hold two of the three
  * signers, which is the threshold.
  *
- * `SIGN_TRANSACTION_V2` **preserves** a signature already on the transaction,
- * which is what lets the primary sign first and this add to it rather than
- * replace it. That behaviour is demonstrated by Turnkey's own fee-payer example
- * rather than promised in writing, so it is smoke-tested on devnet before the
- * send path depends on it (see the runbook).
+ * This has to run BEFORE the primary signs. `SIGN_TRANSACTION_V2` is specified
+ * as unsigned payload in, signed transaction out; nothing promises it keeps a
+ * signature already sitting on the input, and Turnkey exposes `addSignature`
+ * precisely because this activity is not additive. `addSignature` is not the
+ * way out either: it skips the Policy Engine, which is the only thing making S2
+ * an approval rather than a rubber stamp. So Turnkey signs the clean payload,
+ * its policy evaluates what it was actually asked to approve, and the primary
+ * fills its own slot afterwards.
  */
 
 const ENDPOINT = "https://api.turnkey.com/public/v1/submit/sign_transaction";
@@ -22,7 +25,7 @@ export interface TurnkeySignParams {
   organizationId: string;
   /** S2's Solana address, which is what Turnkey signs with. */
   signWith: string;
-  /** The transaction so far, hex. Already carrying the primary signature. */
+  /** The transaction, hex, with every signature slot still empty. */
   unsignedTransaction: string;
 }
 

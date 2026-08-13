@@ -151,17 +151,15 @@ export default function ConfirmScreen() {
         let signedBase64: string;
         try {
           const provider = await embeddedWallet.getProvider();
-          const txBytes = toByteArray(prep.unsignedTxBase64);
-          const tx = VersionedTransaction.deserialize(txBytes);
-          const { signedTransaction } = await provider.request({
-            method: "signTransaction",
-            params: { transaction: tx },
-          });
-          signedBase64 = fromByteArray(signedTransaction.serialize());
+          let tx = VersionedTransaction.deserialize(
+            toByteArray(prep.unsignedTxBase64)
+          );
 
-          // Above the spending limit the vault needs the approval signer too.
-          // Turnkey preserves the signature already on the transaction, so the
-          // primary signs first and this adds to it rather than replacing it.
+          // Above the spending limit the vault needs the approval signer too,
+          // and it has to go first: Turnkey's policy engine evaluates the
+          // payload it is handed, and the activity is documented as unsigned
+          // in / signed out rather than additive. The primary then fills its
+          // own signature slot and leaves this one intact.
           // Submitting one signature short is rejected on chain, not refused.
           if (prep.needsApprovalSignature) {
             if (!account) throw new Error("Account not loaded");
@@ -169,11 +167,19 @@ export default function ConfirmScreen() {
               organizationId: account.approvalSubOrgId,
               signWith: account.signers.approval,
               unsignedTransaction: Buffer.from(
-                toByteArray(signedBase64)
+                toByteArray(prep.unsignedTxBase64)
               ).toString("hex"),
             });
-            signedBase64 = Buffer.from(signedHex, "hex").toString("base64");
+            tx = VersionedTransaction.deserialize(
+              Buffer.from(signedHex, "hex")
+            );
           }
+
+          const { signedTransaction } = await provider.request({
+            method: "signTransaction",
+            params: { transaction: tx },
+          });
+          signedBase64 = fromByteArray(signedTransaction.serialize());
         } catch (err) {
           if (isUserCanceledSign(err)) {
             showToast("Sign again to send");
