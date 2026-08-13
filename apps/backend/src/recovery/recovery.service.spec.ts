@@ -92,6 +92,26 @@ describe('RecoveryService', () => {
     expect(Object.keys(signer)).not.toContain('sealedKey');
   });
 
+  it('reuses the stored email signer so a retried enrolment can succeed', async () => {
+    const first = await service.ensureEmailSigner('user-1', 'a@example.com');
+    const second = await service.ensureEmailSigner('user-1', 'A@Example.com');
+
+    // Same row, not a second one. A duplicate would violate the (user,
+    // channel, value) uniqueness and fail the retry before it reached the
+    // chain, stranding an Account whose first attempt died after this step.
+    expect(second.id).toBe(first.id);
+    expect(second.address).toBe(first.address);
+    expect(store.rows).toHaveLength(1);
+  });
+
+  it('still refuses a duplicate when the Consumer adds an email deliberately', async () => {
+    await service.ensureEmailSigner('user-1', 'a@example.com');
+
+    await expect(service.addEmail('user-1', 'a@example.com')).rejects.toThrow(
+      DuplicateRecoveryChannelError,
+    );
+  });
+
   it('marks the sole signer as not removable', async () => {
     await service.provisionEmailSigner('user-1', 'a@example.com');
 

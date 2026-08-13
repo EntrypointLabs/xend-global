@@ -75,7 +75,7 @@ export class AccountService {
         'Cannot anchor a recovery signer: the Consumer has no email on file',
       );
     }
-    const recovery = await this.recovery.provisionEmailSigner(
+    const recovery = await this.recovery.ensureEmailSigner(
       params.userId,
       email,
     );

@@ -75,6 +75,37 @@ export class RecoveryService {
     return this.toSummary(row, (await this.store.findByUser(userId)).length);
   }
 
+  /**
+   * The onboarding entry point, safe to call again after a failed enrolment.
+   *
+   * Enrolment does the on-chain create *after* this, so it can fail with the
+   * signer already stored, and the Consumer retries. Minting a second one then
+   * violates the (user, channel, value) uniqueness and fails the retry before
+   * it reaches the chain, which strands the Account permanently. Reusing the
+   * stored signer costs nothing: its address comes from a sealed key held
+   * here, and a failed attempt consumed none of it.
+   *
+   * Distinct from `addEmail`, which is a Consumer deliberately adding a signer
+   * and must refuse a duplicate rather than quietly return the existing one.
+   */
+  async ensureEmailSigner(
+    userId: string,
+    email: string,
+  ): Promise<RecoverySignerSummary> {
+    const channelValue = email.toLowerCase();
+    const rows = await this.store.findByUser(userId);
+    const existing = rows.find(
+      (row) => row.channel === 'email' && row.channelValue === channelValue,
+    );
+
+    if (existing) {
+      this.logger.log(`recovery.signer.reused user=${userId}`);
+      return this.toSummary(existing, rows.length);
+    }
+
+    return this.provisionEmailSigner(userId, email);
+  }
+
   async list(userId: string): Promise<RecoverySignerSummary[]> {
     const rows = await this.store.findByUser(userId);
     return rows.map((row) => this.toSummary(row, rows.length));

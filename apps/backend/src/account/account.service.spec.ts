@@ -66,7 +66,7 @@ function fakeTurnkey(address = APPROVAL) {
 function fakeRecovery(address = RECOVERY) {
   const calls: string[] = [];
   const recovery = {
-    provisionEmailSigner: (userId: string) => {
+    ensureEmailSigner: (userId: string) => {
       calls.push(userId);
       return Promise.resolve({ address });
     },
