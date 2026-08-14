@@ -31,6 +31,7 @@ function fakeStore(seed?: SquadsAccountRow) {
       return Promise.resolve(row);
     },
     findUserEmail: () => Promise.resolve('consumer@example.com'),
+    withUserLock: <T>(_userId: string, fn: () => Promise<T>) => fn(),
   };
   return { store, rows };
 }
@@ -296,5 +297,60 @@ describe('AccountService.createAccount', () => {
     ).rejects.toBeInstanceOf(IncompleteSignerSetError);
 
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('AccountService.createAccount under concurrency', () => {
+  /** Serialises like the real advisory lock: one caller at a time, in order. */
+  function serialisingStore() {
+    const rows: SquadsAccountRow[] = [];
+    let tail: Promise<unknown> = Promise.resolve();
+
+    const store: SquadsAccountStore = {
+      findByUserId(userId) {
+        return Promise.resolve(rows.find((r) => r.userId === userId) ?? null);
+      },
+      insert(row) {
+        if (rows.some((r) => r.userId === row.userId)) {
+          // What Postgres does: squads_accounts.user_id is unique.
+          throw new Error('duplicate key value violates unique constraint');
+        }
+        rows.push(row);
+        return Promise.resolve(row);
+      },
+      findUserEmail: () => Promise.resolve('consumer@example.com'),
+      withUserLock<T>(_userId: string, fn: () => Promise<T>): Promise<T> {
+        const run = tail.then(fn);
+        tail = run.catch(() => undefined);
+        return run;
+      },
+    };
+    return { store, rows };
+  }
+
+  it('builds one Account when two enrolments arrive together', async () => {
+    const { store, rows } = serialisingStore();
+    const { chain, calls } = fakeChain();
+    const { turnkey, calls: turnkeyCalls } = fakeTurnkey();
+    const service = new AccountService(
+      chain,
+      store,
+      turnkey,
+      fakeRecovery().recovery,
+    );
+
+    const [first, second] = await Promise.all([
+      service.createAccount(params()),
+      service.createAccount(params()),
+    ]);
+
+    // The second request must find the first one's Account, not build its own.
+    // Without the lock it enrols a second Turnkey sub-organization, creates a
+    // second on-chain account, and then fails on the unique user id — leaving
+    // the sub-organization stranded with the Consumer's hardware key on it.
+    expect(rows).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+    expect(turnkeyCalls).toHaveLength(1);
+    expect(second).toEqual(first);
   });
 });

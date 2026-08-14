@@ -59,6 +59,21 @@ export interface SquadsAccountStore {
    * an inbox they own.
    */
   findUserEmail(userId: string): Promise<string | null>;
+
+  /**
+   * Serialises enrolment for one Consumer.
+   *
+   * Enrolment reads "does an Account exist", then spends twenty seconds
+   * creating a Turnkey sub-organization and an on-chain account before writing
+   * anything back. Two requests overlapping in that gap both see no Account and
+   * both build one, and only the first can be stored: the second leaves a live
+   * sub-organization stranded and fails on the unique user id.
+   *
+   * Nothing cheaper closes it. The device mints a fresh hardware key for every
+   * attestation, so the duplicate attempt looks like a different device to
+   * every key-based check.
+   */
+  withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T>;
 }
 
 export const SPEND_CHAIN = Symbol('SPEND_CHAIN');

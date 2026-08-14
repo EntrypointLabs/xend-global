@@ -137,14 +137,33 @@ export class Web3AccountChain implements AccountChain, OnModuleInit {
 }
 
 /**
- * A taken seed surfaces as the settings account already being initialised.
+ * A taken seed surfaces two different ways, and the second one is the common
+ * one.
+ *
+ * The obvious shape is the settings account already being initialised. What
+ * actually happens most of the time is `MissingAccount` (6024, 0x1788): the
+ * program derives the settings account it expects from the program config's
+ * own counter, so once another creator has advanced that counter, the settings
+ * account we derived from the stale value is not the one it looks for and it
+ * reports the account as missing rather than as taken.
+ *
+ * Confirmed by simulating both against the deployed program: a seed of
+ * `index + 1` simulates clean, and a seed five behind returns 6024. Treating
+ * that as anything but a lost race skips the retry, which on a busy cluster
+ * fails most creations — the global counter moved twelve places in an hour on
+ * devnet.
+ *
  * Matched on the message because the RPC error carries no structured code that
- * survives the base64 seam.
+ * survives the base64 seam. Safe to scope this broadly: the only instruction
+ * this class ever sends is CreateSmartAccount, and the settings PDA is the only
+ * account in it that depends on the seed.
  */
 function isSeedTaken(message: string): boolean {
   return (
     message.includes('already in use') ||
     message.includes('AccountAlreadyInitialized') ||
-    message.includes('custom program error: 0x0')
+    message.includes('custom program error: 0x0') ||
+    message.includes('MissingAccount') ||
+    message.includes('custom program error: 0x1788')
   );
 }

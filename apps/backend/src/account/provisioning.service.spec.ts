@@ -32,6 +32,7 @@ const store: SquadsAccountStore = {
   findByUserId: () => Promise.resolve(ACCOUNT),
   insert: (row) => Promise.resolve(row),
   findUserEmail: () => Promise.resolve('consumer@example.com'),
+  withUserLock: <T>(_userId: string, fn: () => Promise<T>) => fn(),
 };
 
 const config = {

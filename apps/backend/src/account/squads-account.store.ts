@@ -37,6 +37,10 @@ export class DrizzleSquadsAccountStore implements SquadsAccountStore {
 
     return toRow(inserted);
   }
+
+  withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    return this.db.withAdvisoryLock(`account:enrolment:${userId}`, fn);
+  }
 }
 
 function toRow(row: typeof squadsAccounts.$inferSelect): SquadsAccountRow {

@@ -57,7 +57,15 @@ export class AccountService {
     return this.store.findByUserId(userId);
   }
 
-  async createAccount(params: CreateAccountParams): Promise<SquadsAccountRow> {
+  createAccount(params: CreateAccountParams): Promise<SquadsAccountRow> {
+    // The whole sequence, not just the write. The check that decides whether to
+    // build an Account is at the top and the write that records it is at the
+    // bottom, with a vendor call and an on-chain send in between; locking any
+    // narrower leaves exactly the gap this is here to close.
+    return this.store.withUserLock(params.userId, () => this.build(params));
+  }
+
+  private async build(params: CreateAccountParams): Promise<SquadsAccountRow> {
     const existing = await this.store.findByUserId(params.userId);
     if (existing) return existing;
 
