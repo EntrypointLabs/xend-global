@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import * as Sentry from "@sentry/react-native";
 
 import { useAccount } from "@/hooks/useAccount";
+import { useProvisionAccount } from "@/hooks/useProvisionAccount";
+import { apiClient } from "@/utils/apiClient";
 import { useEnrolAccount } from "@/hooks/useEnrolAccount";
 import { useSweepToVault } from "@/hooks/useSweepToVault";
 
@@ -27,6 +29,7 @@ import { useSweepToVault } from "@/hooks/useSweepToVault";
 export function useEnsureAccount() {
   const { data: account, isSuccess } = useAccount();
   const enrol = useEnrolAccount();
+  const provision = useProvisionAccount();
   const sweep = useSweepToVault();
   const attempted = useRef(false);
 
@@ -46,14 +49,33 @@ export function useEnsureAccount() {
     attempted.current = true;
 
     const run = async () => {
-      if (account === null) {
+      let current = account;
+
+      if (current === null) {
         try {
           await enrol.mutateAsync();
         } catch (err) {
           report("enrol", err);
           throw err;
         }
+        // Re-read rather than use the enrolment response, which carries only
+        // the address. Provisioning needs the sub-organization id and the
+        // approval signer to ask Turnkey for S2's signature.
+        current = await apiClient.getAccount();
       }
+
+      if (current) {
+        try {
+          await provision.mutateAsync(current);
+        } catch (err) {
+          report("provision", err);
+          throw err;
+        }
+      }
+
+      // After provisioning, not before. The sweep is what puts money in the
+      // vault, and until both policies exist there is no route that can spend
+      // it back out.
       try {
         await sweep.mutateAsync();
       } catch (err) {
@@ -67,11 +89,12 @@ export function useEnsureAccount() {
       // app start rather than in a loop here: enrolment costs a biometric
       // prompt and an on-chain account.
     });
-  }, [account, isSuccess, enrol, sweep]);
+  }, [account, isSuccess, enrol, provision, sweep]);
 
   return {
     account,
     isEnrolling: enrol.isPending,
+    isProvisioning: provision.isPending,
     isSweeping: sweep.isPending,
   };
 }
@@ -82,7 +105,7 @@ export function useEnsureAccount() {
  * where a Sentry search can reach it. The dev console gets it too: the failure
  * is invisible in the UI by design, so Metro is where it gets noticed.
  */
-function report(step: "enrol" | "sweep", err: unknown) {
+function report(step: "enrol" | "provision" | "sweep", err: unknown) {
   const code = (err as { data?: { code?: string } })?.data?.code;
 
   if (__DEV__) {

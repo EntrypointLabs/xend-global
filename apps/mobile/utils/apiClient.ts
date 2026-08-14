@@ -78,6 +78,27 @@ export const EnrolAccountResponseSchema = z.object({
 });
 export type EnrolAccountResponse = z.infer<typeof EnrolAccountResponseSchema>;
 
+/**
+ * One step of provisioning, or `done`.
+ *
+ * The transaction fields are absent when `done` is true, which is why they are
+ * optional rather than defaulted: a blank transaction would be signable and
+ * submittable, and would fail on chain instead of ending the loop.
+ */
+export const ProvisioningStepSchema = z.object({
+  done: z.boolean(),
+  change: z.enum(["spending-limit", "above-limit", "time-lock"]).optional(),
+  step: z
+    .enum(["propose", "approve-primary", "approve-approval", "execute"])
+    .optional(),
+  unsignedTxBase64: z.string().optional(),
+  needsApprovalSignature: z.boolean(),
+});
+export type ProvisioningStep = z.infer<typeof ProvisioningStepSchema>;
+
+export const ProvisioningSubmitSchema = z.object({ signature: z.string() });
+export type ProvisioningSubmit = z.infer<typeof ProvisioningSubmitSchema>;
+
 export const SweepPlanSchema = z.object({
   needed: z.boolean(),
   destination: z.string().optional(),
@@ -418,6 +439,32 @@ class BackendClient {
       auth: true,
     });
     return EnrolAccountResponseSchema.parse(raw);
+  }
+
+  /**
+   * POST /account/provisioning/next — the next step to sign, or `done`.
+   *
+   * The backend re-derives this from chain state on every call, so it is safe
+   * to call again after an interruption and there is no cursor to carry.
+   */
+  async nextProvisioningStep(): Promise<ProvisioningStep> {
+    const raw = await this.request<unknown>("/account/provisioning/next", {
+      method: "POST",
+      auth: true,
+    });
+    return ProvisioningStepSchema.parse(raw);
+  }
+
+  /** POST /account/provisioning/submit — lands a signed step. */
+  async submitProvisioningStep(body: {
+    signedTxBase64: string;
+  }): Promise<ProvisioningSubmit> {
+    const raw = await this.request<unknown>("/account/provisioning/submit", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return ProvisioningSubmitSchema.parse(raw);
   }
 
   /** GET /account/sweep — what is still in the Privy wallet after enrolment. */
