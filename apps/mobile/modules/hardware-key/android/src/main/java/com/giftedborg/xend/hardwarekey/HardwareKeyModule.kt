@@ -69,8 +69,12 @@ class HardwareKeyModule : Module() {
       if (keyStore().containsAlias(KEY_ALIAS)) compressedPublicKey() else null
     }
 
-    AsyncFunction("sign") { payloadHex: String, promise: Promise ->
-      signWithBiometrics(payloadHex, promise)
+    // The prompt copy comes from the caller. This key signs account setup as
+    // well as payments, and a Consumer told to "approve this payment" while
+    // finishing onboarding is being asked to confirm something that is not
+    // happening.
+    AsyncFunction("sign") { payloadHex: String, title: String, reason: String, promise: Promise ->
+      signWithBiometrics(payloadHex, title, reason, promise)
     }
 
     AsyncFunction("reset") { deleteKey() }
@@ -83,7 +87,12 @@ class HardwareKeyModule : Module() {
    * on success. Signing with a freshly constructed one instead would defeat the
    * binding, because that object was never authorised.
    */
-  private fun signWithBiometrics(payloadHex: String, promise: Promise) {
+  private fun signWithBiometrics(
+    payloadHex: String,
+    title: String,
+    reason: String,
+    promise: Promise,
+  ) {
     val digest = try {
       payloadHex.hexToBytes()
     } catch (error: Exception) {
@@ -147,8 +156,8 @@ class HardwareKeyModule : Module() {
     )
 
     val info = BiometricPrompt.PromptInfo.Builder()
-      .setTitle("Approve this payment")
-      .setSubtitle("Xend needs your approval to sign")
+      .setTitle(title)
+      .setSubtitle(reason)
       .setNegativeButtonText("Cancel")
       // Class 3 only. Class 2 biometrics cannot release a Keystore key, and
       // asking for a weaker class here would fail at CryptoObject time.

@@ -1,6 +1,6 @@
 import * as Crypto from "expo-crypto";
 
-import { hardwareKey } from "./index";
+import { hardwareKey, type SignPrompt } from "./index";
 import { normaliseLowS } from "./lowS";
 
 /**
@@ -20,7 +20,10 @@ export interface Stamp {
 const HEADER_NAME = "X-Stamp";
 const SCHEME = "SIGNATURE_SCHEME_TK_API_P256";
 
-export async function stamp(payload: string): Promise<Stamp> {
+export async function stamp(
+  payload: string,
+  prompt: SignPrompt
+): Promise<Stamp> {
   const digest = await Crypto.digestStringAsync(
     Crypto.CryptoDigestAlgorithm.SHA256,
     payload,
@@ -32,7 +35,9 @@ export async function stamp(payload: string): Promise<Stamp> {
     throw new Error("No approval key on this device");
   }
 
-  const signature = normaliseLowS(await hardwareKey.sign(digest));
+  const signature = normaliseLowS(
+    await hardwareKey.sign(digest, prompt.title, prompt.reason)
+  );
 
   return {
     stampHeaderName: HEADER_NAME,

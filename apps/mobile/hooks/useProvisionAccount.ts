@@ -6,7 +6,12 @@ import { Buffer } from "buffer";
 
 import { ACCOUNT_QUERY_KEY } from "@/hooks/useAccount";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
-import { apiClient, type AccountResponse } from "@/utils/apiClient";
+import { SIGN_PROMPT } from "@/modules/hardware-key/src";
+import {
+  apiClient,
+  type AccountResponse,
+  type ProvisioningStep,
+} from "@/utils/apiClient";
 
 /**
  * A settings change is proposed, approved by two signers, then executed, and
@@ -30,7 +35,9 @@ const MAX_STEPS = 16;
  * One biometric prompt per change, three in total: S1 signs every step, and S2
  * is asked only for its own approval.
  */
-export function useProvisionAccount() {
+export function useProvisionAccount(
+  onStage?: (change: ProvisioningStep["change"]) => void
+) {
   const queryClient = useQueryClient();
   const embeddedSolana = useEmbeddedSolanaWallet();
 
@@ -44,6 +51,7 @@ export function useProvisionAccount() {
       for (;;) {
         const plan = await apiClient.nextProvisioningStep();
         if (plan.done) return steps;
+        onStage?.(plan.change);
 
         if (!plan.unsignedTxBase64) {
           throw new Error(
@@ -70,6 +78,7 @@ export function useProvisionAccount() {
             unsignedTransaction: Buffer.from(
               toByteArray(plan.unsignedTxBase64)
             ).toString("hex"),
+            prompt: SIGN_PROMPT.accountSetup,
           });
           tx = VersionedTransaction.deserialize(Buffer.from(signedHex, "hex"));
         }

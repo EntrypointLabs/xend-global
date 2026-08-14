@@ -14,6 +14,7 @@ import * as Sentry from "@sentry/react-native";
 import { useEmbeddedSolanaWallet } from "@privy-io/expo";
 import { useAccount } from "@/hooks/useAccount";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
+import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import { Buffer } from "buffer";
 import {
   apiClient,
@@ -169,6 +170,7 @@ export default function ConfirmScreen() {
               unsignedTransaction: Buffer.from(
                 toByteArray(prep.unsignedTxBase64)
               ).toString("hex"),
+              prompt: SIGN_PROMPT.payment,
             });
             tx = VersionedTransaction.deserialize(
               Buffer.from(signedHex, "hex")

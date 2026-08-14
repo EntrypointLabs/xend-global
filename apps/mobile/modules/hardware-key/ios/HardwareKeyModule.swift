@@ -58,11 +58,16 @@ public class HardwareKeyModule: Module {
       return try? self.compressedPublicKey(from: key)
     }
 
-    AsyncFunction("sign") { (payloadHex: String) -> String in
+    // The prompt copy comes from the caller. This key signs account setup as
+    // well as payments, and a Consumer told to "approve this payment" while
+    // finishing onboarding is being asked to confirm something that is not
+    // happening. `title` is unused here: iOS shows a single reason line.
+    AsyncFunction("sign") { (payloadHex: String, title: String, reason: String) -> String in
+      _ = title
       guard let digest = Data(hex: payloadHex), digest.count == 32 else {
         throw Exception(name: "ERR_PAYLOAD", description: "payload must be a 32-byte hex digest")
       }
-      let key = try self.loadKey()
+      let key = try self.loadKey(reason: reason)
 
       var error: Unmanaged<CFError>?
       guard
@@ -121,11 +126,11 @@ public class HardwareKeyModule: Module {
     return key
   }
 
-  private func loadKey() throws -> SecKey {
+  private func loadKey(reason: String = "Approve this payment") throws -> SecKey {
     // Fresh context per call. A retained one can satisfy a later operation with
     // an earlier prompt.
     let context = LAContext()
-    context.localizedReason = "Approve this payment"
+    context.localizedReason = reason
 
     let query: [String: Any] = [
       kSecClass as String: kSecClassKey,

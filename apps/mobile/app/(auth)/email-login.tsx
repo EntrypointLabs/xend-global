@@ -21,6 +21,9 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { ThemedTextInput } from "@/components/ui/molecules";
 import { ScreenVerificationCodeInput } from "@/components/ui/organisms/ScreenVerificationCodeInput";
 import { PasskeySetupModal } from "@/components/ui/organisms/modals/PasskeySetupModal";
+import { AccountSetupModal } from "@/components/ui/organisms/modals/AccountSetupModal";
+import { useAccountSetup } from "@/hooks/useAccountSetup";
+import { apiClient } from "@/utils/apiClient";
 import { useToast } from "@/contexts/ToastContext";
 
 function EmailLoginScreen() {
@@ -28,6 +31,7 @@ function EmailLoginScreen() {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [showPasskeySetup, setShowPasskeySetup] = useState(false);
+  const [showAccountSetup, setShowAccountSetup] = useState(false);
   const { completeLogin, completePasskeySetup } = useAuth();
   const { showToast } = useToast();
   const {
@@ -36,6 +40,13 @@ function EmailLoginScreen() {
     error: passkeyError,
     clearError: clearPasskeyError,
   } = usePasskey();
+
+  const {
+    stage: setupStage,
+    error: setupError,
+    run: runAccountSetup,
+    clearError: clearSetupError,
+  } = useAccountSetup();
 
   const {
     sendOtpAsync,
@@ -71,7 +82,7 @@ function EmailLoginScreen() {
       // Only prompt passkey setup when the account has none; a returning user
       // whose Privy account already has a linked passkey goes straight in.
       if (result.hasPasskey) {
-        completePasskeySetup();
+        continueAfterPasskey();
       } else {
         setShowPasskeySetup(true);
       }
@@ -80,18 +91,65 @@ function EmailLoginScreen() {
     }
   };
 
+  /**
+   * Wallet setup belongs here, between signing in and reaching the app.
+   *
+   * It costs fingerprint prompts, and the only place those read as part of
+   * something is during sign-up. Run from a screen effect they arrived over
+   * the dashboard, unexplained, on an account with no money in it.
+   *
+   * A Consumer who already has a wallet sees none of this.
+   */
+  const continueAfterPasskey = async () => {
+    // Asked directly rather than read off the cached account query. That query
+    // is disabled until the Consumer is signed in, and sign-in has only just
+    // happened here, so it can still be unresolved -- which is
+    // indistinguishable from "resolved, no wallet" and would skip setup.
+    let existing = null;
+    try {
+      existing = await apiClient.getAccount();
+    } catch {
+      // An unreachable backend is not a reason to block sign-in. Setup is
+      // offered again next time.
+      completePasskeySetup();
+      return;
+    }
+
+    if (existing === null) setShowAccountSetup(true);
+    else completePasskeySetup();
+  };
+
   const handleAddPasskey = async () => {
     clearPasskeyError();
     const success = await registerPasskey();
     if (success) {
       setShowPasskeySetup(false);
-      completePasskeySetup();
+      continueAfterPasskey();
     }
   };
 
   const handleSkipPasskey = () => {
     clearPasskeyError();
     setShowPasskeySetup(false);
+    continueAfterPasskey();
+  };
+
+  const handleRunAccountSetup = async () => {
+    const ok = await runAccountSetup();
+    if (ok) {
+      setShowAccountSetup(false);
+      completePasskeySetup();
+    }
+  };
+
+  /**
+   * Letting them through unfinished is deliberate. They can still receive at
+   * their address, and blocking sign-in on a step that can be retried later is
+   * worse than the degraded state it protects against.
+   */
+  const handleSkipAccountSetup = () => {
+    clearSetupError();
+    setShowAccountSetup(false);
     completePasskeySetup();
   };
 
@@ -247,6 +305,15 @@ function EmailLoginScreen() {
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
+
+        <AccountSetupModal
+          visible={showAccountSetup}
+          stage={setupStage}
+          error={setupError}
+          onStart={handleRunAccountSetup}
+          onRetry={handleRunAccountSetup}
+          onSkip={handleSkipAccountSetup}
+        />
 
         <PasskeySetupModal
           visible={showPasskeySetup}

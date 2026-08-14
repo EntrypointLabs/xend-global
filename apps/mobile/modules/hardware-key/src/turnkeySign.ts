@@ -1,3 +1,4 @@
+import type { SignPrompt } from "./index";
 import { stamp } from "./stamper";
 
 /**
@@ -27,12 +28,15 @@ export interface TurnkeySignParams {
   signWith: string;
   /** The transaction, hex, with every signature slot still empty. */
   unsignedTransaction: string;
+  /** What the biometric prompt says. See SIGN_PROMPT. */
+  prompt: SignPrompt;
 }
 
 export async function signWithApprovalSigner({
   organizationId,
   signWith,
   unsignedTransaction,
+  prompt,
 }: TurnkeySignParams): Promise<string> {
   const body = JSON.stringify({
     type: "ACTIVITY_TYPE_SIGN_TRANSACTION_V2",
@@ -47,7 +51,7 @@ export async function signWithApprovalSigner({
 
   // Stamped over the exact bytes sent. Serialising twice would risk a
   // different key order and a stamp that does not match the body.
-  const { stampHeaderName, stampHeaderValue } = await stamp(body);
+  const { stampHeaderName, stampHeaderValue } = await stamp(body, prompt);
 
   const response = await fetch(ENDPOINT, {
     method: "POST",

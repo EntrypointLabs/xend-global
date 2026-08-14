@@ -39,8 +39,13 @@ interface NativeHardwareKey {
    *
    * `payloadHex` must already be the digest Turnkey stamps over. Signing an
    * arbitrary payload here would make the biometric prompt a formality.
+   *
+   * The copy is the caller's to supply, because this key signs account setup as
+   * well as payments and the prompt is the only thing telling a Consumer which
+   * one they are agreeing to. Android shows `title` above `reason`; iOS has a
+   * single line and shows `reason`.
    */
-  sign(payloadHex: string): Promise<string>;
+  sign(payloadHex: string, title: string, reason: string): Promise<string>;
 
   /** Discards the key. Used when enrolment fails part-way. */
   reset(): Promise<void>;
@@ -55,3 +60,23 @@ export function devicePlatform(): DevicePlatform {
 }
 
 export const hardwareKey = native;
+
+/**
+ * What the biometric prompt says, per thing being signed.
+ *
+ * Kept together so the two are visibly different. They were one hardcoded
+ * string, which meant finishing onboarding asked a Consumer to "approve this
+ * payment" when no payment existed and their balance was zero.
+ */
+export const SIGN_PROMPT = {
+  payment: {
+    title: "Approve this payment",
+    reason: "Confirm it is you before Xend sends this",
+  },
+  accountSetup: {
+    title: "Finish setting up",
+    reason: "Confirm it is you to secure your Xend account",
+  },
+} as const;
+
+export type SignPrompt = (typeof SIGN_PROMPT)[keyof typeof SIGN_PROMPT];
