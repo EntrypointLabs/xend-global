@@ -88,12 +88,10 @@ export class ProvisioningService {
     const step = nextStep(open?.approved ?? null, account);
     const instructions = this.build(account, change, step, transactionIndex);
 
-    const unsigned = await this.chain.compile({
-      instructions,
-      // S1 pays every step. S2's wallet is a Turnkey signer with no lamports,
-      // and the relayer's allowlist excludes the smart-account program.
-      feePayer: new PublicKey(account.primarySigner),
-    });
+    // The fee payer is the settlement authority, chosen inside the chain: a
+    // Consumer has funded nothing yet when these run, so neither S1 nor S2
+    // can pay.
+    const unsigned = await this.chain.compile({ instructions });
 
     this.logger.log(
       `provisioning.step userId=${userId} change=${change} step=${step} index=${transactionIndex}`,

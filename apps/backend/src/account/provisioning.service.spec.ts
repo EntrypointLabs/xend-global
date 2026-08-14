@@ -47,7 +47,7 @@ interface ChainState {
 }
 
 function fakeChain(state: ChainState = {}) {
-  const compiled: { instructions: unknown[]; feePayer: string }[] = [];
+  const compiled: { instructions: unknown[] }[] = [];
   const submitted: string[] = [];
 
   const chain: ProvisioningChain = {
@@ -60,10 +60,7 @@ function fakeChain(state: ChainState = {}) {
       Promise.resolve((state.policies ?? []).includes(seed)),
     readProposal: () => Promise.resolve(state.proposal ?? null),
     compile: (params) => {
-      compiled.push({
-        instructions: params.instructions,
-        feePayer: params.feePayer.toBase58(),
-      });
+      compiled.push({ instructions: params.instructions });
       return Promise.resolve({
         unsignedTxBase64: 'unsigned',
         messageBase64: 'message',
@@ -182,7 +179,7 @@ describe('ProvisioningService.prepareNext', () => {
     expect(compiled).toHaveLength(1);
   });
 
-  it('pays every step from the primary signer', async () => {
+  it('never asks the Consumer to pay, because they have funded nothing yet', async () => {
     const { chain, compiled } = fakeChain({
       transactionIndex: 3n,
       proposal: { approved: [PRIMARY], settled: false },
@@ -190,9 +187,10 @@ describe('ProvisioningService.prepareNext', () => {
 
     await service(chain).prepareNext(USER);
 
-    // S2 is a Turnkey signer with no lamports, and the relayer's allowlist
-    // excludes the smart-account program, so S1 pays even when S2 signs.
-    expect(compiled[0].feePayer).toBe(PRIMARY);
+    // The fee payer is picked inside the chain (the settlement authority), so
+    // the service must not name one. Paying from S1 killed every step before
+    // it reached the program: provisioning runs before a Consumer has any SOL.
+    expect(compiled[0]).not.toHaveProperty('feePayer');
   });
 
   it('refuses to provision a Consumer with no Account', async () => {

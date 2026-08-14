@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   Connection,
@@ -11,6 +11,10 @@ import {
 import { accounts, getProposalPda } from '@sqds/smart-account';
 import { derivePolicyAddress } from '@xend/smart-account';
 
+import {
+  SETTLEMENT_AUTHORITY_SIGNER,
+  type SettlementAuthoritySigner,
+} from '../settlement/settlement-authority.interface';
 import { AccountCreationError } from './account.errors';
 import type {
   ProposalState,
@@ -33,7 +37,11 @@ export class Web3ProvisioningChain implements ProvisioningChain, OnModuleInit {
   private readonly logger = new Logger(Web3ProvisioningChain.name);
   private rpc!: Connection;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Inject(SETTLEMENT_AUTHORITY_SIGNER)
+    private readonly authority: SettlementAuthoritySigner,
+  ) {}
 
   onModuleInit(): void {
     this.rpc = new Connection(
@@ -111,10 +119,7 @@ export class Web3ProvisioningChain implements ProvisioningChain, OnModuleInit {
     };
   }
 
-  async compile(params: {
-    instructions: TransactionInstruction[];
-    feePayer: PublicKey;
-  }): Promise<{
+  async compile(params: { instructions: TransactionInstruction[] }): Promise<{
     unsignedTxBase64: string;
     messageBase64: string;
     blockhash: string;
@@ -132,7 +137,7 @@ export class Web3ProvisioningChain implements ProvisioningChain, OnModuleInit {
     }
 
     const message = new TransactionMessage({
-      payerKey: params.feePayer,
+      payerKey: new PublicKey(this.authority.address),
       recentBlockhash: blockhash,
       instructions: params.instructions,
     }).compileToV0Message();
@@ -148,17 +153,11 @@ export class Web3ProvisioningChain implements ProvisioningChain, OnModuleInit {
   }
 
   async submit(signedTxBase64: string): Promise<string> {
-    const wire = Buffer.from(signedTxBase64, 'base64');
-
     let signature: string;
     try {
-      signature = await this.rpc.sendRawTransaction(wire, {
-        // The device signed a message the backend compiled, so a rejection is
-        // a real disagreement about what the transaction does, not something
-        // to skip past.
-        skipPreflight: false,
-        preflightCommitment: 'confirmed',
-      });
+      // Adds the fee-payer signature to the device's, preserving it: the
+      // authority signs partially, which is what this seam is built for.
+      signature = await this.authority.signAndSend(signedTxBase64);
     } catch (cause) {
       throw new AccountCreationError(
         `Provisioning step was rejected: ${describe(cause)}`,

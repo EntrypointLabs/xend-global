@@ -146,9 +146,20 @@ export interface ProvisioningChain {
     settingsAddress: string,
     transactionIndex: bigint,
   ): Promise<ProposalState | null>;
+  /**
+   * Compiles a step with the settlement authority as fee payer.
+   *
+   * The Consumer cannot pay. Provisioning runs immediately after enrolment,
+   * before they have funded anything, so S1 holds no lamports at exactly the
+   * moment these twelve transactions go out — a transaction paid from it dies
+   * before it reaches the program, with no logs. The authority already pays to
+   * create the Account and is the only funded key in the flow.
+   *
+   * Paying is not signing: the authority is fee payer only, never a signer on
+   * the settings change, so the 2-of-3 still comes from the device.
+   */
   compile(params: {
     instructions: import('@solana/web3.js').TransactionInstruction[];
-    feePayer: import('@solana/web3.js').PublicKey;
   }): Promise<{
     unsignedTxBase64: string;
     messageBase64: string;
@@ -157,7 +168,8 @@ export interface ProvisioningChain {
   }>;
 
   /**
-   * Submits a signed step and waits for confirmation.
+   * Adds the authority's fee-payer signature to a step the device signed,
+   * submits it, and waits for confirmation.
    *
    * Confirmation is not optional here. The next step is derived by reading the
    * chain, so returning before the effect is visible would hand the device the
