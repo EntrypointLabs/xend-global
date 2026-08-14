@@ -19,6 +19,21 @@ export const EnrolAccountSchema = z.object({
 
 export type EnrolAccountDto = z.infer<typeof EnrolAccountSchema>;
 
+/**
+ * A signed provisioning step.
+ *
+ * Carries only the transaction. Which step it is was decided when the backend
+ * compiled it and is fixed by the signatures on it, so a step label from the
+ * client could only contradict the bytes, never change what they do.
+ */
+export const SubmitProvisioningStepSchema = z.object({
+  signedTxBase64: z.string().min(1),
+});
+
+export type SubmitProvisioningStepDto = z.infer<
+  typeof SubmitProvisioningStepSchema
+>;
+
 export const AccountResponseSchema = z.object({
   /** The vault PDA. The Consumer's address everywhere. */
   address: z.string(),

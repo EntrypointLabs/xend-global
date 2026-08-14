@@ -72,6 +72,21 @@ export class Web3AccountChain implements AccountChain, OnModuleInit {
       creator,
       treasury: config.treasury,
       settingsSeed,
+      // Created open, then closed by provisioning once both policies exist.
+      //
+      // The default is D3's 24 hours, and taking it here would make the
+      // Account unusable for its first day: a policy is added by a settings
+      // change, a settings change waits out the lock in force, and every Spend
+      // runs under a policy. So the Account would sit locked with no way to
+      // move money until the lock it was born with had elapsed.
+      //
+      // The exposure is small and bounded. A settings change still needs two
+      // of three signatures, so a zero lock removes the notification window,
+      // not the threshold, and the window only matters to a Consumer who still
+      // holds S2 and can reject. It closes as soon as provisioning finishes,
+      // which happens on the device right after enrolment and before the sweep
+      // puts anything in the vault.
+      timeLockSeconds: 0,
     });
 
     const { blockhash } = await rpc.getLatestBlockhash('confirmed');

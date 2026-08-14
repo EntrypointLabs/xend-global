@@ -26,7 +26,13 @@ import {
 import { AccountService } from './account.service';
 import { SweepService } from './sweep.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { EnrolAccountSchema, type EnrolAccountDto } from './dtos';
+import {
+  EnrolAccountSchema,
+  SubmitProvisioningStepSchema,
+  type EnrolAccountDto,
+  type SubmitProvisioningStepDto,
+} from './dtos';
+import { ProvisioningService } from './provisioning.service';
 
 interface AuthenticatedRequest extends Request {
   user: { userId: string; walletAddress: string };
@@ -41,6 +47,7 @@ export class AccountController {
     private readonly accounts: AccountService,
     private readonly attestation: AttestationService,
     private readonly sweep: SweepService,
+    private readonly provisioning: ProvisioningService,
   ) {}
 
   /**
@@ -99,9 +106,46 @@ export class AccountController {
       // time enrolment fails here a Turnkey sub-organization already exists,
       // so the cause is worth more than the status code.
       this.logger.error(
-        `account.enrolment_failed userId=${req.user.userId}: ${
-          err instanceof Error ? (err.stack ?? err.message) : String(err)
-        }`,
+        `account.enrolment_failed userId=${req.user.userId}: ${describeError(err)}`,
+      );
+      throw toHttp(err);
+    }
+  }
+
+  /**
+   * The next provisioning transaction for the Consumer to sign, or `done`.
+   *
+   * Derived from the chain on every call rather than from a cursor the client
+   * carries, so an interrupted run resumes exactly where it stopped and a
+   * replayed call is harmless.
+   */
+  @Post('provisioning/next')
+  async nextProvisioningStep(@Req() req: AuthenticatedRequest) {
+    try {
+      return await this.provisioning.prepareNext(req.user.userId);
+    } catch (err) {
+      this.logger.error(
+        `provisioning.prepare_failed userId=${req.user.userId}: ${describeError(err)}`,
+      );
+      throw toHttp(err);
+    }
+  }
+
+  @Post('provisioning/submit')
+  async submitProvisioningStep(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(SubmitProvisioningStepSchema))
+    body: SubmitProvisioningStepDto,
+  ) {
+    try {
+      const signature = await this.provisioning.submit(
+        req.user.userId,
+        body.signedTxBase64,
+      );
+      return { signature };
+    } catch (err) {
+      this.logger.error(
+        `provisioning.submit_failed userId=${req.user.userId}: ${describeError(err)}`,
       );
       throw toHttp(err);
     }
@@ -128,6 +172,10 @@ export class AccountController {
       approvalSubOrgId: account.approvalSubOrgId,
     };
   }
+}
+
+function describeError(err: unknown): string {
+  return err instanceof Error ? (err.stack ?? err.message) : String(err);
 }
 
 function toHttp(err: unknown): HttpException {
