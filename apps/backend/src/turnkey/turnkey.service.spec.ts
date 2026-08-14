@@ -1,3 +1,8 @@
+import type {
+  ApprovalSignerRow,
+  ApprovalSignerStore,
+  NewApprovalSigner,
+} from './approval-signer.store';
 import {
   ApprovalSignerShapeError,
   TurnkeyUnavailableError,
@@ -56,8 +61,36 @@ function fakeApi(overrides: Partial<TurnkeyApi> = {}) {
   return { api, calls };
 }
 
-function service(api: TurnkeyApi) {
-  return new TurnkeyService(api, DELEGATED_KEY);
+/** In-memory store. The reuse rule lives in the service, so this stays dumb. */
+class FakeApprovalStore implements ApprovalSignerStore {
+  rows: ApprovalSignerRow[] = [];
+  private seq = 0;
+
+  findByUserAndDevice(userId: string, hardwarePublicKey: string) {
+    return Promise.resolve(
+      this.rows.find(
+        (r) => r.userId === userId && r.hardwarePublicKey === hardwarePublicKey,
+      ) ?? null,
+    );
+  }
+
+  insert(row: NewApprovalSigner) {
+    const created = {
+      id: `approval-${++this.seq}`,
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+      ...row,
+    } as ApprovalSignerRow;
+    this.rows.push(created);
+    return Promise.resolve(created);
+  }
+}
+
+function service(
+  api: TurnkeyApi,
+  store: ApprovalSignerStore = new FakeApprovalStore(),
+) {
+  return new TurnkeyService(api, DELEGATED_KEY, store);
 }
 
 describe('TurnkeyService.enrolApprovalSigner', () => {
@@ -216,7 +249,7 @@ describe('TurnkeyService.enrolApprovalSigner', () => {
     // The module reads this key rather than requiring it, so a backend with no
     // Turnkey credentials boots. The failure belongs here, at the call.
     await expect(
-      new TurnkeyService(api, '').enrolApprovalSigner({
+      new TurnkeyService(api, '', new FakeApprovalStore()).enrolApprovalSigner({
         reference: 'consumer-1',
         hardwarePublicKey: '03bb',
       }),
@@ -257,5 +290,86 @@ describe('TurnkeyService.enrolApprovalSigner', () => {
         hardwarePublicKey: '03bb',
       }),
     ).rejects.toBeInstanceOf(UnsafeSubOrganizationError);
+  });
+});
+
+describe('TurnkeyService.ensureApprovalSigner', () => {
+  it('creates one sub-organization and records it', async () => {
+    const { api, calls } = fakeApi();
+    const store = new FakeApprovalStore();
+
+    const enrolled = await service(api, store).ensureApprovalSigner({
+      reference: 'consumer-1',
+      hardwarePublicKey: '03bb',
+    });
+
+    expect(calls.createSubOrganization).toHaveLength(1);
+    expect(store.rows).toHaveLength(1);
+    expect(store.rows[0].subOrganizationId).toBe(enrolled.subOrganizationId);
+    expect(store.rows[0].hardwarePublicKey).toBe('03bb');
+  });
+
+  it('reuses the recorded sub-organization when enrolment is retried', async () => {
+    const { api, calls } = fakeApi();
+    const store = new FakeApprovalStore();
+    const turnkey = service(api, store);
+
+    const first = await turnkey.ensureApprovalSigner({
+      reference: 'consumer-1',
+      hardwarePublicKey: '03bb',
+    });
+    const second = await turnkey.ensureApprovalSigner({
+      reference: 'consumer-1',
+      hardwarePublicKey: '03bb',
+    });
+
+    // The retry must not mint a second sub-organization. The first one already
+    // carries the Consumer's hardware key as its authenticator, and creating
+    // another strands it at Turnkey with nothing referencing it.
+    expect(calls.createSubOrganization).toHaveLength(1);
+    expect(store.rows).toHaveLength(1);
+    expect(second.subOrganizationId).toBe(first.subOrganizationId);
+    expect(second.address).toBe(first.address);
+  });
+
+  it('enrols a new sub-organization for a replacement device', async () => {
+    const { api, calls } = fakeApi();
+    const store = new FakeApprovalStore();
+    const turnkey = service(api, store);
+
+    await turnkey.ensureApprovalSigner({
+      reference: 'consumer-1',
+      hardwarePublicKey: '03bb',
+    });
+    await turnkey.ensureApprovalSigner({
+      reference: 'consumer-1',
+      hardwarePublicKey: '03cc',
+    });
+
+    // The sub-org's only authenticator is the hardware key it was created
+    // with, so handing the old one back would give the new device an S2 it
+    // holds no key for.
+    expect(calls.createSubOrganization).toHaveLength(2);
+    expect(store.rows).toHaveLength(2);
+  });
+
+  it('records nothing when the sequence fails before narrowing', async () => {
+    const { api, calls } = fakeApi({
+      updateRootQuorum: () => Promise.reject(new Error('turnkey is down')),
+    });
+    const store = new FakeApprovalStore();
+
+    await expect(
+      service(api, store).ensureApprovalSigner({
+        reference: 'consumer-1',
+        hardwarePublicKey: '03bb',
+      }),
+    ).rejects.toBeTruthy();
+
+    // A sub-org recorded mid-sequence would be handed back by the next retry
+    // with the backend still a root user on it, which is the state enrolment
+    // refuses to return.
+    expect(calls.createSubOrganization).toHaveLength(1);
+    expect(store.rows).toHaveLength(0);
   });
 });

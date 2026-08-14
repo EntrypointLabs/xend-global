@@ -92,6 +92,13 @@
       "when": 1784649600000,
       "tag": "0011_squads_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784736000000,
+      "tag": "0012_approval_signers",
+      "breakpoints": true
     }
   ]
 }

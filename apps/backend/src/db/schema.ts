@@ -272,6 +272,46 @@ export const squadsAccounts = pgTable('squads_accounts', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+/**
+ * approval_signers — the Turnkey sub-organization backing S2, recorded the
+ * moment it exists rather than when the Account completes.
+ *
+ * Enrolment creates the sub-organization first and writes squads_accounts
+ * last, so anything failing in between (an unfunded payer, a lost seed race)
+ * leaves a real sub-organization with no row referencing it. Without this
+ * table the retry cannot find it and mints another, stranding the first with
+ * the Consumer's hardware key registered on it.
+ *
+ * Keyed by (user, hardware key) rather than by user alone: the sub-org's
+ * authenticator IS that hardware key, so a Consumer enrolling from a new
+ * device genuinely needs a new sub-organization, and reusing the old one
+ * would hand them an S2 their device cannot sign for.
+ */
+export const approvalSigners = pgTable(
+  'approval_signers',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    subOrganizationId: text('sub_organization_id').notNull().unique(),
+    /** S2's Solana address, which is what sits in the signer set. */
+    address: text('address').notNull().unique(),
+    /** The device key registered as this sub-org's authenticator. */
+    hardwarePublicKey: text('hardware_public_key').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('approval_signers_user_device_idx').on(
+      table.userId,
+      table.hardwarePublicKey,
+    ),
+  ],
+);
+
 export const transfers = pgTable(
   'transfers',
   {

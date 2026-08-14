@@ -55,7 +55,7 @@ function fakeChain(overrides: Partial<AccountChain> = {}) {
 function fakeTurnkey(address = APPROVAL) {
   const calls: unknown[] = [];
   const turnkey = {
-    enrolApprovalSigner(params: unknown) {
+    ensureApprovalSigner(params: unknown) {
       calls.push(params);
       return Promise.resolve({ subOrganizationId: SUB_ORG, address });
     },
@@ -219,7 +219,7 @@ describe('AccountService.createAccount', () => {
       },
     });
     const turnkey = {
-      enrolApprovalSigner() {
+      ensureApprovalSigner() {
         order.push('turnkey');
         return Promise.resolve({
           subOrganizationId: SUB_ORG,
@@ -244,7 +244,7 @@ describe('AccountService.createAccount', () => {
     const { store, rows } = fakeStore();
     const { chain, calls } = fakeChain();
     const turnkey = {
-      enrolApprovalSigner: () => Promise.reject(new Error('turnkey down')),
+      ensureApprovalSigner: () => Promise.reject(new Error('turnkey down')),
     } as unknown as TurnkeyService;
 
     await expect(

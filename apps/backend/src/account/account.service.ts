@@ -61,7 +61,7 @@ export class AccountService {
     const existing = await this.store.findByUserId(params.userId);
     if (existing) return existing;
 
-    const approval = await this.turnkey.enrolApprovalSigner({
+    const approval = await this.turnkey.ensureApprovalSigner({
       reference: params.userId,
       hardwarePublicKey: params.hardwarePublicKey,
     });

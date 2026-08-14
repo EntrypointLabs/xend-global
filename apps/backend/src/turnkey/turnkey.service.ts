@@ -1,6 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import {
+  APPROVAL_SIGNER_STORE,
+  type ApprovalSignerStore,
+} from './approval-signer.store';
+import {
   ApprovalSignerShapeError,
   TurnkeyUnavailableError,
   UnsafeSubOrganizationError,
@@ -39,7 +43,54 @@ export class TurnkeyService {
   constructor(
     @Inject(TURNKEY_API) private readonly api: TurnkeyApi,
     private readonly delegatedUserPublicKey: string,
+    @Inject(APPROVAL_SIGNER_STORE) private readonly store: ApprovalSignerStore,
   ) {}
+
+  /**
+   * The enrolment entry point, safe to call again after a failed Account.
+   *
+   * The sub-organization is created before anything is written on chain, so a
+   * failure in between (an unfunded settlement authority, a lost seed race)
+   * leaves one that no Account references. Calling `enrolApprovalSigner`
+   * again would create a second and strand the first with the Consumer's
+   * hardware key on it, which is where the orphans come from.
+   *
+   * Recorded the moment it exists, so the retry finds it. Reuse is keyed on
+   * the device as well as the Consumer: the sub-org's only authenticator is
+   * that hardware key, so a replacement device has to enrol a new one rather
+   * than inherit an S2 it cannot sign for.
+   */
+  async ensureApprovalSigner(
+    params: EnrolApprovalSignerParams,
+  ): Promise<EnrolledApprovalSigner> {
+    const existing = await this.store.findByUserAndDevice(
+      params.reference,
+      params.hardwarePublicKey,
+    );
+    if (existing) {
+      this.logger.log(
+        `turnkey.enrolment.reused subOrganizationId=${existing.subOrganizationId}`,
+      );
+      return {
+        subOrganizationId: existing.subOrganizationId,
+        address: existing.address,
+      };
+    }
+
+    const enrolled = await this.enrolApprovalSigner(params);
+
+    // After the narrowing, never before. A sub-org recorded mid-sequence would
+    // be handed back by the next retry with the backend still a root user on
+    // it, which is the exact state enrolApprovalSigner refuses to return.
+    await this.store.insert({
+      userId: params.reference,
+      subOrganizationId: enrolled.subOrganizationId,
+      address: enrolled.address,
+      hardwarePublicKey: params.hardwarePublicKey,
+    });
+
+    return enrolled;
+  }
 
   async enrolApprovalSigner(
     params: EnrolApprovalSignerParams,

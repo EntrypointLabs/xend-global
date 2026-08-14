@@ -17,7 +17,11 @@ export const TURNKEY_API = Symbol('TURNKEY_API');
 export type HardwarePublicKey = string;
 
 export interface EnrolApprovalSignerParams {
-  /** Ties the sub-org to a Consumer for support and audit. Not a secret. */
+  /**
+   * The Consumer's user id. Names the sub-org for support and audit, and is
+   * the key the stored sub-organization is found by on a retry, so it has to
+   * be a real user id rather than any opaque string.
+   */
   reference: string;
   hardwarePublicKey: HardwarePublicKey;
 }
