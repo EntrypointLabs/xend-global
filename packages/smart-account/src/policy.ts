@@ -30,6 +30,18 @@ export interface CreateSpendingLimitPolicyParams {
   limitSigner: PublicKey;
   /** Proposes the change. Must be a signer with `Initiate`. */
   proposer: PublicKey;
+  /**
+   * Funds the rent for the transaction and proposal accounts this creates.
+   * Defaults to `proposer`.
+   *
+   * Provisioning runs before a Consumer has funded anything, so the proposer
+   * has no lamports to pay rent with and the whole settings change dies inside
+   * the program on a System transfer. Naming a funded payer here is the only
+   * way to separate who authorises the change from who pays for the accounts
+   * it needs.
+   */
+  rentPayer?: PublicKey;
+
   /** The Settings account's current `transactionIndex`, plus one. */
   transactionIndex: bigint;
 }
@@ -58,6 +70,7 @@ export function buildCreateSpendingLimitPolicy({
   terms,
   limitSigner,
   proposer,
+  rentPayer,
   transactionIndex,
 }: CreateSpendingLimitPolicyParams): CreateSpendingLimitPolicyResult {
   if (terms.maxPerUse > terms.maxPerPeriod) {
@@ -107,12 +120,14 @@ export function buildCreateSpendingLimitPolicy({
         settingsPda: addresses.settings,
         transactionIndex,
         creator: proposer,
+        rentPayer,
         actions: [action],
       }),
       instructions.createProposal({
         settingsPda: addresses.settings,
         transactionIndex,
         creator: proposer,
+        rentPayer,
       }),
     ],
   };
@@ -187,6 +202,11 @@ export interface CreateAboveLimitPolicyParams {
   primary: PublicKey;
   approval: PublicKey;
   proposer: PublicKey;
+  /**
+   * Funds the rent for the transaction and proposal accounts this creates.
+   * Defaults to `proposer`. See {@link CreateSpendingLimitPolicyParams}.
+   */
+  rentPayer?: PublicKey;
   transactionIndex: bigint;
 }
 
@@ -210,6 +230,7 @@ export function buildCreateAboveLimitPolicy({
   primary,
   approval,
   proposer,
+  rentPayer,
   transactionIndex,
 }: CreateAboveLimitPolicyParams): CreateSpendingLimitPolicyResult {
   if (primary.equals(approval)) {
@@ -250,12 +271,14 @@ export function buildCreateAboveLimitPolicy({
         settingsPda: addresses.settings,
         transactionIndex,
         creator: proposer,
+        rentPayer,
         actions: [action],
       }),
       instructions.createProposal({
         settingsPda: addresses.settings,
         transactionIndex,
         creator: proposer,
+        rentPayer,
       }),
     ],
   };
@@ -267,6 +290,18 @@ export interface SetTimeLockParams {
   seconds: number;
   /** Proposes the change. Must be a signer with `Initiate`. */
   proposer: PublicKey;
+  /**
+   * Funds the rent for the transaction and proposal accounts this creates.
+   * Defaults to `proposer`.
+   *
+   * Provisioning runs before a Consumer has funded anything, so the proposer
+   * has no lamports to pay rent with and the whole settings change dies inside
+   * the program on a System transfer. Naming a funded payer here is the only
+   * way to separate who authorises the change from who pays for the accounts
+   * it needs.
+   */
+  rentPayer?: PublicKey;
+
   /** The Settings account's current `transactionIndex`, plus one. */
   transactionIndex: bigint;
 }
@@ -289,6 +324,7 @@ export function buildSetTimeLock({
   addresses,
   seconds,
   proposer,
+  rentPayer,
   transactionIndex,
 }: SetTimeLockParams): TransactionInstruction[] {
   const action: generated.SettingsAction = {
@@ -301,12 +337,14 @@ export function buildSetTimeLock({
       settingsPda: addresses.settings,
       transactionIndex,
       creator: proposer,
+      rentPayer,
       actions: [action],
     }),
     instructions.createProposal({
       settingsPda: addresses.settings,
       transactionIndex,
       creator: proposer,
+      rentPayer,
     }),
   ];
 }

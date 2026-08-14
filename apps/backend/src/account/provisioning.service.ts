@@ -162,6 +162,9 @@ export class ProvisioningService {
     const addresses = deriveAccountAddresses(account.settingsSeed);
     const primary = new PublicKey(account.primarySigner);
     const approval = new PublicKey(account.approvalSigner);
+    // Rent for the transaction and proposal accounts, which the proposer
+    // cannot cover: provisioning runs before the Consumer has funded anything.
+    const rentPayer = new PublicKey(this.chain.rentPayer);
 
     if (step === 'propose') {
       switch (change) {
@@ -174,6 +177,7 @@ export class ProvisioningService {
             // to one signature.
             limitSigner: primary,
             proposer: primary,
+            rentPayer,
             transactionIndex,
             terms: buildDefaultSpendingLimit(
               new PublicKey(
@@ -189,6 +193,7 @@ export class ProvisioningService {
             primary,
             approval,
             proposer: primary,
+            rentPayer,
             transactionIndex,
           }).propose;
 
@@ -198,6 +203,7 @@ export class ProvisioningService {
           return buildSetTimeLock({
             addresses,
             proposer: primary,
+            rentPayer,
             transactionIndex,
             seconds: SETTINGS_TIME_LOCK_SECONDS,
           });

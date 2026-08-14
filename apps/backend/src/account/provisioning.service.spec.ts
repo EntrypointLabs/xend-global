@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { PublicKey } from '@solana/web3.js';
 
 import {
   ABOVE_LIMIT_POLICY_SEED,
@@ -17,6 +18,7 @@ const PRIMARY = '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9';
 const APPROVAL = 'GkP9xL7mQwR2sT4vB6nH8jC3dF5aZ1yU2eW4rK6tN9pM';
 const SETTINGS = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+const AUTHORITY = 'Eo5wriQzhkJrQKEwTLMBMBDdCq1tE7QzKw8ias91pft5';
 
 const ACCOUNT: SquadsAccountRow = {
   userId: USER,
@@ -51,6 +53,7 @@ function fakeChain(state: ChainState = {}) {
   const submitted: string[] = [];
 
   const chain: ProvisioningChain = {
+    rentPayer: AUTHORITY,
     readSettings: () =>
       Promise.resolve({
         timeLockSeconds: state.timeLockSeconds ?? 0,
@@ -177,6 +180,21 @@ describe('ProvisioningService.prepareNext', () => {
     expect(plan.step).toBe('propose');
     expect(plan.change).toBe('above-limit');
     expect(compiled).toHaveLength(1);
+  });
+
+  it('funds rent from the authority, not the proposer', async () => {
+    const { chain, compiled } = fakeChain();
+
+    await service(chain).prepareNext(USER);
+
+    // The proposer has no lamports at this point, and rent defaults to them.
+    // Left alone it fails inside the program on a System transfer, after the
+    // fee has already been paid, which reads as a program bug rather than an
+    // unfunded account.
+    const keys = (
+      compiled[0].instructions as { keys: { pubkey: PublicKey }[] }[]
+    ).flatMap((ix) => ix.keys.map((k) => k.pubkey.toBase58()));
+    expect(keys).toContain(AUTHORITY);
   });
 
   it('never asks the Consumer to pay, because they have funded nothing yet', async () => {

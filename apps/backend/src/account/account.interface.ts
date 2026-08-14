@@ -139,6 +139,15 @@ export interface ProposalState {
 }
 
 export interface ProvisioningChain {
+  /**
+   * Who funds rent for the accounts a settings change creates, base58.
+   *
+   * Exposed because the instruction builders need it by value, and it is not
+   * the proposer: a Consumer has no lamports when provisioning runs, so
+   * defaulting rent to them fails inside the program on a System transfer.
+   */
+  readonly rentPayer: string;
+
   readSettings(settingsAddress: string): Promise<SettingsState>;
   policyExists(settingsAddress: string, policySeed: bigint): Promise<boolean>;
   /** Null when no proposal was ever created at that index. */

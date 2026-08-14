@@ -37,6 +37,11 @@ export class Web3ProvisioningChain implements ProvisioningChain, OnModuleInit {
   private readonly logger = new Logger(Web3ProvisioningChain.name);
   private rpc!: Connection;
 
+  /** The settlement authority pays fee and rent for every provisioning step. */
+  get rentPayer(): string {
+    return this.authority.address;
+  }
+
   constructor(
     private readonly config: ConfigService,
     @Inject(SETTLEMENT_AUTHORITY_SIGNER)
