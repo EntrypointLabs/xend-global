@@ -33,6 +33,7 @@ import {
   type SubmitProvisioningStepDto,
 } from './dtos';
 import { ProvisioningService } from './provisioning.service';
+import { SpendingLimitService } from './spending-limit.service';
 
 interface AuthenticatedRequest extends Request {
   user: { userId: string; walletAddress: string };
@@ -48,6 +49,7 @@ export class AccountController {
     private readonly attestation: AttestationService,
     private readonly sweep: SweepService,
     private readonly provisioning: ProvisioningService,
+    private readonly spendingLimits: SpendingLimitService,
   ) {}
 
   /**
@@ -170,6 +172,12 @@ export class AccountController {
       // sub-organization it is talking to. Not a secret: holding it proves
       // nothing without the hardware key that signs for it.
       approvalSubOrgId: account.approvalSubOrgId,
+      // Carried on the Account rather than given its own endpoint: everything
+      // that wants the limit already holds the Account, and a second call
+      // would let the two disagree about which Account they describe.
+      spendingLimit: await this.spendingLimits.forAccount(
+        account.settingsAddress,
+      ),
     };
   }
 }

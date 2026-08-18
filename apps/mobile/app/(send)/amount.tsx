@@ -7,13 +7,21 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { formatAmount } from "@/utils/helper";
 import { useBalances } from "@/hooks/useBalances";
+import { useAccount } from "@/hooks/useAccount";
+import { describeSecondCheck, SECOND_CHECK_NOTE } from "@/utils/spendingLimit";
 import { cn } from "@/utils/cn";
 
+/**
+ * Said before the Consumer commits, not after. The second confirmation is
+ * normal for a larger amount, so this is a heads-up rather than a warning.
+ */
 export default function AmountScreen() {
   const [amount, setAmount] = useState("0");
   const { recipient } = useLocalSearchParams<{ recipient: string }>();
   const { total } = useBalances();
+  const { data: account } = useAccount();
   const balance = total ?? 0;
+  const secondCheck = describeSecondCheck(account, amount);
 
   const handleKeyPress = (key: string) => {
     if (key === "backspace") {
@@ -114,6 +122,19 @@ export default function AmountScreen() {
         {/* Keypad */}
         <View className="mb-6">
           <Keypad onKeyPress={handleKeyPress} />
+        </View>
+
+        {/* Height held whether or not there is a note, so crossing the limit
+            does not shift the button out from under a thumb already moving. */}
+        <View className="mb-3 min-h-5 justify-center">
+          {secondCheck && (
+            <Typography
+              weight="500"
+              className="text-center text-sm text-gray-500"
+            >
+              {SECOND_CHECK_NOTE[secondCheck.reason]}
+            </Typography>
+          )}
         </View>
 
         {/* Review Button */}

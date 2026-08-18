@@ -5,6 +5,7 @@ import {
 } from "@solana/web3.js";
 import { instructions, utils } from "@sqds/smart-account";
 
+import type { LimitPeriod } from "./policy.js";
 import type { AccountAddresses } from "./types.js";
 
 const PRIMARY_ACCOUNT_INDEX = 0;
@@ -20,8 +21,18 @@ export interface SpendingLimit {
   mint: PublicKey;
   /** Largest single use, in the mint's smallest units. */
   maxPerUse: bigint;
-  /** What is left in the current period, in the mint's smallest units. */
+  /** The period's ceiling, in the mint's smallest units. */
+  maxPerPeriod: bigint;
+  /**
+   * What is left in the current period, in the mint's smallest units.
+   *
+   * Recorded by the program, which refills it when a Spend executes under this
+   * policy. It is not a live countdown: a period that has rolled over still
+   * reads low until something spends under the limit again.
+   */
   remainingInPeriod: bigint;
+  /** How often {@link remainingInPeriod} refills to {@link maxPerPeriod}. */
+  period: LimitPeriod;
   /** Empty means any destination is allowed. */
   destinations: PublicKey[];
 }

@@ -103,16 +103,20 @@ export interface UnsignedSpend {
 export const PROVISIONING_CHAIN = Symbol('PROVISIONING_CHAIN');
 
 /**
- * The three settings changes that make a new Account usable, in the only order
- * that works.
+ * The one settings change that makes a new Account usable: both policies and
+ * the time lock, in that order, carried as a single change.
  *
- * Both policies have to exist before the time lock goes on. A settings change
- * waits out the lock in force when it executes, so an Account locked first
- * cannot add a policy for a day, and every Spend runs under a policy. Raising
- * the lock last is not self-blocking for the same reason: the lock in force
- * while that change executes is still the old zero.
+ * A single member rather than a bare flag because the wire shape has to survive
+ * a second change appearing, and because a step reads better labelled than
+ * anonymous.
+ *
+ * Ordering inside the change is not incidental. Both policies have to be
+ * created before the lock goes on, and they are: a change is checked against
+ * the lock the Settings carries when it executes, which provisioning leaves at
+ * zero until this change lands. Locking first would leave an Account unable to
+ * add a policy for a day, and every Spend runs under a policy.
  */
-export type ProvisioningChange = 'spending-limit' | 'above-limit' | 'time-lock';
+export type ProvisioningChange = 'provision';
 
 /**
  * A settings change is four transactions: propose it, collect an approval from
@@ -160,7 +164,7 @@ export interface ProvisioningChain {
    *
    * The Consumer cannot pay. Provisioning runs immediately after enrolment,
    * before they have funded anything, so S1 holds no lamports at exactly the
-   * moment these twelve transactions go out — a transaction paid from it dies
+   * moment these four transactions go out: a transaction paid from it dies
    * before it reaches the program, with no logs. The authority already pays to
    * create the Account and is the only funded key in the flow.
    *
@@ -205,24 +209,62 @@ export interface ProvisioningPlan {
 
 export interface SpendChain {
   /**
-   * Spending limits currently attached to the Account.
+   * Spending limits attached to this Account, read from chain.
+   *
+   * Takes the Account because the limit is a policy account derived from its
+   * settings address; there is no global list.
    *
    * An empty list is a valid answer and means every Spend takes the
    * two-signature route. It must never be inferred from a failed read: a read
    * error has to throw, or a transient RPC failure would silently downgrade
    * the route decision to "no limits" and change how the Spend is authorised.
    */
-  readSpendingLimits(): Promise<
-    readonly import('@xend/smart-account').SpendingLimit[]
-  >;
+  readSpendingLimits(
+    settingsAddress: string,
+  ): Promise<readonly import('@xend/smart-account').SpendingLimit[]>;
 
+  /**
+   * Compiles a Spend with the settlement authority as fee payer.
+   *
+   * Not the Consumer. The money lives in the vault, and a Consumer who has
+   * only ever been paid in USDC holds no SOL at all, so charging the fee to S1
+   * fails before the transaction reaches the program. Same reason provisioning
+   * pays from the authority.
+   *
+   * Paying is not signing: the authority is fee payer only and is not a signer
+   * on the Spend, so authorisation still comes from the Account's own signers.
+   */
   compile(params: {
     instruction: import('@solana/web3.js').TransactionInstruction;
-    feePayer: import('@solana/web3.js').PublicKey;
   }): Promise<{
     unsignedTxBase64: string;
     messageBase64: string;
     blockhash: string;
     lastValidBlockHeight: number;
   }>;
+
+  /**
+   * Whether the program would accept this Spend, asked by simulating it.
+   *
+   * Exists because `remainingInPeriod` is a stored counter, not a live one. The
+   * program refills it as a side effect of a Spend executing under the spending
+   * limit, so a Consumer who exhausts the limit reads zero forever: every later
+   * Spend routes two-signature, two-signature executes under the above-limit
+   * policy, and that never touches the counter that would have been refilled.
+   *
+   * Recomputing the rollover here would mean reimplementing the program's
+   * period arithmetic from the outside, and guessing generously routes a Spend
+   * one-signature that the program then rejects, which the Consumer sees as a
+   * failed send. Simulating asks the program itself, which runs its own reset
+   * on the way through.
+   *
+   * False on any failure, including an unreachable RPC. Two signatures is the
+   * floor, so an unanswered question has to degrade towards more signatures.
+   */
+  wouldSucceed(
+    instruction: import('@solana/web3.js').TransactionInstruction,
+  ): Promise<boolean>;
+
+  /** Who pays, base58. Surfaced so the Spend can be built against it. */
+  readonly feePayer: string;
 }

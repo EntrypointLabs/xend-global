@@ -34,11 +34,35 @@ export type SubmitProvisioningStepDto = z.infer<
   typeof SubmitProvisioningStepSchema
 >;
 
+/**
+ * The band a Spend crosses on one signature, as the Consumer's Account
+ * currently has it.
+ *
+ * Amounts are integer strings at the mint's decimals. A u64 does not survive
+ * JSON's number, and the caps are chosen so that today's do, which is the kind
+ * of thing that stops being true quietly.
+ */
+export const SpendingLimitResponseSchema = z.object({
+  mint: z.string(),
+  maxPerUse: z.string(),
+  maxPerPeriod: z.string(),
+  remainingInPeriod: z.string(),
+  period: z.enum(['OneTime', 'Daily', 'Weekly', 'Monthly']),
+});
+
+export type SpendingLimitResponse = z.infer<typeof SpendingLimitResponseSchema>;
+
 export const AccountResponseSchema = z.object({
   /** The vault PDA. The Consumer's address everywhere. */
   address: z.string(),
   signers: z.object({ primary: z.string(), approval: z.string() }),
   approvalSubOrgId: z.string(),
+  /**
+   * Null while the Account has no limit, which is every Account until
+   * provisioning lands the policy. Null is not "no ceiling": with nothing
+   * admitting a Spend on one signature, every Spend takes two.
+   */
+  spendingLimit: SpendingLimitResponseSchema.nullable(),
 });
 
 export type AccountResponse = z.infer<typeof AccountResponseSchema>;

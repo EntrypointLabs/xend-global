@@ -3,10 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
 import {
   buildApproveSettingsChange,
-  buildCreateAboveLimitPolicy,
-  buildCreateSpendingLimitPolicy,
   buildExecuteSettingsChange,
-  buildSetTimeLock,
+  buildProvisionAccount,
   deriveAccountAddresses,
   derivePolicyAddress,
   SETTINGS_TIME_LOCK_SECONDS,
@@ -21,7 +19,6 @@ import {
 } from './account.interface';
 import type {
   ProvisioningChain,
-  ProvisioningChange,
   ProvisioningPlan,
   ProvisioningStep,
   SquadsAccountRow,
@@ -30,25 +27,25 @@ import type {
 import { buildDefaultSpendingLimit } from './spending-limit.terms';
 
 /**
- * Walks a newly created Account through the settings changes that make it
+ * Walks a newly created Account through the settings change that makes it
  * usable, one signable transaction at a time.
  *
  * ## Why this is driven from the device
  *
- * Every step here is a settings change, and a settings change needs the
- * Account's own threshold: two of S1, S2, S3. The backend holds only S3, and
- * deliberately so. Reaching threshold from the backend alone would mean holding
- * a second signer, which is the thing the whole 2-of-3 exists to prevent. So
- * the backend builds the transactions and the device signs them.
+ * The step here is a settings change, and a settings change needs the Account's
+ * own threshold: two of S1, S2, S3. The backend holds only S3, and deliberately
+ * so. Reaching threshold from the backend alone would mean holding a second
+ * signer, which is the thing the whole 2-of-3 exists to prevent. So the backend
+ * builds the transactions and the device signs them.
  *
  * ## Why it reads chain state instead of tracking progress
  *
- * Twelve transactions with a biometric prompt among them will be interrupted:
- * a backgrounded app, a dropped connection, a killed process. The chain already
- * knows exactly how far this got — which policies exist, what the lock is, who
- * has approved the proposal in flight — so that is the source of truth and each
- * call re-derives the next step from it. Nothing to reconcile, and a retry is
- * always safe.
+ * Four transactions with a biometric prompt among them will be interrupted: a
+ * backgrounded app, a dropped connection, a killed process. The chain already
+ * knows exactly how far this got, which policies exist, what the lock is and
+ * who has approved the proposal in flight, so that is the source of truth and
+ * each call re-derives the next step from it. Nothing to reconcile, and a retry
+ * is always safe.
  */
 @Injectable()
 export class ProvisioningService {
@@ -67,15 +64,14 @@ export class ProvisioningService {
     }
 
     const settings = await this.chain.readSettings(account.settingsAddress);
-    const change = await this.nextChange(account, settings.timeLockSeconds);
 
-    if (!change) {
+    if (await this.isProvisioned(account, settings.timeLockSeconds)) {
       this.logger.log(`provisioning.complete userId=${userId}`);
       return { done: true, needsApprovalSignature: false };
     }
 
     // A proposal sitting at the current index is the change in flight. Anything
-    // settled means that index is spent and the next change starts at index+1.
+    // settled means that index is spent and a fresh change starts at index+1.
     const inFlight = await this.chain.readProposal(
       account.settingsAddress,
       settings.transactionIndex,
@@ -86,7 +82,7 @@ export class ProvisioningService {
       : settings.transactionIndex + 1n;
 
     const step = nextStep(open?.approved ?? null, account);
-    const instructions = this.build(account, change, step, transactionIndex);
+    const instructions = this.build(account, step, transactionIndex);
 
     // The fee payer is the settlement authority, chosen inside the chain: a
     // Consumer has funded nothing yet when these run, so neither S1 nor S2
@@ -94,12 +90,12 @@ export class ProvisioningService {
     const unsigned = await this.chain.compile({ instructions });
 
     this.logger.log(
-      `provisioning.step userId=${userId} change=${change} step=${step} index=${transactionIndex}`,
+      `provisioning.step userId=${userId} step=${step} index=${transactionIndex}`,
     );
 
     return {
       done: false,
-      change,
+      change: 'provision',
       step,
       ...unsigned,
       needsApprovalSignature: step === 'approve-approval',
@@ -128,86 +124,64 @@ export class ProvisioningService {
   }
 
   /**
-   * The first change that has not landed, or null when the Account is ready.
+   * Whether the Account already carries everything the change installs.
    *
    * Read from the chain rather than from a stored column so that an Account
    * provisioned by an older build, or half-provisioned by an interrupted run,
-   * is diagnosed correctly rather than trusted.
+   * is diagnosed correctly rather than trusted. The time lock is checked first
+   * because it is already in hand: the policies cost an RPC read each.
    */
-  private async nextChange(
+  private async isProvisioned(
     account: SquadsAccountRow,
     timeLockSeconds: number,
-  ): Promise<ProvisioningChange | null> {
-    const hasLimit = await this.chain.policyExists(
-      account.settingsAddress,
-      SPENDING_LIMIT_POLICY_SEED,
-    );
-    if (!hasLimit) return 'spending-limit';
+  ): Promise<boolean> {
+    if (timeLockSeconds === 0) return false;
 
-    const hasAbove = await this.chain.policyExists(
-      account.settingsAddress,
-      ABOVE_LIMIT_POLICY_SEED,
+    return (
+      (await this.chain.policyExists(
+        account.settingsAddress,
+        SPENDING_LIMIT_POLICY_SEED,
+      )) &&
+      (await this.chain.policyExists(
+        account.settingsAddress,
+        ABOVE_LIMIT_POLICY_SEED,
+      ))
     );
-    if (!hasAbove) return 'above-limit';
-
-    return timeLockSeconds === 0 ? 'time-lock' : null;
   }
 
   private build(
     account: SquadsAccountRow,
-    change: ProvisioningChange,
     step: ProvisioningStep,
     transactionIndex: bigint,
   ): TransactionInstruction[] {
     const addresses = deriveAccountAddresses(account.settingsSeed);
     const primary = new PublicKey(account.primarySigner);
     const approval = new PublicKey(account.approvalSigner);
-    // Rent for the transaction and proposal accounts, which the proposer
-    // cannot cover: provisioning runs before the Consumer has funded anything.
+    // Rent for the transaction, proposal and policy accounts, which the
+    // proposer cannot cover: provisioning runs before the Consumer has funded
+    // anything.
     const rentPayer = new PublicKey(this.chain.rentPayer);
 
     if (step === 'propose') {
-      switch (change) {
-        case 'spending-limit':
-          return buildCreateSpendingLimitPolicy({
-            addresses,
-            policySeed: SPENDING_LIMIT_POLICY_SEED,
-            // S1 alone spends under the limit. Naming S2 here would put a
-            // biometric prompt on the everyday path the limit exists to keep
-            // to one signature.
-            limitSigner: primary,
-            proposer: primary,
-            rentPayer,
-            transactionIndex,
-            terms: buildDefaultSpendingLimit(
-              new PublicKey(
-                this.config.getOrThrow<string>('EXPO_PUBLIC_USDC_MINT_ADDRESS'),
-              ),
-            ),
-          }).propose;
-
-        case 'above-limit':
-          return buildCreateAboveLimitPolicy({
-            addresses,
-            policySeed: ABOVE_LIMIT_POLICY_SEED,
-            primary,
-            approval,
-            proposer: primary,
-            rentPayer,
-            transactionIndex,
-          }).propose;
-
-        case 'time-lock':
-          // Returns the instructions directly: unlike the policy builders it
-          // creates no account, so there is nothing to hand back alongside.
-          return buildSetTimeLock({
-            addresses,
-            proposer: primary,
-            rentPayer,
-            transactionIndex,
-            seconds: SETTINGS_TIME_LOCK_SECONDS,
-          });
-      }
+      return buildProvisionAccount({
+        addresses,
+        spendingLimitSeed: SPENDING_LIMIT_POLICY_SEED,
+        aboveLimitSeed: ABOVE_LIMIT_POLICY_SEED,
+        // S1 alone spends under the limit, and is one of the two signers above
+        // it. Naming S2 on the limit would put a biometric prompt on the
+        // everyday path the limit exists to keep to one signature.
+        primary,
+        approval,
+        proposer: primary,
+        rentPayer,
+        transactionIndex,
+        timeLockSeconds: SETTINGS_TIME_LOCK_SECONDS,
+        terms: buildDefaultSpendingLimit(
+          new PublicKey(
+            this.config.getOrThrow<string>('EXPO_PUBLIC_USDC_MINT_ADDRESS'),
+          ),
+        ),
+      }).propose;
     }
 
     if (step === 'execute') {
@@ -216,9 +190,13 @@ export class ProvisioningService {
           addresses,
           transactionIndex,
           signer: primary,
-          // The accounts the change creates ride along as remaining accounts.
-          // Raising the lock creates nothing, so that one passes none.
-          policies: policiesFor(change, addresses.settings),
+          rentPayer,
+          // The policy accounts the change creates ride along as remaining
+          // accounts, consumed in the order the change declared them.
+          policies: [
+            derivePolicyAddress(addresses.settings, SPENDING_LIMIT_POLICY_SEED),
+            derivePolicyAddress(addresses.settings, ABOVE_LIMIT_POLICY_SEED),
+          ],
         }),
       ];
     }
@@ -247,18 +225,4 @@ function nextStep(
   if (!approved.includes(account.primarySigner)) return 'approve-primary';
   if (!approved.includes(account.approvalSigner)) return 'approve-approval';
   return 'execute';
-}
-
-function policiesFor(
-  change: ProvisioningChange,
-  settings: PublicKey,
-): PublicKey[] {
-  switch (change) {
-    case 'spending-limit':
-      return [derivePolicyAddress(settings, SPENDING_LIMIT_POLICY_SEED)];
-    case 'above-limit':
-      return [derivePolicyAddress(settings, ABOVE_LIMIT_POLICY_SEED)];
-    case 'time-lock':
-      return [];
-  }
 }

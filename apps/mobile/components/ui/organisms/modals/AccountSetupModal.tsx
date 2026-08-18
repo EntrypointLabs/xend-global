@@ -132,23 +132,15 @@ export function AccountSetupModal({
 const STAGE_COPY: Record<AccountSetupStage, { title: string; body: string }> = {
   idle: {
     title: "Secure your wallet",
-    body: "One quick step sets up your spending limit and approvals. You will be asked for your fingerprint a few times.",
+    body: "One quick step sets up your spending limit and approvals. You will be asked for your fingerprint once.",
   },
   creating: {
     title: "Creating your wallet",
     body: "Setting up the account that holds your money.",
   },
-  "spending-limit": {
-    title: "Setting your daily limit",
-    body: "So everyday payments go through with a single tap.",
-  },
-  "above-limit": {
-    title: "Setting up approvals",
-    body: "So anything larger needs your fingerprint before it leaves.",
-  },
-  "time-lock": {
-    title: "Locking it down",
-    body: "So nobody can change your security settings without warning you first.",
+  securing: {
+    title: "Securing your wallet",
+    body: "Setting your daily limit and approvals, so everyday payments go through with a single tap.",
   },
 };
 

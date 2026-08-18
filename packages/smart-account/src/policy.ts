@@ -73,63 +73,15 @@ export function buildCreateSpendingLimitPolicy({
   rentPayer,
   transactionIndex,
 }: CreateSpendingLimitPolicyParams): CreateSpendingLimitPolicyResult {
-  if (terms.maxPerUse > terms.maxPerPeriod) {
-    throw new Error(
-      "maxPerUse exceeds maxPerPeriod, so the per-use cap could never be reached",
-    );
-  }
-
-  const policy = derivePolicyAddress(addresses.settings, policySeed);
-
-  const action: generated.SettingsAction = {
-    __kind: "PolicyCreate",
-    seed: policySeed,
-    policyCreationPayload: {
-      __kind: "SpendingLimit",
-      fields: [
-        {
-          mint: terms.mint,
-          sourceAccountIndex: PRIMARY_ACCOUNT_INDEX,
-          timeConstraints: {
-            start: 0,
-            expiration: null,
-            period: { __kind: terms.period },
-            accumulateUnused: false,
-          },
-          quantityConstraints: {
-            maxPerPeriod: terms.maxPerPeriod,
-            maxPerUse: terms.maxPerUse,
-            enforceExactQuantity: false,
-          },
-          usageState: null,
-          destinations: terms.destinations ?? [],
-        },
-      ],
-    },
-    signers: [{ key: limitSigner, permissions: Permissions.all() }],
-    threshold: 1,
-    timeLock: 0,
-    startTimestamp: null,
-    expirationArgs: null,
-  };
-
   return {
-    policy,
-    propose: [
-      instructions.createSettingsTransaction({
-        settingsPda: addresses.settings,
-        transactionIndex,
-        creator: proposer,
-        rentPayer,
-        actions: [action],
-      }),
-      instructions.createProposal({
-        settingsPda: addresses.settings,
-        transactionIndex,
-        creator: proposer,
-        rentPayer,
-      }),
-    ],
+    policy: derivePolicyAddress(addresses.settings, policySeed),
+    propose: proposeSettingsChange({
+      addresses,
+      transactionIndex,
+      proposer,
+      rentPayer,
+      actions: [spendingLimitPolicyAction({ policySeed, terms, limitSigner })],
+    }),
   };
 }
 
@@ -161,19 +113,34 @@ export function buildExecuteSettingsChange({
   addresses,
   transactionIndex,
   signer,
+  rentPayer,
   policies = [],
 }: {
   addresses: AccountAddresses;
   transactionIndex: bigint;
   signer: PublicKey;
-  /** Policy addresses the change creates, which need rent. */
+  /**
+   * Funds the accounts the change creates. Defaults to `signer`.
+   *
+   * Executing is where a `PolicyCreate` actually allocates, so this is charged
+   * the rent for every policy in `policies` at once. The signer executing a
+   * change is not necessarily anyone with lamports: a Consumer finishing
+   * onboarding has none at all, and the whole change dies here on a System
+   * transfer after all its approvals have already been collected.
+   */
+  rentPayer?: PublicKey;
+  /**
+   * Policy addresses the change creates, which need rent. They ride along as
+   * remaining accounts and are consumed in order, so a change carrying several
+   * `PolicyCreate` actions must list them in the order it declared them.
+   */
   policies?: PublicKey[];
 }): TransactionInstruction {
   return instructions.executeSettingsTransaction({
     settingsPda: addresses.settings,
     transactionIndex,
     signer,
-    rentPayer: signer,
+    rentPayer: rentPayer ?? signer,
     policies,
   });
 }
@@ -233,54 +200,15 @@ export function buildCreateAboveLimitPolicy({
   rentPayer,
   transactionIndex,
 }: CreateAboveLimitPolicyParams): CreateSpendingLimitPolicyResult {
-  if (primary.equals(approval)) {
-    throw new Error("primary and approval signers must be distinct");
-  }
-
-  const policy = derivePolicyAddress(addresses.settings, policySeed);
-
-  const action: generated.SettingsAction = {
-    __kind: "PolicyCreate",
-    seed: policySeed,
-    policyCreationPayload: {
-      __kind: "ProgramInteraction",
-      fields: [
-        {
-          accountIndex: PRIMARY_ACCOUNT_INDEX,
-          instructionsConstraints: [],
-          preHook: null,
-          postHook: null,
-          spendingLimits: [],
-        },
-      ],
-    },
-    signers: [
-      { key: primary, permissions: Permissions.all() },
-      { key: approval, permissions: Permissions.all() },
-    ],
-    threshold: 2,
-    timeLock: 0,
-    startTimestamp: null,
-    expirationArgs: null,
-  };
-
   return {
-    policy,
-    propose: [
-      instructions.createSettingsTransaction({
-        settingsPda: addresses.settings,
-        transactionIndex,
-        creator: proposer,
-        rentPayer,
-        actions: [action],
-      }),
-      instructions.createProposal({
-        settingsPda: addresses.settings,
-        transactionIndex,
-        creator: proposer,
-        rentPayer,
-      }),
-    ],
+    policy: derivePolicyAddress(addresses.settings, policySeed),
+    propose: proposeSettingsChange({
+      addresses,
+      transactionIndex,
+      proposer,
+      rentPayer,
+      actions: [aboveLimitPolicyAction({ policySeed, primary, approval })],
+    }),
   };
 }
 
@@ -327,18 +255,217 @@ export function buildSetTimeLock({
   rentPayer,
   transactionIndex,
 }: SetTimeLockParams): TransactionInstruction[] {
-  const action: generated.SettingsAction = {
-    __kind: "SetTimeLock",
-    newTimeLock: seconds,
-  };
+  return proposeSettingsChange({
+    addresses,
+    transactionIndex,
+    proposer,
+    rentPayer,
+    actions: [setTimeLockAction(seconds)],
+  });
+}
 
+export interface ProvisionAccountParams {
+  addresses: AccountAddresses;
+  /** Distinguishes the spending-limit policy from others on the Account. */
+  spendingLimitSeed: bigint;
+  /** Distinguishes the above-limit policy from others on the Account. */
+  aboveLimitSeed: bigint;
+  terms: SpendingLimitTerms;
+  /** Draws on the limit alone, and is one of the two above-limit signers. */
+  primary: PublicKey;
+  /** The second above-limit signer, kept off the spending-limit path. */
+  approval: PublicKey;
+  /** Proposes the change. Must be a signer with `Initiate`. */
+  proposer: PublicKey;
+  /**
+   * Funds the rent for the transaction, proposal and policy accounts this
+   * creates. Defaults to `proposer`. See {@link CreateSpendingLimitPolicyParams}.
+   */
+  rentPayer?: PublicKey;
+  /** The Settings account's current `transactionIndex`, plus one. */
+  transactionIndex: bigint;
+  /** Seconds. `SETTINGS_TIME_LOCK_SECONDS` is the value D3 settled on. */
+  timeLockSeconds: number;
+}
+
+export interface ProvisionAccountResult {
+  /**
+   * In the order the actions create them, which is the order
+   * {@link buildExecuteSettingsChange} has to pass them back.
+   */
+  policies: PublicKey[];
+  /** Propose the change. Signed by `proposer` alone. */
+  propose: TransactionInstruction[];
+}
+
+/**
+ * Proposes everything a new Account needs in a single settings change: both
+ * policies and the time lock.
+ *
+ * A settings change carries a *list* of actions, and each change costs four
+ * transactions of which one is signed by the approval signer. Splitting this
+ * work across three changes therefore costs three hardware-key prompts during
+ * signup, for something the Consumer experiences as one act.
+ *
+ * The lock comes last in the list and does not hold back the policies beside
+ * it. The lock is checked once, before any action applies, against the lock
+ * the Settings currently carries, which provisioning leaves at zero until this
+ * change lands.
+ */
+export function buildProvisionAccount({
+  addresses,
+  spendingLimitSeed,
+  aboveLimitSeed,
+  terms,
+  primary,
+  approval,
+  proposer,
+  rentPayer,
+  transactionIndex,
+  timeLockSeconds,
+}: ProvisionAccountParams): ProvisionAccountResult {
+  if (spendingLimitSeed === aboveLimitSeed) {
+    throw new Error("the two policies must take distinct seeds");
+  }
+
+  return {
+    policies: [
+      derivePolicyAddress(addresses.settings, spendingLimitSeed),
+      derivePolicyAddress(addresses.settings, aboveLimitSeed),
+    ],
+    propose: proposeSettingsChange({
+      addresses,
+      transactionIndex,
+      proposer,
+      rentPayer,
+      actions: [
+        spendingLimitPolicyAction({
+          policySeed: spendingLimitSeed,
+          terms,
+          limitSigner: primary,
+        }),
+        aboveLimitPolicyAction({
+          policySeed: aboveLimitSeed,
+          primary,
+          approval,
+        }),
+        setTimeLockAction(timeLockSeconds),
+      ],
+    }),
+  };
+}
+
+function spendingLimitPolicyAction({
+  policySeed,
+  terms,
+  limitSigner,
+}: {
+  policySeed: bigint;
+  terms: SpendingLimitTerms;
+  limitSigner: PublicKey;
+}): generated.SettingsAction {
+  if (terms.maxPerUse > terms.maxPerPeriod) {
+    throw new Error(
+      "maxPerUse exceeds maxPerPeriod, so the per-use cap could never be reached",
+    );
+  }
+
+  return {
+    __kind: "PolicyCreate",
+    seed: policySeed,
+    policyCreationPayload: {
+      __kind: "SpendingLimit",
+      fields: [
+        {
+          mint: terms.mint,
+          sourceAccountIndex: PRIMARY_ACCOUNT_INDEX,
+          timeConstraints: {
+            start: 0,
+            expiration: null,
+            period: { __kind: terms.period },
+            accumulateUnused: false,
+          },
+          quantityConstraints: {
+            maxPerPeriod: terms.maxPerPeriod,
+            maxPerUse: terms.maxPerUse,
+            enforceExactQuantity: false,
+          },
+          usageState: null,
+          destinations: terms.destinations ?? [],
+        },
+      ],
+    },
+    signers: [{ key: limitSigner, permissions: Permissions.all() }],
+    threshold: 1,
+    timeLock: 0,
+    startTimestamp: null,
+    expirationArgs: null,
+  };
+}
+
+function aboveLimitPolicyAction({
+  policySeed,
+  primary,
+  approval,
+}: {
+  policySeed: bigint;
+  primary: PublicKey;
+  approval: PublicKey;
+}): generated.SettingsAction {
+  if (primary.equals(approval)) {
+    throw new Error("primary and approval signers must be distinct");
+  }
+
+  return {
+    __kind: "PolicyCreate",
+    seed: policySeed,
+    policyCreationPayload: {
+      __kind: "ProgramInteraction",
+      fields: [
+        {
+          accountIndex: PRIMARY_ACCOUNT_INDEX,
+          instructionsConstraints: [],
+          preHook: null,
+          postHook: null,
+          spendingLimits: [],
+        },
+      ],
+    },
+    signers: [
+      { key: primary, permissions: Permissions.all() },
+      { key: approval, permissions: Permissions.all() },
+    ],
+    threshold: 2,
+    timeLock: 0,
+    startTimestamp: null,
+    expirationArgs: null,
+  };
+}
+
+function setTimeLockAction(seconds: number): generated.SettingsAction {
+  return { __kind: "SetTimeLock", newTimeLock: seconds };
+}
+
+function proposeSettingsChange({
+  addresses,
+  transactionIndex,
+  proposer,
+  rentPayer,
+  actions,
+}: {
+  addresses: AccountAddresses;
+  transactionIndex: bigint;
+  proposer: PublicKey;
+  rentPayer?: PublicKey;
+  actions: generated.SettingsAction[];
+}): TransactionInstruction[] {
   return [
     instructions.createSettingsTransaction({
       settingsPda: addresses.settings,
       transactionIndex,
       creator: proposer,
       rentPayer,
-      actions: [action],
+      actions,
     }),
     instructions.createProposal({
       settingsPda: addresses.settings,

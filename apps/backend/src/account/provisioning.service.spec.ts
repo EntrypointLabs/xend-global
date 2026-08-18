@@ -1,5 +1,9 @@
 import { ConfigService } from '@nestjs/config';
 import { PublicKey } from '@solana/web3.js';
+import {
+  deriveAccountAddresses,
+  derivePolicyAddress,
+} from '@xend/smart-account';
 
 import {
   ABOVE_LIMIT_POLICY_SEED,
@@ -29,6 +33,16 @@ const ACCOUNT: SquadsAccountRow = {
   approvalSigner: APPROVAL,
   approvalSubOrgId: 'suborg-1',
 };
+
+const ADDRESSES = deriveAccountAddresses(ACCOUNT.settingsSeed);
+const LIMIT_POLICY = derivePolicyAddress(
+  ADDRESSES.settings,
+  SPENDING_LIMIT_POLICY_SEED,
+).toBase58();
+const ABOVE_POLICY = derivePolicyAddress(
+  ADDRESSES.settings,
+  ABOVE_LIMIT_POLICY_SEED,
+).toBase58();
 
 const store: SquadsAccountStore = {
   findByUserId: () => Promise.resolve(ACCOUNT),
@@ -84,38 +98,50 @@ function service(chain: ProvisioningChain) {
   return new ProvisioningService(store, chain, config);
 }
 
+/** Every account any of the compiled instructions touches, base58. */
+function keysOf(compiled: { instructions: unknown[] }): string[] {
+  return (compiled.instructions as { keys: { pubkey: PublicKey }[] }[]).flatMap(
+    (ix) => ix.keys.map((k) => k.pubkey.toBase58()),
+  );
+}
+
 describe('ProvisioningService.prepareNext', () => {
-  it('starts with the spending-limit policy', async () => {
-    const { chain } = fakeChain();
+  it('proposes one change for an Account carrying nothing yet', async () => {
+    const { chain, compiled } = fakeChain();
 
     const plan = await service(chain).prepareNext(USER);
 
     expect(plan).toMatchObject({
       done: false,
-      change: 'spending-limit',
+      change: 'provision',
       step: 'propose',
       needsApprovalSignature: false,
     });
+    // Create the settings transaction, then the proposal. Both policies and
+    // the lock ride inside the first, which is what keeps this to one change
+    // and so to one prompt from the approval signer.
+    expect(compiled[0].instructions).toHaveLength(2);
   });
 
-  it('moves to the above-limit policy once the limit exists', async () => {
-    const { chain } = fakeChain({ policies: [SPENDING_LIMIT_POLICY_SEED] });
-
-    const plan = await service(chain).prepareNext(USER);
-
-    expect(plan.change).toBe('above-limit');
-  });
-
-  it('raises the time lock only after both policies exist', async () => {
+  it('keeps working while the lock is still open, even with both policies', async () => {
     const { chain } = fakeChain({
       policies: [SPENDING_LIMIT_POLICY_SEED, ABOVE_LIMIT_POLICY_SEED],
     });
 
-    // The lock goes on last. Doing it first would leave the Account unable to
-    // add a policy until the lock elapsed, and every Spend runs under one.
     const plan = await service(chain).prepareNext(USER);
 
-    expect(plan.change).toBe('time-lock');
+    expect(plan.done).toBe(false);
+  });
+
+  it('keeps working while a policy is missing, even with the lock on', async () => {
+    const { chain } = fakeChain({
+      policies: [SPENDING_LIMIT_POLICY_SEED],
+      timeLockSeconds: 86400,
+    });
+
+    const plan = await service(chain).prepareNext(USER);
+
+    expect(plan.done).toBe(false);
   });
 
   it('reports done once both policies exist and the lock is on', async () => {
@@ -167,18 +193,64 @@ describe('ProvisioningService.prepareNext', () => {
     expect(plan.needsApprovalSignature).toBe(false);
   });
 
-  it('starts the next change at a fresh index once the last one settled', async () => {
+  it('hands both new policy accounts to the execute step, in order', async () => {
+    const { chain, compiled } = fakeChain({
+      transactionIndex: 3n,
+      proposal: { approved: [PRIMARY, APPROVAL], settled: false },
+    });
+
+    await service(chain).prepareNext(USER);
+
+    // The program consumes them as remaining accounts in the order the change
+    // declared its actions. Swapped, each policy is written at the other's
+    // address and the execution fails.
+    const keys = keysOf(compiled[0]);
+    expect(keys.indexOf(LIMIT_POLICY)).toBeGreaterThan(-1);
+    expect(keys.indexOf(ABOVE_POLICY)).toBeGreaterThan(
+      keys.indexOf(LIMIT_POLICY),
+    );
+  });
+
+  it('charges the execute step to the authority, not the signer', async () => {
+    const { chain, compiled } = fakeChain({
+      transactionIndex: 3n,
+      proposal: { approved: [PRIMARY, APPROVAL], settled: false },
+    });
+
+    await service(chain).prepareNext(USER);
+
+    // Executing is where both policies allocate, so this is where their rent
+    // is charged. The SDK bills the signer unless told otherwise, and the
+    // signer here is a Consumer with no lamports, so the change died on a
+    // System transfer after every approval had already been collected.
+    expect(keysOf(compiled[0])).toContain(AUTHORITY);
+  });
+
+  it('executes a fully approved change rather than proposing another', async () => {
+    const { chain, compiled } = fakeChain({
+      transactionIndex: 3n,
+      proposal: { approved: [PRIMARY, APPROVAL], settled: false },
+    });
+
+    const plan = await service(chain).prepareNext(USER);
+
+    // Reading a fully approved proposal as finished sent provisioning back to
+    // propose at the next index, so it re-proposed and re-approved forever,
+    // four transactions and a fingerprint a lap, and never executed.
+    expect(plan.step).toBe('execute');
+    expect(compiled).toHaveLength(1);
+  });
+
+  it('starts at a fresh index once the last proposal settled', async () => {
     const { chain, compiled } = fakeChain({
       transactionIndex: 3n,
       // Executed, rejected or cancelled: index 3 is spent either way.
       proposal: { approved: [PRIMARY, APPROVAL], settled: true },
-      policies: [SPENDING_LIMIT_POLICY_SEED],
     });
 
     const plan = await service(chain).prepareNext(USER);
 
     expect(plan.step).toBe('propose');
-    expect(plan.change).toBe('above-limit');
     expect(compiled).toHaveLength(1);
   });
 
@@ -191,10 +263,7 @@ describe('ProvisioningService.prepareNext', () => {
     // Left alone it fails inside the program on a System transfer, after the
     // fee has already been paid, which reads as a program bug rather than an
     // unfunded account.
-    const keys = (
-      compiled[0].instructions as { keys: { pubkey: PublicKey }[] }[]
-    ).flatMap((ix) => ix.keys.map((k) => k.pubkey.toBase58()));
-    expect(keys).toContain(AUTHORITY);
+    expect(keysOf(compiled[0])).toContain(AUTHORITY);
   });
 
   it('never asks the Consumer to pay, because they have funded nothing yet', async () => {

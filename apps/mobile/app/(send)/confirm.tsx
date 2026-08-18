@@ -9,10 +9,16 @@ import { isUserCanceledSign } from "@/utils/signing";
 import { formatAmount } from "@/utils/helper";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { ButtonGroup } from "@/components/ui/molecules";
+import {
+  AboveLimitSendModal,
+  type AboveLimitSendStep,
+  type AboveLimitSendState,
+} from "@/components/ui/organisms/modals/AboveLimitSendModal";
 import { useToast } from "@/contexts/ToastContext";
 import * as Sentry from "@sentry/react-native";
 import { useEmbeddedSolanaWallet } from "@privy-io/expo";
-import { useAccount } from "@/hooks/useAccount";
+import { useAccount, ACCOUNT_QUERY_KEY } from "@/hooks/useAccount";
+import { describeSecondCheck } from "@/utils/spendingLimit";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import { Buffer } from "buffer";
@@ -43,6 +49,23 @@ const USDC_MINT = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS ?? "";
  */
 type PendingSubmission = { intentId: string; signedTxBase64: string };
 
+/** Open only for a send that takes two confirmations; null is the ordinary one. */
+type SendFlow = {
+  step: AboveLimitSendStep;
+  state: AboveLimitSendState;
+  message: string | null;
+};
+
+/**
+ * How long "Sent" stays up before the success screen replaces it.
+ *
+ * The state is real by the time this runs; the pause only makes the last tick
+ * legible after two prompts, which is the point of showing the steps at all.
+ */
+const SENT_DWELL_MS = 700;
+
+const NETWORK_BUSY = "The network is busy. Nothing has been sent.";
+
 export default function ConfirmScreen() {
   const textColor = useThemeColor({}, "text");
   const [isLoading, setIsLoading] = useState(false);
@@ -51,6 +74,13 @@ export default function ConfirmScreen() {
   const { data: account } = useAccount();
   const queryClient = useQueryClient();
   const pendingSubmission = useRef<PendingSubmission | null>(null);
+  const [flow, setFlow] = useState<SendFlow | null>(null);
+  /**
+   * Which attempt owns the modal. An attempt the Consumer walked away from can
+   * still be mid-request, and it must not report progress over the one they
+   * started next.
+   */
+  const attempt = useRef(0);
 
   const { amount, recipient, name, type, title } = useLocalSearchParams<{
     amount: string;
@@ -117,6 +147,31 @@ export default function ConfirmScreen() {
     // mints with 9 decimals.
     const amountRaw = BigInt(Math.round(Number(amount) * 1_000_000)).toString();
 
+    const run = ++attempt.current;
+    // A send the app can already tell will be confirmed twice opens the modal
+    // now, so the reason is on screen before the first prompt is. The
+    // borderline case waits for prepare, which is the only thing that knows.
+    // A retry keeps the modal it was started from.
+    let twoChecks =
+      flow !== null || describeSecondCheck(account, amount)?.certain === true;
+    let at: AboveLimitSendStep = "reason";
+
+    const show = (step: AboveLimitSendStep) => {
+      at = step;
+      if (twoChecks && run === attempt.current) {
+        setFlow({ step, state: "working", message: null });
+      }
+    };
+    /** False when there is no modal to say it in, leaving the toast to it. */
+    const hold = (state: "paused" | "failed", message: string) => {
+      if (!twoChecks || run !== attempt.current) return false;
+      setFlow({ step: at, state, message });
+      return true;
+    };
+
+    // A retry that already holds a signed transfer resumes at the submit
+    // rather than replaying checks the Consumer has done once.
+    show(pendingSubmission.current ? "sending" : "reason");
     setIsLoading(true);
     try {
       // If a prior Confirm signed a transfer but the submit round-trip
@@ -141,12 +196,26 @@ export default function ConfirmScreen() {
               amountRaw,
             });
           } else if (err?.data?.code === "RPC_UNAVAILABLE") {
-            showToast("Network temporarily unavailable, try again");
+            if (!hold("failed", NETWORK_BUSY)) {
+              showToast("Network temporarily unavailable, try again");
+            }
             setIsLoading(false);
             return;
           } else {
             throw err;
           }
+        }
+
+        // The route is the backend's answer, not the cached limit's. A send
+        // that needs the second confirmation opens the modal even when nothing
+        // predicted it, and one that turns out not to closes it rather than
+        // walk through checks it will never ask for.
+        if (prep.needsApprovalSignature) {
+          twoChecks = true;
+          show("identity");
+        } else if (twoChecks) {
+          twoChecks = false;
+          setFlow(null);
         }
 
         let signedBase64: string;
@@ -177,6 +246,7 @@ export default function ConfirmScreen() {
             );
           }
 
+          show("approval");
           const { signedTransaction } = await provider.request({
             method: "signTransaction",
             params: { transaction: tx },
@@ -184,7 +254,13 @@ export default function ConfirmScreen() {
           signedBase64 = fromByteArray(signedTransaction.serialize());
         } catch (err) {
           if (isUserCanceledSign(err)) {
-            showToast("Sign again to send");
+            // A dismissed prompt is a decision. It holds the step it was asked
+            // at rather than failing the send, and nothing has been signed.
+            const held = hold(
+              "paused",
+              "You cancelled this check. Nothing has been sent."
+            );
+            if (!held) showToast("Sign again to send");
             setIsLoading(false);
             return;
           }
@@ -195,6 +271,8 @@ export default function ConfirmScreen() {
         pendingSubmission.current = prepared;
       }
 
+      show("sending");
+
       let submitRes: SubmitTransferResponse;
       try {
         submitRes = await submitPrepared(prepared);
@@ -202,12 +280,16 @@ export default function ConfirmScreen() {
         if (err?.data?.code === "INTENT_EXPIRED") {
           // The signed tx can no longer land; a fresh prepare is required.
           pendingSubmission.current = null;
-          showToast("Try again");
+          if (!hold("failed", "This took too long. Nothing has been sent.")) {
+            showToast("Try again");
+          }
           setIsLoading(false);
           return;
         }
         if (err?.data?.code === "RPC_UNAVAILABLE") {
-          showToast("Network temporarily unavailable, try again");
+          if (!hold("failed", NETWORK_BUSY)) {
+            showToast("Network temporarily unavailable, try again");
+          }
           setIsLoading(false);
           return;
         }
@@ -223,6 +305,17 @@ export default function ConfirmScreen() {
       // show on return. Fire-and-forget: don't block navigation to /success.
       queryClient.invalidateQueries({ queryKey: ["transfers"] });
       queryClient.invalidateQueries({ queryKey: ["balances"] });
+      // What is left of the daily limit went down with this send, and it is
+      // what the amount screen warns from.
+      queryClient.invalidateQueries({ queryKey: ACCOUNT_QUERY_KEY });
+
+      if (twoChecks && run === attempt.current) {
+        setFlow({ step: "sent", state: "done", message: null });
+        await new Promise((resolve) => setTimeout(resolve, SENT_DWELL_MS));
+        // Closed before the push: a modal left open sits over the success
+        // screen it was meant to hand off to.
+        setFlow(null);
+      }
 
       router.push({
         pathname: "/success",
@@ -241,12 +334,31 @@ export default function ConfirmScreen() {
       // A retained pendingSubmission means the tx may have reached the
       // backend; the next Confirm resubmits the same intent idempotently,
       // so a retry cannot double-send.
-      showToast(
-        pendingSubmission.current
-          ? "Send may not have completed. Tap Confirm to retry safely."
-          : "Could not send. Please try again."
+      const unresolved = pendingSubmission.current !== null;
+      const held = hold(
+        "failed",
+        unresolved
+          ? "We could not tell whether this went through. Trying again is safe: it cannot send twice."
+          : "Something went wrong. Nothing has been sent."
       );
+      if (!held) {
+        showToast(
+          unresolved
+            ? "Send may not have completed. Tap Confirm to retry safely."
+            : "Could not send. Please try again."
+        );
+      }
     }
+  };
+
+  /**
+   * Leaves the modal without cancelling anything. Nothing is in flight when it
+   * is offered: it only appears once the send has stopped at a step.
+   */
+  const handleDismissFlow = () => {
+    attempt.current += 1;
+    setFlow(null);
+    setIsLoading(false);
   };
 
   const handleCancel = () => {
@@ -307,6 +419,18 @@ export default function ConfirmScreen() {
           />
         </View>
       )}
+
+      <AboveLimitSendModal
+        visible={flow !== null}
+        step={flow?.step ?? "reason"}
+        state={flow?.state ?? "working"}
+        message={flow?.message ?? null}
+        aboveDailyLimit={account?.spendingLimit != null}
+        amount={amount}
+        recipient={recipient}
+        onRetry={handleConfirm}
+        onDismiss={handleDismissFlow}
+      />
     </ThemedScreen>
   );
 }

@@ -8,6 +8,8 @@ import { useBalances } from "@/hooks/useBalances";
 import { useRouter } from "expo-router";
 import HapticPressable from "../../atoms/HapticPressable";
 import { cn } from "@/utils/cn";
+import { useAccount } from "@/hooks/useAccount";
+import { describeSecondCheck, SECOND_CHECK_NOTE } from "@/utils/spendingLimit";
 
 interface AmountStepProps {
   recipient: string;
@@ -23,6 +25,8 @@ export default function AmountStep({
   const router = useRouter(); // For final navigation to confirm
 
   const [amount, setAmount] = useState("");
+  const { data: account } = useAccount();
+  const secondCheck = describeSecondCheck(account, amount);
   const { total } = useBalances();
   const balance = total ?? 0;
 
@@ -166,6 +170,19 @@ export default function AmountStep({
         {/* Keypad */}
         <View className="mb-2">
           <Keypad onKeyPress={handleKeyPress} />
+        </View>
+
+        {/* Height held whether or not there is a note, so crossing the limit
+            does not shift the button out from under a thumb already moving. */}
+        <View className="min-h-5 justify-center pb-2">
+          {secondCheck && (
+            <Typography
+              weight="500"
+              className="text-center text-sm text-gray-500"
+            >
+              {SECOND_CHECK_NOTE[secondCheck.reason]}
+            </Typography>
+          )}
         </View>
 
         {/* Review Button */}

@@ -98,16 +98,31 @@ function EmailLoginScreen() {
    * something is during sign-up. Run from a screen effect they arrived over
    * the dashboard, unexplained, on an account with no money in it.
    *
-   * A Consumer who already has a wallet sees none of this.
+   * A Consumer whose wallet is finished sees none of this.
    */
   const continueAfterPasskey = async () => {
     // Asked directly rather than read off the cached account query. That query
     // is disabled until the Consumer is signed in, and sign-in has only just
     // happened here, so it can still be unresolved -- which is
     // indistinguishable from "resolved, no wallet" and would skip setup.
-    let existing = null;
+    //
+    // Having a wallet is not the same as being able to spend from it. Setup
+    // creates the Account and then walks it through a settings change, and an
+    // interrupted run leaves the first done and the second half finished. Only
+    // the second question decides whether there is work left, so it is the one
+    // asked; it is cheap when the answer is no.
     try {
-      existing = await apiClient.getAccount();
+      const existing = await apiClient.getAccount();
+      if (existing === null) {
+        setShowAccountSetup(true);
+        return;
+      }
+
+      const next = await apiClient.nextProvisioningStep();
+      if (!next.done) {
+        setShowAccountSetup(true);
+        return;
+      }
     } catch {
       // An unreachable backend is not a reason to block sign-in. Setup is
       // offered again next time.
@@ -115,8 +130,7 @@ function EmailLoginScreen() {
       return;
     }
 
-    if (existing === null) setShowAccountSetup(true);
-    else completePasskeySetup();
+    completePasskeySetup();
   };
 
   const handleAddPasskey = async () => {

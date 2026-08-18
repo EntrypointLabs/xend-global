@@ -8,20 +8,15 @@ import { useSweepToVault } from "@/hooks/useSweepToVault";
 import { apiClient } from "@/utils/apiClient";
 
 /** What the Consumer is being shown while it happens. */
-export type AccountSetupStage =
-  | "idle"
-  | "creating"
-  | "spending-limit"
-  | "above-limit"
-  | "time-lock";
+export type AccountSetupStage = "idle" | "creating" | "securing";
 
 /**
  * Creates the Consumer's wallet and makes it spendable, on demand.
  *
  * Driven by a button rather than by mounting. Every step needs a signature
  * from the phone -- securing the wallet means changing its on-chain settings,
- * and those need two of its three signers, of which the phone holds two. So
- * fingerprint prompts are unavoidable; what is avoidable is them arriving
+ * and those need two of its three signers, of which the phone holds two. So a
+ * fingerprint prompt is unavoidable; what is avoidable is it arriving
  * unannounced, which is what running this from a screen effect produced.
  *
  * The sweep goes last. It is what moves money into the vault, and until both
@@ -33,7 +28,7 @@ export function useAccountSetup() {
   const [error, setError] = useState<string | null>(null);
 
   const enrol = useEnrolAccount();
-  const provision = useProvisionAccount((change) => setStage(change ?? "idle"));
+  const provision = useProvisionAccount();
   const sweep = useSweepToVault();
 
   const run = useCallback(async () => {
@@ -50,7 +45,10 @@ export function useAccountSetup() {
         current = await apiClient.getAccount();
       }
 
-      if (current) await provision.mutateAsync(current);
+      if (current) {
+        setStage("securing");
+        await provision.mutateAsync(current);
+      }
       await sweep.mutateAsync();
 
       setStage("idle");

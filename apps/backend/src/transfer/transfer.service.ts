@@ -70,6 +70,12 @@ interface IntentRecord {
    * tx can't diverge from the recorded intent.
    */
   messageBase64: string;
+  /**
+   * True when this leaves the Squads vault rather than the Privy wallet. Such a
+   * transaction is paid for by the settlement authority, so it comes back from
+   * the device a signature short and has to be completed before broadcast.
+   */
+  vaultSpend: boolean;
   /** Unix millis */
   createdAt: number;
   /** Unix millis */
@@ -275,6 +281,7 @@ export class TransferService {
       blockhash: blockhashInfo.blockhash,
       lastValidBlockHeight: blockhashInfo.lastValidBlockHeight,
       messageBase64,
+      vaultSpend: false,
       createdAt: now,
       expiresAt,
     });
@@ -347,6 +354,7 @@ export class TransferService {
       blockhash: spend.blockhash,
       lastValidBlockHeight: spend.lastValidBlockHeight,
       messageBase64: spend.messageBase64,
+      vaultSpend: true,
       createdAt: now,
       expiresAt,
     });
@@ -355,9 +363,11 @@ export class TransferService {
     return {
       intentId,
       unsignedTxBase64: spend.unsignedTxBase64,
-      // 5000 lamports per signature; a two-signature Spend costs twice a
-      // single-signature one.
-      feeLamports: spend.needsApprovalSignature ? 10000 : 5000,
+      // What the Consumer pays, which is nothing: the settlement authority is
+      // the fee payer on a vault Spend. The transaction still costs 5000
+      // lamports a signature, but quoting that here would bill them for
+      // somebody else's lamports.
+      feeLamports: 0,
       expiresAt: new Date(expiresAt).toISOString(),
       needsApprovalSignature: spend.needsApprovalSignature,
     };
@@ -444,11 +454,17 @@ export class TransferService {
       );
     }
 
-    // 4. Submit via SolanaRpc. RPC failure -> RPC_UNAVAILABLE (502) with
-    //    NO DB write, so prepare/submit stays atomic.
+    // 4. Broadcast. RPC failure -> RPC_UNAVAILABLE (502) with NO DB write, so
+    //    prepare/submit stays atomic.
+    //
+    //    A vault Spend goes out through SpendService, which adds the settlement
+    //    authority's fee-payer signature first. Sending it raw would broadcast a
+    //    transaction whose first signature slot is still empty.
     let signature: string;
     try {
-      signature = await this.solana.sendRawTransaction(req.signedTxBase64);
+      signature = intent.vaultSpend
+        ? await this.spends.submit(req.signedTxBase64)
+        : await this.solana.sendRawTransaction(req.signedTxBase64);
     } catch (err) {
       throw new RpcUnavailableError(
         'sendRawTransaction failed; no transfer row written',

@@ -61,11 +61,33 @@ export type WalletResponse = z.infer<typeof WalletResponseSchema>;
  * settings account holds the signer set, never money, and is deliberately
  * not returned.
  */
+/**
+ * How much can leave the vault on one confirmation. Mirrors
+ * `SpendingLimitResponseSchema` in apps/backend/src/account/dtos.ts.
+ *
+ * Amounts are integer strings at the mint's decimals, so read them with BigInt
+ * rather than Number: a u64 does not survive JavaScript's number type.
+ */
+export const SpendingLimitSchema = z.object({
+  mint: z.string(),
+  maxPerUse: z.string(),
+  maxPerPeriod: z.string(),
+  remainingInPeriod: z.string(),
+  period: z.enum(["OneTime", "Daily", "Weekly", "Monthly"]),
+});
+export type SpendingLimit = z.infer<typeof SpendingLimitSchema>;
+
 export const AccountResponseSchema = z.object({
   address: z.string(),
   signers: z.object({ primary: z.string(), approval: z.string() }),
   /** The Consumer's Turnkey sub-organization, which the device stamps against. */
   approvalSubOrgId: z.string(),
+  /**
+   * Null means the Account has no limit, so every send takes two
+   * confirmations. Absent means this backend does not report limits at all,
+   * which is not the same answer and must not be shown as one.
+   */
+  spendingLimit: SpendingLimitSchema.nullable().optional(),
 });
 export type AccountResponse = z.infer<typeof AccountResponseSchema>;
 
@@ -87,7 +109,7 @@ export type EnrolAccountResponse = z.infer<typeof EnrolAccountResponseSchema>;
  */
 export const ProvisioningStepSchema = z.object({
   done: z.boolean(),
-  change: z.enum(["spending-limit", "above-limit", "time-lock"]).optional(),
+  change: z.enum(["provision"]).optional(),
   step: z
     .enum(["propose", "approve-primary", "approve-approval", "execute"])
     .optional(),
@@ -274,6 +296,14 @@ class BackendClient {
         const token = await AuthStorage.getToken();
         if (token) {
           authHeaders["Authorization"] = `Bearer ${token}`;
+        } else if (__DEV__) {
+          // Sent anyway, because a caller racing a sign-in should recover on
+          // its next attempt rather than throw. It does come back 401, and a
+          // 401 earned this way is indistinguishable from an expired session
+          // or a rejected token, so say which one it was.
+          console.warn(
+            `[api] ${endpoint} needs auth and no token is stored yet; it will 401`
+          );
         }
       }
 

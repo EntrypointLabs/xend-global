@@ -5,8 +5,12 @@ import {
   type SpendingLimit,
 } from '@xend/smart-account';
 
+import type { SettlementAuthoritySigner } from '../settlement/settlement-authority.interface';
 import { AccountCreationError } from './account.errors';
-import { ABOVE_LIMIT_POLICY_SEED } from './account.interface';
+import {
+  ABOVE_LIMIT_POLICY_SEED,
+  SPENDING_LIMIT_POLICY_SEED,
+} from './account.interface';
 import type {
   SpendChain,
   SquadsAccountRow,
@@ -19,6 +23,7 @@ const SEED = 7n;
 const PRIMARY = Keypair.generate().publicKey.toBase58();
 const APPROVAL = Keypair.generate().publicKey.toBase58();
 const DESTINATION = Keypair.generate().publicKey.toBase58();
+const AUTHORITY = Keypair.generate().publicKey.toBase58();
 
 const account: SquadsAccountRow = {
   userId: 'user-1',
@@ -39,21 +44,61 @@ function store(row: SquadsAccountRow | null = account): SquadsAccountStore {
   };
 }
 
-function chain(limits: readonly SpendingLimit[] = []) {
-  const compiled: { feePayer: string }[] = [];
+function chain(
+  limits: readonly SpendingLimit[] | Error = [],
+  { programAccepts = false }: { programAccepts?: boolean } = {},
+) {
+  const read: string[] = [];
+  const simulated: unknown[] = [];
   const spendChain: SpendChain = {
-    readSpendingLimits: () => Promise.resolve(limits),
-    compile: (params) => {
-      compiled.push({ feePayer: params.feePayer.toBase58() });
-      return Promise.resolve({
+    wouldSucceed: (instruction) => {
+      simulated.push(instruction);
+      return Promise.resolve(programAccepts);
+    },
+    readSpendingLimits: (settingsAddress) => {
+      read.push(settingsAddress);
+      return limits instanceof Error
+        ? Promise.reject(limits)
+        : Promise.resolve(limits);
+    },
+    compile: () =>
+      Promise.resolve({
         unsignedTxBase64: 'dHg=',
         messageBase64: 'bXNn',
         blockhash: 'BlockHash11111111111111111111111111111111111',
         lastValidBlockHeight: 100,
-      });
+      }),
+    feePayer: AUTHORITY,
+  };
+  return { spendChain, read, simulated };
+}
+
+function authority() {
+  const sent: string[] = [];
+  const signer: SettlementAuthoritySigner = {
+    address: AUTHORITY,
+    signAndSend: (wireTxBase64) => {
+      sent.push(wireTxBase64);
+      return Promise.resolve('signature-1');
     },
   };
-  return { spendChain, compiled };
+  return { signer, sent };
+}
+
+function limit(overrides: Partial<SpendingLimit> = {}): SpendingLimit {
+  return {
+    policy: derivePolicyAddress(
+      deriveAccountAddresses(SEED).settings,
+      SPENDING_LIMIT_POLICY_SEED,
+    ),
+    mint: new PublicKey(USDC),
+    maxPerUse: 100_000_000n,
+    maxPerPeriod: 500_000_000n,
+    remainingInPeriod: 500_000_000n,
+    period: 'Daily',
+    destinations: [],
+    ...overrides,
+  };
 }
 
 const request = {
@@ -64,11 +109,18 @@ const request = {
   decimals: 6,
 };
 
+function service(
+  spendChain: SpendChain,
+  row: SquadsAccountRow | null = account,
+) {
+  return new SpendService(store(row), spendChain, authority().signer);
+}
+
 describe('SpendService.prepare', () => {
   it('needs two signatures when the Account has no spending limit', async () => {
     const { spendChain } = chain([]);
 
-    const result = await new SpendService(store(), spendChain).prepare(request);
+    const result = await service(spendChain).prepare(request);
 
     // The safe direction: an unknown limit state forces more signatures, not
     // fewer.
@@ -77,55 +129,125 @@ describe('SpendService.prepare', () => {
   });
 
   it('needs one signature when a limit admits the Spend', async () => {
-    const addresses = deriveAccountAddresses(SEED);
-    const { spendChain } = chain([
-      {
-        policy: derivePolicyAddress(addresses.settings, 1n),
-        mint: new PublicKey(USDC),
-        maxPerUse: 100_000_000n,
-        remainingInPeriod: 500_000_000n,
-        destinations: [],
-      },
-    ]);
+    const { spendChain } = chain([limit()]);
 
-    const result = await new SpendService(store(), spendChain).prepare(request);
+    const result = await service(spendChain).prepare(request);
 
     expect(result.route).toBe('spending-limit');
     expect(result.needsApprovalSignature).toBe(false);
   });
 
   it('falls back to two signatures above the per-use cap', async () => {
-    const addresses = deriveAccountAddresses(SEED);
-    const { spendChain } = chain([
-      {
-        policy: derivePolicyAddress(addresses.settings, 1n),
-        mint: new PublicKey(USDC),
-        maxPerUse: 10n,
-        remainingInPeriod: 500_000_000n,
-        destinations: [],
-      },
-    ]);
+    const { spendChain } = chain([limit({ maxPerUse: 10n })]);
 
-    const result = await new SpendService(store(), spendChain).prepare(request);
+    const result = await service(spendChain).prepare(request);
+
+    expect(result.route).toBe('two-signature');
+    expect(result.needsApprovalSignature).toBe(true);
+  });
+
+  it('falls back to two signatures once the period is spent', async () => {
+    const { spendChain } = chain([limit({ remainingInPeriod: 10n })]);
+
+    const result = await service(spendChain).prepare(request);
 
     expect(result.route).toBe('two-signature');
   });
 
-  it('pays the fee from the primary signer', async () => {
-    const { spendChain, compiled } = chain([]);
+  it('takes one signature when the program says the period has rolled over', async () => {
+    // The stored counter is refilled by the program as a side effect of a Spend
+    // executing under the limit. Two-signature Spends run under a different
+    // policy and never touch it, so a Consumer who exhausts the limit reads
+    // zero forever and would never route one-signature again.
+    const { spendChain, simulated } = chain(
+      [limit({ remainingInPeriod: 0n })],
+      {
+        programAccepts: true,
+      },
+    );
 
-    await new SpendService(store(), spendChain).prepare(request);
+    const result = await service(spendChain).prepare(request);
 
-    // The vault is a PDA with no key and the relayer's allowlist excludes the
-    // Squads program, so S1 is the only thing that can pay today.
-    expect(compiled[0].feePayer).toBe(PRIMARY);
+    expect(result.route).toBe('spending-limit');
+    expect(result.needsApprovalSignature).toBe(false);
+    expect(simulated).toHaveLength(1);
+  });
+
+  it('stays on two signatures when the program refuses', async () => {
+    const { spendChain, simulated } = chain(
+      [limit({ remainingInPeriod: 0n })],
+      {
+        programAccepts: false,
+      },
+    );
+
+    const result = await service(spendChain).prepare(request);
+
+    expect(result.route).toBe('two-signature');
+    expect(simulated).toHaveLength(1);
+  });
+
+  it('does not ask the program about a cap that never refills', async () => {
+    // maxPerUse bounds a single Spend and no amount of waiting changes it, so
+    // asking costs a round trip to be told what the stored value already said.
+    const { spendChain, simulated } = chain([limit({ maxPerUse: 1n })], {
+      programAccepts: true,
+    });
+
+    const result = await service(spendChain).prepare(request);
+
+    expect(result.route).toBe('two-signature');
+    expect(simulated).toHaveLength(0);
+  });
+
+  it('does not ask the program when there is no limit at all', async () => {
+    const { spendChain, simulated } = chain([], { programAccepts: true });
+
+    const result = await service(spendChain).prepare(request);
+
+    expect(result.route).toBe('two-signature');
+    expect(simulated).toHaveLength(0);
+  });
+
+  it('reads the limits of the Account being spent from', async () => {
+    const { spendChain, read } = chain([]);
+
+    await service(spendChain).prepare(request);
+
+    // The limit is a policy derived from this Account's settings, so reading
+    // any other Account's would decide the route from the wrong balance.
+    expect(read).toEqual([account.settingsAddress]);
+  });
+
+  it('fails the Spend when the limits cannot be read', async () => {
+    const { spendChain } = chain(new Error('rpc down'));
+
+    // A read that failed is not an answer. Turning it into an empty list would
+    // settle the route from a state nobody observed, and would be
+    // indistinguishable from an Account that genuinely has no limit.
+    await expect(service(spendChain).prepare(request)).rejects.toThrow(
+      'rpc down',
+    );
+  });
+
+  it('pays the fee from the key that completes the Spend', async () => {
+    const { spendChain } = chain([]);
+    const { signer } = authority();
+
+    await new SpendService(store(), spendChain, signer).prepare(request);
+
+    // The fee payer's signature slot is the one submit fills. Compiled against
+    // any other key, S1 included, the Spend reaches the cluster still missing
+    // it, and S1 has no lamports to pay with anyway.
+    expect(spendChain.feePayer).toBe(signer.address);
+    expect(spendChain.feePayer).not.toBe(PRIMARY);
   });
 
   it('refuses to prepare a Spend for a Consumer with no Account', async () => {
     const { spendChain } = chain([]);
 
     await expect(
-      new SpendService(store(null), spendChain).prepare(request),
+      service(spendChain, null).prepare(request),
     ).rejects.toBeInstanceOf(AccountCreationError);
   });
 
@@ -137,11 +259,29 @@ describe('SpendService.prepare', () => {
     );
     const { spendChain } = chain([]);
 
-    const result = await new SpendService(store(), spendChain).prepare(request);
+    const result = await service(spendChain).prepare(request);
 
     // Not the Settings. A time-locked Settings cannot carry a synchronous
     // Spend at all, so routing there would make every above-limit Spend fail.
     expect(result.route).toBe('two-signature');
     expect(expected.equals(addresses.settings)).toBe(false);
+  });
+});
+
+describe('SpendService.submit', () => {
+  it('completes the Spend with the fee payer signature before broadcasting', async () => {
+    const { spendChain } = chain([]);
+    const { signer, sent } = authority();
+
+    const signature = await new SpendService(
+      store(),
+      spendChain,
+      signer,
+    ).submit('c2lnbmVk');
+
+    // The device cannot fill the fee payer's slot, so a Spend that skipped
+    // this would reach the cluster missing its first signature.
+    expect(sent).toEqual(['c2lnbmVk']);
+    expect(signature).toBe('signature-1');
   });
 });

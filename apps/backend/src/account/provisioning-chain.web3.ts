@@ -23,6 +23,18 @@ import type {
 } from './account.interface';
 
 /**
+ * Proposal states that still have a step owed to them.
+ *
+ * Enumerated rather than expressed as "not one of the terminal states", because
+ * the two mistakes are not equal. Calling an unfinished proposal finished makes
+ * provisioning loop, re-proposing and re-approving at a fresh index every lap
+ * and charging the Consumer a fingerprint each time. Calling a finished one
+ * unfinished stalls on a step the program will simply refuse. A stall is
+ * visible; the loop looked like slowness.
+ */
+const UNFINISHED = ['Draft', 'Active', 'Approved', 'Executing'];
+
+/**
  * Chain reads and transaction assembly for provisioning, on web3.js per
  * ADR 0020.
  *
@@ -117,10 +129,13 @@ export class Web3ProvisioningChain implements ProvisioningChain, OnModuleInit {
     const [proposal] = accounts.Proposal.fromAccountInfo(info);
     return {
       approved: proposal.approved.map((key) => key.toBase58()),
-      // Active and Draft are the states with work left. Anything else — it
-      // executed, or somebody rejected or cancelled it — means this index is
-      // spent and the next change has to take a fresh one.
-      settled: !['Active', 'Draft'].includes(proposal.status.__kind),
+      // Approved belongs with the unfinished states, not the finished ones. It
+      // is what a proposal becomes the moment it reaches threshold, and the
+      // work left at that point is the execute. Reading it as finished made
+      // provisioning abandon a fully approved change and propose a fresh one
+      // at the next index, forever: four transactions and a fingerprint per
+      // lap, never once executing.
+      settled: !UNFINISHED.includes(proposal.status.__kind),
     };
   }
 

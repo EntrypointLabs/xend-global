@@ -12,6 +12,7 @@ import { Web3ProvisioningChain } from './provisioning-chain.web3';
 import { ProvisioningService } from './provisioning.service';
 import { Web3SpendChain } from './spend-chain.web3';
 import { SpendService } from './spend.service';
+import { SpendingLimitService } from './spending-limit.service';
 import { SweepService } from './sweep.service';
 import {
   ACCOUNT_CHAIN,
@@ -35,6 +36,7 @@ import { DrizzleSquadsAccountStore } from './squads-account.store';
   providers: [
     AccountService,
     SpendService,
+    SpendingLimitService,
     SweepService,
     ProvisioningService,
     { provide: ACCOUNT_CHAIN, useClass: Web3AccountChain },
@@ -42,6 +44,12 @@ import { DrizzleSquadsAccountStore } from './squads-account.store';
     { provide: PROVISIONING_CHAIN, useClass: Web3ProvisioningChain },
     { provide: SQUADS_ACCOUNT_STORE, useClass: DrizzleSquadsAccountStore },
   ],
-  exports: [AccountService, SpendService, SweepService, ProvisioningService],
+  exports: [
+    AccountService,
+    SpendService,
+    SpendingLimitService,
+    SweepService,
+    ProvisioningService,
+  ],
 })
 export class AccountModule {}

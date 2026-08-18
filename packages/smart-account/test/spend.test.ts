@@ -17,7 +17,9 @@ const limit = (over: Partial<SpendingLimit> = {}): SpendingLimit => ({
   policy: Keypair.generate().publicKey,
   mint: USDC,
   maxPerUse: 100_000_000n,
+  maxPerPeriod: 500_000_000n,
   remainingInPeriod: 500_000_000n,
+  period: "Daily",
   destinations: [],
   ...over,
 });

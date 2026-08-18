@@ -28,6 +28,7 @@ import {
   buildCreateAccount,
   buildCreateSpendingLimitPolicy,
   buildExecuteSettingsChange,
+  buildProvisionAccount,
   buildSetTimeLock,
   buildSpend,
   derivePolicyAddress,
@@ -304,7 +305,9 @@ describe.skipIf(!HAVE_FIXTURES)("against deployed bytecode", () => {
           policy: h.policy,
           mint: SOL,
           maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
+          maxPerPeriod: BigInt(5 * LAMPORTS_PER_SOL),
           remainingInPeriod: BigInt(5 * LAMPORTS_PER_SOL),
+          period: "Daily",
           destinations: [],
         },
       ],
@@ -554,6 +557,76 @@ describe.skipIf(!HAVE_FIXTURES)("provisioning order", () => {
 
     // And the Account can spend on both routes from its very first minute,
     // which is the whole point of the ordering.
+    const underLimit = Keypair.generate().publicKey;
+    const oneSig = buildSpend({
+      addresses: h.addresses,
+      request: {
+        mint: SOL,
+        amount: BigInt(LAMPORTS_PER_SOL),
+        destination: underLimit,
+      },
+      route: { kind: "spending-limit", policy: h.policy },
+      signers: [h.primary.publicKey],
+      decimals: 9,
+    });
+    expect(failed(send(h.svm, h.primary, [oneSig], [h.primary]))).toBe(false);
+    expect(h.svm.getBalance(underLimit)).toBe(BigInt(LAMPORTS_PER_SOL));
+
+    const aboveLimit = Keypair.generate().publicKey;
+    const twoSig = spend(
+      h,
+      [h.primary.publicKey, h.approval.publicKey],
+      aboveLimit,
+      BigInt(3 * LAMPORTS_PER_SOL),
+    );
+    expect(
+      failed(send(h.svm, h.primary, [twoSig], [h.primary, h.approval])),
+    ).toBe(false);
+    expect(h.svm.getBalance(aboveLimit)).toBe(BigInt(3 * LAMPORTS_PER_SOL));
+  });
+
+  it("reaches the same state in one change carrying all three actions", () => {
+    // Three changes cost three approval-signer prompts at signup. A settings
+    // change takes a list of actions, so one change reaches the same state for
+    // one prompt, and the lock is still zero while its own actions apply.
+    const h = setUp({ timeLockSeconds: 0 });
+    const transactionIndex =
+      BigInt(settingsOfOpen(h).transactionIndex.toString()) + 1n;
+
+    const { policies, propose } = buildProvisionAccount({
+      addresses: h.addresses,
+      spendingLimitSeed: LIMIT_POLICY_SEED,
+      aboveLimitSeed: ABOVE_LIMIT_POLICY_SEED,
+      terms: {
+        mint: SOL,
+        maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
+        maxPerPeriod: BigInt(5 * LAMPORTS_PER_SOL),
+        period: "Daily",
+        destinations: [],
+      },
+      primary: h.primary.publicKey,
+      approval: h.approval.publicKey,
+      proposer: h.primary.publicKey,
+      transactionIndex,
+      timeLockSeconds: DAY,
+    });
+
+    expect(policies.map((p) => p.toBase58())).toEqual([
+      h.policy.toBase58(),
+      h.abovePolicy.toBase58(),
+    ]);
+    expect(
+      failed(applyImmediately(h, propose, transactionIndex, policies)),
+    ).toBe(false);
+
+    expect(h.svm.getAccount(h.policy)).not.toBeNull();
+    expect(h.svm.getAccount(h.abovePolicy)).not.toBeNull();
+    expect(settingsOfOpen(h).timeLock).toBe(DAY);
+    // One index consumed rather than three.
+    expect(BigInt(settingsOfOpen(h).transactionIndex.toString())).toBe(
+      transactionIndex,
+    );
+
     const underLimit = Keypair.generate().publicKey;
     const oneSig = buildSpend({
       addresses: h.addresses,
