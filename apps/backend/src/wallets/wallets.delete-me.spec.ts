@@ -1,6 +1,9 @@
 import { NotFoundException } from '@nestjs/common';
 import { AccountHasBalanceError, WalletsService } from './wallets.service';
+import type { ConfigService } from '@nestjs/config';
 import type { DbService } from '../db/db.service';
+import type { TokenPriceProvider } from '../prices/token-price.interface';
+import type { TokenMetadataProvider } from '../tokens/token-metadata.interface';
 import type { SolanaRpc, TokenBalance } from '../solana/solana-rpc.interface';
 import { smartAccounts, users } from '../db/schema';
 
@@ -83,12 +86,26 @@ function makeService(opts: {
   };
   const db = makeFakeDb(store);
   const solana = {
+    getSolBalance: jest.fn().mockResolvedValue(0n),
     getTokenBalances: jest
       .fn<Promise<TokenBalance[]>, [string]>()
       .mockResolvedValue(opts.tokens),
     getRecentBlockhash: jest.fn(),
   } as unknown as SolanaRpc;
-  const service = new WalletsService(db, solana);
+  const service = new WalletsService(
+    db,
+    solana,
+    {
+      getUsdPrices: jest.fn().mockResolvedValue(new Map()),
+    } as unknown as TokenPriceProvider,
+    {
+      getMetadata: jest.fn().mockResolvedValue(new Map()),
+    } as unknown as TokenMetadataProvider,
+    {
+      getOrThrow: () => 'UsDcMint',
+      get: () => undefined,
+    } as unknown as ConfigService,
+  );
   return { service, store };
 }
 
