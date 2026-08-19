@@ -39,6 +39,7 @@ function rpc(
   tokens: { mint: string; amountRaw: bigint; decimals: number }[],
 ): SolanaRpc {
   return {
+    getSolBalance: () => Promise.resolve(0n),
     getTokenBalances: () => Promise.resolve(tokens),
   } as unknown as SolanaRpc;
 }

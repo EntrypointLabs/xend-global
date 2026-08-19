@@ -25,12 +25,29 @@ const PENDING_AGE_MS = 30_000;
 const PENDING_EXPIRY_MS = 120_000;
 
 /**
+ * How often the boot replay is repeated while the process is up.
+ *
+ * Every transfer is on chain, so nothing is ever truly lost; what is lost is a
+ * webhook delivery. Without this, a missed delivery stays missing until the
+ * next restart, because the 30-second tick only finalizes transfers we already
+ * know about and never goes looking for ones we never heard of.
+ *
+ * Five minutes rather than the tick's 30 seconds because a sweep costs a
+ * signature page plus a parse per signature at or above each wallet's
+ * bookmark, where the tick costs one batched getSignatureStatuses.
+ */
+const REPLAY_SWEEP_CRON = '0 */5 * * * *';
+
+/**
  * The safety net for the webhook hot path. Two duties:
  *   1. Boot replay (onModuleInit): for each wallet in `smart_accounts`,
  *      stream confirmed transfers since `tailer_state.last_indexed_slot`
  *      and write them via TailerService. Catches up anything missed
  *      while the process was down.
- *   2. 30-second poll (@Cron): for every PENDING `transfers` row older
+ *   2. Replay sweep (@Cron, 5-minutely): the same replay again, so a
+ *      delivery missed while the process was up self-heals rather than
+ *      waiting for a restart.
+ *   3. 30-second poll (@Cron): for every PENDING `transfers` row older
  *      than the age threshold, ask the cluster what happened via
  *      `getSignatureStatuses` and finalize the row to CONFIRMED or
  *      FAILED. The status guard is enforced via the WHERE clause
@@ -50,6 +67,8 @@ export class ReconcilerService implements OnModuleInit {
   private reconcileFinalizedCount = 0;
   private webhookFinalizedCount = 0;
 
+  private replaySweepRunning = false;
+
   constructor(
     private readonly db: DbService,
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
@@ -66,7 +85,7 @@ export class ReconcilerService implements OnModuleInit {
    * Catches exceptions per-wallet so a single broken wallet does not
    * block the rest of the boot sequence.
    */
-  async replayAllWallets(): Promise<void> {
+  async replayAllWallets(reason: 'boot' | 'sweep' = 'boot'): Promise<void> {
     // Both address families, because both can receive during the migration
     // window: the vault is where a Consumer is told to deposit, and the Privy
     // wallet still holds anything sent before enrolment.
@@ -77,17 +96,26 @@ export class ReconcilerService implements OnModuleInit {
           walletAddress: smartAccounts.walletAddress,
         })
         .from(smartAccounts),
+      // Keyed by the owner's smart_accounts row, not by squads_accounts.id:
+      // transfers.smart_account_id is a foreign key into smart_accounts, so a
+      // vault's own id violates the constraint and aborts that wallet's replay.
       this.db.client
         .select({
-          id: squadsAccounts.id,
+          id: smartAccounts.id,
           walletAddress: squadsAccounts.vaultAddress,
         })
-        .from(squadsAccounts),
+        .from(squadsAccounts)
+        .innerJoin(
+          smartAccounts,
+          eq(smartAccounts.userId, squadsAccounts.userId),
+        ),
     ]);
     const wallets = [...privyWallets, ...vaults];
 
     if (wallets.length === 0) {
-      this.logger.log('tailer.reconcile.boot wallets=0 (nothing to replay)');
+      this.logger.log(
+        `tailer.reconcile.${reason} wallets=0 (nothing to replay)`,
+      );
       return;
     }
 
@@ -104,7 +132,7 @@ export class ReconcilerService implements OnModuleInit {
       }
     }
     this.logger.log(
-      `tailer.reconcile.boot wallets=${wallets.length} replayed=${totalReplayed}`,
+      `tailer.reconcile.${reason} wallets=${wallets.length} replayed=${totalReplayed}`,
     );
   }
 
@@ -136,6 +164,34 @@ export class ReconcilerService implements OnModuleInit {
       count++;
     }
     return count;
+  }
+
+  /**
+   * Re-run the replay on a timer. Bounded by each wallet's
+   * `tailer_state.last_indexed_slot`, so a quiet wallet costs a signature
+   * page and nothing else.
+   */
+  @Cron(REPLAY_SWEEP_CRON)
+  async sweep(): Promise<void> {
+    // Never let sweeps stack. A sweep slower than the interval would other-
+    // wise have its successor re-scan the same slots against the same
+    // bookmarks, doubling the RPC load to reach the same result.
+    if (this.replaySweepRunning) {
+      this.logger.debug(
+        'tailer.reconcile.sweep skipped (previous sweep still running)',
+      );
+      return;
+    }
+    this.replaySweepRunning = true;
+    try {
+      await this.replayAllWallets('sweep');
+    } catch (err) {
+      // replayAllWallets already catches per wallet, so reaching here means
+      // the wallet enumeration itself failed. The next sweep retries.
+      this.logger.error('tailer.reconcile.sweep failed', err);
+    } finally {
+      this.replaySweepRunning = false;
+    }
   }
 
   @Cron('*/30 * * * * *')

@@ -38,6 +38,15 @@ export interface ConfirmedTransferEvent {
   slot: bigint;
   mint: string;
   amountRaw: bigint;
+  /**
+   * The mint's decimals, as the chain reported them on this transaction.
+   *
+   * Carried on the event because `amountRaw` is not a quantity without it,
+   * and the transaction itself is a better source than asking a price index
+   * afterwards: it is authoritative, and it answers for mints no index lists.
+   * Null when the payload did not say.
+   */
+  decimals: number | null;
   fromAddress: WalletAddress;
   toAddress: WalletAddress;
   confirmedAt: Date;
@@ -50,6 +59,15 @@ export interface SolanaRpc {
   }>;
 
   getTokenBalances(owner: WalletAddress): Promise<TokenBalance[]>;
+
+  /**
+   * Native SOL held by the address, in lamports.
+   *
+   * Separate from getTokenBalances because native SOL is not a token account
+   * and so never appears there, which is why a funded wallet can read as
+   * holding nothing at all.
+   */
+  getSolBalance(address: WalletAddress): Promise<bigint>;
 
   sendRawTransaction(signedTxBase64: string): Promise<string>;
 

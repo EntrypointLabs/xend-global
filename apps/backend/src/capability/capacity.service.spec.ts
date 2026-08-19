@@ -53,6 +53,7 @@ function makeConfig(overrides: Record<string, string> = {}): ConfigService {
 
 function makeSolana(balances: TokenBalance[]): SolanaRpc {
   return {
+    getSolBalance: jest.fn().mockResolvedValue(0n),
     getTokenBalances: jest.fn().mockResolvedValue(balances),
   } as unknown as SolanaRpc;
 }

@@ -1,4 +1,5 @@
 import type { RecoveryService } from '../recovery/recovery.service';
+import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import { TurnkeyService } from '../turnkey/turnkey.service';
 import {
   AccountCreationError,
@@ -75,6 +76,17 @@ function fakeRecovery(address = RECOVERY) {
   return { recovery, calls };
 }
 
+function fakeSolana() {
+  const registered: string[] = [];
+  const solana = {
+    registerWebhookAddress: (address: string) => {
+      registered.push(address);
+      return Promise.resolve();
+    },
+  } as unknown as SolanaRpc;
+  return { solana, registered };
+}
+
 function params(
   overrides: Partial<Parameters<AccountService['createAccount']>[0]> = {},
 ) {
@@ -98,6 +110,7 @@ describe('AccountService.createAccount', () => {
       store,
       turnkey,
       fakeRecovery().recovery,
+      fakeSolana().solana,
     ).createAccount(params());
 
     expect(rows[0]).toMatchObject({
@@ -127,6 +140,7 @@ describe('AccountService.createAccount', () => {
       store,
       turnkey,
       fakeRecovery().recovery,
+      fakeSolana().solana,
     ).createAccount(params());
 
     expect(result).toEqual(existing);
@@ -160,6 +174,7 @@ describe('AccountService.createAccount', () => {
       store,
       turnkey,
       fakeRecovery().recovery,
+      fakeSolana().solana,
     ).createAccount(params());
 
     expect(attempts).toBe(3);
@@ -179,6 +194,7 @@ describe('AccountService.createAccount', () => {
         store,
         turnkey,
         fakeRecovery().recovery,
+        fakeSolana().solana,
       ).createAccount(params()),
     ).rejects.toBeInstanceOf(AccountCreationError);
   });
@@ -200,6 +216,7 @@ describe('AccountService.createAccount', () => {
         store,
         turnkey,
         fakeRecovery().recovery,
+        fakeSolana().solana,
       ).createAccount(params()),
     ).rejects.toBeInstanceOf(AccountCreationError);
     expect(attempts).toBe(1);
@@ -234,6 +251,7 @@ describe('AccountService.createAccount', () => {
       store,
       turnkey,
       fakeRecovery().recovery,
+      fakeSolana().solana,
     ).createAccount(params());
 
     // An Account created first and then left without S2 would be a 2-of-3
@@ -254,6 +272,7 @@ describe('AccountService.createAccount', () => {
         store,
         turnkey,
         fakeRecovery().recovery,
+        fakeSolana().solana,
       ).createAccount(params()),
     ).rejects.toThrow('turnkey down');
 
@@ -274,6 +293,7 @@ describe('AccountService.createAccount', () => {
         store,
         turnkey,
         fakeRecovery().recovery,
+        fakeSolana().solana,
       ).createAccount(params()),
     ).rejects.toBeInstanceOf(IncompleteSignerSetError);
 
@@ -293,6 +313,7 @@ describe('AccountService.createAccount', () => {
         store,
         turnkey,
         fakeRecovery('').recovery,
+        fakeSolana().solana,
       ).createAccount(params()),
     ).rejects.toBeInstanceOf(IncompleteSignerSetError);
 
@@ -337,6 +358,7 @@ describe('AccountService.createAccount under concurrency', () => {
       store,
       turnkey,
       fakeRecovery().recovery,
+      fakeSolana().solana,
     );
 
     const [first, second] = await Promise.all([

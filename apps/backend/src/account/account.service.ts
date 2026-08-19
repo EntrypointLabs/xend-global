@@ -1,6 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import { RecoveryService } from '../recovery/recovery.service';
+import { SOLANA_RPC } from '../solana/solana-rpc.interface';
+import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import { TurnkeyService } from '../turnkey/turnkey.service';
 import {
   AccountCreationError,
@@ -51,6 +53,7 @@ export class AccountService {
     @Inject(SQUADS_ACCOUNT_STORE) private readonly store: SquadsAccountStore,
     private readonly turnkey: TurnkeyService,
     private readonly recovery: RecoveryService,
+    @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
   ) {}
 
   findByUserId(userId: string): Promise<SquadsAccountRow | null> {
@@ -101,7 +104,7 @@ export class AccountService {
       `account.created userId=${params.userId} vault=${created.vaultAddress}`,
     );
 
-    return this.store.insert({
+    const row = await this.store.insert({
       userId: params.userId,
       settingsSeed: created.settingsSeed,
       settingsAddress: created.settingsAddress,
@@ -110,6 +113,21 @@ export class AccountService {
       approvalSigner: signers.approval,
       approvalSubOrgId: approval.subOrganizationId,
     });
+
+    // The vault needs its own subscription: the one registered at sign-up
+    // covers the Privy wallet, and nothing about that address tells Helius to
+    // watch the vault the Consumer actually receives at. Best-effort, matching
+    // sign-up, because the boot replay is the safety net.
+    try {
+      await this.solana.registerWebhookAddress(created.vaultAddress);
+    } catch (err) {
+      this.logger.error(
+        `Failed to register webhook address for vault ${created.vaultAddress} (continuing; reconciler will catch up)`,
+        err,
+      );
+    }
+
+    return row;
   }
 
   private async createOnChainWithRetry(signers: SignerAddresses) {

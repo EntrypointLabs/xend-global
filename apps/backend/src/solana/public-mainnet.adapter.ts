@@ -20,6 +20,7 @@ import {
   getSignatureStatusesViaConnection,
   getTokenAccountBalanceRawViaConnection,
   getTokenAccountOwnerViaConnection,
+  getSolBalanceViaConnection,
   getTokenBalancesViaConnection,
   sendRawTransactionViaConnection,
   streamConfirmedTransfersViaConnection,
@@ -65,6 +66,10 @@ export class PublicMainnetAdapter implements SolanaRpc, OnModuleInit {
 
   getTokenBalances(owner: WalletAddress): Promise<TokenBalance[]> {
     return getTokenBalancesViaConnection(this.connection, owner);
+  }
+
+  getSolBalance(address: WalletAddress): Promise<bigint> {
+    return getSolBalanceViaConnection(this.connection, address);
   }
 
   sendRawTransaction(signedTxBase64: string): Promise<string> {

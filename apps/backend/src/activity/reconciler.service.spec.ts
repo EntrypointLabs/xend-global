@@ -1,8 +1,31 @@
 /* eslint-disable @typescript-eslint/unbound-method, @typescript-eslint/require-await */
 import { ReconcilerService } from './reconciler.service';
 import { TailerService } from './tailer.service';
+import type { TokenPriceProvider } from '../prices/token-price.interface';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
+
+/**
+ * Prices are decoration on the write path: a transfer row must be written
+ * whether or not anything can value it. Empty by default so these tests keep
+ * asserting the write itself.
+ */
+function fakePriceProvider(
+  prices: Record<string, { usdPrice: number; decimals: number }> = {},
+): TokenPriceProvider {
+  return {
+    getUsdPrices: jest
+      .fn()
+      .mockResolvedValue(
+        new Map(
+          Object.entries(prices).map(([mint, p]) => [
+            mint,
+            { ...p, priceChange24h: null },
+          ]),
+        ),
+      ),
+  } as unknown as TokenPriceProvider;
+}
 
 /**
  * Unit tests for ReconcilerService:
@@ -34,11 +57,21 @@ interface OutstandingRow {
 function makeFakeDb(opts: {
   outstanding?: OutstandingRow[];
   smartAccounts?: { id: string; walletAddress: string }[];
+  /**
+   * Both ids are kept so the fake can answer whichever the query actually
+   * projected: only `smartAccountId` satisfies transfers' foreign key.
+   */
+  vaults?: {
+    smartAccountId: string;
+    squadsAccountId: string;
+    walletAddress: string;
+  }[];
   bookmark?: { walletAddress: string; lastIndexedSlot: bigint };
 }): { db: DbService; calls: FakeDbCall[] } {
   const calls: FakeDbCall[] = [];
   const outstanding = opts.outstanding ?? [];
   const wallets = opts.smartAccounts ?? [];
+  const vaults = opts.vaults ?? [];
   const bookmarks = opts.bookmark ? [opts.bookmark] : [];
 
   const execute = jest.fn().mockImplementation((stmt: unknown) => {
@@ -75,12 +108,23 @@ function makeFakeDb(opts: {
     return typeof v === 'string' ? v : null;
   };
 
-  const makeSelectChain = (tableName: string | null) => {
+  // Which table a projected column was taken from. The vault query and the
+  // bug it replaced differ only here — `id` from smart_accounts versus `id`
+  // from squads_accounts — so the fake has to honour the projection for the
+  // regression test to mean anything.
+  const columnTable = (column: unknown): string | null => {
+    if (typeof column !== 'object' || column === null) return null;
+    return fromTable((column as { table?: unknown }).table);
+  };
+
+  const makeSelectChain = (
+    tableName: string | null,
+    projection: Record<string, unknown>,
+  ) => {
     const chain: Record<string, unknown> = {
-      from: (t: unknown) => {
-        const inner = makeSelectChain(fromTable(t) ?? tableName);
-        return inner;
-      },
+      from: (t: unknown) =>
+        makeSelectChain(fromTable(t) ?? tableName, projection),
+      innerJoin: () => chain,
       where: () => chain,
       limit: () => chain,
       then: (
@@ -94,6 +138,15 @@ function makeFakeDb(opts: {
           rows = bookmarks as unknown as Record<string, unknown>[];
         } else if (tableName === 'smart_accounts') {
           rows = wallets as unknown as Record<string, unknown>[];
+        } else if (tableName === 'squads_accounts') {
+          const idFrom = columnTable(projection.id);
+          rows = vaults.map((v) => ({
+            id:
+              idFrom === 'squads_accounts'
+                ? v.squadsAccountId
+                : v.smartAccountId,
+            walletAddress: v.walletAddress,
+          }));
         }
         return Promise.resolve(rows).then(resolve, reject);
       },
@@ -103,8 +156,8 @@ function makeFakeDb(opts: {
 
   const client = {
     execute,
-    select: () => ({
-      from: (t: unknown) => makeSelectChain(fromTable(t)),
+    select: (projection: Record<string, unknown> = {}) => ({
+      from: (t: unknown) => makeSelectChain(fromTable(t), projection),
     }),
   };
 
@@ -114,6 +167,7 @@ function makeFakeDb(opts: {
 function makeFakeSolana(overrides: Partial<SolanaRpc> = {}): SolanaRpc {
   return {
     getRecentBlockhash: jest.fn(),
+    getSolBalance: jest.fn().mockResolvedValue(0n),
     getTokenBalances: jest.fn(),
     sendRawTransaction: jest.fn(),
     getSignatureStatuses: jest.fn().mockResolvedValue([]),
@@ -155,7 +209,7 @@ describe('ReconcilerService.tick', () => {
         },
       ]),
     });
-    const tailer = new TailerService(db);
+    const tailer = new TailerService(db, fakePriceProvider());
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.tick();
@@ -182,7 +236,7 @@ describe('ReconcilerService.tick', () => {
     const reconciler = new ReconcilerService(
       db,
       makeFakeSolana(),
-      new TailerService(db),
+      new TailerService(db, fakePriceProvider()),
     );
 
     await reconciler.tick();
@@ -205,7 +259,7 @@ describe('ReconcilerService.tick', () => {
       outstanding: [], // fake db only returns rows the SELECT predicate would
     });
     const solana = makeFakeSolana();
-    const tailer = new TailerService(db);
+    const tailer = new TailerService(db, fakePriceProvider());
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.tick();
@@ -239,7 +293,7 @@ describe('ReconcilerService.tick', () => {
         },
       ]),
     });
-    const tailer = new TailerService(db);
+    const tailer = new TailerService(db, fakePriceProvider());
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.tick();
@@ -274,7 +328,7 @@ describe('ReconcilerService.tick', () => {
         },
       ]),
     });
-    const tailer = new TailerService(db);
+    const tailer = new TailerService(db, fakePriceProvider());
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.tick();
@@ -290,7 +344,7 @@ describe('ReconcilerService.tick', () => {
     const reconciler2 = new ReconcilerService(
       db2,
       solana,
-      new TailerService(db2),
+      new TailerService(db2, fakePriceProvider()),
     );
     await reconciler2.tick();
     // Only the outstanding-poll SELECT was issued; no UPDATE.
@@ -323,7 +377,7 @@ describe('ReconcilerService.tick', () => {
         },
       ]),
     });
-    const tailer = new TailerService(db);
+    const tailer = new TailerService(db, fakePriceProvider());
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.tick();
@@ -357,7 +411,11 @@ describe('ReconcilerService.tick', () => {
         },
       ]),
     });
-    const reconciler = new ReconcilerService(db, solana, new TailerService(db));
+    const reconciler = new ReconcilerService(
+      db,
+      solana,
+      new TailerService(db, fakePriceProvider()),
+    );
 
     await reconciler.tick();
     const failedUpdates = calls.filter(
@@ -392,7 +450,11 @@ describe('ReconcilerService.tick', () => {
         },
       ]),
     });
-    const reconciler = new ReconcilerService(db, solana, new TailerService(db));
+    const reconciler = new ReconcilerService(
+      db,
+      solana,
+      new TailerService(db, fakePriceProvider()),
+    );
 
     await reconciler.tick();
     const updates = calls.filter(
@@ -417,13 +479,14 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
         slot: 200n,
         mint: 'USDC',
         amountRaw: 1_000_000n,
+        decimals: 6,
         fromAddress: 'someone',
         toAddress: wallet,
         confirmedAt: new Date(),
       };
     });
     const solana = makeFakeSolana({ streamConfirmedTransfers: streamFn });
-    const tailer = new TailerService(db);
+    const tailer = new TailerService(db, fakePriceProvider());
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.onModuleInit();
@@ -434,10 +497,131 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
     expect(calls.filter((c) => c.kind === 'execute')).toHaveLength(3);
   });
 
+  it('replays a vault under its owner smart account, not the squads row', async () => {
+    const vault = 'VauLT7777777777777777777777777777777777777';
+    const { db } = makeFakeDb({
+      smartAccounts: [],
+      vaults: [
+        {
+          smartAccountId: 'sa-owner',
+          squadsAccountId: 'squads-row',
+          walletAddress: vault,
+        },
+      ],
+    });
+    const streamFn = jest.fn().mockImplementation(async function* () {
+      yield {
+        signature: 'sig-vault-1',
+        slot: 300n,
+        mint: 'USDC',
+        amountRaw: 20_000_000n,
+        decimals: 6,
+        fromAddress: 'depositor',
+        toAddress: vault,
+        confirmedAt: new Date(),
+      };
+    });
+    const solana = makeFakeSolana({ streamConfirmedTransfers: streamFn });
+    const tailer = new TailerService(db, fakePriceProvider());
+    const upsert = jest.spyOn(tailer, 'upsertConfirmedTransfer');
+    const reconciler = new ReconcilerService(db, solana, tailer);
+
+    await reconciler.onModuleInit();
+
+    // transfers.smart_account_id is a foreign key into smart_accounts, so
+    // passing the squads_accounts id here failed the constraint and aborted
+    // the replay, leaving the Consumer's activity feed permanently empty.
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ signature: 'sig-vault-1' }),
+      'sa-owner',
+      vault,
+    );
+  });
+
+  it('sweeps on a timer so a missed delivery does not wait for a restart', async () => {
+    const wallet = 'WaLLeT8888888888888888888888888888888888';
+    const { db } = makeFakeDb({
+      smartAccounts: [{ id: 'sa1', walletAddress: wallet }],
+      bookmark: { walletAddress: wallet, lastIndexedSlot: 100n },
+    });
+    const streamFn = jest.fn().mockImplementation(async function* () {
+      yield {
+        signature: 'sig-swept',
+        slot: 200n,
+        mint: 'USDC',
+        amountRaw: 1_000_000n,
+        decimals: 6,
+        fromAddress: 'someone',
+        toAddress: wallet,
+        confirmedAt: new Date(),
+      };
+    });
+    const solana = makeFakeSolana({ streamConfirmedTransfers: streamFn });
+    const tailer = new TailerService(db, fakePriceProvider());
+    const upsert = jest.spyOn(tailer, 'upsertConfirmedTransfer');
+    const reconciler = new ReconcilerService(db, solana, tailer);
+
+    await reconciler.sweep();
+
+    expect(streamFn).toHaveBeenCalledWith(wallet, 100n);
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ signature: 'sig-swept' }),
+      'sa1',
+      wallet,
+    );
+  });
+
+  it('does not let a slow sweep stack with the next one', async () => {
+    const wallet = 'WaLLeT9999999999999999999999999999999999';
+    const { db } = makeFakeDb({
+      smartAccounts: [{ id: 'sa1', walletAddress: wallet }],
+    });
+    let release: (() => void) | undefined;
+    const inFlight = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered: (() => void) | undefined;
+    const streamEntered = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const streamFn = jest.fn().mockImplementation(async function* () {
+      entered?.();
+      await inFlight;
+      yield {
+        signature: 'sig-slow',
+        slot: 10n,
+        mint: 'USDC',
+        amountRaw: 1n,
+        decimals: 6,
+        fromAddress: 'x',
+        toAddress: wallet,
+        confirmedAt: new Date(),
+      };
+    });
+    const solana = makeFakeSolana({ streamConfirmedTransfers: streamFn });
+    const tailer = new TailerService(db, fakePriceProvider());
+    const reconciler = new ReconcilerService(db, solana, tailer);
+
+    const first = reconciler.sweep();
+    // Wait until the first sweep is genuinely mid-stream, so the second one
+    // lands in the window the guard exists for rather than before it opens.
+    await streamEntered;
+
+    await reconciler.sweep();
+    expect(streamFn).toHaveBeenCalledTimes(1);
+
+    release?.();
+    await first;
+
+    // Once the first finishes the guard clears and sweeping resumes.
+    await reconciler.sweep();
+    expect(streamFn).toHaveBeenCalledTimes(2);
+  });
+
   it('boot replay with no smart_accounts is a no-op', async () => {
     const { db, calls } = makeFakeDb({ smartAccounts: [] });
     const solana = makeFakeSolana();
-    const tailer = new TailerService(db);
+    const tailer = new TailerService(db, fakePriceProvider());
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.onModuleInit();
@@ -464,6 +648,7 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
           slot: 50n,
           mint: 'USDC',
           amountRaw: 1n,
+          decimals: 6,
           fromAddress: 'x',
           toAddress: wallet2,
           confirmedAt: new Date(),
@@ -471,7 +656,7 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
       })();
     });
     const solana = makeFakeSolana({ streamConfirmedTransfers: streamFn });
-    const tailer = new TailerService(db);
+    const tailer = new TailerService(db, fakePriceProvider());
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.onModuleInit();

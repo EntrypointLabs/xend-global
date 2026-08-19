@@ -224,6 +224,7 @@ function makeFakeSolana(overrides: Partial<SolanaRpc> = {}): {
   const registerWebhookAddress = jest.fn().mockResolvedValue(undefined);
   const rpc = {
     getRecentBlockhash: jest.fn(),
+    getSolBalance: jest.fn().mockResolvedValue(0n),
     getTokenBalances: jest.fn(),
     sendRawTransaction: jest.fn(),
     getSignatureStatuses: jest.fn(),
