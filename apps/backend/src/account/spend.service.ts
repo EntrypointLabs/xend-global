@@ -84,6 +84,11 @@ export class SpendService {
       destination: new PublicKey(params.destination),
     };
 
+    // Native SOL has no token program; anything else needs its mint's own.
+    const tokenProgram = request.mint.equals(PublicKey.default)
+      ? undefined
+      : await this.chain.tokenProgramFor(request.mint.toBase58());
+
     const limits = await this.chain.readSpendingLimits(account.settingsAddress);
     const aboveLimitPolicy = derivePolicyAddress(
       addresses.settings,
@@ -97,6 +102,7 @@ export class SpendService {
       addresses,
       account,
       params.decimals,
+      tokenProgram,
     );
     const signers = signersFor(route, account);
 
@@ -106,9 +112,25 @@ export class SpendService {
       route,
       signers,
       decimals: params.decimals,
+      tokenProgram,
     });
 
-    const unsigned = await this.chain.compile({ instruction });
+    // A recipient who has never held this token has no account to receive it
+    // into, and the policy refuses the Spend rather than opening one. Rent
+    // falls to the fee payer for the same reason fees do.
+    const openDestination = tokenProgram
+      ? await this.chain.createDestinationTokenAccount({
+          mint: params.mint,
+          destination: params.destination,
+          tokenProgram,
+        })
+      : null;
+
+    const unsigned = await this.chain.compile({
+      instructions: openDestination
+        ? [openDestination, instruction]
+        : [instruction],
+    });
 
     this.logger.log(
       `spend.prepared userId=${params.userId} route=${route.kind}` +
@@ -151,6 +173,7 @@ export class SpendService {
     addresses: AccountAddresses,
     account: SquadsAccountRow,
     decimals: number,
+    tokenProgram: PublicKey | undefined,
   ): Promise<SpendRoute> {
     if (
       route.kind !== 'two-signature' ||
@@ -177,6 +200,7 @@ export class SpendService {
         route: optimistic,
         signers: signersFor(optimistic, account),
         decimals,
+        tokenProgram,
       }),
     );
 

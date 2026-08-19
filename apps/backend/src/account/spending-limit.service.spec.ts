@@ -11,6 +11,11 @@ import type { SpendChain } from './account.interface';
 import { SpendingLimitResponseSchema } from './dtos';
 import { SpendingLimitService } from './spending-limit.service';
 
+/** Any token program will do here; these tests never reach the program. */
+const TOKEN_PROGRAM_ID_FAKE = new PublicKey(
+  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+);
+
 const USDC = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const SEED = 7n;
 const SETTINGS = deriveAccountAddresses(SEED).settings.toBase58();
@@ -27,6 +32,8 @@ function chain(limits: readonly SpendingLimit[] | Error) {
     },
     compile: () => Promise.reject(new Error('not part of this read')),
     wouldSucceed: () => Promise.reject(new Error('not part of this read')),
+    tokenProgramFor: () => Promise.resolve(TOKEN_PROGRAM_ID_FAKE),
+    createDestinationTokenAccount: () => Promise.resolve(null),
     feePayer: AUTHORITY,
   };
   return { spendChain, read };
