@@ -3,8 +3,10 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:mobile": "npm --workspace @xend/mobile run start",
     "infra": "docker compose up -d --wait redis kafka kafka-topics",
+    "infra:logs": "docker compose logs -f",
     "infra:down": "docker compose down",
     "infra:reset": "docker compose down -v && npm run infra",
     "lint": "turbo run lint",
