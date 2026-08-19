@@ -1,4 +1,5 @@
 import type { TransferRow } from "@/utils/apiClient";
+import { describeToken, formatTokenAmount } from "@/utils/tokens";
 
 /**
  * Canonical, presentation-ready shape for a single transfer as the Activity
@@ -182,4 +183,21 @@ export function securityActivityEntry(params: {
     createdAt: params.at,
     confirmedAt: params.at,
   };
+}
+
+/**
+ * What an arrival toast says: the amount and the asset, in the Consumer's
+ * terms.
+ *
+ * Deliberately not the dollar value. "Received 5 SOL" is what happened; the
+ * dollars are a rendering of it, and the activity row already carries them.
+ */
+export function arrivalLabel(row: TransferRow): string {
+  const { symbol } = describeToken(row.mint, row.tokenSymbol, row.tokenName);
+  const decimals = row.decimals ?? DEFAULT_DECIMALS;
+  const amount = formatTokenAmount(
+    Number(row.amountRaw) / 10 ** decimals,
+    decimals
+  );
+  return symbol ? `Received ${amount} ${symbol}` : `Received ${amount}`;
 }

@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 import type { TransferRow } from "@/utils/apiClient";
 import {
+  arrivalLabel,
   securityActivityEntry,
   ActivityEntry,
   groupIntoSections,
@@ -389,6 +390,40 @@ describe("balance selectors", () => {
       expect(
         describeToken(entry.mint, entry.tokenSymbol, entry.tokenName)
       ).toEqual({ name: "Solana", symbol: "SOL" });
+    });
+  });
+
+  describe("arrivalLabel", () => {
+    const SOL = "So11111111111111111111111111111111111111112";
+    const row = (over: Record<string, unknown>) =>
+      ({
+        id: "t",
+        direction: "RECEIVE",
+        mint: SOL,
+        amountRaw: "5000000000",
+        decimals: 9,
+        status: "CONFIRMED",
+        ...over,
+      }) as unknown as TransferRow;
+
+    it("names the amount and the asset, not the dollars", () => {
+      expect(arrivalLabel(row({}))).toBe("Received 5 SOL");
+    });
+
+    it("scales by the row's own decimals", () => {
+      expect(
+        arrivalLabel(
+          row({ mint: USDC_MINT, amountRaw: "10000000", decimals: 6 })
+        )
+      ).toBe("Received 10 USDC");
+    });
+
+    it("omits a ticker it does not have", () => {
+      expect(
+        arrivalLabel(
+          row({ mint: "SomeUnknownMint", amountRaw: "1000000", decimals: 6 })
+        )
+      ).toBe("Received 1");
     });
   });
 

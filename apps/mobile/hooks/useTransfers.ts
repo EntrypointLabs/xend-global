@@ -6,6 +6,8 @@ import {
 } from "@tanstack/react-query";
 
 import { apiClient } from "@/utils/apiClient";
+import { showToast } from "@/utils/toast";
+import { arrivalLabel } from "@/utils/activity";
 import { fetchTransferRowsFromChain } from "@/utils/chainReads";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserId } from "@/hooks/useUserId";
@@ -17,6 +19,11 @@ const PAGE_SIZE = 25;
 const PENDING_POLL_MS = 5_000;
 /** Otherwise: often enough that an arrival feels immediate, rarely enough to ignore. */
 const IDLE_POLL_MS = 15_000;
+/**
+ * A gap this much larger than the poll only happens because the app was
+ * backgrounded, which is the one case an arrival must not be toasted.
+ */
+const AWAY_GAP_MS = IDLE_POLL_MS * 3;
 
 /**
  * Cursor-paginated Activity feed for the signed-in user. Gated on
@@ -71,12 +78,19 @@ export function useTransfersInfinite() {
  * This is a poll, not a push. It stops when the app is backgrounded, so it
  * costs nothing while nobody is looking; a server-pushed channel would still
  * be better and is not what this is.
+ *
+ * An arrival seen here raises a toast, but only one that happened while the
+ * Consumer was actually looking. Money that landed while they were away is
+ * the push notification's job, and announcing it again on return would tell
+ * them twice about one payment.
  */
 export function usePendingWatch(hasPending = false) {
   const { isAuthenticated } = useAuth();
   const userId = useUserId();
   const queryClient = useQueryClient();
   const lastHeadRef = useRef<string | null>(null);
+  const lastHeadIdRef = useRef<string | null>(null);
+  const lastSeenAtRef = useRef<number>(0);
 
   return useQuery({
     queryKey: ["transfers", "head", userId],
@@ -88,11 +102,30 @@ export function usePendingWatch(hasPending = false) {
       const headKey = head
         ? `${head.id}:${head.signature ?? ""}:${head.status}`
         : null;
+
+      const seenAt = Date.now();
+      const previousSeenAt = lastSeenAtRef.current;
+      lastSeenAtRef.current = seenAt;
+
       if (lastHeadRef.current !== null && lastHeadRef.current !== headKey) {
         queryClient.invalidateQueries({ queryKey: ["transfers", userId] });
         queryClient.invalidateQueries({ queryKey: ["balances", userId] });
+
+        // A gap far longer than the poll means the app was backgrounded, so
+        // this arrival is news from while they were away rather than
+        // something that just happened in front of them.
+        const wasWatching = seenAt - previousSeenAt < AWAY_GAP_MS;
+        const isNewArrival =
+          head !== undefined &&
+          head.id !== lastHeadIdRef.current &&
+          head.direction === "RECEIVE" &&
+          head.status === "CONFIRMED";
+
+        if (wasWatching && isNewArrival) showToast(arrivalLabel(head));
       }
+
       lastHeadRef.current = headKey;
+      lastHeadIdRef.current = head?.id ?? null;
       return res;
     },
     enabled: Boolean(isAuthenticated),
