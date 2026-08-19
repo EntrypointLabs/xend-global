@@ -1,3 +1,4 @@
+import CommonCrypto
 import DeviceCheck
 import ExpoModulesCore
 import LocalAuthentication
