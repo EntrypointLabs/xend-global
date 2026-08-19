@@ -7,6 +7,7 @@ import {
 } from '@solana/web3.js';
 import type { AccountService } from '../account/account.service';
 import type { SpendService } from '../account/spend.service';
+import type { TokenMetadataProvider } from '../tokens/token-metadata.interface';
 import { TransferService } from './transfer.service';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
@@ -191,6 +192,7 @@ function makeSolana(opts: Partial<SolanaRpc>): SolanaRpc {
         blockhash: '11111111111111111111111111111111',
         lastValidBlockHeight: 12345,
       }),
+    getSolBalance: jest.fn().mockResolvedValue(0n),
     getTokenBalances: opts.getTokenBalances ?? jest.fn().mockResolvedValue([]),
     sendRawTransaction:
       opts.sendRawTransaction ?? jest.fn().mockResolvedValue('sig-default'),
@@ -263,6 +265,11 @@ function makeService(opts: {
   account?: SmartAccountsRow;
   squadsAccount?: unknown;
   spends?: SpendService;
+  /** Names and logos by mint, as the token index would return them. */
+  tokenMetadata?: Record<
+    string,
+    { name: string; symbol: string; iconUrl: string | null }
+  >;
 }) {
   const account = opts.account ?? makeAccount();
   const store: FakeStore = opts.store ?? {
@@ -289,6 +296,13 @@ function makeService(opts: {
     opts.solana,
     accounts,
     spends,
+    // Names are decoration on a list of money movements; these tests assert
+    // the movements.
+    {
+      getMetadata: jest
+        .fn()
+        .mockResolvedValue(new Map(Object.entries(opts.tokenMetadata ?? {}))),
+    } as unknown as TokenMetadataProvider,
   );
   return { service, store, account };
 }
@@ -691,6 +705,9 @@ describe('TransferService.list', () => {
         confirmedAt: null,
         failureReason: null,
         kind: 'transfer',
+        decimals: null,
+        usdValue: null,
+        usdPricedAt: null,
         paymentId: null,
       });
     }
@@ -702,6 +719,103 @@ describe('TransferService.list', () => {
     // Page is in reverse-chrono order
     expect(page1.transfers[0].id).toBe('t_2');
     expect(page1.transfers[1].id).toBe('t_1');
+  });
+
+  it('names a row from the mint, not from what the Consumer still holds', async () => {
+    // The case this exists for: the Consumer converted every SOL to USDC, so
+    // a holdings-derived lookup would have nothing left to name it with, and
+    // their SOL history would forget what it was.
+    const SOL = 'So11111111111111111111111111111111111111112';
+    const solana = makeSolana({});
+    const account = makeAccount();
+    const store: FakeStore = {
+      smartAccounts: [account],
+      transfers: [
+        {
+          id: 't_sol',
+          smartAccountId: account.id,
+          intentId: null,
+          signature: 'sig-sol',
+          direction: 'RECEIVE',
+          mint: SOL,
+          amountRaw: '5000000000',
+          fromAddress: Keypair.generate().publicKey.toBase58(),
+          toAddress: account.walletAddress,
+          status: 'CONFIRMED',
+          slot: 1n,
+          createdAt: new Date(2026, 0, 1),
+          submittedAt: null,
+          confirmedAt: new Date(2026, 0, 1),
+          failureReason: null,
+          kind: 'transfer',
+          decimals: 9,
+          usdValue: '500.000000',
+          usdPricedAt: new Date(2026, 0, 1),
+          paymentId: null,
+        },
+      ],
+    };
+    const { service } = makeService({
+      solana,
+      account,
+      store,
+      tokenMetadata: {
+        [SOL]: {
+          name: 'Wrapped SOL',
+          symbol: 'SOL',
+          iconUrl: 'https://example.test/sol.png',
+        },
+      },
+    });
+
+    const page = await service.list('u_test', {});
+
+    expect(page.transfers[0]).toMatchObject({
+      tokenName: 'Wrapped SOL',
+      tokenSymbol: 'SOL',
+      tokenIconUrl: 'https://example.test/sol.png',
+      decimals: 9,
+      usdValue: '500.000000',
+    });
+  });
+
+  it('still returns the row when nothing can name the mint', async () => {
+    const solana = makeSolana({});
+    const account = makeAccount();
+    const store: FakeStore = {
+      smartAccounts: [account],
+      transfers: [
+        {
+          id: 't_unknown',
+          smartAccountId: account.id,
+          intentId: null,
+          signature: 'sig-unknown',
+          direction: 'RECEIVE',
+          mint: 'UnknownMint1111111111111111111111111111111',
+          amountRaw: '1',
+          fromAddress: Keypair.generate().publicKey.toBase58(),
+          toAddress: account.walletAddress,
+          status: 'CONFIRMED',
+          slot: 1n,
+          createdAt: new Date(2026, 0, 1),
+          submittedAt: null,
+          confirmedAt: new Date(2026, 0, 1),
+          failureReason: null,
+          kind: 'transfer',
+          decimals: null,
+          usdValue: null,
+          usdPricedAt: null,
+          paymentId: null,
+        },
+      ],
+    };
+    const { service } = makeService({ solana, account, store });
+
+    const page = await service.list('u_test', {});
+
+    expect(page.transfers).toHaveLength(1);
+    expect(page.transfers[0].tokenName).toBeNull();
+    expect(page.transfers[0].tokenIconUrl).toBeNull();
   });
 
   it('shapes each row per TransferRowSchema (signature + memo nullable)', async () => {
@@ -727,6 +841,9 @@ describe('TransferService.list', () => {
           confirmedAt: new Date('2026-01-01'),
           failureReason: null,
           kind: 'transfer',
+          decimals: null,
+          usdValue: null,
+          usdPricedAt: null,
           paymentId: null,
         },
       ],
@@ -807,6 +924,9 @@ describe('TransferService.list', () => {
           confirmedAt: new Date('2026-01-01'),
           failureReason: null,
           kind: 'transfer',
+          decimals: null,
+          usdValue: null,
+          usdPricedAt: null,
           paymentId: null,
         },
       ],

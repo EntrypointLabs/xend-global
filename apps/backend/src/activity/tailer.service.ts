@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
+import { TOKEN_PRICE_PROVIDER } from '../prices/token-price.interface';
+import type { TokenPriceProvider } from '../prices/token-price.interface';
 import type { ConfirmedTransferEvent } from '../solana/solana-rpc.interface';
 import type { WalletAddress } from '../wallet/wallet-provider.interface';
 
@@ -23,7 +25,39 @@ import type { WalletAddress } from '../wallet/wallet-provider.interface';
 export class TailerService {
   private readonly logger = new Logger(TailerService.name);
 
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    @Inject(TOKEN_PRICE_PROVIDER) private readonly prices: TokenPriceProvider,
+  ) {}
+
+  /**
+   * What this transfer was worth, in dollars, right now.
+   *
+   * Stamped once and never recomputed: five SOL received while SOL was $100 is
+   * $500 forever, because $500 is what changed hands. Re-pricing on read would
+   * rewrite a Consumer's history every time the market moved.
+   *
+   * Returns null when the mint cannot be priced or its decimals are unknown,
+   * because a raw amount without decimals is not a quantity yet.
+   */
+  private async usdValueAt(
+    mint: string,
+    amountRaw: bigint,
+  ): Promise<string | null> {
+    try {
+      const quote = (await this.prices.getUsdPrices([mint])).get(mint);
+      if (!quote || quote.decimals === null) return null;
+
+      const divisor = 10n ** BigInt(quote.decimals);
+      const whole = Number(amountRaw / divisor);
+      const fraction = Number(amountRaw % divisor) / Number(divisor);
+      return ((whole + fraction) * quote.usdPrice).toFixed(6);
+    } catch (err) {
+      // A price outage must not cost us the transfer row itself.
+      this.logger.warn(`tailer.price.unavailable mint=${mint}`, err);
+      return null;
+    }
+  }
 
   /**
    * @param smartAccountId the smart_accounts.id of the OWNED wallet that
@@ -56,6 +90,8 @@ export class TailerService {
     const paymentId = correlation.rows[0]?.payment_id ?? null;
     const kind: 'transfer' | 'payment' = paymentId ? 'payment' : 'transfer';
 
+    const usdValue = await this.usdValueAt(evt.mint, evt.amountRaw);
+
     // The CASE in the DO UPDATE clause is the load-bearing status guard:
     // if the existing row is already CONFIRMED or FAILED, keep that
     // status (do not regress); otherwise take the incoming status.
@@ -66,7 +102,7 @@ export class TailerService {
       INSERT INTO transfers (
         id, smart_account_id, signature, direction, mint, amount_raw,
         from_address, to_address, status, slot, confirmed_at, created_at,
-        kind, payment_id
+        kind, payment_id, decimals, usd_value, usd_priced_at
       ) VALUES (
         ${this.generateId()},
         ${smartAccountId},
@@ -81,7 +117,10 @@ export class TailerService {
         ${evt.confirmedAt.toISOString()}::timestamp,
         NOW(),
         ${kind}::transfer_kind,
-        ${paymentId}
+        ${paymentId},
+        ${evt.decimals}::integer,
+        ${usdValue}::numeric,
+        ${usdValue === null ? null : new Date().toISOString()}::timestamp
       )
       ON CONFLICT (signature) DO UPDATE SET
         status = CASE
@@ -97,7 +136,12 @@ export class TailerService {
           WHEN EXCLUDED.payment_id IS NOT NULL THEN 'payment'::transfer_kind
           ELSE transfers.kind
         END,
-        payment_id = COALESCE(transfers.payment_id, EXCLUDED.payment_id)
+        payment_id = COALESCE(transfers.payment_id, EXCLUDED.payment_id),
+        -- First stamp wins. This is the whole point of storing the value:
+        -- a later delivery of the same signature must not re-price history.
+        decimals = COALESCE(transfers.decimals, EXCLUDED.decimals),
+        usd_value = COALESCE(transfers.usd_value, EXCLUDED.usd_value),
+        usd_priced_at = COALESCE(transfers.usd_priced_at, EXCLUDED.usd_priced_at)
     `);
 
     // Update the per-wallet bookmark. Take MAX so out-of-order events
