@@ -60,6 +60,7 @@ import {
 } from "@expo-google-fonts/inter";
 import LoadingScreen from "@/components/ui/layout/LoadingScreen";
 import LockScreen from "@/components/ui/layout/LockScreen";
+import { usePendingWatch } from "@/hooks/useTransfers";
 
 // Runs before any provider mounts, so the first Privy call is already covered.
 installPrivyRequestLog();
@@ -217,6 +218,7 @@ function RootLayout() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <ThemedRoot>
             <AuthProvider>
+              <ActivityWatch />
               <AppLockProvider>
                 <BlurTargetProvider>
                   <BottomSheetModalProvider>
@@ -230,6 +232,18 @@ function RootLayout() {
       </QueryClientProvider>
     </PrivyAppShell>
   );
+}
+
+/**
+ * Watches for money arriving, from wherever the Consumer happens to be.
+ *
+ * Mounted above the screens rather than on one of them: a deposit lands
+ * whether or not the activity feed is open, and before this it stayed
+ * invisible until something else happened to refetch.
+ */
+function ActivityWatch() {
+  usePendingWatch();
+  return null;
 }
 
 /**
