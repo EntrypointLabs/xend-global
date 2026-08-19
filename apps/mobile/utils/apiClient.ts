@@ -163,6 +163,10 @@ export const BalancesResponseSchema = z.object({
 });
 export type BalancesResponse = z.infer<typeof BalancesResponseSchema>;
 
+export const NotificationPreferenceSchema = z.object({
+  enabled: z.boolean(),
+});
+
 export const DeleteAccountResponseSchema = z.object({
   deleted: z.literal(true),
 });
@@ -533,6 +537,35 @@ class BackendClient {
       auth: true,
     });
     return SweepPlanSchema.parse(raw);
+  }
+
+  /** Records where this installation's notifications should go. */
+  async registerPushDevice(req: {
+    token: string;
+    platform: "ios" | "android";
+  }): Promise<void> {
+    await this.request<unknown>("/notifications/devices", {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify(req),
+    });
+  }
+
+  async getNotificationPreference(): Promise<boolean> {
+    const raw = await this.request<unknown>("/notifications/preferences", {
+      method: "GET",
+      auth: true,
+    });
+    return NotificationPreferenceSchema.parse(raw).enabled;
+  }
+
+  async setNotificationPreference(enabled: boolean): Promise<boolean> {
+    const raw = await this.request<unknown>("/notifications/preferences", {
+      method: "PUT",
+      auth: true,
+      body: JSON.stringify({ enabled }),
+    });
+    return NotificationPreferenceSchema.parse(raw).enabled;
   }
 
   async getBalances(): Promise<BalancesResponse> {

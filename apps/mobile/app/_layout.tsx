@@ -61,6 +61,7 @@ import {
 import LoadingScreen from "@/components/ui/layout/LoadingScreen";
 import LockScreen from "@/components/ui/layout/LockScreen";
 import { usePendingWatch } from "@/hooks/useTransfers";
+import { usePushRegistration } from "@/hooks/usePushRegistration";
 
 // Runs before any provider mounts, so the first Privy call is already covered.
 installPrivyRequestLog();
@@ -243,6 +244,7 @@ function RootLayout() {
  */
 function ActivityWatch() {
   usePendingWatch();
+  usePushRegistration();
   return null;
 }
 
