@@ -1,9 +1,32 @@
 /* eslint-disable @typescript-eslint/unbound-method, @typescript-eslint/require-await */
 import { ReconcilerService } from './reconciler.service';
 import { TailerService } from './tailer.service';
+import type { TokenNamer } from '../tokens/token-namer.service';
+import type { NotificationsService } from '../notifications/notifications.service';
 import type { TokenPriceProvider } from '../prices/token-price.interface';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
+
+/** Names the mints these tests use; anything else goes unnamed, as in life. */
+function fakeNamer(): TokenNamer {
+  return {
+    symbolFor: jest.fn((mint: string) =>
+      Promise.resolve(
+        mint === 'So11111111111111111111111111111111111111112' ? 'SOL' : '',
+      ),
+    ),
+  } as unknown as TokenNamer;
+}
+
+/**
+ * Notifications are decoration on a write: a transfer row must land whether or
+ * not anyone can be told about it.
+ */
+function fakeNotifications(): NotificationsService {
+  return {
+    notifyArrival: jest.fn().mockResolvedValue(undefined),
+  } as unknown as NotificationsService;
+}
 
 /**
  * Prices are decoration on the write path: a transfer row must be written
@@ -209,7 +232,12 @@ describe('ReconcilerService.tick', () => {
         },
       ]),
     });
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.tick();
@@ -236,7 +264,12 @@ describe('ReconcilerService.tick', () => {
     const reconciler = new ReconcilerService(
       db,
       makeFakeSolana(),
-      new TailerService(db, fakePriceProvider()),
+      new TailerService(
+        db,
+        fakePriceProvider(),
+        fakeNotifications(),
+        fakeNamer(),
+      ),
     );
 
     await reconciler.tick();
@@ -259,7 +292,12 @@ describe('ReconcilerService.tick', () => {
       outstanding: [], // fake db only returns rows the SELECT predicate would
     });
     const solana = makeFakeSolana();
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.tick();
@@ -293,7 +331,12 @@ describe('ReconcilerService.tick', () => {
         },
       ]),
     });
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.tick();
@@ -328,7 +371,12 @@ describe('ReconcilerService.tick', () => {
         },
       ]),
     });
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.tick();
@@ -344,7 +392,12 @@ describe('ReconcilerService.tick', () => {
     const reconciler2 = new ReconcilerService(
       db2,
       solana,
-      new TailerService(db2, fakePriceProvider()),
+      new TailerService(
+        db2,
+        fakePriceProvider(),
+        fakeNotifications(),
+        fakeNamer(),
+      ),
     );
     await reconciler2.tick();
     // Only the outstanding-poll SELECT was issued; no UPDATE.
@@ -377,7 +430,12 @@ describe('ReconcilerService.tick', () => {
         },
       ]),
     });
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.tick();
@@ -414,7 +472,12 @@ describe('ReconcilerService.tick', () => {
     const reconciler = new ReconcilerService(
       db,
       solana,
-      new TailerService(db, fakePriceProvider()),
+      new TailerService(
+        db,
+        fakePriceProvider(),
+        fakeNotifications(),
+        fakeNamer(),
+      ),
     );
 
     await reconciler.tick();
@@ -453,7 +516,12 @@ describe('ReconcilerService.tick', () => {
     const reconciler = new ReconcilerService(
       db,
       solana,
-      new TailerService(db, fakePriceProvider()),
+      new TailerService(
+        db,
+        fakePriceProvider(),
+        fakeNotifications(),
+        fakeNamer(),
+      ),
     );
 
     await reconciler.tick();
@@ -486,7 +554,12 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
       };
     });
     const solana = makeFakeSolana({ streamConfirmedTransfers: streamFn });
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.onModuleInit();
@@ -522,7 +595,12 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
       };
     });
     const solana = makeFakeSolana({ streamConfirmedTransfers: streamFn });
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const upsert = jest.spyOn(tailer, 'upsertConfirmedTransfer');
     const reconciler = new ReconcilerService(db, solana, tailer);
 
@@ -557,7 +635,12 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
       };
     });
     const solana = makeFakeSolana({ streamConfirmedTransfers: streamFn });
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const upsert = jest.spyOn(tailer, 'upsertConfirmedTransfer');
     const reconciler = new ReconcilerService(db, solana, tailer);
 
@@ -599,7 +682,12 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
       };
     });
     const solana = makeFakeSolana({ streamConfirmedTransfers: streamFn });
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     const first = reconciler.sweep();
@@ -621,7 +709,12 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
   it('boot replay with no smart_accounts is a no-op', async () => {
     const { db, calls } = makeFakeDb({ smartAccounts: [] });
     const solana = makeFakeSolana();
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.onModuleInit();
@@ -656,7 +749,12 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
       })();
     });
     const solana = makeFakeSolana({ streamConfirmedTransfers: streamFn });
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const reconciler = new ReconcilerService(db, solana, tailer);
 
     await reconciler.onModuleInit();

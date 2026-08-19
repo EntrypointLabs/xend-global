@@ -1,4 +1,7 @@
+/* eslint-disable @typescript-eslint/unbound-method */
 import { TailerService } from './tailer.service';
+import type { TokenNamer } from '../tokens/token-namer.service';
+import type { NotificationsService } from '../notifications/notifications.service';
 import type { TokenPriceProvider } from '../prices/token-price.interface';
 import { EventParser, HeliusWebhookBody } from './event-parser';
 import { WebhookController } from './webhook.controller';
@@ -6,6 +9,27 @@ import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { ConfirmedTransferEvent } from '../solana/solana-rpc.interface';
 import { HttpException, HttpStatus } from '@nestjs/common';
+
+/** Names the mints these tests use; anything else goes unnamed, as in life. */
+function fakeNamer(): TokenNamer {
+  return {
+    symbolFor: jest.fn((mint: string) =>
+      Promise.resolve(
+        mint === 'So11111111111111111111111111111111111111112' ? 'SOL' : '',
+      ),
+    ),
+  } as unknown as TokenNamer;
+}
+
+/**
+ * Notifications are decoration on a write: a transfer row must land whether or
+ * not anyone can be told about it.
+ */
+function fakeNotifications(): NotificationsService {
+  return {
+    notifyArrival: jest.fn().mockResolvedValue(undefined),
+  } as unknown as NotificationsService;
+}
 
 /**
  * Prices are decoration on the write path: a transfer row must be written
@@ -60,6 +84,8 @@ function makeFakeDb(
    * address, `id` the owning smart_accounts.id.
    */
   ownedVaults: SmartAccountRow[] = [],
+  /** What the upsert's RETURNING says: a fresh row, or a conflict update. */
+  insertedRows = true,
 ): {
   db: DbService;
   calls: FakeDbCall[];
@@ -76,6 +102,12 @@ function makeFakeDb(
     calls.push({ sql: str, params: [] });
     // The signature->payment correlation lookup (the only query joining
     // payments) returns the configured payment id.
+    if (str.includes('INSERT INTO transfers')) {
+      return Promise.resolve({
+        rows: [{ inserted: insertedRows }],
+        rowCount: 1,
+      });
+    }
     if (str.includes('JOIN payments')) {
       return Promise.resolve({
         rows: correlatedPaymentId ? [{ payment_id: correlatedPaymentId }] : [],
@@ -171,7 +203,12 @@ const sampleHeliusBody: HeliusWebhookBody = [
 describe('TailerService.upsertConfirmedTransfer', () => {
   it('issues the status-guarded UPSERT for the incoming event', async () => {
     const { db, calls } = makeFakeDb();
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const evt: ConfirmedTransferEvent = {
       signature: 'sig-1',
       slot: 999n,
@@ -207,7 +244,12 @@ describe('TailerService.upsertConfirmedTransfer', () => {
 
   it("correlates a confirmed transfer to a Payment (kind='payment' + payment_id) when the signature matches", async () => {
     const { db, calls } = makeFakeDb([], 'pay_123');
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const evt: ConfirmedTransferEvent = {
       signature: 'sig-pay',
       slot: 42n,
@@ -225,7 +267,12 @@ describe('TailerService.upsertConfirmedTransfer', () => {
 
   it("leaves a transfer with no matching payment as kind='transfer'", async () => {
     const { db, calls } = makeFakeDb([]);
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const evt: ConfirmedTransferEvent = {
       signature: 'sig-plain',
       slot: 43n,
@@ -243,7 +290,12 @@ describe('TailerService.upsertConfirmedTransfer', () => {
 
   it('assigns SEND when ownedWallet is the sender', async () => {
     const { db } = makeFakeDb();
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
     const evt: ConfirmedTransferEvent = {
       signature: 'sig-out',
       slot: 1000n,
@@ -273,6 +325,8 @@ describe('TailerService USD valuation', () => {
     const tailer = new TailerService(
       db,
       fakePriceProvider({ [SOL]: { usdPrice: 100, decimals: 9 } }),
+      fakeNotifications(),
+      fakeNamer(),
     );
 
     await tailer.upsertConfirmedTransfer(
@@ -300,6 +354,8 @@ describe('TailerService USD valuation', () => {
     const tailer = new TailerService(
       db,
       fakePriceProvider({ [SOL]: { usdPrice: 100, decimals: 9 } }),
+      fakeNotifications(),
+      fakeNamer(),
     );
 
     await tailer.upsertConfirmedTransfer(
@@ -327,7 +383,12 @@ describe('TailerService USD valuation', () => {
 
   it('writes the transfer anyway when nothing can price the mint', async () => {
     const { db, calls } = makeFakeDb();
-    const tailer = new TailerService(db, fakePriceProvider());
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      fakeNotifications(),
+      fakeNamer(),
+    );
 
     const direction = await tailer.upsertConfirmedTransfer(
       {
@@ -346,6 +407,143 @@ describe('TailerService USD valuation', () => {
 
     // The row is the point; the valuation is decoration on top of it.
     expect(direction).toBe('RECEIVE');
+    expect(calls.some((c) => c.sql.includes('INSERT INTO transfers'))).toBe(
+      true,
+    );
+  });
+});
+
+describe('TailerService arrival notices', () => {
+  const SOL_MINT = 'So11111111111111111111111111111111111111112';
+
+  const arrival = (over: Record<string, unknown> = {}) => ({
+    signature: 'sig-arrival',
+    slot: 1n,
+    mint: SOL_MINT,
+    amountRaw: 5_000_000_000n,
+    decimals: 9,
+    fromAddress: SENDER_WALLET,
+    toAddress: OWNED_WALLET,
+    confirmedAt: new Date(),
+    ...over,
+  });
+
+  it('announces a new arrival in the Consumer terms', async () => {
+    const { db } = makeFakeDb();
+    const notifications = fakeNotifications();
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      notifications,
+      fakeNamer(),
+    );
+
+    await tailer.upsertConfirmedTransfer(arrival(), 'sa_1', OWNED_WALLET);
+
+    expect(notifications.notifyArrival).toHaveBeenCalledWith({
+      smartAccountId: 'sa_1',
+      amount: '5 SOL',
+    });
+  });
+
+  it('names the token, not only SOL', async () => {
+    // The tailer used to answer "SOL" or nothing at all, so a USDC arrival
+    // announced itself as "You received 10" with no ticker on it.
+    const USDC = 'UsdcMint00000000000000000000000000000000000';
+    const { db } = makeFakeDb();
+    const notifications = fakeNotifications();
+    const namer = {
+      symbolFor: jest.fn().mockResolvedValue('USDC'),
+    } as unknown as TokenNamer;
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      notifications,
+      namer,
+    );
+
+    await tailer.upsertConfirmedTransfer(
+      arrival({ mint: USDC, amountRaw: 10_000_000n, decimals: 6 }),
+      'sa_1',
+      OWNED_WALLET,
+    );
+
+    expect(notifications.notifyArrival).toHaveBeenCalledWith({
+      smartAccountId: 'sa_1',
+      amount: '10 USDC',
+    });
+  });
+
+  it('announces the amount alone when nothing can name the mint', async () => {
+    const { db } = makeFakeDb();
+    const notifications = fakeNotifications();
+    const tailer = new TailerService(db, fakePriceProvider(), notifications, {
+      symbolFor: jest.fn().mockResolvedValue(''),
+    } as unknown as TokenNamer);
+
+    await tailer.upsertConfirmedTransfer(
+      arrival({ mint: 'UnknownMint', amountRaw: 1_500_000n, decimals: 6 }),
+      'sa_1',
+      OWNED_WALLET,
+    );
+
+    expect(notifications.notifyArrival).toHaveBeenCalledWith({
+      smartAccountId: 'sa_1',
+      amount: '1.5',
+    });
+  });
+
+  it('says nothing when the same signature is delivered again', async () => {
+    // A webhook redelivery and a replay both re-run this upsert. Announcing on
+    // the conflict path would tell the Consumer twice about one payment.
+    const { db } = makeFakeDb([], undefined, [], false);
+    const notifications = fakeNotifications();
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      notifications,
+      fakeNamer(),
+    );
+
+    await tailer.upsertConfirmedTransfer(arrival(), 'sa_1', OWNED_WALLET);
+
+    expect(notifications.notifyArrival).not.toHaveBeenCalled();
+  });
+
+  it('says nothing about money the Consumer sent themselves', async () => {
+    const { db } = makeFakeDb();
+    const notifications = fakeNotifications();
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      notifications,
+      fakeNamer(),
+    );
+
+    await tailer.upsertConfirmedTransfer(
+      arrival({ fromAddress: OWNED_WALLET, toAddress: SENDER_WALLET }),
+      'sa_1',
+      OWNED_WALLET,
+    );
+
+    expect(notifications.notifyArrival).not.toHaveBeenCalled();
+  });
+
+  it('still writes the transfer when the announcement fails', async () => {
+    const { db, calls } = makeFakeDb();
+    const notifications = {
+      notifyArrival: jest.fn().mockRejectedValue(new Error('push down')),
+    } as unknown as NotificationsService;
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider(),
+      notifications,
+      fakeNamer(),
+    );
+
+    await expect(
+      tailer.upsertConfirmedTransfer(arrival(), 'sa_1', OWNED_WALLET),
+    ).resolves.toBe('RECEIVE');
     expect(calls.some((c) => c.sql.includes('INSERT INTO transfers'))).toBe(
       true,
     );
@@ -501,7 +699,12 @@ function makeController(opts: {
   const solana = makeFakeSolana(
     opts.verify ? { verifyWebhookSignature: opts.verify } : {},
   );
-  const tailer = new TailerService(db, fakePriceProvider());
+  const tailer = new TailerService(
+    db,
+    fakePriceProvider(),
+    fakeNotifications(),
+    fakeNamer(),
+  );
   const parser = new EventParser();
   const reconciler = {
     recordWebhookFinalization: jest.fn(),
@@ -669,7 +872,7 @@ describe('WebhookController POST /webhooks/helius', () => {
 
     expect(res).toEqual({ processed: 0, skipped: 1, killSwitched: true });
     expect(calls).toHaveLength(0);
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+
     expect(solana.verifyWebhookSignature).not.toHaveBeenCalled();
   });
 

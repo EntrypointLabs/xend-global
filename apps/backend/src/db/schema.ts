@@ -167,6 +167,43 @@ export const smartAccounts = pgTable('smart_accounts', {
  * the credential inventory survives. public_key is nullable because the
  * server-side vendor SDK omits it; the client supplies it at enrollment.
  */
+/**
+ * push_devices — where a Consumer's notifications go, and whether they want
+ * them.
+ *
+ * Keyed by the device token rather than by user: one Consumer can hold several
+ * devices, and each answers for itself. `enabled` lives here for the same
+ * reason: turning notifications off on a phone should not silence a tablet the
+ * same person also uses.
+ *
+ * A token is not a secret in the sense a key is, but it does address someone's
+ * device, so it is never returned by any read endpoint.
+ */
+export const pushDevices = pgTable(
+  'push_devices',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    /** The provider's address for this installation. */
+    token: text('token').notNull().unique(),
+    platform: text('platform').notNull(),
+    /**
+     * The Consumer's own answer, not the OS permission. A revoked OS
+     * permission stops delivery whatever this says; this records what they
+     * asked us for, so re-granting the permission does not silently opt them
+     * back in.
+     */
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [index('push_devices_user_idx').on(table.userId)],
+);
+
 export const passkeyCredentials = pgTable(
   'passkey_credentials',
   {
