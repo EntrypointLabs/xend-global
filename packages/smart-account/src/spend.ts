@@ -11,6 +11,35 @@ import type { AccountAddresses } from "./types.js";
 const PRIMARY_ACCOUNT_INDEX = 0;
 
 /**
+ * Associated Token Program. Pinned rather than taking a dependency on
+ * `@solana/spl-token`, which this package would otherwise need for one
+ * address derivation.
+ */
+const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
+  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+);
+
+/** The mint a spending limit uses to mean native SOL. */
+const NATIVE_MINT = PublicKey.default;
+
+/**
+ * The associated token account for an owner and mint.
+ *
+ * `findProgramAddressSync` rather than the spl-token helper so the vault, which
+ * is a PDA and therefore off-curve, derives the same way any other owner does.
+ */
+export function associatedTokenAddress(
+  owner: PublicKey,
+  mint: PublicKey,
+  tokenProgram: PublicKey,
+): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [owner.toBuffer(), tokenProgram.toBuffer(), mint.toBuffer()],
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+  )[0];
+}
+
+/**
  * A spending limit an Account currently has, resolved from chain state.
  *
  * Optional by design: an Account may have none, in which case every Spend takes two
@@ -119,6 +148,12 @@ export interface BuildSpendParams {
   signers: PublicKey[];
   /** Decimals of `request.mint`. 9 for SOL. */
   decimals: number;
+  /**
+   * The token program that owns `request.mint`. Required for anything but
+   * native SOL, and it has to be the mint's actual owner: the program accepts
+   * either SPL Token or Token-2022 and checks the account against the mint.
+   */
+  tokenProgram?: PublicKey;
 }
 
 /**
@@ -139,6 +174,7 @@ export function buildSpend({
   route,
   signers,
   decimals,
+  tokenProgram,
 }: BuildSpendParams): TransactionInstruction {
   if (route.kind === "spending-limit") {
     if (signers.length !== 1) {
@@ -160,14 +196,12 @@ export function buildSpend({
           },
         ],
       },
-      // Signers first, then source, destination, system program. The settings
+      // Signers first, then whatever the policy's mint calls for. The settings
       // account is only required when the policy carries a settings-state
       // expiration.
       instruction_accounts: [
         { pubkey: signers[0]!, isSigner: true, isWritable: false },
-        { pubkey: addresses.vault, isSigner: false, isWritable: true },
-        { pubkey: request.destination, isSigner: false, isWritable: true },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        ...spendAccounts({ addresses, request, tokenProgram }),
       ],
     });
   }
@@ -226,4 +260,64 @@ export function buildSpend({
     },
     instruction_accounts: [...signerAccounts, ...compiled.accounts],
   });
+}
+
+/**
+ * The accounts the spending limit policy reads, after the signers.
+ *
+ * Two entirely different lists, because the program branches on the policy's
+ * mint: native SOL takes the destination wallet directly, while a token takes
+ * the two token accounts, the mint and its program. Sending a token with the
+ * native list is what raises InvalidNumberOfAccounts, and the transaction is
+ * refused before anything moves.
+ *
+ * The payload carries the destination OWNER either way; only the account list
+ * differs, and for a token it names that owner's associated token account.
+ */
+function spendAccounts({
+  addresses,
+  request,
+  tokenProgram,
+}: {
+  addresses: AccountAddresses;
+  request: SpendRequest;
+  tokenProgram?: PublicKey;
+}) {
+  if (request.mint.equals(NATIVE_MINT)) {
+    return [
+      { pubkey: addresses.vault, isSigner: false, isWritable: true },
+      { pubkey: request.destination, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ];
+  }
+
+  if (!tokenProgram) {
+    throw new Error(
+      `spending a token needs its token program; ${request.mint.toBase58()} has none`,
+    );
+  }
+
+  return [
+    { pubkey: addresses.vault, isSigner: false, isWritable: true },
+    {
+      pubkey: associatedTokenAddress(
+        addresses.vault,
+        request.mint,
+        tokenProgram,
+      ),
+      isSigner: false,
+      isWritable: true,
+    },
+    {
+      pubkey: associatedTokenAddress(
+        request.destination,
+        request.mint,
+        tokenProgram,
+      ),
+      isSigner: false,
+      isWritable: true,
+    },
+    { pubkey: request.mint, isSigner: false, isWritable: false },
+    { pubkey: tokenProgram, isSigner: false, isWritable: false },
+  ];
 }
