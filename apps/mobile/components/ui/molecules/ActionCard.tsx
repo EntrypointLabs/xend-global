@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Image, ImageSourcePropType } from "react-native";
 import { ThemedText } from "@/components/ui/atoms";
+import BalanceView from "@/components/BalanceView";
 import HapticPressable from "../atoms/HapticPressable";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { cn } from "@/utils/cn";
@@ -8,6 +9,13 @@ import { cn } from "@/utils/cn";
 interface ActionCardProps {
   title: string;
   subtitle: string;
+  /**
+   * What this section holds, as a plain "1,234.50" string. Takes the place of
+   * the subtitle when present: once there is a balance, the balance is the
+   * more useful thing to read. `BalanceView` renders the `$` and the receding
+   * decimals, so the number matches every other amount in the app.
+   */
+  amount?: string | null;
   icon: ImageSourcePropType;
   onPress: () => void;
   iconColor?: string;
@@ -33,6 +41,7 @@ const REFERENCE_ICON = 40;
 export function ActionCard({
   title,
   subtitle,
+  amount,
   icon,
   onPress,
   funded = false,
@@ -76,16 +85,27 @@ export function ActionCard({
         >
           {title}
         </ThemedText>
-        <ThemedText
-          type="small"
-          className="opacity-60"
-          style={{
-            fontSize: typeSize(13),
-            lineHeight: typeSize(13) * SUBTITLE_LEADING,
-          }}
-        >
-          {subtitle}
-        </ThemedText>
+        {amount ? (
+          <BalanceView
+            weight="500"
+            amount={amount}
+            style={{
+              fontSize: typeSize(13),
+              lineHeight: typeSize(13) * SUBTITLE_LEADING,
+            }}
+          />
+        ) : (
+          <ThemedText
+            type="small"
+            className="opacity-60"
+            style={{
+              fontSize: typeSize(13),
+              lineHeight: typeSize(13) * SUBTITLE_LEADING,
+            }}
+          >
+            {subtitle}
+          </ThemedText>
+        )}
       </View>
     </HapticPressable>
   );

@@ -5,13 +5,23 @@ import {
   selectStablecoinTotal,
   selectUsdc,
   selectDecimalsByMint,
+  selectPortfolio,
+  selectPricesByMint,
+  selectIconsByMint,
 } from "@/utils/balances";
 import { fetchBalancesFromChain } from "@/utils/chainReads";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserId } from "@/hooks/useUserId";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 
-export { selectStablecoinTotal, selectUsdc, selectDecimalsByMint };
+export {
+  selectStablecoinTotal,
+  selectUsdc,
+  selectDecimalsByMint,
+  selectPortfolio,
+  selectPricesByMint,
+  selectIconsByMint,
+};
 
 /**
  * Token balances for the signed-in wallet, plus the derived headline totals the
@@ -45,6 +55,9 @@ export function useBalances() {
   const total = selectStablecoinTotal(tokens);
   const usdc = selectUsdc(tokens);
   const decimalsByMint = selectDecimalsByMint(tokens);
+  const portfolio = selectPortfolio(tokens);
+  const pricesByMint = selectPricesByMint(tokens);
+  const iconsByMint = selectIconsByMint(tokens);
   const totalDisplay = total.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -52,10 +65,16 @@ export function useBalances() {
 
   return {
     tokens: tokens ?? [],
+    // Spendable cash, NOT net worth: the send flows cap the amount on this and
+    // offer it as Max, so anything a Consumer cannot actually send must stay
+    // out of it. The home screen's headline is `portfolio`.
     total,
     totalDisplay,
     usdc,
     decimalsByMint,
+    pricesByMint,
+    iconsByMint,
+    portfolio,
     balance: total,
     isLoading: query.isLoading,
     isError: query.isError,
