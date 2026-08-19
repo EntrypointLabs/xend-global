@@ -12,6 +12,7 @@ import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 import "@/global.css";
 import "@/utils/cssInteropSetup";
+import { installPrivyRequestLog } from "@/utils/privyRequestLog";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { AppLockProvider, useAppLock } from "@/contexts/AppLockContext";
 import { ScreenThemeProvider } from "@/contexts/ScreenThemeContext";
@@ -59,6 +60,9 @@ import {
 } from "@expo-google-fonts/inter";
 import LoadingScreen from "@/components/ui/layout/LoadingScreen";
 import LockScreen from "@/components/ui/layout/LockScreen";
+
+// Runs before any provider mounts, so the first Privy call is already covered.
+installPrivyRequestLog();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2 } },

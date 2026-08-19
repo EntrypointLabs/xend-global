@@ -35,6 +35,36 @@ function mirrorEnrolledPasskeys(updated: { linked_accounts?: unknown } | null) {
   }
 }
 
+/**
+ * Everything the SDK attached to a failure, not just its message.
+ *
+ * Privy reports several distinct problems as "Invalid request" (a rejected
+ * relying party, an app identifier that is not allowed, a client id mismatch),
+ * so the message alone cannot tell them apart. The cause, the error code and
+ * any response body are what separate them, and they live on properties that
+ * `.message` discards.
+ *
+ * Enumerating own properties as well as the standard ones, because SDK errors
+ * routinely carry non-enumerable fields that JSON.stringify would drop.
+ */
+function reportPasskeyFailure(stage: string, err: unknown) {
+  if (!__DEV__) return;
+
+  const detail: Record<string, unknown> = { stage };
+  if (err && typeof err === "object") {
+    for (const key of Object.getOwnPropertyNames(err)) {
+      detail[key] = (err as Record<string, unknown>)[key];
+    }
+  } else {
+    detail.value = err;
+  }
+
+  console.warn("[passkey] failed", detail);
+  if (err instanceof Error && err.cause) {
+    console.warn("[passkey] cause", err.cause);
+  }
+}
+
 // Privy validates this as a full origin URL and derives the WebAuthn rp.id
 // from its registrable domain (the apex `xend.global`, not the www host). So
 // `xend.global/.well-known/assetlinks.json` must serve directly (200, no
@@ -52,7 +82,10 @@ export function usePasskey() {
   const hasPasskey = hasLinkedPasskey(user);
 
   const { linkWithPasskey, state } = useLinkWithPasskey({
-    onError: (err) => setError(err?.message ?? "Passkey setup failed"),
+    onError: (err) => {
+      reportPasskeyFailure("onError", err);
+      setError(err?.message ?? "Passkey setup failed");
+    },
   });
 
   const isRegistering =
@@ -67,6 +100,7 @@ export function usePasskey() {
       mirrorEnrolledPasskeys(updated ?? null);
       return hasLinkedPasskey(updated);
     } catch (err) {
+      reportPasskeyFailure("linkWithPasskey", err);
       setError(err instanceof Error ? err.message : "Passkey setup failed");
       return false;
     }
