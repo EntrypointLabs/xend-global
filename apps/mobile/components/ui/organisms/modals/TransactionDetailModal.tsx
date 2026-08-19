@@ -1,7 +1,9 @@
 import React from "react";
-import { View, Image, TouchableOpacity } from "react-native";
+import { View, TouchableOpacity } from "react-native";
 import { ActionModal } from "../ActionModal";
-import { iconForMint } from "../ActivityItem";
+import { TokenMark } from "@/components/ui/atoms/TokenMark";
+import { describeToken } from "@/utils/tokens";
+import { formatUsdFromString } from "@/utils/balances";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { notificationAsync, NotificationFeedbackType } from "expo-haptics";
@@ -46,8 +48,6 @@ const STATUS_META: Record<
   },
 };
 
-const USDC_MINT = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS;
-
 export function TransactionDetailModal({
   visible,
   onClose,
@@ -65,7 +65,14 @@ export function TransactionDetailModal({
 
   const status = STATUS_META[item.status];
   const amount = formatAmount(item.amountRaw, item.decimals);
-  const symbol = USDC_MINT && item.mint === USDC_MINT ? "USDC" : "";
+  // Named from the shared token table rather than a hardcoded USDC check,
+  // which left every other asset showing a bare number with no unit.
+  const { name, symbol } = describeToken(
+    item.mint,
+    item.tokenSymbol,
+    item.tokenName
+  );
+  const usd = item.usdValue ?? null;
   const date = format(new Date(item.createdAt), "MMM d, yyyy 'at' h:mma");
   const signature = item.signature;
 
@@ -86,9 +93,11 @@ export function TransactionDetailModal({
         </HapticPressable>
 
         <View className="relative mb-3">
-          <Image
-            source={iconForMint(item.mint)}
-            className="h-16 w-16 rounded-full"
+          <TokenMark
+            mint={item.mint}
+            label={name}
+            iconUrl={item.iconUrl}
+            size={64}
           />
           <View className="absolute right-0 top-0 overflow-hidden rounded-full bg-white">
             <Ionicons name={status.icon} size={16} color={status.color} />
@@ -103,6 +112,14 @@ export function TransactionDetailModal({
           {amount}
           {symbol ? ` ${symbol}` : ""}
         </Typography>
+
+        {usd !== null && (
+          // What it was worth when it happened, matching the activity row it
+          // was opened from.
+          <Typography weight="600" className="mb-1 text-base text-black/30">
+            {formatUsdFromString(usd)}
+          </Typography>
+        )}
 
         <Typography weight="600" className="mb-4 text-sm text-black/30">
           {date}

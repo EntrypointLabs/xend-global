@@ -1,4 +1,4 @@
-import { View, Image, ImageSourcePropType } from "react-native";
+import { View } from "react-native";
 import { Typography } from "../atoms/Typography";
 import type { ActivityEntry } from "@/utils/activity";
 import { statusLabel } from "@/utils/activity";
@@ -6,14 +6,9 @@ import { truncateAddress } from "@/utils/helper";
 import { formatAmount } from "@/utils/solana";
 import HapticPressable from "../atoms/HapticPressable";
 import { cn } from "@/utils/cn";
-
-const USDC_ICON = require("@/assets/icons/usdc.png");
-const GENERIC_ICON = require("@/assets/icons/wallet.png");
-const USDC_MINT = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS;
-
-export function iconForMint(mint: string): ImageSourcePropType {
-  return USDC_MINT && mint === USDC_MINT ? USDC_ICON : GENERIC_ICON;
-}
+import { describeToken } from "@/utils/tokens";
+import { formatUsdFromString } from "@/utils/balances";
+import { TokenMark } from "@/components/ui/atoms/TokenMark";
 
 export type ActivityItemProps = ActivityEntry & {
   onPress?: () => void;
@@ -25,7 +20,14 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
   const isInactive = entry.status === "pending" || entry.status === "failed";
 
   const amount = formatAmount(entry.amountRaw, entry.decimals);
-  const symbol = USDC_MINT && entry.mint === USDC_MINT ? "USDC" : "";
+  // Named from the shared token table, so SOL reads as SOL here and on the
+  // Investments screen rather than as a bare number in one of them.
+  const { name, symbol } = describeToken(
+    entry.mint,
+    entry.tokenSymbol,
+    entry.tokenName
+  );
+  const usd = entry.usdValue ?? null;
   const sign = isSend ? "-" : "+";
   // A Payment renders as a debit titled with the merchant's display name —
   // never an address, no chain vocabulary. Payments arrive as SEND, so the
@@ -47,9 +49,11 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
       className="flex-row items-center gap-3.5 py-3"
       onPress={onPress}
     >
-      <Image
-        source={iconForMint(entry.mint)}
-        className="size-10 rounded-full"
+      <TokenMark
+        mint={entry.mint}
+        label={name}
+        iconUrl={entry.iconUrl}
+        size={40}
       />
       <View className="flex-1 flex-row items-center justify-between">
         <View className="flex-col">
@@ -60,18 +64,28 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
             {label}
           </Typography>
         </View>
-        <Typography
-          weight="600"
-          className={cn(
-            "text-sm tracking-[0.5px]",
-            valueColorClass,
-            entry.status === "failed" && "line-through"
+        <View className="items-end gap-0.5">
+          <Typography
+            weight="600"
+            className={cn(
+              "text-sm tracking-[0.5px]",
+              valueColorClass,
+              entry.status === "failed" && "line-through"
+            )}
+          >
+            {sign}
+            {amount}
+            {symbol ? ` ${symbol}` : ""}
+          </Typography>
+          {usd !== null && (
+            // What it was worth when it happened, not what the same tokens
+            // would fetch today. Shown for every asset, since "5 SOL" alone
+            // does not tell a Consumer what they received.
+            <Typography weight="500" className="text-xs text-black/30">
+              {formatUsdFromString(usd)}
+            </Typography>
           )}
-        >
-          {sign}
-          {amount}
-          {symbol ? ` ${symbol}` : ""}
-        </Typography>
+        </View>
       </View>
     </HapticPressable>
   );
