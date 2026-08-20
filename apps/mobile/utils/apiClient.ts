@@ -396,6 +396,11 @@ class BackendClient {
         );
       }
 
+      // 204 carries no body by definition, and some endpoints have nothing to
+      // say beyond "recorded". Parsing that as JSON throws, which turns a
+      // succeeded request into a caller-visible failure.
+      if (response.status === 204) return undefined as T;
+
       return await response.json();
     } catch (error) {
       if (error instanceof ApiError) throw error;
