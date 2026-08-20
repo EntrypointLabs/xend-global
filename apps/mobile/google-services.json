@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "812081728522",
+    "project_id": "xend-fe388",
+    "storage_bucket": "xend-fe388.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:812081728522:android:af690b6b790f94739863f3",
+        "android_client_info": {
+          "package_name": "com.giftedborg.xend"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDK2Vs2TiTgNNj4Hav-CZsgSQuRO_fyRYw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -53,7 +53,8 @@
       ],
       "permissions": ["CAMERA"],
       "softwareKeyboardLayoutMode": "pan",
-      "package": "com.giftedborg.xend"
+      "package": "com.giftedborg.xend",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",
