@@ -91,6 +91,13 @@
         {
           "faceIDPermission": "Allow Xend to use Face ID to unlock the app."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#000000"
+        }
       ]
     ],
     "experiments": {
