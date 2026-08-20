@@ -94,6 +94,13 @@ export class NotificationsService {
         })),
       );
 
+      // Says a notice went out. Confirming an arrival was announced otherwise
+      // means reading the device's notification shade, which is no way to
+      // check whether a delivery path is alive.
+      this.logger.log(
+        `push.sent devices=${tokens.length} amount=${notice.amount}`,
+      );
+
       if (invalidTokens.length > 0) {
         await this.db.client
           .delete(pushDevices)
