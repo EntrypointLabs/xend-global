@@ -102,9 +102,12 @@ export function usePushRegistration() {
         token: token.data,
         platform: Platform.OS === "ios" ? "ios" : "android",
       });
-    })().catch(() => {
-      // Registration is best-effort. A Consumer who cannot be reached by push
-      // still has the app, the toast and the activity feed.
+    })().catch((err: unknown) => {
+      // Registration is best-effort: a Consumer who cannot be reached by push
+      // still has the app, the toast and the activity feed. But swallowing the
+      // reason leaves "notifications just don't work" with nothing to go on,
+      // so development says what happened.
+      if (__DEV__) console.warn("[push] registration failed", err);
     });
 
     return () => {
