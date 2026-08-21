@@ -1,6 +1,7 @@
 import { Tabs } from "expo-router";
 import React from "react";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import { AccountSetupReminder } from "@/components/AccountSetupReminder";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { CustomTabBar } from "@/components/ui/organisms";
 
@@ -34,6 +35,7 @@ export default function TabLayout() {
           }}
         />
       </Tabs>
+      <AccountSetupReminder />
     </ProtectedRoute>
   );
 }
