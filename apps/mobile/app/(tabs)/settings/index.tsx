@@ -62,7 +62,7 @@ export default function SettingsScreen() {
   };
 
   const handlePasskeyPress = () => {
-    if (hasPasskey) {
+    if (hasPasskey && false) {
       showToast("Passkey is already set up");
       return;
     }
@@ -287,7 +287,7 @@ export default function SettingsScreen() {
       />
       <NotificationsSheet
         ref={notificationsSheetRef}
-        initialEnabled={notifications.enabled}
+        initialEnabled={notifications.enabled ?? true}
         onToggle={notifications.setEnabled}
       />
     </ScreenLayout>

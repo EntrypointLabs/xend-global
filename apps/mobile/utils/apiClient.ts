@@ -549,6 +549,9 @@ class BackendClient {
     token: string;
     platform: "ios" | "android";
   }): Promise<void> {
+    // The demo seed has no JWT, so an authed call here just 401s in a loop
+    // behind the offline screens it exists to render.
+    if (SEED_DEMO) return;
     await this.request<unknown>("/notifications/devices", {
       method: "POST",
       auth: true,
@@ -557,6 +560,7 @@ class BackendClient {
   }
 
   async getNotificationPreference(): Promise<boolean> {
+    if (SEED_DEMO) return true;
     const raw = await this.request<unknown>("/notifications/preferences", {
       method: "GET",
       auth: true,
@@ -565,6 +569,7 @@ class BackendClient {
   }
 
   async setNotificationPreference(enabled: boolean): Promise<boolean> {
+    if (SEED_DEMO) return enabled;
     const raw = await this.request<unknown>("/notifications/preferences", {
       method: "PUT",
       auth: true,

@@ -48,7 +48,10 @@ export function useNotificationPreference() {
   });
 
   return {
-    enabled: query.data ?? true,
+    // Undefined until the server answers. Callers must not read a default here:
+    // treating "unknown" as "on" registers a token for someone who already
+    // opted out, quietly opting them back in.
+    enabled: query.data,
     isLoading: query.isLoading,
     setEnabled: mutation.mutate,
   };
@@ -70,25 +73,29 @@ export function usePushRegistration() {
   const { enabled } = useNotificationPreference();
 
   useEffect(() => {
-    if (!isAuthenticated || !enabled) return;
+    // `enabled` is undefined until the stored preference arrives. Registering
+    // on the optimistic default would opt an opted-out Consumer back in on any
+    // fresh install.
+    if (!isAuthenticated || enabled !== true) return;
     let cancelled = false;
 
     void (async () => {
       if (!Device.isDevice) return;
 
-      const existing = await Notifications.getPermissionsAsync();
-      const granted =
-        existing.granted ||
-        (await Notifications.requestPermissionsAsync()).granted;
-      if (!granted || cancelled) return;
-
-      // Android needs a channel before anything can be delivered to it.
+      // The channel has to exist before the permission prompt on Android 13+,
+      // or the prompt may never appear and no token is ever issued.
       if (Platform.OS === "android") {
         await Notifications.setNotificationChannelAsync("default", {
           name: "Default",
           importance: Notifications.AndroidImportance.DEFAULT,
         });
       }
+
+      const existing = await Notifications.getPermissionsAsync();
+      const granted =
+        existing.granted ||
+        (await Notifications.requestPermissionsAsync()).granted;
+      if (!granted || cancelled) return;
 
       const projectId =
         Constants.expoConfig?.extra?.eas?.projectId ??
