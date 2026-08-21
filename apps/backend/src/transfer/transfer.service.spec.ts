@@ -240,22 +240,20 @@ function makeVaultSpend() {
   }).compileToV0Message();
 
   const submit = jest.fn().mockResolvedValue('sig-vault');
-  const spends = {
-    prepare: jest.fn().mockResolvedValue({
-      unsignedTxBase64: Buffer.from(
-        new VersionedTransaction(message).serialize(),
-      ).toString('base64'),
-      messageBase64: Buffer.from(message.serialize()).toString('base64'),
-      vaultAddress: vault.toBase58(),
-      blockhash: 'BlockHash11111111111111111111111111111111111',
-      lastValidBlockHeight: 12345,
-      route: 'spending-limit',
-      needsApprovalSignature: false,
-    }),
-    submit,
-  } as unknown as SpendService;
+  const prepare = jest.fn().mockResolvedValue({
+    unsignedTxBase64: Buffer.from(
+      new VersionedTransaction(message).serialize(),
+    ).toString('base64'),
+    messageBase64: Buffer.from(message.serialize()).toString('base64'),
+    vaultAddress: vault.toBase58(),
+    blockhash: 'BlockHash11111111111111111111111111111111111',
+    lastValidBlockHeight: 12345,
+    route: 'spending-limit',
+    needsApprovalSignature: false,
+  });
+  const spends = { prepare, submit } as unknown as SpendService;
 
-  return { spends, submit, vaultAddress: vault.toBase58() };
+  return { spends, prepare, submit, vaultAddress: vault.toBase58() };
 }
 
 function makeService(opts: {
@@ -330,6 +328,35 @@ describe('TransferService.prepare', () => {
     expect(out.feeLamports).toBeGreaterThanOrEqual(0);
     expect(() => new Date(out.expiresAt)).not.toThrow();
     expect(new Date(out.expiresAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('builds the sweep from the Privy wallet, not the vault it is sweeping into', async () => {
+    const { spends, prepare } = makeVaultSpend();
+    const vaultAddress = Keypair.generate().publicKey.toBase58();
+    const solana = makeSolana({
+      accountExists: jest.fn().mockResolvedValue(true),
+    });
+    const { service, account } = makeService({
+      solana,
+      squadsAccount: { settingsAddress: 'settings', vaultAddress },
+      spends,
+    });
+
+    const out = await service.prepare('u_test', {
+      toAddress: vaultAddress,
+      mint: usdcMint,
+      amountRaw: '1000000',
+    });
+
+    // Routed through the Spend path this became the vault paying itself, which
+    // moves nothing and leaves the old Privy balance stranded forever.
+    expect(prepare).not.toHaveBeenCalled();
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(out.unsignedTxBase64, 'base64'),
+    );
+    expect(tx.message.staticAccountKeys[0].toBase58()).toBe(
+      account.walletAddress,
+    );
   });
 
   it('invalid recipient -> InvalidRecipientError (400)', async () => {
