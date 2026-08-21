@@ -1,5 +1,9 @@
 import { ConfigService } from '@nestjs/config';
-import { PublicKey } from '@solana/web3.js';
+import {
+  PublicKey,
+  TransactionMessage,
+  VersionedTransaction,
+} from '@solana/web3.js';
 import {
   deriveAccountAddresses,
   derivePolicyAddress,
@@ -62,7 +66,7 @@ interface ChainState {
   proposal?: ProposalState | null;
 }
 
-function fakeChain(state: ChainState = {}) {
+function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
   const compiled: { instructions: unknown[] }[] = [];
   const submitted: string[] = [];
 
@@ -80,7 +84,7 @@ function fakeChain(state: ChainState = {}) {
       compiled.push({ instructions: params.instructions });
       return Promise.resolve({
         unsignedTxBase64: 'unsigned',
-        messageBase64: 'message',
+        messageBase64,
         blockhash: 'hash',
         lastValidBlockHeight: 100,
       });
@@ -294,12 +298,53 @@ describe('ProvisioningService.prepareNext', () => {
 });
 
 describe('ProvisioningService.submit', () => {
-  it('forwards the signed transaction and returns its signature', async () => {
-    const { chain, submitted } = fakeChain();
+  /** A real transaction, so the message comparison has something to compare. */
+  function signable() {
+    const message = new TransactionMessage({
+      payerKey: new PublicKey(AUTHORITY),
+      recentBlockhash: PublicKey.default.toBase58(),
+      instructions: [],
+    }).compileToV0Message();
+    const tx = new VersionedTransaction(message);
+    return {
+      base64: Buffer.from(tx.serialize()).toString('base64'),
+      messageBase64: Buffer.from(message.serialize()).toString('base64'),
+    };
+  }
 
-    await expect(service(chain).submit(USER, 'signed-tx')).resolves.toBe(
-      'sig-1',
+  it('forwards the step the Consumer was actually handed', async () => {
+    const tx = signable();
+    const { chain, submitted } = fakeChain({}, tx.messageBase64);
+    // One instance: the prepared step is held per service, as the transfer
+    // flow holds its intents.
+    const provisioning = service(chain);
+
+    await provisioning.prepareNext(USER);
+
+    await expect(provisioning.submit(USER, tx.base64)).resolves.toBe('sig-1');
+    expect(submitted).toEqual([tx.base64]);
+  });
+
+  it('refuses a transaction that is not the prepared step', async () => {
+    // The authority signs partially, so anything it is handed comes back
+    // signed. Only bytes this service compiled may reach it.
+    const tx = signable();
+    const { chain } = fakeChain({}, 'a-different-message');
+    const provisioning = service(chain);
+
+    await provisioning.prepareNext(USER);
+
+    await expect(provisioning.submit(USER, tx.base64)).rejects.toThrow(
+      /does not match the prepared provisioning step/,
     );
-    expect(submitted).toEqual(['signed-tx']);
+  });
+
+  it('refuses a submission with no step awaiting a signature', async () => {
+    const tx = signable();
+    const { chain } = fakeChain();
+
+    await expect(service(chain).submit(USER, tx.base64)).rejects.toThrow(
+      /No provisioning step is awaiting/,
+    );
   });
 });

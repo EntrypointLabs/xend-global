@@ -25,6 +25,7 @@ import type {
   SquadsAccountStore,
 } from './account.interface';
 import { buildDefaultSpendingLimit } from './spending-limit.terms';
+import { VersionedTransaction } from '@solana/web3.js';
 
 /**
  * Walks a newly created Account through the settings change that makes it
@@ -50,6 +51,19 @@ import { buildDefaultSpendingLimit } from './spending-limit.terms';
 @Injectable()
 export class ProvisioningService {
   private readonly logger = new Logger(ProvisioningService.name);
+
+  /**
+   * The message each Consumer was last asked to sign, by user id.
+   *
+   * The authority partially signs whatever arrives at `submit`, so without
+   * this a caller could hand over any transaction naming the authority as fee
+   * payer and have the backend sign and broadcast it. Pinning the prepared
+   * message is the same guard the transfer flow applies to its intents.
+   *
+   * In memory, like those intents: a restart loses it, and the client simply
+   * prepares again.
+   */
+  private readonly prepared = new Map<string, string>();
 
   constructor(
     @Inject(SQUADS_ACCOUNT_STORE) private readonly store: SquadsAccountStore,
@@ -89,6 +103,8 @@ export class ProvisioningService {
     // can pay.
     const unsigned = await this.chain.compile({ instructions });
 
+    this.prepared.set(userId, unsigned.messageBase64);
+
     this.logger.log(
       `provisioning.step userId=${userId} step=${step} index=${transactionIndex}`,
     );
@@ -116,11 +132,52 @@ export class ProvisioningService {
       throw new AccountCreationError('No Account exists for this Consumer');
     }
 
+    this.assertMatchesPreparedStep(userId, signedTxBase64);
+
     const signature = await this.chain.submit(signedTxBase64);
+    // Spent: a signed step is submitted once, and a replay has to prepare
+    // again against the chain's current index.
+    this.prepared.delete(userId);
     this.logger.log(
       `provisioning.step_landed userId=${userId} signature=${signature}`,
     );
     return signature;
+  }
+
+  /**
+   * Refuses anything but the exact step this Consumer was last handed.
+   *
+   * The authority's signature is the thing being protected. It signs partially,
+   * so a transaction that merely names the authority as fee payer would come
+   * back signed and broadcast; comparing the compiled message means the only
+   * bytes it will ever sign are bytes this service built.
+   */
+  private assertMatchesPreparedStep(userId: string, signedTxBase64: string) {
+    const expected = this.prepared.get(userId);
+    if (!expected) {
+      throw new AccountCreationError(
+        'No provisioning step is awaiting a signature for this Consumer',
+      );
+    }
+
+    let submitted: string;
+    try {
+      submitted = Buffer.from(
+        VersionedTransaction.deserialize(
+          Buffer.from(signedTxBase64, 'base64'),
+        ).message.serialize(),
+      ).toString('base64');
+    } catch {
+      throw new AccountCreationError(
+        'signedTxBase64 is not a valid transaction',
+      );
+    }
+
+    if (submitted !== expected) {
+      throw new AccountCreationError(
+        'signed transaction does not match the prepared provisioning step',
+      );
+    }
   }
 
   /**
