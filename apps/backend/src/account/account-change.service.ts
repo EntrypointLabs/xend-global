@@ -6,6 +6,7 @@ import {
   SETTINGS_TIME_LOCK_SECONDS,
 } from '@xend/smart-account';
 
+import { RecoveryService } from '../recovery/recovery.service';
 import { AccountCreationError } from './account.errors';
 import {
   ABOVE_LIMIT_POLICY_SEED,
@@ -46,6 +47,19 @@ export interface StagedChange {
    * clock starts the moment it is.
    */
   executableAt: string | null;
+  /**
+   * True when this Consumer started the change from their own app.
+   *
+   * The test is whether the backend holds a staged recovery key row carrying
+   * this index, which it only does for a change proposed through its own
+   * endpoint with S1 on the device.
+   *
+   * Reported rather than filtered, because the client is the right place to
+   * decide. A stolen phone can stage a change through the same endpoint and
+   * would be flagged self-initiated here, so the flag softens the announcement
+   * rather than suppressing it.
+   */
+  selfInitiated: boolean;
 }
 
 @Injectable()
@@ -64,6 +78,7 @@ export class AccountChangeService {
   constructor(
     @Inject(SQUADS_ACCOUNT_STORE) private readonly store: SquadsAccountStore,
     @Inject(PROVISIONING_CHAIN) private readonly chain: ProvisioningChain,
+    private readonly recovery: RecoveryService,
   ) {}
 
   /** The change awaiting execution on this Consumer's Account, if any. */
@@ -88,10 +103,13 @@ export class AccountChangeService {
     );
     if (!proposal || proposal.settled) return null;
 
+    const open = await this.recovery.pendingChange(account.userId);
+
     return {
       transactionIndex: settings.transactionIndex.toString(),
       status: proposal.status,
       approvals: proposal.approved,
+      selfInitiated: open?.changeIndex === settings.transactionIndex,
       executableAt:
         proposal.status === 'Approved' && proposal.statusTimestamp !== null
           ? new Date(
@@ -179,6 +197,14 @@ export class AccountChangeService {
 
     const signature = await this.chain.submit(signedTxBase64);
     this.prepared.delete(userId);
+
+    // A rejected change never reaches the signer set, so any recovery key row
+    // staged against it has to go back. Leaving it would show the Consumer a
+    // key that is pending forever and block the next change on the in-flight
+    // guard.
+    const open = await this.recovery.pendingChange(userId);
+    if (open) await this.recovery.abandon(userId, open.changeIndex);
+
     this.logger.log(
       `account_change.rejected userId=${userId} signature=${signature}`,
     );

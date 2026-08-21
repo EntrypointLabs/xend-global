@@ -6,6 +6,7 @@ import {
 import { SETTINGS_TIME_LOCK_SECONDS } from '@xend/smart-account';
 
 import { AccountChangeService } from './account-change.service';
+import type { RecoveryService } from '../recovery/recovery.service';
 import {
   ABOVE_LIMIT_POLICY_SEED,
   SPENDING_LIMIT_POLICY_SEED,
@@ -97,8 +98,28 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
   return { chain, submitted, compiled };
 }
 
-function service(chain: ProvisioningChain, row?: SquadsAccountRow | null) {
-  return new AccountChangeService(store(row), chain);
+/** Only what AccountChangeService reaches on RecoveryService. */
+function fakeRecovery(changeIndex: bigint | null = null) {
+  const abandoned: string[] = [];
+  const recovery = {
+    pendingChange: () =>
+      Promise.resolve(
+        changeIndex === null ? null : { signerId: 'signer-1', changeIndex },
+      ),
+    abandon: (_userId: string, at: bigint) => {
+      abandoned.push(at.toString());
+      return Promise.resolve();
+    },
+  } as unknown as RecoveryService;
+  return { recovery, abandoned };
+}
+
+function service(
+  chain: ProvisioningChain,
+  row?: SquadsAccountRow | null,
+  recovery: RecoveryService = fakeRecovery().recovery,
+) {
+  return new AccountChangeService(store(row), chain, recovery);
 }
 
 function signable() {
@@ -159,6 +180,39 @@ describe('AccountChangeService.pending', () => {
   });
 });
 
+describe('AccountChangeService self-initiated changes', () => {
+  it('flags a change the Consumer started from their own app', async () => {
+    const { chain } = fakeChain({ proposal: { status: 'Active' } });
+    const { recovery } = fakeRecovery(7n);
+
+    const staged = await service(chain, undefined, recovery).pending(USER);
+
+    // A staged recovery key row carrying this index only exists for a change
+    // proposed through our own endpoint.
+    expect(staged?.selfInitiated).toBe(true);
+  });
+
+  it('does not flag a change nobody here staged', async () => {
+    const { chain } = fakeChain({ proposal: { status: 'Active' } });
+    const { recovery } = fakeRecovery(null);
+
+    const staged = await service(chain, undefined, recovery).pending(USER);
+
+    // The case the whole announcement exists for: a change this backend has no
+    // record of, which is what a stolen quorum looks like.
+    expect(staged?.selfInitiated).toBe(false);
+  });
+
+  it('does not flag a change staged at a different index', async () => {
+    const { chain } = fakeChain({ proposal: { status: 'Active' } });
+    const { recovery } = fakeRecovery(99n);
+
+    const staged = await service(chain, undefined, recovery).pending(USER);
+
+    expect(staged?.selfInitiated).toBe(false);
+  });
+});
+
 describe('AccountChangeService rejection', () => {
   it('refuses to prepare a rejection when nothing is staged', async () => {
     const { chain } = fakeChain({ proposal: null });
@@ -196,6 +250,23 @@ describe('AccountChangeService rejection', () => {
       changes.submitRejection(USER, signable().base64),
     ).rejects.toThrow();
     expect(submitted).toEqual([]);
+  });
+
+  it('puts a staged recovery key back when its change is rejected', async () => {
+    const tx = signable();
+    const { chain } = fakeChain(
+      { proposal: { status: 'Active' } },
+      tx.messageBase64,
+    );
+    const { recovery, abandoned } = fakeRecovery(7n);
+    const svc = service(chain, undefined, recovery);
+
+    await svc.prepareRejection(USER);
+    await svc.submitRejection(USER, tx.base64);
+
+    // A rejected change never reaches the signer set, so a key staged against
+    // it would otherwise read as pending forever and block the next change.
+    expect(abandoned).toEqual(['7']);
   });
 
   it('refuses a submission with no rejection awaiting a signature', async () => {

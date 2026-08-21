@@ -67,12 +67,26 @@ export class AccountChangeWatcher {
       return;
     }
 
-    await this.notifications.notifySecurityAlert(account.userId, {
-      title: 'Check your Xend account',
-      body: staged.executableAt
-        ? 'A change to your account is waiting to go through. If it was not you, open Xend and reject it.'
-        : 'Someone started a change to your account. If it was not you, open Xend and reject it.',
-    });
+    // A change the Consumer started themselves still gets a notice, because a
+    // stolen phone can start one the same way, but not the alarm: crying wolf
+    // over a deliberate action is what teaches people to swipe the real one
+    // away.
+    await this.notifications.notifySecurityAlert(
+      account.userId,
+      staged.selfInitiated
+        ? {
+            title: 'Your recovery key change is on its way',
+            body: staged.executableAt
+              ? 'It goes through once the security delay ends. Open Xend to cancel it.'
+              : 'It needs one more approval. Open Xend to cancel it.',
+          }
+        : {
+            title: 'Check your Xend account',
+            body: staged.executableAt
+              ? 'A change to your account is waiting to go through. If it was not you, open Xend and reject it.'
+              : 'Someone started a change to your account. If it was not you, open Xend and reject it.',
+          },
+    );
   }
 
   /**
