@@ -107,6 +107,34 @@ export type EnrolAccountResponse = z.infer<typeof EnrolAccountResponseSchema>;
  * optional rather than defaulted: a blank transaction would be signable and
  * submittable, and would fail on chain instead of ending the loop.
  */
+/**
+ * A settings change staged against the Consumer's Account.
+ *
+ * `executableAt` is null until the change is approved, which is not the same as
+ * safe: the time lock starts the moment the quorum is reached, and rejecting is
+ * only possible before it elapses.
+ */
+export const StagedChangeSchema = z.object({
+  transactionIndex: z.string(),
+  status: z.string(),
+  approvals: z.array(z.string()),
+  executableAt: z.string().nullable(),
+});
+export type StagedChange = z.infer<typeof StagedChangeSchema>;
+
+export const PendingChangeResponseSchema = z.object({
+  change: StagedChangeSchema.nullable(),
+});
+
+export const PreparedRejectionSchema = z.object({
+  unsignedTxBase64: z.string(),
+  blockhash: z.string(),
+  lastValidBlockHeight: z.number(),
+});
+export type PreparedRejection = z.infer<typeof PreparedRejectionSchema>;
+
+export const RejectionSubmitSchema = z.object({ signature: z.string() });
+
 export const ProvisioningStepSchema = z.object({
   done: z.boolean(),
   change: z.enum(["provision"]).optional(),
@@ -539,6 +567,37 @@ class BackendClient {
       auth: true,
     });
     return ProvisioningSubmitSchema.parse(raw);
+  }
+
+  /** GET /account/changes/pending — a settings change awaiting a decision. */
+  async getPendingAccountChange(): Promise<StagedChange | null> {
+    if (SEED_DEMO) return null;
+    const raw = await this.request<unknown>("/account/changes/pending", {
+      method: "GET",
+      auth: true,
+    });
+    return PendingChangeResponseSchema.parse(raw).change;
+  }
+
+  /** POST /account/changes/reject/prepare — the rejection to sign. */
+  async prepareChangeRejection(): Promise<PreparedRejection> {
+    const raw = await this.request<unknown>("/account/changes/reject/prepare", {
+      method: "POST",
+      auth: true,
+    });
+    return PreparedRejectionSchema.parse(raw);
+  }
+
+  /** POST /account/changes/reject/submit — lands the signed rejection. */
+  async submitChangeRejection(body: {
+    signedTxBase64: string;
+  }): Promise<{ signature: string }> {
+    const raw = await this.request<unknown>("/account/changes/reject/submit", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return RejectionSubmitSchema.parse(raw);
   }
 
   /** GET /account/sweep — what is still in the Privy wallet after enrolment. */
