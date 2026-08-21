@@ -88,6 +88,11 @@ export function usePendingWatch(hasPending = false) {
   const { isAuthenticated } = useAuth();
   const userId = useUserId();
   const queryClient = useQueryClient();
+  // `null` is a real head value: a wallet with no activity yet. Overloading it
+  // to also mean "never polled" made a new Consumer's first deposit invisible,
+  // because the very transition that should announce it looked like the first
+  // observation. A separate flag keeps the two apart.
+  const hasPolledRef = useRef(false);
   const lastHeadRef = useRef<string | null>(null);
   const lastHeadIdRef = useRef<string | null>(null);
   const lastSeenAtRef = useRef<number>(0);
@@ -107,7 +112,7 @@ export function usePendingWatch(hasPending = false) {
       const previousSeenAt = lastSeenAtRef.current;
       lastSeenAtRef.current = seenAt;
 
-      if (lastHeadRef.current !== null && lastHeadRef.current !== headKey) {
+      if (hasPolledRef.current && lastHeadRef.current !== headKey) {
         queryClient.invalidateQueries({ queryKey: ["transfers", userId] });
         queryClient.invalidateQueries({ queryKey: ["balances", userId] });
 
@@ -124,6 +129,7 @@ export function usePendingWatch(hasPending = false) {
         if (wasWatching && isNewArrival) showToast(arrivalLabel(head));
       }
 
+      hasPolledRef.current = true;
       lastHeadRef.current = headKey;
       lastHeadIdRef.current = head?.id ?? null;
       return res;
