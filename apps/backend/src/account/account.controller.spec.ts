@@ -13,6 +13,8 @@ import type { SpendingLimitService } from './spending-limit.service';
 import type { SweepService } from './sweep.service';
 import type { TurnkeyService } from '../turnkey/turnkey.service';
 import type { AccountChangeService } from './account-change.service';
+import type { RecoveryService } from '../recovery/recovery.service';
+import type { RecoveryChangeService } from './recovery-change.service';
 
 const USDC = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const SEED = 7n;
@@ -59,6 +61,8 @@ function makeController(
     spendingLimits,
     {} as unknown as TurnkeyService,
     {} as unknown as AccountChangeService,
+    {} as unknown as RecoveryService,
+    {} as unknown as RecoveryChangeService,
   );
   return { controller, asked };
 }
@@ -144,6 +148,8 @@ describe('AccountController.enrol', () => {
       {} as unknown as SpendingLimitService,
       turnkey,
       {} as unknown as AccountChangeService,
+      {} as unknown as RecoveryService,
+      {} as unknown as RecoveryChangeService,
     );
     return { controller, createAccount, verify };
   }
