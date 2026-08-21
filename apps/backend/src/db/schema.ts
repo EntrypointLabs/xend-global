@@ -363,7 +363,23 @@ export const transfers = pgTable(
       .notNull()
       .references(() => smartAccounts.id),
     intentId: text('intent_id').unique(),
-    signature: text('signature').unique(),
+    signature: text('signature'),
+    /**
+     * Which of several identical movements within the transaction this is.
+     *
+     * One signature can carry several transfers — a swap, a spend that also
+     * moves SOL, a batched payout. Keyed on the signature alone they were all
+     * the same row, so every leg after the first overwrote the one before it
+     * and the Consumer saw a single arbitrary movement. The uniqueness key is
+     * the leg's identity instead: signature, mint, both addresses, amount, and
+     * this ordinal to separate legs that match on all of those.
+     *
+     * Deliberately not the leg's position in the transaction. The webhook
+     * payload and the RPC replay order the same transaction's legs
+     * differently, so a positional index would have the two paths disagree and
+     * write the same movement twice.
+     */
+    legIndex: integer('leg_index').notNull().default(0),
     direction: transferDirectionEnum('direction').notNull(),
     mint: text('mint').notNull(),
     amountRaw: text('amount_raw').notNull(),
@@ -417,6 +433,14 @@ export const transfers = pgTable(
     pendingIdx: index('transfers_pending_idx')
       .on(table.submittedAt)
       .where(sql`status = 'PENDING'`),
+    signatureLegIdx: uniqueIndex('transfers_signature_leg_idx').on(
+      table.signature,
+      table.mint,
+      table.fromAddress,
+      table.toAddress,
+      table.amountRaw,
+      table.legIndex,
+    ),
   }),
 );
 

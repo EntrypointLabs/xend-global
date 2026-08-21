@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { LegCounter } from '../solana/leg-counter';
 import { WRAPPED_SOL_MINT } from '../solana/web3-connection';
 
 /** Lamports per SOL is 10^9, so native amounts carry nine decimals. */
@@ -79,6 +80,7 @@ export class EventParser {
       if (tx.transactionError) continue;
       const confirmedAt = new Date(tx.timestamp * 1000);
       const slot = BigInt(tx.slot);
+      const legs = new LegCounter();
       for (const t of tx.tokenTransfers ?? []) {
         if (!t.fromUserAccount || !t.toUserAccount) continue;
         let amountRaw: bigint;
@@ -104,6 +106,12 @@ export class EventParser {
         }
         events.push({
           signature: tx.signature,
+          legIndex: legs.next(
+            t.mint,
+            t.fromUserAccount,
+            t.toUserAccount,
+            amountRaw,
+          ),
           slot,
           mint: t.mint,
           amountRaw,
@@ -120,11 +128,18 @@ export class EventParser {
       for (const n of tx.nativeTransfers ?? []) {
         if (!n.fromUserAccount || !n.toUserAccount) continue;
         if (!Number.isFinite(n.amount)) continue;
+        const lamports = BigInt(Math.round(n.amount));
         events.push({
           signature: tx.signature,
+          legIndex: legs.next(
+            WRAPPED_SOL_MINT,
+            n.fromUserAccount,
+            n.toUserAccount,
+            lamports,
+          ),
           slot,
           mint: WRAPPED_SOL_MINT,
-          amountRaw: BigInt(Math.round(n.amount)),
+          amountRaw: lamports,
           decimals: LAMPORT_DECIMALS,
           fromAddress: n.fromUserAccount,
           toAddress: n.toUserAccount,

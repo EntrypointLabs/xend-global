@@ -519,7 +519,16 @@ export class TransferService {
         submittedAt: now,
       })
       .onConflictDoUpdate({
-        target: transfers.signature,
+        // The whole leg, matching the unique index: a signature alone is not a
+        // unique movement.
+        target: [
+          transfers.signature,
+          transfers.mint,
+          transfers.fromAddress,
+          transfers.toAddress,
+          transfers.amountRaw,
+          transfers.legIndex,
+        ],
         set: {
           intentId: sql`COALESCE(${transfers.intentId}, excluded.intent_id)`,
           submittedAt: sql`COALESCE(${transfers.submittedAt}, excluded.submitted_at)`,

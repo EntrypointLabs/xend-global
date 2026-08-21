@@ -19,9 +19,12 @@ import type { WalletAddress } from '../wallet/wallet-provider.interface';
  *   - This protects against late webhook deliveries that arrive after
  *     the reconciler has already finalized the row (or vice versa).
  *
- * Idempotency: `transfers.signature` is UNIQUE and the single write path
- * is `INSERT ... ON CONFLICT (signature) DO UPDATE`, so duplicate
- * webhook deliveries collapse into a single row.
+ * Idempotency: a transfer is identified by its whole leg — signature, mint,
+ * both addresses, amount, and the ordinal that separates legs identical in all
+ * of those — and the single write path is
+ * `INSERT ... ON CONFLICT (that key) DO UPDATE`, so duplicate webhook
+ * deliveries collapse into a single row while the several legs of one
+ * transaction stay several rows.
  */
 @Injectable()
 export class TailerService {
@@ -120,7 +123,7 @@ export class TailerService {
       INSERT INTO transfers (
         id, smart_account_id, signature, direction, mint, amount_raw,
         from_address, to_address, status, slot, confirmed_at, created_at,
-        kind, payment_id, decimals, usd_value, usd_priced_at
+        kind, payment_id, decimals, usd_value, usd_priced_at, leg_index
       ) VALUES (
         ${this.generateId()},
         ${smartAccountId},
@@ -138,9 +141,11 @@ export class TailerService {
         ${paymentId},
         ${evt.decimals}::integer,
         ${usdValue}::numeric,
-        ${usdValue === null ? null : new Date().toISOString()}::timestamp
+        ${usdValue === null ? null : new Date().toISOString()}::timestamp,
+        ${evt.legIndex}::integer
       )
-      ON CONFLICT (signature) DO UPDATE SET
+      ON CONFLICT (signature, mint, from_address, to_address, amount_raw, leg_index)
+      DO UPDATE SET
         status = CASE
           WHEN transfers.status IN ('CONFIRMED', 'FAILED')
             THEN transfers.status

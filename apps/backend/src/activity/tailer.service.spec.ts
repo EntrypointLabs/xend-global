@@ -211,6 +211,7 @@ describe('TailerService.upsertConfirmedTransfer', () => {
     );
     const evt: ConfirmedTransferEvent = {
       signature: 'sig-1',
+      legIndex: 0,
       slot: 999n,
       mint: 'USDC',
       amountRaw: 1_000_000n,
@@ -252,6 +253,7 @@ describe('TailerService.upsertConfirmedTransfer', () => {
     );
     const evt: ConfirmedTransferEvent = {
       signature: 'sig-pay',
+      legIndex: 0,
       slot: 42n,
       mint: 'USDC',
       amountRaw: 1_000_000n,
@@ -275,6 +277,7 @@ describe('TailerService.upsertConfirmedTransfer', () => {
     );
     const evt: ConfirmedTransferEvent = {
       signature: 'sig-plain',
+      legIndex: 0,
       slot: 43n,
       mint: 'USDC',
       amountRaw: 1_000_000n,
@@ -298,6 +301,7 @@ describe('TailerService.upsertConfirmedTransfer', () => {
     );
     const evt: ConfirmedTransferEvent = {
       signature: 'sig-out',
+      legIndex: 0,
       slot: 1000n,
       mint: 'USDC',
       amountRaw: 5_000_000n,
@@ -332,6 +336,7 @@ describe('TailerService USD valuation', () => {
     await tailer.upsertConfirmedTransfer(
       {
         signature: 'sig-sol',
+        legIndex: 0,
         slot: 1n,
         mint: SOL,
         amountRaw: 5_000_000_000n,
@@ -361,6 +366,7 @@ describe('TailerService USD valuation', () => {
     await tailer.upsertConfirmedTransfer(
       {
         signature: 'sig-sol',
+        legIndex: 0,
         slot: 1n,
         mint: SOL,
         amountRaw: 5_000_000_000n,
@@ -393,6 +399,7 @@ describe('TailerService USD valuation', () => {
     const direction = await tailer.upsertConfirmedTransfer(
       {
         signature: 'sig-unpriced',
+        legIndex: 0,
         slot: 1n,
         mint: 'UnpriceableMint',
         amountRaw: 1n,
@@ -418,6 +425,7 @@ describe('TailerService arrival notices', () => {
 
   const arrival = (over: Record<string, unknown> = {}) => ({
     signature: 'sig-arrival',
+    legIndex: 0,
     slot: 1n,
     mint: SOL_MINT,
     amountRaw: 5_000_000_000n,
@@ -574,6 +582,44 @@ describe('TailerService arrival notices', () => {
 
 describe('EventParser.parseDecoded', () => {
   const parser = new EventParser();
+
+  it('keeps the several legs of one transaction apart', () => {
+    const events = parser.parseDecoded([
+      {
+        signature: 'sig-multi',
+        slot: 42,
+        timestamp: 1717090000,
+        transactionError: null,
+        nativeTransfers: [
+          {
+            fromUserAccount: SENDER_WALLET,
+            toUserAccount: OWNED_WALLET,
+            amount: 1_000_000_000,
+          },
+          // Identical to the leg above in every column a row stores. Only the
+          // ordinal tells the two apart.
+          {
+            fromUserAccount: SENDER_WALLET,
+            toUserAccount: OWNED_WALLET,
+            amount: 1_000_000_000,
+          },
+          {
+            fromUserAccount: SENDER_WALLET,
+            toUserAccount: OWNED_WALLET,
+            amount: 2_000_000_000,
+          },
+        ],
+      },
+    ]);
+
+    // Written under one key these were one row, so a Consumer paid three times
+    // in one transaction saw a single arbitrary amount.
+    expect(events.map((e) => [e.amountRaw, e.legIndex])).toEqual([
+      [1_000_000_000n, 0],
+      [1_000_000_000n, 1],
+      [2_000_000_000n, 0],
+    ]);
+  });
 
   it('projects a native SOL transfer onto the wrapped-SOL mint', () => {
     const events = parser.parseDecoded([
