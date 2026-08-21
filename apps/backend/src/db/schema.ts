@@ -328,6 +328,37 @@ export const squadsAccounts = pgTable('squads_accounts', {
  * device genuinely needs a new sub-organization, and reusing the old one
  * would hand them an S2 their device cannot sign for.
  */
+/**
+ * Settings changes a Consumer has already been told about.
+ *
+ * The watcher runs on a timer, so without this every tick would announce the
+ * same staged change again. One row per (account, transaction index): a change
+ * at a new index is a new thing to be told about, and a rejected one never
+ * comes back at the same index.
+ */
+export const announcedAccountChanges = pgTable(
+  'announced_account_changes',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    settingsAddress: text('settings_address').notNull(),
+    transactionIndex: bigint('transaction_index', {
+      mode: 'bigint',
+    }).notNull(),
+    announcedAt: timestamp('announced_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('announced_account_changes_idx').on(
+      table.settingsAddress,
+      table.transactionIndex,
+    ),
+  ],
+);
+
 export const approvalSigners = pgTable(
   'approval_signers',
   {

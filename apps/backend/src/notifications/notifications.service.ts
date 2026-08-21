@@ -91,6 +91,50 @@ export class NotificationsService {
    * Takes the smart account rather than the user because that is what the
    * tailer holds when a transfer lands.
    */
+  /**
+   * Tells a Consumer something is happening to their Account itself.
+   *
+   * Deliberately not gated on `users.notifications_enabled`. That toggle is
+   * about being told when money arrives; nobody opts out of being told their
+   * account is being changed. Making this control depend on an unrelated
+   * setting would mean the one notice that has to arrive is the one a quiet
+   * preference silently suppresses.
+   */
+  async notifySecurityAlert(
+    userId: string,
+    alert: { title: string; body: string },
+  ): Promise<void> {
+    try {
+      const devices = await this.db.client
+        .select({ token: pushDevices.token })
+        .from(pushDevices)
+        .where(eq(pushDevices.userId, userId));
+      if (devices.length === 0) {
+        this.logger.warn(`push.security_alert_undeliverable userId=${userId}`);
+        return;
+      }
+
+      const { invalidTokens } = await this.push.send(
+        devices.map((d) => ({
+          token: d.token,
+          title: alert.title,
+          body: alert.body,
+        })),
+      );
+      this.logger.log(
+        `push.security_alert_sent userId=${userId} devices=${devices.length}`,
+      );
+
+      if (invalidTokens.length > 0) {
+        await this.db.client
+          .delete(pushDevices)
+          .where(inArray(pushDevices.token, invalidTokens));
+      }
+    } catch (err) {
+      this.logger.warn('push.security_alert_failed', err);
+    }
+  }
+
   async notifyArrival(notice: ArrivalNotice): Promise<void> {
     try {
       // The owner is reached through smart_accounts: the tailer knows the

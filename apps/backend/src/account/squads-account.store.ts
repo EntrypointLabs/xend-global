@@ -19,6 +19,11 @@ export class DrizzleSquadsAccountStore implements SquadsAccountStore {
     return row ? toRow(row) : null;
   }
 
+  async listAll(): Promise<SquadsAccountRow[]> {
+    const rows = await this.db.client.select().from(squadsAccounts);
+    return rows.map(toRow);
+  }
+
   async findUserEmail(userId: string): Promise<string | null> {
     const [row] = await this.db.client
       .select({ email: users.email })

@@ -51,6 +51,7 @@ const ABOVE_POLICY = derivePolicyAddress(
 const store: SquadsAccountStore = {
   findByUserId: () => Promise.resolve(ACCOUNT),
   insert: (row) => Promise.resolve(row),
+  listAll: () => Promise.resolve([]),
   findUserEmail: () => Promise.resolve('consumer@example.com'),
   withUserLock: <T>(_userId: string, fn: () => Promise<T>) => fn(),
 };
@@ -63,7 +64,7 @@ interface ChainState {
   timeLockSeconds?: number;
   transactionIndex?: bigint;
   policies?: bigint[];
-  proposal?: ProposalState | null;
+  proposal?: Partial<ProposalState> | null;
 }
 
 function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
@@ -79,7 +80,18 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
       }),
     policyExists: (_settings, seed) =>
       Promise.resolve((state.policies ?? []).includes(seed)),
-    readProposal: () => Promise.resolve(state.proposal ?? null),
+    readProposal: () =>
+      Promise.resolve(
+        state.proposal
+          ? {
+              approved: [],
+              settled: false,
+              status: 'Active',
+              statusTimestamp: null,
+              ...state.proposal,
+            }
+          : null,
+      ),
     compile: (params) => {
       compiled.push({ instructions: params.instructions });
       return Promise.resolve({

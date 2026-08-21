@@ -26,7 +26,27 @@ export interface ProposalState {
   approved: string[];
   /** Nothing further is owed to this proposal. See {@link UNFINISHED}. */
   settled: boolean;
+  /** The program's own name for where this proposal stands. */
+  status: ProposalStatusName;
+  /**
+   * Unix seconds at which the proposal entered {@link status}, or null for
+   * `Executing`, which the program records without one.
+   *
+   * The Settings time lock is counted from the moment of approval, so this is
+   * what says when a staged change becomes executable, and therefore how long a
+   * Consumer has left to reject one they did not make.
+   */
+  statusTimestamp: bigint | null;
 }
+
+export type ProposalStatusName =
+  | "Draft"
+  | "Active"
+  | "Rejected"
+  | "Approved"
+  | "Executing"
+  | "Executed"
+  | "Cancelled";
 
 /**
  * Proposal states that still have a step owed to them.
@@ -67,9 +87,13 @@ export function deriveProposalAddress(
 
 export function decodeProposal(info: AccountInfo<Buffer>): ProposalState {
   const [proposal] = accounts.Proposal.fromAccountInfo(info);
+  const status = proposal.status as { __kind: string; timestamp?: unknown };
   return {
     approved: proposal.approved.map((key) => key.toBase58()),
-    settled: !UNFINISHED.includes(proposal.status.__kind),
+    settled: !UNFINISHED.includes(status.__kind),
+    status: status.__kind as ProposalStatusName,
+    statusTimestamp:
+      status.timestamp === undefined ? null : toBigInt(status.timestamp),
   };
 }
 

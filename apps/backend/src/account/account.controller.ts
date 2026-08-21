@@ -20,6 +20,7 @@ import {
   AttestationRejectedError,
 } from '../attestation/attestation.errors';
 import { TurnkeyService } from '../turnkey/turnkey.service';
+import { AccountChangeService } from './account-change.service';
 import { UnsafeSubOrganizationError } from '../turnkey/turnkey.errors';
 import {
   AccountCreationError,
@@ -31,8 +32,10 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import {
   EnrolAccountSchema,
   SubmitProvisioningStepSchema,
+  SubmitRejectionSchema,
   type EnrolAccountDto,
   type SubmitProvisioningStepDto,
+  type SubmitRejectionDto,
 } from './dtos';
 import { ProvisioningService } from './provisioning.service';
 import { SpendingLimitService } from './spending-limit.service';
@@ -53,6 +56,7 @@ export class AccountController {
     private readonly provisioning: ProvisioningService,
     private readonly spendingLimits: SpendingLimitService,
     private readonly turnkey: TurnkeyService,
+    private readonly changes: AccountChangeService,
   ) {}
 
   /**
@@ -120,6 +124,52 @@ export class AccountController {
       this.logger.error(
         `account.enrolment_failed userId=${req.user.userId}: ${describeError(err)}`,
       );
+      throw toHttp(err);
+    }
+  }
+
+  /**
+   * The settings change waiting on this Consumer's Account, or null.
+   *
+   * Polled by the app so the notice survives a push that never arrived: a
+   * Consumer who has notifications off, or whose token went stale, still sees
+   * the change the next time they open Xend.
+   */
+  @Get('changes/pending')
+  pendingChange(@Req() req: AuthenticatedRequest) {
+    return this.changes.pending(req.user.userId).then((change) => ({ change }));
+  }
+
+  /**
+   * Builds the rejection for the Consumer to sign.
+   *
+   * Rejecting is the only defence the time lock actually provides, so it is a
+   * plain prepare/submit pair like any other transaction rather than anything
+   * the Consumer has to be walked through.
+   */
+  @Post('changes/reject/prepare')
+  async prepareRejection(@Req() req: AuthenticatedRequest) {
+    try {
+      return await this.changes.prepareRejection(req.user.userId);
+    } catch (err) {
+      throw toHttp(err);
+    }
+  }
+
+  @Post('changes/reject/submit')
+  async submitRejection(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(SubmitRejectionSchema))
+    body: SubmitRejectionDto,
+  ) {
+    try {
+      return {
+        signature: await this.changes.submitRejection(
+          req.user.userId,
+          body.signedTxBase64,
+        ),
+      };
+    } catch (err) {
       throw toHttp(err);
     }
   }

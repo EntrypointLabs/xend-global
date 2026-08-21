@@ -59,6 +59,7 @@ export {
   deriveProposalAddress,
   fetchSettings,
   type ProposalState,
+  type ProposalStatusName,
   type SettingsState,
 } from "./state.js";
 

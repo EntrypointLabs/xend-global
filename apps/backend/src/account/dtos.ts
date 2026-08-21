@@ -86,3 +86,9 @@ export const AccountResponseSchema = z.object({
 });
 
 export type AccountResponse = z.infer<typeof AccountResponseSchema>;
+
+/** A signed rejection of a staged settings change. */
+export const SubmitRejectionSchema = z.object({
+  signedTxBase64: z.string().min(1),
+});
+export type SubmitRejectionDto = z.infer<typeof SubmitRejectionSchema>;

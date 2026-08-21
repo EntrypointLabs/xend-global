@@ -44,6 +44,7 @@ function store(row: SquadsAccountRow | null = account): SquadsAccountStore {
   return {
     findByUserId: () => Promise.resolve(row),
     insert: (r) => Promise.resolve(r),
+    listAll: () => Promise.resolve([]),
     findUserEmail: () => Promise.resolve('consumer@example.com'),
     withUserLock: <T>(_userId: string, fn: () => Promise<T>) => fn(),
   };
