@@ -13,6 +13,7 @@ import { AccountChangeWatcher } from './account-change.watcher';
 import { Web3AccountChain } from './account-chain.web3';
 import { Web3ProvisioningChain } from './provisioning-chain.web3';
 import { ProvisioningService } from './provisioning.service';
+import { RecoveryChangeService } from './recovery-change.service';
 import { Web3SpendChain } from './spend-chain.web3';
 import { SpendService } from './spend.service';
 import { SpendingLimitService } from './spending-limit.service';
@@ -45,6 +46,7 @@ import { DrizzleSquadsAccountStore } from './squads-account.store';
     ProvisioningService,
     AccountChangeService,
     AccountChangeWatcher,
+    RecoveryChangeService,
     { provide: ACCOUNT_CHAIN, useClass: Web3AccountChain },
     { provide: SPEND_CHAIN, useClass: Web3SpendChain },
     { provide: PROVISIONING_CHAIN, useClass: Web3ProvisioningChain },
@@ -57,6 +59,7 @@ import { DrizzleSquadsAccountStore } from './squads-account.store';
     SweepService,
     ProvisioningService,
     AccountChangeService,
+    RecoveryChangeService,
   ],
 })
 export class AccountModule {}
