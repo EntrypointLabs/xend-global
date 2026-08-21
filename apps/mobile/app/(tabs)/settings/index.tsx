@@ -15,11 +15,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { Spacing } from "@/constants/Spacing";
 import { useAuth } from "@/contexts/AuthContext";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
-import { PasskeySetupModal } from "@/components/ui/organisms/modals/PasskeySetupModal";
 import { EditWalletModal } from "@/components/ui/organisms/modals/EditWalletModal";
 import { NotificationsSheet } from "@/components/ui/organisms/modals/NotificationsSheet";
 import { DeleteAccountModal } from "@/components/ui/organisms/modals/DeleteAccountModal";
-import { usePasskey } from "@/hooks/usePasskey";
 import { useWalletName } from "@/hooks/useWalletName";
 import { useBalances } from "@/hooks/useBalances";
 import { useRouter } from "expo-router";
@@ -38,14 +36,6 @@ const APP_BUILD =
 export default function SettingsScreen() {
   const router = useRouter();
   const { logout, user } = useAuth();
-  const {
-    hasPasskey,
-    isRegistering,
-    error: passkeyError,
-    registerPasskey,
-    clearError: clearPasskeyError,
-  } = usePasskey();
-  const [showPasskeyModal, setShowPasskeyModal] = useState(false);
   const { name: walletName, setName: setWalletName } = useWalletName();
   const [showEditWallet, setShowEditWallet] = useState(false);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
@@ -61,42 +51,17 @@ export default function SettingsScreen() {
     await logout();
   };
 
-  const handlePasskeyPress = () => {
-    if (hasPasskey) {
-      showToast("Passkey is already set up");
-      return;
-    }
-    clearPasskeyError();
-    setShowPasskeyModal(true);
-  };
-
-  const handleAddPasskey = async () => {
-    clearPasskeyError();
-    const success = await registerPasskey();
-    if (success) {
-      setShowPasskeyModal(false);
-      showToast("Passkey set up successfully");
-    }
-  };
-
-  const handleSkipPasskey = () => {
-    clearPasskeyError();
-    setShowPasskeyModal(false);
-  };
-
   const sections = [
     {
       title: "Security",
       data: [
         {
-          label: hasPasskey ? "Passkey (Enabled)" : "Set up Passkey",
-          icon: require("@/assets/icons/keys.png"),
-          onPress: handlePasskeyPress,
-        },
-        {
+          // One row, not two: the Passkey is one of the keys this screen is
+          // about, and a separate shortcut would be a second place to set it up
+          // that could disagree with the first.
           label: "Keys & Recovery",
           icon: require("@/assets/icons/keys.png"),
-          onPress: () => {},
+          onPress: () => router.push("/settings/keys-and-recovery" as never),
         },
         {
           label: "Spending Limits",
@@ -174,15 +139,6 @@ export default function SettingsScreen() {
 
   return (
     <ScreenLayout>
-      <PasskeySetupModal
-        visible={showPasskeyModal}
-        onAddPasskey={handleAddPasskey}
-        isLoading={isRegistering}
-        error={passkeyError}
-        onRetry={handleAddPasskey}
-        onSkip={handleSkipPasskey}
-        skipLabel="Cancel"
-      />
       <View className="w-full flex-1">
         <SectionList
           ListHeaderComponent={

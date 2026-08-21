@@ -14,6 +14,22 @@ export function isPublicKey(address: string): boolean {
   }
 }
 
+/**
+ * Whether an address could ever sign, and so could ever be a recovery key.
+ *
+ * Stricter than {@link isPublicKey} on purpose. Any 32 bytes parse as a
+ * PublicKey, including program-derived addresses, which sit off the Ed25519
+ * curve and have no private key at all. One of those accepted as a recovery
+ * key would look completely normal and be unable to sign the day it was needed.
+ */
+export function isSignerAddress(address: string): boolean {
+  try {
+    return PublicKey.isOnCurve(new PublicKey(address).toBytes());
+  } catch {
+    return false;
+  }
+}
+
 export async function isSnsName(name: string): Promise<boolean> {
   try {
     const resolvedSns = await resolveSnsName(name);

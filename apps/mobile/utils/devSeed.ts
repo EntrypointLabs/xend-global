@@ -2,6 +2,7 @@ import type {
   BalancesResponse,
   ListSessionsResponse,
   PrepareTransferResponse,
+  RecoveryKey,
   TransferListResponse,
   WalletResponse,
 } from "@/utils/apiClient";
@@ -225,4 +226,66 @@ export function seedPrepareTransfer(): PrepareTransferResponse {
     feeLamports: 5000,
     expiresAt: hoursAgo(-1),
   };
+}
+
+/**
+ * Recovery keys for the demo seed.
+ *
+ * `EXPO_PUBLIC_SEED_RECOVERY` picks the state, because the interesting ones are
+ * the in-flight ones and those cannot be reached on a simulator: staging a key
+ * needs two on-device signatures and then a day of waiting.
+ *
+ * - `one`       a single email key, which is every real Account today
+ * - `pending`   a second key staged and still waiting on the chain
+ * - `removing`  a key on its way out
+ * - `full`      three keys, so the add button is at capacity
+ * - `empty`     no keys, which the backend forbids but the screen must survive
+ */
+export function seedRecoveryKeys(): RecoveryKey[] {
+  const state = process.env.EXPO_PUBLIC_SEED_RECOVERY ?? "one";
+
+  const email: RecoveryKey = {
+    id: "rk-01",
+    address: WALLET,
+    channel: "email",
+    channelValue: "amara@xend.global",
+    createdAt: new Date(Date.now() - 86_400_000 * 30).toISOString(),
+    status: "active",
+    removable: false,
+  };
+  const wallet = (
+    id: string,
+    status: RecoveryKey["status"],
+    removable: boolean
+  ): RecoveryKey => ({
+    id,
+    address: WALLET,
+    channel: "external_wallet",
+    channelValue: "So11111111111111111111111111111111111111112",
+    createdAt: new Date(Date.now() - 86_400_000).toISOString(),
+    status,
+    removable,
+  });
+
+  if (state === "empty") return [];
+  if (state === "pending") {
+    return [
+      { ...email, removable: false },
+      wallet("rk-02", "pending_add", false),
+    ];
+  }
+  if (state === "removing") {
+    return [
+      { ...email, removable: true },
+      wallet("rk-02", "pending_remove", false),
+    ];
+  }
+  if (state === "full") {
+    return [
+      { ...email, removable: true },
+      wallet("rk-02", "active", true),
+      wallet("rk-03", "active", true),
+    ];
+  }
+  return [email];
 }

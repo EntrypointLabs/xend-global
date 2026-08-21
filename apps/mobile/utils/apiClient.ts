@@ -4,6 +4,7 @@ import { handleError, ErrorCode } from "@/utils/errors";
 import { AuthStorage } from "@/utils/storage/authStorage";
 import {
   SEED_DEMO,
+  seedRecoveryKeys,
   seedBalances,
   seedPrepareTransfer,
   seedSessions,
@@ -119,6 +120,14 @@ export const StagedChangeSchema = z.object({
   status: z.string(),
   approvals: z.array(z.string()),
   executableAt: z.string().nullable(),
+  /**
+   * True when this Consumer started the change from this app.
+   *
+   * Softens the announcement rather than silencing it: the alarm is still what
+   * a change nobody here staged gets, and a self-started one still shows on the
+   * Keys & Recovery screen with a way to cancel it.
+   */
+  selfInitiated: z.boolean(),
 });
 export type StagedChange = z.infer<typeof StagedChangeSchema>;
 
@@ -148,6 +157,57 @@ export type ProvisioningStep = z.infer<typeof ProvisioningStepSchema>;
 
 export const ProvisioningSubmitSchema = z.object({ signature: z.string() });
 export type ProvisioningSubmit = z.infer<typeof ProvisioningSubmitSchema>;
+
+export const RecoveryKeySchema = z.object({
+  id: z.string(),
+  address: z.string(),
+  channel: z.enum(["email", "external_wallet"]),
+  /** The email address, or the external wallet's own address. */
+  channelValue: z.string(),
+  createdAt: z.string(),
+  status: z.enum(["pending_add", "active", "pending_remove"]),
+  removable: z.boolean(),
+});
+export type RecoveryKey = z.infer<typeof RecoveryKeySchema>;
+
+export const RecoveryKeysResponseSchema = z.object({
+  keys: z.array(RecoveryKeySchema),
+});
+
+/**
+ * A step of the settings change that adds or removes a recovery key.
+ *
+ * `waiting` has no transaction: the change is approved and serving out the
+ * time lock, and `executableAt` says when it can be finished.
+ */
+export const RecoveryChangeStepSchema = z.object({
+  done: z.boolean(),
+  step: z
+    .enum([
+      "propose",
+      "approve-primary",
+      "approve-approval",
+      "waiting",
+      "execute",
+    ])
+    .optional(),
+  unsignedTxBase64: z.string().optional(),
+  changeIndex: z.string().optional(),
+  executableAt: z.string().optional(),
+  needsApprovalSignature: z.boolean().optional(),
+});
+export type RecoveryChangeStep = z.infer<typeof RecoveryChangeStepSchema>;
+
+export const AddRecoveryKeyResponseSchema = z.object({
+  key: RecoveryKeySchema,
+  plan: RecoveryChangeStepSchema,
+});
+
+export const RemoveRecoveryKeyResponseSchema = z.object({
+  plan: RecoveryChangeStepSchema,
+});
+
+export const RecoveryChangeSubmitSchema = z.object({ signature: z.string() });
 
 export const SweepPlanSchema = z.object({
   needed: z.boolean(),
@@ -598,6 +658,59 @@ class BackendClient {
       auth: true,
     });
     return RejectionSubmitSchema.parse(raw);
+  }
+
+  /** GET /account/recovery — the Consumer's recovery keys. */
+  async getRecoveryKeys(): Promise<RecoveryKey[]> {
+    if (SEED_DEMO) return seedRecoveryKeys();
+    const raw = await this.request<unknown>("/account/recovery", {
+      method: "GET",
+      auth: true,
+    });
+    return RecoveryKeysResponseSchema.parse(raw).keys;
+  }
+
+  /** POST /account/recovery/external-wallet — stages a wallet as a recovery key. */
+  async addRecoveryWallet(body: { address: string }) {
+    const raw = await this.request<unknown>(
+      "/account/recovery/external-wallet",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        auth: true,
+      }
+    );
+    return AddRecoveryKeyResponseSchema.parse(raw);
+  }
+
+  /** POST /account/recovery/:id/remove — stages a recovery key's removal. */
+  async removeRecoveryKey(id: string) {
+    const raw = await this.request<unknown>(`/account/recovery/${id}/remove`, {
+      method: "POST",
+      auth: true,
+    });
+    return RemoveRecoveryKeyResponseSchema.parse(raw);
+  }
+
+  /** POST /account/recovery/change/next — the next step, or done. */
+  async nextRecoveryChangeStep(): Promise<RecoveryChangeStep> {
+    const raw = await this.request<unknown>("/account/recovery/change/next", {
+      method: "POST",
+      auth: true,
+    });
+    return RecoveryChangeStepSchema.parse(raw);
+  }
+
+  /** POST /account/recovery/change/submit — lands a signed step. */
+  async submitRecoveryChangeStep(body: {
+    signedTxBase64: string;
+  }): Promise<{ signature: string }> {
+    const raw = await this.request<unknown>("/account/recovery/change/submit", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return RecoveryChangeSubmitSchema.parse(raw);
   }
 
   /** GET /account/sweep — what is still in the Privy wallet after enrolment. */
