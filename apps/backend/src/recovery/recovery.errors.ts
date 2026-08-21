@@ -27,3 +27,19 @@ export class DuplicateRecoveryChannelError extends Error {
     this.name = 'DuplicateRecoveryChannelError';
   }
 }
+
+export class RecoverySignerLimitError extends Error {
+  readonly code = 'RECOVERY_SIGNER_LIMIT';
+  constructor(message: string) {
+    super(message);
+    this.name = 'RecoverySignerLimitError';
+  }
+}
+
+export class RecoveryChangeInFlightError extends Error {
+  readonly code = 'RECOVERY_CHANGE_IN_FLIGHT';
+  constructor(message: string) {
+    super(message);
+    this.name = 'RecoveryChangeInFlightError';
+  }
+}

@@ -26,6 +26,20 @@ export const recoveryChannelEnum = pgEnum('recovery_channel', [
   'external_wallet',
 ]);
 
+/**
+ * Where a recovery signer sits relative to the on-chain signer set.
+ *
+ * A signer is only real once the Settings change carrying it has executed, and
+ * that waits out the time lock. Both edges therefore have a pending state: the
+ * row exists while the chain does not yet agree, and the two are reconciled
+ * when the change executes or is rejected.
+ */
+export const recoverySignerStatusEnum = pgEnum('recovery_signer_status', [
+  'pending_add',
+  'active',
+  'pending_remove',
+]);
+
 export const transferDirectionEnum = pgEnum('transfer_direction', [
   'SEND',
   'RECEIVE',
@@ -267,6 +281,12 @@ export const recoverySigners = pgTable(
     sealedKey: text('sealed_key'),
     /** Which wrapping key sealed it, so the vault key can be rotated. */
     sealedKeyId: text('sealed_key_id'),
+    status: recoverySignerStatusEnum('status').notNull().default('active'),
+    /**
+     * The `transactionIndex` of the Settings change adding or removing this
+     * signer, while one is in flight. Null once the chain and this row agree.
+     */
+    changeIndex: text('change_index'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

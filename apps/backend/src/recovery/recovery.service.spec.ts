@@ -4,6 +4,8 @@ import { RecoveryService } from './recovery.service';
 import {
   DuplicateRecoveryChannelError,
   LastRecoverySignerError,
+  RecoveryChangeInFlightError,
+  RecoverySignerLimitError,
   UnknownRecoverySignerError,
 } from './recovery.errors';
 
@@ -32,6 +34,8 @@ class FakeStore implements RecoverySignerStore {
       channelValue: row.channelValue,
       sealedKey: row.sealedKey ?? null,
       sealedKeyId: row.sealedKeyId ?? null,
+      status: row.status ?? 'active',
+      changeIndex: row.changeIndex ?? null,
       createdAt: new Date(0),
       updatedAt: new Date(0),
     };
@@ -131,33 +135,122 @@ describe('RecoveryService', () => {
     expect(await service.list('user-1')).toHaveLength(1);
   });
 
-  it('allows removal once a second signer exists', async () => {
+  /** Stages a signer and lands the settings change that puts it on chain. */
+  async function landAdd(userId: string, address: string) {
+    const added = await service.addExternalWallet(userId, address);
+    await service.markChange(added.id, 9n);
+    await service.settle(userId, 9n);
+    return added;
+  }
+
+  it('does not count a staged signer as one that backs the Account', async () => {
     const first = await service.provisionEmailSigner('user-1', 'a@example.com');
     await service.addExternalWallet(
       'user-1',
       'So11111111111111111111111111111111111111112',
     );
+
+    // The second signer is not in the on-chain signer set until its settings
+    // change executes, so removing the first would leave nothing recovering
+    // the Account in the meantime.
+    await expect(service.remove('user-1', first.id)).rejects.toThrow(
+      LastRecoverySignerError,
+    );
+  });
+
+  it('allows removal once a second signer is really in the signer set', async () => {
+    const first = await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111112');
 
     const signers = await service.list('user-1');
     expect(signers.every((s) => s.removable)).toBe(true);
 
     const removed = await service.remove('user-1', first.id);
     expect(removed.address).toBe(first.address);
+
+    // Staged, not gone: the row survives until the chain agrees, and a
+    // different change executing must not take it with it.
+    const staged = (await service.list('user-1')).find(
+      (s) => s.id === first.id,
+    );
+    expect(staged?.status).toBe('pending_remove');
+    await service.settle('user-1', 11n);
+    expect(await service.list('user-1')).toHaveLength(2);
+  });
+
+  it('drops a staged removal only when its own change executes', async () => {
+    const first = await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111112');
+
+    await service.remove('user-1', first.id);
+    await service.markChange(first.id, 12n);
+    await service.settle('user-1', 12n);
+
+    expect(await service.list('user-1')).toHaveLength(1);
+  });
+
+  it('puts a rejected removal back into service', async () => {
+    const first = await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111112');
+
+    await service.remove('user-1', first.id);
+    await service.markChange(first.id, 13n);
+    await service.abandon('user-1', 13n);
+
+    const survivor = (await service.list('user-1')).find(
+      (s) => s.id === first.id,
+    );
+    expect(survivor?.status).toBe('active');
+  });
+
+  it('forgets a staged addition that was rejected', async () => {
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    const added = await service.addExternalWallet(
+      'user-1',
+      'So11111111111111111111111111111111111111112',
+    );
+    await service.markChange(added.id, 14n);
+    await service.abandon('user-1', 14n);
+
     expect(await service.list('user-1')).toHaveLength(1);
   });
 
   it('makes the last remaining signer un-removable again', async () => {
     const first = await service.provisionEmailSigner('user-1', 'a@example.com');
-    await service.addExternalWallet(
-      'user-1',
-      'So11111111111111111111111111111111111111112',
-    );
+    await landAdd('user-1', 'So11111111111111111111111111111111111111112');
     await service.remove('user-1', first.id);
+    await service.markChange(first.id, 15n);
+    await service.settle('user-1', 15n);
 
     const [survivor] = await service.list('user-1');
     expect(survivor.removable).toBe(false);
     await expect(service.remove('user-1', survivor.id)).rejects.toThrow(
       LastRecoverySignerError,
+    );
+  });
+
+  it('refuses a second change while one is still in flight', async () => {
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    const added = await service.addExternalWallet(
+      'user-1',
+      'So11111111111111111111111111111111111111112',
+    );
+    await service.markChange(added.id, 16n);
+
+    // Settings changes are sequenced by transactionIndex, so a second one
+    // proposed now would either collide or silently depend on the first.
+    await expect(service.addEmail('user-1', 'b@example.com')).rejects.toThrow(
+      RecoveryChangeInFlightError,
+    );
+  });
+
+  it('refuses a fourth recovery signer', async () => {
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111112');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111113');
+
+    await expect(service.addEmail('user-1', 'd@example.com')).rejects.toThrow(
+      RecoverySignerLimitError,
     );
   });
 
