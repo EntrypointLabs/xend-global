@@ -18,6 +18,11 @@ import type {
 } from './account.interface';
 import { SpendService } from './spend.service';
 
+/** Any token program will do here; these tests never reach the program. */
+const TOKEN_PROGRAM_ID_FAKE = new PublicKey(
+  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+);
+
 const USDC = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const SEED = 7n;
 const PRIMARY = Keypair.generate().publicKey.toBase58();
@@ -68,6 +73,8 @@ function chain(
         blockhash: 'BlockHash11111111111111111111111111111111111',
         lastValidBlockHeight: 100,
       }),
+    tokenProgramFor: () => Promise.resolve(TOKEN_PROGRAM_ID_FAKE),
+    createDestinationTokenAccount: () => Promise.resolve(null),
     feePayer: AUTHORITY,
   };
   return { spendChain, read, simulated };

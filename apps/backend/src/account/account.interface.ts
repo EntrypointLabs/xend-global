@@ -224,6 +224,16 @@ export interface SpendChain {
   ): Promise<readonly import('@xend/smart-account').SpendingLimit[]>;
 
   /**
+   * The token program that owns a mint.
+   *
+   * Read rather than assumed: the spending limit policy checks the token
+   * accounts against the mint's own program, and a Token-2022 mint handed the
+   * classic program's id is refused. Native SOL has no token program and is
+   * not asked about.
+   */
+  tokenProgramFor(mint: string): Promise<import('@solana/web3.js').PublicKey>;
+
+  /**
    * Compiles a Spend with the settlement authority as fee payer.
    *
    * Not the Consumer. The money lives in the vault, and a Consumer who has
@@ -234,8 +244,24 @@ export interface SpendChain {
    * Paying is not signing: the authority is fee payer only and is not a signer
    * on the Spend, so authorisation still comes from the Account's own signers.
    */
+  /**
+   * The instruction that creates the destination's token account, or null when
+   * it already exists.
+   *
+   * A Consumer sending USDC to someone who has never held USDC has to open
+   * that account first, or the policy refuses the Spend with
+   * AccountNotInitialized. Rent is charged to the fee payer for the same
+   * reason fees are: the recipient is a stranger and the sender may hold no
+   * SOL at all.
+   */
+  createDestinationTokenAccount(params: {
+    mint: string;
+    destination: string;
+    tokenProgram: import('@solana/web3.js').PublicKey;
+  }): Promise<import('@solana/web3.js').TransactionInstruction | null>;
+
   compile(params: {
-    instruction: import('@solana/web3.js').TransactionInstruction;
+    instructions: import('@solana/web3.js').TransactionInstruction[];
   }): Promise<{
     unsignedTxBase64: string;
     messageBase64: string;

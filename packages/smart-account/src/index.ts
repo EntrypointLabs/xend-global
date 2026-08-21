@@ -33,6 +33,7 @@ export {
 } from "./policy.js";
 
 export {
+  associatedTokenAddress,
   buildSpend,
   resolveSpendRoute,
   type BuildSpendParams,

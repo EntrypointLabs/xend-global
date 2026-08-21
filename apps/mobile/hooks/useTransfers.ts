@@ -13,6 +13,11 @@ import { useWalletAddress } from "@/hooks/useWalletAddress";
 
 const PAGE_SIZE = 25;
 
+/** While a transfer of theirs is in flight and they are watching for it. */
+const PENDING_POLL_MS = 5_000;
+/** Otherwise: often enough that an arrival feels immediate, rarely enough to ignore. */
+const IDLE_POLL_MS = 15_000;
+
 /**
  * Cursor-paginated Activity feed for the signed-in user. Gated on
  * `isAuthenticated`; the JWT scopes the fetch server-side.
@@ -48,12 +53,26 @@ export function useTransfersInfinite() {
 }
 
 /**
- * Lightweight 1-row head poll that drives the live PENDING -> CONFIRMED flip
- * without polling every page of the infinite query. While a PENDING transfer
- * exists it refetches the newest row every 5s; when that row's identity or
- * status changes it invalidates the full transfers query so the feed reloads.
+ * Lightweight 1-row head poll: the cheapest way to notice that anything
+ * happened to this wallet.
+ *
+ * It runs whenever the Consumer is signed in, not only while one of their own
+ * transfers is pending. Money arriving is the case nobody can predict, and
+ * before this a deposit sat unseen until something else happened to trigger a
+ * refetch — which is not how a wallet is supposed to behave.
+ *
+ * Faster while a transfer of theirs is in flight, because that is the one
+ * moment they are watching the screen waiting for a specific answer.
+ *
+ * A change to the newest row invalidates the feed AND the balances, since an
+ * arrival moves both and refreshing one without the other leaves the two
+ * disagreeing on screen.
+ *
+ * This is a poll, not a push. It stops when the app is backgrounded, so it
+ * costs nothing while nobody is looking; a server-pushed channel would still
+ * be better and is not what this is.
  */
-export function usePendingWatch(hasPending: boolean) {
+export function usePendingWatch(hasPending = false) {
   const { isAuthenticated } = useAuth();
   const userId = useUserId();
   const queryClient = useQueryClient();
@@ -71,12 +90,13 @@ export function usePendingWatch(hasPending: boolean) {
         : null;
       if (lastHeadRef.current !== null && lastHeadRef.current !== headKey) {
         queryClient.invalidateQueries({ queryKey: ["transfers", userId] });
+        queryClient.invalidateQueries({ queryKey: ["balances", userId] });
       }
       lastHeadRef.current = headKey;
       return res;
     },
-    enabled: Boolean(isAuthenticated) && hasPending,
-    refetchInterval: hasPending ? 5000 : false,
+    enabled: Boolean(isAuthenticated),
+    refetchInterval: hasPending ? PENDING_POLL_MS : IDLE_POLL_MS,
     staleTime: 0,
   });
 }

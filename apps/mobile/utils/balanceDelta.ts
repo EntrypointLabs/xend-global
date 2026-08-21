@@ -2,6 +2,9 @@ import type { BalancePoint } from "@/components/ui/organisms/BalanceChart";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** Smallest baseline that can carry a percentage: one cent. */
+const MIN_BASELINE = 0.01;
+
 export interface BalanceDelta {
   /** Signed fraction: 0.0002 is +0.02%. */
   fraction: number;
@@ -30,10 +33,12 @@ export function selectBalanceDelta(
   const prior =
     [...history].reverse().find((point) => point.at <= cutoff) ?? history[0]!;
 
-  // A baseline at or below zero gives no percentage. Below zero specifically
+  // A baseline below a cent gives no percentage worth showing. Zero or less
   // means the replayed transfers are incomplete rather than that the Consumer
-  // owed money, so the honest response is to show nothing.
-  if (prior.value <= 0) return null;
+  // owed money; a fraction of a cent is float residue left by the walk-back
+  // subtracting a value from itself. Dividing by that residue is what put
+  // "+1120591080155801216.00%" on the home screen.
+  if (prior.value < MIN_BASELINE) return null;
 
   const current = history[history.length - 1]!.value;
   const fraction = (current - prior.value) / prior.value;

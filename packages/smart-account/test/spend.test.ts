@@ -2,6 +2,7 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 
 import {
+  associatedTokenAddress,
   buildSpend,
   resolveSpendRoute,
   deriveAccountAddresses,
@@ -119,7 +120,50 @@ describe("resolveSpendRoute", () => {
   });
 });
 
+const TOKEN_PROGRAM = new PublicKey(
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+);
+
 describe("buildSpend", () => {
+  it("gives a token spend the accounts the policy reads, not the native ones", () => {
+    // The program branches on the policy's mint: a token needs both token
+    // accounts, the mint and its program. Handing it the native list is what
+    // failed on chain as InvalidNumberOfAccounts, with the Consumer told only
+    // that the network was unavailable.
+    const l = limit();
+    const ix = buildSpend({
+      addresses,
+      request: { mint: USDC, amount: 1_000_000n, destination: dest },
+      route: { kind: "spending-limit", policy: l.policy },
+      signers: [primary],
+      decimals: 6,
+      tokenProgram: TOKEN_PROGRAM,
+    });
+
+    const keys = ix.keys.map((k) => k.pubkey.toBase58());
+    expect(keys).toContain(
+      associatedTokenAddress(addresses.vault, USDC, TOKEN_PROGRAM).toBase58(),
+    );
+    expect(keys).toContain(
+      associatedTokenAddress(dest, USDC, TOKEN_PROGRAM).toBase58(),
+    );
+    expect(keys).toContain(USDC.toBase58());
+    expect(keys).toContain(TOKEN_PROGRAM.toBase58());
+  });
+
+  it("refuses a token spend with no token program rather than guessing one", () => {
+    const l = limit();
+    expect(() =>
+      buildSpend({
+        addresses,
+        request: { mint: USDC, amount: 1_000_000n, destination: dest },
+        route: { kind: "spending-limit", policy: l.policy },
+        signers: [primary],
+        decimals: 6,
+      }),
+    ).toThrow(/token program/);
+  });
+
   const dest = Keypair.generate().publicKey;
   const primary = Keypair.generate().publicKey;
   const approval = Keypair.generate().publicKey;
@@ -132,6 +176,7 @@ describe("buildSpend", () => {
       route: { kind: "spending-limit", policy: l.policy },
       signers: [primary],
       decimals: 6,
+      tokenProgram: TOKEN_PROGRAM,
     });
     // The anchor accounts (policy, program) lead, then the remaining accounts.
     expect(ix.keys.some((k) => k.pubkey.equals(primary) && k.isSigner)).toBe(

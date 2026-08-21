@@ -32,7 +32,7 @@ interface AboveLimitSendModalProps {
   state: AboveLimitSendState;
   /** Decimal string, as typed on the amount screen. */
   amount: string;
-  recipient: string;
+  recipient: string | undefined;
   /** Shown in place of the step's own line when it is paused or failed. */
   message: string | null;
   /** False for an Account with no limit yet, where every send is checked twice. */
@@ -284,7 +284,14 @@ const STEP_ORDER: AboveLimitSendStep[] = [
   "sent",
 ];
 
-function shorten(address: string): string {
+/**
+ * Tolerates a missing address because it is fed from router params, which are
+ * typed as strings and are not guaranteed to be there. `Modal` renders its
+ * children whether or not it is visible, so an absent recipient took the whole
+ * confirm screen down rather than just this line.
+ */
+function shorten(address: string | undefined): string {
+  if (!address) return "";
   return address.length > 12
     ? `${address.slice(0, 4)}...${address.slice(-4)}`
     : address;

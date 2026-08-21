@@ -1,6 +1,10 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  createAssociatedTokenAccountInstruction,
+  getAssociatedTokenAddressSync,
+} from '@solana/spl-token';
+import {
   Connection,
   PublicKey,
   type AccountInfo,
@@ -121,6 +125,19 @@ export class Web3SpendChain implements SpendChain, OnModuleInit {
     ];
   }
 
+  async tokenProgramFor(mint: string): Promise<PublicKey> {
+    const info = await this.rpc.getAccountInfo(
+      new PublicKey(mint),
+      'confirmed',
+    );
+    if (!info) {
+      throw new AccountCreationError(`Mint ${mint} does not exist on chain`);
+    }
+    // The account's owner IS its token program, which is the only source that
+    // stays correct as Token-2022 mints appear alongside classic ones.
+    return info.owner;
+  }
+
   async wouldSucceed(instruction: TransactionInstruction): Promise<boolean> {
     try {
       const { blockhash } = await this.rpc.getLatestBlockhash('confirmed');
@@ -147,7 +164,35 @@ export class Web3SpendChain implements SpendChain, OnModuleInit {
     }
   }
 
-  async compile(params: { instruction: TransactionInstruction }): Promise<{
+  async createDestinationTokenAccount(params: {
+    mint: string;
+    destination: string;
+    tokenProgram: PublicKey;
+  }): Promise<TransactionInstruction | null> {
+    const mint = new PublicKey(params.mint);
+    const destination = new PublicKey(params.destination);
+    // Off-curve owners allowed: a recipient can be another Account's vault,
+    // which is a PDA. The policy checks the account's owner against the
+    // destination anyway, so refusing to derive it here only breaks the case
+    // of one Account paying another.
+    const ata = getAssociatedTokenAddressSync(
+      mint,
+      destination,
+      true,
+      params.tokenProgram,
+    );
+    if (await this.rpc.getAccountInfo(ata, 'confirmed')) return null;
+
+    return createAssociatedTokenAccountInstruction(
+      new PublicKey(this.feePayer),
+      ata,
+      destination,
+      mint,
+      params.tokenProgram,
+    );
+  }
+
+  async compile(params: { instructions: TransactionInstruction[] }): Promise<{
     unsignedTxBase64: string;
     messageBase64: string;
     blockhash: string;
@@ -167,7 +212,7 @@ export class Web3SpendChain implements SpendChain, OnModuleInit {
     const message = new TransactionMessage({
       payerKey: new PublicKey(this.feePayer),
       recentBlockhash: blockhash,
-      instructions: [params.instruction],
+      instructions: params.instructions,
     }).compileToV0Message();
 
     return {

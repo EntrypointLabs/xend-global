@@ -64,3 +64,14 @@ describe("selectBalanceDelta", () => {
     expect(selectBalanceDelta(history, NOW)?.display).toBe("+25.00%");
   });
 });
+
+it("shows nothing when the baseline is float residue rather than a holding", () => {
+  // The walk-back subtracts a value from itself and leaves a fraction of a
+  // cent behind; a percentage against that reads in the quintillions.
+  const now = Date.parse("2026-08-19T12:00:00.000Z");
+  const history = [
+    { at: now - 2 * 24 * 60 * 60 * 1000, value: 5.684341886080802e-14 },
+    { at: now, value: 636.98 },
+  ];
+  expect(selectBalanceDelta(history, now)).toBeNull();
+});

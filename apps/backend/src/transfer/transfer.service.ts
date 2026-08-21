@@ -473,6 +473,14 @@ export class TransferService {
         ? await this.spends.submit(req.signedTxBase64)
         : await this.solana.sendRawTransaction(req.signedTxBase64);
     } catch (err) {
+      // The response carries a code and nothing else, deliberately: a Consumer
+      // has no use for an RPC's wording and it may name our infrastructure. But
+      // the reason has to survive somewhere, or a refused send reads as nothing
+      // more than "the network is down" to everyone looking at it.
+      this.logger.error(
+        `transfer.submit.rpc_failed intent_id=${req.intentId} vault_spend=${intent.vaultSpend}`,
+        err instanceof Error ? (err.stack ?? err.message) : String(err),
+      );
       throw new RpcUnavailableError(
         'sendRawTransaction failed; no transfer row written',
         err,
