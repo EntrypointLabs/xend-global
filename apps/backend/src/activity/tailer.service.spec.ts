@@ -37,7 +37,7 @@ function fakeNotifications(): NotificationsService {
  * asserting the write itself.
  */
 function fakePriceProvider(
-  prices: Record<string, { usdPrice: number; decimals: number }> = {},
+  prices: Record<string, { usdPrice: number; decimals: number | null }> = {},
 ): TokenPriceProvider {
   return {
     getUsdPrices: jest
@@ -335,7 +335,7 @@ describe('TailerService USD valuation', () => {
         slot: 1n,
         mint: SOL,
         amountRaw: 5_000_000_000n,
-        decimals: 6,
+        decimals: 9,
         fromAddress: SENDER_WALLET,
         toAddress: OWNED_WALLET,
         confirmedAt: new Date(),
@@ -364,7 +364,7 @@ describe('TailerService USD valuation', () => {
         slot: 1n,
         mint: SOL,
         amountRaw: 5_000_000_000n,
-        decimals: 6,
+        decimals: 9,
         fromAddress: SENDER_WALLET,
         toAddress: OWNED_WALLET,
         confirmedAt: new Date(),
@@ -491,6 +491,28 @@ describe('TailerService arrival notices', () => {
       smartAccountId: 'sa_1',
       amount: '1.5',
     });
+  });
+
+  it("values a transfer from the chain's decimals when the quote omits them", async () => {
+    // The quote can legitimately answer with a price and no decimals. Refusing
+    // to value the row then left it permanently unvalued, even though the
+    // event itself carried the authoritative scale.
+    const { db, calls } = makeFakeDb();
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider({ [SOL_MINT]: { usdPrice: 100, decimals: null } }),
+      fakeNotifications(),
+      fakeNamer(),
+    );
+
+    await tailer.upsertConfirmedTransfer(
+      arrival({ decimals: 9 }),
+      'sa_1',
+      OWNED_WALLET,
+    );
+
+    const insert = calls.find((c) => c.sql.includes('INSERT INTO transfers'));
+    expect(insert?.sql).toContain('500.000000');
   });
 
   it('says nothing when the same signature is delivered again', async () => {

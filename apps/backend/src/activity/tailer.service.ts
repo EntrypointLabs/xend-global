@@ -47,12 +47,18 @@ export class TailerService {
   private async usdValueAt(
     mint: string,
     amountRaw: bigint,
+    eventDecimals: number | null,
   ): Promise<string | null> {
     try {
       const quote = (await this.prices.getUsdPrices([mint])).get(mint);
-      if (!quote || quote.decimals === null) return null;
+      // The chain's own decimals first: they are authoritative and present even
+      // for mints no price index lists. Refusing to value a transfer just
+      // because the quote omitted decimals left rows permanently unvalued that
+      // the balance endpoint could price perfectly well.
+      const decimals = eventDecimals ?? quote?.decimals ?? null;
+      if (!quote || decimals === null) return null;
 
-      const divisor = 10n ** BigInt(quote.decimals);
+      const divisor = 10n ** BigInt(decimals);
       const whole = Number(amountRaw / divisor);
       const fraction = Number(amountRaw % divisor) / Number(divisor);
       return ((whole + fraction) * quote.usdPrice).toFixed(6);
@@ -94,7 +100,11 @@ export class TailerService {
     const paymentId = correlation.rows[0]?.payment_id ?? null;
     const kind: 'transfer' | 'payment' = paymentId ? 'payment' : 'transfer';
 
-    const usdValue = await this.usdValueAt(evt.mint, evt.amountRaw);
+    const usdValue = await this.usdValueAt(
+      evt.mint,
+      evt.amountRaw,
+      evt.decimals,
+    );
 
     // The CASE in the DO UPDATE clause is the load-bearing status guard:
     // if the existing row is already CONFIRMED or FAILED, keep that
