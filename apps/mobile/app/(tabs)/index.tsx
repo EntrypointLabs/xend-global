@@ -60,6 +60,7 @@ function HomeScreenContent() {
     usdc,
     portfolio,
     isError: isBalanceError,
+    isLoading: isBalanceLoading,
     refetch: refetchBalances,
   } = useBalances();
   const { balance: earnBalance } = useEarnPosition();
@@ -71,7 +72,9 @@ function HomeScreenContent() {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  const { isLoading } = useTransfersInfinite();
+  // Called for its cache, not its result: the activity tab reads the same
+  // query, and warming it here means it does not start empty.
+  useTransfersInfinite();
   const address = useWalletAddress();
   const { name: walletName } = useWalletName();
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
@@ -183,7 +186,19 @@ function HomeScreenContent() {
           </View>
         </View>
 
-        {hasBalance ? (
+        {isBalanceLoading ? (
+          // Holds the chart's height while the balance loads. Without it this
+          // slot is empty, everything below sits higher, and the whole grid
+          // jumps the moment the balance arrives.
+          <BalanceChart
+            loading
+            history={[]}
+            style={{
+              marginTop: size(CHART_GAP_ABOVE),
+              marginBottom: size(SECTION_GAP),
+            }}
+          />
+        ) : hasBalance ? (
           <BalanceChart
             history={history}
             style={{
@@ -192,56 +207,54 @@ function HomeScreenContent() {
             }}
           />
         ) : (
-          !isLoading && (
-            <View
-              className="items-center"
+          <View
+            className="items-center"
+            style={{
+              paddingTop: size(20),
+              paddingBottom: size(8),
+              marginBottom: size(SECTION_GAP),
+            }}
+          >
+            <Typography
+              weight="600"
+              className="text-center"
               style={{
-                paddingTop: size(20),
-                paddingBottom: size(8),
-                marginBottom: size(SECTION_GAP),
+                fontSize: typeSize(compact ? 17 : 19),
+                marginBottom: compact ? 2 : size(6),
               }}
             >
-              <Typography
-                weight="600"
-                className="text-center"
-                style={{
-                  fontSize: typeSize(compact ? 17 : 19),
-                  marginBottom: compact ? 2 : size(6),
-                }}
-              >
-                There is nothing here yet
-              </Typography>
+              There is nothing here yet
+            </Typography>
+            <Typography
+              weight="500"
+              className="max-w-[250px] text-center text-black/30"
+              style={{
+                fontSize: typeSize(14),
+                marginBottom: compact ? 6 : size(14),
+              }}
+            >
+              Deposit tokens to your address and start using Xend Wallet
+            </Typography>
+
+            <HapticPressable
+              className="flex-row items-center gap-0.5 rounded-full bg-black px-3"
+              style={{ paddingVertical: size(compact ? 8 : 10) }}
+              onPress={showReceiveModal}
+            >
+              <Ionicons
+                name="arrow-down-circle"
+                size={size(18)}
+                color="white"
+              />
               <Typography
                 weight="500"
-                className="max-w-[250px] text-center text-black/30"
-                style={{
-                  fontSize: typeSize(14),
-                  marginBottom: compact ? 6 : size(14),
-                }}
+                className="text-white"
+                style={{ fontSize: typeSize(16) }}
               >
-                Deposit tokens to your address and start using Xend Wallet
+                Receive
               </Typography>
-
-              <HapticPressable
-                className="flex-row items-center gap-0.5 rounded-full bg-black px-3"
-                style={{ paddingVertical: size(compact ? 8 : 10) }}
-                onPress={showReceiveModal}
-              >
-                <Ionicons
-                  name="arrow-down-circle"
-                  size={size(18)}
-                  color="white"
-                />
-                <Typography
-                  weight="500"
-                  className="text-white"
-                  style={{ fontSize: typeSize(16) }}
-                >
-                  Receive
-                </Typography>
-              </HapticPressable>
-            </View>
-          )
+            </HapticPressable>
+          </View>
         )}
 
         <View
