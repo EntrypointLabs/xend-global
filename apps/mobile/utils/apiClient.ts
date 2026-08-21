@@ -139,6 +139,20 @@ export const TokenBalanceSchema = z.object({
   amountRaw: z.string(),
   decimals: z.number().int(),
   symbol: z.string().nullable(),
+  /**
+   * USD value of the holding, or null when nothing could price the mint.
+   * Optional because the on-chain fallback read builds these locally and has
+   * no price source of its own.
+   */
+  usdValue: z.number().nullish(),
+  /** USD per whole token, or null when the mint could not be priced. */
+  usdPrice: z.number().nullish(),
+  /** Percent change over 24h, or null when nothing reports one. */
+  priceChange24h: z.number().nullish(),
+  /** What a Consumer calls it: "Solana". */
+  name: z.string().nullish(),
+  /** Absolute URL of the token's logo, when one is known. */
+  iconUrl: z.string().nullish(),
 });
 export type TokenBalance = z.infer<typeof TokenBalanceSchema>;
 
@@ -211,6 +225,21 @@ export const TransferRowSchema = z.object({
   // is the presentation literal (never uppercased).
   kind: z.enum(["transfer", "payment"]),
   merchantName: z.string().nullable(),
+  /**
+   * What the transfer was worth in USD when it happened, as a decimal string.
+   * Frozen server-side at index time, never re-priced on read.
+   */
+  usdValue: z.string().nullish(),
+  /** The mint's decimals, as the chain reported them on this transaction. */
+  decimals: z.number().int().nullish(),
+  /**
+   * The token's identity, resolved per row so it survives the Consumer
+   * selling the token: history has to keep describing itself after the
+   * balance is gone.
+   */
+  tokenName: z.string().nullish(),
+  tokenSymbol: z.string().nullish(),
+  tokenIconUrl: z.string().nullish(),
   createdAt: z.string().datetime(),
   confirmedAt: z.string().datetime().nullable(),
 });

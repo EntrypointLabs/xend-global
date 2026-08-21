@@ -23,6 +23,20 @@ export interface ActivityEntry {
   self: string;
   counterparty: string;
   signature: string | null;
+  /**
+   * The token's logo, carried on the row rather than looked up from what the
+   * Consumer holds now, so a sold-out token keeps its identity.
+   */
+  iconUrl?: string | null;
+  /** What a Consumer calls the token: "Solana". */
+  tokenName?: string | null;
+  /** The ticker shown beside the amount. */
+  tokenSymbol?: string | null;
+  /**
+   * What the transfer was worth in USD when it happened, as a decimal string.
+   * Frozen at the time of the transfer, so it does not move with the market.
+   */
+  usdValue?: string | null;
   memo: string | null;
   createdAt: string;
   confirmedAt: string | null;
@@ -36,6 +50,13 @@ export interface ActivitySection {
 export interface MapTransferContext {
   selfAddress: string;
   decimalsByMint: Record<string, number>;
+  /**
+   * Logos by mint from the balance read.
+   *
+   * A fallback only: rows carry their own logo now, because this map knows
+   * nothing about a token the Consumer has sold.
+   */
+  iconsByMint?: Record<string, string>;
 }
 
 const DEFAULT_DECIMALS = 6;
@@ -61,7 +82,14 @@ export function mapTransferRowToActivityEntry(
     merchantName: row.merchantName,
     mint: row.mint,
     amountRaw: row.amountRaw,
-    decimals: ctx.decimalsByMint[row.mint] ?? DEFAULT_DECIMALS,
+    // The row's own decimals first. The holdings lookup only knows mints the
+    // Consumer still holds, so relying on it renders the history of anything
+    // they have since sent away out by orders of magnitude.
+    decimals: row.decimals ?? ctx.decimalsByMint[row.mint] ?? DEFAULT_DECIMALS,
+    iconUrl: row.tokenIconUrl ?? ctx.iconsByMint?.[row.mint] ?? null,
+    tokenName: row.tokenName ?? null,
+    tokenSymbol: row.tokenSymbol ?? null,
+    usdValue: row.usdValue ?? null,
     self: ctx.selfAddress,
     counterparty,
     signature: row.signature,

@@ -1,10 +1,33 @@
 import { TailerService } from './tailer.service';
+import type { TokenPriceProvider } from '../prices/token-price.interface';
 import { EventParser, HeliusWebhookBody } from './event-parser';
 import { WebhookController } from './webhook.controller';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { ConfirmedTransferEvent } from '../solana/solana-rpc.interface';
 import { HttpException, HttpStatus } from '@nestjs/common';
+
+/**
+ * Prices are decoration on the write path: a transfer row must be written
+ * whether or not anything can value it. Empty by default so these tests keep
+ * asserting the write itself.
+ */
+function fakePriceProvider(
+  prices: Record<string, { usdPrice: number; decimals: number }> = {},
+): TokenPriceProvider {
+  return {
+    getUsdPrices: jest
+      .fn()
+      .mockResolvedValue(
+        new Map(
+          Object.entries(prices).map(([mint, p]) => [
+            mint,
+            { ...p, priceChange24h: null },
+          ]),
+        ),
+      ),
+  } as unknown as TokenPriceProvider;
+}
 
 /**
  * Tests for TailerService + WebhookController + EventParser:
@@ -32,6 +55,11 @@ interface SmartAccountRow {
 function makeFakeDb(
   ownedAccounts: SmartAccountRow[] = [],
   correlatedPaymentId?: string,
+  /**
+   * Vault rows as the join returns them: `walletAddress` is the vault
+   * address, `id` the owning smart_accounts.id.
+   */
+  ownedVaults: SmartAccountRow[] = [],
 ): {
   db: DbService;
   calls: FakeDbCall[];
@@ -56,17 +84,36 @@ function makeFakeDb(
     }
     return Promise.resolve({ rows: [], rowCount: 0 });
   });
+  // Which table `from(...)` was given, read off Drizzle's name symbol, so
+  // the wallet lookup and the vault lookup return different rows.
+  const tableName = (table: unknown): string | null => {
+    if (typeof table !== 'object' || table === null) return null;
+    const v = (table as Record<symbol, unknown>)[Symbol.for('drizzle:Name')];
+    return typeof v === 'string' ? v : null;
+  };
+
   const makeSelect = () => {
     // The controller's downstream `addrToAccount.has(...)` already
     // restricts which rows lead to UPSERTs. The fake returns the full
-    // owned-account set; tests assert on the controller's effects.
+    // owned set for the table asked about; tests assert on the
+    // controller's effects.
+    let table: string | null = null;
     const chain: Record<string, unknown> = {
-      from: () => chain,
+      from: (t: unknown) => {
+        table = tableName(t);
+        return chain;
+      },
+      innerJoin: () => chain,
       where: () => chain,
       then: (
         resolve: (v: unknown) => unknown,
         reject?: (e: unknown) => unknown,
-      ) => Promise.resolve(ownedAccounts.slice()).then(resolve, reject),
+      ) =>
+        Promise.resolve(
+          table === 'squads_accounts'
+            ? ownedVaults.slice()
+            : ownedAccounts.slice(),
+        ).then(resolve, reject),
     };
     return chain;
   };
@@ -80,6 +127,7 @@ function makeFakeDb(
 function makeFakeSolana(overrides: Partial<SolanaRpc> = {}): SolanaRpc {
   return {
     getRecentBlockhash: jest.fn(),
+    getSolBalance: jest.fn().mockResolvedValue(0n),
     getTokenBalances: jest.fn(),
     sendRawTransaction: jest.fn(),
     getSignatureStatuses: jest.fn(),
@@ -123,12 +171,13 @@ const sampleHeliusBody: HeliusWebhookBody = [
 describe('TailerService.upsertConfirmedTransfer', () => {
   it('issues the status-guarded UPSERT for the incoming event', async () => {
     const { db, calls } = makeFakeDb();
-    const tailer = new TailerService(db);
+    const tailer = new TailerService(db, fakePriceProvider());
     const evt: ConfirmedTransferEvent = {
       signature: 'sig-1',
       slot: 999n,
       mint: 'USDC',
       amountRaw: 1_000_000n,
+      decimals: 6,
       fromAddress: SENDER_WALLET,
       toAddress: OWNED_WALLET,
       confirmedAt: new Date(),
@@ -158,12 +207,13 @@ describe('TailerService.upsertConfirmedTransfer', () => {
 
   it("correlates a confirmed transfer to a Payment (kind='payment' + payment_id) when the signature matches", async () => {
     const { db, calls } = makeFakeDb([], 'pay_123');
-    const tailer = new TailerService(db);
+    const tailer = new TailerService(db, fakePriceProvider());
     const evt: ConfirmedTransferEvent = {
       signature: 'sig-pay',
       slot: 42n,
       mint: 'USDC',
       amountRaw: 1_000_000n,
+      decimals: 6,
       fromAddress: SENDER_WALLET,
       toAddress: OWNED_WALLET,
       confirmedAt: new Date(),
@@ -175,12 +225,13 @@ describe('TailerService.upsertConfirmedTransfer', () => {
 
   it("leaves a transfer with no matching payment as kind='transfer'", async () => {
     const { db, calls } = makeFakeDb([]);
-    const tailer = new TailerService(db);
+    const tailer = new TailerService(db, fakePriceProvider());
     const evt: ConfirmedTransferEvent = {
       signature: 'sig-plain',
       slot: 43n,
       mint: 'USDC',
       amountRaw: 1_000_000n,
+      decimals: 6,
       fromAddress: SENDER_WALLET,
       toAddress: OWNED_WALLET,
       confirmedAt: new Date(),
@@ -192,12 +243,13 @@ describe('TailerService.upsertConfirmedTransfer', () => {
 
   it('assigns SEND when ownedWallet is the sender', async () => {
     const { db } = makeFakeDb();
-    const tailer = new TailerService(db);
+    const tailer = new TailerService(db, fakePriceProvider());
     const evt: ConfirmedTransferEvent = {
       signature: 'sig-out',
       slot: 1000n,
       mint: 'USDC',
       amountRaw: 5_000_000n,
+      decimals: 6,
       fromAddress: OWNED_WALLET,
       toAddress: SENDER_WALLET,
       confirmedAt: new Date(),
@@ -213,8 +265,155 @@ describe('TailerService.upsertConfirmedTransfer', () => {
 
 // ── EventParser unit ──────────────────────────────────────────────────
 
+describe('TailerService USD valuation', () => {
+  const SOL = 'So11111111111111111111111111111111111111112';
+
+  it('stamps what the transfer was worth at the moment it was indexed', async () => {
+    const { db, calls } = makeFakeDb();
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider({ [SOL]: { usdPrice: 100, decimals: 9 } }),
+    );
+
+    await tailer.upsertConfirmedTransfer(
+      {
+        signature: 'sig-sol',
+        slot: 1n,
+        mint: SOL,
+        amountRaw: 5_000_000_000n,
+        decimals: 6,
+        fromAddress: SENDER_WALLET,
+        toAddress: OWNED_WALLET,
+        confirmedAt: new Date(),
+      },
+      'sa_1',
+      OWNED_WALLET,
+    );
+
+    // 5 SOL at $100 is $500, and that is what gets written.
+    const insert = calls.find((c) => c.sql.includes('INSERT INTO transfers'));
+    expect(insert?.sql).toContain('500.000000');
+  });
+
+  it('never re-prices a row a later delivery touches again', async () => {
+    const { db, calls } = makeFakeDb();
+    const tailer = new TailerService(
+      db,
+      fakePriceProvider({ [SOL]: { usdPrice: 100, decimals: 9 } }),
+    );
+
+    await tailer.upsertConfirmedTransfer(
+      {
+        signature: 'sig-sol',
+        slot: 1n,
+        mint: SOL,
+        amountRaw: 5_000_000_000n,
+        decimals: 6,
+        fromAddress: SENDER_WALLET,
+        toAddress: OWNED_WALLET,
+        confirmedAt: new Date(),
+      },
+      'sa_1',
+      OWNED_WALLET,
+    );
+
+    // The stored value survives the market moving, because the conflict
+    // clause keeps the first stamp rather than the incoming one.
+    const insert = calls.find((c) => c.sql.includes('INSERT INTO transfers'));
+    expect(insert?.sql).toContain(
+      'usd_value = COALESCE(transfers.usd_value, EXCLUDED.usd_value)',
+    );
+  });
+
+  it('writes the transfer anyway when nothing can price the mint', async () => {
+    const { db, calls } = makeFakeDb();
+    const tailer = new TailerService(db, fakePriceProvider());
+
+    const direction = await tailer.upsertConfirmedTransfer(
+      {
+        signature: 'sig-unpriced',
+        slot: 1n,
+        mint: 'UnpriceableMint',
+        amountRaw: 1n,
+        decimals: 6,
+        fromAddress: SENDER_WALLET,
+        toAddress: OWNED_WALLET,
+        confirmedAt: new Date(),
+      },
+      'sa_1',
+      OWNED_WALLET,
+    );
+
+    // The row is the point; the valuation is decoration on top of it.
+    expect(direction).toBe('RECEIVE');
+    expect(calls.some((c) => c.sql.includes('INSERT INTO transfers'))).toBe(
+      true,
+    );
+  });
+});
+
 describe('EventParser.parseDecoded', () => {
   const parser = new EventParser();
+
+  it('projects a native SOL transfer onto the wrapped-SOL mint', () => {
+    const events = parser.parseDecoded([
+      {
+        signature: 'sig-native',
+        slot: 42,
+        timestamp: 1717090000,
+        transactionError: null,
+        nativeTransfers: [
+          {
+            fromUserAccount: SENDER_WALLET,
+            toUserAccount: OWNED_WALLET,
+            amount: 5_000_000_000,
+          },
+        ],
+      },
+    ]);
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      // The same mint the balance read uses, so one holding is one asset.
+      mint: 'So11111111111111111111111111111111111111112',
+      amountRaw: 5_000_000_000n,
+      decimals: 9,
+      fromAddress: SENDER_WALLET,
+      toAddress: OWNED_WALLET,
+    });
+  });
+
+  it('reads token and native transfers from the same transaction', () => {
+    const events = parser.parseDecoded([
+      {
+        signature: 'sig-both',
+        slot: 43,
+        timestamp: 1717090000,
+        transactionError: null,
+        tokenTransfers: [
+          {
+            fromUserAccount: SENDER_WALLET,
+            toUserAccount: OWNED_WALLET,
+            mint: 'USDC11111111111111111111111111111111111111',
+            tokenAmount: 1.5,
+            rawTokenAmount: { tokenAmount: '1500000', decimals: 6 },
+          },
+        ],
+        nativeTransfers: [
+          {
+            fromUserAccount: SENDER_WALLET,
+            toUserAccount: OWNED_WALLET,
+            amount: 1_000_000,
+          },
+        ],
+      },
+    ]);
+
+    expect(events.map((e) => e.mint)).toEqual([
+      'USDC11111111111111111111111111111111111111',
+      'So11111111111111111111111111111111111111112',
+    ]);
+  });
 
   it('projects a Helius transaction into ConfirmedTransferEvent[]', () => {
     const events = parser.parseDecoded(sampleHeliusBody);
@@ -287,17 +486,22 @@ describe('EventParser.parseDecoded', () => {
 
 function makeController(opts: {
   ownedAccounts?: SmartAccountRow[];
+  ownedVaults?: SmartAccountRow[];
   verify?: SolanaRpc['verifyWebhookSignature'];
 }): {
   controller: WebhookController;
   calls: FakeDbCall[];
   solana: SolanaRpc;
 } {
-  const { db, calls } = makeFakeDb(opts.ownedAccounts ?? []);
+  const { db, calls } = makeFakeDb(
+    opts.ownedAccounts ?? [],
+    undefined,
+    opts.ownedVaults ?? [],
+  );
   const solana = makeFakeSolana(
     opts.verify ? { verifyWebhookSignature: opts.verify } : {},
   );
-  const tailer = new TailerService(db);
+  const tailer = new TailerService(db, fakePriceProvider());
   const parser = new EventParser();
   const reconciler = {
     recordWebhookFinalization: jest.fn(),
@@ -338,6 +542,69 @@ describe('WebhookController POST /webhooks/helius', () => {
     expect(calls).toHaveLength(3);
     expect(calls[1].sql).toMatch(/INSERT INTO transfers/);
     expect(calls[1].sql).toMatch(/CASE/);
+  });
+
+  it('records a deposit that only touches the vault address', async () => {
+    // The vault is where a Consumer is told to receive, and it appears in no
+    // smart_accounts row, so resolving owners from that table alone dismissed
+    // every deposit as somebody else's traffic.
+    const { controller, calls } = makeController({
+      ownedAccounts: [],
+      ownedVaults: [{ id: 'sa_owner', walletAddress: OWNED_WALLET }],
+    });
+    const req = {
+      rawBody: Buffer.from(JSON.stringify(sampleHeliusBody)),
+    } as unknown;
+
+    const res = await controller.receive(
+      req,
+      'auth-header',
+      'sig-header',
+      sampleHeliusBody,
+    );
+
+    expect(res.processed).toBe(1);
+    expect(res.skipped).toBe(0);
+    expect(calls[1].sql).toMatch(/INSERT INTO transfers/);
+  });
+
+  it('records a native SOL transfer, which carries no token account', async () => {
+    // Native SOL moves through the System Program, so it never appears in
+    // tokenTransfers. Ignoring nativeTransfers left a Consumer's SOL visible
+    // in their balance but absent from their activity.
+    const nativeBody: HeliusWebhookBody = [
+      {
+        signature: 'sig-native-1',
+        slot: 999,
+        timestamp: 1717090000,
+        type: 'TRANSFER',
+        source: 'SYSTEM_PROGRAM',
+        transactionError: null,
+        nativeTransfers: [
+          {
+            fromUserAccount: SENDER_WALLET,
+            toUserAccount: OWNED_WALLET,
+            amount: 5_000_000_000,
+          },
+        ],
+      },
+    ];
+    const { controller, calls } = makeController({
+      ownedAccounts: [{ id: 'sa_1', walletAddress: OWNED_WALLET }],
+    });
+    const req = { rawBody: Buffer.from(JSON.stringify(nativeBody)) } as unknown;
+
+    const res = await controller.receive(
+      req,
+      'auth-header',
+      'sig-header',
+      nativeBody,
+    );
+
+    expect(res.processed).toBe(1);
+    expect(res.skipped).toBe(0);
+    // Reported under the wrapped-SOL mint, matching the balance read.
+    expect(calls[1].sql).toMatch(/INSERT INTO transfers/);
   });
 
   it('returns 401 (HttpException UNAUTHORIZED) when HMAC fails; no DB writes', async () => {

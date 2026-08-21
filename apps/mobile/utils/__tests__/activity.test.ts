@@ -7,8 +7,12 @@ import {
   mapTransferRowToActivityEntry,
   statusLabel,
 } from "@/utils/activity";
+import { describeToken } from "@/utils/tokens";
 import {
+  formatMoney,
+  formatUsdFromString,
   selectDecimalsByMint,
+  selectPortfolio,
   selectStablecoinTotal,
   selectUsdc,
 } from "@/utils/balances";
@@ -292,6 +296,197 @@ describe("balance selectors", () => {
 
     it("returns 0 for undefined tokens", () => {
       expect(selectUsdc(undefined)).toBe(0);
+    });
+  });
+
+  describe("mapTransferRowToActivityEntry decimals", () => {
+    const row = {
+      id: "t1",
+      direction: "RECEIVE",
+      mint: "So11111111111111111111111111111111111111112",
+      amountRaw: "5000000000",
+      fromAddress: "them",
+      toAddress: "us",
+      status: "CONFIRMED",
+      signature: "sig",
+      memo: null,
+      kind: "transfer",
+      merchantName: null,
+      createdAt: "2026-08-19T00:00:00.000Z",
+      confirmedAt: "2026-08-19T00:00:00.000Z",
+    } as unknown as TransferRow;
+
+    it("uses the row's own decimals over what the Consumer holds today", () => {
+      // The holdings lookup is deliberately wrong here: a token already sent
+      // away is absent from it, and taking its answer renders 5 SOL as 5,000.
+      const entry = mapTransferRowToActivityEntry(
+        { ...row, decimals: 9 } as TransferRow,
+        { selfAddress: "us", decimalsByMint: {} }
+      );
+      expect(entry.decimals).toBe(9);
+    });
+
+    it("falls back to the holdings lookup for a row indexed before decimals were stored", () => {
+      const entry = mapTransferRowToActivityEntry(row, {
+        selfAddress: "us",
+        decimalsByMint: { [row.mint]: 9 },
+      });
+      expect(entry.decimals).toBe(9);
+    });
+  });
+
+  describe("token identity on an activity row", () => {
+    const SOL = "So11111111111111111111111111111111111111112";
+    const base = {
+      id: "t1",
+      direction: "RECEIVE",
+      mint: SOL,
+      amountRaw: "5000000000",
+      decimals: 9,
+      fromAddress: "them",
+      toAddress: "us",
+      status: "CONFIRMED",
+      signature: "sig",
+      memo: null,
+      kind: "transfer",
+      merchantName: null,
+      createdAt: "2026-08-19T00:00:00.000Z",
+      confirmedAt: "2026-08-19T00:00:00.000Z",
+    } as unknown as TransferRow;
+
+    it("keeps the row's own logo when the Consumer holds none of the token", () => {
+      // Convert every SOL to USDC and the holdings map has nothing left to
+      // name it with; the row still does.
+      const entry = mapTransferRowToActivityEntry(
+        {
+          ...base,
+          tokenIconUrl: "https://example.test/sol.png",
+        } as TransferRow,
+        { selfAddress: "us", decimalsByMint: {}, iconsByMint: {} }
+      );
+      expect(entry.iconUrl).toBe("https://example.test/sol.png");
+    });
+
+    it("falls back to the holdings map for a row indexed before identity was carried", () => {
+      const entry = mapTransferRowToActivityEntry(base, {
+        selfAddress: "us",
+        decimalsByMint: {},
+        iconsByMint: { [SOL]: "https://example.test/held.png" },
+      });
+      expect(entry.iconUrl).toBe("https://example.test/held.png");
+    });
+
+    it("keeps our own name for SOL over the index's", () => {
+      const entry = mapTransferRowToActivityEntry(
+        {
+          ...base,
+          tokenName: "Wrapped SOL",
+          tokenSymbol: "SOL",
+        } as TransferRow,
+        { selfAddress: "us", decimalsByMint: {} }
+      );
+      // The renderer resolves through describeToken, where our naming wins.
+      expect(
+        describeToken(entry.mint, entry.tokenSymbol, entry.tokenName)
+      ).toEqual({ name: "Solana", symbol: "SOL" });
+    });
+  });
+
+  describe("formatUsdFromString", () => {
+    it("renders a stored decimal string as money", () => {
+      expect(formatUsdFromString("500.000000")).toBe("$500.00");
+      expect(formatUsdFromString("1234.5")).toBe("$1,234.50");
+    });
+
+    it("renders nothing for a value it cannot read", () => {
+      expect(formatUsdFromString("not-a-number")).toBe("");
+    });
+  });
+
+  describe("selectPortfolio", () => {
+    const priced = [
+      { mint: USDC_MINT, amountRaw: "20000000", decimals: 6, symbol: "USDC" },
+      {
+        mint: "So11111111111111111111111111111111111111112",
+        amountRaw: "5000000000",
+        decimals: 9,
+        symbol: "SOL",
+        usdValue: 408.58,
+      },
+    ];
+
+    it("counts cash at face value and investments at their priced value", () => {
+      expect(selectPortfolio(priced)).toEqual({
+        cashUsd: 20,
+        investmentsUsd: 408.58,
+        hasUnpricedHoldings: false,
+      });
+    });
+
+    it("never prices a stablecoin off usdValue", () => {
+      // A quoted 0.9997 would make a 20 USDC balance read as $19.99 in the one
+      // place a Consumer expects the number to be exact.
+      const depegged = [
+        {
+          mint: USDC_MINT,
+          amountRaw: "20000000",
+          decimals: 6,
+          symbol: "USDC",
+          usdValue: 19.994,
+        },
+      ];
+      expect(selectPortfolio(depegged).cashUsd).toBe(20);
+    });
+
+    it("flags an unpriced holding instead of counting it as worthless", () => {
+      const unpriced = [
+        {
+          mint: "OtherCoinMint",
+          amountRaw: "9999000000",
+          decimals: 6,
+          symbol: "X",
+          usdValue: null,
+        },
+      ];
+      expect(selectPortfolio(unpriced)).toEqual({
+        cashUsd: 0,
+        investmentsUsd: 0,
+        hasUnpricedHoldings: true,
+      });
+    });
+
+    it("ignores a closed token account lingering at zero", () => {
+      const closed = [
+        {
+          mint: "OtherCoinMint",
+          amountRaw: "0",
+          decimals: 6,
+          symbol: "X",
+          usdValue: null,
+        },
+      ];
+      expect(selectPortfolio(closed)).toEqual({
+        cashUsd: 0,
+        investmentsUsd: 0,
+        hasUnpricedHoldings: false,
+      });
+    });
+
+    it("returns zeros for undefined tokens", () => {
+      expect(selectPortfolio(undefined)).toEqual({
+        cashUsd: 0,
+        investmentsUsd: 0,
+        hasUnpricedHoldings: false,
+      });
+    });
+  });
+
+  describe("formatMoney", () => {
+    it("formats to two decimals with a thousands separator, no symbol", () => {
+      // BalanceView adds the "$" and greys the decimals.
+      expect(formatMoney(428.58)).toBe("428.58");
+      expect(formatMoney(1234.5)).toBe("1,234.50");
+      expect(formatMoney(0)).toBe("0.00");
     });
   });
 

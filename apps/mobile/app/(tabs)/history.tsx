@@ -17,7 +17,7 @@ import {
 
 export default function HistoryScreen() {
   const address = useWalletAddress();
-  const { decimalsByMint } = useBalances();
+  const { decimalsByMint, iconsByMint } = useBalances();
   const {
     data,
     fetchNextPage,
@@ -36,6 +36,7 @@ export default function HistoryScreen() {
       mapTransferRowToActivityEntry(row, {
         selfAddress: address ?? "",
         decimalsByMint,
+        iconsByMint,
       })
   );
 

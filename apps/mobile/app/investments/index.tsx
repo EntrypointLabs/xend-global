@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useMemo, useRef } from "react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { Image, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import BalanceView from "@/components/BalanceView";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { ActionPill } from "@/components/ui/molecules/ActionPill";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
@@ -13,6 +14,10 @@ import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useInvestments, type InvestmentHolding } from "@/hooks/useInvestments";
+import { TokenMark } from "@/components/ui/atoms/TokenMark";
+import { formatMoney } from "@/utils/balances";
+import { formatTokenAmount } from "@/utils/tokens";
+import { cn } from "@/utils/cn";
 
 /**
  * Investments: every token the Consumer holds that is not their spending
@@ -21,15 +26,47 @@ import { useInvestments, type InvestmentHolding } from "@/hooks/useInvestments";
  */
 export default function InvestmentsScreen() {
   const router = useRouter();
-  const { showReceiveModal, isReceiveModalVisible, hideAllModals } =
-    useModalFlow();
+  const {
+    showReceiveModal,
+    showSendModal,
+    isReceiveModalVisible,
+    hideAllModals,
+  } = useModalFlow();
   const address = useWalletAddress();
   const qrCodeModalRef = useRef<BottomSheetModal>(null);
-  const { holdings, isEmpty, isError } = useInvestments();
+  const { holdings, totalUsd, isEmpty, isError } = useInvestments();
 
-  // Priced holdings are a later evolution; until then the headline is the count
-  // of assets rather than a dollar figure we would have to invent.
-  const total = isError ? "0.00" : holdings.length > 0 ? "" : "0.00";
+  const actionItems = useMemo(
+    () => [
+      {
+        icon: () => (
+          <View className="flex-row items-center gap-2">
+            <Ionicons name="swap-horizontal" size={20} color="black" />
+            <Typography weight="700" className="text-lg">
+              Swap
+            </Typography>
+          </View>
+        ),
+        onPress: () => router.push("/swap"),
+        accessibilityLabel: "Swap",
+      },
+      {
+        icon: () => (
+          <View className="flex-row items-center gap-2">
+            <Ionicons name="paper-plane-outline" size={20} color="black" />
+            <Typography weight="700" className="text-lg">
+              Send
+            </Typography>
+          </View>
+        ),
+        onPress: showSendModal,
+        accessibilityLabel: "Send",
+      },
+    ],
+    [router, showSendModal]
+  );
+
+  const total = isError ? "0.00" : formatMoney(totalUsd);
 
   return (
     <ScreenLayout>
@@ -45,13 +82,9 @@ export default function InvestmentsScreen() {
 
       <View className="mt-6">
         <Typography variant="body" className="text-black/40">
-          {holdings.length > 0
-            ? `${holdings.length} asset${holdings.length === 1 ? "" : "s"}`
-            : "Balance"}
+          Balance
         </Typography>
-        {total !== "" && (
-          <BalanceView variant="h3" weight="700" amount={total} />
-        )}
+        <BalanceView variant="h3" weight="700" amount={total} />
       </View>
 
       {isEmpty ? (
@@ -68,7 +101,7 @@ export default function InvestmentsScreen() {
         </ScrollView>
       )}
 
-      <View className="absolute bottom-2 left-5">
+      <View className="absolute bottom-2 left-5 right-5 flex-row items-center justify-between">
         <HapticPressable
           accessibilityRole="button"
           accessibilityLabel="Go back"
@@ -77,6 +110,9 @@ export default function InvestmentsScreen() {
         >
           <Ionicons name="chevron-back" size={22} color="#000" />
         </HapticPressable>
+
+        {/* Only offered once there is something to act on. */}
+        {!isEmpty && <ActionPill items={actionItems} />}
       </View>
 
       <ReceiveModal
@@ -124,26 +160,54 @@ function EmptyState({ onGetAssets }: { onGetAssets: () => void }) {
 }
 
 function HoldingRow({ holding }: { holding: InvestmentHolding }) {
-  const label =
-    holding.symbol ?? `${holding.mint.slice(0, 4)}…${holding.mint.slice(-4)}`;
+  const change = holding.priceChange24h;
 
   return (
-    <View className="flex-row items-center justify-between rounded-2xl bg-black/[0.03] px-4 py-4">
+    <View className="flex-row items-center justify-between py-2">
       <View className="flex-row items-center gap-3">
-        <View className="h-10 w-10 items-center justify-center rounded-full bg-black/5">
+        <TokenMark
+          mint={holding.mint}
+          label={holding.name}
+          iconUrl={holding.iconUrl}
+        />
+        <View className="gap-0.5">
           <Typography variant="body" weight="600">
-            {label.slice(0, 2).toUpperCase()}
+            {holding.name}
+          </Typography>
+          <Typography variant="body" className="text-black/30">
+            {formatTokenAmount(holding.amount, holding.decimals)}
+            {holding.symbol ? ` ${holding.symbol}` : ""}
           </Typography>
         </View>
-        <Typography variant="body" weight="600">
-          {label}
-        </Typography>
       </View>
-      <Typography variant="body" weight="600">
-        {holding.amount.toLocaleString("en-US", {
-          maximumFractionDigits: 4,
-        })}
-      </Typography>
+
+      <View className="items-end gap-0.5">
+        {holding.usdValue == null ? (
+          // Nothing could price it. Saying so beats printing a "$0.00" the
+          // Consumer would read as having lost it.
+          <Typography variant="body" weight="600" className="text-black/30">
+            Unpriced
+          </Typography>
+        ) : (
+          <BalanceView weight="600" amount={formatMoney(holding.usdValue)} />
+        )}
+        {change != null && (
+          <Typography
+            weight="500"
+            className={cn(
+              "text-sm",
+              change > 0
+                ? "text-success"
+                : change < 0
+                  ? "text-destructive"
+                  : "text-black/30"
+            )}
+          >
+            {change > 0 ? "+" : ""}
+            {change.toFixed(2)}%
+          </Typography>
+        )}
+      </View>
     </View>
   );
 }

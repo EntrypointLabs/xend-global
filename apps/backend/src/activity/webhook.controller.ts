@@ -11,9 +11,9 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
-import { smartAccounts } from '../db/schema';
+import { smartAccounts, squadsAccounts } from '../db/schema';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import { EventParser } from './event-parser';
@@ -112,16 +112,34 @@ export class WebhookController {
       candidateAddrs.add(evt.fromAddress);
       candidateAddrs.add(evt.toAddress);
     }
-    const ourAccounts = await this.db.client
-      .select({
-        id: smartAccounts.id,
-        walletAddress: smartAccounts.walletAddress,
-      })
-      .from(smartAccounts)
-      .where(inArray(smartAccounts.walletAddress, [...candidateAddrs]));
+    const addrs = [...candidateAddrs];
+    // Vaults as well as Privy wallets. The vault is the address a Consumer is
+    // told to receive at, so a deposit that touches only the vault would be
+    // dismissed as somebody else's traffic. Both resolve to the owner's
+    // smart_accounts row, which is what transfers.smart_account_id references.
+    const [privyOwned, vaultOwned] = await Promise.all([
+      this.db.client
+        .select({
+          id: smartAccounts.id,
+          walletAddress: smartAccounts.walletAddress,
+        })
+        .from(smartAccounts)
+        .where(inArray(smartAccounts.walletAddress, addrs)),
+      this.db.client
+        .select({
+          id: smartAccounts.id,
+          walletAddress: squadsAccounts.vaultAddress,
+        })
+        .from(squadsAccounts)
+        .innerJoin(
+          smartAccounts,
+          eq(smartAccounts.userId, squadsAccounts.userId),
+        )
+        .where(inArray(squadsAccounts.vaultAddress, addrs)),
+    ]);
 
     const addrToAccount = new Map(
-      ourAccounts.map((a) => [a.walletAddress, a.id]),
+      [...privyOwned, ...vaultOwned].map((a) => [a.walletAddress, a.id]),
     );
 
     let processed = 0;

@@ -13,6 +13,7 @@ import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { BalanceChart } from "@/components/ui/organisms/BalanceChart";
 import { useBalanceDelta, useBalanceHistory } from "@/hooks/useBalanceHistory";
 import { useEarnPosition } from "@/hooks/useEarn";
+import { formatMoney } from "@/utils/balances";
 import { getUsdcMint } from "@/utils/cluster";
 import { useBalances } from "@/hooks/useBalances";
 import { useTransfersInfinite } from "@/hooks/useTransfers";
@@ -55,14 +56,21 @@ function HomeScreenContent() {
     isSendModalVisible,
   } = useModalFlow();
   const {
-    total,
-    totalDisplay,
     tokens,
     usdc,
+    portfolio,
     isError: isBalanceError,
     refetch: refetchBalances,
   } = useBalances();
   const { balance: earnBalance } = useEarnPosition();
+
+  // Everything the Consumer owns, in USD: cash, investments and Earn. The Card
+  // joins this sum when it holds a balance of its own.
+  const total = portfolio.cashUsd + portfolio.investmentsUsd + earnBalance;
+  const totalDisplay = total.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
   const { isLoading } = useTransfersInfinite();
   const address = useWalletAddress();
   const { name: walletName } = useWalletName();
@@ -79,6 +87,7 @@ function HomeScreenContent() {
       {
         title: "Cash",
         subtitle: "Send and receive",
+        amount: tileAmount(portfolio.cashUsd),
         icon: require("@/assets/icons/usdc.png"),
         onPress: () => router.push("/cash"),
         color: "#007AFF", // Blue
@@ -87,6 +96,7 @@ function HomeScreenContent() {
       {
         title: "Investments",
         subtitle: "Trade crypto",
+        amount: tileAmount(portfolio.investmentsUsd),
         icon: require("@/assets/icons/investment.png"),
         onPress: () => router.push("/investments"),
         color: "#FF9500", // Orange
@@ -95,6 +105,7 @@ function HomeScreenContent() {
       {
         title: "Earn",
         subtitle: "Up to 4.93% APY",
+        amount: tileAmount(earnBalance),
         icon: require("@/assets/icons/earn.png"),
         onPress: () => router.push("/earn"),
         color: "#AF52DE", // Purple
@@ -103,16 +114,24 @@ function HomeScreenContent() {
       {
         title: "Xend Card",
         subtitle: "Get your free Card",
+        amount: null,
         icon: require("@/assets/icons/card.png"),
         onPress: () => router.push("/card?from=/(tabs)" as never),
         color: "#000000", // Black
         funded: false,
       },
     ],
-    [router, usdc, hasOtherAssets, earnBalance]
+    [
+      router,
+      usdc,
+      hasOtherAssets,
+      earnBalance,
+      portfolio.cashUsd,
+      portfolio.investmentsUsd,
+    ]
   );
 
-  const history = useBalanceHistory();
+  const history = useBalanceHistory(total);
   const delta = useBalanceDelta(history);
   // The chart only earns its space once there is a balance to plot; a zero
   // balance gets the call to action instead.
@@ -234,6 +253,7 @@ function HomeScreenContent() {
               key={index}
               title={action.title}
               subtitle={action.subtitle}
+              amount={action.amount}
               icon={action.icon}
               onPress={action.onPress}
               iconBackgroundColor={action.color}
@@ -297,6 +317,15 @@ function BalanceDeltaBadge({ delta }: { delta: BalanceDelta }) {
       </Typography>
     </View>
   );
+}
+
+/**
+ * A tile shows what it holds once it holds something, and falls back to what
+ * it is for. Null rather than "0.00" while empty: a holding nothing could
+ * price would otherwise read as a Consumer having none of it.
+ */
+function tileAmount(usd: number): string | null {
+  return usd > 0 ? formatMoney(usd) : null;
 }
 
 export default function HomeScreen() {

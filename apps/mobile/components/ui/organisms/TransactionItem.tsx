@@ -6,8 +6,7 @@ import type { ActivityEntry } from "@/utils/activity";
 import { statusLabel } from "@/utils/activity";
 import { truncateAddress } from "@/utils/helper";
 import { formatAmount } from "@/utils/solana";
-
-const USDC_MINT = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS;
+import { describeToken } from "@/utils/tokens";
 
 export type TransactionItemProps = ActivityEntry & {
   isLast?: boolean;
@@ -21,7 +20,15 @@ export function TransactionItem({ onPress, ...entry }: TransactionItemProps) {
   const iconName = isSend ? "sent" : "money-added";
   const prefix = isSend ? "To: " : "From: ";
   const amount = formatAmount(entry.amountRaw, entry.decimals);
-  const symbol = USDC_MINT && entry.mint === USDC_MINT ? "USDC" : "";
+  // Named from the shared token table rather than a hardcoded USDC check,
+  // which left every other asset showing a bare number with no unit. It also
+  // read the mint straight off the environment, bypassing the guard that
+  // rejects a mint belonging to the other network.
+  const { symbol } = describeToken(
+    entry.mint,
+    entry.tokenSymbol,
+    entry.tokenName
+  );
   const sign = isSend ? "-" : "+";
 
   const valueColorClass = isInactive

@@ -3,6 +3,7 @@ import { TransferController } from './transfer.controller';
 import { TransferService } from './transfer.service';
 import { AccountModule } from '../account/account.module';
 import { SolanaModule } from '../solana/solana.module';
+import { TokensModule } from '../tokens/tokens.module';
 
 /**
  * prepare/submit/list endpoints at /transfers/*. DbModule is @Global so
@@ -10,7 +11,8 @@ import { SolanaModule } from '../solana/solana.module';
  * the service consumes for blockhash + ATA-existence reads + submit.
  */
 @Module({
-  imports: [SolanaModule, AccountModule],
+  // TokensModule names the mints on a page of activity.
+  imports: [SolanaModule, AccountModule, TokensModule],
   controllers: [TransferController],
   providers: [TransferService],
   exports: [TransferService],

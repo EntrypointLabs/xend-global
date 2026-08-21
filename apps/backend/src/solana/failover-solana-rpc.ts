@@ -14,7 +14,7 @@ import {
  * PublicMainnetAdapter (fallback).
  *
  * Per-method policy:
- *   READ paths (getRecentBlockhash, getTokenBalances,
+ *   READ paths (getRecentBlockhash, getTokenBalances, getSolBalance,
  *   getSignatureStatuses) — try primary; on any thrown error log and
  *   fall back to the public endpoint. The fallback uses the same
  *   `Connection`-based shape so a hit returns identical data.
@@ -72,6 +72,12 @@ export class FailoverSolanaRpc implements SolanaRpc {
   async getTokenBalances(owner: WalletAddress): Promise<TokenBalance[]> {
     return this.withFallback('getTokenBalances', (rpc) =>
       rpc.getTokenBalances(owner),
+    );
+  }
+
+  async getSolBalance(address: WalletAddress): Promise<bigint> {
+    return this.withFallback('getSolBalance', (rpc) =>
+      rpc.getSolBalance(address),
     );
   }
 

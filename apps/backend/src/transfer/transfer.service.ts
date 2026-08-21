@@ -20,6 +20,11 @@ import { SpendService } from '../account/spend.service';
 import { DbService } from '../db/db.service';
 import { smartAccounts, transfers, payments, merchants } from '../db/schema';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
+import { TOKEN_METADATA_PROVIDER } from '../tokens/token-metadata.interface';
+import type {
+  TokenMetadata,
+  TokenMetadataProvider,
+} from '../tokens/token-metadata.interface';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import {
   InvalidRecipientError,
@@ -100,6 +105,8 @@ export class TransferService {
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
     private readonly accounts: AccountService,
     private readonly spends: SpendService,
+    @Inject(TOKEN_METADATA_PROVIDER)
+    private readonly tokens: TokenMetadataProvider,
   ) {
     // Pull the stablecoin mint allowlist from env so devnet vs mainnet
     // mints can swap without code changes.
@@ -577,6 +584,8 @@ export class TransferService {
         signature: transfers.signature,
         kind: transfers.kind,
         merchantName: merchants.displayName,
+        usdValue: transfers.usdValue,
+        decimals: transfers.decimals,
         createdAt: transfers.createdAt,
         confirmedAt: transfers.confirmedAt,
       })
@@ -593,6 +602,11 @@ export class TransferService {
 
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
+
+    // Named per page rather than per holding, so a row keeps its identity
+    // after the Consumer has sold the token. Cheap: the provider caches, and
+    // a page rarely spans more than a handful of mints.
+    const metadata = await this.tokenMetadataFor(page.map((r) => r.mint));
 
     const nextCursor = hasMore
       ? Buffer.from(
@@ -620,6 +634,11 @@ export class TransferService {
           // Defensive default: the column is notNull default 'transfer'.
           kind: r.kind ?? 'transfer',
           merchantName: r.merchantName ?? null,
+          usdValue: r.usdValue ?? null,
+          decimals: r.decimals ?? null,
+          tokenName: metadata.get(r.mint)?.name ?? null,
+          tokenSymbol: metadata.get(r.mint)?.symbol ?? null,
+          tokenIconUrl: metadata.get(r.mint)?.iconUrl ?? null,
           createdAt: r.createdAt.toISOString(),
           confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
         }),
@@ -633,6 +652,25 @@ export class TransferService {
   /** Test-only / introspection helper. */
   intentCount(): number {
     return this.intents.size;
+  }
+
+  /**
+   * Names and logos for the mints on this page.
+   *
+   * Decoration on a list of money movements: if the token index is unreachable
+   * the rows still render, unnamed, rather than the request failing.
+   */
+  private async tokenMetadataFor(
+    mints: string[],
+  ): Promise<Map<string, TokenMetadata>> {
+    const distinct = [...new Set(mints)];
+    if (distinct.length === 0) return new Map();
+    try {
+      return await this.tokens.getMetadata(distinct);
+    } catch (err) {
+      this.logger.warn('tokens.metadata.failed; activity renders unnamed', err);
+      return new Map();
+    }
   }
 
   private pruneIntents(): void {

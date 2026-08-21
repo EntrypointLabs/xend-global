@@ -51,7 +51,9 @@ services:
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
-        for topic in payment.created payment.succeeded payment.failed payment.expired; do
+        for topic in payment.created payment.authorized payment.succeeded payment.failed \
+                     payment.expired payout.initiated payout.completed payout.failed \
+                     session.issued session.revoked; do
           /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 \
             --create --if-not-exists --topic "$$topic" \
             --partitions 1 --replication-factor 1

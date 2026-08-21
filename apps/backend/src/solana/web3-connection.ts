@@ -33,6 +33,22 @@ export const TOKEN_2022_PROGRAM_ID = new PublicKey(
   'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb',
 );
 
+/** System Program, which is what moves native SOL. */
+export const SYSTEM_PROGRAM_ID = new PublicKey(
+  '11111111111111111111111111111111',
+);
+
+/**
+ * Native SOL is reported under the wrapped-SOL mint, matching how the balance
+ * read reports it, so one holding does not appear as two different assets
+ * depending on whether you are looking at what it is worth or where it came
+ * from.
+ */
+export const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
+
+/** Lamports per SOL is 10^9, so native amounts carry nine decimals. */
+const LAMPORT_DECIMALS = 9;
+
 export async function getRecentBlockhashViaConnection(
   conn: Connection,
 ): Promise<{ blockhash: string; lastValidBlockHeight: number }> {
@@ -42,6 +58,14 @@ export async function getRecentBlockhashViaConnection(
   const { blockhash, lastValidBlockHeight } =
     await conn.getLatestBlockhash('confirmed');
   return { blockhash, lastValidBlockHeight };
+}
+
+export async function getSolBalanceViaConnection(
+  conn: Connection,
+  address: WalletAddress,
+): Promise<bigint> {
+  const lamports = await conn.getBalance(new PublicKey(address), 'confirmed');
+  return BigInt(lamports);
 }
 
 export async function getTokenBalancesViaConnection(
@@ -221,18 +245,22 @@ function extractTokenTransfers(
   // pre/post token balances. Used to translate raw account keys (which
   // are the ATAs, not the wallet owners) back to wallet owners for the
   // owner-match check.
-  const accountOwners = new Map<string, { owner: string; mint: string }>();
+  const accountOwners = new Map<
+    string,
+    { owner: string; mint: string; decimals: number | null }
+  >();
   const keys = tx.transaction.message.accountKeys;
-  for (const bal of tx.meta?.preTokenBalances ?? []) {
+  for (const bal of [
+    ...(tx.meta?.preTokenBalances ?? []),
+    ...(tx.meta?.postTokenBalances ?? []),
+  ]) {
     const acct = keys[bal.accountIndex]?.pubkey.toBase58();
     if (acct && bal.owner) {
-      accountOwners.set(acct, { owner: bal.owner, mint: bal.mint });
-    }
-  }
-  for (const bal of tx.meta?.postTokenBalances ?? []) {
-    const acct = keys[bal.accountIndex]?.pubkey.toBase58();
-    if (acct && bal.owner) {
-      accountOwners.set(acct, { owner: bal.owner, mint: bal.mint });
+      accountOwners.set(acct, {
+        owner: bal.owner,
+        mint: bal.mint,
+        decimals: bal.uiTokenAmount?.decimals ?? null,
+      });
     }
   }
 
@@ -260,6 +288,8 @@ function extractTokenTransfers(
             mint?: string;
             tokenAmount?: { amount: string };
             amount?: string;
+            /** System Program transfers carry lamports, not a token amount. */
+            lamports?: number;
           };
         }
       | undefined;
@@ -267,6 +297,31 @@ function extractTokenTransfers(
     if (parsed.type !== 'transfer' && parsed.type !== 'transferChecked') {
       continue;
     }
+
+    // Native SOL, which moves through the System Program rather than as a
+    // token. Without this the Consumer's SOL is visible in their balance but
+    // never in their activity, because there is no token account for it to
+    // have moved between. Its source and destination ARE wallet addresses,
+    // so unlike the token branch there is nothing to translate.
+    if (ix.programId.toBase58() === SYSTEM_PROGRAM_ID.toBase58()) {
+      const from = parsed.info.source;
+      const to = parsed.info.destination;
+      const lamports = parsed.info.lamports;
+      if (!from || !to || lamports === undefined) continue;
+      if (from !== owner && to !== owner) continue;
+      events.push({
+        signature,
+        slot,
+        mint: WRAPPED_SOL_MINT,
+        amountRaw: BigInt(lamports),
+        decimals: LAMPORT_DECIMALS,
+        fromAddress: from,
+        toAddress: to,
+        confirmedAt,
+      });
+      continue;
+    }
+
     if (ix.programId.toBase58() !== TOKEN_PROGRAM_ID.toBase58()) continue;
 
     const sourceAcct = parsed.info.source;
@@ -290,6 +345,7 @@ function extractTokenTransfers(
       slot,
       mint,
       amountRaw: BigInt(amountStr),
+      decimals: sourceMeta?.decimals ?? destMeta?.decimals ?? null,
       fromAddress: fromOwner,
       toAddress: toOwner,
       confirmedAt,

@@ -8,7 +8,7 @@
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "dev": "! npm run start:debug 2>&1 | tee /tmp/xend-backend.log",
+    "dev": "NO_COLOR=1 FORCE_COLOR=0 npm run start:debug 2>&1 | tee /tmp/xend-backend.log",
     "start:debug": "nest start --debug --watch",
     "start": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",

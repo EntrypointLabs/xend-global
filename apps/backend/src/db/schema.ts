@@ -6,6 +6,7 @@ import {
   bigint,
   integer,
   boolean,
+  numeric,
   index,
   uniqueIndex,
   type AnyPgColumn,
@@ -334,6 +335,36 @@ export const transfers = pgTable(
     submittedAt: timestamp('submitted_at'),
     confirmedAt: timestamp('confirmed_at'),
     failureReason: text('failure_reason'),
+    /**
+     * The mint's decimals, as the chain reported them on this transaction.
+     *
+     * Stored so a row can state its own amount. Reading decimals from what the
+     * Consumer holds today breaks the moment they send a token away: the
+     * lookup misses, a default takes over, and the history shows an amount out
+     * by orders of magnitude.
+     */
+    decimals: integer('decimals'),
+    /**
+     * What the transfer was worth in USD, frozen at the moment it was first
+     * indexed and never recomputed.
+     *
+     * Five SOL received when SOL was $100 is $500 forever, because that is
+     * what changed hands. Re-pricing it on every read would rewrite the
+     * Consumer's history every time the market moved.
+     *
+     * Null when nothing could price the mint.
+     */
+    usdValue: numeric('usd_value', { precision: 24, scale: 6 }),
+    /**
+     * When the price behind `usd_value` was observed.
+     *
+     * Recorded because it is not always `confirmed_at`: a transfer first
+     * indexed by a backfill is stamped with the price at backfill time, which
+     * is the closest thing available rather than the true historical rate. A
+     * large gap between the two is the signal that the value is an
+     * approximation.
+     */
+    usdPricedAt: timestamp('usd_priced_at'),
     // Activity linkage for Pay: a settlement transfer carries kind='payment'
     // and the payment_id it settled, correlated by signature at confirmation.
     kind: transferKindEnum('kind').notNull().default('transfer'),

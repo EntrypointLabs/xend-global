@@ -1,4 +1,8 @@
 import { Logger } from '@nestjs/common';
+import { WRAPPED_SOL_MINT } from '../solana/web3-connection';
+
+/** Lamports per SOL is 10^9, so native amounts carry nine decimals. */
+const LAMPORT_DECIMALS = 9;
 import type { ConfirmedTransferEvent } from '../solana/solana-rpc.interface';
 
 /**
@@ -23,6 +27,17 @@ export interface HeliusTokenTransfer {
   mint: string;
 }
 
+/**
+ * A native SOL movement. Helius reports these separately from token transfers
+ * because native SOL is not an SPL token and has no token account.
+ */
+export interface HeliusNativeTransfer {
+  fromUserAccount: string | null;
+  toUserAccount: string | null;
+  /** Lamports, already an integer. */
+  amount: number;
+}
+
 export interface HeliusEnhancedTransaction {
   signature: string;
   slot: number;
@@ -33,6 +48,7 @@ export interface HeliusEnhancedTransaction {
   feePayer?: string;
   transactionError?: { InstructionError?: unknown } | null;
   tokenTransfers?: HeliusTokenTransfer[];
+  nativeTransfers?: HeliusNativeTransfer[];
 }
 
 export type HeliusWebhookBody = HeliusEnhancedTransaction[];
@@ -91,8 +107,27 @@ export class EventParser {
           slot,
           mint: t.mint,
           amountRaw,
+          decimals: t.rawTokenAmount?.decimals ?? null,
           fromAddress: t.fromUserAccount,
           toAddress: t.toUserAccount,
+          confirmedAt,
+        });
+      }
+
+      // Native SOL, under the wrapped-SOL mint so it reads as the same asset
+      // the balance reports. Without this a Consumer's SOL shows up in their
+      // balance but never in their activity.
+      for (const n of tx.nativeTransfers ?? []) {
+        if (!n.fromUserAccount || !n.toUserAccount) continue;
+        if (!Number.isFinite(n.amount)) continue;
+        events.push({
+          signature: tx.signature,
+          slot,
+          mint: WRAPPED_SOL_MINT,
+          amountRaw: BigInt(Math.round(n.amount)),
+          decimals: LAMPORT_DECIMALS,
+          fromAddress: n.fromUserAccount,
+          toAddress: n.toUserAccount,
           confirmedAt,
         });
       }

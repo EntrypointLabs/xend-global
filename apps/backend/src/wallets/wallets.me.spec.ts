@@ -1,7 +1,13 @@
 import { NotFoundException } from '@nestjs/common';
 import { WalletsService } from './wallets.service';
 import type { DbService } from '../db/db.service';
+import type { ConfigService } from '@nestjs/config';
 import type { SolanaRpc, TokenBalance } from '../solana/solana-rpc.interface';
+import type {
+  TokenPrice,
+  TokenPriceProvider,
+} from '../prices/token-price.interface';
+import type { TokenMetadataProvider } from '../tokens/token-metadata.interface';
 import { smartAccounts } from '../db/schema';
 
 /**
@@ -55,6 +61,10 @@ function makeFakeDb(store: FakeStore): DbService {
 function makeService(opts: {
   solana: SolanaRpc;
   account?: SmartAccountsRow | null;
+  /** USD price per whole token, by mint. Stablecoins never reach this. */
+  prices?: Record<string, number>;
+  /** Names and logos by mint, as the token index would return them. */
+  metadata?: Record<string, { name: string; symbol: string; iconUrl: string }>;
 }): { service: WalletsService; store: FakeStore } {
   const store: FakeStore = {
     smartAccounts:
@@ -73,17 +83,61 @@ function makeService(opts: {
     });
   }
   const db = makeFakeDb(store);
-  const service = new WalletsService(db, opts.solana);
+  const service = new WalletsService(
+    db,
+    opts.solana,
+    fakePrices(opts.prices),
+    fakeMetadata(opts.metadata),
+    fakeConfig(),
+  );
   return { service, store };
+}
+
+/** Only the stablecoin mints matter here; everything else is priced. */
+function fakeConfig(): ConfigService {
+  return {
+    getOrThrow: () => usdcMint,
+    get: () => usdtMint,
+  } as unknown as ConfigService;
+}
+
+function fakeMetadata(
+  metadata?: Record<string, { name: string; symbol: string; iconUrl: string }>,
+): TokenMetadataProvider {
+  return {
+    getMetadata: jest
+      .fn()
+      .mockResolvedValue(new Map(Object.entries(metadata ?? {}))),
+  } as unknown as TokenMetadataProvider;
+}
+
+/**
+ * Stands in for the real provider, which pins stablecoins to a dollar before
+ * quoting anything else. Pinned here too, so these tests describe the
+ * behaviour the service actually sees.
+ */
+function fakePrices(prices?: Record<string, number>): TokenPriceProvider {
+  const entries: [string, TokenPrice][] = [usdcMint, usdtMint].map((mint) => [
+    mint,
+    { usdPrice: 1, priceChange24h: null, decimals: 6 },
+  ]);
+  for (const [mint, usdPrice] of Object.entries(prices ?? {})) {
+    entries.push([mint, { usdPrice, priceChange24h: 5.13, decimals: null }]);
+  }
+  return {
+    getUsdPrices: jest.fn().mockResolvedValue(new Map(entries)),
+  } as unknown as TokenPriceProvider;
 }
 
 const usdcMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const usdtMint = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
+const wrappedSolMint = 'So11111111111111111111111111111111111111112';
 
 describe('WalletsService (/wallet/me + /wallet/me/balances)', () => {
   describe('getMe', () => {
     it('returns walletAddress + provider literal', async () => {
       const solana = {
+        getSolBalance: jest.fn().mockResolvedValue(0n),
         getTokenBalances: jest.fn(),
         getRecentBlockhash: jest.fn(),
       } as unknown as SolanaRpc;
@@ -97,6 +151,7 @@ describe('WalletsService (/wallet/me + /wallet/me/balances)', () => {
 
     it('throws NotFoundException when smart_account missing', async () => {
       const solana = {
+        getSolBalance: jest.fn().mockResolvedValue(0n),
         getTokenBalances: jest.fn(),
         getRecentBlockhash: jest.fn(),
       } as unknown as SolanaRpc;
@@ -116,6 +171,7 @@ describe('WalletsService (/wallet/me + /wallet/me/balances)', () => {
         .fn()
         .mockResolvedValue({ blockhash: 'bh-1', lastValidBlockHeight: 100 });
       const solana = {
+        getSolBalance: jest.fn().mockResolvedValue(0n),
         getTokenBalances,
         getRecentBlockhash,
       } as unknown as SolanaRpc;
@@ -131,6 +187,146 @@ describe('WalletsService (/wallet/me + /wallet/me/balances)', () => {
       expect(getTokenBalances).toHaveBeenCalledWith(
         'SoLAnAaDdRess111111111111111111111111111111',
       );
+    });
+
+    it('reports native SOL, which owns no token account to be read from', async () => {
+      const getTokenBalances = jest
+        .fn<Promise<TokenBalance[]>, [string]>()
+        .mockResolvedValue([]);
+      const getRecentBlockhash = jest
+        .fn()
+        .mockResolvedValue({ blockhash: 'bh-sol', lastValidBlockHeight: 300 });
+      const solana = {
+        getSolBalance: jest.fn().mockResolvedValue(5_000_000_000n),
+        getTokenBalances,
+        getRecentBlockhash,
+      } as unknown as SolanaRpc;
+      const { service } = makeService({
+        solana,
+        prices: { [wrappedSolMint]: 80 },
+      });
+
+      const result = await service.getMeBalances('u_1');
+
+      expect(result.tokens).toEqual([
+        {
+          mint: wrappedSolMint,
+          amountRaw: '5000000000',
+          decimals: 9,
+          symbol: 'SOL',
+          usdValue: 400,
+          usdPrice: 80,
+          priceChange24h: 5.13,
+          name: null,
+          iconUrl: null,
+        },
+      ]);
+    });
+
+    it('sums native SOL with a wrapped-SOL account into one holding', async () => {
+      // Two rows for the same mint is not something a Consumer can act on.
+      const getTokenBalances = jest.fn().mockResolvedValue([
+        { mint: usdcMint, amountRaw: 1_000_000n, decimals: 6 },
+        { mint: wrappedSolMint, amountRaw: 2_000_000_000n, decimals: 9 },
+      ]);
+      const getRecentBlockhash = jest
+        .fn()
+        .mockResolvedValue({ blockhash: 'bh-sol2', lastValidBlockHeight: 400 });
+      const solana = {
+        getSolBalance: jest.fn().mockResolvedValue(3_000_000_000n),
+        getTokenBalances,
+        getRecentBlockhash,
+      } as unknown as SolanaRpc;
+      const { service } = makeService({
+        solana,
+        prices: { [wrappedSolMint]: 80 },
+      });
+
+      const result = await service.getMeBalances('u_1');
+
+      const sol = result.tokens.filter((t) => t.mint === wrappedSolMint);
+      expect(sol).toEqual([
+        {
+          mint: wrappedSolMint,
+          amountRaw: '5000000000',
+          decimals: 9,
+          symbol: 'SOL',
+          usdValue: 400,
+          usdPrice: 80,
+          priceChange24h: 5.13,
+          name: null,
+          iconUrl: null,
+        },
+      ]);
+    });
+
+    it('omits SOL entirely when the account holds none', async () => {
+      const getTokenBalances = jest
+        .fn<Promise<TokenBalance[]>, [string]>()
+        .mockResolvedValue([
+          { mint: usdcMint, amountRaw: 1_000_000n, decimals: 6 },
+        ]);
+      const getRecentBlockhash = jest
+        .fn()
+        .mockResolvedValue({ blockhash: 'bh-sol3', lastValidBlockHeight: 500 });
+      const solana = {
+        getSolBalance: jest.fn().mockResolvedValue(0n),
+        getTokenBalances,
+        getRecentBlockhash,
+      } as unknown as SolanaRpc;
+      const { service } = makeService({ solana });
+
+      const result = await service.getMeBalances('u_1');
+
+      expect(result.tokens.map((t) => t.mint)).toEqual([usdcMint]);
+    });
+
+    it('leaves holdings unpriced when the price provider is down', async () => {
+      // The balance itself is on-chain fact. A third party having a bad day
+      // must not blank it, and must not report the holding as worthless.
+      const getTokenBalances = jest
+        .fn<Promise<TokenBalance[]>, [string]>()
+        .mockResolvedValue([]);
+      const getRecentBlockhash = jest
+        .fn()
+        .mockResolvedValue({ blockhash: 'bh-down', lastValidBlockHeight: 600 });
+      const solana = {
+        getSolBalance: jest.fn().mockResolvedValue(5_000_000_000n),
+        getTokenBalances,
+        getRecentBlockhash,
+      } as unknown as SolanaRpc;
+      const db = makeFakeDb({
+        smartAccounts: [
+          {
+            id: 'sa_1',
+            userId: 'u_1',
+            walletAddress: 'SoLAnAaDdRess111111111111111111111111111111',
+            provider: 'privy',
+            providerUserId: 'did:privy:abc',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+      const service = new WalletsService(
+        db,
+        solana,
+        {
+          getUsdPrices: jest.fn().mockRejectedValue(new Error('jup 503')),
+        } as unknown as TokenPriceProvider,
+        fakeMetadata(),
+        {
+          getOrThrow: () => usdcMint,
+          get: () => usdtMint,
+        } as unknown as ConfigService,
+      );
+
+      const result = await service.getMeBalances('u_1');
+
+      expect(result.tokens).toHaveLength(1);
+      expect(result.tokens[0].mint).toBe(wrappedSolMint);
+      expect(result.tokens[0].amountRaw).toBe('5000000000');
+      expect(result.tokens[0].usdValue).toBeNull();
     });
 
     it('returns the full multi-mint list without server-side filtering', async () => {
@@ -150,6 +346,7 @@ describe('WalletsService (/wallet/me + /wallet/me/balances)', () => {
         .fn()
         .mockResolvedValue({ blockhash: 'bh-2', lastValidBlockHeight: 200 });
       const solana = {
+        getSolBalance: jest.fn().mockResolvedValue(0n),
         getTokenBalances,
         getRecentBlockhash,
       } as unknown as SolanaRpc;
@@ -163,17 +360,31 @@ describe('WalletsService (/wallet/me + /wallet/me/balances)', () => {
         amountRaw: '1500000',
         decimals: 6,
         symbol: null,
+        // Pinned, not quoted: a stablecoin balance has to read exactly.
+        usdValue: 1.5,
+        usdPrice: 1,
+        // A pinned dollar reports no movement, which is not zero movement.
+        priceChange24h: null,
+        name: null,
+        iconUrl: null,
       });
       expect(result.tokens[1]).toEqual({
         mint: usdtMint,
         amountRaw: '250000',
         decimals: 6,
         symbol: null,
+        usdValue: 0.25,
+        usdPrice: 1,
+        priceChange24h: null,
+        name: null,
+        iconUrl: null,
       });
-      // Non-stablecoin still present.
+      // Non-stablecoin still present, and unpriced rather than zeroed: no
+      // price was supplied for it.
       expect(result.tokens[2].mint).toBe(
         'BoNK11111111111111111111111111111111111111',
       );
+      expect(result.tokens[2].usdValue).toBeNull();
       expect(result.fetchedAtSlot).toBe(200);
     });
 
@@ -196,6 +407,7 @@ describe('WalletsService (/wallet/me + /wallet/me/balances)', () => {
         .fn()
         .mockResolvedValue({ blockhash: 'bh-3', lastValidBlockHeight: 300 });
       const solana = {
+        getSolBalance: jest.fn().mockResolvedValue(0n),
         getTokenBalances,
         getRecentBlockhash,
       } as unknown as SolanaRpc;
@@ -210,6 +422,7 @@ describe('WalletsService (/wallet/me + /wallet/me/balances)', () => {
 
     it('throws NotFoundException when smart_account missing', async () => {
       const solana = {
+        getSolBalance: jest.fn().mockResolvedValue(0n),
         getTokenBalances: jest.fn(),
         getRecentBlockhash: jest.fn(),
       } as unknown as SolanaRpc;

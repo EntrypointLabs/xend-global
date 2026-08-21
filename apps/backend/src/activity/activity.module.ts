@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { SolanaModule } from '../solana/solana.module';
+import { PricesModule } from '../prices/prices.module';
 import { EventParser } from './event-parser';
 import { ReconcilerService } from './reconciler.service';
 import { TailerService } from './tailer.service';
@@ -13,7 +14,8 @@ import { WebhookController } from './webhook.controller';
  * @Cron on ReconcilerService.tick() actually fires.
  */
 @Module({
-  imports: [SolanaModule, ScheduleModule.forRoot()],
+  // PricesModule values a transfer at the moment it is indexed.
+  imports: [SolanaModule, PricesModule, ScheduleModule.forRoot()],
   controllers: [WebhookController],
   providers: [TailerService, EventParser, ReconcilerService],
   exports: [TailerService, EventParser, ReconcilerService],

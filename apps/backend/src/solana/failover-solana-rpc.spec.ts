@@ -16,6 +16,7 @@ function makeStub(
 ) {
   return {
     getRecentBlockhash: jest.fn(),
+    getSolBalance: jest.fn().mockResolvedValue(0n),
     getTokenBalances: jest.fn(),
     sendRawTransaction: jest.fn(),
     getSignatureStatuses: jest.fn(),
@@ -211,6 +212,7 @@ describe('FailoverSolanaRpc', () => {
         slot: 100n,
         mint: 'mint',
         amountRaw: 1n,
+        decimals: 6,
         fromAddress: 'a',
         toAddress: 'b',
         confirmedAt: new Date(),
@@ -239,6 +241,7 @@ describe('FailoverSolanaRpc', () => {
         slot: 200n,
         mint: 'mint',
         amountRaw: 2n,
+        decimals: 6,
         fromAddress: 'a',
         toAddress: 'b',
         confirmedAt: new Date(),
@@ -279,6 +282,7 @@ describe('FailoverSolanaRpc', () => {
         slot: 300n,
         mint: 'mint',
         amountRaw: 3n,
+        decimals: 6,
         fromAddress: 'a',
         toAddress: 'b',
         confirmedAt: new Date(),

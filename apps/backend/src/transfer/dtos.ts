@@ -71,6 +71,32 @@ export const TransferRowSchema = z.object({
   // to match the SEND/RECEIVE direction enum or Zod rejects every real row.
   kind: z.enum(['transfer', 'payment']),
   merchantName: z.string().nullable(),
+  /**
+   * What the transfer was worth in USD when it happened, as a decimal string.
+   *
+   * Frozen at index time rather than priced on read: five SOL received while
+   * SOL was $100 stays $500 however SOL moves afterwards, because $500 is what
+   * changed hands. Null when nothing could price the mint.
+   */
+  usdValue: z.string().nullable(),
+  /**
+   * The mint's decimals, as the chain reported them. Null on rows indexed
+   * before it was recorded, where the client falls back to what it can infer.
+   */
+  decimals: z.number().int().nullable(),
+  /**
+   * The token's identity, resolved per row rather than from what the Consumer
+   * currently holds.
+   *
+   * A holdings-derived lookup loses the token the moment it is sold: convert
+   * every SOL to USDC and the SOL history would forget its own name and logo.
+   * History has to keep describing itself after the balance is gone.
+   *
+   * Null when nothing can name the mint.
+   */
+  tokenName: z.string().nullable(),
+  tokenSymbol: z.string().nullable(),
+  tokenIconUrl: z.string().nullable(),
   createdAt: z.string().datetime(),
   confirmedAt: z.string().datetime().nullable(),
 });
