@@ -65,6 +65,22 @@ export class TurnkeyService {
    * that hardware key, so a replacement device has to enrol a new one rather
    * than inherit an S2 it cannot sign for.
    */
+  /**
+   * The enrolment already on file for this Consumer's device, if any.
+   *
+   * Lets a retry that was interrupted after the sub-org existed carry on with
+   * the same key instead of minting a new one, which would strand the first S2
+   * and can never reach the reuse path above.
+   */
+  findEnrolledDevice(
+    userId: string,
+    hardwarePublicKey: string,
+  ): Promise<{ security: string | null } | null> {
+    return this.store
+      .findByUserAndDevice(userId, hardwarePublicKey)
+      .then((row) => (row ? { security: row.security } : null));
+  }
+
   async ensureApprovalSigner(
     params: EnrolApprovalSignerParams,
   ): Promise<EnrolledApprovalSigner> {
@@ -92,6 +108,7 @@ export class TurnkeyService {
       subOrganizationId: enrolled.subOrganizationId,
       address: enrolled.address,
       hardwarePublicKey: params.hardwarePublicKey,
+      security: params.security,
     });
 
     return enrolled;

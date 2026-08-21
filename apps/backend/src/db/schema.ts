@@ -342,6 +342,15 @@ export const approvalSigners = pgTable(
     address: text('address').notNull().unique(),
     /** The device key registered as this sub-org's authenticator. */
     hardwarePublicKey: text('hardware_public_key').notNull(),
+    /**
+     * Where the attestation proved that key lives.
+     *
+     * Kept because enrolment is resumable: a retry that reuses an already
+     * attested key has no fresh attestation to read this out of, and answering
+     * the Consumer with a guess about their own hardware would be worse than
+     * not answering.
+     */
+    security: text('security'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

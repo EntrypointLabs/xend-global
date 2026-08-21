@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -18,6 +19,7 @@ import {
   AttestationNotConfiguredError,
   AttestationRejectedError,
 } from '../attestation/attestation.errors';
+import { TurnkeyService } from '../turnkey/turnkey.service';
 import { UnsafeSubOrganizationError } from '../turnkey/turnkey.errors';
 import {
   AccountCreationError,
@@ -50,6 +52,7 @@ export class AccountController {
     private readonly sweep: SweepService,
     private readonly provisioning: ProvisioningService,
     private readonly spendingLimits: SpendingLimitService,
+    private readonly turnkey: TurnkeyService,
   ) {}
 
   /**
@@ -86,16 +89,20 @@ export class AccountController {
     @Body(new ZodValidationPipe(EnrolAccountSchema)) body: EnrolAccountDto,
   ) {
     try {
-      const verified = await this.attestation.verify(req.user.userId, {
-        platform: body.platform,
-        attestation: body.attestation,
-        nonce: body.nonce,
-      });
+      const verified =
+        'hardwarePublicKey' in body
+          ? await this.resumeEnrolment(req.user.userId, body.hardwarePublicKey)
+          : await this.attestation.verify(req.user.userId, {
+              platform: body.platform,
+              attestation: body.attestation,
+              nonce: body.nonce,
+            });
 
       const account = await this.accounts.createAccount({
         userId: req.user.userId,
         primarySigner: req.user.walletAddress,
         hardwarePublicKey: verified.hardwarePublicKey,
+        security: verified.security ?? undefined,
       });
 
       return {
@@ -112,6 +119,30 @@ export class AccountController {
       );
       throw toHttp(err);
     }
+  }
+
+  /**
+   * Picks up an enrolment that already attested this device.
+   *
+   * A key the backend has never seen is refused. The device generates a fresh
+   * one on every attestation, so accepting an unknown key would let a caller
+   * with real hardware enrol a software key instead — the whole reason the
+   * fresh path reads the key out of the attestation rather than the body.
+   */
+  private async resumeEnrolment(
+    userId: string,
+    hardwarePublicKey: string,
+  ): Promise<{ hardwarePublicKey: string; security: string | null }> {
+    const enrolled = await this.turnkey.findEnrolledDevice(
+      userId,
+      hardwarePublicKey,
+    );
+    if (!enrolled) {
+      throw new BadRequestException(
+        'This device has not been attested; enrol with an attestation first',
+      );
+    }
+    return { hardwarePublicKey, security: enrolled.security };
   }
 
   /**

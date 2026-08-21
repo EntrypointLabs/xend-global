@@ -11,6 +11,7 @@ import { AccountResponseSchema, type SpendingLimitResponse } from './dtos';
 import type { ProvisioningService } from './provisioning.service';
 import type { SpendingLimitService } from './spending-limit.service';
 import type { SweepService } from './sweep.service';
+import type { TurnkeyService } from '../turnkey/turnkey.service';
 
 const USDC = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const SEED = 7n;
@@ -55,6 +56,7 @@ function makeController(
     {} as unknown as SweepService,
     {} as unknown as ProvisioningService,
     spendingLimits,
+    {} as unknown as TurnkeyService,
   );
   return { controller, asked };
 }
@@ -108,5 +110,71 @@ describe('AccountController.getMe', () => {
     await expect(controller.getMe(request())).rejects.toBeInstanceOf(
       HttpException,
     );
+  });
+});
+
+describe('AccountController.enrol', () => {
+  function enrolController(opts: {
+    enrolledSecurity?: string | null;
+    verify?: jest.Mock;
+    createAccount?: jest.Mock;
+  }) {
+    const createAccount =
+      opts.createAccount ??
+      jest.fn().mockResolvedValue({ vaultAddress: 'vault-1' });
+    const turnkey = {
+      findEnrolledDevice: jest
+        .fn()
+        .mockResolvedValue(
+          opts.enrolledSecurity === undefined
+            ? null
+            : { security: opts.enrolledSecurity },
+        ),
+    } as unknown as TurnkeyService;
+    const verify = opts.verify ?? jest.fn();
+    const attestation = { verify } as unknown as AttestationService;
+
+    const controller = new AccountController(
+      { createAccount } as unknown as AccountService,
+      attestation,
+      {} as unknown as SweepService,
+      {} as unknown as ProvisioningService,
+      {} as unknown as SpendingLimitService,
+      turnkey,
+    );
+    return { controller, createAccount, verify };
+  }
+
+  const req = {
+    user: { userId: 'user-1', walletAddress: 'privy-1' },
+  } as Parameters<AccountController['enrol']>[0];
+
+  it('resumes an interrupted enrolment with the key already on file', async () => {
+    const { controller, createAccount, verify } = enrolController({
+      enrolledSecurity: 'secure_enclave',
+    });
+
+    const out = await controller.enrol(req, { hardwarePublicKey: '03aa' });
+
+    // The device replaces its key whenever it attests, so a retry that had to
+    // attest again could never reach the backend's reuse path and would strand
+    // the sub-organization built around the first key.
+    expect(createAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ hardwarePublicKey: '03aa' }),
+    );
+    expect(verify).not.toHaveBeenCalled();
+    expect(out.security).toBe('secure_enclave');
+  });
+
+  it('refuses a key it has never attested', async () => {
+    const { controller, createAccount } = enrolController({});
+
+    // Taking the caller's word here would undo the reason the fresh path reads
+    // the key out of the attestation: real hardware could attest once and then
+    // enrol a software key it actually controls.
+    await expect(
+      controller.enrol(req, { hardwarePublicKey: '03ff' }),
+    ).rejects.toThrow();
+    expect(createAccount).not.toHaveBeenCalled();
   });
 });

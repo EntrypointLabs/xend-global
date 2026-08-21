@@ -23,6 +23,23 @@ export function useEnrolAccount() {
 
   return useMutation({
     mutationFn: async () => {
+      // A key already on the device belongs to an attempt that got as far as
+      // attesting. Attesting again would mint a new one, and `enrol` replaces
+      // what is there — stranding the sub-organization the backend built around
+      // the old key, on every transient failure, forever. The backend only
+      // honours a key it already holds an approval signer for, so an unknown
+      // one falls through to a fresh attestation below.
+      const existing = await hardwareKey.getPublicKey();
+      if (existing) {
+        try {
+          return await apiClient.enrolAccount({ hardwarePublicKey: existing });
+        } catch (err) {
+          if (__DEV__) {
+            console.warn("[enrol] could not resume with the existing key", err);
+          }
+        }
+      }
+
       const { nonce } = await apiClient.requestEnrolmentNonce();
 
       let attestation: string;

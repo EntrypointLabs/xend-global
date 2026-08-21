@@ -496,11 +496,11 @@ class BackendClient {
    * backend takes the key from the attestation it verified and mints the
    * recovery signer itself, so this request cannot nominate either.
    */
-  async enrolAccount(body: {
-    platform: "ios" | "android";
-    attestation: string;
-    nonce: string;
-  }): Promise<EnrolAccountResponse> {
+  async enrolAccount(
+    body:
+      | { platform: "ios" | "android"; attestation: string; nonce: string }
+      | { hardwarePublicKey: string }
+  ): Promise<EnrolAccountResponse> {
     const raw = await this.request<unknown>("/account/enrolment", {
       method: "POST",
       body: JSON.stringify(body),

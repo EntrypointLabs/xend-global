@@ -24,6 +24,8 @@ export interface EnrolApprovalSignerParams {
    */
   reference: string;
   hardwarePublicKey: HardwarePublicKey;
+  /** Where the attestation proved the key lives, recorded for a later resume. */
+  security?: string;
 }
 
 export interface EnrolledApprovalSigner {

@@ -26,6 +26,8 @@ export interface CreateAccountParams {
   primarySigner: string;
   /** The device's hardware public key, which becomes S2's authenticator. */
   hardwarePublicKey: string;
+  /** Where the attestation proved that key lives, recorded for a resume. */
+  security?: string;
 }
 
 /**
@@ -75,6 +77,7 @@ export class AccountService {
     const approval = await this.turnkey.ensureApprovalSigner({
       reference: params.userId,
       hardwarePublicKey: params.hardwarePublicKey,
+      security: params.security,
     });
 
     // Minted here rather than accepted from the caller. D10b makes S3
