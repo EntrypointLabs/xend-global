@@ -1,4 +1,4 @@
-import { Keypair, PublicKey } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -193,7 +193,6 @@ describe("buildSpend", () => {
   it("builds a two-signature spend against the above-limit policy", () => {
     const ix = buildSpend({
       addresses,
-      // Native SOL: the two-signature route cannot carry a token yet.
       request: { mint: NATIVE, amount: 1_000_000n, destination: dest },
       route: {
         kind: "two-signature",
@@ -239,22 +238,49 @@ describe("buildSpend", () => {
     ).toThrow(/at least two signers/);
   });
 
-  it("refuses a token on the two-signature route rather than moving SOL", () => {
-    // SystemProgram.transfer reads the amount as lamports whatever the mint
-    // says, so this route would move SOL while the row recorded USDC.
+  it("carries a token on the two-signature route, naming both token accounts", () => {
+    // This route built a SystemProgram.transfer whatever the mint said, which
+    // read the amount as lamports and moved SOL while the row recorded USDC.
+    const ix = buildSpend({
+      addresses,
+      request: { mint: USDC, amount: 1_000_000n, destination: dest },
+      route: {
+        kind: "two-signature",
+        reason: "exceeds-per-use",
+        policy: ABOVE_POLICY,
+      },
+      signers: [primary, approval],
+      decimals: 6,
+      tokenProgram: TOKEN_PROGRAM,
+    });
+
+    const keys = ix.keys.map((k) => k.pubkey.toBase58());
+    expect(keys).toContain(
+      associatedTokenAddress(addresses.vault, USDC, TOKEN_PROGRAM).toBase58(),
+    );
+    expect(keys).toContain(
+      associatedTokenAddress(dest, USDC, TOKEN_PROGRAM).toBase58(),
+    );
+    expect(keys).toContain(TOKEN_PROGRAM.toBase58());
+    // The recipient's wallet is only an ATA seed here; the transfer names the
+    // token account, so the wallet itself must not appear.
+    expect(keys).not.toContain(dest.toBase58());
+    expect(keys).not.toContain(SystemProgram.programId.toBase58());
+  });
+
+  it("refuses a token on the two-signature route with no token program", () => {
     expect(() =>
       buildSpend({
         addresses,
         request: { mint: USDC, amount: 1_000_000n, destination: dest },
         route: {
           kind: "two-signature",
-          reason: "no-spending-limit",
+          reason: "exceeds-per-use",
           policy: ABOVE_POLICY,
         },
         signers: [primary, approval],
         decimals: 6,
-        tokenProgram: TOKEN_PROGRAM,
       }),
-    ).toThrow(/two-signature route cannot move/);
+    ).toThrow(/token program/);
   });
 });

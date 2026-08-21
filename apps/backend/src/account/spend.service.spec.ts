@@ -116,13 +116,7 @@ const request = {
   decimals: 6,
 };
 
-/**
- * The same Spend in native SOL.
- *
- * Routing tests use this because the two-signature route cannot build a token
- * instruction yet and refuses rather than moving SOL under a token's name.
- * Which route is chosen is what those tests are about.
- */
+/** The same Spend in native SOL, for the tests that are about SOL. */
 const nativeRequest = {
   ...request,
   mint: PublicKey.default.toBase58(),
@@ -265,14 +259,16 @@ describe('SpendService.prepare', () => {
     expect(spendChain.feePayer).not.toBe(PRIMARY);
   });
 
-  it('refuses a token Spend that lands on the two-signature route', async () => {
-    // Better a clear failure than a transaction that moves SOL while the
-    // intent and the transfer row both say USDC.
+  it('prepares a token Spend that lands on the two-signature route', async () => {
+    // The route built a SystemProgram.transfer whatever the mint said, so it
+    // had to refuse rather than move SOL while the intent and the transfer row
+    // both said USDC. It carries a token transfer now.
     const { spendChain } = chain([], { programAccepts: false });
 
-    await expect(service(spendChain).prepare(request)).rejects.toThrow(
-      /two-signature route cannot move/,
-    );
+    const prepared = await service(spendChain).prepare(request);
+
+    expect(prepared.route).toBe('two-signature');
+    expect(prepared.needsApprovalSignature).toBe(true);
   });
 
   it('refuses to prepare a Spend for a Consumer with no Account', async () => {

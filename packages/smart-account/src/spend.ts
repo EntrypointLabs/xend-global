@@ -212,21 +212,11 @@ export function buildSpend({
     );
   }
 
-  // Native SOL only, for now. `SystemProgram.transfer` reads `request.amount`
-  // as lamports whatever the mint says, so letting a token through here moves
-  // SOL while the intent and the transfer row both record a stablecoin — a
-  // silent, wrong money movement. Refusing is the safe half of the fix; the
-  // token payload for this route is not built yet.
-  if (!request.mint.equals(NATIVE_MINT)) {
-    throw new Error(
-      `the two-signature route cannot move ${request.mint.toBase58()} yet; only native SOL`,
-    );
-  }
-
-  const transfer = SystemProgram.transfer({
-    fromPubkey: addresses.vault,
-    toPubkey: request.destination,
-    lamports: Number(request.amount),
+  const transfer = aboveLimitTransfer({
+    addresses,
+    request,
+    decimals,
+    tokenProgram,
   });
   // Compiled with no members, so the account indices start at the message
   // accounts. The program strips the first `numSigners` remaining accounts
@@ -270,6 +260,115 @@ export function buildSpend({
       ],
     },
     instruction_accounts: [...signerAccounts, ...compiled.accounts],
+  });
+}
+
+/**
+ * The transfer the above-limit route wraps in its `ProgramInteraction` payload.
+ *
+ * Unlike the spending-limit route, nothing here is a hand-built account list:
+ * the payload carries a compiled inner instruction, and the accounts fall out
+ * of compiling it. So the whole difference between SOL and a token is which
+ * instruction gets compiled.
+ *
+ * The vault is marked a signer because it is the authority on both. It cannot
+ * sign a transaction itself — the program signs for the PDA during its CPI, and
+ * the SDK's compiler clears the flag on the way out.
+ */
+function aboveLimitTransfer({
+  addresses,
+  request,
+  decimals,
+  tokenProgram,
+}: {
+  addresses: AccountAddresses;
+  request: SpendRequest;
+  decimals: number;
+  tokenProgram?: PublicKey;
+}): TransactionInstruction {
+  if (request.mint.equals(NATIVE_MINT)) {
+    return SystemProgram.transfer({
+      fromPubkey: addresses.vault,
+      toPubkey: request.destination,
+      // As a bigint, not a Number. Above the limit is exactly where the large
+      // amounts are, and past 2^53 lamports a Number silently rounds.
+      lamports: request.amount,
+    });
+  }
+
+  if (!tokenProgram) {
+    throw new Error(
+      `spending a token needs its token program; ${request.mint.toBase58()} has none`,
+    );
+  }
+
+  // `destination` is the recipient's wallet; the transfer has to name their
+  // associated token account. The caller opens it beforehand, because a policy
+  // will not open one mid-Spend.
+  return transferChecked({
+    source: associatedTokenAddress(addresses.vault, request.mint, tokenProgram),
+    mint: request.mint,
+    destination: associatedTokenAddress(
+      request.destination,
+      request.mint,
+      tokenProgram,
+    ),
+    authority: addresses.vault,
+    amount: request.amount,
+    decimals,
+    tokenProgram,
+  });
+}
+
+/**
+ * SPL Token `TransferChecked`, built by hand.
+ *
+ * Checked rather than plain `Transfer` because it carries the mint and decimals
+ * and the program verifies them, so a wrong-decimals amount is rejected on
+ * chain instead of moving the wrong quantity. Built here rather than imported
+ * so this package keeps its single dependency on `@solana/web3.js`, the same
+ * reason {@link associatedTokenAddress} derives its address directly.
+ *
+ * Token-2022 shares the instruction tag and layout, so `tokenProgram` selects
+ * between them and nothing else changes.
+ */
+function transferChecked({
+  source,
+  mint,
+  destination,
+  authority,
+  amount,
+  decimals,
+  tokenProgram,
+}: {
+  source: PublicKey;
+  mint: PublicKey;
+  destination: PublicKey;
+  authority: PublicKey;
+  amount: bigint;
+  decimals: number;
+  tokenProgram: PublicKey;
+}): TransactionInstruction {
+  const TRANSFER_CHECKED = 12;
+  const data = Buffer.alloc(10);
+  data.writeUInt8(TRANSFER_CHECKED, 0);
+  data.writeBigUInt64LE(amount, 1);
+  data.writeUInt8(decimals, 9);
+
+  return new TransactionInstruction({
+    programId: tokenProgram,
+    keys: [
+      { pubkey: source, isSigner: false, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: destination, isSigner: false, isWritable: true },
+      // Writable, though SPL treats the authority as read-only. The payload is
+      // compiled as a message with no fee payer, and that compiler refuses one
+      // with no writable signer at all. The vault is the only signer here, and
+      // it is the account the program signs for, so it is the one to mark. The
+      // native route marks it the same way via `SystemProgram.transfer`.
+      { pubkey: authority, isSigner: true, isWritable: true },
+    ],
+    data,
   });
 }
 
