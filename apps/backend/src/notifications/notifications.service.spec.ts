@@ -6,8 +6,8 @@ import type { PushSender } from './push-sender.interface';
 interface FakeDbOptions {
   /** Tokens the arrival query returns, i.e. enabled devices of the owner. */
   tokens?: string[];
-  /** Rows the enablement read returns. */
-  enabledRows?: { enabled: boolean }[];
+  /** What the user's stored preference reads as. */
+  userEnabled?: boolean;
 }
 
 function makeFakeDb(opts: FakeDbOptions = {}) {
@@ -20,7 +20,14 @@ function makeFakeDb(opts: FakeDbOptions = {}) {
     execute,
     select: () => ({
       from: () => ({
-        where: () => Promise.resolve(opts.enabledRows ?? []),
+        where: () => ({
+          limit: () =>
+            Promise.resolve(
+              opts.userEnabled === undefined
+                ? []
+                : [{ enabled: opts.userEnabled }],
+            ),
+        }),
       }),
     }),
     insert: () => ({
@@ -94,30 +101,26 @@ describe('NotificationsService', () => {
   });
 
   describe('isEnabled', () => {
-    it('reads as on when no device is registered yet', async () => {
-      // Nothing has been silenced; there is simply nowhere to deliver.
-      const { db } = makeFakeDb({ enabledRows: [] });
+    it('reads as on for a user who has never touched the setting', async () => {
+      const { db } = makeFakeDb({ userEnabled: true });
       const service = new NotificationsService(db, makeSender());
 
       await expect(service.isEnabled('u_1')).resolves.toBe(true);
     });
 
-    it('reads as on while any one device still wants them', async () => {
-      const { db } = makeFakeDb({
-        enabledRows: [{ enabled: false }, { enabled: true }],
-      });
-      const service = new NotificationsService(db, makeSender());
-
-      await expect(service.isEnabled('u_1')).resolves.toBe(true);
-    });
-
-    it('reads as off once every device has been silenced', async () => {
-      const { db } = makeFakeDb({
-        enabledRows: [{ enabled: false }, { enabled: false }],
-      });
+    it('reads as off once they have turned it off', async () => {
+      const { db } = makeFakeDb({ userEnabled: false });
       const service = new NotificationsService(db, makeSender());
 
       await expect(service.isEnabled('u_1')).resolves.toBe(false);
+    });
+
+    it('reads as on when the user row cannot be found', async () => {
+      // Nothing has been silenced; there is simply nothing recorded.
+      const { db } = makeFakeDb({});
+      const service = new NotificationsService(db, makeSender());
+
+      await expect(service.isEnabled('u_1')).resolves.toBe(true);
     });
   });
 });

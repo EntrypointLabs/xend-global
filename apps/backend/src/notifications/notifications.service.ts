@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
-import { pushDevices } from '../db/schema';
+import { pushDevices, users } from '../db/schema';
 import { PUSH_SENDER } from './push-sender.interface';
 import type { PushSender } from './push-sender.interface';
 
@@ -33,8 +33,9 @@ export class NotificationsService {
     platform: string;
   }): Promise<void> {
     // Re-registering the same token under a new user happens on a shared
-    // device, and the newest sign-in owns it. Enablement is deliberately not
-    // reset here: it is the Consumer's setting, not the installation's.
+    // device, and the newest sign-in owns it. Nothing about the Consumer's
+    // preference is stored here, so there is nothing for the new owner to
+    // inherit.
     await this.db.client
       .insert(pushDevices)
       .values({
@@ -48,22 +49,26 @@ export class NotificationsService {
       });
   }
 
-  /** The Consumer's own answer about whether they want to be told. */
+  /**
+   * The Consumer's own answer about whether they want to be told.
+   *
+   * Recorded against the person, so it survives having no device registered
+   * yet and is not inherited by whoever signs in on that device next.
+   */
   async setEnabled(userId: string, enabled: boolean): Promise<void> {
     await this.db.client
-      .update(pushDevices)
-      .set({ enabled, updatedAt: new Date() })
-      .where(eq(pushDevices.userId, userId));
+      .update(users)
+      .set({ notificationsEnabled: enabled, updatedAt: new Date() })
+      .where(eq(users.id, userId));
   }
 
   async isEnabled(userId: string): Promise<boolean> {
-    const rows = await this.db.client
-      .select({ enabled: pushDevices.enabled })
-      .from(pushDevices)
-      .where(eq(pushDevices.userId, userId));
-    // No device registered reads as "on": nothing has been silenced, there is
-    // simply nowhere to deliver yet.
-    return rows.length === 0 || rows.some((r) => r.enabled);
+    const [row] = await this.db.client
+      .select({ enabled: users.notificationsEnabled })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return row?.enabled ?? true;
   }
 
   /**
@@ -80,8 +85,9 @@ export class NotificationsService {
         SELECT pd.token
         FROM push_devices pd
         JOIN smart_accounts sa ON sa.user_id = pd.user_id
+        JOIN users u ON u.id = pd.user_id
         WHERE sa.id = ${notice.smartAccountId}
-          AND pd.enabled = true
+          AND u.notifications_enabled = true
       `)) as unknown as { rows: { token: string }[] };
       const tokens = result.rows ?? [];
       if (tokens.length === 0) return;

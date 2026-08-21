@@ -132,6 +132,16 @@ export const users = pgTable('users', {
     .primaryKey()
     .$defaultFn(() => createId()),
   email: text('email').notNull().unique(),
+  /**
+   * Whether they want to be told when money arrives.
+   *
+   * On the person, not the device: it is one switch in the app, it has to
+   * survive having no device registered yet, and a re-registered token must
+   * not carry the previous owner's answer to whoever signs in next.
+   */
+  notificationsEnabled: boolean('notifications_enabled')
+    .notNull()
+    .default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   // Soft-delete marker for account closure. The row (and its smart_accounts /
@@ -172,9 +182,9 @@ export const smartAccounts = pgTable('smart_accounts', {
  * them.
  *
  * Keyed by the device token rather than by user: one Consumer can hold several
- * devices, and each answers for itself. `enabled` lives here for the same
- * reason: turning notifications off on a phone should not silence a tablet the
- * same person also uses.
+ * devices. This is only an address list — whether they want notifications at
+ * all lives on `users`, because the setting is one switch and has to survive a
+ * device being replaced.
  *
  * A token is not a secret in the sense a key is, but it does address someone's
  * device, so it is never returned by any read endpoint.
@@ -191,13 +201,6 @@ export const pushDevices = pgTable(
     /** The provider's address for this installation. */
     token: text('token').notNull().unique(),
     platform: text('platform').notNull(),
-    /**
-     * The Consumer's own answer, not the OS permission. A revoked OS
-     * permission stops delivery whatever this says; this records what they
-     * asked us for, so re-granting the permission does not silently opt them
-     * back in.
-     */
-    enabled: boolean('enabled').notNull().default(true),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

@@ -12,7 +12,12 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { NotificationPreferenceSchema, RegisterDeviceSchema } from './dtos';
-import type { NotificationPreferenceResponse } from './dtos';
+import type {
+  NotificationPreferenceRequest,
+  NotificationPreferenceResponse,
+  RegisterDeviceRequest,
+} from './dtos';
+import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { NotificationsService } from './notifications.service';
 
 interface AuthenticatedRequest extends Request {
@@ -34,9 +39,9 @@ export class NotificationsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async registerDevice(
     @Req() req: AuthenticatedRequest,
-    @Body() body: unknown,
+    @Body(new ZodValidationPipe(RegisterDeviceSchema))
+    { token, platform }: RegisterDeviceRequest,
   ): Promise<void> {
-    const { token, platform } = RegisterDeviceSchema.parse(body);
     await this.notifications.registerDevice({
       userId: req.user.userId,
       token,
@@ -54,9 +59,9 @@ export class NotificationsController {
   @Put('preferences')
   async setPreference(
     @Req() req: AuthenticatedRequest,
-    @Body() body: unknown,
+    @Body(new ZodValidationPipe(NotificationPreferenceSchema))
+    { enabled }: NotificationPreferenceRequest,
   ): Promise<NotificationPreferenceResponse> {
-    const { enabled } = NotificationPreferenceSchema.parse(body);
     await this.notifications.setEnabled(req.user.userId, enabled);
     return { enabled };
   }
