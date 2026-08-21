@@ -52,4 +52,14 @@ export {
   type SignerSet,
 } from "./types.js";
 
+export {
+  AccountStateError,
+  decodeProposal,
+  decodeSpendingLimit,
+  deriveProposalAddress,
+  fetchSettings,
+  type ProposalState,
+  type SettingsState,
+} from "./state.js";
+
 export { PROGRAM_ID } from "@sqds/smart-account";

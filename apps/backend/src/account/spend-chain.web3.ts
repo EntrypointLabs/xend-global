@@ -12,8 +12,11 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js';
-import { accounts } from '@sqds/smart-account';
-import { derivePolicyAddress, type SpendingLimit } from '@xend/smart-account';
+import {
+  decodeSpendingLimit,
+  derivePolicyAddress,
+  type SpendingLimit,
+} from '@xend/smart-account';
 
 import {
   SETTLEMENT_AUTHORITY_SIGNER,
@@ -80,49 +83,11 @@ export class Web3SpendChain implements SpendChain, OnModuleInit {
     }
     if (!info) return [];
 
-    let state: accounts.Policy;
     try {
-      [state] = accounts.Policy.fromAccountInfo(info);
+      return [decodeSpendingLimit(policy, info)];
     } catch (cause) {
-      throw new AccountCreationError(
-        `Could not decode the spending limit policy at ${policy.toBase58()}: ${describe(cause)}`,
-      );
+      throw new AccountCreationError(describe(cause));
     }
-
-    if (state.policyState.__kind !== 'SpendingLimit') {
-      throw new AccountCreationError(
-        `Policy ${policy.toBase58()} holds a ${state.policyState.__kind} policy, not a spending limit`,
-      );
-    }
-
-    const [{ destinations, spendingLimit }] = state.policyState.fields;
-
-    // Custom carries its own duration, so nothing we create can produce it: our
-    // policy is written at a fixed seed under our own settings with a Daily
-    // period. Reading one back means this policy is not the one provisioning
-    // wrote, which is worth failing on rather than routing Spends against.
-    const period = spendingLimit.timeConstraints.period;
-    if (period.__kind === 'Custom') {
-      throw new AccountCreationError(
-        `Policy ${policy.toBase58()} carries a custom period, which provisioning never creates`,
-      );
-    }
-
-    return [
-      {
-        policy,
-        mint: spendingLimit.mint,
-        maxPerUse: toBigInt(spendingLimit.quantityConstraints.maxPerUse),
-        maxPerPeriod: toBigInt(spendingLimit.quantityConstraints.maxPerPeriod),
-        period: period.__kind,
-        // Taken as the chain currently records it. The program refills this
-        // when a Spend lands in a new period, so a Consumer whose period has
-        // rolled over reads low until then and is asked for the second
-        // signature they would not strictly need.
-        remainingInPeriod: toBigInt(spendingLimit.usage.remainingInPeriod),
-        destinations,
-      },
-    ];
   }
 
   async tokenProgramFor(mint: string): Promise<PublicKey> {
@@ -228,15 +193,6 @@ export class Web3SpendChain implements SpendChain, OnModuleInit {
       lastValidBlockHeight,
     };
   }
-}
-
-/**
- * A u64 as the SDK surfaces it: a BN at runtime, loosely typed at compile time.
- * Going through the string form is the only conversion that survives values
- * past 2^53.
- */
-function toBigInt(value: unknown): bigint {
-  return BigInt((value as { toString(): string }).toString());
 }
 
 function describe(cause: unknown): string {
