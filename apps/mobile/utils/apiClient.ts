@@ -498,7 +498,13 @@ class BackendClient {
    */
   async enrolAccount(
     body:
-      | { platform: "ios" | "android"; attestation: string; nonce: string }
+      | {
+          platform: "ios" | "android";
+          attestation: string;
+          nonce: string;
+          /** iOS: the Secure Enclave key the attested challenge commits to. */
+          hardwarePublicKey?: string;
+        }
       | { hardwarePublicKey: string }
   ): Promise<EnrolAccountResponse> {
     const raw = await this.request<unknown>("/account/enrolment", {

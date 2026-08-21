@@ -77,6 +77,23 @@ describe('AppAttestVerifier', () => {
     ).rejects.toThrow(/unexpected attestation format/);
   });
 
+  it('refuses an iOS enrolment that names no Secure Enclave key', async () => {
+    const cert = await selfSignedChain();
+    const blob = Buffer.from(
+      cborEncode({
+        fmt: 'apple-appattest',
+        attStmt: { x5c: [new Uint8Array(cert.rawData)] },
+        authData: new Uint8Array(128),
+      }),
+    ).toString('base64');
+
+    // Without one there is nothing to enrol but the App Attest key, which is
+    // the key the app can never stamp Turnkey with.
+    await expect(
+      new AppAttestVerifier(config(APP_ID)).verify(blob, NONCE),
+    ).rejects.toBeInstanceOf(AttestationRejectedError);
+  });
+
   it('rejects a chain that does not reach the Apple root', async () => {
     const cert = await selfSignedChain();
     const blob = Buffer.from(
@@ -88,7 +105,7 @@ describe('AppAttestVerifier', () => {
     ).toString('base64');
 
     await expect(
-      new AppAttestVerifier(config(APP_ID)).verify(blob, NONCE),
+      new AppAttestVerifier(config(APP_ID)).verify(blob, NONCE, '02ab'),
     ).rejects.toBeInstanceOf(AttestationRejectedError);
   });
 });

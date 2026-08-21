@@ -43,8 +43,9 @@ export function useEnrolAccount() {
       const { nonce } = await apiClient.requestEnrolmentNonce();
 
       let attestation: string;
+      let publicKey: string;
       try {
-        ({ attestation } = await hardwareKey.enrol(nonce));
+        ({ attestation, publicKey } = await hardwareKey.enrol(nonce));
       } catch (err) {
         // The native side already discards a key whose attestation failed;
         // this covers the case where it could not.
@@ -52,10 +53,14 @@ export function useEnrolAccount() {
         throw err;
       }
 
+      // iOS attests over the nonce and this key together, because App Attest
+      // cannot attest the Secure Enclave key that will stamp Turnkey. Android's
+      // attestation carries its own key and ignores this.
       return apiClient.enrolAccount({
         platform: devicePlatform(),
         attestation,
         nonce,
+        hardwarePublicKey: publicKey,
       });
     },
     onSuccess: () => {

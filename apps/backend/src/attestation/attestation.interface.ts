@@ -22,13 +22,24 @@ export interface AttestationRequest {
   attestation: string;
   /** The nonce this attestation was produced for. Single use. */
   nonce: string;
+  /**
+   * iOS only, and required there: the Secure Enclave key to enrol.
+   *
+   * Not the attested key. App Attest will not sign a Turnkey stamp and the
+   * Secure Enclave key cannot be attested, so the device attests over
+   * `nonce || this key` and Apple's signature is what proves it.
+   */
+  hardwarePublicKey?: string;
 }
 
 export interface VerifiedAttestation {
   /**
-   * The attested public key, compressed P-256, hex. Taken from the attestation
-   * itself rather than from the client, so a client cannot enrol one key while
-   * attesting another.
+   * The public key to enrol, compressed P-256, hex.
+   *
+   * Never simply the client's word for it. On Android it is read out of the
+   * attestation; on iOS it is the key the attested challenge commits to, which
+   * Apple signed. Either way a client cannot enrol one key while attesting
+   * another.
    */
   hardwarePublicKey: string;
   /** `strongbox` only appears on Android; iOS reports `secure_enclave`. */

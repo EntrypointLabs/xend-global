@@ -89,14 +89,17 @@ export class AccountController {
     @Body(new ZodValidationPipe(EnrolAccountSchema)) body: EnrolAccountDto,
   ) {
     try {
+      // Discriminated on the attestation, not on the key: iOS sends a key on
+      // the fresh path too, bound into the attested challenge.
       const verified =
-        'hardwarePublicKey' in body
-          ? await this.resumeEnrolment(req.user.userId, body.hardwarePublicKey)
-          : await this.attestation.verify(req.user.userId, {
+        'attestation' in body
+          ? await this.attestation.verify(req.user.userId, {
               platform: body.platform,
               attestation: body.attestation,
               nonce: body.nonce,
-            });
+              hardwarePublicKey: body.hardwarePublicKey,
+            })
+          : await this.resumeEnrolment(req.user.userId, body.hardwarePublicKey);
 
       const account = await this.accounts.createAccount({
         userId: req.user.userId,

@@ -25,6 +25,11 @@ export const EnrolAccountSchema = z.union([
     /** Base64: the App Attest object on iOS, the certificate chain on Android. */
     attestation: z.string().min(1),
     nonce: z.string().min(1),
+    /**
+     * iOS only: the Secure Enclave key the attestation's challenge commits to.
+     * Proven by Apple's signature over that challenge, not taken on trust.
+     */
+    hardwarePublicKey: z.string().min(1).optional(),
   }),
   z.object({
     /** Compressed P-256 public key, hex, attested on an earlier attempt. */

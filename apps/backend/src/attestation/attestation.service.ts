@@ -55,7 +55,11 @@ export class AttestationService {
     try {
       verified =
         request.platform === 'ios'
-          ? await this.ios.verify(request.attestation, request.nonce)
+          ? await this.ios.verify(
+              request.attestation,
+              request.nonce,
+              request.hardwarePublicKey,
+            )
           : await this.android.verify(request.attestation, request.nonce);
     } catch (err) {
       this.logger.warn(
