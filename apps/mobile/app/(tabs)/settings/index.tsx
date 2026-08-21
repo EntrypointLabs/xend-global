@@ -62,7 +62,7 @@ export default function SettingsScreen() {
   };
 
   const handlePasskeyPress = () => {
-    if (hasPasskey && false) {
+    if (hasPasskey) {
       showToast("Passkey is already set up");
       return;
     }
