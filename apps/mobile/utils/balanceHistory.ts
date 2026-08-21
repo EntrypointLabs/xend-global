@@ -34,16 +34,19 @@ export function selectBalanceHistory(
   const confirmed = rows
     .filter((row) => row.status === "CONFIRMED")
     .map((row) => {
-      const price = pricesByMint[row.mint];
-      // An unpriceable mint cannot be undone in dollars. Leaving its step out
-      // of the line beats inventing a cliff the Consumer never experienced.
-      if (price == null) return null;
-      const decimals = decimalsByMint[row.mint] ?? FALLBACK_DECIMALS;
-      const amount = Number(row.amountRaw) / 10 ** decimals;
+      // The row's own frozen value first. It is stored precisely so history
+      // survives the Consumer selling the asset: the holdings-derived price and
+      // decimals know nothing about a mint they no longer hold, which dropped
+      // those movements from the line or mis-scaled them.
+      const value =
+        rowUsdValue(row) ?? holdingsUsdValue(row, pricesByMint, decimalsByMint);
+      // Nothing could value it. Leaving its step out of the line beats
+      // inventing a cliff the Consumer never experienced.
+      if (value === null) return null;
       return {
         at: Date.parse(row.confirmedAt ?? row.createdAt),
         // Signed by direction so the walk-back can undo it.
-        delta: amount * price * (row.direction === "SEND" ? -1 : 1),
+        delta: value * (row.direction === "SEND" ? -1 : 1),
       };
     })
     .filter((row): row is { at: number; delta: number } => row !== null)
@@ -67,4 +70,27 @@ export function selectBalanceHistory(
   points.push({ at: confirmed[confirmed.length - 1]!.at - 1, value: running });
 
   return points.reverse();
+}
+
+/** What the backend froze for this row, if anything. */
+function rowUsdValue(row: TransferRow): number | null {
+  if (row.usdValue == null) return null;
+  const parsed = Number(row.usdValue);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Fallback for rows indexed before the value was stored: price the amount from
+ * what the Consumer currently holds. Only works while they still hold it.
+ */
+function holdingsUsdValue(
+  row: TransferRow,
+  pricesByMint: Record<string, number>,
+  decimalsByMint: Record<string, number>
+): number | null {
+  const price = pricesByMint[row.mint];
+  if (price == null) return null;
+  const decimals =
+    row.decimals ?? decimalsByMint[row.mint] ?? FALLBACK_DECIMALS;
+  return (Number(row.amountRaw) / 10 ** decimals) * price;
 }
