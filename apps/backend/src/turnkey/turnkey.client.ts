@@ -92,18 +92,6 @@ export class TurnkeySdkClient implements TurnkeyApi {
     };
   }
 
-  async createPolicy(params: {
-    organizationId: string;
-    policyName: string;
-    effect: 'EFFECT_ALLOW' | 'EFFECT_DENY';
-    consensus: string;
-    condition: string;
-    notes: string;
-  }) {
-    const result = await this.delegated.createPolicy(params);
-    return { policyId: result.policyId };
-  }
-
   async updateRootQuorum(params: {
     organizationId: string;
     threshold: number;

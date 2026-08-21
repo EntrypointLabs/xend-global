@@ -54,15 +54,6 @@ export interface TurnkeyApi {
     wallet?: { walletId: string; addresses: string[] };
   }>;
 
-  createPolicy(params: {
-    organizationId: string;
-    policyName: string;
-    effect: 'EFFECT_ALLOW' | 'EFFECT_DENY';
-    consensus: string;
-    condition: string;
-    notes: string;
-  }): Promise<{ policyId: string }>;
-
   updateRootQuorum(params: {
     organizationId: string;
     threshold: number;
