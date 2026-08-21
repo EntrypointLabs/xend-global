@@ -212,6 +212,17 @@ export function buildSpend({
     );
   }
 
+  // Native SOL only, for now. `SystemProgram.transfer` reads `request.amount`
+  // as lamports whatever the mint says, so letting a token through here moves
+  // SOL while the intent and the transfer row both record a stablecoin — a
+  // silent, wrong money movement. Refusing is the safe half of the fix; the
+  // token payload for this route is not built yet.
+  if (!request.mint.equals(NATIVE_MINT)) {
+    throw new Error(
+      `the two-signature route cannot move ${request.mint.toBase58()} yet; only native SOL`,
+    );
+  }
+
   const transfer = SystemProgram.transfer({
     fromPubkey: addresses.vault,
     toPubkey: request.destination,

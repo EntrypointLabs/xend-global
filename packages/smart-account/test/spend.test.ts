@@ -9,6 +9,7 @@ import {
   type SpendingLimit,
 } from "../src/index.js";
 
+const NATIVE = PublicKey.default;
 const USDC = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
 const OTHER_MINT = Keypair.generate().publicKey;
 const addresses = deriveAccountAddresses(1n);
@@ -192,14 +193,15 @@ describe("buildSpend", () => {
   it("builds a two-signature spend against the above-limit policy", () => {
     const ix = buildSpend({
       addresses,
-      request: { mint: USDC, amount: 1_000_000n, destination: dest },
+      // Native SOL: the two-signature route cannot carry a token yet.
+      request: { mint: NATIVE, amount: 1_000_000n, destination: dest },
       route: {
         kind: "two-signature",
         reason: "no-spending-limit",
         policy: ABOVE_POLICY,
       },
       signers: [primary, approval],
-      decimals: 6,
+      decimals: 9,
     });
     expect(ix.keys.some((k) => k.pubkey.equals(primary) && k.isSigner)).toBe(
       true,
@@ -235,5 +237,24 @@ describe("buildSpend", () => {
         decimals: 6,
       }),
     ).toThrow(/at least two signers/);
+  });
+
+  it("refuses a token on the two-signature route rather than moving SOL", () => {
+    // SystemProgram.transfer reads the amount as lamports whatever the mint
+    // says, so this route would move SOL while the row recorded USDC.
+    expect(() =>
+      buildSpend({
+        addresses,
+        request: { mint: USDC, amount: 1_000_000n, destination: dest },
+        route: {
+          kind: "two-signature",
+          reason: "no-spending-limit",
+          policy: ABOVE_POLICY,
+        },
+        signers: [primary, approval],
+        decimals: 6,
+        tokenProgram: TOKEN_PROGRAM,
+      }),
+    ).toThrow(/two-signature route cannot move/);
   });
 });

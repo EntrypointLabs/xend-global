@@ -116,6 +116,19 @@ const request = {
   decimals: 6,
 };
 
+/**
+ * The same Spend in native SOL.
+ *
+ * Routing tests use this because the two-signature route cannot build a token
+ * instruction yet and refuses rather than moving SOL under a token's name.
+ * Which route is chosen is what those tests are about.
+ */
+const nativeRequest = {
+  ...request,
+  mint: PublicKey.default.toBase58(),
+  decimals: 9,
+};
+
 function service(
   spendChain: SpendChain,
   row: SquadsAccountRow | null = account,
@@ -127,7 +140,7 @@ describe('SpendService.prepare', () => {
   it('needs two signatures when the Account has no spending limit', async () => {
     const { spendChain } = chain([]);
 
-    const result = await service(spendChain).prepare(request);
+    const result = await service(spendChain).prepare(nativeRequest);
 
     // The safe direction: an unknown limit state forces more signatures, not
     // fewer.
@@ -147,7 +160,7 @@ describe('SpendService.prepare', () => {
   it('falls back to two signatures above the per-use cap', async () => {
     const { spendChain } = chain([limit({ maxPerUse: 10n })]);
 
-    const result = await service(spendChain).prepare(request);
+    const result = await service(spendChain).prepare(nativeRequest);
 
     expect(result.route).toBe('two-signature');
     expect(result.needsApprovalSignature).toBe(true);
@@ -156,7 +169,7 @@ describe('SpendService.prepare', () => {
   it('falls back to two signatures once the period is spent', async () => {
     const { spendChain } = chain([limit({ remainingInPeriod: 10n })]);
 
-    const result = await service(spendChain).prepare(request);
+    const result = await service(spendChain).prepare(nativeRequest);
 
     expect(result.route).toBe('two-signature');
   });
@@ -181,14 +194,16 @@ describe('SpendService.prepare', () => {
   });
 
   it('stays on two signatures when the program refuses', async () => {
+    // The limit has to be on the same mint as the Spend, or the route never
+    // reaches the optimistic recheck this test is about.
     const { spendChain, simulated } = chain(
-      [limit({ remainingInPeriod: 0n })],
+      [limit({ mint: PublicKey.default, remainingInPeriod: 0n })],
       {
         programAccepts: false,
       },
     );
 
-    const result = await service(spendChain).prepare(request);
+    const result = await service(spendChain).prepare(nativeRequest);
 
     expect(result.route).toBe('two-signature');
     expect(simulated).toHaveLength(1);
@@ -201,7 +216,7 @@ describe('SpendService.prepare', () => {
       programAccepts: true,
     });
 
-    const result = await service(spendChain).prepare(request);
+    const result = await service(spendChain).prepare(nativeRequest);
 
     expect(result.route).toBe('two-signature');
     expect(simulated).toHaveLength(0);
@@ -210,7 +225,7 @@ describe('SpendService.prepare', () => {
   it('does not ask the program when there is no limit at all', async () => {
     const { spendChain, simulated } = chain([], { programAccepts: true });
 
-    const result = await service(spendChain).prepare(request);
+    const result = await service(spendChain).prepare(nativeRequest);
 
     expect(result.route).toBe('two-signature');
     expect(simulated).toHaveLength(0);
@@ -219,7 +234,7 @@ describe('SpendService.prepare', () => {
   it('reads the limits of the Account being spent from', async () => {
     const { spendChain, read } = chain([]);
 
-    await service(spendChain).prepare(request);
+    await service(spendChain).prepare(nativeRequest);
 
     // The limit is a policy derived from this Account's settings, so reading
     // any other Account's would decide the route from the wrong balance.
@@ -241,13 +256,23 @@ describe('SpendService.prepare', () => {
     const { spendChain } = chain([]);
     const { signer } = authority();
 
-    await new SpendService(store(), spendChain, signer).prepare(request);
+    await new SpendService(store(), spendChain, signer).prepare(nativeRequest);
 
     // The fee payer's signature slot is the one submit fills. Compiled against
     // any other key, S1 included, the Spend reaches the cluster still missing
     // it, and S1 has no lamports to pay with anyway.
     expect(spendChain.feePayer).toBe(signer.address);
     expect(spendChain.feePayer).not.toBe(PRIMARY);
+  });
+
+  it('refuses a token Spend that lands on the two-signature route', async () => {
+    // Better a clear failure than a transaction that moves SOL while the
+    // intent and the transfer row both say USDC.
+    const { spendChain } = chain([], { programAccepts: false });
+
+    await expect(service(spendChain).prepare(request)).rejects.toThrow(
+      /two-signature route cannot move/,
+    );
   });
 
   it('refuses to prepare a Spend for a Consumer with no Account', async () => {
@@ -266,7 +291,7 @@ describe('SpendService.prepare', () => {
     );
     const { spendChain } = chain([]);
 
-    const result = await service(spendChain).prepare(request);
+    const result = await service(spendChain).prepare(nativeRequest);
 
     // Not the Settings. A time-locked Settings cannot carry a synchronous
     // Spend at all, so routing there would make every above-limit Spend fail.
