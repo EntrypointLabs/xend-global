@@ -15,19 +15,23 @@ export {
 } from "./pda.js";
 
 export {
+  buildAddRecoverySigner,
   buildApproveSettingsChange,
   buildCreateAboveLimitPolicy,
   buildCreateSpendingLimitPolicy,
   buildExecuteSettingsChange,
   buildProvisionAccount,
   buildRejectSettingsChange,
+  buildRemoveRecoverySigner,
   buildSetTimeLock,
+  type AddRecoverySignerParams,
   type CreateAboveLimitPolicyParams,
   type CreateSpendingLimitPolicyParams,
   type CreateSpendingLimitPolicyResult,
   type LimitPeriod,
   type ProvisionAccountParams,
   type ProvisionAccountResult,
+  type RemoveRecoverySignerParams,
   type SetTimeLockParams,
   type SpendingLimitTerms,
 } from "./policy.js";

@@ -24,12 +24,14 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   associatedTokenAddress,
+  buildAddRecoverySigner,
   buildApproveSettingsChange,
   buildCreateAboveLimitPolicy,
   buildCreateAccount,
   buildCreateSpendingLimitPolicy,
   buildExecuteSettingsChange,
   buildProvisionAccount,
+  buildRemoveRecoverySigner,
   buildSetTimeLock,
   buildSpend,
   derivePolicyAddress,
@@ -814,5 +816,289 @@ describe.skipIf(!HAVE_FIXTURES)("provisioning order", () => {
       failed(send(h.svm, h.primary, [twoSig], [h.primary, h.approval])),
     ).toBe(false);
     expect(h.svm.getBalance(aboveLimit)).toBe(BigInt(3 * LAMPORTS_PER_SOL));
+  });
+});
+
+describe.skipIf(!HAVE_FIXTURES)("recovery signer changes", () => {
+  /**
+   * Like `applySettingsChange`, but for a change that creates no policy.
+   *
+   * `buildExecuteSettingsChange` defaults `policies` to `[]`, and passing a
+   * policy that the change never creates fails inside the program.
+   */
+  function applySignerChange(
+    h: Harness,
+    propose: TransactionInstruction[],
+    transactionIndex: bigint,
+    rentPayer?: Keypair,
+  ) {
+    // The rent payer signs the propose too: it funds the transaction and
+    // proposal accounts, and the program marks it a signer on both.
+    const proposeSigners =
+      rentPayer && !rentPayer.publicKey.equals(h.primary.publicKey)
+        ? [h.primary, rentPayer]
+        : [h.primary];
+    expect(failed(send(h.svm, h.primary, propose, proposeSigners))).toBe(false);
+    for (const signer of [h.primary, h.approval]) {
+      const approve = buildApproveSettingsChange({
+        addresses: h.addresses,
+        transactionIndex,
+        signer: signer.publicKey,
+      });
+      expect(failed(send(h.svm, signer, [approve], [signer]))).toBe(false);
+    }
+    const clock = h.svm.getClock();
+    clock.unixTimestamp = clock.unixTimestamp + BigInt(SETTINGS_TIME_LOCK + 10);
+    h.svm.setClock(clock);
+    h.svm.expireBlockhash();
+
+    const execute = buildExecuteSettingsChange({
+      addresses: h.addresses,
+      transactionIndex,
+      signer: h.primary.publicKey,
+      rentPayer: rentPayer?.publicKey,
+    });
+    const signers = rentPayer ? [h.primary, rentPayer] : [h.primary];
+    return send(h.svm, h.primary, [execute], signers);
+  }
+
+  const signerKeys = (h: Harness): string[] =>
+    (settingsOf(h).signers as { key: PublicKey }[]).map((signer) =>
+      signer.key.toBase58(),
+    );
+
+  it("adds a recovery signer to the signer set", () => {
+    const h = setUp();
+    const added = Keypair.generate();
+    const before = settingsOf(h);
+    const index = BigInt(before.transactionIndex.toString()) + 1n;
+
+    const result = applySignerChange(
+      h,
+      buildAddRecoverySigner({
+        addresses: h.addresses,
+        newSigner: added.publicKey,
+        proposer: h.primary.publicKey,
+        rentPayer: h.primary.publicKey,
+        transactionIndex: index,
+      }),
+      index,
+      h.primary,
+    );
+
+    expect(failed(result)).toBe(false);
+    expect(signerKeys(h)).toContain(added.publicKey.toBase58());
+    expect(signerKeys(h)).toHaveLength(4);
+  });
+
+  it("grants an added signer the recovery mask and nothing more", () => {
+    const h = setUp();
+    const added = Keypair.generate();
+    const index = BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
+
+    applySignerChange(
+      h,
+      buildAddRecoverySigner({
+        addresses: h.addresses,
+        newSigner: added.publicKey,
+        proposer: h.primary.publicKey,
+        rentPayer: h.primary.publicKey,
+        transactionIndex: index,
+      }),
+      index,
+      h.primary,
+    );
+
+    // Vote alone, matching what account creation grants S3. A wider mask here
+    // would let a key added later initiate or execute, which S3 cannot, and
+    // the drift would be invisible until someone read the chain.
+    const signers = settingsOf(h).signers as {
+      key: PublicKey;
+      permissions: { mask: number };
+    }[];
+    const existing = signers.find((signer) =>
+      signer.key.equals(h.recovery.publicKey),
+    );
+    const fresh = signers.find((signer) => signer.key.equals(added.publicKey));
+    expect(fresh?.permissions.mask).toBe(existing?.permissions.mask);
+  });
+
+  it("removes a recovery signer from the signer set", () => {
+    const h = setUp();
+    const added = Keypair.generate();
+
+    const addIndex = BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
+    applySignerChange(
+      h,
+      buildAddRecoverySigner({
+        addresses: h.addresses,
+        newSigner: added.publicKey,
+        proposer: h.primary.publicKey,
+        rentPayer: h.primary.publicKey,
+        transactionIndex: addIndex,
+      }),
+      addIndex,
+      h.primary,
+    );
+    expect(signerKeys(h)).toHaveLength(4);
+
+    const removeIndex = BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
+    const result = applySignerChange(
+      h,
+      buildRemoveRecoverySigner({
+        addresses: h.addresses,
+        oldSigner: added.publicKey,
+        proposer: h.primary.publicKey,
+        rentPayer: h.primary.publicKey,
+        transactionIndex: removeIndex,
+      }),
+      removeIndex,
+      h.primary,
+    );
+
+    expect(failed(result)).toBe(false);
+    expect(signerKeys(h)).not.toContain(added.publicKey.toBase58());
+    expect(signerKeys(h)).toHaveLength(3);
+  });
+
+  it("leaves the spend path untouched when the signer set changes", () => {
+    const h = setUp();
+    const added = Keypair.generate();
+
+    // Both policies, in seed order. The program allocates policy seeds
+    // sequentially, so seed 2 cannot be created before seed 1 exists.
+    const limitIndex = BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
+    const limit = buildCreateSpendingLimitPolicy({
+      addresses: h.addresses,
+      policySeed: LIMIT_POLICY_SEED,
+      terms: {
+        mint: SOL,
+        maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
+        maxPerPeriod: BigInt(5 * LAMPORTS_PER_SOL),
+        period: "Daily",
+      },
+      limitSigner: h.primary.publicKey,
+      proposer: h.primary.publicKey,
+      transactionIndex: limitIndex,
+    });
+    expect(
+      failed(applySettingsChange(h, limit.propose, limitIndex, limit.policy)),
+    ).toBe(false);
+
+    const policyIndex = BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
+    const { policy, propose } = buildCreateAboveLimitPolicy({
+      addresses: h.addresses,
+      policySeed: ABOVE_LIMIT_POLICY_SEED,
+      primary: h.primary.publicKey,
+      approval: h.approval.publicKey,
+      proposer: h.primary.publicKey,
+      transactionIndex: policyIndex,
+    });
+    expect(failed(applySettingsChange(h, propose, policyIndex, policy))).toBe(
+      false,
+    );
+
+    const index = BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
+
+    applySignerChange(
+      h,
+      buildAddRecoverySigner({
+        addresses: h.addresses,
+        newSigner: added.publicKey,
+        proposer: h.primary.publicKey,
+        rentPayer: h.primary.publicKey,
+        transactionIndex: index,
+      }),
+      index,
+      h.primary,
+    );
+
+    // The reason no PolicyUpdate accompanies the change: policies carry their
+    // own inline signer sets and the Settings account is never loaded on the
+    // spend path, so a signer added here reaches no money.
+    const created = decode<{ signers: { key: PublicKey }[] }>(
+      h.svm,
+      h.abovePolicy,
+      accounts.Policy,
+    );
+    expect(
+      created.signers.map((signer) => signer.key.toBase58()),
+    ).not.toContain(added.publicKey.toBase58());
+  });
+
+  it("still lets the program strip the last recovery signer", () => {
+    const h = setUp();
+    const index = BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
+
+    const result = applySignerChange(
+      h,
+      buildRemoveRecoverySigner({
+        addresses: h.addresses,
+        oldSigner: h.recovery.publicKey,
+        proposer: h.primary.publicKey,
+        rentPayer: h.primary.publicKey,
+        transactionIndex: index,
+      }),
+      index,
+      h.primary,
+    );
+
+    // Succeeds, and that is the point of the assertion. Two signers remain,
+    // which satisfies the threshold, so the program has no objection to an
+    // Account that can never recover a lost phone. `RecoveryService` is the
+    // only thing standing between a Consumer and that state.
+    expect(failed(result)).toBe(false);
+    expect(signerKeys(h)).toHaveLength(2);
+  });
+
+  it("refuses to add a signer that is already in the set", () => {
+    const h = setUp();
+    const index = BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
+
+    const result = applySignerChange(
+      h,
+      buildAddRecoverySigner({
+        addresses: h.addresses,
+        newSigner: h.recovery.publicKey,
+        proposer: h.primary.publicKey,
+        rentPayer: h.primary.publicKey,
+        transactionIndex: index,
+      }),
+      index,
+      h.primary,
+    );
+
+    // Rejected only here, at execute, after both approvals and the whole time
+    // lock. The index is consumed and the wait is spent either way, which is
+    // why the caller has to check the set before proposing.
+    expect(failed(result)).toBe(true);
+    expect(signerKeys(h)).toHaveLength(3);
+  });
+
+  it("charges the rent for a longer signer set to the rent payer", () => {
+    const h = setUp();
+    const added = Keypair.generate();
+    const payer = Keypair.generate();
+    h.svm.airdrop(payer.publicKey, BigInt(LAMPORTS_PER_SOL));
+    const before = h.svm.getBalance(payer.publicKey) ?? 0n;
+    const index = BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
+
+    applySignerChange(
+      h,
+      buildAddRecoverySigner({
+        addresses: h.addresses,
+        newSigner: added.publicKey,
+        proposer: h.primary.publicKey,
+        rentPayer: payer.publicKey,
+        transactionIndex: index,
+      }),
+      index,
+      payer,
+    );
+
+    // Adding a signer reallocates the Settings account, so someone funds the
+    // difference. Naming the payer is what keeps that off a Consumer who has
+    // no lamports.
+    expect(h.svm.getBalance(payer.publicKey) ?? 0n).toBeLessThan(before);
   });
 });

@@ -2,6 +2,7 @@ import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { instructions, types } from "@sqds/smart-account";
 import type { generated } from "@sqds/smart-account";
 
+import { ROLE_PERMISSIONS } from "./account.js";
 import { derivePolicyAddress } from "./pda.js";
 import type { AccountAddresses } from "./types.js";
 
@@ -264,6 +265,91 @@ export function buildSetTimeLock({
   });
 }
 
+export interface AddRecoverySignerParams {
+  addresses: AccountAddresses;
+  /** The recovery signer joining the Settings signer set. */
+  newSigner: PublicKey;
+  /** Proposes the change. Must be a signer with `Initiate`, so S1. */
+  proposer: PublicKey;
+  /**
+   * Funds the rent. Defaults to `proposer`. See {@link SetTimeLockParams}.
+   *
+   * Adding a signer reallocates the Settings account by 33 bytes, and the
+   * difference is charged here on top of the transaction and proposal accounts.
+   * Measured against the deployed program: 229_680 lamports per added signer.
+   */
+  rentPayer?: PublicKey;
+  /** The Settings account's current `transactionIndex`, plus one. */
+  transactionIndex: bigint;
+}
+
+/**
+ * Adds a recovery signer to the Settings signer set.
+ *
+ * Only the Settings. Spends run under policies that carry their own inline
+ * signer sets, and recovery is deliberately absent from both of them (D5b), so
+ * this reaches no spend path and needs no matching `PolicyUpdate`.
+ *
+ * The program validates nothing until execute, which is after both approvals
+ * and the full time lock. A key already in the set fails there with
+ * `DuplicateSigner`, having consumed a `transactionIndex` and burned the wait.
+ * Check the current signer set before proposing rather than after.
+ */
+export function buildAddRecoverySigner({
+  addresses,
+  newSigner,
+  proposer,
+  rentPayer,
+  transactionIndex,
+}: AddRecoverySignerParams): TransactionInstruction[] {
+  return proposeSettingsChange({
+    addresses,
+    transactionIndex,
+    proposer,
+    rentPayer,
+    actions: [addSignerAction(newSigner)],
+  });
+}
+
+export interface RemoveRecoverySignerParams {
+  addresses: AccountAddresses;
+  /** The recovery signer leaving the Settings signer set. */
+  oldSigner: PublicKey;
+  /** Proposes the change. Must be a signer with `Initiate`, so S1. */
+  proposer: PublicKey;
+  /** Funds the rent. Defaults to `proposer`. Removal reallocates down and refunds nothing. */
+  rentPayer?: PublicKey;
+  /** The Settings account's current `transactionIndex`, plus one. */
+  transactionIndex: bigint;
+}
+
+/**
+ * Removes a recovery signer from the Settings signer set.
+ *
+ * The program refuses a removal that would leave fewer vote-holding signers
+ * than the threshold, with `InvalidThreshold` at execute time. That is a weaker
+ * guard than it sounds: an Account with S1, S2 and one recovery signer still
+ * has two signers left without it, so the program is happy to strip the last
+ * recovery signer and leave a lost phone unrecoverable. The rule that an
+ * Account always keeps one lives in `RecoveryService`, and this builder trusts
+ * the caller to have applied it.
+ */
+export function buildRemoveRecoverySigner({
+  addresses,
+  oldSigner,
+  proposer,
+  rentPayer,
+  transactionIndex,
+}: RemoveRecoverySignerParams): TransactionInstruction[] {
+  return proposeSettingsChange({
+    addresses,
+    transactionIndex,
+    proposer,
+    rentPayer,
+    actions: [removeSignerAction(oldSigner)],
+  });
+}
+
 export interface ProvisionAccountParams {
   addresses: AccountAddresses;
   /** Distinguishes the spending-limit policy from others on the Account. */
@@ -444,6 +530,25 @@ function aboveLimitPolicyAction({
 
 function setTimeLockAction(seconds: number): generated.SettingsAction {
   return { __kind: "SetTimeLock", newTimeLock: seconds };
+}
+
+/**
+ * The mask is read from `ROLE_PERMISSIONS` rather than restated, so a signer
+ * added later is granted exactly what account creation grants S3 and the two
+ * cannot drift apart.
+ */
+function addSignerAction(newSigner: PublicKey): generated.SettingsAction {
+  return {
+    __kind: "AddSigner",
+    newSigner: {
+      key: newSigner,
+      permissions: { mask: ROLE_PERMISSIONS.recovery },
+    },
+  };
+}
+
+function removeSignerAction(oldSigner: PublicKey): generated.SettingsAction {
+  return { __kind: "RemoveSigner", oldSigner };
 }
 
 function proposeSettingsChange({
