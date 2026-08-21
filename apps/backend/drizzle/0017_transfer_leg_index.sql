@@ -1,6 +1,6 @@
 -- One signature can carry several transfers. Keyed on the signature alone,
 -- every leg after the first overwrote the one before it.
-ALTER TABLE "transfers" ADD COLUMN "leg_index" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "leg_index" integer DEFAULT 0 NOT NULL;
 --> statement-breakpoint
 ALTER TABLE "transfers" DROP CONSTRAINT IF EXISTS "transfers_signature_unique";
 --> statement-breakpoint

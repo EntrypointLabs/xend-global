@@ -127,6 +127,27 @@
       "when": 1785081600000,
       "tag": "0016_user_notification_preference",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1785168000000,
+      "tag": "0017_transfer_leg_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1785254400000,
+      "tag": "0018_approval_signer_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785340800000,
+      "tag": "0019_announced_account_changes",
+      "breakpoints": true
     }
   ]
 }
