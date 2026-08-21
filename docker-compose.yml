@@ -18,11 +18,16 @@ services:
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      # A client reconnects to whatever the broker advertises, not to the
+      # address it dialled. PLAINTEXT says localhost because the apps run on
+      # the host; INTERNAL is the name the topic seeder resolves on this
+      # network. One listener cannot serve both.
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,PLAINTEXT://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
@@ -33,6 +38,25 @@ services:
       interval: 10s
       timeout: 10s
       retries: 12
+
+  # Auto-creation covers the producer, but the consumer subscribes with
+  # fromBeginning:false, so a topic born at subscribe time starts at an offset
+  # past anything already published. Seeding first makes the ordering moot.
+  kafka-topics:
+    image: apache/kafka:4.0.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        for topic in payment.created payment.succeeded payment.failed payment.expired; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 \
+            --create --if-not-exists --topic "$$topic" \
+            --partitions 1 --replication-factor 1
+        done
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --list
 
   # Fee-payer relayer: separate deployable, its own env (incl. the fee-payer
   # key). The healthcheck AUTHENTICATES because /health sits behind the
@@ -59,3 +83,27 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  # Opt-in via `--profile postgres`. Off by default because a natively
+  # installed Postgres usually already holds 5432, and binding it twice fails
+  # the whole `up`. This one needs credentials, so DATABASE_URL becomes
+  # postgresql://postgres:postgres@localhost:5432/fuse.
+  postgres:
+    image: postgres:17-alpine
+    profiles: ["postgres"]
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fuse
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fuse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:

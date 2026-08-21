@@ -1,0 +1,50 @@
+{
+  "name": "@xend/smart-account",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Owned adapter over the Squads Smart Account Program. Derives Account addresses and builds unsigned transactions for the 2-of-3 signer set.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.2",
+    "@sqds/smart-account": "file:vendor/sqds-smart-account-2.1.2-80bf1f7.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@xend/eslint-config": "*",
+    "@xend/typescript-config": "*",
+    "eslint": "^9.39.1",
+    "litesvm": "^0.8.0",
+    "tsdown": "^0.22.5",
+    "typescript": "5.9.2",
+    "vitest": "^4.1.10"
+  }
+}

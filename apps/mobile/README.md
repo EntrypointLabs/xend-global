@@ -1,8 +1,8 @@
 # @xend/mobile
 
-The Xend mobile app — an Expo React Native client for Android, iOS, and Web. Integrates the [@sqds/grid-react-native SDK](https://www.npmjs.com/package/@sqds/grid-react-native) for authentication, KYC, virtual bank accounts, USDC transfers, and payment history. Pairs with [`@xend/backend`](../backend) for any operations that require server-held credentials.
+The Xend mobile app, an Expo React Native client for Android, iOS, and Web. Authentication and the embedded Solana wallet run on [Privy](https://www.privy.io/); the [@sqds/grid-react-native SDK](https://www.npmjs.com/package/@sqds/grid-react-native) is retained for KYC, virtual bank accounts, and payment history only. Pairs with [`@xend/backend`](../backend) for any operations that require server-held credentials.
 
-> Built against Expo SDK 54. Expo Go only supports the latest SDK; use a [development build](https://docs.expo.dev/develop/development-builds/introduction/) for the full feature set.
+> Built against Expo SDK 56. Expo Go only supports the latest SDK; use a [development build](https://docs.expo.dev/develop/development-builds/introduction/) for the full feature set.
 
 ## Architecture
 
@@ -28,8 +28,6 @@ const sessionSecrets = await gridClient.generateSessionSecrets();
 
 ## Features
 
-- [Email authentication and OTP](docs/authentication.md)
-- [Smart account creation](docs/smart-account.md)
 - [KYC onboarding](docs/kyc.md)
 - [Virtual bank accounts and deposits](docs/deposit.md)
 - [Withdrawals](docs/withdraw.md)

@@ -1,6 +1,6 @@
 # Xend
 
-A mobile payments app for everyday consumers — spend money as you would, but faster. P2P payments to friends are the dominant case; merchant payment rides the same rails. The crypto rails underneath (Solana, USDC, Squads Grid smart accounts, passkey auth) are invisible to the user.
+A mobile payments app for everyday consumers — spend money as you would, but faster. P2P payments to friends are the dominant case; merchant payment rides the same rails. The crypto rails underneath (Solana, USDC, Squads smart accounts, passkey auth) are invisible to the user.
 
 ## Language
 
@@ -17,7 +17,7 @@ _Avoid_: user, trader, holder, wallet user
 ### Identity
 
 **Account**:
-The **Consumer**'s Squads Grid smart account on Solana. Holds their **Cash**. Exactly one per **Consumer**.
+The **Consumer**'s Squads smart account on Solana. Holds their **Cash**. Exactly one per **Consumer**.
 _Avoid_: wallet, smart wallet, smart account (in user-facing copy — "**Account**" is the term), profile
 
 **Passkey**:
@@ -25,11 +25,11 @@ The platform-keychain-stored auth primitive paired with the **Consumer**'s email
 _Avoid_: key, credential, login, device key
 
 **Recovery Email**:
-An additional email attached to the **Account** for use during **Recover**. A **Consumer** can have several. The primary signup email also counts as a recovery channel.
+An additional email attached to the **Account** for use during **Recover**. A **Consumer** can have several. It must differ from the sign-in email: the sign-in email already unlocks a signer, so reusing it would collapse two independent factors into one.
 _Avoid_: backup email, secondary email, alt email
 
 **Recover**:
-The action a **Consumer** takes to regain access to their **Account** on a new keychain (e.g. switched to an Android phone, lost access to their Apple ID). Driven by email: prove control of the signup email or any **Recovery Email**, then enroll a new **Passkey**. The only path to permanent lockout is having explicitly deleted the **Account**.
+The action a **Consumer** takes to regain access to their **Account** on a new device (e.g. switched to an Android phone, lost access to their Apple ID). Driven by the **Account**'s signers, not by email: any two of them together restore access and enroll a replacement for the lost one. The sign-in email alone is never sufficient. See `docs/specs/account-security-model-decisions.md`.
 _Avoid_: restore, reset, sign back in
 
 ### Money
@@ -124,7 +124,7 @@ _Avoid_: withdrawal, off-ramp (in user-facing copy), settlement (as a synonym fo
 
 - A **Consumer** has exactly one **Account**
 - A **Consumer** authenticates with an email + **Passkey** to unlock their **Account**
-- A **Consumer** may attach one or more **Recovery Emails** to their **Account**; any of them can drive **Recover** on a new keychain
+- A **Consumer** may attach one or more **Recovery Emails** to their **Account**; each backs a recovery signer, and none of them alone can drive **Recover**
 - An **Account** holds **Cash**, whose value is shown as a **Balance**
 - A **Spend** is an outflow from the **Account**; **Send** is the in-app action for executing one
 - A **Receive** is an inflow to the **Account** from any source

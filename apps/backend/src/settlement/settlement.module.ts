@@ -57,6 +57,9 @@ import { SettlementConfirmationService } from './settlement-confirmation.service
     SettlementRouter,
     SettlementService,
     SettlementConfirmationService,
+    // Account creation pays its rent with the authority rather than the
+    // relayer, whose allowlist excludes the System program by design.
+    SETTLEMENT_AUTHORITY_SIGNER,
   ],
 })
 export class SettlementModule {}

@@ -25,6 +25,14 @@ export const PrepareResponseSchema = z.object({
   // ISO-8601 UTC. The blockhash's lastValidBlockHeight + ~400ms/slot
   // upper bound. Mobile shows "Try again" on INTENT_EXPIRED.
   expiresAt: z.string().datetime(),
+  /**
+   * True when the transaction still needs the approval signer (S2) before it
+   * can land. Absent on the pre-multisig path, where Privy alone is enough.
+   *
+   * Submitting a two-signature transaction with one signature does not fail
+   * politely: it is rejected on chain after the Consumer has already confirmed.
+   */
+  needsApprovalSignature: z.boolean().optional(),
 });
 export type PrepareResponse = z.infer<typeof PrepareResponseSchema>;
 

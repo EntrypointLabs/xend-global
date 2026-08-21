@@ -1,5 +1,12 @@
 import { ConfigService } from '@nestjs/config';
-import { Keypair, VersionedTransaction } from '@solana/web3.js';
+import {
+  Keypair,
+  SystemProgram,
+  TransactionMessage,
+  VersionedTransaction,
+} from '@solana/web3.js';
+import type { AccountService } from '../account/account.service';
+import type { SpendService } from '../account/spend.service';
 import { TransferService } from './transfer.service';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
@@ -210,11 +217,52 @@ function makeSolana(opts: Partial<SolanaRpc>): SolanaRpc {
   };
 }
 
+/**
+ * A Spend the way SpendService hands one over: compiled against the settlement
+ * authority as fee payer, so the first signature slot stays empty until submit
+ * fills it.
+ */
+function makeVaultSpend() {
+  const authority = Keypair.generate().publicKey;
+  const vault = Keypair.generate().publicKey;
+  const message = new TransactionMessage({
+    payerKey: authority,
+    recentBlockhash: Keypair.generate().publicKey.toBase58(),
+    instructions: [
+      SystemProgram.transfer({
+        fromPubkey: vault,
+        toPubkey: Keypair.generate().publicKey,
+        lamports: 1,
+      }),
+    ],
+  }).compileToV0Message();
+
+  const submit = jest.fn().mockResolvedValue('sig-vault');
+  const spends = {
+    prepare: jest.fn().mockResolvedValue({
+      unsignedTxBase64: Buffer.from(
+        new VersionedTransaction(message).serialize(),
+      ).toString('base64'),
+      messageBase64: Buffer.from(message.serialize()).toString('base64'),
+      vaultAddress: vault.toBase58(),
+      blockhash: 'BlockHash11111111111111111111111111111111111',
+      lastValidBlockHeight: 12345,
+      route: 'spending-limit',
+      needsApprovalSignature: false,
+    }),
+    submit,
+  } as unknown as SpendService;
+
+  return { spends, submit, vaultAddress: vault.toBase58() };
+}
+
 function makeService(opts: {
   store?: FakeStore;
   solana: SolanaRpc;
   config?: ConfigService;
   account?: SmartAccountsRow;
+  squadsAccount?: unknown;
+  spends?: SpendService;
 }) {
   const account = opts.account ?? makeAccount();
   const store: FakeStore = opts.store ?? {
@@ -223,7 +271,25 @@ function makeService(opts: {
   };
   const db = makeFakeDb(store);
   const config = opts.config ?? makeConfig();
-  const service = new TransferService(db, config, opts.solana);
+  // No Squads Account by default, so these tests exercise the pre-multisig
+  // Privy path they were written for. The vault path has its own coverage.
+  const accounts = {
+    findByUserId: () => Promise.resolve(opts.squadsAccount ?? null),
+  } as unknown as AccountService;
+  const spends =
+    opts.spends ??
+    ({
+      prepare: () =>
+        Promise.reject(new Error('SpendService should not be reached here')),
+    } as unknown as SpendService);
+
+  const service = new TransferService(
+    db,
+    config,
+    opts.solana,
+    accounts,
+    spends,
+  );
   return { service, store, account };
 }
 
@@ -385,6 +451,64 @@ describe('TransferService.submit', () => {
     expect(store.transfers[0].mint).toBe(usdcMint);
     expect(store.transfers[0].amountRaw).toBe('1000000');
     expect(sendRawTransaction).toHaveBeenCalledWith(signedTxBase64);
+  });
+
+  it('quotes a vault Spend as free, because the authority pays for it', async () => {
+    const { spends } = makeVaultSpend();
+    const { service } = makeService({
+      solana: makeSolana({}),
+      squadsAccount: { settingsAddress: 'settings' },
+      spends,
+    });
+
+    const prep = await service.prepare('u_test', {
+      toAddress: Keypair.generate().publicKey.toBase58(),
+      mint: usdcMint,
+      amountRaw: '1000000',
+    });
+
+    // The transaction still costs lamports. They are not the Consumer's, and
+    // quoting the network fee here bills them for the settlement authority's.
+    expect(prep.feeLamports).toBe(0);
+  });
+
+  it('completes a vault Spend through SpendService rather than broadcasting it raw', async () => {
+    const sendRawTransaction = jest.fn().mockResolvedValue('sig-raw');
+    const solana = makeSolana({ sendRawTransaction });
+    const { spends, submit, vaultAddress } = makeVaultSpend();
+    const { service, store } = makeService({
+      solana,
+      squadsAccount: { settingsAddress: 'settings' },
+      spends,
+    });
+
+    const prep = await service.prepare('u_test', {
+      toAddress: Keypair.generate().publicKey.toBase58(),
+      mint: usdcMint,
+      amountRaw: '1000000',
+    });
+
+    // The device fills its own slots and leaves the fee payer's empty, which is
+    // the state the settlement authority has to complete.
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.signatures = tx.signatures.map((slot, i) =>
+      i === 0 ? slot : new Uint8Array(64).fill(7),
+    );
+    const signedTxBase64 = Buffer.from(tx.serialize()).toString('base64');
+
+    const out = await service.submit('u_test', {
+      intentId: prep.intentId,
+      signedTxBase64,
+    });
+
+    // Sent raw, this transaction reaches the cluster with an empty fee-payer
+    // signature and is rejected before it ever runs.
+    expect(submit).toHaveBeenCalledWith(signedTxBase64);
+    expect(sendRawTransaction).not.toHaveBeenCalled();
+    expect(out.signature).toBe('sig-vault');
+    expect(store.transfers[0].fromAddress).toBe(vaultAddress);
   });
 
   it('duplicate intentId returns the existing row (idempotency)', async () => {

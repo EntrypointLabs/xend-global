@@ -41,8 +41,11 @@ app-example
 # credentials
 credentials**
 
-android**
-ios**
+# Anchored to the app root, deliberately. Unanchored `android**` / `ios**` match
+# at any depth, which also swallowed modules/*/android and modules/*/ios and
+# silently kept the hardware-key native sources out of the repo entirely.
+/android/
+/ios/
 
 private**
 .env.local

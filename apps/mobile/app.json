@@ -27,7 +27,10 @@
         "applinks:xend.global",
         "webcredentials:xend.global"
       ],
-      "bundleIdentifier": "com.giftedborg.xend"
+      "bundleIdentifier": "com.giftedborg.xend",
+      "entitlements": {
+        "com.apple.developer.devicecheck.appattest-environment": "production"
+      }
     },
     "android": {
       "fonts": [

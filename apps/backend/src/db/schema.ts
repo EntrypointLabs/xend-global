@@ -20,6 +20,11 @@ import { createId } from '@paralleldrive/cuid2';
 
 export const walletProviderEnum = pgEnum('wallet_provider', ['privy']);
 
+export const recoveryChannelEnum = pgEnum('recovery_channel', [
+  'email',
+  'external_wallet',
+]);
+
 export const transferDirectionEnum = pgEnum('transfer_direction', [
   'SEND',
   'RECEIVE',
@@ -191,6 +196,122 @@ export const passkeyCredentials = pgTable(
  *   - submitted_at + failure_reason: written by /transfers/submit and
  *     the RPC tailer.
  */
+/**
+ * recovery_signers — the Account's recovery keys (S3 and any the Consumer adds
+ * later). One row per signer.
+ *
+ * An email signer's secret is generated at signup and held here sealed; using
+ * it requires proving control of `channel_value`. An external_wallet signer is
+ * the Consumer's own key, so `sealed_key` is null and we store only the pubkey.
+ *
+ * Invariant, enforced in RecoveryService and NOT at the data layer: an Account
+ * always keeps at least one recovery signer. The last one can be rotated but
+ * never deleted, because deleting it would leave a lost phone unrecoverable.
+ */
+export const recoverySigners = pgTable(
+  'recovery_signers',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    /** The Squads signer pubkey. What actually sits in the signer set. */
+    address: text('address').notNull().unique(),
+    channel: recoveryChannelEnum('channel').notNull(),
+    /** The email address, or the external wallet's own address. */
+    channelValue: text('channel_value').notNull(),
+    /** Null for external_wallet: the Consumer holds that key, not us. */
+    sealedKey: text('sealed_key'),
+    /** Which wrapping key sealed it, so the vault key can be rotated. */
+    sealedKeyId: text('sealed_key_id'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('recovery_signers_user_channel_idx').on(
+      table.userId,
+      table.channel,
+      table.channelValue,
+    ),
+  ],
+);
+
+/**
+ * squads_accounts — the Consumer's Squads smart account (ADR 0025).
+ *
+ * Separate from smart_accounts, which describes the Privy embedded wallet.
+ * The two coexist: Privy remains the primary signer, and its wallet is also
+ * what the pre-multisig balances sit in until they are swept across.
+ */
+export const squadsAccounts = pgTable('squads_accounts', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => createId()),
+  userId: text('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id),
+  /**
+   * Assigned by the program's global counter at creation, not derived.
+   * An Account address cannot be recomputed from its signer set, so losing
+   * this column loses the ability to re-derive the addresses below.
+   */
+  settingsSeed: bigint('settings_seed', { mode: 'bigint' }).notNull(),
+  /** Holds the signer set and threshold. Never holds money. */
+  settingsAddress: text('settings_address').notNull().unique(),
+  /** Where the money lives. This is the Consumer's address everywhere. */
+  vaultAddress: text('vault_address').notNull().unique(),
+  /** S1, the Privy embedded wallet. Present on every spend. */
+  primarySigner: text('primary_signer').notNull(),
+  /** S2, the Turnkey sub-organization's Solana address. */
+  approvalSigner: text('approval_signer').notNull(),
+  approvalSubOrgId: text('approval_sub_org_id').notNull().unique(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/**
+ * approval_signers — the Turnkey sub-organization backing S2, recorded the
+ * moment it exists rather than when the Account completes.
+ *
+ * Enrolment creates the sub-organization first and writes squads_accounts
+ * last, so anything failing in between (an unfunded payer, a lost seed race)
+ * leaves a real sub-organization with no row referencing it. Without this
+ * table the retry cannot find it and mints another, stranding the first with
+ * the Consumer's hardware key registered on it.
+ *
+ * Keyed by (user, hardware key) rather than by user alone: the sub-org's
+ * authenticator IS that hardware key, so a Consumer enrolling from a new
+ * device genuinely needs a new sub-organization, and reusing the old one
+ * would hand them an S2 their device cannot sign for.
+ */
+export const approvalSigners = pgTable(
+  'approval_signers',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    subOrganizationId: text('sub_organization_id').notNull().unique(),
+    /** S2's Solana address, which is what sits in the signer set. */
+    address: text('address').notNull().unique(),
+    /** The device key registered as this sub-org's authenticator. */
+    hardwarePublicKey: text('hardware_public_key').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('approval_signers_user_device_idx').on(
+      table.userId,
+      table.hardwarePublicKey,
+    ),
+  ],
+);
+
 export const transfers = pgTable(
   'transfers',
   {

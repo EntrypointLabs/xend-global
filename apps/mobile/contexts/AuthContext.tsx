@@ -297,17 +297,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     emailArg: string,
     token: string
   ): Promise<void> => {
-    setUser(userData);
-    setEmail(emailArg);
-    setWallet(
-      userData?.walletAddress ?? userData?.smart_account_address ?? null
-    );
+    // Persisted before any of it reaches React state, and in that order for a
+    // reason. Setting the user is what enables every authenticated query, and
+    // those read the token straight back out of storage. Flipping state first
+    // let them fire against a token that had not been written yet, so they went
+    // out with no Authorization header at all and came back 401 while requests
+    // a beat behind them succeeded.
     await AuthStorage.saveUserData(userData);
     await AuthStorage.saveEmail(emailArg);
     if (token) {
       await AuthStorage.saveToken(token);
     }
     await AuthStorage.saveIsAuthenticated(true);
+
+    setUser(userData);
+    setEmail(emailArg);
+    setWallet(
+      userData?.walletAddress ?? userData?.smart_account_address ?? null
+    );
     // Gate the redirect out of the auth stack until the passkey step resolves,
     // so the setup modal isn't unmounted by the tabs redirect.
     setPendingPasskeySetup(true);
@@ -368,8 +375,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setEmail,
         accountInfo,
         setAccountInfo,
-        keypair: null,
-        credentialsBundle: null,
         authError,
         authenticate,
         completeLogin,

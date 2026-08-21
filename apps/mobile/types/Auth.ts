@@ -1,4 +1,3 @@
-import { UniversalKeyPair } from "@sqds/grid-react-native";
 import { z } from "zod/v4";
 
 export const Email = z.email();
@@ -18,8 +17,6 @@ export interface AuthContextType {
   accountInfo: AccountInfo | null;
   setEmail: React.Dispatch<React.SetStateAction<string | null>>;
   setAccountInfo: React.Dispatch<React.SetStateAction<AccountInfo | null>>;
-  keypair: UniversalKeyPair | null;
-  credentialsBundle: string | null;
   authError: string | null;
   authenticate: (email: string) => Promise<void>;
   register: (email: string) => Promise<void>;

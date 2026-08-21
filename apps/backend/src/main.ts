@@ -1,3 +1,7 @@
+// Explicit rather than transitive: @peculiar/x509 loads tsyringe, which needs
+// the polyfill present before its module body runs.
+import 'reflect-metadata';
+
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';

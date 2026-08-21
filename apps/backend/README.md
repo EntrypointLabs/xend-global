@@ -33,7 +33,19 @@ JWT_SECRET=replace-me
 PORT=3000
 ```
 
-### 3. Database
+### 3. Services
+
+Kafka and Redis are required at boot; the consumer connects during `onModuleInit`, so an unreachable broker takes the process down.
+
+```bash
+npm run infra          # Kafka (KRaft, no ZooKeeper) + Redis, with topics seeded
+npm run infra:down     # stop
+npm run infra:reset    # stop, drop volumes, start clean
+```
+
+Postgres is not started by default, since a natively installed one usually already holds 5432. Use `docker compose --profile postgres up -d` to run it in Docker instead, and point `DATABASE_URL` at `postgresql://postgres:postgres@localhost:5432/fuse`.
+
+### 4. Database
 
 ```bash
 npm --workspace @xend/backend run db:generate   # generate migrations from schema
@@ -41,7 +53,9 @@ npm --workspace @xend/backend run db:migrate    # apply migrations
 npm --workspace @xend/backend run db:studio     # open Drizzle Studio
 ```
 
-### 4. Run
+A hand-authored migration must be added to `drizzle/meta/_journal.json` as well as `drizzle/`. `db:migrate` works off the journal, so a file that is not listed there is silently never applied.
+
+### 5. Run
 
 ```bash
 npm --workspace @xend/backend run dev           # watch mode

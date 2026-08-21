@@ -43,8 +43,14 @@ dist
 .DS_Store
 Thumbs.db
 /drizzle
-android**
-ios**
+# Anchored to the app, deliberately. An unanchored `android**` / `ios**` also
+# matches apps/mobile/modules/*/android and .../ios, which would silently drop
+# the hardware-key native module from the upload and leave the build linking
+# nothing. EAS regenerates these two from the config anyway.
+/android/
+/ios/
+apps/mobile/android/
+apps/mobile/ios/
 /app.json
 .claude
 .trae
@@ -57,7 +63,13 @@ ios**
 *.rej
 *.bak
 
-# Not in .gitignore, but must not reach the builder either.
-# packages/smart-account is a workspace member on another branch; its leftovers
-# here are node_modules and test fixtures only.
-packages/smart-account/
+# packages/smart-account is NOT excluded, despite the mobile app not importing
+# it. It is a real workspace member and a declared dependency of @xend/backend,
+# so the lockfile references it and `npm ci` at the workspace root fails
+# outright when the directory is missing. That failure surfaces as an opaque
+# "Install dependencies" error with nothing pointing at the cause.
+#
+# Its vendored @sqds/smart-account tarball is a file: dependency and must reach
+# the builder too. Only the LiteSVM fixtures are dropped, and they are
+# gitignored already.
+packages/smart-account/test/fixtures/

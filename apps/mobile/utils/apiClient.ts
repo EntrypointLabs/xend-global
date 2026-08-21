@@ -55,6 +55,85 @@ export const WalletResponseSchema = z.object({
 });
 export type WalletResponse = z.infer<typeof WalletResponseSchema>;
 
+/**
+ * The Squads Account (ADR 0025). `address` is the vault PDA, which is the
+ * Consumer's address everywhere: QR code, deposits, balance reads. The
+ * settings account holds the signer set, never money, and is deliberately
+ * not returned.
+ */
+/**
+ * How much can leave the vault on one confirmation. Mirrors
+ * `SpendingLimitResponseSchema` in apps/backend/src/account/dtos.ts.
+ *
+ * Amounts are integer strings at the mint's decimals, so read them with BigInt
+ * rather than Number: a u64 does not survive JavaScript's number type.
+ */
+export const SpendingLimitSchema = z.object({
+  mint: z.string(),
+  maxPerUse: z.string(),
+  maxPerPeriod: z.string(),
+  remainingInPeriod: z.string(),
+  period: z.enum(["OneTime", "Daily", "Weekly", "Monthly"]),
+});
+export type SpendingLimit = z.infer<typeof SpendingLimitSchema>;
+
+export const AccountResponseSchema = z.object({
+  address: z.string(),
+  signers: z.object({ primary: z.string(), approval: z.string() }),
+  /** The Consumer's Turnkey sub-organization, which the device stamps against. */
+  approvalSubOrgId: z.string(),
+  /**
+   * Null means the Account has no limit, so every send takes two
+   * confirmations. Absent means this backend does not report limits at all,
+   * which is not the same answer and must not be shown as one.
+   */
+  spendingLimit: SpendingLimitSchema.nullable().optional(),
+});
+export type AccountResponse = z.infer<typeof AccountResponseSchema>;
+
+export const EnrolmentNonceSchema = z.object({ nonce: z.string() });
+export type EnrolmentNonce = z.infer<typeof EnrolmentNonceSchema>;
+
+export const EnrolAccountResponseSchema = z.object({
+  address: z.string(),
+  security: z.enum(["secure_enclave", "strongbox", "tee"]),
+});
+export type EnrolAccountResponse = z.infer<typeof EnrolAccountResponseSchema>;
+
+/**
+ * One step of provisioning, or `done`.
+ *
+ * The transaction fields are absent when `done` is true, which is why they are
+ * optional rather than defaulted: a blank transaction would be signable and
+ * submittable, and would fail on chain instead of ending the loop.
+ */
+export const ProvisioningStepSchema = z.object({
+  done: z.boolean(),
+  change: z.enum(["provision"]).optional(),
+  step: z
+    .enum(["propose", "approve-primary", "approve-approval", "execute"])
+    .optional(),
+  unsignedTxBase64: z.string().optional(),
+  needsApprovalSignature: z.boolean(),
+});
+export type ProvisioningStep = z.infer<typeof ProvisioningStepSchema>;
+
+export const ProvisioningSubmitSchema = z.object({ signature: z.string() });
+export type ProvisioningSubmit = z.infer<typeof ProvisioningSubmitSchema>;
+
+export const SweepPlanSchema = z.object({
+  needed: z.boolean(),
+  destination: z.string().optional(),
+  balances: z.array(
+    z.object({
+      mint: z.string(),
+      amountRaw: z.string(),
+      decimals: z.number().int(),
+    })
+  ),
+});
+export type SweepPlan = z.infer<typeof SweepPlanSchema>;
+
 export const TokenBalanceSchema = z.object({
   mint: z.string(),
   amountRaw: z.string(),
@@ -91,6 +170,12 @@ export const PrepareTransferResponseSchema = z.object({
   unsignedTxBase64: z.string(),
   feeLamports: z.number().int().nonnegative(),
   expiresAt: z.string().datetime(),
+  /**
+   * Present once the Consumer has a Squads Account. True means the approval
+   * signer must also sign before this can land, and submitting without it is
+   * rejected on chain rather than refused politely.
+   */
+  needsApprovalSignature: z.boolean().optional(),
 });
 export type PrepareTransferResponse = z.infer<
   typeof PrepareTransferResponseSchema
@@ -211,6 +296,14 @@ class BackendClient {
         const token = await AuthStorage.getToken();
         if (token) {
           authHeaders["Authorization"] = `Bearer ${token}`;
+        } else if (__DEV__) {
+          // Sent anyway, because a caller racing a sign-in should recover on
+          // its next attempt rather than throw. It does come back 401, and a
+          // 401 earned this way is indistinguishable from an expired session
+          // or a rejected token, so say which one it was.
+          console.warn(
+            `[api] ${endpoint} needs auth and no token is stored yet; it will 401`
+          );
         }
       }
 
@@ -227,6 +320,13 @@ class BackendClient {
 
       if (options.method === "GET") {
         delete fetchOptions.body;
+      } else if (fetchOptions.body === undefined) {
+        // React Native's fetch puts a single NUL byte on the wire for a POST
+        // with no body (Content-Length: 1). Paired with the JSON content type
+        // above, Express rejects it as malformed JSON before any guard or
+        // handler runs, so the route 400s and nothing is logged. An explicit
+        // empty object is the smallest thing that parses.
+        fetchOptions.body = "{}";
       }
 
       const response = await fetch(url, fetchOptions);
@@ -323,6 +423,89 @@ class BackendClient {
   /** GET /wallet/me/balances — returns the full SPL token balance list. The
    *  client filters for headline currencies (USDC + USDT); the full list is
    *  preserved so a future Investments screen can list every mint. */
+
+  /**
+   * GET /account/me — the Consumer's Squads Account, or null before one
+   * exists. A 404 is the ordinary pre-enrolment state rather than an error,
+   * so it is mapped to null instead of thrown.
+   */
+  async getAccount(): Promise<AccountResponse | null> {
+    try {
+      const raw = await this.request<unknown>("/account/me", {
+        method: "GET",
+        auth: true,
+      });
+      return AccountResponseSchema.parse(raw);
+    } catch (err: any) {
+      if (err?.status === 404 || err?.data?.code === "NO_ACCOUNT") return null;
+      throw err;
+    }
+  }
+
+  /** POST /account/enrolment/nonce — the challenge the device attests over. */
+  async requestEnrolmentNonce(): Promise<EnrolmentNonce> {
+    const raw = await this.request<unknown>("/account/enrolment/nonce", {
+      method: "POST",
+      auth: true,
+    });
+    return EnrolmentNonceSchema.parse(raw);
+  }
+
+  /**
+   * POST /account/enrolment — creates the Account.
+   *
+   * Deliberately carries neither the public key nor the recovery signer: the
+   * backend takes the key from the attestation it verified and mints the
+   * recovery signer itself, so this request cannot nominate either.
+   */
+  async enrolAccount(body: {
+    platform: "ios" | "android";
+    attestation: string;
+    nonce: string;
+  }): Promise<EnrolAccountResponse> {
+    const raw = await this.request<unknown>("/account/enrolment", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return EnrolAccountResponseSchema.parse(raw);
+  }
+
+  /**
+   * POST /account/provisioning/next — the next step to sign, or `done`.
+   *
+   * The backend re-derives this from chain state on every call, so it is safe
+   * to call again after an interruption and there is no cursor to carry.
+   */
+  async nextProvisioningStep(): Promise<ProvisioningStep> {
+    const raw = await this.request<unknown>("/account/provisioning/next", {
+      method: "POST",
+      auth: true,
+    });
+    return ProvisioningStepSchema.parse(raw);
+  }
+
+  /** POST /account/provisioning/submit — lands a signed step. */
+  async submitProvisioningStep(body: {
+    signedTxBase64: string;
+  }): Promise<ProvisioningSubmit> {
+    const raw = await this.request<unknown>("/account/provisioning/submit", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return ProvisioningSubmitSchema.parse(raw);
+  }
+
+  /** GET /account/sweep — what is still in the Privy wallet after enrolment. */
+  async getSweepPlan(): Promise<SweepPlan> {
+    const raw = await this.request<unknown>("/account/sweep", {
+      method: "GET",
+      auth: true,
+    });
+    return SweepPlanSchema.parse(raw);
+  }
+
   async getBalances(): Promise<BalancesResponse> {
     if (SEED_DEMO) return seedBalances();
     const raw = await this.request<unknown>("/wallet/me/balances", {
