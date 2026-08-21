@@ -1,4 +1,10 @@
-import React, { forwardRef, useCallback, useMemo, useState } from "react";
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { View, Image } from "react-native";
 import { Toggle } from "@/components/ui/atoms/Toggle";
 import {
@@ -22,6 +28,13 @@ export const NotificationsSheet = forwardRef<
 >(({ initialEnabled = true, onToggle }, ref) => {
   const snapPoints = useMemo(() => ["48%"], []);
   const [enabled, setEnabled] = useState(initialEnabled);
+
+  // The Consumer's stored answer arrives from the server after this mounts, so
+  // the toggle has to catch up to it. Local state stays because the flip
+  // should feel immediate rather than waiting on a round trip.
+  useEffect(() => {
+    setEnabled(initialEnabled);
+  }, [initialEnabled]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,

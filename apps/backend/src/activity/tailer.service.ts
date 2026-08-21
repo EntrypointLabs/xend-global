@@ -1,6 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { TokenNamer } from '../tokens/token-namer.service';
 import { TOKEN_PRICE_PROVIDER } from '../prices/token-price.interface';
 import type { TokenPriceProvider } from '../prices/token-price.interface';
 import type { ConfirmedTransferEvent } from '../solana/solana-rpc.interface';
@@ -17,9 +19,12 @@ import type { WalletAddress } from '../wallet/wallet-provider.interface';
  *   - This protects against late webhook deliveries that arrive after
  *     the reconciler has already finalized the row (or vice versa).
  *
- * Idempotency: `transfers.signature` is UNIQUE and the single write path
- * is `INSERT ... ON CONFLICT (signature) DO UPDATE`, so duplicate
- * webhook deliveries collapse into a single row.
+ * Idempotency: a transfer is identified by its whole leg — signature, mint,
+ * both addresses, amount, and the ordinal that separates legs identical in all
+ * of those — and the single write path is
+ * `INSERT ... ON CONFLICT (that key) DO UPDATE`, so duplicate webhook
+ * deliveries collapse into a single row while the several legs of one
+ * transaction stay several rows.
  */
 @Injectable()
 export class TailerService {
@@ -28,6 +33,8 @@ export class TailerService {
   constructor(
     private readonly db: DbService,
     @Inject(TOKEN_PRICE_PROVIDER) private readonly prices: TokenPriceProvider,
+    private readonly notifications: NotificationsService,
+    private readonly namer: TokenNamer,
   ) {}
 
   /**
@@ -43,12 +50,18 @@ export class TailerService {
   private async usdValueAt(
     mint: string,
     amountRaw: bigint,
+    eventDecimals: number | null,
   ): Promise<string | null> {
     try {
       const quote = (await this.prices.getUsdPrices([mint])).get(mint);
-      if (!quote || quote.decimals === null) return null;
+      // The chain's own decimals first: they are authoritative and present even
+      // for mints no price index lists. Refusing to value a transfer just
+      // because the quote omitted decimals left rows permanently unvalued that
+      // the balance endpoint could price perfectly well.
+      const decimals = eventDecimals ?? quote?.decimals ?? null;
+      if (!quote || decimals === null) return null;
 
-      const divisor = 10n ** BigInt(quote.decimals);
+      const divisor = 10n ** BigInt(decimals);
       const whole = Number(amountRaw / divisor);
       const fraction = Number(amountRaw % divisor) / Number(divisor);
       return ((whole + fraction) * quote.usdPrice).toFixed(6);
@@ -90,7 +103,11 @@ export class TailerService {
     const paymentId = correlation.rows[0]?.payment_id ?? null;
     const kind: 'transfer' | 'payment' = paymentId ? 'payment' : 'transfer';
 
-    const usdValue = await this.usdValueAt(evt.mint, evt.amountRaw);
+    const usdValue = await this.usdValueAt(
+      evt.mint,
+      evt.amountRaw,
+      evt.decimals,
+    );
 
     // The CASE in the DO UPDATE clause is the load-bearing status guard:
     // if the existing row is already CONFIRMED or FAILED, keep that
@@ -98,11 +115,15 @@ export class TailerService {
     // confirmed_at and slot use COALESCE so an existing non-null value
     // wins over an incoming one — this preserves the first confirmation
     // timestamp / slot when a duplicate event arrives.
-    await this.db.client.execute(sql`
+    // `xmax = 0` is true only for a row this statement inserted; a conflict
+    // that took the update path leaves it non-zero. That distinction is what
+    // keeps a redelivered webhook, or a replay of the same signature, from
+    // announcing the same arrival twice.
+    const written = (await this.db.client.execute(sql`
       INSERT INTO transfers (
         id, smart_account_id, signature, direction, mint, amount_raw,
         from_address, to_address, status, slot, confirmed_at, created_at,
-        kind, payment_id, decimals, usd_value, usd_priced_at
+        kind, payment_id, decimals, usd_value, usd_priced_at, leg_index
       ) VALUES (
         ${this.generateId()},
         ${smartAccountId},
@@ -120,9 +141,11 @@ export class TailerService {
         ${paymentId},
         ${evt.decimals}::integer,
         ${usdValue}::numeric,
-        ${usdValue === null ? null : new Date().toISOString()}::timestamp
+        ${usdValue === null ? null : new Date().toISOString()}::timestamp,
+        ${evt.legIndex}::integer
       )
-      ON CONFLICT (signature) DO UPDATE SET
+      ON CONFLICT (signature, mint, from_address, to_address, amount_raw, leg_index)
+      DO UPDATE SET
         status = CASE
           WHEN transfers.status IN ('CONFIRMED', 'FAILED')
             THEN transfers.status
@@ -142,7 +165,9 @@ export class TailerService {
         decimals = COALESCE(transfers.decimals, EXCLUDED.decimals),
         usd_value = COALESCE(transfers.usd_value, EXCLUDED.usd_value),
         usd_priced_at = COALESCE(transfers.usd_priced_at, EXCLUDED.usd_priced_at)
-    `);
+      RETURNING (xmax = 0) AS inserted
+    `)) as unknown as { rows: { inserted: boolean }[] };
+    const isNewRow = written.rows?.[0]?.inserted === true;
 
     // Update the per-wallet bookmark. Take MAX so out-of-order events
     // (rare; happens when the webhook delivers a slot newer than the
@@ -157,6 +182,18 @@ export class TailerService {
         ),
         updated_at = NOW()
     `);
+
+    // Only a genuinely new arrival is announced, and only an inbound one: a
+    // Consumer knows about money they sent themselves.
+    if (isNewRow && direction === 'RECEIVE') {
+      // Caught here as well as inside the service. The transfer is already
+      // written and the balance already moved; failing to mention it must not
+      // turn a recorded arrival into a failed one.
+      const symbol = await this.namer.symbolFor(evt.mint);
+      await this.notifications
+        .notifyArrival({ smartAccountId, amount: describeAmount(evt, symbol) })
+        .catch((err) => this.logger.warn('tailer.notify_failed', err));
+    }
 
     return direction;
   }
@@ -173,4 +210,25 @@ export class TailerService {
     };
     return createId();
   }
+}
+
+/**
+ * The arrival in the Consumer's terms: "5 SOL", "10 USDC".
+ *
+ * Falls back to the raw amount when the chain did not report decimals, and to
+ * the bare number when nothing could name the mint. Both are wrong-looking but
+ * honest; inventing a scale or a ticker would be worse.
+ */
+function describeAmount(evt: ConfirmedTransferEvent, symbol: string): string {
+  if (evt.decimals === null)
+    return `${evt.amountRaw.toString()} ${symbol}`.trim();
+
+  const divisor = 10n ** BigInt(evt.decimals);
+  const whole = evt.amountRaw / divisor;
+  const fraction = evt.amountRaw % divisor;
+  const amount =
+    fraction === 0n
+      ? whole.toString()
+      : `${whole}.${fraction.toString().padStart(evt.decimals, '0').replace(/0+$/, '')}`;
+  return `${amount} ${symbol}`.trim();
 }

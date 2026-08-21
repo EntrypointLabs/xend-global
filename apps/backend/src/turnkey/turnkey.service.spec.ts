@@ -19,14 +19,12 @@ const SOLANA_ADDRESS = 'GkP9xL7mQwR2sT4vB6nH8jC3dF5aZ1yU2eW4rK6tN9pM';
 
 type Calls = {
   createSubOrganization: Parameters<TurnkeyApi['createSubOrganization']>[0][];
-  createPolicy: Parameters<TurnkeyApi['createPolicy']>[0][];
   updateRootQuorum: Parameters<TurnkeyApi['updateRootQuorum']>[0][];
 };
 
 function fakeApi(overrides: Partial<TurnkeyApi> = {}) {
   const calls: Calls = {
     createSubOrganization: [],
-    createPolicy: [],
     updateRootQuorum: [],
   };
 
@@ -42,10 +40,6 @@ function fakeApi(overrides: Partial<TurnkeyApi> = {}) {
         rootUserIds: [DELEGATED_USER, CONSUMER_USER],
         wallet: { walletId: 'wallet-1', addresses: [SOLANA_ADDRESS] },
       });
-    },
-    createPolicy(params) {
-      calls.createPolicy.push(params);
-      return Promise.resolve({ policyId: 'policy-1' });
     },
     updateRootQuorum(params) {
       calls.updateRootQuorum.push(params);
@@ -141,7 +135,7 @@ describe('TurnkeyService.enrolApprovalSigner', () => {
     });
   });
 
-  it('grants the delegated user policy authority and no signing authority', async () => {
+  it('leaves the backend no standing authority over the sub-organization', async () => {
     const { api, calls } = fakeApi();
 
     await service(api).enrolApprovalSigner({
@@ -149,34 +143,13 @@ describe('TurnkeyService.enrolApprovalSigner', () => {
       hardwarePublicKey: '03bb',
     });
 
-    const policy = calls.createPolicy[0];
-    expect(policy.consensus).toContain(DELEGATED_USER);
-    // The property that keeps a backend compromise below threshold: it can
-    // change what S2 may sign, never sign as S2.
-    expect(policy.condition).not.toMatch(/SIGN_/);
-  });
-
-  it('creates the policy before narrowing, because narrowing revokes the authority to create it', async () => {
-    const order: string[] = [];
-    const { api } = fakeApi();
-    const tracked: TurnkeyApi = {
-      ...api,
-      createPolicy(params) {
-        order.push('policy');
-        return api.createPolicy(params);
-      },
-      updateRootQuorum(params) {
-        order.push('narrow');
-        return api.updateRootQuorum(params);
-      },
-    };
-
-    await service(tracked).enrolApprovalSigner({
-      reference: 'consumer-1',
-      hardwarePublicKey: '03bb',
-    });
-
-    expect(order).toEqual(['policy', 'narrow']);
+    // The backend used to keep policy authority here, excluding every signing
+    // activity. That reads safe and is not: whoever can write policies can
+    // write one granting themselves the signing activities, and the backend
+    // already holds S3, so one compromise reached threshold. Narrowing is now
+    // the only thing enrolment leaves behind.
+    expect(calls.updateRootQuorum[0].userIds).toEqual([CONSUMER_USER]);
+    expect('createPolicy' in api).toBe(false);
   });
 
   it('reports an unsafe sub-organization when narrowing fails', async () => {
@@ -204,21 +177,6 @@ describe('TurnkeyService.enrolApprovalSigner', () => {
       // Succeeds, changes nothing. Exactly the case a non-throwing call hides.
       updateRootQuorum() {
         return Promise.resolve({});
-      },
-    });
-
-    await expect(
-      service(api).enrolApprovalSigner({
-        reference: 'consumer-1',
-        hardwarePublicKey: '03bb',
-      }),
-    ).rejects.toBeInstanceOf(UnsafeSubOrganizationError);
-  });
-
-  it('reports an unsafe sub-organization when policy creation fails', async () => {
-    const { api } = fakeApi({
-      createPolicy() {
-        return Promise.reject(new Error('turnkey 500'));
       },
     });
 

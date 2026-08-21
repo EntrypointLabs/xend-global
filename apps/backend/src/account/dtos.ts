@@ -10,12 +10,32 @@ import { z } from 'zod';
  * A client that could nominate either would only need to supply an address it
  * already controls to hold two of the three signers, which is the threshold.
  */
-export const EnrolAccountSchema = z.object({
-  platform: z.enum(['ios', 'android']),
-  /** Base64: the App Attest object on iOS, the certificate chain on Android. */
-  attestation: z.string().min(1),
-  nonce: z.string().min(1),
-});
+/**
+ * Enrolling, either from scratch or picking up an attempt that was cut short.
+ *
+ * The resume shape carries a bare public key, which looks like the thing the
+ * fresh shape deliberately refuses to accept. It is safe only because the
+ * backend will not take the caller's word for it: the key is honoured just when
+ * an approval signer for that Consumer and that key is already on file, having
+ * been attested on an earlier attempt. An unknown key is refused.
+ */
+export const EnrolAccountSchema = z.union([
+  z.object({
+    platform: z.enum(['ios', 'android']),
+    /** Base64: the App Attest object on iOS, the certificate chain on Android. */
+    attestation: z.string().min(1),
+    nonce: z.string().min(1),
+    /**
+     * iOS only: the Secure Enclave key the attestation's challenge commits to.
+     * Proven by Apple's signature over that challenge, not taken on trust.
+     */
+    hardwarePublicKey: z.string().min(1).optional(),
+  }),
+  z.object({
+    /** Compressed P-256 public key, hex, attested on an earlier attempt. */
+    hardwarePublicKey: z.string().min(1),
+  }),
+]);
 
 export type EnrolAccountDto = z.infer<typeof EnrolAccountSchema>;
 
@@ -66,3 +86,9 @@ export const AccountResponseSchema = z.object({
 });
 
 export type AccountResponse = z.infer<typeof AccountResponseSchema>;
+
+/** A signed rejection of a staged settings change. */
+export const SubmitRejectionSchema = z.object({
+  signedTxBase64: z.string().min(1),
+});
+export type SubmitRejectionDto = z.infer<typeof SubmitRejectionSchema>;

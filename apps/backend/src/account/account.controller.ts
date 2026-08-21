@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -18,6 +19,8 @@ import {
   AttestationNotConfiguredError,
   AttestationRejectedError,
 } from '../attestation/attestation.errors';
+import { TurnkeyService } from '../turnkey/turnkey.service';
+import { AccountChangeService } from './account-change.service';
 import { UnsafeSubOrganizationError } from '../turnkey/turnkey.errors';
 import {
   AccountCreationError,
@@ -29,8 +32,10 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import {
   EnrolAccountSchema,
   SubmitProvisioningStepSchema,
+  SubmitRejectionSchema,
   type EnrolAccountDto,
   type SubmitProvisioningStepDto,
+  type SubmitRejectionDto,
 } from './dtos';
 import { ProvisioningService } from './provisioning.service';
 import { SpendingLimitService } from './spending-limit.service';
@@ -50,6 +55,8 @@ export class AccountController {
     private readonly sweep: SweepService,
     private readonly provisioning: ProvisioningService,
     private readonly spendingLimits: SpendingLimitService,
+    private readonly turnkey: TurnkeyService,
+    private readonly changes: AccountChangeService,
   ) {}
 
   /**
@@ -86,16 +93,23 @@ export class AccountController {
     @Body(new ZodValidationPipe(EnrolAccountSchema)) body: EnrolAccountDto,
   ) {
     try {
-      const verified = await this.attestation.verify(req.user.userId, {
-        platform: body.platform,
-        attestation: body.attestation,
-        nonce: body.nonce,
-      });
+      // Discriminated on the attestation, not on the key: iOS sends a key on
+      // the fresh path too, bound into the attested challenge.
+      const verified =
+        'attestation' in body
+          ? await this.attestation.verify(req.user.userId, {
+              platform: body.platform,
+              attestation: body.attestation,
+              nonce: body.nonce,
+              hardwarePublicKey: body.hardwarePublicKey,
+            })
+          : await this.resumeEnrolment(req.user.userId, body.hardwarePublicKey);
 
       const account = await this.accounts.createAccount({
         userId: req.user.userId,
         primarySigner: req.user.walletAddress,
         hardwarePublicKey: verified.hardwarePublicKey,
+        security: verified.security ?? undefined,
       });
 
       return {
@@ -112,6 +126,76 @@ export class AccountController {
       );
       throw toHttp(err);
     }
+  }
+
+  /**
+   * The settings change waiting on this Consumer's Account, or null.
+   *
+   * Polled by the app so the notice survives a push that never arrived: a
+   * Consumer who has notifications off, or whose token went stale, still sees
+   * the change the next time they open Xend.
+   */
+  @Get('changes/pending')
+  pendingChange(@Req() req: AuthenticatedRequest) {
+    return this.changes.pending(req.user.userId).then((change) => ({ change }));
+  }
+
+  /**
+   * Builds the rejection for the Consumer to sign.
+   *
+   * Rejecting is the only defence the time lock actually provides, so it is a
+   * plain prepare/submit pair like any other transaction rather than anything
+   * the Consumer has to be walked through.
+   */
+  @Post('changes/reject/prepare')
+  async prepareRejection(@Req() req: AuthenticatedRequest) {
+    try {
+      return await this.changes.prepareRejection(req.user.userId);
+    } catch (err) {
+      throw toHttp(err);
+    }
+  }
+
+  @Post('changes/reject/submit')
+  async submitRejection(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(SubmitRejectionSchema))
+    body: SubmitRejectionDto,
+  ) {
+    try {
+      return {
+        signature: await this.changes.submitRejection(
+          req.user.userId,
+          body.signedTxBase64,
+        ),
+      };
+    } catch (err) {
+      throw toHttp(err);
+    }
+  }
+
+  /**
+   * Picks up an enrolment that already attested this device.
+   *
+   * A key the backend has never seen is refused. The device generates a fresh
+   * one on every attestation, so accepting an unknown key would let a caller
+   * with real hardware enrol a software key instead — the whole reason the
+   * fresh path reads the key out of the attestation rather than the body.
+   */
+  private async resumeEnrolment(
+    userId: string,
+    hardwarePublicKey: string,
+  ): Promise<{ hardwarePublicKey: string; security: string | null }> {
+    const enrolled = await this.turnkey.findEnrolledDevice(
+      userId,
+      hardwarePublicKey,
+    );
+    if (!enrolled) {
+      throw new BadRequestException(
+        'This device has not been attested; enrol with an attestation first',
+      );
+    }
+    return { hardwarePublicKey, security: enrolled.security };
   }
 
   /**

@@ -12,6 +12,7 @@ import { SolanaModule } from './solana/solana.module';
 import { KycModule } from './kyc/kyc.module';
 import { TransferModule } from './transfer/transfer.module';
 import { ActivityModule } from './activity/activity.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { RedisModule } from './redis/redis.module';
 import { EventsModule } from './events/events.module';
 import { CountersModule } from './counters/counters.module';
@@ -28,6 +29,7 @@ import { TestDashboardModule } from './test-dashboard/test-dashboard.module';
 
 @Module({
   imports: [
+    NotificationsModule,
     ConfigModule,
     DbModule,
     AuthModule,

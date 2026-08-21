@@ -50,6 +50,8 @@ export interface SquadsAccountRow {
 
 export interface SquadsAccountStore {
   findByUserId(userId: string): Promise<SquadsAccountRow | null>;
+  /** Every Account, for the sweeps that have to check all of them. */
+  listAll(): Promise<SquadsAccountRow[]>;
   insert(row: SquadsAccountRow): Promise<SquadsAccountRow>;
   /**
    * The Consumer's email, which anchors the recovery signer.
@@ -140,6 +142,14 @@ export interface ProposalState {
   approved: string[];
   /** Executed, rejected or cancelled: nothing more to do with this index. */
   settled: boolean;
+  /** The program's own name for where this proposal stands. */
+  status: string;
+  /**
+   * Unix seconds at which it entered that status, or null where the program
+   * records none. Approval is what the Settings time lock runs from, so this is
+   * how long a Consumer has left to reject a change they did not make.
+   */
+  statusTimestamp: bigint | null;
 }
 
 export interface ProvisioningChain {

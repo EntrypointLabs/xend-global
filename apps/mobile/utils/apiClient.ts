@@ -107,6 +107,34 @@ export type EnrolAccountResponse = z.infer<typeof EnrolAccountResponseSchema>;
  * optional rather than defaulted: a blank transaction would be signable and
  * submittable, and would fail on chain instead of ending the loop.
  */
+/**
+ * A settings change staged against the Consumer's Account.
+ *
+ * `executableAt` is null until the change is approved, which is not the same as
+ * safe: the time lock starts the moment the quorum is reached, and rejecting is
+ * only possible before it elapses.
+ */
+export const StagedChangeSchema = z.object({
+  transactionIndex: z.string(),
+  status: z.string(),
+  approvals: z.array(z.string()),
+  executableAt: z.string().nullable(),
+});
+export type StagedChange = z.infer<typeof StagedChangeSchema>;
+
+export const PendingChangeResponseSchema = z.object({
+  change: StagedChangeSchema.nullable(),
+});
+
+export const PreparedRejectionSchema = z.object({
+  unsignedTxBase64: z.string(),
+  blockhash: z.string(),
+  lastValidBlockHeight: z.number(),
+});
+export type PreparedRejection = z.infer<typeof PreparedRejectionSchema>;
+
+export const RejectionSubmitSchema = z.object({ signature: z.string() });
+
 export const ProvisioningStepSchema = z.object({
   done: z.boolean(),
   change: z.enum(["provision"]).optional(),
@@ -162,6 +190,10 @@ export const BalancesResponseSchema = z.object({
   fetchedAtSlot: z.number().int(),
 });
 export type BalancesResponse = z.infer<typeof BalancesResponseSchema>;
+
+export const NotificationPreferenceSchema = z.object({
+  enabled: z.boolean(),
+});
 
 export const DeleteAccountResponseSchema = z.object({
   deleted: z.literal(true),
@@ -392,6 +424,11 @@ class BackendClient {
         );
       }
 
+      // 204 carries no body by definition, and some endpoints have nothing to
+      // say beyond "recorded". Parsing that as JSON throws, which turns a
+      // succeeded request into a caller-visible failure.
+      if (response.status === 204) return undefined as T;
+
       return await response.json();
     } catch (error) {
       if (error instanceof ApiError) throw error;
@@ -487,11 +524,17 @@ class BackendClient {
    * backend takes the key from the attestation it verified and mints the
    * recovery signer itself, so this request cannot nominate either.
    */
-  async enrolAccount(body: {
-    platform: "ios" | "android";
-    attestation: string;
-    nonce: string;
-  }): Promise<EnrolAccountResponse> {
+  async enrolAccount(
+    body:
+      | {
+          platform: "ios" | "android";
+          attestation: string;
+          nonce: string;
+          /** iOS: the Secure Enclave key the attested challenge commits to. */
+          hardwarePublicKey?: string;
+        }
+      | { hardwarePublicKey: string }
+  ): Promise<EnrolAccountResponse> {
     const raw = await this.request<unknown>("/account/enrolment", {
       method: "POST",
       body: JSON.stringify(body),
@@ -526,6 +569,37 @@ class BackendClient {
     return ProvisioningSubmitSchema.parse(raw);
   }
 
+  /** GET /account/changes/pending — a settings change awaiting a decision. */
+  async getPendingAccountChange(): Promise<StagedChange | null> {
+    if (SEED_DEMO) return null;
+    const raw = await this.request<unknown>("/account/changes/pending", {
+      method: "GET",
+      auth: true,
+    });
+    return PendingChangeResponseSchema.parse(raw).change;
+  }
+
+  /** POST /account/changes/reject/prepare — the rejection to sign. */
+  async prepareChangeRejection(): Promise<PreparedRejection> {
+    const raw = await this.request<unknown>("/account/changes/reject/prepare", {
+      method: "POST",
+      auth: true,
+    });
+    return PreparedRejectionSchema.parse(raw);
+  }
+
+  /** POST /account/changes/reject/submit — lands the signed rejection. */
+  async submitChangeRejection(body: {
+    signedTxBase64: string;
+  }): Promise<{ signature: string }> {
+    const raw = await this.request<unknown>("/account/changes/reject/submit", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return RejectionSubmitSchema.parse(raw);
+  }
+
   /** GET /account/sweep — what is still in the Privy wallet after enrolment. */
   async getSweepPlan(): Promise<SweepPlan> {
     const raw = await this.request<unknown>("/account/sweep", {
@@ -533,6 +607,50 @@ class BackendClient {
       auth: true,
     });
     return SweepPlanSchema.parse(raw);
+  }
+
+  /** Records where this installation's notifications should go. */
+  async registerPushDevice(req: {
+    token: string;
+    platform: "ios" | "android";
+  }): Promise<void> {
+    // The demo seed has no JWT, so an authed call here just 401s in a loop
+    // behind the offline screens it exists to render.
+    if (SEED_DEMO) return;
+    await this.request<unknown>("/notifications/devices", {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify(req),
+    });
+  }
+
+  /** Forgets this installation, on sign-out. */
+  async forgetPushDevice(token: string): Promise<void> {
+    if (SEED_DEMO) return;
+    await this.request<unknown>("/notifications/devices", {
+      method: "DELETE",
+      auth: true,
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  async getNotificationPreference(): Promise<boolean> {
+    if (SEED_DEMO) return true;
+    const raw = await this.request<unknown>("/notifications/preferences", {
+      method: "GET",
+      auth: true,
+    });
+    return NotificationPreferenceSchema.parse(raw).enabled;
+  }
+
+  async setNotificationPreference(enabled: boolean): Promise<boolean> {
+    if (SEED_DEMO) return enabled;
+    const raw = await this.request<unknown>("/notifications/preferences", {
+      method: "PUT",
+      auth: true,
+      body: JSON.stringify({ enabled }),
+    });
+    return NotificationPreferenceSchema.parse(raw).enabled;
   }
 
   async getBalances(): Promise<BalancesResponse> {

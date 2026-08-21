@@ -132,6 +132,16 @@ export const users = pgTable('users', {
     .primaryKey()
     .$defaultFn(() => createId()),
   email: text('email').notNull().unique(),
+  /**
+   * Whether they want to be told when money arrives.
+   *
+   * On the person, not the device: it is one switch in the app, it has to
+   * survive having no device registered yet, and a re-registered token must
+   * not carry the previous owner's answer to whoever signs in next.
+   */
+  notificationsEnabled: boolean('notifications_enabled')
+    .notNull()
+    .default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   // Soft-delete marker for account closure. The row (and its smart_accounts /
@@ -167,6 +177,36 @@ export const smartAccounts = pgTable('smart_accounts', {
  * the credential inventory survives. public_key is nullable because the
  * server-side vendor SDK omits it; the client supplies it at enrollment.
  */
+/**
+ * push_devices — where a Consumer's notifications go, and whether they want
+ * them.
+ *
+ * Keyed by the device token rather than by user: one Consumer can hold several
+ * devices. This is only an address list — whether they want notifications at
+ * all lives on `users`, because the setting is one switch and has to survive a
+ * device being replaced.
+ *
+ * A token is not a secret in the sense a key is, but it does address someone's
+ * device, so it is never returned by any read endpoint.
+ */
+export const pushDevices = pgTable(
+  'push_devices',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    /** The provider's address for this installation. */
+    token: text('token').notNull().unique(),
+    platform: text('platform').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [index('push_devices_user_idx').on(table.userId)],
+);
+
 export const passkeyCredentials = pgTable(
   'passkey_credentials',
   {
@@ -288,6 +328,37 @@ export const squadsAccounts = pgTable('squads_accounts', {
  * device genuinely needs a new sub-organization, and reusing the old one
  * would hand them an S2 their device cannot sign for.
  */
+/**
+ * Settings changes a Consumer has already been told about.
+ *
+ * The watcher runs on a timer, so without this every tick would announce the
+ * same staged change again. One row per (account, transaction index): a change
+ * at a new index is a new thing to be told about, and a rejected one never
+ * comes back at the same index.
+ */
+export const announcedAccountChanges = pgTable(
+  'announced_account_changes',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    settingsAddress: text('settings_address').notNull(),
+    transactionIndex: bigint('transaction_index', {
+      mode: 'bigint',
+    }).notNull(),
+    announcedAt: timestamp('announced_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('announced_account_changes_idx').on(
+      table.settingsAddress,
+      table.transactionIndex,
+    ),
+  ],
+);
+
 export const approvalSigners = pgTable(
   'approval_signers',
   {
@@ -302,6 +373,15 @@ export const approvalSigners = pgTable(
     address: text('address').notNull().unique(),
     /** The device key registered as this sub-org's authenticator. */
     hardwarePublicKey: text('hardware_public_key').notNull(),
+    /**
+     * Where the attestation proved that key lives.
+     *
+     * Kept because enrolment is resumable: a retry that reuses an already
+     * attested key has no fresh attestation to read this out of, and answering
+     * the Consumer with a guess about their own hardware would be worse than
+     * not answering.
+     */
+    security: text('security'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -323,7 +403,23 @@ export const transfers = pgTable(
       .notNull()
       .references(() => smartAccounts.id),
     intentId: text('intent_id').unique(),
-    signature: text('signature').unique(),
+    signature: text('signature'),
+    /**
+     * Which of several identical movements within the transaction this is.
+     *
+     * One signature can carry several transfers — a swap, a spend that also
+     * moves SOL, a batched payout. Keyed on the signature alone they were all
+     * the same row, so every leg after the first overwrote the one before it
+     * and the Consumer saw a single arbitrary movement. The uniqueness key is
+     * the leg's identity instead: signature, mint, both addresses, amount, and
+     * this ordinal to separate legs that match on all of those.
+     *
+     * Deliberately not the leg's position in the transaction. The webhook
+     * payload and the RPC replay order the same transaction's legs
+     * differently, so a positional index would have the two paths disagree and
+     * write the same movement twice.
+     */
+    legIndex: integer('leg_index').notNull().default(0),
     direction: transferDirectionEnum('direction').notNull(),
     mint: text('mint').notNull(),
     amountRaw: text('amount_raw').notNull(),
@@ -377,6 +473,14 @@ export const transfers = pgTable(
     pendingIdx: index('transfers_pending_idx')
       .on(table.submittedAt)
       .where(sql`status = 'PENDING'`),
+    signatureLegIdx: uniqueIndex('transfers_signature_leg_idx').on(
+      table.signature,
+      table.mint,
+      table.fromAddress,
+      table.toAddress,
+      table.amountRaw,
+      table.legIndex,
+    ),
   }),
 );
 

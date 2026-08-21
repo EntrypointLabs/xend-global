@@ -35,6 +35,17 @@ export interface SignatureStatus {
  */
 export interface ConfirmedTransferEvent {
   signature: string;
+  /**
+   * Separates legs of the same transaction that are otherwise identical.
+   *
+   * A signature is not a unique movement: a swap or a batched payout carries
+   * several. The rest of the leg's identity — mint, both addresses, amount —
+   * tells most of them apart; this counts the ones it cannot. Not a position,
+   * because the webhook payload and the RPC replay order the same
+   * transaction's legs differently and would then disagree about the same
+   * movement.
+   */
+  legIndex: number;
   slot: bigint;
   mint: string;
   amountRaw: bigint;

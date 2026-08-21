@@ -58,6 +58,8 @@ function makeFakeDb(store: FakeStore): DbService {
 function makeService(opts: {
   tokens: TokenBalance[];
   account?: SmartAccountsRow | null;
+  /** Native SOL at the address, which is not a token account. */
+  lamports?: bigint;
 }): { service: WalletsService; store: FakeStore } {
   const store: FakeStore = {
     smartAccounts:
@@ -78,6 +80,7 @@ function makeService(opts: {
       {
         id: 'u_1',
         email: 'consumer@example.com',
+        notificationsEnabled: true,
         createdAt: new Date('2026-01-01'),
         updatedAt: new Date('2026-01-01'),
         deletedAt: null,
@@ -86,7 +89,7 @@ function makeService(opts: {
   };
   const db = makeFakeDb(store);
   const solana = {
-    getSolBalance: jest.fn().mockResolvedValue(0n),
+    getSolBalance: jest.fn().mockResolvedValue(opts.lamports ?? 0n),
     getTokenBalances: jest
       .fn<Promise<TokenBalance[]>, [string]>()
       .mockResolvedValue(opts.tokens),
@@ -158,6 +161,15 @@ describe('WalletsService.deleteMe', () => {
     const { service } = makeService({ tokens: [], account: null });
     await expect(service.deleteMe('missing')).rejects.toBeInstanceOf(
       NotFoundException,
+    );
+  });
+
+  it('refuses deletion while native SOL remains', () => {
+    // Lamports are not a token account, so a SOL-only balance used to sail
+    // past the guard and strand the funds behind an anonymized identity.
+    const { service } = makeService({ tokens: [], lamports: 1n });
+    return expect(service.deleteMe('u_1')).rejects.toBeInstanceOf(
+      AccountHasBalanceError,
     );
   });
 });

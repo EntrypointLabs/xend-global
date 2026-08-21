@@ -23,6 +23,7 @@ import { LiteSVM } from "litesvm";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
+  associatedTokenAddress,
   buildApproveSettingsChange,
   buildCreateAboveLimitPolicy,
   buildCreateAccount,
@@ -158,6 +159,71 @@ function settingsOf(h: Harness) {
     settingsAuthority: PublicKey;
     transactionIndex: { toString(): string };
   }>(h.svm, h.addresses.settings, accounts.Settings);
+}
+
+/*
+ * SPL Token state, written straight into the SVM.
+ *
+ * Setting the accounts is preferable to running InitializeMint and MintTo: it
+ * fixes the starting balances exactly, so an assertion that a Spend moved
+ * tokens cannot be satisfied by anything the setup did. It also keeps
+ * `@solana/spl-token` out of the package, which is why `associatedTokenAddress`
+ * derives its address by hand too.
+ *
+ * Layouts are the SPL Token ones: Mint is 82 bytes, Account is 165.
+ */
+const TOKEN_PROGRAM = new PublicKey(
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+);
+const TOKEN_DECIMALS = 6;
+const MINT_LEN = 82n;
+const TOKEN_ACCOUNT_LEN = 165n;
+
+function writeMint(svm: LiteSVM, mint: PublicKey, decimals: number) {
+  const data = Buffer.alloc(Number(MINT_LEN));
+  data.writeUInt32LE(0, 0); // mint_authority: None
+  data.writeUInt8(decimals, 44);
+  data.writeUInt8(1, 45); // is_initialized
+  data.writeUInt32LE(0, 46); // freeze_authority: None
+  svm.setAccount(mint, {
+    lamports: Number(svm.minimumBalanceForRentExemption(MINT_LEN)),
+    data,
+    owner: TOKEN_PROGRAM,
+    executable: false,
+    rentEpoch: 0,
+  });
+}
+
+function writeTokenAccount(
+  svm: LiteSVM,
+  address: PublicKey,
+  {
+    mint,
+    owner,
+    amount,
+  }: { mint: PublicKey; owner: PublicKey; amount: bigint },
+) {
+  const data = Buffer.alloc(Number(TOKEN_ACCOUNT_LEN));
+  mint.toBuffer().copy(data, 0);
+  owner.toBuffer().copy(data, 32);
+  data.writeBigUInt64LE(amount, 64);
+  data.writeUInt32LE(0, 72); // delegate: None
+  data.writeUInt8(1, 108); // state: Initialized
+  data.writeUInt32LE(0, 109); // is_native: None
+  data.writeUInt32LE(0, 129); // close_authority: None
+  svm.setAccount(address, {
+    lamports: Number(svm.minimumBalanceForRentExemption(TOKEN_ACCOUNT_LEN)),
+    data,
+    owner: TOKEN_PROGRAM,
+    executable: false,
+    rentEpoch: 0,
+  });
+}
+
+function tokenBalance(svm: LiteSVM, address: PublicKey): bigint | null {
+  const account = svm.getAccount(address);
+  if (!account) return null;
+  return Buffer.from(account.data).readBigUInt64LE(64);
 }
 
 function spend(
@@ -418,6 +484,101 @@ describe.skipIf(!HAVE_FIXTURES)("against deployed bytecode", () => {
       failed(send(h.svm, h.primary, [instruction], [h.primary, h.approval])),
     ).toBe(false);
     expect(h.svm.getBalance(destination)).toBe(BigInt(3 * LAMPORTS_PER_SOL));
+  });
+
+  it("moves a token above the limit, not the SOL beside it", () => {
+    // The route built a SystemProgram.transfer whatever the mint said, so an
+    // above-limit USDC Spend moved lamports while the intent and the transfer
+    // row both recorded a stablecoin. Asserting on both balances is the point:
+    // the token has to move *and* the vault's SOL has to stay put.
+    const mint = Keypair.generate().publicKey;
+    const destination = Keypair.generate().publicKey;
+    const vaultTokens = associatedTokenAddress(
+      h.addresses.vault,
+      mint,
+      TOKEN_PROGRAM,
+    );
+    const destinationTokens = associatedTokenAddress(
+      destination,
+      mint,
+      TOKEN_PROGRAM,
+    );
+
+    writeMint(h.svm, mint, TOKEN_DECIMALS);
+    writeTokenAccount(h.svm, vaultTokens, {
+      mint,
+      owner: h.addresses.vault,
+      amount: 20_000_000n,
+    });
+    // The recipient's account already exists: a policy will not open one
+    // mid-Spend, so the caller opens it in the same transaction.
+    writeTokenAccount(h.svm, destinationTokens, {
+      mint,
+      owner: destination,
+      amount: 0n,
+    });
+    const vaultLamportsBefore = h.svm.getBalance(h.addresses.vault);
+
+    const instruction = buildSpend({
+      addresses: h.addresses,
+      request: { mint, amount: 1_000_000n, destination },
+      route: {
+        kind: "two-signature",
+        reason: "exceeds-per-use",
+        policy: h.abovePolicy,
+      },
+      signers: [h.primary.publicKey, h.approval.publicKey],
+      decimals: TOKEN_DECIMALS,
+      tokenProgram: TOKEN_PROGRAM,
+    });
+
+    expect(
+      failed(send(h.svm, h.primary, [instruction], [h.primary, h.approval])),
+    ).toBe(false);
+    expect(tokenBalance(h.svm, vaultTokens)).toBe(19_000_000n);
+    expect(tokenBalance(h.svm, destinationTokens)).toBe(1_000_000n);
+    expect(h.svm.getBalance(h.addresses.vault)).toBe(vaultLamportsBefore);
+  });
+
+  it("still needs both signatures to move a token", () => {
+    // The mint changes what the payload carries, not who may authorise it.
+    const mint = Keypair.generate().publicKey;
+    const destination = Keypair.generate().publicKey;
+    const vaultTokens = associatedTokenAddress(
+      h.addresses.vault,
+      mint,
+      TOKEN_PROGRAM,
+    );
+
+    writeMint(h.svm, mint, TOKEN_DECIMALS);
+    writeTokenAccount(h.svm, vaultTokens, {
+      mint,
+      owner: h.addresses.vault,
+      amount: 20_000_000n,
+    });
+    writeTokenAccount(
+      h.svm,
+      associatedTokenAddress(destination, mint, TOKEN_PROGRAM),
+      { mint, owner: destination, amount: 0n },
+    );
+
+    const instruction = buildSpend({
+      addresses: h.addresses,
+      request: { mint, amount: 1_000_000n, destination },
+      route: {
+        kind: "two-signature",
+        reason: "exceeds-per-use",
+        policy: h.abovePolicy,
+      },
+      signers: [h.primary.publicKey, h.recovery.publicKey],
+      decimals: TOKEN_DECIMALS,
+      tokenProgram: TOKEN_PROGRAM,
+    });
+
+    expect(
+      failed(send(h.svm, h.primary, [instruction], [h.primary, h.recovery])),
+    ).toBe(true);
+    expect(tokenBalance(h.svm, vaultTokens)).toBe(20_000_000n);
   });
 
   it("keeps the recovery signer out of the above-limit route", () => {

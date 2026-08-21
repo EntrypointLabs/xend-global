@@ -89,7 +89,8 @@ export class Web3AccountChain implements AccountChain, OnModuleInit {
       timeLockSeconds: 0,
     });
 
-    const { blockhash } = await rpc.getLatestBlockhash('confirmed');
+    const { blockhash, lastValidBlockHeight } =
+      await rpc.getLatestBlockhash('confirmed');
     const message = new TransactionMessage({
       payerKey: creator,
       recentBlockhash: blockhash,
@@ -101,6 +102,24 @@ export class Web3AccountChain implements AccountChain, OnModuleInit {
     ).toString('base64');
 
     const signature = await this.send(wireTxBase64, settingsSeed);
+
+    // A signature means the RPC took the bytes, not that the Account exists:
+    // the send sets maxRetries 0, so a dropped transaction still returns one.
+    // Persisted on that alone, every later attempt reads back a stored Account
+    // whose settings and vault were never created, and provisioning has
+    // nothing to work against for good.
+    try {
+      await rpc.confirmTransaction(
+        { signature, blockhash, lastValidBlockHeight },
+        'confirmed',
+      );
+    } catch (cause) {
+      // It may yet land. Naming the signature lets the next attempt re-read
+      // the chain rather than assume either outcome.
+      throw new AccountCreationError(
+        `Account creation ${signature} did not confirm: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    }
 
     return {
       settingsSeed,

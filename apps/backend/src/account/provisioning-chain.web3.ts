@@ -8,8 +8,12 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js';
-import { accounts, getProposalPda } from '@sqds/smart-account';
-import { derivePolicyAddress } from '@xend/smart-account';
+import {
+  decodeProposal,
+  derivePolicyAddress,
+  deriveProposalAddress,
+  fetchSettings,
+} from '@xend/smart-account';
 
 import {
   SETTLEMENT_AUTHORITY_SIGNER,
@@ -21,18 +25,6 @@ import type {
   ProvisioningChain,
   SettingsState,
 } from './account.interface';
-
-/**
- * Proposal states that still have a step owed to them.
- *
- * Enumerated rather than expressed as "not one of the terminal states", because
- * the two mistakes are not equal. Calling an unfinished proposal finished makes
- * provisioning loop, re-proposing and re-approving at a fresh index every lap
- * and charging the Consumer a fingerprint each time. Calling a finished one
- * unfinished stalls on a step the program will simply refuse. A stall is
- * visible; the loop looked like slowness.
- */
-const UNFINISHED = ['Draft', 'Active', 'Approved', 'Executing'];
 
 /**
  * Chain reads and transaction assembly for provisioning, on web3.js per
@@ -69,20 +61,7 @@ export class Web3ProvisioningChain implements ProvisioningChain, OnModuleInit {
 
   async readSettings(settingsAddress: string): Promise<SettingsState> {
     try {
-      const settings = await accounts.Settings.fromAccountAddress(
-        this.rpc,
-        new PublicKey(settingsAddress),
-      );
-      // transactionIndex is a u64 the SDK surfaces as a bignum, which is a BN
-      // at runtime and loosely typed at compile time. Going through its string
-      // form is the only conversion that survives values past 2^53.
-      const index = settings.transactionIndex as unknown as {
-        toString(): string;
-      };
-      return {
-        timeLockSeconds: settings.timeLock,
-        transactionIndex: BigInt(index.toString()),
-      };
+      return await fetchSettings(this.rpc, new PublicKey(settingsAddress));
     } catch (cause) {
       throw new AccountCreationError(
         `Could not read the Account settings: ${describe(cause)}`,
@@ -111,10 +90,10 @@ export class Web3ProvisioningChain implements ProvisioningChain, OnModuleInit {
     settingsAddress: string,
     transactionIndex: bigint,
   ): Promise<ProposalState | null> {
-    const [address] = getProposalPda({
-      settingsPda: new PublicKey(settingsAddress),
+    const address = deriveProposalAddress(
+      new PublicKey(settingsAddress),
       transactionIndex,
-    });
+    );
 
     let info: AccountInfo<Buffer> | null;
     try {
@@ -126,17 +105,7 @@ export class Web3ProvisioningChain implements ProvisioningChain, OnModuleInit {
     }
     if (!info) return null;
 
-    const [proposal] = accounts.Proposal.fromAccountInfo(info);
-    return {
-      approved: proposal.approved.map((key) => key.toBase58()),
-      // Approved belongs with the unfinished states, not the finished ones. It
-      // is what a proposal becomes the moment it reaches threshold, and the
-      // work left at that point is the execute. Reading it as finished made
-      // provisioning abandon a fully approved change and propose a fresh one
-      // at the next index, forever: four transactions and a fingerprint per
-      // lap, never once executing.
-      settled: !UNFINISHED.includes(proposal.status.__kind),
-    };
+    return decodeProposal(info);
   }
 
   async compile(params: { instructions: TransactionInstruction[] }): Promise<{

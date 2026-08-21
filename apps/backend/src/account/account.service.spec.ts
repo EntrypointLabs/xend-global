@@ -31,6 +31,7 @@ function fakeStore(seed?: SquadsAccountRow) {
       rows.push(row);
       return Promise.resolve(row);
     },
+    listAll: () => Promise.resolve([]),
     findUserEmail: () => Promise.resolve('consumer@example.com'),
     withUserLock: <T>(_userId: string, fn: () => Promise<T>) => fn(),
   };
@@ -339,6 +340,7 @@ describe('AccountService.createAccount under concurrency', () => {
         rows.push(row);
         return Promise.resolve(row);
       },
+      listAll: () => Promise.resolve([]),
       findUserEmail: () => Promise.resolve('consumer@example.com'),
       withUserLock<T>(_userId: string, fn: () => Promise<T>): Promise<T> {
         const run = tail.then(fn);

@@ -135,8 +135,15 @@ one failing assumption are recorded in the spec.
 
 - ✅ **Good:** An inbox compromise yields one signer and cannot move funds. That is
   the single biggest change to the threat model.
-- ✅ **Good:** No vendor can move funds alone. Privy and Turnkey are both required
-  above the limit, and the **Consumer** can outvote either with S1 or S2 plus S3.
+- ✅ **Good:** No vendor can drain an Account alone. Privy and Turnkey are both
+  required above the limit, and the **Consumer** can outvote either with S1 or S2
+  plus S3.
+  - ⚠️ Under the limit is the exception, and it is not a small one. The
+    `SpendingLimit` policy is S1-only at threshold 1, and S1 is the Privy-held
+    key, so a Privy compromise or signing bug authorizes spends up to the limit
+    without Turnkey ever being asked. That residual exposure is bounded by the
+    limit rather than eliminated by it, which is what the limit should be tuned
+    and monitored against.
 - ✅ **Good:** Everyday **Spend** stays one signature and one transaction, on any
   device, because `transaction_execute_sync` avoids the proposal round trips.
 - ✅ **Good:** Recovery is symmetric and seedless. Any two signers restore access

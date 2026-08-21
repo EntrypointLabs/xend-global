@@ -98,4 +98,22 @@ describe("selectBalanceHistory", () => {
     const times = points.map((p) => p.at);
     expect([...times].sort((a, b) => a - b)).toEqual(times);
   });
+
+  it("values a sold-out asset from the row, not from current holdings", () => {
+    // Convert every SOL to USDC and the holdings map knows nothing about SOL,
+    // which used to drop the movement from the line entirely.
+    const points = selectBalanceHistory(
+      [row({ mint: SOL, amountRaw: "1000000000", usdValue: "81.91" })],
+      { ...inputs, pricesByMint: {}, decimalsByMint: {} }
+    );
+    expect(points[0].value).toBeCloseTo(429.57 - 81.91, 2);
+  });
+
+  it("still prices an older row from current holdings", () => {
+    const points = selectBalanceHistory(
+      [row({ mint: SOL, amountRaw: "1000000000", signature: "sig-old" })],
+      inputs
+    );
+    expect(points[0].value).toBeCloseTo(429.57 - 81.914, 2);
+  });
 });

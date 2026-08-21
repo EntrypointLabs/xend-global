@@ -23,11 +23,29 @@ export function useEnrolAccount() {
 
   return useMutation({
     mutationFn: async () => {
+      // A key already on the device belongs to an attempt that got as far as
+      // attesting. Attesting again would mint a new one, and `enrol` replaces
+      // what is there — stranding the sub-organization the backend built around
+      // the old key, on every transient failure, forever. The backend only
+      // honours a key it already holds an approval signer for, so an unknown
+      // one falls through to a fresh attestation below.
+      const existing = await hardwareKey.getPublicKey();
+      if (existing) {
+        try {
+          return await apiClient.enrolAccount({ hardwarePublicKey: existing });
+        } catch (err) {
+          if (__DEV__) {
+            console.warn("[enrol] could not resume with the existing key", err);
+          }
+        }
+      }
+
       const { nonce } = await apiClient.requestEnrolmentNonce();
 
       let attestation: string;
+      let publicKey: string;
       try {
-        ({ attestation } = await hardwareKey.enrol(nonce));
+        ({ attestation, publicKey } = await hardwareKey.enrol(nonce));
       } catch (err) {
         // The native side already discards a key whose attestation failed;
         // this covers the case where it could not.
@@ -35,10 +53,14 @@ export function useEnrolAccount() {
         throw err;
       }
 
+      // iOS attests over the nonce and this key together, because App Attest
+      // cannot attest the Secure Enclave key that will stamp Turnkey. Android's
+      // attestation carries its own key and ignores this.
       return apiClient.enrolAccount({
         platform: devicePlatform(),
         attestation,
         nonce,
+        hardwarePublicKey: publicKey,
       });
     },
     onSuccess: () => {

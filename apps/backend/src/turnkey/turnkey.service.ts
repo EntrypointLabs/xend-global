@@ -22,11 +22,16 @@ import type {
  * ## The sequence, and why its order is forced
  *
  * A delegated user can only be added to a sub-org at creation, and the root
- * quorum can only be narrowed afterwards. Creating the policy that grants the
- * delegated user its authority is itself a root-quorum activity, so it has to
- * happen while the backend is still a root user. That pins the order to
- * create -> policy -> narrow, with no way to avoid a window in which the
- * backend is a root user on the Consumer's sub-org.
+ * quorum can only be narrowed afterwards. That pins the order to
+ * create -> narrow, with no way to avoid a window in which the backend is a
+ * root user on the Consumer's sub-org.
+ *
+ * The backend keeps no standing authority once the window closes. It held
+ * policy authority here for a while, which reads as harmless because it
+ * excluded every signing activity — but the authority to write policies is the
+ * authority to write a policy granting yourself the signing ones, so it was a
+ * one-step path from a backend compromise to an S2 signature, and S3 is
+ * already the backend's. Nothing at run time needed it.
  *
  * That window is the whole risk. A root-quorum backend can register its own
  * authenticator on the S2 wallet and sign as S2, and the backend already holds
@@ -60,6 +65,22 @@ export class TurnkeyService {
    * that hardware key, so a replacement device has to enrol a new one rather
    * than inherit an S2 it cannot sign for.
    */
+  /**
+   * The enrolment already on file for this Consumer's device, if any.
+   *
+   * Lets a retry that was interrupted after the sub-org existed carry on with
+   * the same key instead of minting a new one, which would strand the first S2
+   * and can never reach the reuse path above.
+   */
+  findEnrolledDevice(
+    userId: string,
+    hardwarePublicKey: string,
+  ): Promise<{ security: string | null } | null> {
+    return this.store
+      .findByUserAndDevice(userId, hardwarePublicKey)
+      .then((row) => (row ? { security: row.security } : null));
+  }
+
   async ensureApprovalSigner(
     params: EnrolApprovalSignerParams,
   ): Promise<EnrolledApprovalSigner> {
@@ -87,6 +108,7 @@ export class TurnkeyService {
       subOrganizationId: enrolled.subOrganizationId,
       address: enrolled.address,
       hardwarePublicKey: params.hardwarePublicKey,
+      security: params.security,
     });
 
     return enrolled;
@@ -106,16 +128,18 @@ export class TurnkeyService {
       );
     }
 
-    // Both root user ids, in the order they were requested.
-    const [delegatedUserId, consumerUserId] = created.rootUserIds ?? [];
-    if (!delegatedUserId || !consumerUserId) {
+    // Both root users were requested in a fixed order, and the Consumer's is
+    // the second. Fewer than two means the sub-org is not the shape that was
+    // asked for, and narrowing the quorum of an unknown shape is not safe.
+    const rootUserIds = created.rootUserIds ?? [];
+    const consumerUserId = rootUserIds[1];
+    if (rootUserIds.length < 2 || !consumerUserId) {
       throw new UnsafeSubOrganizationError(
         'Turnkey returned fewer root users than were requested',
         subOrganizationId,
       );
     }
 
-    await this.grantPolicyAuthority(subOrganizationId, delegatedUserId);
     await this.narrowRootQuorum(subOrganizationId, consumerUserId);
 
     return { subOrganizationId, address };
@@ -178,39 +202,6 @@ export class TurnkeyService {
     } catch (cause) {
       throw new TurnkeyUnavailableError(
         `Could not create the approval signer: ${describe(cause)}`,
-      );
-    }
-  }
-
-  /**
-   * Grants the delegated user policy authority and nothing else.
-   *
-   * Deliberately not `ACTIVITY_TYPE_SIGN_*`: the delegated user must never be
-   * able to produce an S2 signature. It can change what S2 is permitted to
-   * sign, which still requires the Consumer's hardware key to act on.
-   */
-  private async grantPolicyAuthority(
-    subOrganizationId: string,
-    delegatedUserId: string,
-  ): Promise<void> {
-    try {
-      await this.api.createPolicy({
-        organizationId: subOrganizationId,
-        policyName: 'xend-delegated-policy-authority',
-        effect: 'EFFECT_ALLOW',
-        consensus: `approvers.any(user, user.id == '${delegatedUserId}')`,
-        condition:
-          "activity.type == 'ACTIVITY_TYPE_CREATE_POLICY_V3' || " +
-          "activity.type == 'ACTIVITY_TYPE_UPDATE_POLICY_V2' || " +
-          "activity.type == 'ACTIVITY_TYPE_DELETE_POLICY'",
-        notes:
-          'Delegated policy authority for the Xend backend. Deliberately ' +
-          'excludes every signing activity: see O6.',
-      });
-    } catch (cause) {
-      throw new UnsafeSubOrganizationError(
-        `Could not grant delegated policy authority: ${describe(cause)}`,
-        subOrganizationId,
       );
     }
   }

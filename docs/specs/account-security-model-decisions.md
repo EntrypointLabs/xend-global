@@ -256,9 +256,17 @@ product wants a passkey tap per payment anyway, they are not needed.
 2. Recovery email, which **must differ from the sign-in email**
 3. External wallet (advanced, behind "other options")
 
-Up to 3 recovery signers, matching Fuse. Each additional one adds pairs that can
-spend, since any Active plus any Recovery meets the threshold. Say so in the copy
-rather than hiding it.
+Up to 3 recovery signers, matching Fuse. Each additional one adds pairs that meet
+the Settings threshold, which is the quorum that rotates signers and policies —
+not spend authority. Recovery signers are deliberately absent from the
+`SpendingLimit` and `ProgramInteraction` signer sets (D5b), so no policy path
+admits them.
+
+The caveat is D5b's own finding: Settings consensus can itself carry a spend, so
+an Active signer paired with a Recovery signer reaches a spend that way. The
+Settings time lock delays and surfaces it rather than preventing it — see D5b for
+why that is a control and not a guarantee. Copy should say added recovery signers
+add ways to _restore_ an Account, never ways to spend from it.
 
 **Shared-anchor rule, inverted by D4.** Earlier drafts required the recovery email to
 **differ** from the sign-in email, because the sign-in email unlocked S1. Under D4 it
@@ -268,9 +276,15 @@ is exactly the right anchor for S3, and there is no second address to ask for.
 What must not share an anchor now is S1 and S3, which is why S3 moved off the platform
 account entirely. See D10b.
 
-D5b still applies and still matters: S3 cannot participate in any spend path, so even
-a compromise reaching both S1 and S3 yields a time-locked, notified settings change
-rather than a drain.
+D5b still applies and still matters, but says something narrower than it first
+reads: S3 is excluded from every **policy** spend path, so S1 plus S3 cannot take
+the synchronous one-transaction route. It is not excluded from Settings consensus,
+which D5b's own runtime check confirms can carry a spend. What that pair gets is a
+time-locked, notified transaction rather than an instant one.
+
+That makes rejection during the time lock a required control for money movement,
+not only for signer-set changes. A Consumer who cannot see and cancel a staged
+Settings spend has no protection here at all.
 
 ### D10b. S3 is mandatory at Account creation
 
@@ -317,6 +331,15 @@ Bundle the fee as an instruction in the same transaction, enforced by Turnkey
 policy refusing to sign transactions whose parsed instructions lack it. Design the
 send path around a single canonical instruction shape from day one, so pinning it
 on-chain later is a policy change rather than a rewrite.
+
+**Turnkey cannot enforce this on the everyday path.** An under-limit Spend executes
+under the S1-only `SpendingLimit` policy and never asks Turnkey to sign anything,
+so a hostile or merely buggy client submits the same transaction without the fee
+instruction and it lands. Turnkey policy bounds the fee on above-limit Spends and
+nothing else. Any fee that has to apply to ordinary P2P or checkout Spends needs
+enforcement on chain — a policy or program that refuses the transfer without it —
+or those paths need a Turnkey signature, which costs them the single-signature
+property they exist for.
 
 ## Verified vendor facts
 

@@ -8,16 +8,17 @@ import { getUsdcMint } from "@/utils/cluster";
  */
 
 /**
- * Stablecoin mints that count toward the headline Balance. USDT is optional in
- * dev (no canonical devnet mint); when unset, only USDC contributes. Read from
- * the environment on every call so tests can vary it.
+ * What counts as Cash: USDC and nothing else.
+ *
+ * USDT is a holding, not spending money. It was briefly counted here, which put
+ * it in the Cash bucket on the home screen while the Investments screen listed
+ * it as an asset — the same balance in two places at once. Read from the
+ * environment on every call so tests can vary it.
  */
-function stablecoinMints(): Set<string> {
+function cashMints(): Set<string> {
   const mints = new Set<string>();
   const usdc = getUsdcMint();
-  const usdt = process.env.EXPO_PUBLIC_USDT_MINT_ADDRESS;
   if (usdc) mints.add(usdc);
-  if (usdt) mints.add(usdt);
   return mints;
 }
 
@@ -37,14 +38,14 @@ function roundTo2(value: number): number {
 }
 
 /**
- * Headline Balance: the sum of recognized stablecoin balances (USDC + USDT),
- * rounded to 2 decimals. Defaults to 0 for an absent/empty token list.
+ * Spendable Cash, rounded to 2 decimals. USDC only — see `cashMints`. Defaults
+ * to 0 for an absent/empty token list.
  */
 export function selectStablecoinTotal(
   tokens: TokenBalance[] | undefined
 ): number {
   if (!tokens) return 0;
-  const mints = stablecoinMints();
+  const mints = cashMints();
   let total = 0;
   for (const t of tokens) {
     if (!mints.has(t.mint)) continue;
@@ -87,10 +88,10 @@ export interface Portfolio {
 /**
  * The Consumer's holdings split into the buckets the home screen shows.
  *
- * Stablecoins are counted at face value rather than at a quoted price: it is
- * the number they spend from, and $19.99 for 20 USDC is wrong in the only
- * place that has to be exact. Everything else is worth whatever it was priced
- * at, and an unpriced holding adds nothing rather than guessing.
+ * Cash is counted at face value rather than at a quoted price: it is the
+ * number they spend from, and $19.99 for 20 USDC is wrong in the only place
+ * that has to be exact. Everything else, USDT included, is worth whatever it
+ * was priced at, and an unpriced holding adds nothing rather than guessing.
  */
 export function selectPortfolio(tokens: TokenBalance[] | undefined): Portfolio {
   const empty: Portfolio = {
@@ -100,9 +101,9 @@ export function selectPortfolio(tokens: TokenBalance[] | undefined): Portfolio {
   };
   if (!tokens) return empty;
 
-  const stablecoins = stablecoinMints();
+  const cash = cashMints();
   return tokens.reduce<Portfolio>((acc, token) => {
-    if (stablecoins.has(token.mint)) {
+    if (cash.has(token.mint)) {
       acc.cashUsd += rawToNumber(token.amountRaw, token.decimals);
       return acc;
     }

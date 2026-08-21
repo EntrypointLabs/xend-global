@@ -15,6 +15,7 @@ import { apiClient } from "@/utils/apiClient";
 import { isJwtExpired } from "@/utils/jwt";
 import { useEnsureSolanaWallet } from "@/hooks/useEnsureSolanaWallet";
 import { SEED_DEMO, SEED_USER } from "@/utils/devSeed";
+import { forgetThisDevice } from "@/utils/pushDevice";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -325,6 +326,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     setIsLoggingOut(true);
     try {
+      // Before the session is torn down, while the call can still authenticate.
+      // Left registered, this phone keeps receiving arrivals for the Consumer
+      // who just signed out.
+      await forgetThisDevice();
+
       try {
         await privyLogout();
       } catch (privyErr) {

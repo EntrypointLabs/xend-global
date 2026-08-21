@@ -113,6 +113,20 @@
       "when": 1784908800000,
       "tag": "0014_transfer_decimals",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784995200000,
+      "tag": "0015_push_devices",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1785081600000,
+      "tag": "0016_user_notification_preference",
+      "breakpoints": true
     }
   ]
 }

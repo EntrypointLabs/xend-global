@@ -38,7 +38,13 @@ public class HardwareKeyModule: Module {
         let privateKey = try self.createKey()
         let publicKey = try self.compressedPublicKey(from: privateKey)
 
-        self.attest(nonce: nonce) { result in
+        // The challenge commits to the Secure Enclave key. iOS has two keys
+        // here and only one of them can do each job: App Attest owns its own
+        // key and will not sign a Turnkey stamp, while the Secure Enclave key
+        // signs stamps but cannot be attested. Attesting over the pair is what
+        // lets the backend enrol the key that will actually stamp, instead of
+        // the App Attest key the app never uses again.
+        self.attest(nonce: nonce, boundTo: publicKey) { result in
           switch result {
           case .success(let attestation):
             UserDefaults.standard.set(true, forKey: Self.sentinelKey)
@@ -189,7 +195,11 @@ public class HardwareKeyModule: Module {
 
   // MARK: - Attestation
 
-  private func attest(nonce: String, completion: @escaping (Result<String, Error>) -> Void) {
+  private func attest(
+    nonce: String,
+    boundTo publicKey: String,
+    completion: @escaping (Result<String, Error>) -> Void
+  ) {
     let service = DCAppAttestService.shared
     guard service.isSupported else {
       completion(
@@ -208,9 +218,11 @@ public class HardwareKeyModule: Module {
       }
       UserDefaults.standard.set(keyId, forKey: Self.attestKeyDefault)
 
-      // Apple hashes the challenge itself into the attestation; we pass the
-      // raw nonce so the backend can recompute SHA256(authData || SHA256(nonce)).
-      let clientDataHash = Data(nonce.utf8).sha256()
+      // Apple hashes the challenge into the attestation, so the backend
+      // recomputes SHA256(authData || SHA256(nonce || publicKey)). The public
+      // key inside the hash is what binds the attestation to the Secure Enclave
+      // key: a client that sent a different one would not match.
+      let clientDataHash = Data((nonce + publicKey).utf8).sha256()
       service.attestKey(keyId, clientDataHash: clientDataHash) { attestation, error in
         if let error { return completion(.failure(error)) }
         guard let attestation else {

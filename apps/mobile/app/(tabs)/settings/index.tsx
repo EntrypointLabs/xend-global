@@ -24,6 +24,7 @@ import { useWalletName } from "@/hooks/useWalletName";
 import { useBalances } from "@/hooks/useBalances";
 import { useRouter } from "expo-router";
 import { useToast } from "@/contexts/ToastContext";
+import { useNotificationPreference } from "@/hooks/usePushRegistration";
 
 const XEND_TWITTER_URL = "https://twitter.com/xend_global";
 const PRIVACY_POLICY_URL = "https://xend.global/legal/privacy-policy";
@@ -49,6 +50,7 @@ export default function SettingsScreen() {
   const [showEditWallet, setShowEditWallet] = useState(false);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const notificationsSheetRef = useRef<BottomSheetModal>(null);
+  const notifications = useNotificationPreference();
   const { showToast } = useToast();
   const { total: balanceTotal, totalDisplay: balanceDisplay } = useBalances();
 
@@ -283,7 +285,11 @@ export default function SettingsScreen() {
         balanceDisplay={`$${balanceDisplay}`}
         onDeleted={handleAccountDeleted}
       />
-      <NotificationsSheet ref={notificationsSheetRef} />
+      <NotificationsSheet
+        ref={notificationsSheetRef}
+        initialEnabled={notifications.enabled ?? true}
+        onToggle={notifications.setEnabled}
+      />
     </ScreenLayout>
   );
 }

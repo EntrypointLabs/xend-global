@@ -7,11 +7,18 @@
  * and never reaches the thrown error, so the only way to read it is here, on
  * the way past.
  *
- * Bodies are logged whole. They carry no session material: the passkey ceremony
- * is a WebAuthn challenge and its attestation, and a Privy token would be in a
+ * The passkey ceremony is logged in both directions, including on success,
+ * because a registration can only be judged by comparing the challenge Privy
+ * issued against the one the authenticator signed — and the request carries
+ * the only copy of the latter.
+ *
+ * Bodies are logged whole. They carry no session material: the ceremony is a
+ * WebAuthn challenge and its attestation, and a Privy token would be in a
  * header rather than a body. If that stops being true, this has to stop
  * printing bodies.
  */
+const BODY_LIMIT = 4000;
+
 export function installPrivyRequestLog() {
   if (!__DEV__) return;
 
@@ -19,17 +26,34 @@ export function installPrivyRequestLog() {
   if ((original as { __privyLogged?: boolean }).__privyLogged) return;
 
   const patched: typeof fetch = async (input, init) => {
+    // The SDK calls fetch with a Request, so the method and body live on it
+    // rather than on `init`. Reading only `init` reported every call as a GET
+    // with no body.
+    const request =
+      typeof input === "object" && input !== null && "url" in input
+        ? (input as Request)
+        : null;
     const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input.url;
+      request?.url ?? (input instanceof URL ? input.toString() : String(input));
 
     if (!url.includes("privy.io")) return original(input, init);
 
+    const method = init?.method ?? request?.method ?? "GET";
+    const isPasskey = url.includes("passkey");
+
+    if (isPasskey) {
+      const body =
+        typeof init?.body === "string"
+          ? init.body
+          : await (request
+              ?.clone()
+              .text()
+              .catch(() => "<unreadable>") ?? Promise.resolve("<no body>"));
+      console.warn(`[privy] -> ${method} ${url}`, body.slice(0, BODY_LIMIT));
+    }
+
     const response = await original(input, init);
-    if (response.ok) return response;
+    if (response.ok && !isPasskey) return response;
 
     // Read from a clone: a body can only be consumed once, and the caller
     // still needs it.
@@ -38,8 +62,8 @@ export function installPrivyRequestLog() {
       .text()
       .catch(() => "<unreadable>");
     console.warn(
-      `[privy] ${init?.method ?? "GET"} ${url} -> ${response.status}`,
-      body.slice(0, 2000)
+      `[privy] <- ${method} ${url} ${response.status}`,
+      body.slice(0, BODY_LIMIT)
     );
     return response;
   };

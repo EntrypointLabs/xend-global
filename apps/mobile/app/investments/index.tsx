@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { Image, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -15,6 +15,8 @@ import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useInvestments, type InvestmentHolding } from "@/hooks/useInvestments";
 import { TokenMark } from "@/components/ui/atoms/TokenMark";
+import { SendModal } from "@/components/ui/organisms/modals/SendModal";
+import { SendFlowModal } from "@/components/ui/organisms/send/SendFlowModal";
 import { formatMoney } from "@/utils/balances";
 import { formatTokenAmount } from "@/utils/tokens";
 import { cn } from "@/utils/cn";
@@ -26,14 +28,12 @@ import { cn } from "@/utils/cn";
  */
 export default function InvestmentsScreen() {
   const router = useRouter();
-  const {
-    showReceiveModal,
-    showSendModal,
-    isReceiveModalVisible,
-    hideAllModals,
-  } = useModalFlow();
+  const { showReceiveModal, isReceiveModalVisible, hideAllModals } =
+    useModalFlow();
   const address = useWalletAddress();
   const qrCodeModalRef = useRef<BottomSheetModal>(null);
+  const sendFlowModalRef = useRef<BottomSheetModal>(null);
+  const [isSendModalVisible, setIsSendModalVisible] = useState(false);
   const { holdings, totalUsd, isEmpty, isError } = useInvestments();
 
   const actionItems = useMemo(
@@ -59,11 +59,11 @@ export default function InvestmentsScreen() {
             </Typography>
           </View>
         ),
-        onPress: showSendModal,
+        onPress: () => setIsSendModalVisible(true),
         accessibilityLabel: "Send",
       },
     ],
-    [router, showSendModal]
+    [router]
   );
 
   const total = isError ? "0.00" : formatMoney(totalUsd);
@@ -114,6 +114,19 @@ export default function InvestmentsScreen() {
         {/* Only offered once there is something to act on. */}
         {!isEmpty && <ActionPill items={actionItems} />}
       </View>
+
+      {/* Mounted here, not just triggered: ModalFlowContext only holds
+          visibility, so a screen that does not render these shows nothing when
+          Send is tapped. */}
+      <SendModal
+        visible={isSendModalVisible}
+        onClose={() => setIsSendModalVisible(false)}
+        onSendToWallet={() => {
+          setIsSendModalVisible(false);
+          sendFlowModalRef.current?.present();
+        }}
+      />
+      <SendFlowModal ref={sendFlowModalRef} onClose={() => {}} />
 
       <ReceiveModal
         visible={isReceiveModalVisible}

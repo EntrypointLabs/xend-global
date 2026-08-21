@@ -47,8 +47,14 @@ export class PinnedStablecoinPriceProvider implements TokenPriceProvider {
     const rest = mints.filter((mint) => !prices.has(mint));
     if (rest.length === 0) return prices;
 
-    for (const [mint, price] of await this.quoted.getUsdPrices(rest)) {
-      prices.set(mint, price);
+    try {
+      for (const [mint, price] of await this.quoted.getUsdPrices(rest)) {
+        prices.set(mint, price);
+      }
+    } catch {
+      // A dollar is still a dollar when an unrelated asset cannot be quoted.
+      // Letting the rejection through discarded the pinned entries too, so an
+      // outage in one mint erased the Consumer's cash balance.
     }
     return prices;
   }

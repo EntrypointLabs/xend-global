@@ -26,10 +26,23 @@ const AAGUID_PRODUCTION = 'appattest\0\0\0\0\0\0\0';
  * bookkeeping and neither is:
  *
  * `nonce` binds the attestation to a challenge we issued, so a captured
- * attestation cannot be replayed. `keyIdentifier` binds it to the key being
- * enrolled, so a client cannot attest one key and enrol another. Skip either
- * and the remaining checks prove only that some genuine Apple device exists
- * somewhere.
+ * attestation cannot be replayed. `keyIdentifier` binds it to the App Attest
+ * key, so a client cannot attest one key and present another's certificate.
+ * Skip either and the remaining checks prove only that some genuine Apple
+ * device exists somewhere.
+ *
+ * ## The key that is enrolled is not the key that is attested
+ *
+ * On iOS these are necessarily two keys. App Attest owns the one it attests and
+ * will not sign anything but its own assertions, while the key that stamps
+ * Turnkey requests lives in the Secure Enclave and cannot be attested at all.
+ * Enrolling the attested key put an API key in Turnkey that the app never uses,
+ * so every request needing S2 was rejected.
+ *
+ * They are bound by the challenge instead: the device attests over
+ * `nonce || secureEnclavePublicKey`, so an attestation only verifies against
+ * the one key it was made for, and the key the caller asks us to enrol is
+ * proven by the same Apple signature that proves the device.
  */
 @Injectable()
 export class AppAttestVerifier {
@@ -38,6 +51,7 @@ export class AppAttestVerifier {
   async verify(
     attestation: string,
     nonce: string,
+    hardwarePublicKey?: string,
   ): Promise<VerifiedAttestation> {
     const appId = this.config.get<string>('IOS_APP_ATTEST_APP_ID');
     if (!appId) {
@@ -49,8 +63,14 @@ export class AppAttestVerifier {
     const object = decodeAttestation(attestation);
     const { credCert, chain } = parseChain(object.attStmt.x5c);
 
+    if (!hardwarePublicKey) {
+      throw new AttestationRejectedError(
+        'iOS enrolment must name the Secure Enclave key the attestation is bound to',
+      );
+    }
+
     await assertChainToAppleRoot(chain);
-    assertNonce(credCert, object.authData, nonce);
+    assertNonce(credCert, object.authData, nonce + hardwarePublicKey);
 
     const publicKey = extractUncompressedKey(credCert);
     const authData = parseAuthData(object.authData);
@@ -66,10 +86,10 @@ export class AppAttestVerifier {
       );
     }
 
-    return {
-      hardwarePublicKey: compressP256(publicKey).toString('hex'),
-      security: 'secure_enclave',
-    };
+    // The Secure Enclave key, not the App Attest one this certificate carries.
+    // Apple signed a challenge containing it, which is what makes taking it
+    // from the request safe.
+    return { hardwarePublicKey, security: 'secure_enclave' };
   }
 }
 

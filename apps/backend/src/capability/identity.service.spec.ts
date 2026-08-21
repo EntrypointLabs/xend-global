@@ -22,6 +22,7 @@ function userRow(over: Partial<UsersRow> = {}): UsersRow {
   return {
     id: 'u1',
     email: 'a@b.com',
+    notificationsEnabled: true,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     deletedAt: null,

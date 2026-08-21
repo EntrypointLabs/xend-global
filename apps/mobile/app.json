@@ -53,7 +53,8 @@
       ],
       "permissions": ["CAMERA"],
       "softwareKeyboardLayoutMode": "pan",
-      "package": "com.giftedborg.xend"
+      "package": "com.giftedborg.xend",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",
@@ -89,6 +90,13 @@
         "expo-local-authentication",
         {
           "faceIDPermission": "Allow Xend to use Face ID to unlock the app."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#0a0a0a"
         }
       ]
     ],

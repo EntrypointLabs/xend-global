@@ -203,11 +203,26 @@ export class WalletsService {
 
     if (!account) throw new NotFoundException('Wallet not found');
 
-    const tokens = await this.solana.getTokenBalances(account.walletAddress);
-    if (tokens.some((t) => t.amountRaw > 0n)) {
-      throw new AccountHasBalanceError(
-        'Balance must be zero before the account can be deleted',
-      );
+    // Every address the Consumer's money can be sitting at, and lamports as
+    // well as tokens. Checking only the Privy wallet's token accounts let
+    // someone delete an account while funds sat in the vault, or in native
+    // SOL, and then anonymized the identifiers they would need to reach them.
+    const vault = await this.resolveBalanceAddress(
+      userId,
+      account.walletAddress,
+    );
+    const addresses = [...new Set([account.walletAddress, vault])];
+
+    for (const address of addresses) {
+      const [tokens, lamports] = await Promise.all([
+        this.solana.getTokenBalances(address),
+        this.solana.getSolBalance(address),
+      ]);
+      if (lamports > 0n || tokens.some((t) => t.amountRaw > 0n)) {
+        throw new AccountHasBalanceError(
+          'Balance must be zero before the account can be deleted',
+        );
+      }
     }
 
     await this.db.client

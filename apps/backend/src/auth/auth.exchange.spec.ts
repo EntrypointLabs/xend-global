@@ -101,6 +101,7 @@ function makeFakeDb(store: FakeStore): DbService {
           return {
             id: `u_${store.users.length + 1}`,
             email: v.email,
+            notificationsEnabled: true,
             createdAt: new Date(),
             updatedAt: new Date(),
           };
@@ -303,6 +304,7 @@ describe('AuthService.exchange', () => {
         {
           id: 'u_existing',
           email: validPrivyUser.email,
+          notificationsEnabled: true,
           createdAt: new Date('2026-01-01'),
           updatedAt: new Date('2026-01-01'),
           deletedAt: null,
@@ -434,6 +436,7 @@ describe('AuthService.exchange', () => {
         {
           id: 'u_existing',
           email: validPrivyUser.email,
+          notificationsEnabled: true,
           createdAt: new Date('2026-01-01'),
           updatedAt: new Date('2026-01-01'),
           deletedAt: null,
@@ -479,6 +482,7 @@ describe('AuthService.exchange', () => {
         {
           id: 'u_existing',
           email: validPrivyUser.email,
+          notificationsEnabled: true,
           createdAt: new Date('2026-01-01'),
           updatedAt: new Date('2026-01-01'),
           deletedAt: null,
@@ -567,6 +571,7 @@ describe('AuthService.exchange', () => {
         {
           id: 'u_existing',
           email: validPrivyUser.email,
+          notificationsEnabled: true,
           createdAt: new Date('2026-01-01'),
           updatedAt: new Date('2026-01-01'),
           deletedAt: null,

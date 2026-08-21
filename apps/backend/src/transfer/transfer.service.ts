@@ -140,7 +140,11 @@ export class TransferService {
     // cannot be a plain SPL transfer either: it has to go through the Squads
     // spend path, which is what SpendService builds.
     const squads = await this.accounts.findByUserId(userId);
-    if (squads) {
+    // Sending to their own vault is the sweep, and it is the one transfer that
+    // must not take the Spend path: the vault paying itself moves nothing, and
+    // the balance being rescued is the one still sitting in the Privy wallet.
+    const isSweepToVault = squads?.vaultAddress === req.toAddress;
+    if (squads && !isSweepToVault) {
       return this.prepareVaultSpend(userId, account.id, req);
     }
 
@@ -515,7 +519,16 @@ export class TransferService {
         submittedAt: now,
       })
       .onConflictDoUpdate({
-        target: transfers.signature,
+        // The whole leg, matching the unique index: a signature alone is not a
+        // unique movement.
+        target: [
+          transfers.signature,
+          transfers.mint,
+          transfers.fromAddress,
+          transfers.toAddress,
+          transfers.amountRaw,
+          transfers.legIndex,
+        ],
         set: {
           intentId: sql`COALESCE(${transfers.intentId}, excluded.intent_id)`,
           submittedAt: sql`COALESCE(${transfers.submittedAt}, excluded.submitted_at)`,

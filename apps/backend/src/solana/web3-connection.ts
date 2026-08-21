@@ -11,6 +11,7 @@ import type {
   TokenBalance,
 } from './solana-rpc.interface';
 import type { WalletAddress } from '../wallet/wallet-provider.interface';
+import { LegCounter } from './leg-counter';
 
 /**
  * Shared helpers used by HeliusAdapter and PublicMainnetAdapter.
@@ -265,6 +266,7 @@ function extractTokenTransfers(
   }
 
   const events: ConfirmedTransferEvent[] = [];
+  const legs = new LegCounter();
   const allInstructions: (ParsedInstruction | PartiallyDecodedInstruction)[] =
     [];
   for (const ix of tx.transaction.message.instructions) {
@@ -311,6 +313,7 @@ function extractTokenTransfers(
       if (from !== owner && to !== owner) continue;
       events.push({
         signature,
+        legIndex: legs.next(WRAPPED_SOL_MINT, from, to, BigInt(lamports)),
         slot,
         mint: WRAPPED_SOL_MINT,
         amountRaw: BigInt(lamports),
@@ -342,6 +345,7 @@ function extractTokenTransfers(
 
     events.push({
       signature,
+      legIndex: legs.next(mint, fromOwner, toOwner, BigInt(amountStr)),
       slot,
       mint,
       amountRaw: BigInt(amountStr),
