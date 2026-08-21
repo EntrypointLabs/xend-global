@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
-  createAssociatedTokenAccountInstruction,
+  createAssociatedTokenAccountIdempotentInstruction,
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import {
@@ -183,7 +183,11 @@ export class Web3SpendChain implements SpendChain, OnModuleInit {
     );
     if (await this.rpc.getAccountInfo(ata, 'confirmed')) return null;
 
-    return createAssociatedTokenAccountInstruction(
+    // Idempotent, because the check above and the transaction landing are not
+    // the same moment: a second send prepared to the same new recipient, or
+    // anyone else funding them first, would otherwise fail the whole Spend on
+    // an account that already exists.
+    return createAssociatedTokenAccountIdempotentInstruction(
       new PublicKey(this.feePayer),
       ata,
       destination,
