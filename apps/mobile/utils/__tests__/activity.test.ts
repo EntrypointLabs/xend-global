@@ -245,12 +245,12 @@ describe("balance selectors", () => {
   ];
 
   describe("selectStablecoinTotal", () => {
-    it("sums recognized stablecoins and ignores other mints", () => {
-      // 1.5 USDC + 2.25 USDT = 3.75; the 9999 non-stablecoin is excluded.
-      expect(selectStablecoinTotal(tokens)).toBe(3.75);
+    it("counts USDC only, because Cash is USDC", () => {
+      // USDT is a holding, not spending money, so it belongs to Investments.
+      expect(selectStablecoinTotal(tokens)).toBe(1.5);
     });
 
-    it("only counts USDC when USDT is unset", () => {
+    it("still counts USDC only when USDT is unset", () => {
       delete process.env.EXPO_PUBLIC_USDT_MINT_ADDRESS;
       expect(selectStablecoinTotal(tokens)).toBe(1.5);
     });
@@ -439,6 +439,22 @@ describe("balance selectors", () => {
   });
 
   describe("selectPortfolio", () => {
+    it("puts USDT in Investments, not Cash", () => {
+      const held = [
+        { mint: USDC_MINT, amountRaw: "20000000", decimals: 6, symbol: "USDC" },
+        {
+          mint: USDT_MINT,
+          amountRaw: "5000000",
+          decimals: 6,
+          symbol: "USDT",
+          usdValue: 5,
+        },
+      ];
+      const p = selectPortfolio(held);
+      expect(p.cashUsd).toBe(20);
+      expect(p.investmentsUsd).toBe(5);
+    });
+
     const priced = [
       { mint: USDC_MINT, amountRaw: "20000000", decimals: 6, symbol: "USDC" },
       {
