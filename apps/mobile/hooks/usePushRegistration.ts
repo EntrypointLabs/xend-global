@@ -2,12 +2,12 @@ import { useEffect } from "react";
 import { Platform } from "react-native";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
-import Constants from "expo-constants";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 
 import { apiClient } from "@/utils/apiClient";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserId } from "@/hooks/useUserId";
+import { getPushToken } from "@/utils/pushDevice";
 
 /**
  * A notification that arrives while the Consumer is looking at the app is
@@ -97,16 +97,11 @@ export function usePushRegistration() {
         (await Notifications.requestPermissionsAsync()).granted;
       if (!granted || cancelled) return;
 
-      const projectId =
-        Constants.expoConfig?.extra?.eas?.projectId ??
-        Constants.easConfig?.projectId;
-      const token = await Notifications.getExpoPushTokenAsync(
-        projectId ? { projectId } : undefined
-      );
-      if (cancelled) return;
+      const token = await getPushToken();
+      if (!token || cancelled) return;
 
       await apiClient.registerPushDevice({
-        token: token.data,
+        token,
         platform: Platform.OS === "ios" ? "ios" : "android",
       });
     })().catch((err: unknown) => {

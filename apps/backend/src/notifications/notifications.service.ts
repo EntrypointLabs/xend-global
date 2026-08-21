@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { pushDevices, users } from '../db/schema';
 import { PUSH_SENDER } from './push-sender.interface';
@@ -47,6 +47,20 @@ export class NotificationsService {
         target: pushDevices.token,
         set: { userId: params.userId, updatedAt: new Date() },
       });
+  }
+
+  /**
+   * Forgets one device, on sign-out.
+   *
+   * Scoped to the Consumer who is signing out: a token they do not own is
+   * somebody else's phone, and letting a caller name it would let them silence
+   * it. A token that has already been re-registered by the next person to sign
+   * in on that device is theirs by then, and this leaves it alone.
+   */
+  async forgetDevice(userId: string, token: string): Promise<void> {
+    await this.db.client
+      .delete(pushDevices)
+      .where(and(eq(pushDevices.userId, userId), eq(pushDevices.token, token)));
   }
 
   /**

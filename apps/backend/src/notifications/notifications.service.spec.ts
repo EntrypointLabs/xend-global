@@ -45,6 +45,26 @@ function makeFakeDb(opts: FakeDbOptions = {}) {
   return { db: { client } as unknown as DbService, execute, deleted };
 }
 
+/** The literals a Drizzle condition will bind, wherever they are nested. */
+function boundValues(clause: unknown): unknown[] {
+  const found: unknown[] = [];
+  const seen = new Set<unknown>();
+  const walk = (node: unknown) => {
+    if (node === null || typeof node !== 'object' || seen.has(node)) return;
+    seen.add(node);
+    const record = node as Record<string, unknown>;
+    if ('value' in record && typeof record.value !== 'object') {
+      found.push(record.value);
+    }
+    for (const key of ['queryChunks', 'params']) {
+      const children = record[key];
+      if (Array.isArray(children)) children.forEach(walk);
+    }
+  };
+  walk(clause);
+  return found;
+}
+
 function makeSender(invalidTokens: string[] = []) {
   return {
     send: jest.fn().mockResolvedValue({ invalidTokens }),
@@ -97,6 +117,25 @@ describe('NotificationsService', () => {
       await expect(
         service.notifyArrival({ smartAccountId: 'sa_1', amount: '1 USDC' }),
       ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('forgetDevice', () => {
+    it('deletes only the registration of the Consumer signing out', async () => {
+      const { db, deleted } = makeFakeDb({});
+
+      await new NotificationsService(db, makeSender()).forgetDevice(
+        'user-1',
+        'tok-phone',
+      );
+
+      // Both halves matter. Scoped to the token alone, a caller could name
+      // somebody else's phone and silence it; scoped to the user alone,
+      // signing out on one device would silence every device they own.
+      expect(deleted).toHaveLength(1);
+      expect(boundValues(deleted[0])).toEqual(
+        expect.arrayContaining(['user-1', 'tok-phone']),
+      );
     });
   });
 

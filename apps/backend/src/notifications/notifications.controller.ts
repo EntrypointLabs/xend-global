@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -11,8 +12,13 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
-import { NotificationPreferenceSchema, RegisterDeviceSchema } from './dtos';
+import {
+  ForgetDeviceSchema,
+  NotificationPreferenceSchema,
+  RegisterDeviceSchema,
+} from './dtos';
 import type {
+  ForgetDeviceRequest,
   NotificationPreferenceRequest,
   NotificationPreferenceResponse,
   RegisterDeviceRequest,
@@ -47,6 +53,22 @@ export class NotificationsController {
       token,
       platform,
     });
+  }
+
+  /**
+   * Called on sign-out. Without it the device keeps its registration and the
+   * next arrival for the Consumer who signed out lights up a phone that now
+   * belongs to whoever holds it — the preference is per person, so the new
+   * signed-out state silences nothing.
+   */
+  @Delete('devices')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async forgetDevice(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(ForgetDeviceSchema))
+    { token }: ForgetDeviceRequest,
+  ): Promise<void> {
+    await this.notifications.forgetDevice(req.user.userId, token);
   }
 
   @Get('preferences')

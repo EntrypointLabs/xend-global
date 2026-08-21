@@ -7,6 +7,11 @@ export const RegisterDeviceSchema = z.object({
 });
 export type RegisterDeviceRequest = z.infer<typeof RegisterDeviceSchema>;
 
+export const ForgetDeviceSchema = z.object({
+  token: z.string().min(1),
+});
+export type ForgetDeviceRequest = z.infer<typeof ForgetDeviceSchema>;
+
 export const NotificationPreferenceSchema = z.object({
   enabled: z.boolean(),
 });

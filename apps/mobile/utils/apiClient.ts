@@ -559,6 +559,16 @@ class BackendClient {
     });
   }
 
+  /** Forgets this installation, on sign-out. */
+  async forgetPushDevice(token: string): Promise<void> {
+    if (SEED_DEMO) return;
+    await this.request<unknown>("/notifications/devices", {
+      method: "DELETE",
+      auth: true,
+      body: JSON.stringify({ token }),
+    });
+  }
+
   async getNotificationPreference(): Promise<boolean> {
     if (SEED_DEMO) return true;
     const raw = await this.request<unknown>("/notifications/preferences", {
