@@ -7,6 +7,7 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { correlationIdMiddleware } from './common/correlation-id.middleware';
+import { noStoreMiddleware } from './common/no-store.middleware';
 
 async function bootstrap() {
   // rawBody:true gives the WebhookController access to the raw request
@@ -19,6 +20,11 @@ async function bootstrap() {
   // Register the correlation-ID middleware BEFORE CORS so every response,
   // including preflights and rejections, carries X-Correlation-Id.
   app.use(correlationIdMiddleware);
+  // Off, not weakened. An ETag is what lets a client revalidate and be handed a
+  // 304, and a 304 on a per-Consumer response is either an error the client
+  // cannot read or another Consumer's cached body.
+  app.set('etag', false);
+  app.use(noStoreMiddleware);
   const config = app.get(ConfigService);
   const allowedOrigins = config
     .getOrThrow<string>('CORS_ALLOWED_ORIGINS')

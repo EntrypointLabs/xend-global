@@ -430,6 +430,11 @@ class BackendClient {
 
       const fetchOptions: RequestInit = {
         ...options,
+        // Never read from, or write to, the platform HTTP cache. That cache is
+        // keyed on the URL and knows nothing about the bearer token, so a
+        // device that switches Consumers can be handed the previous one's
+        // response for the same path.
+        cache: "no-store",
         headers: {
           ...this.defaultHeaders,
           ...authHeaders,
@@ -451,6 +456,18 @@ class BackendClient {
       }
 
       const response = await fetch(url, fetchOptions);
+
+      // A 304 says "your cached copy is still good", and this client keeps no
+      // cache to answer with, so there is no body to return and nothing the
+      // caller can do. `no-store` above should mean we never ask a conditional
+      // question, but a proxy in between can still answer one.
+      if (response.status === 304) {
+        throw new ApiError(
+          `BackendClient: ${endpoint} answered 304 with no body to use`,
+          304,
+          undefined
+        );
+      }
 
       if (!response.ok) {
         const errorData = await response
