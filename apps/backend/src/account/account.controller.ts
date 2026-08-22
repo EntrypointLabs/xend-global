@@ -196,7 +196,7 @@ export class AccountController {
     try {
       return { keys: await this.recovery.list(req.user.userId) };
     } catch (err) {
-      throw toHttp(err);
+      throw this.recoveryFailure(req.user.userId, 'list', err);
     }
   }
 
@@ -223,7 +223,7 @@ export class AccountController {
       const plan = await this.recoveryChanges.start(req.user.userId, key.id);
       return { key, plan };
     } catch (err) {
-      throw toHttp(err);
+      throw this.recoveryFailure(req.user.userId, 'add_wallet', err);
     }
   }
 
@@ -236,7 +236,7 @@ export class AccountController {
       await this.recovery.remove(req.user.userId, id);
       return { plan: await this.recoveryChanges.start(req.user.userId, id) };
     } catch (err) {
-      throw toHttp(err);
+      throw this.recoveryFailure(req.user.userId, 'remove', err);
     }
   }
 
@@ -251,7 +251,7 @@ export class AccountController {
     try {
       return await this.recoveryChanges.next(req.user.userId);
     } catch (err) {
-      throw toHttp(err);
+      throw this.recoveryFailure(req.user.userId, 'change_next', err);
     }
   }
 
@@ -269,7 +269,7 @@ export class AccountController {
         ),
       };
     } catch (err) {
-      throw toHttp(err);
+      throw this.recoveryFailure(req.user.userId, 'change_submit', err);
     }
   }
 
@@ -289,6 +289,26 @@ export class AccountController {
    * recovery exists to cover the loss of an Active Key, and a key that is both
    * covers nothing.
    */
+  /**
+   * Logs why a recovery key operation failed, then maps it.
+   *
+   * `toHttp` flattens anything it does not recognise into "Could not create
+   * the Account", which is the right thing to hand a Consumer and useless to
+   * us: a constraint violation, an RPC timeout and a Turnkey refusal all
+   * arrive looking identical. The cause is written down before it is thrown
+   * away.
+   */
+  private recoveryFailure(
+    userId: string,
+    operation: string,
+    err: unknown,
+  ): HttpException {
+    this.logger.error(
+      `account.recovery_failed userId=${userId} op=${operation}: ${describeError(err)}`,
+    );
+    return toHttp(err);
+  }
+
   private async assertNotAnActiveSigner(userId: string, address: string) {
     const account = await this.accounts.findByUserId(userId);
     if (

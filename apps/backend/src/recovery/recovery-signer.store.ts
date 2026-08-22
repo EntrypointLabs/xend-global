@@ -17,6 +17,14 @@ export type NewRecoverySigner = typeof recoverySigners.$inferInsert;
  */
 export interface RecoverySignerStore {
   findByUser(userId: string): Promise<RecoverySignerRow[]>;
+  /**
+   * Across every Consumer, not just one.
+   *
+   * `address` is globally unique, so an address already used by somebody else
+   * cannot be inserted. Reading it first turns a driver-level constraint
+   * violation into an answer the Consumer can act on.
+   */
+  findByAddress(address: string): Promise<RecoverySignerRow | null>;
   insert(row: NewRecoverySigner): Promise<RecoverySignerRow>;
   deleteById(id: string): Promise<void>;
   updateById(
@@ -34,6 +42,15 @@ export class DrizzleRecoverySignerStore implements RecoverySignerStore {
       .select()
       .from(recoverySigners)
       .where(eq(recoverySigners.userId, userId));
+  }
+
+  async findByAddress(address: string): Promise<RecoverySignerRow | null> {
+    const [row] = await this.db.client
+      .select()
+      .from(recoverySigners)
+      .where(eq(recoverySigners.address, address))
+      .limit(1);
+    return row ?? null;
   }
 
   async insert(row: NewRecoverySigner): Promise<RecoverySignerRow> {

@@ -25,6 +25,12 @@ class FakeStore implements RecoverySignerStore {
     return Promise.resolve(this.rows.filter((r) => r.userId === userId));
   }
 
+  findByAddress(address: string): Promise<RecoverySignerRow | null> {
+    return Promise.resolve(
+      this.rows.find((r) => r.address === address) ?? null,
+    );
+  }
+
   insert(row: NewRecoverySigner): Promise<RecoverySignerRow> {
     const created: RecoverySignerRow = {
       id: `signer-${++this.seq}`,
@@ -241,6 +247,19 @@ describe('RecoveryService', () => {
     // proposed now would either collide or silently depend on the first.
     await expect(service.addEmail('user-1', 'b@example.com')).rejects.toThrow(
       RecoveryChangeInFlightError,
+    );
+  });
+
+  it('refuses a wallet that already backs another Consumer', async () => {
+    const wallet = 'So11111111111111111111111111111111111111112';
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', wallet);
+    await service.provisionEmailSigner('user-2', 'b@example.com');
+
+    // `address` is unique across every Consumer, so without this the insert
+    // dies on the constraint and the Consumer is shown a 500.
+    await expect(service.addExternalWallet('user-2', wallet)).rejects.toThrow(
+      DuplicateRecoveryChannelError,
     );
   });
 
