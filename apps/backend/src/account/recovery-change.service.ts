@@ -174,6 +174,9 @@ export class RecoveryChangeService {
 
     const signature = await this.chain.submit(signedTxBase64);
     this.prepared.delete(userId);
+    // Kept against the staged row so Activity can name the transaction that
+    // landed the key. Each step overwrites it, leaving the execute signature.
+    await this.recovery.markSignature(userId, signature);
     this.logger.log(
       `recovery_change.step_landed userId=${userId} signature=${signature}`,
     );

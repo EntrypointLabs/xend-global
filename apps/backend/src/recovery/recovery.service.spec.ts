@@ -1,6 +1,7 @@
 import { PublicKey } from '@solana/web3.js';
 import { Test } from '@nestjs/testing';
 import { RECOVERY_VAULT, type RecoveryVault } from './recovery-vault.interface';
+import { AccountEventsService } from '../activity/account-events.service';
 import { RecoveryService } from './recovery.service';
 import {
   DuplicateRecoveryChannelError,
@@ -53,6 +54,7 @@ class FakeStore implements RecoverySignerStore {
       sealedKeyId: row.sealedKeyId ?? null,
       status: row.status ?? 'active',
       changeIndex: row.changeIndex ?? null,
+      changeSignature: row.changeSignature ?? null,
       createdAt: new Date(0),
       updatedAt: new Date(0),
     };
@@ -85,17 +87,29 @@ const vault: RecoveryVault = {
     Promise.resolve(new Uint8Array(Buffer.from(sealed.ciphertext, 'base64'))),
 };
 
+/** Only what RecoveryService reaches. Recorded facts are asserted here too. */
+const recordAdded = jest.fn().mockResolvedValue(null);
+const recordRemoved = jest.fn().mockResolvedValue(null);
+const events = {
+  recordRecoveryKeyAdded: recordAdded,
+  recordRecoveryKeyRemoved: recordRemoved,
+} as unknown as AccountEventsService;
+
 describe('RecoveryService', () => {
   let service: RecoveryService;
   let store: FakeStore;
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     store = new FakeStore();
     const moduleRef = await Test.createTestingModule({
       providers: [
         RecoveryService,
         { provide: RECOVERY_SIGNER_STORE, useValue: store },
         { provide: RECOVERY_VAULT, useValue: vault },
+        // Recording is a side effect of settling, not part of the rules these
+        // tests cover; the events themselves are covered in their own spec.
+        { provide: AccountEventsService, useValue: events },
       ],
     }).compile();
     service = moduleRef.get(RecoveryService);
@@ -246,6 +260,60 @@ describe('RecoveryService', () => {
     await expect(service.remove('user-1', survivor.id)).rejects.toThrow(
       LastRecoverySignerError,
     );
+  });
+
+  it('records a key reaching the signer set, and only then', async () => {
+    const first = await service.provisionEmailSigner('user-1', 'a@example.com');
+    const added = await service.addExternalWallet(
+      'user-1',
+      'So11111111111111111111111111111111111111112',
+    );
+    await service.markChange(added.id, 9n);
+
+    // Staged is not added. Nothing has reached the chain yet.
+    expect(recordAdded).not.toHaveBeenCalled();
+
+    await service.settle('user-1', 9n);
+
+    expect(recordAdded).toHaveBeenCalledWith('user-1', {
+      signerId: added.id,
+      subject: 'So11111111111111111111111111111111111111112',
+      signature: null,
+    });
+    expect(first.id).not.toBe(added.id);
+  });
+
+  it('records a removal before the row it describes is gone', async () => {
+    const first = await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111112');
+    await service.remove('user-1', first.id);
+    await service.markChange(first.id, 12n);
+
+    await service.settle('user-1', 12n);
+
+    // The row is deleted by settle, so the subject has to be read off it
+    // first or the event records nothing.
+    expect(recordRemoved).toHaveBeenCalledWith('user-1', {
+      signerId: first.id,
+      subject: 'a@example.com',
+      signature: null,
+    });
+  });
+
+  it('records nothing for a change that was abandoned', async () => {
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    const added = await service.addExternalWallet(
+      'user-1',
+      'So11111111111111111111111111111111111111112',
+    );
+    await service.markChange(added.id, 14n);
+
+    await service.abandon('user-1', 14n);
+
+    // Nothing reached the signer set on this path, so nothing happened to the
+    // Account and the feed must not claim otherwise.
+    expect(recordAdded).not.toHaveBeenCalled();
+    expect(recordRemoved).not.toHaveBeenCalled();
   });
 
   it('refuses a second change while one is still in flight', async () => {

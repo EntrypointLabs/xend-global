@@ -13,6 +13,7 @@ import {
   RecoverySignerLimitError,
   UnknownRecoverySignerError,
 } from './recovery.errors';
+import { AccountEventsService } from '../activity/account-events.service';
 import { RECOVERY_VAULT, type RecoveryVault } from './recovery-vault.interface';
 
 export type RecoveryChannel = 'email' | 'external_wallet';
@@ -63,6 +64,7 @@ export class RecoveryService {
   constructor(
     @Inject(RECOVERY_SIGNER_STORE) private readonly store: RecoverySignerStore,
     @Inject(RECOVERY_VAULT) private readonly vault: RecoveryVault,
+    private readonly events: AccountEventsService,
   ) {}
 
   /**
@@ -223,6 +225,21 @@ export class RecoveryService {
     });
   }
 
+  /**
+   * Remembers the transaction a step landed in.
+   *
+   * Overwritten by each step, which leaves the execute signature: Activity
+   * names the transaction that actually put the key on chain, and that is the
+   * last one submitted before the change reads as executed.
+   */
+  async markSignature(userId: string, signature: string): Promise<void> {
+    for (const row of await this.store.findByUser(userId)) {
+      if (row.changeIndex !== null) {
+        await this.store.updateById(row.id, { changeSignature: signature });
+      }
+    }
+  }
+
   /** The open change for this Account, if one is in flight. */
   async pendingChange(
     userId: string,
@@ -245,8 +262,24 @@ export class RecoveryService {
         await this.store.updateById(row.id, {
           status: 'active',
           changeIndex: null,
+          changeSignature: null,
+        });
+        // Recorded here rather than when the Consumer asked for it, because
+        // this is the moment it became true: until the change executed the key
+        // protected nothing.
+        await this.events.recordRecoveryKeyAdded(userId, {
+          signerId: row.id,
+          subject: row.channelValue,
+          signature: row.changeSignature,
         });
       } else if (row.status === 'pending_remove') {
+        await this.events.recordRecoveryKeyRemoved(userId, {
+          signerId: row.id,
+          subject: row.channelValue,
+          signature: row.changeSignature,
+        });
+        // After the event, because the row is the only place the subject
+        // lives and deleting first would leave nothing to record.
         await this.store.deleteById(row.id);
       }
     }
@@ -265,6 +298,7 @@ export class RecoveryService {
         await this.store.updateById(row.id, {
           status: 'active',
           changeIndex: null,
+          changeSignature: null,
         });
       }
     }

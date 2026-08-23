@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DbModule } from '../db/db.module';
+import { AccountEventsModule } from '../activity/account-events.module';
 import {
   DrizzleRecoverySignerStore,
   RECOVERY_SIGNER_STORE,
@@ -9,7 +10,7 @@ import { RECOVERY_VAULT } from './recovery-vault.interface';
 import { RecoveryService } from './recovery.service';
 
 @Module({
-  imports: [DbModule],
+  imports: [DbModule, AccountEventsModule],
   providers: [
     RecoveryService,
     { provide: RECOVERY_SIGNER_STORE, useClass: DrizzleRecoverySignerStore },

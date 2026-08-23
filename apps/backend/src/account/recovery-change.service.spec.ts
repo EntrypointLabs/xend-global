@@ -119,6 +119,7 @@ function fakeRecovery({
         index === null ? null : { signerId: summary.id, changeIndex: index },
       ),
     list: () => Promise.resolve([summary]),
+    markSignature: () => Promise.resolve(),
     markChange: (_id: string, at: bigint) => {
       index = at;
       calls.push(`markChange:${at}`);
