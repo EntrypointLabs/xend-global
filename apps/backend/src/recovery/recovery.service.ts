@@ -139,14 +139,6 @@ export class RecoveryService {
         'that address is already a signer on this Account',
       );
     }
-    // Globally unique, so a wallet already backing somebody else's Account
-    // cannot back this one. Caught here rather than left to the constraint,
-    // which surfaces as an unreadable 500.
-    if (await this.store.findByAddress(address)) {
-      throw new DuplicateRecoveryChannelError(
-        'that wallet is already a recovery key on another Xend account',
-      );
-    }
 
     const row = await this.store.insert({
       userId,

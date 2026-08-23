@@ -273,7 +273,7 @@ export const recoverySigners = pgTable(
       .notNull()
       .references(() => users.id),
     /** The Squads signer pubkey. What actually sits in the signer set. */
-    address: text('address').notNull().unique(),
+    address: text('address').notNull(),
     channel: recoveryChannelEnum('channel').notNull(),
     /** The email address, or the external wallet's own address. */
     channelValue: text('channel_value').notNull(),
@@ -295,6 +295,14 @@ export const recoverySigners = pgTable(
       table.userId,
       table.channel,
       table.channelValue,
+    ),
+    // Per Consumer, not global. The same wallet backing two Consumers is a
+    // person who signed up twice, or a household sharing one device, and
+    // refusing that protects nobody. What must not happen is the same wallet
+    // counting twice toward one Consumer's threshold.
+    uniqueIndex('recovery_signers_user_address_idx').on(
+      table.userId,
+      table.address,
     ),
   ],
 );

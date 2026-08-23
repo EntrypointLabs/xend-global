@@ -1,3 +1,4 @@
+import { PublicKey } from '@solana/web3.js';
 import { Test } from '@nestjs/testing';
 import { RECOVERY_VAULT, type RecoveryVault } from './recovery-vault.interface';
 import { RecoveryService } from './recovery.service';
@@ -98,7 +99,9 @@ describe('RecoveryService', () => {
 
     expect(signer.channel).toBe('email');
     expect(signer.channelValue).toBe('a@example.com');
-    expect(signer.address).toHaveLength(44);
+    // Not a fixed length: base58 of 32 bytes is 43 or 44 characters depending
+    // on leading zeroes, so asserting 44 fails on roughly one key in 256.
+    expect(() => new PublicKey(signer.address)).not.toThrow();
     expect(Object.keys(signer)).not.toContain('sealedKey');
   });
 
@@ -250,15 +253,26 @@ describe('RecoveryService', () => {
     );
   });
 
-  it('refuses a wallet that already backs another Consumer', async () => {
+  it('lets two Consumers use the same wallet', async () => {
     const wallet = 'So11111111111111111111111111111111111111112';
     await service.provisionEmailSigner('user-1', 'a@example.com');
     await landAdd('user-1', wallet);
     await service.provisionEmailSigner('user-2', 'b@example.com');
 
-    // `address` is unique across every Consumer, so without this the insert
-    // dies on the constraint and the Consumer is shown a 500.
-    await expect(service.addExternalWallet('user-2', wallet)).rejects.toThrow(
+    // One person who signed up twice, or a household sharing a device.
+    // Refusing that protects nobody. What must not happen is the same wallet
+    // counting twice toward one Consumer's threshold, which is the next test.
+    await expect(
+      service.addExternalWallet('user-2', wallet),
+    ).resolves.toMatchObject({ channel: 'external_wallet' });
+  });
+
+  it('refuses the same wallet twice for one Consumer', async () => {
+    const wallet = 'So11111111111111111111111111111111111111112';
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', wallet);
+
+    await expect(service.addExternalWallet('user-1', wallet)).rejects.toThrow(
       DuplicateRecoveryChannelError,
     );
   });
