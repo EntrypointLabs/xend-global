@@ -4,13 +4,14 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useMemo, useRef } from "react";
 
-import { ActionCard, PromoBanner } from "@/components/ui/molecules";
+import { ActionCard } from "@/components/ui/molecules";
 import { ScreenLayout } from "@/components/ui/layout";
 import { SendModal } from "@/components/ui/organisms/modals/SendModal";
 import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { BalanceChart } from "@/components/ui/organisms/BalanceChart";
+import { HomeBanners } from "@/components/ui/organisms/HomeBanners";
 import { useBalanceDelta, useBalanceHistory } from "@/hooks/useBalanceHistory";
 import { useEarnPosition } from "@/hooks/useEarn";
 import { formatMoney } from "@/utils/balances";
@@ -275,12 +276,7 @@ function HomeScreenContent() {
           ))}
         </View>
 
-        <PromoBanner
-          title="Earn up to 4.93% APY"
-          description="Put USDC into Earn"
-          onPress={() => router.push("/earn")}
-          onClose={() => {}}
-        />
+        <HomeBanners />
 
         {/* Every gap above is fixed, so the leftover height lands here. A taller
             phone gets more room between the banner and the tab bar rather than

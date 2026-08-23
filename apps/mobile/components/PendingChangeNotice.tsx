@@ -1,4 +1,5 @@
-import { useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { PendingChangeModal } from "@/components/ui/organisms/modals/PendingChangeModal";
 import {
@@ -6,24 +7,45 @@ import {
   useRejectAccountChange,
 } from "@/hooks/usePendingAccountChange";
 
+const ACKNOWLEDGED_KEY = ["pending-change", "acknowledged"] as const;
+const ACKNOWLEDGED_STORE = "pending-change:acknowledged";
+
 /**
- * Surfaces a staged settings change wherever the Consumer is in the app.
+ * Interrupts the Consumer when their Account is being changed by someone else.
  *
- * Mounted in the signed-in shell rather than on a screen, because there is no
- * screen they are guaranteed to visit and the window to reject is finite. The
- * push notification reaches them when the app is closed; this is what reaches
- * them when it is open.
+ * Only by someone else. A change they started from this app announces itself on
+ * the home screen instead: raising the alarm over an action they just took
+ * teaches them that the alarm means nothing, which is the one thing it cannot
+ * afford to mean on the day it is real.
  *
- * A dismissal lasts for this launch only. The change outlives it, so agreeing
- * that it was them should not silence the notice for the next 24 hours if they
- * later realise it was not.
+ * Acknowledging is remembered across launches and keyed to that specific
+ * change, so answering it once settles it. A different change later still
+ * interrupts.
  */
 export function PendingChangeNotice() {
+  const queryClient = useQueryClient();
   const { data: change } = usePendingAccountChange();
   const reject = useRejectAccountChange();
-  const [dismissed, setDismissed] = useState(false);
 
-  if (!change || dismissed) return null;
+  const { data: acknowledged, isPending } = useQuery({
+    queryKey: ACKNOWLEDGED_KEY,
+    queryFn: () => AsyncStorage.getItem(ACKNOWLEDGED_STORE),
+    staleTime: Infinity,
+  });
+
+  const acknowledge = useMutation({
+    mutationFn: (index: string) =>
+      AsyncStorage.setItem(ACKNOWLEDGED_STORE, index),
+    onSuccess: (_result, index) =>
+      queryClient.setQueryData(ACKNOWLEDGED_KEY, index),
+  });
+
+  // Nothing is shown until the stored answer is known: flashing the alarm at
+  // someone who already answered it is the failure this exists to avoid.
+  if (isPending || !change) return null;
+  // Their own doing, so the home screen carries it rather than a modal.
+  if (change.selfInitiated) return null;
+  if (acknowledged === change.transactionIndex) return null;
 
   return (
     <PendingChangeModal
@@ -36,7 +58,7 @@ export function PendingChangeNotice() {
           : null
       }
       onReject={() => reject.mutate()}
-      onDismiss={() => setDismissed(true)}
+      onDismiss={() => acknowledge.mutate(change.transactionIndex)}
     />
   );
 }

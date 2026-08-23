@@ -5,6 +5,7 @@ import { AuthStorage } from "@/utils/storage/authStorage";
 import {
   SEED_DEMO,
   seedRecoveryKeys,
+  seedPendingChange,
   seedBalances,
   seedPrepareTransfer,
   seedSessions,
@@ -648,7 +649,7 @@ class BackendClient {
 
   /** GET /account/changes/pending — a settings change awaiting a decision. */
   async getPendingAccountChange(): Promise<StagedChange | null> {
-    if (SEED_DEMO) return null;
+    if (SEED_DEMO) return seedPendingChange();
     const raw = await this.request<unknown>("/account/changes/pending", {
       method: "GET",
       auth: true,

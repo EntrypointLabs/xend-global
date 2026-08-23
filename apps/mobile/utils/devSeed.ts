@@ -1,5 +1,6 @@
 import type {
   BalancesResponse,
+  StagedChange,
   ListSessionsResponse,
   PrepareTransferResponse,
   RecoveryKey,
@@ -288,4 +289,25 @@ export function seedRecoveryKeys(): RecoveryKey[] {
     ];
   }
   return [email];
+}
+
+/**
+ * A staged settings change for the demo seed.
+ *
+ * `EXPO_PUBLIC_SEED_CHANGE` picks who started it: `self` is the Consumer's own
+ * key change, which the home banner carries quietly, and `stranger` is the one
+ * that interrupts. Neither is reachable on a simulator otherwise, because
+ * staging a change needs two on-device signatures.
+ */
+export function seedPendingChange(): StagedChange | null {
+  const state = process.env.EXPO_PUBLIC_SEED_CHANGE;
+  if (state !== "self" && state !== "stranger") return null;
+
+  return {
+    transactionIndex: "2",
+    status: "Approved",
+    approvals: [],
+    executableAt: new Date(Date.now() + 23.5 * 3600 * 1000).toISOString(),
+    selfInitiated: state === "self",
+  };
 }
