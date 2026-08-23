@@ -162,6 +162,20 @@
       "when": 1785513600000,
       "tag": "0021_recovery_address_per_user",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1785600000000,
+      "tag": "0022_account_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1785686400000,
+      "tag": "0023_event_signature",
+      "breakpoints": true
     }
   ]
 }

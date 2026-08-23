@@ -40,6 +40,19 @@ export const recoverySignerStatusEnum = pgEnum('recovery_signer_status', [
   'pending_remove',
 ]);
 
+/**
+ * The kinds of thing that show up in Activity without being a payment.
+ *
+ * Activity is the Consumer's record of what happened to their account, and
+ * money is only part of that. Losing a recovery key matters more than most
+ * transfers do, so it belongs in the same list rather than buried in settings.
+ */
+export const accountEventKindEnum = pgEnum('account_event_kind', [
+  'recovery_key_added',
+  'recovery_key_removed',
+  'wallet_renamed',
+]);
+
 export const transferDirectionEnum = pgEnum('transfer_direction', [
   'SEND',
   'RECEIVE',
@@ -287,6 +300,14 @@ export const recoverySigners = pgTable(
      * signer, while one is in flight. Null once the chain and this row agree.
      */
     changeIndex: text('change_index'),
+    /**
+     * The last transaction submitted for that change.
+     *
+     * Kept so the Activity entry can name the transaction that landed the key.
+     * Overwritten by each step, which leaves the execute signature: the step
+     * after which the change is actually on chain.
+     */
+    changeSignature: text('change_signature'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -304,6 +325,62 @@ export const recoverySigners = pgTable(
       table.userId,
       table.address,
     ),
+  ],
+);
+
+/**
+ * account_events — everything in Activity that is not a movement of money.
+ *
+ * A separate table rather than another `transfers.kind`. A transfer row is
+ * shaped around money (direction, mint, amount, addresses, confirmation), and
+ * a renamed wallet has none of that; bolting it on would make most of those
+ * columns nullable and leave the meaning to a discriminator.
+ *
+ * `dedupe_key` is what makes recording an event safe from a reconciler. The
+ * settle path is deliberately idempotent and runs again on every poll until the
+ * chain agrees, so an insert with no guard would write one row per poll.
+ */
+export const accountEvents = pgTable(
+  'account_events',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    kind: accountEventKindEnum('kind').notNull(),
+    /**
+     * What the event is about, in the Consumer's terms: the email or wallet
+     * address of a recovery key, or the name a wallet was given.
+     */
+    subject: text('subject'),
+    /** What it replaced, where the change is from-to rather than a one-off. */
+    previousSubject: text('previous_subject'),
+    /**
+     * Identifies the underlying fact, not this row. Two attempts to record the
+     * same thing carry the same key and the second is a no-op.
+     */
+    dedupeKey: text('dedupe_key').notNull(),
+    /**
+     * The transaction that landed it, where there was one.
+     *
+     * Nullable because not every event reaches the chain: renaming a wallet is
+     * a local fact, and an older event recorded before the signature was
+     * carried has none.
+     */
+    signature: text('signature'),
+    /**
+     * When it happened, which is not when it was written. A key added on chain
+     * yesterday is recorded the moment the app next opens, and the Consumer
+     * should see yesterday.
+     */
+    occurredAt: timestamp('occurred_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('account_events_dedupe_idx').on(table.dedupeKey),
+    index('account_events_user_time_idx').on(table.userId, table.occurredAt),
   ],
 );
 
