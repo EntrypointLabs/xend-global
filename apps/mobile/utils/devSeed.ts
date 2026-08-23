@@ -66,6 +66,24 @@ export function seedTransfers(): TransferListResponse {
     `${s}dEmO5xQ2wR7tY9uP1sX4vB6mH8jC3dF5aZ1yU2eW4rK6tN`;
 
   return {
+    events: [
+      {
+        id: "evt-1",
+        kind: "recovery_key_added",
+        subject: "So1111...111112",
+        previousSubject: null,
+        signature: "3ouU7Kq9vXbN2mRt5wYzA8cD1eF4gH6jK9lM2nP5qR8s",
+        occurredAt: hoursAgo(5),
+      },
+      {
+        id: "evt-2",
+        kind: "wallet_renamed",
+        subject: "Gift",
+        previousSubject: "Wallet",
+        signature: null,
+        occurredAt: hoursAgo(40),
+      },
+    ],
     nextCursor: null,
     transfers: [
       {

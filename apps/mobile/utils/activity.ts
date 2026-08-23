@@ -1,4 +1,4 @@
-import type { TransferRow } from "@/utils/apiClient";
+import type { AccountEventRow, TransferRow } from "@/utils/apiClient";
 import { describeToken, formatTokenAmount } from "@/utils/tokens";
 
 /**
@@ -17,6 +17,21 @@ export interface ActivityEntry {
   kind: "transfer" | "payment" | "security";
   /** Set only on `security` entries: what changed on the Account. */
   securityLabel?: string;
+  /**
+   * Set only on `security` entries: which key or name it was.
+   *
+   * Its own field rather than folded into the label, because the row shows the
+   * two on separate lines and the detail sheet leads with this one.
+   */
+  securitySubject?: string;
+  /**
+   * Set only on `security` entries: which kind it is.
+   *
+   * Carried rather than inferred from the label. Reading the wording to pick
+   * an icon breaks the moment the wording changes, and it already did: a
+   * renamed wallet was being drawn with a key.
+   */
+  securityKind?: AccountEventRow["kind"];
   merchantName: string | null;
   mint: string;
   amountRaw: string;
@@ -163,6 +178,9 @@ export function statusLabel(entry: ActivityEntry): string {
 export function securityActivityEntry(params: {
   id: string;
   label: string;
+  subject?: string;
+  eventKind?: AccountEventRow["kind"];
+  signature?: string | null;
   at: string;
   self: string;
 }): ActivityEntry {
@@ -172,13 +190,15 @@ export function securityActivityEntry(params: {
     status: "confirmed",
     kind: "security",
     securityLabel: params.label,
+    securitySubject: params.subject,
+    securityKind: params.eventKind,
     merchantName: null,
     mint: "",
     amountRaw: "0",
     decimals: 0,
     self: params.self,
     counterparty: "",
-    signature: null,
+    signature: params.signature ?? null,
     memo: null,
     createdAt: params.at,
     confirmedAt: params.at,
@@ -200,4 +220,51 @@ export function arrivalLabel(row: TransferRow): string {
     decimals
   );
   return symbol ? `Received ${amount} ${symbol}` : `Received ${amount}`;
+}
+
+/**
+ * How an account event reads in the feed.
+ *
+ * Written out per kind rather than assembled from the kind and the subject,
+ * because these are the sentences a Consumer will scan when they are trying to
+ * work out whether something happened to their account without them.
+ */
+function describeEvent(event: AccountEventRow): {
+  label: string;
+  subject?: string;
+} {
+  const subject = event.subject ?? undefined;
+  switch (event.kind) {
+    case "recovery_key_added":
+      return { label: "Added Recovery Key", subject };
+    case "recovery_key_removed":
+      return { label: "Removed Recovery Key", subject };
+    case "wallet_renamed":
+      return {
+        label: event.previousSubject ? "Renamed Wallet" : "Named Wallet",
+        subject,
+      };
+  }
+}
+
+/**
+ * Turns an account event into a feed entry.
+ *
+ * Ids are prefixed because the list keys on `id` alone and these come from a
+ * different table than the transfers beside them.
+ */
+export function mapAccountEventToActivityEntry(
+  event: AccountEventRow,
+  selfAddress: string
+): ActivityEntry {
+  const { label, subject } = describeEvent(event);
+  return securityActivityEntry({
+    id: `event:${event.id}`,
+    label,
+    subject,
+    eventKind: event.kind,
+    signature: event.signature,
+    at: event.occurredAt,
+    self: selfAddress,
+  });
 }

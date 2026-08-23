@@ -1,4 +1,5 @@
 import { View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Typography } from "../atoms/Typography";
 import type { ActivityEntry } from "@/utils/activity";
 import { statusLabel } from "@/utils/activity";
@@ -15,6 +16,13 @@ export type ActivityItemProps = ActivityEntry & {
 };
 
 export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
+  // An account event has no amount, no token and no counterparty. Falling
+  // through would render it as a nameless token and a "+0", which reads as a
+  // broken transfer rather than the security notice it is.
+  if (entry.kind === "security") {
+    return <AccountEventItem entry={entry} onPress={onPress} />;
+  }
+
   const isSend = entry.direction === "send";
   const isPayment = entry.kind === "payment";
   const isInactive = entry.status === "pending" || entry.status === "failed";
@@ -86,6 +94,78 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
             </Typography>
           )}
         </View>
+      </View>
+    </HapticPressable>
+  );
+}
+
+/**
+ * A muted key in a thin ring, badged with what happened to it.
+ *
+ * Deliberately quieter than a token mark: these rows carry no amount, and
+ * giving them a filled colour badge would make an account note look like the
+ * loudest money on the screen.
+ */
+export function AccountEventMark({
+  kind,
+  size = 40,
+}: {
+  kind: ActivityEntry["securityKind"];
+  size?: number;
+}) {
+  const renamed = kind === "wallet_renamed";
+  const badge = kind === "recovery_key_removed" ? "close" : "add";
+
+  return (
+    <View
+      className="items-center justify-center rounded-full border border-black/[0.08]"
+      style={{ width: size, height: size }}
+    >
+      <Ionicons
+        name={renamed ? "create-outline" : "key-outline"}
+        size={size * 0.45}
+        color="#00000059"
+      />
+      {!renamed && (
+        <View
+          className="absolute -right-0.5 -top-0.5 items-center justify-center rounded-full border border-white bg-black/[0.08]"
+          style={{ width: size * 0.4, height: size * 0.4 }}
+        >
+          <Ionicons name={badge} size={size * 0.25} color="#00000080" />
+        </View>
+      )}
+    </View>
+  );
+}
+
+function AccountEventItem({
+  entry,
+  onPress,
+}: {
+  entry: ActivityEntry;
+  onPress?: () => void;
+}) {
+  const label = entry.securityLabel ?? "Account updated";
+
+  return (
+    <HapticPressable
+      className="flex-row items-center gap-3.5 py-3"
+      onPress={onPress}
+    >
+      <AccountEventMark kind={entry.securityKind} />
+      <View className="flex-1 flex-col">
+        <Typography weight="600" className="mb-0.5">
+          {label}
+        </Typography>
+        {entry.securitySubject && (
+          <Typography
+            weight="500"
+            className="text-sm text-black/30"
+            numberOfLines={1}
+          >
+            {entry.securitySubject}
+          </Typography>
+        )}
       </View>
     </HapticPressable>
   );

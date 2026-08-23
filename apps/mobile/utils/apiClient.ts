@@ -344,8 +344,31 @@ export type TransferRow = z.infer<typeof TransferRowSchema>;
  * The mobile field name is preserved from the backend; do not re-key on
  * the client.
  */
+/**
+ * Something that happened to the Account that was not money moving.
+ *
+ * Kept out of `transfers` on purpose: the balance chart walks that array, and
+ * an entry with no amount in it would be read as a zero-value movement.
+ */
+export const AccountEventRowSchema = z.object({
+  id: z.string(),
+  kind: z.enum([
+    "recovery_key_added",
+    "recovery_key_removed",
+    "wallet_renamed",
+  ]),
+  subject: z.string().nullable(),
+  previousSubject: z.string().nullable(),
+  signature: z.string().nullable(),
+  occurredAt: z.string(),
+});
+export type AccountEventRow = z.infer<typeof AccountEventRowSchema>;
+
 export const TransferListResponseSchema = z.object({
   transfers: z.array(TransferRowSchema),
+  // Defaulted: the on-chain fallback path builds a page without them, and a
+  // page with no events is not an error.
+  events: z.array(AccountEventRowSchema).default([]),
   nextCursor: z.string().nullable(),
 });
 export type TransferListResponse = z.infer<typeof TransferListResponseSchema>;
