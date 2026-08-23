@@ -108,8 +108,34 @@ export const ListTransfersQuerySchema = z.object({
 });
 export type ListTransfersQuery = z.infer<typeof ListTransfersQuerySchema>;
 
+/**
+ * Something that happened to the Account that was not a movement of money.
+ *
+ * Carried alongside the transfers rather than mixed into them. The balance
+ * chart walks `transfers` directly, so an entry with no amount in that array
+ * would corrupt it; the client merges the two for display only.
+ */
+export const AccountEventRowSchema = z.object({
+  id: z.string(),
+  kind: z.enum([
+    'recovery_key_added',
+    'recovery_key_removed',
+    'wallet_renamed',
+  ]),
+  subject: z.string().nullable(),
+  previousSubject: z.string().nullable(),
+  signature: z.string().nullable(),
+  occurredAt: z.string(),
+});
+export type AccountEventRow = z.infer<typeof AccountEventRowSchema>;
+
 export const ListTransfersResponseSchema = z.object({
   transfers: z.array(TransferRowSchema),
+  /**
+   * The events that fall inside the span this page of transfers covers, so the
+   * merged list stays in order across pages.
+   */
+  events: z.array(AccountEventRowSchema),
   nextCursor: z.string().nullable(),
 });
 export type ListTransfersResponse = z.infer<typeof ListTransfersResponseSchema>;
