@@ -150,7 +150,7 @@ export default function KeysAndRecoveryScreen() {
               accessibilityLabel="Add a recovery key"
             >
               <Ionicons
-                name="add"
+                name="add-outline"
                 size={20}
                 color={atCapacity ? "#00000026" : "#000000"}
               />
@@ -197,9 +197,12 @@ export default function KeysAndRecoveryScreen() {
         </ScrollView>
 
         <HapticPressable
-          onPress={() => router.back()}
+          // To Settings, not back. This screen is reachable from the home
+          // banner, and `back` from there returns to the home tab and strands
+          // the settings stack on a sub-screen.
+          onPress={() => router.navigate("/settings" as never)}
           className="mt-2 size-12 items-center justify-center"
-          accessibilityLabel="Go back"
+          accessibilityLabel="Back to settings"
         >
           <Ionicons name="chevron-back" size={24} color="#000000" />
         </HapticPressable>
@@ -303,7 +306,7 @@ function RecoveryKeyRow({
     <View className="py-4">
       <View className="flex-row items-center gap-3">
         <Ionicons
-          name={entry.channel === "email" ? "mail-outline" : "wallet-outline"}
+          name={entry.channel === "email" ? "mail" : "wallet"}
           size={17}
           color={recoveryKeyColor(index)}
         />
@@ -312,8 +315,8 @@ function RecoveryKeyRow({
         </Typography>
 
         <Typography
-          weight="500"
-          className="flex-1 text-right text-[15px] text-black/40"
+          weight="600"
+          className="flex-1 text-right text-[13px] text-black/40"
           numberOfLines={1}
         >
           {entry.channel === "email"
@@ -324,7 +327,7 @@ function RecoveryKeyRow({
         <View ref={trigger} collapsable={false}>
           <HapticPressable
             onPress={open}
-            className="p-1"
+            className="px-1"
             accessibilityLabel="Key options"
           >
             <Ionicons name="ellipsis-horizontal" size={17} color="#00000040" />

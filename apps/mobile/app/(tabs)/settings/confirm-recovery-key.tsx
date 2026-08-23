@@ -62,7 +62,9 @@ export default function ConfirmRecoveryKeyScreen() {
           </View>
 
           <HapticPressable
-            onPress={() => router.dismissAll()}
+            onPress={() =>
+              router.navigate("/settings/keys-and-recovery" as never)
+            }
             className="h-14 items-center justify-center rounded-full bg-black"
           >
             <Typography weight="700" className="text-[15px] text-white">
