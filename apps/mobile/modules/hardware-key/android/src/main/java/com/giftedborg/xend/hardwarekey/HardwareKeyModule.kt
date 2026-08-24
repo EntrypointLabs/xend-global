@@ -3,6 +3,7 @@ package com.giftedborg.xend.hardwarekey
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.security.keystore.UserNotAuthenticatedException
 import android.util.Base64
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -47,8 +48,28 @@ class HardwareKeyModule : Module() {
     private const val LEGACY_KEY_ALIAS = "com.giftedborg.xend.approval-signer"
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
-    /** Zero seconds of validity: authenticate for every single signature. */
-    private const val AUTH_VALIDITY_SECONDS = 0
+    /**
+     * How long a fingerprint keeps the key usable, in seconds.
+     *
+     * Not how long the Consumer has to authenticate: the prompt has no timer,
+     * and they can read for as long as they like. This is the grace period
+     * afterwards, and signing happens within milliseconds of the prompt
+     * succeeding, so it only needs to be non-zero.
+     *
+     * It used to be zero, meaning authenticate-per-use, which sounds stricter
+     * and cost signatures. A per-use key can only be finished through a
+     * Keystore operation opened *before* the prompt and held across it, and
+     * Keystore prunes operations to make room for new ones. A Consumer who
+     * took two minutes to reach the sensor had their signature evicted while
+     * they read, and got "signing failed" for it. Measured on a Seeker: a
+     * one-second wait signs, a 111-second wait does not.
+     *
+     * Five seconds buys the same practical guarantee without holding anything
+     * open. Longer would only widen the window in which an unlocked phone
+     * could sign again unprompted, and buys nothing, because nothing in this
+     * flow waits between the prompt and the signature.
+     */
+    private const val AUTH_VALIDITY_SECONDS = 5
   }
 
   /**
@@ -160,11 +181,22 @@ class HardwareKeyModule : Module() {
       CodedException("ERR_NO_KEY", "no usable approval key on this device", null),
     )
 
-    val signature = try {
+    // Which auth model this key was created under decides the order of the next
+    // two steps, and a key's parameters cannot be changed after creation, so
+    // both are supported for as long as any per-use key is still enrolled.
+    //
+    // A per-use key lets `initSign` through here and refuses to finish without
+    // the prompt, so the operation is opened now and carried across it. A
+    // time-bound key refuses `initSign` until a fingerprint has been given, so
+    // there is nothing to open yet and nothing to lose while the Consumer
+    // reads.
+    val pending = try {
       // NONEwithECDSA: the payload is already the digest Turnkey stamps over.
       // SHA256withECDSA would hash it a second time and produce a signature
       // Turnkey rejects.
       Signature.getInstance("NONEwithECDSA").apply { initSign(entry.privateKey) }
+    } catch (_: UserNotAuthenticatedException) {
+      null
     } catch (error: Exception) {
       return promise.reject(
         CodedException("ERR_NO_KEY", "approval key is unusable; re-enrol", error),
@@ -178,13 +210,21 @@ class HardwareKeyModule : Module() {
         override fun onAuthenticationSucceeded(
           result: BiometricPrompt.AuthenticationResult,
         ) {
-          val authorised = result.cryptoObject?.signature
-            ?: return promise.reject(
-              CodedException("ERR_SIGN", "no authorised signature", null),
-            )
           try {
-            authorised.update(digest)
-            promise.resolve(authorised.sign().toHex())
+            val signer = if (pending == null) {
+              // The fingerprint just given covers the key for the next few
+              // seconds. Opening the operation here rather than before the
+              // prompt is the whole point: nothing sat waiting to be evicted.
+              Signature.getInstance("NONEwithECDSA")
+                .apply { initSign(entry.privateKey) }
+            } else {
+              // Per-use: only the Signature this prompt authorised can finish,
+              // and a freshly built one would defeat the binding.
+              result.cryptoObject?.signature
+                ?: throw IllegalStateException("prompt returned no authorised signature")
+            }
+            signer.update(digest)
+            promise.resolve(signer.sign().toHex())
           } catch (error: Exception) {
             promise.reject(CodedException("ERR_SIGN", "signing failed", error))
           }
@@ -206,7 +246,8 @@ class HardwareKeyModule : Module() {
       .build()
 
     activity.runOnUiThread {
-      prompt.authenticate(info, BiometricPrompt.CryptoObject(signature))
+      if (pending == null) prompt.authenticate(info)
+      else prompt.authenticate(info, BiometricPrompt.CryptoObject(pending))
     }
   }
 
@@ -228,6 +269,12 @@ class HardwareKeyModule : Module() {
         KeyProperties.AUTH_BIOMETRIC_STRONG,
       )
     } else {
+      // Deliberately left authenticate-per-use below API 30, which keeps the
+      // eviction risk on those devices. The deprecated call cannot say
+      // "biometric only", so a positive duration there would also accept the
+      // device PIN, and trading the biometric guarantee for a signature that
+      // survives a slow prompt is the wrong way round on the key that approves
+      // payments. The signing path handles both models, so these keys work.
       @Suppress("DEPRECATION")
       builder.setUserAuthenticationValidityDurationSeconds(-1)
     }
