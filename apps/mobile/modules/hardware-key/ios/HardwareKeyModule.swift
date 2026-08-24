@@ -23,19 +23,55 @@ import Security
    than re-enrolling.
  */
 public class HardwareKeyModule: Module {
-  private static let keyTag = "com.giftedborg.xend.approval-signer".data(using: .utf8)!
+  /// The tag used before keys were scoped to an account. Still read, never written.
+  private static let legacyKeyTag = "com.giftedborg.xend.approval-signer"
+
+  /// Where this account's approval key lives.
+  ///
+  /// Scoped per account because a phone can hold more than one. On a single
+  /// shared tag, enrolling a second account deleted the first account's key,
+  /// and nothing could put it back: the key is half of a 2-of-3 signer set, and
+  /// replacing a signer needs two of the three, one of which is the key that
+  /// just went.
+  ///
+  /// The fallback is the migration. An install enrolled before this existed has
+  /// its key under the legacy tag, so an account with no scoped key of its own
+  /// uses that one. Whether it is the right key is settled by the app, which
+  /// compares it against the public key the backend recorded at enrolment.
+  private static func tag(for account: String) -> Data {
+    if account.isEmpty { return legacyKeyTag.data(using: .utf8)! }
+    let scoped = "\(legacyKeyTag):\(account)"
+    if exists(tag: scoped) { return scoped.data(using: .utf8)! }
+    if exists(tag: legacyKeyTag) { return legacyKeyTag.data(using: .utf8)! }
+    return scoped.data(using: .utf8)!
+  }
+
+  /// Where a fresh enrolment writes. Never the legacy tag.
+  private static func enrolmentTag(for account: String) -> Data {
+    let value = account.isEmpty ? legacyKeyTag : "\(legacyKeyTag):\(account)"
+    return value.data(using: .utf8)!
+  }
+
+  private static func exists(tag: String) -> Bool {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassKey,
+      kSecAttrApplicationTag as String: tag.data(using: .utf8)!,
+      kSecReturnRef as String: false,
+    ]
+    return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
+  }
   private static let sentinelKey = "com.giftedborg.xend.approval-signer.enrolled"
   private static let attestKeyDefault = "com.giftedborg.xend.appattest.keyid"
 
   public func definition() -> ModuleDefinition {
     Name("HardwareKey")
 
-    AsyncFunction("enrol") { (nonce: String, promise: Promise) in
+    AsyncFunction("enrol") { (nonce: String, account: String, promise: Promise) in
       do {
-        try self.deleteKey()
+        try self.deleteKey(account: account, forEnrolment: true)
         UserDefaults.standard.removeObject(forKey: Self.attestKeyDefault)
 
-        let privateKey = try self.createKey()
+        let privateKey = try self.createKey(account: account)
         let publicKey = try self.compressedPublicKey(from: privateKey)
 
         // The challenge commits to the Secure Enclave key. iOS has two keys
@@ -51,7 +87,7 @@ public class HardwareKeyModule: Module {
             promise.resolve(["attestation": attestation, "publicKey": publicKey])
           case .failure(let error):
             // Never leave a key the backend has not accepted.
-            try? self.deleteKey()
+            try? self.deleteKey(account: account, forEnrolment: true)
             promise.reject("ERR_ATTESTATION", error.localizedDescription)
           }
         }
@@ -60,8 +96,8 @@ public class HardwareKeyModule: Module {
       }
     }
 
-    AsyncFunction("getPublicKey") { () -> String? in
-      guard let key = try? self.loadKey() else { return nil }
+    AsyncFunction("getPublicKey") { (account: String) -> String? in
+      guard let key = try? self.loadKey(account: account) else { return nil }
       return try? self.compressedPublicKey(from: key)
     }
 
@@ -69,12 +105,12 @@ public class HardwareKeyModule: Module {
     // well as payments, and a Consumer told to "approve this payment" while
     // finishing onboarding is being asked to confirm something that is not
     // happening. `title` is unused here: iOS shows a single reason line.
-    AsyncFunction("sign") { (payloadHex: String, title: String, reason: String) -> String in
+    AsyncFunction("sign") { (payloadHex: String, title: String, reason: String, account: String) -> String in
       _ = title
       guard let digest = Data(hex: payloadHex), digest.count == 32 else {
         throw Exception(name: "ERR_PAYLOAD", description: "payload must be a 32-byte hex digest")
       }
-      let key = try self.loadKey(reason: reason)
+      let key = try self.loadKey(account: account, reason: reason)
 
       var error: Unmanaged<CFError>?
       guard
@@ -88,8 +124,8 @@ public class HardwareKeyModule: Module {
       return (signature as Data).hexString
     }
 
-    AsyncFunction("reset") { () in
-      try? self.deleteKey()
+    AsyncFunction("reset") { (account: String) in
+      try? self.deleteKey(account: account, forEnrolment: true)
       UserDefaults.standard.removeObject(forKey: Self.sentinelKey)
       UserDefaults.standard.removeObject(forKey: Self.attestKeyDefault)
     }
@@ -97,7 +133,7 @@ public class HardwareKeyModule: Module {
 
   // MARK: - Key material
 
-  private func createKey() throws -> SecKey {
+  private func createKey(account: String) throws -> SecKey {
     var accessError: Unmanaged<CFError>?
     guard
       let access = SecAccessControlCreateWithFlags(
@@ -119,7 +155,7 @@ public class HardwareKeyModule: Module {
       kSecAttrTokenID as String: kSecAttrTokenIDSecureEnclave,
       kSecPrivateKeyAttrs as String: [
         kSecAttrIsPermanent as String: true,
-        kSecAttrApplicationTag as String: Self.keyTag,
+        kSecAttrApplicationTag as String: Self.enrolmentTag(for: account),
         kSecAttrAccessControl as String: access,
       ],
     ]
@@ -133,7 +169,7 @@ public class HardwareKeyModule: Module {
     return key
   }
 
-  private func loadKey(reason: String = "Approve this payment") throws -> SecKey {
+  private func loadKey(account: String, reason: String = "Approve this payment") throws -> SecKey {
     // Fresh context per call. A retained one can satisfy a later operation with
     // an earlier prompt.
     let context = LAContext()
@@ -141,7 +177,7 @@ public class HardwareKeyModule: Module {
 
     let query: [String: Any] = [
       kSecClass as String: kSecClassKey,
-      kSecAttrApplicationTag as String: Self.keyTag,
+      kSecAttrApplicationTag as String: Self.tag(for: account),
       kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
       kSecReturnRef as String: true,
       kSecUseAuthenticationContext as String: context,
@@ -162,10 +198,13 @@ public class HardwareKeyModule: Module {
     return (key as! SecKey)
   }
 
-  private func deleteKey() throws {
+  /// Only this account's own tag. Deleting more than that is the bug the
+  /// scoping exists to prevent.
+  private func deleteKey(account: String, forEnrolment: Bool = false) throws {
     let query: [String: Any] = [
       kSecClass as String: kSecClassKey,
-      kSecAttrApplicationTag as String: Self.keyTag,
+      kSecAttrApplicationTag as String: forEnrolment
+        ? Self.enrolmentTag(for: account) : Self.tag(for: account),
     ]
     let status = SecItemDelete(query as CFDictionary)
     guard status == errSecSuccess || status == errSecItemNotFound else {

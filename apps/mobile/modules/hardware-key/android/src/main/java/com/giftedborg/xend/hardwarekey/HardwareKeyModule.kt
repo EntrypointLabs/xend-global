@@ -36,22 +36,61 @@ import java.security.spec.ECGenParameterSpec
  */
 class HardwareKeyModule : Module() {
   companion object {
-    private const val KEY_ALIAS = "com.giftedborg.xend.approval-signer"
+    /**
+     * The alias used before keys were scoped to an account.
+     *
+     * Still read, never written. An install that enrolled under it keeps
+     * working: the account whose key this is finds it through the fallback in
+     * `aliasFor`, and enrolling a second account now writes its own alias
+     * instead of destroying this one.
+     */
+    private const val LEGACY_KEY_ALIAS = "com.giftedborg.xend.approval-signer"
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
     /** Zero seconds of validity: authenticate for every single signature. */
     private const val AUTH_VALIDITY_SECONDS = 0
   }
 
+  /**
+   * Where this account's approval key lives.
+   *
+   * Scoped per account because a phone can hold more than one. On a single
+   * shared alias, enrolling a second account deleted the first account's key,
+   * and nothing could put it back: the key is half of a 2-of-3 signer set, and
+   * replacing a signer needs two of the three, one of which is the key that
+   * just went. The first account silently lost the ability to approve
+   * anything, and only found out the next time it tried.
+   *
+   * The fallback is the migration. An install enrolled before this existed has
+   * its key under the legacy alias, so an account with no scoped key of its own
+   * uses that one. Whether it is the right key is not decided here: the app
+   * compares the public key against the one the backend recorded at enrolment.
+   */
+  private fun aliasFor(account: String): String {
+    if (account.isEmpty()) return LEGACY_KEY_ALIAS
+    val scoped = "$LEGACY_KEY_ALIAS:$account"
+    val store = keyStore()
+    if (store.containsAlias(scoped)) return scoped
+    if (store.containsAlias(LEGACY_KEY_ALIAS)) return LEGACY_KEY_ALIAS
+    return scoped
+  }
+
+  /** Where a fresh enrolment writes. Never the legacy alias. */
+  private fun enrolmentAlias(account: String): String =
+    if (account.isEmpty()) LEGACY_KEY_ALIAS else "$LEGACY_KEY_ALIAS:$account"
+
   override fun definition() = ModuleDefinition {
     Name("HardwareKey")
 
-    AsyncFunction("enrol") { nonce: String ->
-      deleteKey()
-      generateKey(nonce.toByteArray())
+    AsyncFunction("enrol") { nonce: String, account: String ->
+      val alias = enrolmentAlias(account)
+      // Only this account's own alias. Deleting more than that is the bug this
+      // scoping exists to prevent.
+      deleteKey(alias)
+      generateKey(alias, nonce.toByteArray())
 
       val store = keyStore()
-      val chain = store.getCertificateChain(KEY_ALIAS)
+      val chain = store.getCertificateChain(alias)
         ?: throw CodedException("ERR_ATTESTATION", "no attestation chain", null)
 
       // Leaf first, PEM, JSON, base64. The backend walks it to a Google root
@@ -62,22 +101,23 @@ class HardwareKeyModule : Module() {
       }
       val attestation = Base64.encodeToString("[$pems]".toByteArray(), Base64.NO_WRAP)
 
-      mapOf("attestation" to attestation, "publicKey" to compressedPublicKey())
+      mapOf("attestation" to attestation, "publicKey" to compressedPublicKey(alias))
     }
 
-    AsyncFunction("getPublicKey") {
-      if (keyStore().containsAlias(KEY_ALIAS)) compressedPublicKey() else null
+    AsyncFunction("getPublicKey") { account: String ->
+      val alias = aliasFor(account)
+      if (keyStore().containsAlias(alias)) compressedPublicKey(alias) else null
     }
 
     // The prompt copy comes from the caller. This key signs account setup as
     // well as payments, and a Consumer told to "approve this payment" while
     // finishing onboarding is being asked to confirm something that is not
     // happening.
-    AsyncFunction("sign") { payloadHex: String, title: String, reason: String, promise: Promise ->
-      signWithBiometrics(payloadHex, title, reason, promise)
+    AsyncFunction("sign") { payloadHex: String, title: String, reason: String, account: String, promise: Promise ->
+      signWithBiometrics(aliasFor(account), payloadHex, title, reason, promise)
     }
 
-    AsyncFunction("reset") { deleteKey() }
+    AsyncFunction("reset") { account: String -> deleteKey(enrolmentAlias(account)) }
   }
 
   /**
@@ -88,6 +128,7 @@ class HardwareKeyModule : Module() {
    * binding, because that object was never authorised.
    */
   private fun signWithBiometrics(
+    alias: String,
     payloadHex: String,
     title: String,
     reason: String,
@@ -112,7 +153,7 @@ class HardwareKeyModule : Module() {
       )
 
     val entry = try {
-      keyStore().getEntry(KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry
+      keyStore().getEntry(alias, null) as? KeyStore.PrivateKeyEntry
     } catch (error: Exception) {
       null
     } ?: return promise.reject(
@@ -172,8 +213,8 @@ class HardwareKeyModule : Module() {
   private fun keyStore(): KeyStore =
     KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
 
-  private fun generateKey(challenge: ByteArray) {
-    val builder = KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_SIGN)
+  private fun generateKey(alias: String, challenge: ByteArray) {
+    val builder = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
       .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
       .setDigests(KeyProperties.DIGEST_NONE, KeyProperties.DIGEST_SHA256)
       .setUserAuthenticationRequired(true)
@@ -210,14 +251,14 @@ class HardwareKeyModule : Module() {
       .generateKeyPair()
   }
 
-  private fun deleteKey() {
+  private fun deleteKey(alias: String) {
     val store = keyStore()
-    if (store.containsAlias(KEY_ALIAS)) store.deleteEntry(KEY_ALIAS)
+    if (store.containsAlias(alias)) store.deleteEntry(alias)
   }
 
   /** SEC1 compressed: 0x02 or 0x03 by the parity of Y, then X padded to 32. */
-  private fun compressedPublicKey(): String {
-    val certificate = keyStore().getCertificate(KEY_ALIAS)
+  private fun compressedPublicKey(alias: String): String {
+    val certificate = keyStore().getCertificate(alias)
       ?: throw CodedException("ERR_NO_KEY", "no approval key on this device", null)
     val point = (certificate.publicKey as ECPublicKey).w
 
