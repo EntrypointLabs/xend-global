@@ -9,13 +9,19 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
-import { AuthService, CredentialConflictError } from './auth.service';
+import {
+  AuthService,
+  CredentialConflictError,
+  EmailInUseError,
+} from './auth.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import {
   ExchangeRequestSchema,
   MirrorPasskeyCredentialSchema,
+  SetEmailSchema,
   type ExchangeRequest,
   type MirrorPasskeyCredentialRequest,
+  type SetEmailRequest,
 } from './dtos';
 
 interface AuthenticatedRequest extends Request {
@@ -31,6 +37,26 @@ export class AuthController {
     @Body(new ZodValidationPipe(ExchangeRequestSchema)) dto: ExchangeRequest,
   ) {
     return this.auth.exchange(dto.privyIdToken);
+  }
+
+  /** Records the contact address a Consumer gives after signing up. */
+  @Post('auth/email')
+  @UseGuards(AuthGuard('jwt'))
+  async setEmail(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(SetEmailSchema)) dto: SetEmailRequest,
+  ) {
+    try {
+      return await this.auth.setEmail(req.user.userId, dto.email);
+    } catch (err) {
+      if (err instanceof EmailInUseError) {
+        throw new HttpException(
+          { code: err.code, message: err.message },
+          HttpStatus.CONFLICT,
+        );
+      }
+      throw err;
+    }
   }
 
   /**

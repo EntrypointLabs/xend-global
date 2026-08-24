@@ -150,17 +150,9 @@ export class PrivyAdapter implements WalletProvider, OnModuleInit {
     // keeps the strict PrivyUserShapeError behaviour below.
     const isDev = this.config.get<string>('NODE_ENV') === 'development';
 
-    let email = user.email?.address;
-    if (!email) {
-      if (isDev) {
-        // TEST ONLY — never production. Deterministic per-DID placeholder.
-        email = `${user.id}@devtest.local`;
-      } else {
-        throw new PrivyUserShapeError(
-          `Privy user ${user.id} has no linked email; email login required in dashboard`,
-        );
-      }
-    }
+    // No longer required. A passkey-only sign-up has no email by design, and
+    // the Consumer is asked for one after the account exists.
+    const email = user.email?.address ?? null;
 
     const solanaWallets = user.linkedAccounts.filter(
       (acct): acct is WalletWithMetadata =>

@@ -158,7 +158,15 @@ export const users = pgTable('users', {
   id: text('id')
     .primaryKey()
     .$defaultFn(() => createId()),
-  email: text('email').notNull().unique(),
+  /**
+   * Contact address, not a credential.
+   *
+   * Nullable because identity is the passkey: a Consumer exists from the
+   * moment they create one, and the email is asked for afterwards. Still
+   * unique, because it anchors the recovery signer and two Accounts must not
+   * claim the same inbox.
+   */
+  email: text('email').unique(),
   /**
    * Whether they want to be told when money arrives.
    *

@@ -69,15 +69,31 @@ function makeFakeDb(store: FakeStore): DbService {
   // collection is empty the chain returns [] and the "new user" branch
   // runs.
   const makeSelectChain = (collection: Collection) => {
-    const ctx: { limit?: number } = {};
+    const ctx: { limit?: number; joinedUsers?: boolean } = {};
     const rowsAccessor = () => store[collection] as Record<string, unknown>[];
     const execute = () => {
       let rows = rowsAccessor();
+      // The one join the service makes: smart_accounts -> users, selected as
+      // `{ user }`. Resolved by userId rather than match-all, because the
+      // point of the query is that the Privy DID picks out one Consumer.
+      if (ctx.joinedUsers) {
+        rows = rows
+          .map((row) => ({
+            user: (store.users as Record<string, unknown>[]).find(
+              (u) => u.id === row.userId,
+            ),
+          }))
+          .filter((row) => row.user !== undefined) as Record<string, unknown>[];
+      }
       if (ctx.limit !== undefined) rows = rows.slice(0, ctx.limit);
       return Promise.resolve(rows);
     };
     const chain: Record<string, unknown> = {
       where: () => chain,
+      innerJoin: () => {
+        ctx.joinedUsers = true;
+        return chain;
+      },
       limit: (n: number) => {
         ctx.limit = n;
         return chain;

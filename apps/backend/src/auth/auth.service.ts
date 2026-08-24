@@ -25,6 +25,14 @@ import type { ExchangeResponse, MirrorPasskeyCredentialRequest } from './dtos';
  * HTTP-framework-agnostic (plain Error subclass); the controller maps it to
  * 409 CREDENTIAL_CONFLICT.
  */
+export class EmailInUseError extends Error {
+  readonly code = 'EMAIL_IN_USE';
+  constructor(message: string) {
+    super(message);
+    this.name = 'EmailInUseError';
+  }
+}
+
 export class CredentialConflictError extends Error {
   readonly code = 'CREDENTIAL_CONFLICT';
   constructor(message: string) {
@@ -82,12 +90,33 @@ export class AuthService {
 
     const { providerUserId, email, walletAddress, passkeys } = privyUser;
 
-    // Upsert users by email.
-    const [existingUser] = await this.db.client
-      .select()
-      .from(users)
-      .where(eq(users.email, email))
+    // Keyed on the Privy DID, not the email.
+    //
+    // The passkey is the credential, so a sign-up arrives with no email at all
+    // and there is nothing to match on. Matching on email was also wrong even
+    // when there was one: a Consumer who changed their Privy address would be
+    // treated as a stranger and get a second, empty Account, and one who moved
+    // to an address another Consumer already had would have adopted theirs.
+    const [byProvider] = await this.db.client
+      .select({ user: users })
+      .from(smartAccounts)
+      .innerJoin(users, eq(users.id, smartAccounts.userId))
+      .where(eq(smartAccounts.providerUserId, providerUserId))
       .limit(1);
+
+    // Falls back to the email for Consumers who signed up before the DID was
+    // the key and have no smart_accounts row yet.
+    const [byEmail] = byProvider?.user
+      ? []
+      : email
+        ? await this.db.client
+            .select()
+            .from(users)
+            .where(eq(users.email, email))
+            .limit(1)
+        : [];
+
+    const existingUser = byProvider?.user ?? byEmail;
 
     let userRow: typeof users.$inferSelect;
     let isNewUser: boolean;
@@ -196,6 +225,33 @@ export class AuthService {
         isNewUser,
       },
     };
+  }
+
+  /**
+   * Records the Consumer's contact address.
+   *
+   * Refused when it already belongs to someone else rather than adopted: the
+   * address anchors a recovery signer, and two Accounts claiming one inbox
+   * would mean either could be restored through it.
+   */
+  async setEmail(userId: string, email: string): Promise<{ email: string }> {
+    const [clash] = await this.db.client
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+
+    if (clash && clash.id !== userId) {
+      throw new EmailInUseError('that email is already on another account');
+    }
+
+    await this.db.client
+      .update(users)
+      .set({ email, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+
+    this.logger.log(`auth.email_set userId=${userId}`);
+    return { email };
   }
 
   /**

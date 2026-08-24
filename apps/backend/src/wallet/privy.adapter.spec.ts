@@ -153,16 +153,19 @@ describe('PrivyAdapter', () => {
       );
     });
 
-    it('throws PrivyUserShapeError when user has no email', async () => {
+    it('accepts a user with no email', async () => {
       const adapter = makeAdapter({
         getUser: jest.fn().mockResolvedValue({
           ...privyUserWithEmbeddedSolana,
           email: undefined,
         }),
       });
-      await expect(
-        adapter.verifyIdToken('valid.id.token'),
-      ).rejects.toBeInstanceOf(PrivyUserShapeError);
+
+      // A passkey sign-up has no email by design. The passkey is the
+      // credential; the address is asked for after the account exists.
+      await expect(adapter.verifyIdToken('valid.id.token')).resolves.toEqual(
+        expect.objectContaining({ email: null }),
+      );
     });
 
     it('throws PrivyUserShapeError when user has no Solana wallet', async () => {

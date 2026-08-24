@@ -15,7 +15,8 @@ export const ExchangeResponseSchema = z.object({
   token: z.string(),
   user: z.object({
     id: z.string(),
-    email: z.string().email(),
+    // Null until the Consumer gives one: the passkey is the credential.
+    email: z.string().email().nullable(),
     walletAddress: z.string(),
     isNewUser: z.boolean(),
   }),
@@ -35,3 +36,14 @@ export const MirrorPasskeyCredentialSchema = z.object({
 export type MirrorPasskeyCredentialRequest = z.infer<
   typeof MirrorPasskeyCredentialSchema
 >;
+
+/**
+ * The contact address, given after the account exists.
+ *
+ * Not a credential: it never signs anyone in. It anchors the recovery signer
+ * and receives the notices that tell a Consumer their keys changed.
+ */
+export const SetEmailSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+});
+export type SetEmailRequest = z.infer<typeof SetEmailSchema>;
