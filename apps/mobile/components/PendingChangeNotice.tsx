@@ -1,14 +1,9 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
 import { PendingChangeModal } from "@/components/ui/organisms/modals/PendingChangeModal";
 import {
   usePendingAccountChange,
   useRejectAccountChange,
 } from "@/hooks/usePendingAccountChange";
-
-const ACKNOWLEDGED_KEY = ["pending-change", "acknowledged"] as const;
-const ACKNOWLEDGED_STORE = "pending-change:acknowledged";
+import { usePendingChangeAcknowledgement } from "@/hooks/usePendingChangeAcknowledgement";
 
 /**
  * Interrupts the Consumer when their Account is being changed by someone else.
@@ -23,22 +18,10 @@ const ACKNOWLEDGED_STORE = "pending-change:acknowledged";
  * interrupts.
  */
 export function PendingChangeNotice() {
-  const queryClient = useQueryClient();
   const { data: change } = usePendingAccountChange();
   const reject = useRejectAccountChange();
-
-  const { data: acknowledged, isPending } = useQuery({
-    queryKey: ACKNOWLEDGED_KEY,
-    queryFn: () => AsyncStorage.getItem(ACKNOWLEDGED_STORE),
-    staleTime: Infinity,
-  });
-
-  const acknowledge = useMutation({
-    mutationFn: (index: string) =>
-      AsyncStorage.setItem(ACKNOWLEDGED_STORE, index),
-    onSuccess: (_result, index) =>
-      queryClient.setQueryData(ACKNOWLEDGED_KEY, index),
-  });
+  const { acknowledged, isPending, acknowledge } =
+    usePendingChangeAcknowledgement();
 
   // Nothing is shown until the stored answer is known: flashing the alarm at
   // someone who already answered it is the failure this exists to avoid.
@@ -58,7 +41,7 @@ export function PendingChangeNotice() {
           : null
       }
       onReject={() => reject.mutate()}
-      onDismiss={() => acknowledge.mutate(change.transactionIndex)}
+      onDismiss={() => acknowledge(change.transactionIndex)}
     />
   );
 }

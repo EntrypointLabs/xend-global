@@ -13,6 +13,7 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { useCountdown } from "@/hooks/useCountdown";
 import { usePendingAccountChange } from "@/hooks/usePendingAccountChange";
+import { usePendingChangeAcknowledgement } from "@/hooks/usePendingChangeAcknowledgement";
 import { cn } from "@/utils/cn";
 
 /** The card is inset by the screen's own padding on both sides. */
@@ -41,6 +42,7 @@ interface Banner {
  */
 export function HomeBanners() {
   const { data: change } = usePendingAccountChange();
+  const { reopen } = usePendingChangeAcknowledgement();
   const [page, setPage] = useState(0);
   const width = useRef(Dimensions.get("window").width - SCREEN_PADDING * 2);
   const remaining = useCountdown(change?.executableAt ?? null);
@@ -58,7 +60,14 @@ export function HomeBanners() {
       description: remaining
         ? `Goes through in ${remaining}. Tap to review.`
         : "Waiting for a second approval. Tap to review.",
-      onPress: () => router.push("/settings/keys-and-recovery" as never),
+      // Reviewing means two different things depending on whose change it is.
+      // Their own is a key they can watch land, and the key list is where it
+      // lives. Somebody else's is a thing to refuse, and the only screen that
+      // offers that is the notice they dismissed to get here, so tapping puts
+      // it back rather than sending them to a list that says nothing about it.
+      onPress: change.selfInitiated
+        ? () => router.push("/settings/keys-and-recovery" as never)
+        : reopen,
     });
   }
 

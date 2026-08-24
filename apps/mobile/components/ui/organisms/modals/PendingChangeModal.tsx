@@ -75,7 +75,7 @@ export function PendingChangeModal({
             className="mb-6 text-sm leading-5 opacity-70"
           >
             {remaining === null
-              ? "A change to who can access your Xend account has been started. It needs one more approval before it can go through. If this was not you, reject it now."
+              ? "A change to who can access your Xend account has been started. It needs one more approval, and then waits 24 hours before it takes effect. You can reject it at any point until then."
               : "A change to who can access your Xend account has been approved. If this was not you, reject it before the time below runs out."}
           </Typography>
 
@@ -120,16 +120,23 @@ export function PendingChangeModal({
           </HapticPressable>
 
           {/* Offered second and quietly, but offered: a Consumer who did start
-              this needs a way out that is not rejecting their own change. */}
+              this needs a way out that is not rejecting their own change.
+
+              It says "recognise" rather than "I made this change" because the
+              tap does nothing to the change. Nothing here supplies the second
+              approval, which comes from the device key through the app's own
+              flow, and a label that implies otherwise reads as the button that
+              finishes the job. Someone who taps it expecting that has in fact
+              only stopped being asked. */}
           <HapticPressable
             onPress={onDismiss}
             disabled={rejecting}
             accessibilityRole="button"
-            accessibilityLabel="I made this change"
+            accessibilityLabel="I recognise this"
             className="mt-3 items-center justify-center py-3"
           >
             <Typography weight="500" className="text-sm opacity-60">
-              I made this change
+              I recognise this
             </Typography>
           </HapticPressable>
         </View>
