@@ -73,6 +73,7 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
         state.proposal
           ? {
               approved: [],
+              rejected: [],
               settled: false,
               status: 'Active',
               statusTimestamp: null,
@@ -216,6 +217,48 @@ describe('AccountChangeService self-initiated changes', () => {
 describe('AccountChangeService rejection', () => {
   it('refuses to prepare a rejection when nothing is staged', async () => {
     const { chain } = fakeChain({ proposal: null });
+
+    await expect(service(chain).prepareRejection(USER)).rejects.toThrow();
+  });
+
+  it('rejects with both on-device signers, because one is not a refusal', async () => {
+    const { chain, compiled } = fakeChain({ proposal: { status: 'Active' } });
+
+    await service(chain).prepareRejection(USER);
+
+    // At a threshold of 2 of 3 a single rejection is recorded and the change
+    // stays open, so a one-signature rejection would report success and stop
+    // nothing. Verified against the deployed program in the smart-account
+    // package. S2 leads so Turnkey evaluates the finished payload.
+    const signers = compiled[0].map((ix) =>
+      (
+        ix as { keys: { pubkey: { toBase58(): string }; isSigner: boolean }[] }
+      ).keys
+        .filter((k) => k.isSigner)
+        .map((k) => k.pubkey.toBase58()),
+    );
+    expect(compiled[0]).toHaveLength(2);
+    expect(signers[0]).toContain(APPROVAL);
+    expect(signers[1]).toContain(PRIMARY);
+  });
+
+  it('skips a signer that has already rejected', async () => {
+    const { chain, compiled } = fakeChain({
+      proposal: { status: 'Active', rejected: [PRIMARY] },
+    });
+
+    await service(chain).prepareRejection(USER);
+
+    // The state a half-finished rejection leaves behind. Re-sending the vote
+    // that already landed fails the whole transaction, which would make the
+    // change permanently unrejectable from this device.
+    expect(compiled[0]).toHaveLength(1);
+  });
+
+  it('refuses when both on-device signers have already rejected', async () => {
+    const { chain } = fakeChain({
+      proposal: { status: 'Active', rejected: [PRIMARY, APPROVAL] },
+    });
 
     await expect(service(chain).prepareRejection(USER)).rejects.toThrow();
   });

@@ -64,7 +64,7 @@ export const hardwareKey = native;
 /**
  * What the biometric prompt says, per thing being signed.
  *
- * Kept together so the two are visibly different. They were one hardcoded
+ * Kept together so they stay visibly different. They were one hardcoded
  * string, which meant finishing onboarding asked a Consumer to "approve this
  * payment" when no payment existed and their balance was zero.
  */
@@ -76,6 +76,13 @@ export const SIGN_PROMPT = {
   accountSetup: {
     title: "Finish setting up",
     reason: "Confirm it is you to secure your Xend account",
+  },
+  // Worded as stopping rather than approving. This is the one prompt a
+  // Consumer may reach while being attacked, and "approve" is the last word
+  // they should read on the way to refusing something.
+  rejectChange: {
+    title: "Stop this change",
+    reason: "Confirm it is you before Xend refuses it",
   },
 } as const;
 

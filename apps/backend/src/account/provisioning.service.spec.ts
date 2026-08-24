@@ -85,6 +85,7 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
         state.proposal
           ? {
               approved: [],
+              rejected: [],
               settled: false,
               status: 'Active',
               statusTimestamp: null,

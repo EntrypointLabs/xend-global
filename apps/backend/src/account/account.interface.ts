@@ -140,6 +140,8 @@ export interface SettingsState {
 export interface ProposalState {
   /** Base58 addresses that have approved so far. */
   approved: string[];
+  /** Base58 addresses that have rejected. A signer here cannot vote again. */
+  rejected: string[];
   /** Executed, rejected or cancelled: nothing more to do with this index. */
   settled: boolean;
   /** The program's own name for where this proposal stands. */

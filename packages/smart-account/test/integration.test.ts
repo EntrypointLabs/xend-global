@@ -31,6 +31,8 @@ import {
   buildCreateSpendingLimitPolicy,
   buildExecuteSettingsChange,
   buildProvisionAccount,
+  buildRejectSettingsChange,
+  deriveProposalAddress,
   buildRemoveRecoverySigner,
   buildSetTimeLock,
   buildSpend,
@@ -1100,5 +1102,124 @@ describe.skipIf(!HAVE_FIXTURES)("recovery signer changes", () => {
     // difference. Naming the payer is what keeps that off a Consumer who has
     // no lamports.
     expect(h.svm.getBalance(payer.publicKey) ?? 0n).toBeLessThan(before);
+  });
+});
+
+describe.skipIf(!HAVE_FIXTURES)("rejecting a settings change", () => {
+  /**
+   * How many signers it takes to actually stop a change.
+   *
+   * The product promises the Consumer can refuse a settings change during the
+   * time lock, and offers one button to do it. What the program requires is a
+   * different question, and it is the only one that decides whether the promise
+   * is kept, so it is asked here against the deployed bytecode rather than read
+   * off the docs.
+   */
+  function proposalOf(h: Harness, transactionIndex: bigint) {
+    return decode<{
+      status: { __kind: string };
+      approved: PublicKey[];
+      rejected: PublicKey[];
+    }>(
+      h.svm,
+      deriveProposalAddress(h.addresses.settings, transactionIndex),
+      accounts.Proposal,
+    );
+  }
+
+  /** Proposes a signer addition and leaves it open, unapproved. */
+  function propose(h: Harness): bigint {
+    const index = BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
+    const ixs = buildAddRecoverySigner({
+      addresses: h.addresses,
+      newSigner: Keypair.generate().publicKey,
+      proposer: h.primary.publicKey,
+      rentPayer: h.primary.publicKey,
+      transactionIndex: index,
+    });
+    expect(failed(send(h.svm, h.primary, ixs, [h.primary]))).toBe(false);
+    return index;
+  }
+
+  function reject(h: Harness, signer: Keypair, transactionIndex: bigint) {
+    return send(
+      h.svm,
+      signer,
+      [
+        buildRejectSettingsChange({
+          addresses: h.addresses,
+          transactionIndex,
+          signer: signer.publicKey,
+        }),
+      ],
+      [signer],
+    );
+  }
+
+  it("records one signer's rejection but leaves the change open", () => {
+    const h = setUp();
+    const index = propose(h);
+
+    expect(failed(reject(h, h.primary, index))).toBe(false);
+
+    const proposal = proposalOf(h, index);
+    expect(proposal.rejected.map((k) => k.toBase58())).toEqual([
+      h.primary.publicKey.toBase58(),
+    ]);
+    // The point of the whole test. One signature is not a refusal: the change
+    // is still live and still becomes executable if the remaining signers
+    // approve it.
+    expect(proposal.status.__kind).toBe("Active");
+  });
+
+  it("settles the change once a second signer rejects", () => {
+    const h = setUp();
+    const index = propose(h);
+
+    expect(failed(reject(h, h.primary, index))).toBe(false);
+    expect(failed(reject(h, h.approval, index))).toBe(false);
+
+    expect(proposalOf(h, index).status.__kind).toBe("Rejected");
+  });
+
+  it("refuses a second rejection from the same signer", () => {
+    const h = setUp();
+    const index = propose(h);
+
+    expect(failed(reject(h, h.primary, index))).toBe(false);
+    // What the Consumer hits when they tap reject twice: the first vote stands
+    // and the retry fails, so a UI that treats one tap as the whole refusal
+    // reports an error for a change it has not actually stopped.
+    expect(failed(reject(h, h.primary, index))).toBe(true);
+  });
+
+  it("rejecting after approving replaces the vote rather than adding one", () => {
+    const h = setUp();
+    const index = propose(h);
+
+    expect(
+      failed(
+        send(
+          h.svm,
+          h.primary,
+          [
+            buildApproveSettingsChange({
+              addresses: h.addresses,
+              transactionIndex: index,
+              signer: h.primary.publicKey,
+            }),
+          ],
+          [h.primary],
+        ),
+      ),
+    ).toBe(false);
+    expect(failed(reject(h, h.primary, index))).toBe(false);
+
+    const proposal = proposalOf(h, index);
+    expect(proposal.approved).toHaveLength(0);
+    expect(proposal.rejected.map((k) => k.toBase58())).toEqual([
+      h.primary.publicKey.toBase58(),
+    ]);
+    expect(proposal.status.__kind).toBe("Active");
   });
 });
