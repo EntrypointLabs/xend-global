@@ -29,4 +29,11 @@ export interface AuthContextType {
   isLoggingOut: boolean;
   pendingPasskeySetup: boolean;
   completePasskeySetup: () => void;
+  /** Keeps sign-up on screen after a passkey has already signed the Consumer in. */
+  beginPasskeySignup: () => void;
+  /**
+   * Finishes a sign-in that Privy has already authenticated with a passkey.
+   * Everything after the credential is identical to any other sign-in.
+   */
+  completePasskeySession: (privyUser: unknown) => Promise<boolean>;
 }

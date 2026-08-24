@@ -129,12 +129,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
         await AuthStorage.saveToken(exchange.token);
         await AuthStorage.saveUserData(refreshedUser);
-        await AuthStorage.saveEmail(exchange.user.email);
+        if (exchange.user.email)
+          await AuthStorage.saveEmail(exchange.user.email);
         await AuthStorage.saveIsAuthenticated(true);
         if (cancelled) return;
 
         setUser(refreshedUser);
-        setEmail(exchange.user.email);
+        setEmail(exchange.user.email ?? "");
         setWallet(exchange.user.walletAddress);
         setIsAuthenticated(true);
       } catch (error) {
@@ -194,13 +195,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * it to our backend `/auth/exchange`, persist the returned JWT + user, and
    * mark the session authenticated.
    */
-  const completeOtpAndExchange = async (code: string): Promise<boolean> => {
+  const finalizeSession = async (
+    fallbackEmail: string | null
+  ): Promise<boolean> => {
     try {
-      const loggedInUser = await loginWithCode({ code });
-      if (!loggedInUser) {
-        throw new Error("Privy loginWithCode returned no user");
-      }
-
       // Wait for the embedded Solana wallet to finish provisioning before the
       // exchange, so the backend verifies an identity that already has a linked
       // wallet (a fresh user otherwise races the wallet creation -> 422).
@@ -208,9 +206,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const idToken = await getIdentityToken();
       if (!idToken) {
-        throw new Error(
-          "Privy did not return an identity token after loginWithCode"
-        );
+        throw new Error("Privy did not return an identity token");
       }
 
       let exchange: Awaited<ReturnType<typeof apiClient.exchange>>;
@@ -233,8 +229,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
 
         const degradedUser = {
-          id: loggedInUser.id,
-          email: emailArgFor(loggedInUser) ?? email,
+          id: privyUser?.id ?? "",
+          email: fallbackEmail ?? email,
           walletAddress: fallbackAddress,
           smart_account_address: fallbackAddress,
         };
@@ -258,7 +254,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // into it so they keep working.
         smart_account_address: exchange.user.walletAddress,
       });
-      await AuthStorage.saveEmail(exchange.user.email);
+      if (exchange.user.email) await AuthStorage.saveEmail(exchange.user.email);
       await AuthStorage.saveIsAuthenticated(true);
 
       setUser({
@@ -267,7 +263,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         walletAddress: exchange.user.walletAddress,
         smart_account_address: exchange.user.walletAddress,
       });
-      setEmail(exchange.user.email);
+      setEmail(exchange.user.email ?? fallbackEmail ?? "");
       setWallet(exchange.user.walletAddress);
       setIsAuthenticated(true);
       setAuthError(null);
@@ -275,7 +271,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       Sentry.captureException(
         new Error(
-          `Privy verifyCode + exchange failed: ${error}. (contexts)/AuthContext.tsx`
+          `Privy session finalize failed: ${error}. (contexts)/AuthContext.tsx`
         )
       );
       const errorMessage =
@@ -284,6 +280,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
   };
+
+  /**
+   * Email OTP, kept only so an existing Consumer can sign in once and move to
+   * a passkey. Nothing new should reach it, and it comes out with the
+   * migration.
+   */
+  const completeOtpAndExchange = async (code: string): Promise<boolean> => {
+    try {
+      const loggedInUser = await loginWithCode({ code });
+      if (!loggedInUser) {
+        throw new Error("Privy loginWithCode returned no user");
+      }
+      return await finalizeSession(emailArgFor(loggedInUser) ?? email);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "An unknown error occurred";
+      setAuthError(message);
+      return false;
+    }
+  };
+
+  /**
+   * Signing in with a passkey alone.
+   *
+   * Privy has already authenticated by the time this runs; everything after is
+   * the same as any other sign-in, which is the point: the credential changes
+   * and nothing downstream does.
+   */
+  const completePasskeySession = async (privyUser: unknown): Promise<boolean> =>
+    finalizeSession(emailArgFor(privyUser));
 
   const verifyCode = completeOtpAndExchange;
   const verifyCodeAndCreateAccount = completeOtpAndExchange;
@@ -365,6 +391,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const completePasskeySetup = () => setPendingPasskeySetup(false);
 
+  /**
+   * Holds the Consumer on the sign-up screen once they are authenticated.
+   *
+   * Creating an account with a passkey signs them in about a second before
+   * sign-up is actually over, and the root layout redirects out of the auth
+   * stack the moment that happens. Account provisioning still has to run, and
+   * it cannot run on a screen that has just been unmounted.
+   */
+  const beginPasskeySignup = () => setPendingPasskeySetup(true);
+
   // Derive the wallet address surfaced to consumers from the union of
   // Privy's embedded wallet and the local React state (set on completeLogin
   // / verifyCode after the backend exchange returns). Render-time derivation
@@ -384,6 +420,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         authError,
         authenticate,
         completeLogin,
+        completePasskeySession,
         register,
         verifyCode,
         verifyCodeAndCreateAccount,
@@ -393,6 +430,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoggingOut,
         pendingPasskeySetup,
         completePasskeySetup,
+        beginPasskeySignup,
       }}
     >
       {children}

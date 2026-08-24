@@ -217,9 +217,16 @@ function EmailLoginScreen() {
                   <View>
                     <Typography
                       weight="600"
-                      className="mb-8 text-3xl text-white"
+                      className="mb-3 text-3xl text-white"
                     >
-                      Enter your email
+                      Recover your wallet
+                    </Typography>
+                    <Typography
+                      weight="400"
+                      className="mb-8 text-base leading-6 text-[#8FE5F6]"
+                    >
+                      Enter the email on your Xend account. We will send a code,
+                      then add a passkey to this device.
                     </Typography>
 
                     <ThemedTextInput

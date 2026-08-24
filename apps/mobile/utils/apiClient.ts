@@ -408,6 +408,11 @@ class ApiError extends Error {
   }
 }
 
+/** The HTTP status behind a rejected request, or null if it never reached one. */
+export function apiErrorStatus(err: unknown): number | null {
+  return err instanceof ApiError ? err.status : null;
+}
+
 class BackendClient {
   private baseUrl: string;
   private defaultHeaders: Record<string, string>;
@@ -559,6 +564,21 @@ class BackendClient {
       body: JSON.stringify(ExchangeRequestSchema.parse(req)),
     });
     return ExchangeResponseSchema.parse(raw);
+  }
+
+  /**
+   * POST /auth/email — records the contact address given after sign-up.
+   *
+   * Contact only. A passkey is what signs the Consumer in, so this address
+   * unlocks nothing and losing it costs them notifications rather than the
+   * account. 409 means another account already claims it.
+   */
+  async setContactEmail(email: string): Promise<void> {
+    await this.request<unknown>("/auth/email", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      auth: true,
+    });
   }
 
   /** POST /auth/passkey-credentials — mirror a freshly enrolled passkey
