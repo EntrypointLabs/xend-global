@@ -1,6 +1,21 @@
 import * as SecureStore from "expo-secure-store";
 import { AUTH_STORAGE_KEYS } from "@/utils/auth";
 
+/**
+ * The session token, kept in memory once read.
+ *
+ * Every authenticated request needs it, and on Android `expo-secure-store` is
+ * Android Keystore, so reading it per request made the app a steady source of
+ * Keystore operations. That is not free: Keystore prunes concurrent operations,
+ * and the one it evicts can be a hardware-key signature waiting on a
+ * fingerprint. Reading once removes the traffic rather than scheduling around
+ * it.
+ *
+ * `undefined` means not yet read, `null` means read and absent, so a missing
+ * token is cached as firmly as a present one.
+ */
+let cachedToken: string | null | undefined;
+
 export const AuthStorage = {
   async saveIsAuthenticated(isAuthenticated: boolean) {
     await SecureStore.setItemAsync(
@@ -28,11 +43,14 @@ export const AuthStorage = {
   },
 
   async saveToken(token: string) {
+    cachedToken = token;
     await SecureStore.setItemAsync(AUTH_STORAGE_KEYS.TOKEN, token);
   },
 
   async getToken() {
-    return SecureStore.getItemAsync(AUTH_STORAGE_KEYS.TOKEN);
+    if (cachedToken !== undefined) return cachedToken;
+    cachedToken = await SecureStore.getItemAsync(AUTH_STORAGE_KEYS.TOKEN);
+    return cachedToken;
   },
 
   async saveUserData(user: any) {
@@ -60,6 +78,7 @@ export const AuthStorage = {
   },
 
   async clearAuthData() {
+    cachedToken = null;
     await Promise.all([
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.USER),
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.EMAIL),
