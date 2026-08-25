@@ -21,9 +21,9 @@ import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { ExchangeResponse, MirrorPasskeyCredentialRequest } from './dtos';
 
 /**
- * A passkey credential is already mirrored under a different account. Kept
+ * The contact address already anchors another Account's recovery signer. Kept
  * HTTP-framework-agnostic (plain Error subclass); the controller maps it to
- * 409 CREDENTIAL_CONFLICT.
+ * 409 EMAIL_IN_USE.
  */
 export class EmailInUseError extends Error {
   readonly code = 'EMAIL_IN_USE';
@@ -33,12 +33,23 @@ export class EmailInUseError extends Error {
   }
 }
 
+/**
+ * A passkey credential is already mirrored under a different account. Kept
+ * HTTP-framework-agnostic (plain Error subclass); the controller maps it to
+ * 409 CREDENTIAL_CONFLICT.
+ */
 export class CredentialConflictError extends Error {
   readonly code = 'CREDENTIAL_CONFLICT';
   constructor(message: string) {
     super(message);
     this.name = 'CredentialConflictError';
   }
+}
+
+/** Postgres unique-violation SQLSTATE, surfaced by node-postgres. */
+function pgErrorCode(err: unknown): string | undefined {
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e?.code ?? e?.cause?.code;
 }
 
 @Injectable()
@@ -248,10 +259,21 @@ export class AuthService {
       throw new EmailInUseError('that email is already on another account');
     }
 
-    await this.db.client
-      .update(users)
-      .set({ email, updatedAt: new Date() })
-      .where(eq(users.id, userId));
+    try {
+      await this.db.client
+        .update(users)
+        .set({ email, updatedAt: new Date() })
+        .where(eq(users.id, userId));
+    } catch (err) {
+      // Two Consumers claiming one address can both read no clash above. The
+      // unique index is what actually settles it, and the one it turns away
+      // has to hear the same refusal as the one who read the clash, not a
+      // 500 that reads like an outage.
+      if (pgErrorCode(err) === '23505') {
+        throw new EmailInUseError('that email is already on another account');
+      }
+      throw err;
+    }
 
     this.logger.log(`auth.email_set userId=${userId}`);
     return { email };

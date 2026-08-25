@@ -23,7 +23,7 @@ type UsersRow = typeof users.$inferSelect;
  * of one row is enough to drive both sides of it, and honouring the predicate
  * would only mean reimplementing `eq()` in the test.
  */
-function makeFakeDb(rows: UsersRow[]): DbService {
+function makeFakeDb(rows: UsersRow[], updateError?: Error): DbService {
   const guard = (tbl: unknown) => {
     if (tbl !== users) throw new Error('unexpected table in fake db');
   };
@@ -49,6 +49,7 @@ function makeFakeDb(rows: UsersRow[]): DbService {
       guard(tbl);
       const ctx: { values?: Partial<UsersRow> } = {};
       const apply = () => {
+        if (updateError) throw updateError;
         rows.forEach((row) => Object.assign(row, ctx.values));
         return rows.slice();
       };
@@ -78,10 +79,10 @@ function makeUser(id: string, email: string | null): UsersRow {
   } as UsersRow;
 }
 
-function makeService(rows: UsersRow[]): AuthService {
+function makeService(rows: UsersRow[], updateError?: Error): AuthService {
   return new AuthService(
     new JwtService({ secret: 'test-secret' }),
-    makeFakeDb(rows),
+    makeFakeDb(rows, updateError),
     {} as WalletProvider,
     {} as SolanaRpc,
   );
@@ -127,6 +128,31 @@ describe('AuthService.setEmail', () => {
     await expect(service.setEmail('u_1', 'mine@example.com')).resolves.toEqual({
       email: 'mine@example.com',
     });
+  });
+
+  it('answers a lost race the way it answers a clash it could read', async () => {
+    // Two Consumers claiming one address both read no clash, and the unique
+    // index turns one of them away. Untranslated that is a 500 reading like an
+    // outage, for a refusal the Consumer can actually act on.
+    const conflict = Object.assign(new Error('duplicate key value'), {
+      code: '23505',
+    });
+    const service = makeService([makeUser('u_1', null)], conflict);
+
+    await expect(service.setEmail('u_1', 'taken@example.com')).rejects.toThrow(
+      EmailInUseError,
+    );
+  });
+
+  it('lets a database failure that is not a clash through untouched', async () => {
+    const outage = Object.assign(new Error('connection terminated'), {
+      code: '57P01',
+    });
+    const service = makeService([makeUser('u_1', null)], outage);
+
+    await expect(service.setEmail('u_1', 'new@example.com')).rejects.toThrow(
+      'connection terminated',
+    );
   });
 
   it('stamps updatedAt so the row reflects when contact last changed', async () => {
