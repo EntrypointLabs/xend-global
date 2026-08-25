@@ -13,6 +13,7 @@ import type { SpendingLimitService } from './spending-limit.service';
 import type { SweepService } from './sweep.service';
 import type { TurnkeyService } from '../turnkey/turnkey.service';
 import type { AccountChangeService } from './account-change.service';
+import type { AccountEventsService } from '../activity/account-events.service';
 import { RecoveryService } from '../recovery/recovery.service';
 import type {
   NewRecoverySigner,
@@ -233,6 +234,7 @@ describe('AccountController recovery key changes', () => {
         sealedKeyId: row.sealedKeyId ?? null,
         status: row.status ?? 'active',
         changeIndex: row.changeIndex ?? null,
+        changeSignature: row.changeSignature ?? null,
         createdAt: new Date(0),
         updatedAt: new Date(0),
       };
@@ -265,7 +267,9 @@ describe('AccountController recovery key changes', () => {
         }),
       open: () => Promise.resolve(new Uint8Array(32)),
     };
-    const recovery = new RecoveryService(store, vault);
+    const recovery = new RecoveryService(store, vault, {
+      recordRecoveryKeyAdded: () => Promise.resolve(),
+    } as unknown as AccountEventsService);
 
     // The chain read that stands between staging a signer and claiming the
     // index it will occupy. Every caller reads the same on-chain index until
