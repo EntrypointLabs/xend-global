@@ -18,6 +18,16 @@ export type NewRecoverySigner = typeof recoverySigners.$inferInsert;
 export interface RecoverySignerStore {
   findByUser(userId: string): Promise<RecoverySignerRow[]>;
   /**
+   * Runs `fn` with no other recovery key change for this Consumer running
+   * anywhere.
+   *
+   * Staging a signer and claiming the Settings `transactionIndex` it will
+   * occupy are two statements with a gap between them. Two requests that
+   * cross in that gap both read no change in flight, both stage a row, and
+   * both claim the same index, after which only one of them can ever settle.
+   */
+  withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T>;
+  /**
    * Across every Consumer, not just one.
    *
    * `address` is globally unique, so an address already used by somebody else
@@ -36,6 +46,10 @@ export interface RecoverySignerStore {
 @Injectable()
 export class DrizzleRecoverySignerStore implements RecoverySignerStore {
   constructor(private readonly db: DbService) {}
+
+  withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    return this.db.withAdvisoryLock(`recovery:change:${userId}`, fn);
+  }
 
   findByUser(userId: string): Promise<RecoverySignerRow[]> {
     return this.db.client

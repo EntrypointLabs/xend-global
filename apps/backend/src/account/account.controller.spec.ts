@@ -13,7 +13,12 @@ import type { SpendingLimitService } from './spending-limit.service';
 import type { SweepService } from './sweep.service';
 import type { TurnkeyService } from '../turnkey/turnkey.service';
 import type { AccountChangeService } from './account-change.service';
-import type { RecoveryService } from '../recovery/recovery.service';
+import { RecoveryService } from '../recovery/recovery.service';
+import type {
+  NewRecoverySigner,
+  RecoverySignerRow,
+  RecoverySignerStore,
+} from '../recovery/recovery-signer.store';
 import type { RecoveryChangeService } from './recovery-change.service';
 
 const USDC = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
@@ -185,5 +190,142 @@ describe('AccountController.enrol', () => {
       controller.enrol(req, { hardwarePublicKey: '03ff' }),
     ).rejects.toThrow();
     expect(createAccount).not.toHaveBeenCalled();
+  });
+});
+
+describe('AccountController recovery key changes', () => {
+  const WALLET_A = Keypair.generate().publicKey.toBase58();
+  const WALLET_B = Keypair.generate().publicKey.toBase58();
+
+  /** Enough of the store for the rules; the lock is the part under test. */
+  class SerialisingStore implements RecoverySignerStore {
+    rows: RecoverySignerRow[] = [];
+    private seq = 0;
+    private locks = new Map<string, Promise<unknown>>();
+
+    withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+      const queued = (this.locks.get(userId) ?? Promise.resolve()).then(fn, fn);
+      this.locks.set(
+        userId,
+        queued.catch(() => undefined),
+      );
+      return queued;
+    }
+
+    findByUser(userId: string): Promise<RecoverySignerRow[]> {
+      return Promise.resolve(this.rows.filter((r) => r.userId === userId));
+    }
+
+    findByAddress(address: string): Promise<RecoverySignerRow | null> {
+      return Promise.resolve(
+        this.rows.find((r) => r.address === address) ?? null,
+      );
+    }
+
+    insert(row: NewRecoverySigner): Promise<RecoverySignerRow> {
+      const created: RecoverySignerRow = {
+        id: `signer-${++this.seq}`,
+        userId: row.userId,
+        address: row.address,
+        channel: row.channel,
+        channelValue: row.channelValue,
+        sealedKey: row.sealedKey ?? null,
+        sealedKeyId: row.sealedKeyId ?? null,
+        status: row.status ?? 'active',
+        changeIndex: row.changeIndex ?? null,
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+      };
+      this.rows.push(created);
+      return Promise.resolve(created);
+    }
+
+    deleteById(id: string): Promise<void> {
+      this.rows = this.rows.filter((r) => r.id !== id);
+      return Promise.resolve();
+    }
+
+    updateById(
+      id: string,
+      patch: Partial<NewRecoverySigner>,
+    ): Promise<RecoverySignerRow> {
+      const target = this.rows.find((r) => r.id === id)!;
+      Object.assign(target, patch);
+      return Promise.resolve(target);
+    }
+  }
+
+  function recoveryController() {
+    const store = new SerialisingStore();
+    const vault = {
+      seal: (secret: Uint8Array) =>
+        Promise.resolve({
+          ciphertext: Buffer.from(secret).toString('base64'),
+          keyId: 'test',
+        }),
+      open: () => Promise.resolve(new Uint8Array(32)),
+    };
+    const recovery = new RecoveryService(store, vault);
+
+    // The chain read that stands between staging a signer and claiming the
+    // index it will occupy. Every caller reads the same on-chain index until
+    // one of them lands a change, which is what makes the gap exploitable.
+    const claimed: string[] = [];
+    const recoveryChanges = {
+      start: async (userId: string, signerId: string) => {
+        await Promise.resolve();
+        const index = 41n + BigInt(claimed.length);
+        claimed.push(index.toString());
+        await recovery.markChange(signerId, index);
+        return { transactionIndex: index.toString() };
+      },
+    } as unknown as RecoveryChangeService;
+
+    const controller = new AccountController(
+      {
+        findByUserId: () => Promise.resolve(account),
+      } as unknown as AccountService,
+      {} as unknown as AttestationService,
+      {} as unknown as SweepService,
+      {} as unknown as ProvisioningService,
+      {} as unknown as SpendingLimitService,
+      {} as unknown as TurnkeyService,
+      {} as unknown as AccountChangeService,
+      recovery,
+      recoveryChanges,
+    );
+    return { controller, recovery, store, claimed };
+  }
+
+  it('lets only one of two simultaneous recovery key changes through', async () => {
+    const { controller, store, claimed } = recoveryController();
+    await store.insert({
+      userId: USER_ID,
+      address: Keypair.generate().publicKey.toBase58(),
+      channel: 'email',
+      channelValue: 'a@example.com',
+      status: 'active',
+    });
+
+    const [first, second] = await Promise.allSettled([
+      controller.addRecoveryWallet(request(), { address: WALLET_A }),
+      controller.addRecoveryWallet(request(), { address: WALLET_B }),
+    ]);
+
+    // Both requests read "no change in flight" if they are allowed to
+    // interleave, and both then claim the same Settings index. Only one of
+    // the two rows could ever settle, and the other would sit staged for ever
+    // while blocking every later change.
+    const outcomes = [first.status, second.status].sort();
+    expect(outcomes).toEqual(['fulfilled', 'rejected']);
+    expect(claimed).toEqual(['41']);
+    expect(store.rows.filter((r) => r.status === 'pending_add')).toHaveLength(
+      1,
+    );
+
+    const refused = [first, second].find((r) => r.status === 'rejected');
+    const error = (refused as PromiseRejectedResult).reason as HttpException;
+    expect(error).toBeInstanceOf(HttpException);
+    expect(error.getStatus()).toBe(409);
   });
 });

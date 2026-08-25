@@ -116,6 +116,18 @@ export class RecoveryService {
     return this.provisionEmailSigner(userId, email);
   }
 
+  /**
+   * Serialises a whole recovery key change for one Consumer: staging the
+   * signer and claiming the Settings index it will occupy.
+   *
+   * The in-flight guard reads rows that the claim writes, so the two halves
+   * have to run together or a second request can slip between them and claim
+   * the same index.
+   */
+  withChangeLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    return this.store.withUserLock(userId, fn);
+  }
+
   async list(userId: string): Promise<RecoverySignerSummary[]> {
     const rows = await this.store.findByUser(userId);
     return rows.map((row) => this.summarise(row, rows));

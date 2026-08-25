@@ -21,6 +21,16 @@ import { RECOVERY_SIGNER_STORE } from './recovery-signer.store';
 class FakeStore implements RecoverySignerStore {
   rows: RecoverySignerRow[] = [];
   private seq = 0;
+  private locks = new Map<string, Promise<unknown>>();
+
+  withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    const queued = (this.locks.get(userId) ?? Promise.resolve()).then(fn, fn);
+    this.locks.set(
+      userId,
+      queued.catch(() => undefined),
+    );
+    return queued;
+  }
 
   findByUser(userId: string): Promise<RecoverySignerRow[]> {
     return Promise.resolve(this.rows.filter((r) => r.userId === userId));

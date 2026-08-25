@@ -216,12 +216,14 @@ export class AccountController {
   ) {
     try {
       await this.assertNotAnActiveSigner(req.user.userId, body.address);
-      const key = await this.recovery.addExternalWallet(
-        req.user.userId,
-        body.address,
-      );
-      const plan = await this.recoveryChanges.start(req.user.userId, key.id);
-      return { key, plan };
+      return await this.recovery.withChangeLock(req.user.userId, async () => {
+        const key = await this.recovery.addExternalWallet(
+          req.user.userId,
+          body.address,
+        );
+        const plan = await this.recoveryChanges.start(req.user.userId, key.id);
+        return { key, plan };
+      });
     } catch (err) {
       throw this.recoveryFailure(req.user.userId, 'add_wallet', err);
     }
@@ -233,8 +235,10 @@ export class AccountController {
     @Param('id') id: string,
   ) {
     try {
-      await this.recovery.remove(req.user.userId, id);
-      return { plan: await this.recoveryChanges.start(req.user.userId, id) };
+      return await this.recovery.withChangeLock(req.user.userId, async () => {
+        await this.recovery.remove(req.user.userId, id);
+        return { plan: await this.recoveryChanges.start(req.user.userId, id) };
+      });
     } catch (err) {
       throw this.recoveryFailure(req.user.userId, 'remove', err);
     }
