@@ -13,8 +13,10 @@ import { router } from "expo-router";
 
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { AccountSetupModal } from "@/components/ui/organisms/modals/AccountSetupModal";
 import { ThemedTextInput } from "@/components/ui/molecules";
 import { WithScreenTheme } from "@/components/WithScreenTheme";
+import { useAccountSetup } from "@/hooks/useAccountSetup";
 import { useAuth } from "@/contexts/AuthContext";
 import { Email } from "@/types/Auth";
 import { apiClient, apiErrorStatus } from "@/utils/apiClient";
@@ -26,12 +28,24 @@ import { apiClient, apiErrorStatus } from "@/utils/apiClient";
  * Consumer rather than a way in. That is why it can be skipped: an account
  * with no email is fully usable, and asking before they have seen the app
  * would be charging for something they cannot yet judge the value of.
+ *
+ * The Account is built from here rather than from the sign-up screen, because
+ * the recovery signer is anchored on this address: there is nothing to create
+ * until it exists. Skipping leaves the Consumer on their Privy wallet, and the
+ * signed-in shell asks again on the next launch.
  */
 function AddEmailScreen() {
   const { setEmail: setSessionEmail, completePasskeySetup } = useAuth();
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [settingUpAccount, setSettingUpAccount] = useState(false);
+  const {
+    stage: setupStage,
+    error: setupError,
+    run: runAccountSetup,
+    clearError: clearSetupError,
+  } = useAccountSetup();
 
   const done = () => {
     // Released here rather than on the sign-up screen: doing it there would
@@ -53,7 +67,9 @@ function AddEmailScreen() {
     try {
       await apiClient.setContactEmail(parsed.data);
       setSessionEmail(parsed.data);
-      done();
+      // The one moment the fingerprint prompts it costs read as part of
+      // signing up rather than as an ambush on an empty dashboard.
+      setSettingUpAccount(true);
     } catch (err) {
       console.error("[add-email] could not save contact email", err);
       setError(
@@ -64,6 +80,20 @@ function AddEmailScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const onRunAccountSetup = async () => {
+    if (await runAccountSetup()) done();
+  };
+
+  /**
+   * Letting them through unfinished is deliberate. They can still receive at
+   * their address, and blocking sign-up on a step that can be retried later is
+   * worse than the degraded state it protects against.
+   */
+  const onSkipAccountSetup = () => {
+    clearSetupError();
+    done();
   };
 
   const disabled = saving || !value.trim();
@@ -146,6 +176,15 @@ function AddEmailScreen() {
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
+
+        <AccountSetupModal
+          visible={settingUpAccount}
+          stage={setupStage}
+          error={setupError}
+          onStart={onRunAccountSetup}
+          onRetry={onRunAccountSetup}
+          onSkip={onSkipAccountSetup}
+        />
       </View>
     </TouchableWithoutFeedback>
   );

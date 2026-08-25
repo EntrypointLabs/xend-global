@@ -8,8 +8,6 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Ionicons } from "@expo/vector-icons";
 import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { NoPasskeyModal } from "@/components/ui/organisms/modals/NoPasskeyModal";
-import { AccountSetupModal } from "@/components/ui/organisms/modals/AccountSetupModal";
-import { useAccountSetup } from "@/hooks/useAccountSetup";
 import { useAuth } from "@/contexts/AuthContext";
 
 function LoginScreen() {
@@ -22,13 +20,6 @@ function LoginScreen() {
   } = usePasskeyLogin();
   const { beginPasskeySignup, completePasskeySetup } = useAuth();
   const [askingToCreate, setAskingToCreate] = useState(false);
-  const [settingUpAccount, setSettingUpAccount] = useState(false);
-  const {
-    stage: setupStage,
-    error: setupError,
-    run: runAccountSetup,
-    clearError: clearSetupError,
-  } = useAccountSetup();
 
   // Email OTP is a migration route now, not a way in. It is the one path that
   // signs an older Consumer in and enrols a passkey on this device, which is
@@ -50,32 +41,12 @@ function LoginScreen() {
       return;
     }
     setAskingToCreate(false);
-    // A passkey buys a Privy wallet. Spending from it needs the Account on
-    // top, and this is the one moment the fingerprint prompts it costs read as
-    // part of signing up rather than as an ambush on an empty dashboard.
-    setSettingUpAccount(true);
-  };
-
-  // The contact step rather than the app, because it is the last part of
-  // signing up. The auth-stack gate is released there, once this screen can no
-  // longer be redirected out from under the flow.
-  const finishSignup = () => {
-    setSettingUpAccount(false);
+    // The contact step, and the Account is built from there. It has to be:
+    // the recovery signer is anchored on the Consumer's address, so there is
+    // no Account to create until they have given one. The auth-stack gate is
+    // released there too, once this screen can no longer be redirected out
+    // from under the flow.
     router.replace("/add-email");
-  };
-
-  const onRunAccountSetup = async () => {
-    if (await runAccountSetup()) finishSignup();
-  };
-
-  /**
-   * Letting them through unfinished is deliberate. They can still receive at
-   * their address, and blocking sign-up on a step that can be retried later is
-   * worse than the degraded state it protects against.
-   */
-  const onSkipAccountSetup = () => {
-    clearSetupError();
-    finishSignup();
   };
 
   const onRecoverInstead = () => {
@@ -153,15 +124,6 @@ function LoginScreen() {
           </View>
         </View>
       </View>
-
-      <AccountSetupModal
-        visible={settingUpAccount}
-        stage={setupStage}
-        error={setupError}
-        onStart={onRunAccountSetup}
-        onRetry={onRunAccountSetup}
-        onSkip={onSkipAccountSetup}
-      />
 
       <NoPasskeyModal
         visible={askingToCreate}
