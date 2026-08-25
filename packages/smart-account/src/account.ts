@@ -21,7 +21,7 @@ const { Permission, Permissions } = types;
  * Settings consensus. Keeping recovery away from funds is the job of the policy
  * signer sets, not of this mask.
  */
-const ROLE_PERMISSIONS: Record<SignerRole, number> = {
+export const ROLE_PERMISSIONS: Record<SignerRole, number> = {
   primary: Permissions.all().mask,
   approval: Permissions.fromPermissions([Permission.Vote, Permission.Execute])
     .mask,

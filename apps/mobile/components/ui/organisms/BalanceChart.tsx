@@ -26,6 +26,15 @@ export interface BalancePoint {
 interface BalanceChartProps {
   /** Oldest first. Fewer than two points renders the flat resting state. */
   history: BalancePoint[];
+  /**
+   * Renders the same frame with nothing plotted yet.
+   *
+   * The placeholder lives here rather than at the call site so it cannot drift
+   * from the real chart's height. Reserving that height is the whole point: the
+   * home screen used to render nothing while the balance loaded, and everything
+   * below jumped down once it arrived.
+   */
+  loading?: boolean;
   className?: string;
   style?: StyleProp<ViewStyle>;
 }
@@ -40,7 +49,12 @@ interface BalanceChartProps {
  * a uniform resting height rather than inventing a trend. That is a real state,
  * not a skeleton: a wallet funded an hour ago genuinely has no history yet.
  */
-export function BalanceChart({ history, className, style }: BalanceChartProps) {
+export function BalanceChart({
+  history,
+  loading = false,
+  className,
+  style,
+}: BalanceChartProps) {
   const { size } = useResponsiveLayout();
   const [range, setRange] = useState<ChartRange>("1D");
   // Stable per mount: calling Date.now() inside the memo is an impure render.
@@ -76,7 +90,10 @@ export function BalanceChart({ history, className, style }: BalanceChartProps) {
           (height, i) => (
             <View
               key={i}
-              className="flex-1 rounded-full bg-black/10"
+              className={cn(
+                "flex-1 rounded-full",
+                loading ? "bg-black/[0.06]" : "bg-black/10"
+              )}
               style={{
                 height: height === null ? "100%" : `${height * 100}%`,
                 marginHorizontal: 1,
@@ -98,6 +115,7 @@ export function BalanceChart({ history, className, style }: BalanceChartProps) {
               accessibilityRole="button"
               accessibilityLabel={`Show ${option} balance history`}
               accessibilityState={{ selected: active }}
+              disabled={loading}
               onPress={() => setRange(option)}
               feedback="selection"
               scaleOnPress={false}
@@ -108,7 +126,10 @@ export function BalanceChart({ history, className, style }: BalanceChartProps) {
             >
               <Typography
                 weight={active ? "600" : "500"}
-                className={cn("text-sm", active ? "" : "text-black/30")}
+                className={cn(
+                  "text-sm",
+                  loading ? "text-black/15" : active ? "" : "text-black/30"
+                )}
               >
                 {option}
               </Typography>

@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import HapticPressable from "../../atoms/HapticPressable";
 import { useContacts } from "@/hooks/useContacts";
 import { statusLabel, type ActivityEntry } from "@/utils/activity";
+import { AccountEventMark } from "@/components/ui/organisms/ActivityItem";
 
 interface TransactionDetailModalProps {
   visible: boolean;
@@ -62,6 +63,20 @@ export function TransactionDetailModal({
     await Clipboard.setStringAsync(text);
     notificationAsync(NotificationFeedbackType.Success);
   };
+
+  // An account event has no amount, token or counterparty. It still has a
+  // transaction behind it, which is the thing a Consumer checking on a key
+  // change actually wants to see.
+  if (item.kind === "security") {
+    return (
+      <AccountEventDetail
+        visible={visible}
+        onClose={onClose}
+        item={item}
+        onCopy={copyToClipboard}
+      />
+    );
+  }
 
   const status = STATUS_META[item.status];
   const amount = formatAmount(item.amountRaw, item.decimals);
@@ -188,6 +203,82 @@ export function TransactionDetailModal({
               </Typography>
             </View>
           </View>
+        </View>
+      </View>
+    </ActionModal>
+  );
+}
+
+/**
+ * The detail behind an account event.
+ *
+ * Leads with the subject rather than an amount, because "which key" is the
+ * question this sheet exists to answer.
+ */
+function AccountEventDetail({
+  visible,
+  onClose,
+  item,
+  onCopy,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  item: ActivityEntry;
+  onCopy: (text: string) => Promise<void>;
+}) {
+  const copyIconColor = "rgba(0,0,0,0.3)";
+  const date = format(new Date(item.createdAt), "MMM d, yyyy 'at' h:mma");
+  const rowClass = "flex-row justify-between items-center py-2";
+
+  return (
+    <ActionModal visible={visible} onClose={onClose}>
+      <View className="items-center">
+        <HapticPressable
+          onPress={onClose}
+          className="absolute -right-4 -top-4 p-4"
+        >
+          <FontAwesome6 name="xmark" size={20} color={copyIconColor} />
+        </HapticPressable>
+
+        <View className="mb-3">
+          <AccountEventMark kind={item.securityKind} size={64} />
+        </View>
+
+        <Typography weight="600" className="mb-1 text-sm text-black/30">
+          {item.securityLabel ?? "Account updated"}
+        </Typography>
+
+        <Typography weight="700" className="mb-1 text-center text-2xl">
+          {item.securitySubject ?? "Your account"}
+        </Typography>
+
+        <Typography weight="500" className="mb-4 text-sm text-black/30">
+          {date}
+        </Typography>
+      </View>
+
+      <View className="w-full">
+        <View className={rowClass}>
+          <Typography weight="500" className="text-black/40">
+            Onchain transaction
+          </Typography>
+          {item.signature ? (
+            <TouchableOpacity
+              className="flex-row items-center"
+              onPress={() => onCopy(item.signature as string)}
+            >
+              <Typography weight="600" className="mr-1">
+                {truncateAddress(item.signature)}
+              </Typography>
+              <Ionicons name="copy-outline" size={14} color={copyIconColor} />
+            </TouchableOpacity>
+          ) : (
+            // Not every event reaches the chain: renaming a wallet is a local
+            // fact, and saying "pending" would suggest one is coming.
+            <Typography weight="600" className="text-black/30">
+              None
+            </Typography>
+          )}
         </View>
       </View>
     </ActionModal>

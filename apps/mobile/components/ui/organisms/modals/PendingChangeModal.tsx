@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Modal, StyleSheet, View } from "react-native";
 
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
+import { useCountdown } from "@/hooks/useCountdown";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { cn } from "@/utils/cn";
 
@@ -75,7 +75,7 @@ export function PendingChangeModal({
             className="mb-6 text-sm leading-5 opacity-70"
           >
             {remaining === null
-              ? "A change to who can access your Xend account has been started. It needs one more approval before it can go through. If this was not you, reject it now."
+              ? "A change to who can access your Xend account has been started. It needs one more approval, and then waits 24 hours before it takes effect. You can reject it at any point until then."
               : "A change to who can access your Xend account has been approved. If this was not you, reject it before the time below runs out."}
           </Typography>
 
@@ -120,47 +120,29 @@ export function PendingChangeModal({
           </HapticPressable>
 
           {/* Offered second and quietly, but offered: a Consumer who did start
-              this needs a way out that is not rejecting their own change. */}
+              this needs a way out that is not rejecting their own change.
+
+              It says "recognise" rather than "I made this change" because the
+              tap does nothing to the change. Nothing here supplies the second
+              approval, which comes from the device key through the app's own
+              flow, and a label that implies otherwise reads as the button that
+              finishes the job. Someone who taps it expecting that has in fact
+              only stopped being asked. */}
           <HapticPressable
             onPress={onDismiss}
             disabled={rejecting}
             accessibilityRole="button"
-            accessibilityLabel="I made this change"
+            accessibilityLabel="I recognise this"
             className="mt-3 items-center justify-center py-3"
           >
             <Typography weight="500" className="text-sm opacity-60">
-              I made this change
+              I recognise this
             </Typography>
           </HapticPressable>
         </View>
       </FrostBlurView>
     </Modal>
   );
-}
-
-/**
- * "23h 41m" until the deadline, ticking, or null when there is no deadline yet.
- *
- * Minutes rather than seconds. A second-by-second countdown on a 24-hour window
- * is theatre, and it is the exact theatre a scam popup uses.
- */
-function useCountdown(deadline: string | null): string | null {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!deadline) return;
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, [deadline]);
-
-  if (!deadline) return null;
-  const msLeft = new Date(deadline).getTime() - now;
-  if (!Number.isFinite(msLeft) || msLeft <= 0) return "Any moment now";
-
-  const totalMinutes = Math.floor(msLeft / 60_000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
 const styles = StyleSheet.create({

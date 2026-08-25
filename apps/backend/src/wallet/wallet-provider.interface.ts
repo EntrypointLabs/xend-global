@@ -23,7 +23,13 @@ export interface PasskeyCredentialMetadata {
 
 export interface WalletProviderUser {
   providerUserId: ProviderUserId;
-  email: string;
+  /**
+   * Null for a Consumer who signed up with a passkey and has not given one.
+   *
+   * The passkey is the credential; this is a contact address, asked for after
+   * the account exists.
+   */
+  email: string | null;
   walletAddress: WalletAddress;
   /** Mirrored WebAuthn credentials; empty array when none are linked. */
   passkeys: PasskeyCredentialMetadata[];

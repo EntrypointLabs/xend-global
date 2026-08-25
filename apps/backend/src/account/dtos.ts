@@ -1,3 +1,4 @@
+import { PublicKey } from '@solana/web3.js';
 import { z } from 'zod';
 
 /**
@@ -92,3 +93,42 @@ export const SubmitRejectionSchema = z.object({
   signedTxBase64: z.string().min(1),
 });
 export type SubmitRejectionDto = z.infer<typeof SubmitRejectionSchema>;
+
+/**
+ * An external wallet the Consumer already controls, offered as a recovery key.
+ *
+ * Only an address: the Consumer holds that key, and the backend never sees or
+ * stores anything else about it. Validated as a base58 Ed25519 public key here
+ * so a typo is refused at the edge rather than becoming a settings change that
+ * fails on chain a day later, having consumed an index and the whole time lock.
+ */
+export const AddRecoveryWalletSchema = z.object({
+  address: z.string().refine(canSign, 'not an address that can sign'),
+});
+
+/**
+ * Whether an address could ever sign.
+ *
+ * Any 32 bytes parse as a PublicKey, program-derived addresses included, and
+ * those sit off the Ed25519 curve with no private key at all. One accepted as
+ * a recovery key would be indistinguishable from a real one until the day it
+ * was needed, and the program would take it happily.
+ */
+function canSign(address: string): boolean {
+  try {
+    return PublicKey.isOnCurve(new PublicKey(address).toBytes());
+  } catch {
+    return false;
+  }
+}
+
+export type AddRecoveryWalletDto = z.infer<typeof AddRecoveryWalletSchema>;
+
+/** A signed step of a recovery key change. See {@link SubmitProvisioningStepSchema}. */
+export const SubmitRecoveryChangeSchema = z.object({
+  signedTxBase64: z.string().min(1),
+});
+
+export type SubmitRecoveryChangeDto = z.infer<
+  typeof SubmitRecoveryChangeSchema
+>;

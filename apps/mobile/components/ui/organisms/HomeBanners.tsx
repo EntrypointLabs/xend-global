@@ -1,0 +1,146 @@
+import { useRef, useState } from "react";
+import {
+  Dimensions,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  ScrollView,
+  View,
+} from "react-native";
+import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+
+import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { Typography } from "@/components/ui/atoms/Typography";
+import { useCountdown } from "@/hooks/useCountdown";
+import { usePendingAccountChange } from "@/hooks/usePendingAccountChange";
+import { usePendingChangeAcknowledgement } from "@/hooks/usePendingChangeAcknowledgement";
+import { cn } from "@/utils/cn";
+
+/** The card is inset by the screen's own padding on both sides. */
+const SCREEN_PADDING = 20;
+
+interface Banner {
+  key: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  tint: string;
+  title: string;
+  description: string;
+  onPress: () => void;
+}
+
+/**
+ * The notices at the foot of the home screen, one page at a time.
+ *
+ * A carousel rather than a single slot because these arrive independently: a
+ * staged settings change is not a reason to stop telling someone about Earn,
+ * and Earn is not a reason to bury the change.
+ *
+ * A change the Consumer started themselves lands here and nowhere else. It is
+ * not an emergency, so it does not interrupt, but it is the only place they can
+ * see the wait running down and still call it off, so it must not be silent
+ * either.
+ */
+export function HomeBanners() {
+  const { data: change } = usePendingAccountChange();
+  const { reopen } = usePendingChangeAcknowledgement();
+  const [page, setPage] = useState(0);
+  const width = useRef(Dimensions.get("window").width - SCREEN_PADDING * 2);
+  const remaining = useCountdown(change?.executableAt ?? null);
+
+  const banners: Banner[] = [];
+
+  if (change) {
+    banners.push({
+      key: "pending-change",
+      icon: "time-outline",
+      tint: "#0A0A0A",
+      title: change.selfInitiated
+        ? "Your key change is on its way"
+        : "A change to your account is pending",
+      description: remaining
+        ? `Goes through in ${remaining}. Tap to review.`
+        : "Waiting for a second approval. Tap to review.",
+      // Reviewing means two different things depending on whose change it is.
+      // Their own is a key they can watch land, and the key list is where it
+      // lives. Somebody else's is a thing to refuse, and the only screen that
+      // offers that is the notice they dismissed to get here, so tapping puts
+      // it back rather than sending them to a list that says nothing about it.
+      onPress: change.selfInitiated
+        ? () => router.push("/settings/keys-and-recovery" as never)
+        : reopen,
+    });
+  }
+
+  banners.push({
+    key: "earn",
+    icon: "trending-up-outline",
+    tint: "#0080FF",
+    title: "Earn up to 4.93% APY",
+    description: "Put USDC into Earn",
+    onPress: () => router.push("/earn"),
+  });
+
+  const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    setPage(Math.round(event.nativeEvent.contentOffset.x / width.current));
+  };
+
+  return (
+    <View className="mb-4 mt-auto">
+      <ScrollView
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={onScroll}
+        scrollEnabled={banners.length > 1}
+      >
+        {banners.map((banner) => (
+          <View key={banner.key} style={{ width: width.current }}>
+            <BannerCard banner={banner} />
+          </View>
+        ))}
+      </ScrollView>
+
+      {banners.length > 1 && (
+        <View className="mt-2 flex-row items-center justify-center gap-1.5">
+          {banners.map((banner, index) => (
+            <View
+              key={banner.key}
+              className={cn(
+                "size-1.5 rounded-full",
+                index === page ? "bg-black/40" : "bg-black/10"
+              )}
+            />
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function BannerCard({ banner }: { banner: Banner }) {
+  return (
+    <HapticPressable
+      onPress={banner.onPress}
+      className="flex-row items-center justify-between rounded-[20px] border border-black/[0.05] bg-white p-4"
+    >
+      <View className="flex-1 flex-row items-center">
+        <View
+          className="mr-3 size-10 items-center justify-center rounded-full"
+          // DYNAMIC-COLOR (per-banner icon tint)
+          style={{ backgroundColor: banner.tint }}
+        >
+          <Ionicons name={banner.icon} size={18} color="#FFFFFF" />
+        </View>
+        <View className="flex-1 gap-0.5">
+          <Typography weight="600" className="text-[15px] text-black">
+            {banner.title}
+          </Typography>
+          <Typography weight="500" className="text-[13px] text-black/50">
+            {banner.description}
+          </Typography>
+        </View>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color="#00000040" />
+    </HapticPressable>
+  );
+}

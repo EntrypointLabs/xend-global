@@ -95,9 +95,22 @@ export function CustomTabBar({
                 canPreventDefault: true,
               });
 
-              if (!isFocused && !event.defaultPrevented) {
-                navigation.navigate(route.name);
+              if (event.defaultPrevented) return;
+
+              // A tab lands on the tab, not on wherever it was left. Settings
+              // is the only one with a stack under it, and something that deep
+              // links into that stack (the home banner does) otherwise leaves
+              // the tab pointing at a sub-screen with no way back to the list.
+              if (route.name === "settings") {
+                (
+                  navigation.navigate as unknown as (
+                    name: string,
+                    params: { screen: string }
+                  ) => void
+                )(route.name, { screen: "index" });
+                return;
               }
+              if (!isFocused) navigation.navigate(route.name);
             };
 
             const onLongPress = () => {

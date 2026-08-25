@@ -127,6 +127,62 @@
       "when": 1785081600000,
       "tag": "0016_user_notification_preference",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1785168000000,
+      "tag": "0017_transfer_leg_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1785254400000,
+      "tag": "0018_approval_signer_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785340800000,
+      "tag": "0019_announced_account_changes",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1785427200000,
+      "tag": "0020_recovery_signer_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1785513600000,
+      "tag": "0021_recovery_address_per_user",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1785600000000,
+      "tag": "0022_account_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1785686400000,
+      "tag": "0023_event_signature",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1785772800000,
+      "tag": "0024_email_is_contact_not_credential",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@ import type { TransferRow } from "@/utils/apiClient";
 import {
   arrivalLabel,
   securityActivityEntry,
+  mapAccountEventToActivityEntry,
   ActivityEntry,
   groupIntoSections,
   mapTransferRowToActivityEntry,
@@ -583,5 +584,81 @@ describe("security activity", () => {
     const sections = groupIntoSections([entry]);
     expect(sections).toHaveLength(1);
     expect(sections[0]!.data[0]!.id).toBe("sec-1");
+  });
+});
+
+describe("mapAccountEventToActivityEntry", () => {
+  const base = {
+    id: "evt-1",
+    subject: "a@example.com",
+    previousSubject: null,
+    signature: "5xSig",
+    occurredAt: "2026-08-22T15:31:00.000Z",
+  };
+
+  it("prefixes the id so it cannot collide with a transfer", () => {
+    const entry = mapAccountEventToActivityEntry(
+      { ...base, kind: "recovery_key_added" },
+      "SELF"
+    );
+
+    // The feed keys on `id` alone and these come from a different table.
+    expect(entry.id).toBe("event:evt-1");
+  });
+
+  it("reads as a security entry, not a zero-value transfer", () => {
+    const entry = mapAccountEventToActivityEntry(
+      { ...base, kind: "recovery_key_added" },
+      "SELF"
+    );
+
+    expect(entry.kind).toBe("security");
+    expect(entry.amountRaw).toBe("0");
+    expect(statusLabel(entry)).toBe("Added Recovery Key");
+    expect(entry.securitySubject).toBe("a@example.com");
+  });
+
+  it("says which way a recovery key went", () => {
+    const removed = mapAccountEventToActivityEntry(
+      { ...base, kind: "recovery_key_removed" },
+      "SELF"
+    );
+
+    expect(statusLabel(removed)).toBe("Removed Recovery Key");
+  });
+
+  it("distinguishes a first name from a rename", () => {
+    const named = mapAccountEventToActivityEntry(
+      {
+        ...base,
+        kind: "wallet_renamed",
+        subject: "Gift",
+        previousSubject: null,
+      },
+      "SELF"
+    );
+    const renamed = mapAccountEventToActivityEntry(
+      {
+        ...base,
+        kind: "wallet_renamed",
+        subject: "Gift",
+        previousSubject: "Wallet",
+      },
+      "SELF"
+    );
+
+    expect(statusLabel(named)).toBe("Named Wallet");
+    expect(statusLabel(renamed)).toBe("Renamed Wallet");
+  });
+
+  it("dates the entry when it happened", () => {
+    const entry = mapAccountEventToActivityEntry(
+      { ...base, kind: "recovery_key_added" },
+      "SELF"
+    );
+
+    // Not when it was recorded: a key that landed on chain yesterday is
+    // written when the app next polls, and the feed should say yesterday.
+    expect(entry.createdAt).toBe(base.occurredAt);
   });
 });

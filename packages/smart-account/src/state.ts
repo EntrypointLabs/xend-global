@@ -24,6 +24,8 @@ export interface SettingsState {
 export interface ProposalState {
   /** Signers who have approved, base58. */
   approved: string[];
+  /** Signers who have rejected, base58. A signer here cannot vote again. */
+  rejected: string[];
   /** Nothing further is owed to this proposal. See {@link UNFINISHED}. */
   settled: boolean;
   /** The program's own name for where this proposal stands. */
@@ -90,6 +92,9 @@ export function decodeProposal(info: AccountInfo<Buffer>): ProposalState {
   const status = proposal.status as { __kind: string; timestamp?: unknown };
   return {
     approved: proposal.approved.map((key) => key.toBase58()),
+    // Needed to build a rejection. A signer who has already voted cannot vote
+    // again, so anything adding a rejection has to know who is left.
+    rejected: proposal.rejected.map((key) => key.toBase58()),
     settled: !UNFINISHED.includes(status.__kind),
     status: status.__kind as ProposalStatusName,
     statusTimestamp:

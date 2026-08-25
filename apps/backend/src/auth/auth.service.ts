@@ -21,6 +21,19 @@ import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { ExchangeResponse, MirrorPasskeyCredentialRequest } from './dtos';
 
 /**
+ * The contact address already anchors another Account's recovery signer. Kept
+ * HTTP-framework-agnostic (plain Error subclass); the controller maps it to
+ * 409 EMAIL_IN_USE.
+ */
+export class EmailInUseError extends Error {
+  readonly code = 'EMAIL_IN_USE';
+  constructor(message: string) {
+    super(message);
+    this.name = 'EmailInUseError';
+  }
+}
+
+/**
  * A passkey credential is already mirrored under a different account. Kept
  * HTTP-framework-agnostic (plain Error subclass); the controller maps it to
  * 409 CREDENTIAL_CONFLICT.
@@ -31,6 +44,12 @@ export class CredentialConflictError extends Error {
     super(message);
     this.name = 'CredentialConflictError';
   }
+}
+
+/** Postgres unique-violation SQLSTATE, surfaced by node-postgres. */
+function pgErrorCode(err: unknown): string | undefined {
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e?.code ?? e?.cause?.code;
 }
 
 @Injectable()
@@ -82,12 +101,33 @@ export class AuthService {
 
     const { providerUserId, email, walletAddress, passkeys } = privyUser;
 
-    // Upsert users by email.
-    const [existingUser] = await this.db.client
-      .select()
-      .from(users)
-      .where(eq(users.email, email))
+    // Keyed on the Privy DID, not the email.
+    //
+    // The passkey is the credential, so a sign-up arrives with no email at all
+    // and there is nothing to match on. Matching on email was also wrong even
+    // when there was one: a Consumer who changed their Privy address would be
+    // treated as a stranger and get a second, empty Account, and one who moved
+    // to an address another Consumer already had would have adopted theirs.
+    const [byProvider] = await this.db.client
+      .select({ user: users })
+      .from(smartAccounts)
+      .innerJoin(users, eq(users.id, smartAccounts.userId))
+      .where(eq(smartAccounts.providerUserId, providerUserId))
       .limit(1);
+
+    // Falls back to the email for Consumers who signed up before the DID was
+    // the key and have no smart_accounts row yet.
+    const [byEmail] = byProvider?.user
+      ? []
+      : email
+        ? await this.db.client
+            .select()
+            .from(users)
+            .where(eq(users.email, email))
+            .limit(1)
+        : [];
+
+    const existingUser = byProvider?.user ?? byEmail;
 
     let userRow: typeof users.$inferSelect;
     let isNewUser: boolean;
@@ -191,11 +231,52 @@ export class AuthService {
       token,
       user: {
         id: userRow.id,
-        email,
+        // The stored contact address, not Privy's. A Consumer who signed up
+        // with a passkey and gave one afterwards has it here and nowhere in
+        // Privy, and echoing Privy's would tell the app they never gave one.
+        email: userRow.email,
         walletAddress,
         isNewUser,
       },
     };
+  }
+
+  /**
+   * Records the Consumer's contact address.
+   *
+   * Refused when it already belongs to someone else rather than adopted: the
+   * address anchors a recovery signer, and two Accounts claiming one inbox
+   * would mean either could be restored through it.
+   */
+  async setEmail(userId: string, email: string): Promise<{ email: string }> {
+    const [clash] = await this.db.client
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+
+    if (clash && clash.id !== userId) {
+      throw new EmailInUseError('that email is already on another account');
+    }
+
+    try {
+      await this.db.client
+        .update(users)
+        .set({ email, updatedAt: new Date() })
+        .where(eq(users.id, userId));
+    } catch (err) {
+      // Two Consumers claiming one address can both read no clash above. The
+      // unique index is what actually settles it, and the one it turns away
+      // has to hear the same refusal as the one who read the clash, not a
+      // 500 that reads like an outage.
+      if (pgErrorCode(err) === '23505') {
+        throw new EmailInUseError('that email is already on another account');
+      }
+      throw err;
+    }
+
+    this.logger.log(`auth.email_set userId=${userId}`);
+    return { email };
   }
 
   /**

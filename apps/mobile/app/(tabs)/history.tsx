@@ -11,6 +11,7 @@ import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useBalances } from "@/hooks/useBalances";
 import {
   groupIntoSections,
+  mapAccountEventToActivityEntry,
   mapTransferRowToActivityEntry,
   type ActivityEntry,
 } from "@/utils/activity";
@@ -31,16 +32,29 @@ export default function HistoryScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const rows = (data?.pages.flatMap((page) => page.transfers) ?? []).map(
-    (row) =>
-      mapTransferRowToActivityEntry(row, {
-        selfAddress: address ?? "",
-        decimalsByMint,
-        iconsByMint,
-      })
+  const transferRows = (
+    data?.pages.flatMap((page) => page.transfers) ?? []
+  ).map((row) =>
+    mapTransferRowToActivityEntry(row, {
+      selfAddress: address ?? "",
+      decimalsByMint,
+      iconsByMint,
+    })
   );
 
-  usePendingWatch(rows.some((row) => row.status === "pending"));
+  // Merged for display only. The events deliberately do not live in
+  // `page.transfers`, because the balance chart walks that array and would
+  // read an entry with no amount as a zero-value movement.
+  const eventRows = (data?.pages.flatMap((page) => page.events) ?? []).map(
+    (event) => mapAccountEventToActivityEntry(event, address ?? "")
+  );
+
+  const rows = [...transferRows, ...eventRows].sort(
+    (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
+  );
+
+  // Only a transfer can be in flight; an event is recorded after the fact.
+  usePendingWatch(transferRows.some((row) => row.status === "pending"));
 
   const handleItemPress = useCallback((item: ActivityEntry) => {
     setSelectedItem(item);

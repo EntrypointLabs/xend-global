@@ -1,9 +1,13 @@
+import { PublicKey } from '@solana/web3.js';
 import { Test } from '@nestjs/testing';
 import { RECOVERY_VAULT, type RecoveryVault } from './recovery-vault.interface';
+import { AccountEventsService } from '../activity/account-events.service';
 import { RecoveryService } from './recovery.service';
 import {
   DuplicateRecoveryChannelError,
   LastRecoverySignerError,
+  RecoveryChangeInFlightError,
+  RecoverySignerLimitError,
   UnknownRecoverySignerError,
 } from './recovery.errors';
 
@@ -18,9 +22,25 @@ import { RECOVERY_SIGNER_STORE } from './recovery-signer.store';
 class FakeStore implements RecoverySignerStore {
   rows: RecoverySignerRow[] = [];
   private seq = 0;
+  private locks = new Map<string, Promise<unknown>>();
+
+  withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    const queued = (this.locks.get(userId) ?? Promise.resolve()).then(fn, fn);
+    this.locks.set(
+      userId,
+      queued.catch(() => undefined),
+    );
+    return queued;
+  }
 
   findByUser(userId: string): Promise<RecoverySignerRow[]> {
     return Promise.resolve(this.rows.filter((r) => r.userId === userId));
+  }
+
+  findByAddress(address: string): Promise<RecoverySignerRow | null> {
+    return Promise.resolve(
+      this.rows.find((r) => r.address === address) ?? null,
+    );
   }
 
   insert(row: NewRecoverySigner): Promise<RecoverySignerRow> {
@@ -32,6 +52,9 @@ class FakeStore implements RecoverySignerStore {
       channelValue: row.channelValue,
       sealedKey: row.sealedKey ?? null,
       sealedKeyId: row.sealedKeyId ?? null,
+      status: row.status ?? 'active',
+      changeIndex: row.changeIndex ?? null,
+      changeSignature: row.changeSignature ?? null,
       createdAt: new Date(0),
       updatedAt: new Date(0),
     };
@@ -64,17 +87,29 @@ const vault: RecoveryVault = {
     Promise.resolve(new Uint8Array(Buffer.from(sealed.ciphertext, 'base64'))),
 };
 
+/** Only what RecoveryService reaches. Recorded facts are asserted here too. */
+const recordAdded = jest.fn().mockResolvedValue(null);
+const recordRemoved = jest.fn().mockResolvedValue(null);
+const events = {
+  recordRecoveryKeyAdded: recordAdded,
+  recordRecoveryKeyRemoved: recordRemoved,
+} as unknown as AccountEventsService;
+
 describe('RecoveryService', () => {
   let service: RecoveryService;
   let store: FakeStore;
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     store = new FakeStore();
     const moduleRef = await Test.createTestingModule({
       providers: [
         RecoveryService,
         { provide: RECOVERY_SIGNER_STORE, useValue: store },
         { provide: RECOVERY_VAULT, useValue: vault },
+        // Recording is a side effect of settling, not part of the rules these
+        // tests cover; the events themselves are covered in their own spec.
+        { provide: AccountEventsService, useValue: events },
       ],
     }).compile();
     service = moduleRef.get(RecoveryService);
@@ -88,7 +123,9 @@ describe('RecoveryService', () => {
 
     expect(signer.channel).toBe('email');
     expect(signer.channelValue).toBe('a@example.com');
-    expect(signer.address).toHaveLength(44);
+    // Not a fixed length: base58 of 32 bytes is 43 or 44 characters depending
+    // on leading zeroes, so asserting 44 fails on roughly one key in 256.
+    expect(() => new PublicKey(signer.address)).not.toThrow();
     expect(Object.keys(signer)).not.toContain('sealedKey');
   });
 
@@ -131,33 +168,200 @@ describe('RecoveryService', () => {
     expect(await service.list('user-1')).toHaveLength(1);
   });
 
-  it('allows removal once a second signer exists', async () => {
+  /** Stages a signer and lands the settings change that puts it on chain. */
+  async function landAdd(userId: string, address: string) {
+    const added = await service.addExternalWallet(userId, address);
+    await service.markChange(added.id, 9n);
+    await service.settle(userId, 9n);
+    return added;
+  }
+
+  it('does not count a staged signer as one that backs the Account', async () => {
     const first = await service.provisionEmailSigner('user-1', 'a@example.com');
     await service.addExternalWallet(
       'user-1',
       'So11111111111111111111111111111111111111112',
     );
+
+    // The second signer is not in the on-chain signer set until its settings
+    // change executes, so removing the first would leave nothing recovering
+    // the Account in the meantime.
+    await expect(service.remove('user-1', first.id)).rejects.toThrow(
+      LastRecoverySignerError,
+    );
+  });
+
+  it('allows removal once a second signer is really in the signer set', async () => {
+    const first = await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111112');
 
     const signers = await service.list('user-1');
     expect(signers.every((s) => s.removable)).toBe(true);
 
     const removed = await service.remove('user-1', first.id);
     expect(removed.address).toBe(first.address);
+
+    // Staged, not gone: the row survives until the chain agrees, and a
+    // different change executing must not take it with it.
+    const staged = (await service.list('user-1')).find(
+      (s) => s.id === first.id,
+    );
+    expect(staged?.status).toBe('pending_remove');
+    await service.settle('user-1', 11n);
+    expect(await service.list('user-1')).toHaveLength(2);
+  });
+
+  it('drops a staged removal only when its own change executes', async () => {
+    const first = await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111112');
+
+    await service.remove('user-1', first.id);
+    await service.markChange(first.id, 12n);
+    await service.settle('user-1', 12n);
+
+    expect(await service.list('user-1')).toHaveLength(1);
+  });
+
+  it('puts a rejected removal back into service', async () => {
+    const first = await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111112');
+
+    await service.remove('user-1', first.id);
+    await service.markChange(first.id, 13n);
+    await service.abandon('user-1', 13n);
+
+    const survivor = (await service.list('user-1')).find(
+      (s) => s.id === first.id,
+    );
+    expect(survivor?.status).toBe('active');
+  });
+
+  it('forgets a staged addition that was rejected', async () => {
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    const added = await service.addExternalWallet(
+      'user-1',
+      'So11111111111111111111111111111111111111112',
+    );
+    await service.markChange(added.id, 14n);
+    await service.abandon('user-1', 14n);
+
     expect(await service.list('user-1')).toHaveLength(1);
   });
 
   it('makes the last remaining signer un-removable again', async () => {
     const first = await service.provisionEmailSigner('user-1', 'a@example.com');
-    await service.addExternalWallet(
-      'user-1',
-      'So11111111111111111111111111111111111111112',
-    );
+    await landAdd('user-1', 'So11111111111111111111111111111111111111112');
     await service.remove('user-1', first.id);
+    await service.markChange(first.id, 15n);
+    await service.settle('user-1', 15n);
 
     const [survivor] = await service.list('user-1');
     expect(survivor.removable).toBe(false);
     await expect(service.remove('user-1', survivor.id)).rejects.toThrow(
       LastRecoverySignerError,
+    );
+  });
+
+  it('records a key reaching the signer set, and only then', async () => {
+    const first = await service.provisionEmailSigner('user-1', 'a@example.com');
+    const added = await service.addExternalWallet(
+      'user-1',
+      'So11111111111111111111111111111111111111112',
+    );
+    await service.markChange(added.id, 9n);
+
+    // Staged is not added. Nothing has reached the chain yet.
+    expect(recordAdded).not.toHaveBeenCalled();
+
+    await service.settle('user-1', 9n);
+
+    expect(recordAdded).toHaveBeenCalledWith('user-1', {
+      signerId: added.id,
+      subject: 'So11111111111111111111111111111111111111112',
+      signature: null,
+    });
+    expect(first.id).not.toBe(added.id);
+  });
+
+  it('records a removal before the row it describes is gone', async () => {
+    const first = await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111112');
+    await service.remove('user-1', first.id);
+    await service.markChange(first.id, 12n);
+
+    await service.settle('user-1', 12n);
+
+    // The row is deleted by settle, so the subject has to be read off it
+    // first or the event records nothing.
+    expect(recordRemoved).toHaveBeenCalledWith('user-1', {
+      signerId: first.id,
+      subject: 'a@example.com',
+      signature: null,
+    });
+  });
+
+  it('records nothing for a change that was abandoned', async () => {
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    const added = await service.addExternalWallet(
+      'user-1',
+      'So11111111111111111111111111111111111111112',
+    );
+    await service.markChange(added.id, 14n);
+
+    await service.abandon('user-1', 14n);
+
+    // Nothing reached the signer set on this path, so nothing happened to the
+    // Account and the feed must not claim otherwise.
+    expect(recordAdded).not.toHaveBeenCalled();
+    expect(recordRemoved).not.toHaveBeenCalled();
+  });
+
+  it('refuses a second change while one is still in flight', async () => {
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    const added = await service.addExternalWallet(
+      'user-1',
+      'So11111111111111111111111111111111111111112',
+    );
+    await service.markChange(added.id, 16n);
+
+    // Settings changes are sequenced by transactionIndex, so a second one
+    // proposed now would either collide or silently depend on the first.
+    await expect(service.addEmail('user-1', 'b@example.com')).rejects.toThrow(
+      RecoveryChangeInFlightError,
+    );
+  });
+
+  it('lets two Consumers use the same wallet', async () => {
+    const wallet = 'So11111111111111111111111111111111111111112';
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', wallet);
+    await service.provisionEmailSigner('user-2', 'b@example.com');
+
+    // One person who signed up twice, or a household sharing a device.
+    // Refusing that protects nobody. What must not happen is the same wallet
+    // counting twice toward one Consumer's threshold, which is the next test.
+    await expect(
+      service.addExternalWallet('user-2', wallet),
+    ).resolves.toMatchObject({ channel: 'external_wallet' });
+  });
+
+  it('refuses the same wallet twice for one Consumer', async () => {
+    const wallet = 'So11111111111111111111111111111111111111112';
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', wallet);
+
+    await expect(service.addExternalWallet('user-1', wallet)).rejects.toThrow(
+      DuplicateRecoveryChannelError,
+    );
+  });
+
+  it('refuses a fourth recovery signer', async () => {
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111112');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111113');
+
+    await expect(service.addEmail('user-1', 'd@example.com')).rejects.toThrow(
+      RecoverySignerLimitError,
     );
   });
 

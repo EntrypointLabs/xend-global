@@ -1,7 +1,9 @@
 import type {
   BalancesResponse,
+  StagedChange,
   ListSessionsResponse,
   PrepareTransferResponse,
+  RecoveryKey,
   TransferListResponse,
   WalletResponse,
 } from "@/utils/apiClient";
@@ -64,6 +66,24 @@ export function seedTransfers(): TransferListResponse {
     `${s}dEmO5xQ2wR7tY9uP1sX4vB6mH8jC3dF5aZ1yU2eW4rK6tN`;
 
   return {
+    events: [
+      {
+        id: "evt-1",
+        kind: "recovery_key_added",
+        subject: "So1111...111112",
+        previousSubject: null,
+        signature: "3ouU7Kq9vXbN2mRt5wYzA8cD1eF4gH6jK9lM2nP5qR8s",
+        occurredAt: hoursAgo(5),
+      },
+      {
+        id: "evt-2",
+        kind: "wallet_renamed",
+        subject: "Gift",
+        previousSubject: "Wallet",
+        signature: null,
+        occurredAt: hoursAgo(40),
+      },
+    ],
     nextCursor: null,
     transfers: [
       {
@@ -224,5 +244,88 @@ export function seedPrepareTransfer(): PrepareTransferResponse {
     unsignedTxBase64: "AA==",
     feeLamports: 5000,
     expiresAt: hoursAgo(-1),
+  };
+}
+
+/**
+ * Recovery keys for the demo seed.
+ *
+ * `EXPO_PUBLIC_SEED_RECOVERY` picks the state, because the interesting ones are
+ * the in-flight ones and those cannot be reached on a simulator: staging a key
+ * needs two on-device signatures and then a day of waiting.
+ *
+ * - `one`       a single email key, which is every real Account today
+ * - `pending`   a second key staged and still waiting on the chain
+ * - `removing`  a key on its way out
+ * - `full`      three keys, so the add button is at capacity
+ * - `empty`     no keys, which the backend forbids but the screen must survive
+ */
+export function seedRecoveryKeys(): RecoveryKey[] {
+  const state = process.env.EXPO_PUBLIC_SEED_RECOVERY ?? "one";
+
+  const email: RecoveryKey = {
+    id: "rk-01",
+    address: WALLET,
+    channel: "email",
+    channelValue: "amara@xend.global",
+    createdAt: new Date(Date.now() - 86_400_000 * 30).toISOString(),
+    status: "active",
+    removable: false,
+  };
+  const wallet = (
+    id: string,
+    status: RecoveryKey["status"],
+    removable: boolean
+  ): RecoveryKey => ({
+    id,
+    address: WALLET,
+    channel: "external_wallet",
+    channelValue: "So11111111111111111111111111111111111111112",
+    createdAt: new Date(Date.now() - 86_400_000).toISOString(),
+    status,
+    removable,
+  });
+
+  if (state === "empty") return [];
+  if (state === "pending") {
+    return [
+      { ...email, removable: false },
+      wallet("rk-02", "pending_add", false),
+    ];
+  }
+  if (state === "removing") {
+    return [
+      { ...email, removable: true },
+      wallet("rk-02", "pending_remove", false),
+    ];
+  }
+  if (state === "full") {
+    return [
+      { ...email, removable: true },
+      wallet("rk-02", "active", true),
+      wallet("rk-03", "active", true),
+    ];
+  }
+  return [email];
+}
+
+/**
+ * A staged settings change for the demo seed.
+ *
+ * `EXPO_PUBLIC_SEED_CHANGE` picks who started it: `self` is the Consumer's own
+ * key change, which the home banner carries quietly, and `stranger` is the one
+ * that interrupts. Neither is reachable on a simulator otherwise, because
+ * staging a change needs two on-device signatures.
+ */
+export function seedPendingChange(): StagedChange | null {
+  const state = process.env.EXPO_PUBLIC_SEED_CHANGE;
+  if (state !== "self" && state !== "stranger") return null;
+
+  return {
+    transactionIndex: "2",
+    status: "Approved",
+    approvals: [],
+    executableAt: new Date(Date.now() + 23.5 * 3600 * 1000).toISOString(),
+    selfInitiated: state === "self",
   };
 }

@@ -224,6 +224,9 @@ export async function fetchTransferRowsFromChain(
         confirmedAt: t.status === "confirmed" ? timestamp : null,
       };
     }),
+    // Nothing to read: account events live in the backend, and this path
+    // exists precisely because the backend could not be reached.
+    events: [],
     nextCursor: null,
   };
 }

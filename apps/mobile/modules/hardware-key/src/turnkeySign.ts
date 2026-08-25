@@ -1,4 +1,5 @@
 import type { SignPrompt } from "./index";
+import { withKeystoreQuiet } from "./keystoreQuiet";
 import { stamp } from "./stamper";
 
 /**
@@ -51,7 +52,12 @@ export async function signWithApprovalSigner({
 
   // Stamped over the exact bytes sent. Serialising twice would risk a
   // different key order and a stamp that does not match the body.
-  const { stampHeaderName, stampHeaderValue } = await stamp(body, prompt);
+  //
+  // Quiet, because the stamp is where the fingerprint is asked for, and the
+  // Keystore operation waiting on it can be evicted by the app's own polling.
+  const { stampHeaderName, stampHeaderValue } = await withKeystoreQuiet(() =>
+    stamp(body, prompt)
+  );
 
   const response = await fetch(ENDPOINT, {
     method: "POST",

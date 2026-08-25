@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { router } from "expo-router";
 
 import { AccountSetupModal } from "@/components/ui/organisms/modals/AccountSetupModal";
 import { useAccountSetup } from "@/hooks/useAccountSetup";
 import { useAccountSetupStatus } from "@/hooks/useAccountSetupStatus";
+import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * Offers to finish an Account the Consumer left half-built.
@@ -17,6 +19,7 @@ import { useAccountSetupStatus } from "@/hooks/useAccountSetupStatus";
  */
 export function AccountSetupReminder() {
   const { data: status } = useAccountSetupStatus();
+  const { email } = useAuth();
   const { stage, error, run, clearError } = useAccountSetup();
   const [dismissed, setDismissed] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -27,6 +30,14 @@ export function AccountSetupReminder() {
   }, [unfinished, dismissed]);
 
   const finish = async () => {
+    // The Account's recovery signer is anchored on the Consumer's address, so
+    // with none on file there is nothing setup can do but fail. Ask for the
+    // address instead; that screen builds the Account once it has one.
+    if (!email) {
+      setVisible(false);
+      router.push("/add-email");
+      return;
+    }
     if (await run()) setVisible(false);
   };
 

@@ -84,10 +84,14 @@ export class IdentityService {
   private async devProvisionConsumer(
     providerUser: WalletProviderUser,
   ): Promise<string> {
+    // Dev-only provisioning path. A passkey-only identity carries no email,
+    // so fall back to a deterministic placeholder rather than matching null.
+    const email =
+      providerUser.email ?? `${providerUser.providerUserId}@devtest.local`;
     const [existingUser] = await this.db.client
       .select()
       .from(users)
-      .where(eq(users.email, providerUser.email))
+      .where(eq(users.email, email))
       .limit(1);
 
     let userId: string;

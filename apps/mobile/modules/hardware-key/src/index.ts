@@ -1,6 +1,8 @@
 import { requireNativeModule } from "expo-modules-core";
 import { Platform } from "react-native";
 
+import { accountScope } from "./accountScope";
+
 /**
  * The approval signer's key (S2 in ADR 0025): a P-256 keypair generated inside
  * the phone's secure hardware and gated on biometrics.
@@ -21,10 +23,14 @@ interface NativeHardwareKey {
   /**
    * Creates the key and returns an attestation over `nonce`.
    *
-   * Replaces any existing key: enrolment is once per device, and a second call
-   * means the first key is gone or unusable.
+   * Replaces this account's existing key, and only this account's: enrolment is
+   * once per account per device, and a second call means that key is gone or
+   * unusable.
    */
-  enrol(nonce: string): Promise<{
+  enrol(
+    nonce: string,
+    account: string
+  ): Promise<{
     /** Base64. The App Attest object on iOS, the certificate chain on Android. */
     attestation: string;
     /** Compressed P-256 public key, hex. */
@@ -32,7 +38,7 @@ interface NativeHardwareKey {
   }>;
 
   /** Compressed P-256 public key, hex, or null when no key exists. */
-  getPublicKey(): Promise<string | null>;
+  getPublicKey(account: string): Promise<string | null>;
 
   /**
    * Signs 32 bytes, prompting for biometrics.
@@ -45,10 +51,15 @@ interface NativeHardwareKey {
    * one they are agreeing to. Android shows `title` above `reason`; iOS has a
    * single line and shows `reason`.
    */
-  sign(payloadHex: string, title: string, reason: string): Promise<string>;
+  sign(
+    payloadHex: string,
+    title: string,
+    reason: string,
+    account: string
+  ): Promise<string>;
 
   /** Discards the key. Used when enrolment fails part-way. */
-  reset(): Promise<void>;
+  reset(account: string): Promise<void>;
 }
 
 const native = requireNativeModule<NativeHardwareKey>("HardwareKey");
@@ -59,12 +70,26 @@ export function devicePlatform(): DevicePlatform {
   return Platform.OS === "ios" ? "ios" : "android";
 }
 
-export const hardwareKey = native;
+/**
+ * The approval key, scoped to whoever is signed in.
+ *
+ * The scope is resolved here rather than passed by callers. It decides which
+ * private key signs, so a call site that got it wrong would either fail to sign
+ * or, worse, enrol over another account's key. One place to be right is the
+ * whole point.
+ */
+export const hardwareKey = {
+  enrol: async (nonce: string) => native.enrol(nonce, await accountScope()),
+  getPublicKey: async () => native.getPublicKey(await accountScope()),
+  sign: async (payloadHex: string, title: string, reason: string) =>
+    native.sign(payloadHex, title, reason, await accountScope()),
+  reset: async () => native.reset(await accountScope()),
+};
 
 /**
  * What the biometric prompt says, per thing being signed.
  *
- * Kept together so the two are visibly different. They were one hardcoded
+ * Kept together so they stay visibly different. They were one hardcoded
  * string, which meant finishing onboarding asked a Consumer to "approve this
  * payment" when no payment existed and their balance was zero.
  */
@@ -76,6 +101,13 @@ export const SIGN_PROMPT = {
   accountSetup: {
     title: "Finish setting up",
     reason: "Confirm it is you to secure your Xend account",
+  },
+  // Worded as stopping rather than approving. This is the one prompt a
+  // Consumer may reach while being attacked, and "approve" is the last word
+  // they should read on the way to refusing something.
+  rejectChange: {
+    title: "Stop this change",
+    reason: "Confirm it is you before Xend refuses it",
   },
 } as const;
 

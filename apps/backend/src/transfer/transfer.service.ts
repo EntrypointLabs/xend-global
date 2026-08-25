@@ -16,6 +16,7 @@ import {
   TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
 import { AccountService } from '../account/account.service';
+import { AccountEventsService } from '../activity/account-events.service';
 import { SpendService } from '../account/spend.service';
 import { DbService } from '../db/db.service';
 import { smartAccounts, transfers, payments, merchants } from '../db/schema';
@@ -107,6 +108,7 @@ export class TransferService {
     private readonly spends: SpendService,
     @Inject(TOKEN_METADATA_PROVIDER)
     private readonly tokens: TokenMetadataProvider,
+    private readonly events: AccountEventsService,
   ) {
     // Pull the stablecoin mint allowlist from env so devnet vs mainnet
     // mints can swap without code changes.
@@ -569,12 +571,13 @@ export class TransferService {
     // Opaque cursor: base64({ createdAt: ISO, id: text }), paired with an
     // ORDER BY (createdAt DESC, id DESC) for stable reverse-chrono paging.
     let cursorWhere: SQL | undefined = undefined;
+    let cursorDate: Date | undefined = undefined;
     if (opts.cursor) {
       try {
         const decoded = JSON.parse(
           Buffer.from(opts.cursor, 'base64').toString('utf-8'),
         ) as { createdAt: string; id: string };
-        const cursorDate = new Date(decoded.createdAt);
+        cursorDate = new Date(decoded.createdAt);
         cursorWhere = or(
           lt(transfers.createdAt, cursorDate),
           and(
@@ -638,6 +641,16 @@ export class TransferService {
         ).toString('base64')
       : null;
 
+    // Bounded to the span this page covers. Asking only for "older than the
+    // cursor" would pull events that belong further down the feed and show
+    // them above transfers that predate them; the last page has no floor
+    // because there is nothing after it to belong to.
+    const events = await this.events.list(userId, {
+      limit,
+      before: cursorDate,
+      after: hasMore ? page[page.length - 1].createdAt : undefined,
+    });
+
     return {
       transfers: page.map(
         (r): TransferRow => ({
@@ -664,6 +677,14 @@ export class TransferService {
           confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
         }),
       ),
+      events: events.map((event) => ({
+        id: event.id,
+        kind: event.kind,
+        subject: event.subject,
+        previousSubject: event.previousSubject,
+        signature: event.signature,
+        occurredAt: event.occurredAt.toISOString(),
+      })),
       nextCursor,
     };
   }

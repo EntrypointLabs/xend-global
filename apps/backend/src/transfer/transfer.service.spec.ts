@@ -6,6 +6,7 @@ import {
   VersionedTransaction,
 } from '@solana/web3.js';
 import type { AccountService } from '../account/account.service';
+import type { AccountEventsService } from '../activity/account-events.service';
 import type { SpendService } from '../account/spend.service';
 import type { TokenMetadataProvider } from '../tokens/token-metadata.interface';
 import { TransferService } from './transfer.service';
@@ -264,6 +265,7 @@ function makeService(opts: {
   squadsAccount?: unknown;
   spends?: SpendService;
   /** Names and logos by mint, as the token index would return them. */
+  events?: Pick<AccountEventsService, 'list'>;
   tokenMetadata?: Record<
     string,
     { name: string; symbol: string; iconUrl: string | null }
@@ -301,6 +303,11 @@ function makeService(opts: {
         .fn()
         .mockResolvedValue(new Map(Object.entries(opts.tokenMetadata ?? {}))),
     } as unknown as TokenMetadataProvider,
+    // Non-money entries ride alongside the movements; these tests assert the
+    // movements, so the feed is asked for none.
+    (opts.events ?? {
+      list: () => Promise.resolve([]),
+    }) as unknown as AccountEventsService,
   );
   return { service, store, account };
 }

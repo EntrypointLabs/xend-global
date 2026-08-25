@@ -6,6 +6,7 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  Param,
   Post,
   Req,
   UseGuards,
@@ -23,6 +24,13 @@ import { TurnkeyService } from '../turnkey/turnkey.service';
 import { AccountChangeService } from './account-change.service';
 import { UnsafeSubOrganizationError } from '../turnkey/turnkey.errors';
 import {
+  DuplicateRecoveryChannelError,
+  LastRecoverySignerError,
+  RecoveryChangeInFlightError,
+  RecoverySignerLimitError,
+  UnknownRecoverySignerError,
+} from '../recovery/recovery.errors';
+import {
   AccountCreationError,
   IncompleteSignerSetError,
 } from './account.errors';
@@ -30,14 +38,20 @@ import { AccountService } from './account.service';
 import { SweepService } from './sweep.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import {
+  AddRecoveryWalletSchema,
   EnrolAccountSchema,
   SubmitProvisioningStepSchema,
+  SubmitRecoveryChangeSchema,
   SubmitRejectionSchema,
+  type AddRecoveryWalletDto,
   type EnrolAccountDto,
   type SubmitProvisioningStepDto,
+  type SubmitRecoveryChangeDto,
   type SubmitRejectionDto,
 } from './dtos';
 import { ProvisioningService } from './provisioning.service';
+import { RecoveryService } from '../recovery/recovery.service';
+import { RecoveryChangeService } from './recovery-change.service';
 import { SpendingLimitService } from './spending-limit.service';
 
 interface AuthenticatedRequest extends Request {
@@ -57,6 +71,8 @@ export class AccountController {
     private readonly spendingLimits: SpendingLimitService,
     private readonly turnkey: TurnkeyService,
     private readonly changes: AccountChangeService,
+    private readonly recovery: RecoveryService,
+    private readonly recoveryChanges: RecoveryChangeService,
   ) {}
 
   /**
@@ -174,6 +190,93 @@ export class AccountController {
     }
   }
 
+  /** The Consumer's recovery keys, including any change still in flight. */
+  @Get('recovery')
+  async recoveryKeys(@Req() req: AuthenticatedRequest) {
+    try {
+      return { keys: await this.recovery.list(req.user.userId) };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'list', err);
+    }
+  }
+
+  /**
+   * Stages an external wallet as a recovery key and returns its first step.
+   *
+   * Staged, not added: it reaches the signer set only once the settings change
+   * this starts has been approved twice and waited out the time lock. Saying
+   * otherwise in the response would have the app tell a Consumer they are
+   * protected a day before they are.
+   */
+  @Post('recovery/external-wallet')
+  async addRecoveryWallet(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(AddRecoveryWalletSchema))
+    body: AddRecoveryWalletDto,
+  ) {
+    try {
+      await this.assertNotAnActiveSigner(req.user.userId, body.address);
+      return await this.recovery.withChangeLock(req.user.userId, async () => {
+        const key = await this.recovery.addExternalWallet(
+          req.user.userId,
+          body.address,
+        );
+        const plan = await this.recoveryChanges.start(req.user.userId, key.id);
+        return { key, plan };
+      });
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'add_wallet', err);
+    }
+  }
+
+  @Post('recovery/:id/remove')
+  async removeRecoveryKey(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    try {
+      return await this.recovery.withChangeLock(req.user.userId, async () => {
+        await this.recovery.remove(req.user.userId, id);
+        return { plan: await this.recoveryChanges.start(req.user.userId, id) };
+      });
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'remove', err);
+    }
+  }
+
+  /**
+   * The next step of the recovery key change, or done.
+   *
+   * Also what reconciles the staged rows with the chain, so the app calls it
+   * until it says done rather than assuming its own last step landed.
+   */
+  @Post('recovery/change/next')
+  async nextRecoveryChangeStep(@Req() req: AuthenticatedRequest) {
+    try {
+      return await this.recoveryChanges.next(req.user.userId);
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'change_next', err);
+    }
+  }
+
+  @Post('recovery/change/submit')
+  async submitRecoveryChangeStep(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(SubmitRecoveryChangeSchema))
+    body: SubmitRecoveryChangeDto,
+  ) {
+    try {
+      return {
+        signature: await this.recoveryChanges.submit(
+          req.user.userId,
+          body.signedTxBase64,
+        ),
+      };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'change_submit', err);
+    }
+  }
+
   /**
    * Picks up an enrolment that already attested this device.
    *
@@ -182,6 +285,46 @@ export class AccountController {
    * with real hardware enrol a software key instead — the whole reason the
    * fresh path reads the key out of the attestation rather than the body.
    */
+  /**
+   * Refuses an Active Key offered as a recovery key.
+   *
+   * Adding one would be rejected on chain as a duplicate signer, but only at
+   * execute, a day later, having spent an index. It would also be pointless:
+   * recovery exists to cover the loss of an Active Key, and a key that is both
+   * covers nothing.
+   */
+  /**
+   * Logs why a recovery key operation failed, then maps it.
+   *
+   * `toHttp` flattens anything it does not recognise into "Could not create
+   * the Account", which is the right thing to hand a Consumer and useless to
+   * us: a constraint violation, an RPC timeout and a Turnkey refusal all
+   * arrive looking identical. The cause is written down before it is thrown
+   * away.
+   */
+  private recoveryFailure(
+    userId: string,
+    operation: string,
+    err: unknown,
+  ): HttpException {
+    this.logger.error(
+      `account.recovery_failed userId=${userId} op=${operation}: ${describeError(err)}`,
+    );
+    return toHttp(err);
+  }
+
+  private async assertNotAnActiveSigner(userId: string, address: string) {
+    const account = await this.accounts.findByUserId(userId);
+    if (
+      account &&
+      (account.primarySigner === address || account.approvalSigner === address)
+    ) {
+      throw new DuplicateRecoveryChannelError(
+        'that key already protects this Account as an Active Key',
+      );
+    }
+  }
+
   private async resumeEnrolment(
     userId: string,
     hardwarePublicKey: string,
@@ -284,6 +427,26 @@ function toHttp(err: unknown): HttpException {
     return new HttpException(
       { code: err.code, message: err.message },
       HttpStatus.BAD_REQUEST,
+    );
+  }
+  // Recovery key rules are the Consumer's to act on: which key, why it was
+  // refused, and what to do instead. Flattening them into "could not create
+  // the Account" would leave the app with nothing to say.
+  if (err instanceof UnknownRecoverySignerError) {
+    return new HttpException(
+      { code: err.code, message: err.message },
+      HttpStatus.NOT_FOUND,
+    );
+  }
+  if (
+    err instanceof LastRecoverySignerError ||
+    err instanceof RecoverySignerLimitError ||
+    err instanceof DuplicateRecoveryChannelError ||
+    err instanceof RecoveryChangeInFlightError
+  ) {
+    return new HttpException(
+      { code: err.code, message: err.message },
+      HttpStatus.CONFLICT,
     );
   }
   // An unsafe sub-organization is ours to clean up, not the caller's to retry

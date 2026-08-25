@@ -4,6 +4,8 @@ import { handleError, ErrorCode } from "@/utils/errors";
 import { AuthStorage } from "@/utils/storage/authStorage";
 import {
   SEED_DEMO,
+  seedRecoveryKeys,
+  seedPendingChange,
   seedBalances,
   seedPrepareTransfer,
   seedSessions,
@@ -25,7 +27,9 @@ export const ExchangeResponseSchema = z.object({
   token: z.string(),
   user: z.object({
     id: z.string(),
-    email: z.string().email(),
+    // Null until the Consumer gives one: the passkey is the credential, so a
+    // sign-up arrives with no email and a passkey sign-in never carries one.
+    email: z.string().email().nullable(),
     walletAddress: z.string(),
     isNewUser: z.boolean(),
   }),
@@ -119,6 +123,14 @@ export const StagedChangeSchema = z.object({
   status: z.string(),
   approvals: z.array(z.string()),
   executableAt: z.string().nullable(),
+  /**
+   * True when this Consumer started the change from this app.
+   *
+   * Softens the announcement rather than silencing it: the alarm is still what
+   * a change nobody here staged gets, and a self-started one still shows on the
+   * Keys & Recovery screen with a way to cancel it.
+   */
+  selfInitiated: z.boolean(),
 });
 export type StagedChange = z.infer<typeof StagedChangeSchema>;
 
@@ -148,6 +160,57 @@ export type ProvisioningStep = z.infer<typeof ProvisioningStepSchema>;
 
 export const ProvisioningSubmitSchema = z.object({ signature: z.string() });
 export type ProvisioningSubmit = z.infer<typeof ProvisioningSubmitSchema>;
+
+export const RecoveryKeySchema = z.object({
+  id: z.string(),
+  address: z.string(),
+  channel: z.enum(["email", "external_wallet"]),
+  /** The email address, or the external wallet's own address. */
+  channelValue: z.string(),
+  createdAt: z.string(),
+  status: z.enum(["pending_add", "active", "pending_remove"]),
+  removable: z.boolean(),
+});
+export type RecoveryKey = z.infer<typeof RecoveryKeySchema>;
+
+export const RecoveryKeysResponseSchema = z.object({
+  keys: z.array(RecoveryKeySchema),
+});
+
+/**
+ * A step of the settings change that adds or removes a recovery key.
+ *
+ * `waiting` has no transaction: the change is approved and serving out the
+ * time lock, and `executableAt` says when it can be finished.
+ */
+export const RecoveryChangeStepSchema = z.object({
+  done: z.boolean(),
+  step: z
+    .enum([
+      "propose",
+      "approve-primary",
+      "approve-approval",
+      "waiting",
+      "execute",
+    ])
+    .optional(),
+  unsignedTxBase64: z.string().optional(),
+  changeIndex: z.string().optional(),
+  executableAt: z.string().optional(),
+  needsApprovalSignature: z.boolean().optional(),
+});
+export type RecoveryChangeStep = z.infer<typeof RecoveryChangeStepSchema>;
+
+export const AddRecoveryKeyResponseSchema = z.object({
+  key: RecoveryKeySchema,
+  plan: RecoveryChangeStepSchema,
+});
+
+export const RemoveRecoveryKeyResponseSchema = z.object({
+  plan: RecoveryChangeStepSchema,
+});
+
+export const RecoveryChangeSubmitSchema = z.object({ signature: z.string() });
 
 export const SweepPlanSchema = z.object({
   needed: z.boolean(),
@@ -283,8 +346,31 @@ export type TransferRow = z.infer<typeof TransferRowSchema>;
  * The mobile field name is preserved from the backend; do not re-key on
  * the client.
  */
+/**
+ * Something that happened to the Account that was not money moving.
+ *
+ * Kept out of `transfers` on purpose: the balance chart walks that array, and
+ * an entry with no amount in it would be read as a zero-value movement.
+ */
+export const AccountEventRowSchema = z.object({
+  id: z.string(),
+  kind: z.enum([
+    "recovery_key_added",
+    "recovery_key_removed",
+    "wallet_renamed",
+  ]),
+  subject: z.string().nullable(),
+  previousSubject: z.string().nullable(),
+  signature: z.string().nullable(),
+  occurredAt: z.string(),
+});
+export type AccountEventRow = z.infer<typeof AccountEventRowSchema>;
+
 export const TransferListResponseSchema = z.object({
   transfers: z.array(TransferRowSchema),
+  // Defaulted: the on-chain fallback path builds a page without them, and a
+  // page with no events is not an error.
+  events: z.array(AccountEventRowSchema).default([]),
   nextCursor: z.string().nullable(),
 });
 export type TransferListResponse = z.infer<typeof TransferListResponseSchema>;
@@ -322,6 +408,11 @@ class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+/** The HTTP status behind a rejected request, or null if it never reached one. */
+export function apiErrorStatus(err: unknown): number | null {
+  return err instanceof ApiError ? err.status : null;
 }
 
 class BackendClient {
@@ -370,6 +461,11 @@ class BackendClient {
 
       const fetchOptions: RequestInit = {
         ...options,
+        // Never read from, or write to, the platform HTTP cache. That cache is
+        // keyed on the URL and knows nothing about the bearer token, so a
+        // device that switches Consumers can be handed the previous one's
+        // response for the same path.
+        cache: "no-store",
         headers: {
           ...this.defaultHeaders,
           ...authHeaders,
@@ -391,6 +487,18 @@ class BackendClient {
       }
 
       const response = await fetch(url, fetchOptions);
+
+      // A 304 says "your cached copy is still good", and this client keeps no
+      // cache to answer with, so there is no body to return and nothing the
+      // caller can do. `no-store` above should mean we never ask a conditional
+      // question, but a proxy in between can still answer one.
+      if (response.status === 304) {
+        throw new ApiError(
+          `BackendClient: ${endpoint} answered 304 with no body to use`,
+          304,
+          undefined
+        );
+      }
 
       if (!response.ok) {
         const errorData = await response
@@ -458,6 +566,21 @@ class BackendClient {
       body: JSON.stringify(ExchangeRequestSchema.parse(req)),
     });
     return ExchangeResponseSchema.parse(raw);
+  }
+
+  /**
+   * POST /auth/email — records the contact address given after sign-up.
+   *
+   * Contact only. A passkey is what signs the Consumer in, so this address
+   * unlocks nothing and losing it costs them notifications rather than the
+   * account. 409 means another account already claims it.
+   */
+  async setContactEmail(email: string): Promise<void> {
+    await this.request<unknown>("/auth/email", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      auth: true,
+    });
   }
 
   /** POST /auth/passkey-credentials — mirror a freshly enrolled passkey
@@ -571,7 +694,7 @@ class BackendClient {
 
   /** GET /account/changes/pending — a settings change awaiting a decision. */
   async getPendingAccountChange(): Promise<StagedChange | null> {
-    if (SEED_DEMO) return null;
+    if (SEED_DEMO) return seedPendingChange();
     const raw = await this.request<unknown>("/account/changes/pending", {
       method: "GET",
       auth: true,
@@ -598,6 +721,59 @@ class BackendClient {
       auth: true,
     });
     return RejectionSubmitSchema.parse(raw);
+  }
+
+  /** GET /account/recovery — the Consumer's recovery keys. */
+  async getRecoveryKeys(): Promise<RecoveryKey[]> {
+    if (SEED_DEMO) return seedRecoveryKeys();
+    const raw = await this.request<unknown>("/account/recovery", {
+      method: "GET",
+      auth: true,
+    });
+    return RecoveryKeysResponseSchema.parse(raw).keys;
+  }
+
+  /** POST /account/recovery/external-wallet — stages a wallet as a recovery key. */
+  async addRecoveryWallet(body: { address: string }) {
+    const raw = await this.request<unknown>(
+      "/account/recovery/external-wallet",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        auth: true,
+      }
+    );
+    return AddRecoveryKeyResponseSchema.parse(raw);
+  }
+
+  /** POST /account/recovery/:id/remove — stages a recovery key's removal. */
+  async removeRecoveryKey(id: string) {
+    const raw = await this.request<unknown>(`/account/recovery/${id}/remove`, {
+      method: "POST",
+      auth: true,
+    });
+    return RemoveRecoveryKeyResponseSchema.parse(raw);
+  }
+
+  /** POST /account/recovery/change/next — the next step, or done. */
+  async nextRecoveryChangeStep(): Promise<RecoveryChangeStep> {
+    const raw = await this.request<unknown>("/account/recovery/change/next", {
+      method: "POST",
+      auth: true,
+    });
+    return RecoveryChangeStepSchema.parse(raw);
+  }
+
+  /** POST /account/recovery/change/submit — lands a signed step. */
+  async submitRecoveryChangeStep(body: {
+    signedTxBase64: string;
+  }): Promise<{ signature: string }> {
+    const raw = await this.request<unknown>("/account/recovery/change/submit", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return RecoveryChangeSubmitSchema.parse(raw);
   }
 
   /** GET /account/sweep — what is still in the Privy wallet after enrolment. */

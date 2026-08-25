@@ -26,6 +26,33 @@ export const recoveryChannelEnum = pgEnum('recovery_channel', [
   'external_wallet',
 ]);
 
+/**
+ * Where a recovery signer sits relative to the on-chain signer set.
+ *
+ * A signer is only real once the Settings change carrying it has executed, and
+ * that waits out the time lock. Both edges therefore have a pending state: the
+ * row exists while the chain does not yet agree, and the two are reconciled
+ * when the change executes or is rejected.
+ */
+export const recoverySignerStatusEnum = pgEnum('recovery_signer_status', [
+  'pending_add',
+  'active',
+  'pending_remove',
+]);
+
+/**
+ * The kinds of thing that show up in Activity without being a payment.
+ *
+ * Activity is the Consumer's record of what happened to their account, and
+ * money is only part of that. Losing a recovery key matters more than most
+ * transfers do, so it belongs in the same list rather than buried in settings.
+ */
+export const accountEventKindEnum = pgEnum('account_event_kind', [
+  'recovery_key_added',
+  'recovery_key_removed',
+  'wallet_renamed',
+]);
+
 export const transferDirectionEnum = pgEnum('transfer_direction', [
   'SEND',
   'RECEIVE',
@@ -131,7 +158,15 @@ export const users = pgTable('users', {
   id: text('id')
     .primaryKey()
     .$defaultFn(() => createId()),
-  email: text('email').notNull().unique(),
+  /**
+   * Contact address, not a credential.
+   *
+   * Nullable because identity is the passkey: a Consumer exists from the
+   * moment they create one, and the email is asked for afterwards. Still
+   * unique, because it anchors the recovery signer and two Accounts must not
+   * claim the same inbox.
+   */
+  email: text('email').unique(),
   /**
    * Whether they want to be told when money arrives.
    *
@@ -259,7 +294,7 @@ export const recoverySigners = pgTable(
       .notNull()
       .references(() => users.id),
     /** The Squads signer pubkey. What actually sits in the signer set. */
-    address: text('address').notNull().unique(),
+    address: text('address').notNull(),
     channel: recoveryChannelEnum('channel').notNull(),
     /** The email address, or the external wallet's own address. */
     channelValue: text('channel_value').notNull(),
@@ -267,6 +302,20 @@ export const recoverySigners = pgTable(
     sealedKey: text('sealed_key'),
     /** Which wrapping key sealed it, so the vault key can be rotated. */
     sealedKeyId: text('sealed_key_id'),
+    status: recoverySignerStatusEnum('status').notNull().default('active'),
+    /**
+     * The `transactionIndex` of the Settings change adding or removing this
+     * signer, while one is in flight. Null once the chain and this row agree.
+     */
+    changeIndex: text('change_index'),
+    /**
+     * The last transaction submitted for that change.
+     *
+     * Kept so the Activity entry can name the transaction that landed the key.
+     * Overwritten by each step, which leaves the execute signature: the step
+     * after which the change is actually on chain.
+     */
+    changeSignature: text('change_signature'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -276,6 +325,70 @@ export const recoverySigners = pgTable(
       table.channel,
       table.channelValue,
     ),
+    // Per Consumer, not global. The same wallet backing two Consumers is a
+    // person who signed up twice, or a household sharing one device, and
+    // refusing that protects nobody. What must not happen is the same wallet
+    // counting twice toward one Consumer's threshold.
+    uniqueIndex('recovery_signers_user_address_idx').on(
+      table.userId,
+      table.address,
+    ),
+  ],
+);
+
+/**
+ * account_events — everything in Activity that is not a movement of money.
+ *
+ * A separate table rather than another `transfers.kind`. A transfer row is
+ * shaped around money (direction, mint, amount, addresses, confirmation), and
+ * a renamed wallet has none of that; bolting it on would make most of those
+ * columns nullable and leave the meaning to a discriminator.
+ *
+ * `dedupe_key` is what makes recording an event safe from a reconciler. The
+ * settle path is deliberately idempotent and runs again on every poll until the
+ * chain agrees, so an insert with no guard would write one row per poll.
+ */
+export const accountEvents = pgTable(
+  'account_events',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    kind: accountEventKindEnum('kind').notNull(),
+    /**
+     * What the event is about, in the Consumer's terms: the email or wallet
+     * address of a recovery key, or the name a wallet was given.
+     */
+    subject: text('subject'),
+    /** What it replaced, where the change is from-to rather than a one-off. */
+    previousSubject: text('previous_subject'),
+    /**
+     * Identifies the underlying fact, not this row. Two attempts to record the
+     * same thing carry the same key and the second is a no-op.
+     */
+    dedupeKey: text('dedupe_key').notNull(),
+    /**
+     * The transaction that landed it, where there was one.
+     *
+     * Nullable because not every event reaches the chain: renaming a wallet is
+     * a local fact, and an older event recorded before the signature was
+     * carried has none.
+     */
+    signature: text('signature'),
+    /**
+     * When it happened, which is not when it was written. A key added on chain
+     * yesterday is recorded the moment the app next opens, and the Consumer
+     * should see yesterday.
+     */
+    occurredAt: timestamp('occurred_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('account_events_dedupe_idx').on(table.dedupeKey),
+    index('account_events_user_time_idx').on(table.userId, table.occurredAt),
   ],
 );
 

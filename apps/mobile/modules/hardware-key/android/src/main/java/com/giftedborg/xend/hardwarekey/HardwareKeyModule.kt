@@ -3,6 +3,7 @@ package com.giftedborg.xend.hardwarekey
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.security.keystore.UserNotAuthenticatedException
 import android.util.Base64
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -36,22 +37,81 @@ import java.security.spec.ECGenParameterSpec
  */
 class HardwareKeyModule : Module() {
   companion object {
-    private const val KEY_ALIAS = "com.giftedborg.xend.approval-signer"
+    /**
+     * The alias used before keys were scoped to an account.
+     *
+     * Still read, never written. An install that enrolled under it keeps
+     * working: the account whose key this is finds it through the fallback in
+     * `aliasFor`, and enrolling a second account now writes its own alias
+     * instead of destroying this one.
+     */
+    private const val LEGACY_KEY_ALIAS = "com.giftedborg.xend.approval-signer"
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
-    /** Zero seconds of validity: authenticate for every single signature. */
-    private const val AUTH_VALIDITY_SECONDS = 0
+    /**
+     * How long a fingerprint keeps the key usable, in seconds.
+     *
+     * Not how long the Consumer has to authenticate: the prompt has no timer,
+     * and they can read for as long as they like. This is the grace period
+     * afterwards, and signing happens within milliseconds of the prompt
+     * succeeding, so it only needs to be non-zero.
+     *
+     * It used to be zero, meaning authenticate-per-use, which sounds stricter
+     * and cost signatures. A per-use key can only be finished through a
+     * Keystore operation opened *before* the prompt and held across it, and
+     * Keystore prunes operations to make room for new ones. A Consumer who
+     * took two minutes to reach the sensor had their signature evicted while
+     * they read, and got "signing failed" for it. Measured on a Seeker: a
+     * one-second wait signs, a 111-second wait does not.
+     *
+     * Five seconds buys the same practical guarantee without holding anything
+     * open. Longer would only widen the window in which an unlocked phone
+     * could sign again unprompted, and buys nothing, because nothing in this
+     * flow waits between the prompt and the signature.
+     */
+    private const val AUTH_VALIDITY_SECONDS = 5
   }
+
+  /**
+   * Where this account's approval key lives.
+   *
+   * Scoped per account because a phone can hold more than one. On a single
+   * shared alias, enrolling a second account deleted the first account's key,
+   * and nothing could put it back: the key is half of a 2-of-3 signer set, and
+   * replacing a signer needs two of the three, one of which is the key that
+   * just went. The first account silently lost the ability to approve
+   * anything, and only found out the next time it tried.
+   *
+   * The fallback is the migration. An install enrolled before this existed has
+   * its key under the legacy alias, so an account with no scoped key of its own
+   * uses that one. Whether it is the right key is not decided here: the app
+   * compares the public key against the one the backend recorded at enrolment.
+   */
+  private fun aliasFor(account: String): String {
+    if (account.isEmpty()) return LEGACY_KEY_ALIAS
+    val scoped = "$LEGACY_KEY_ALIAS:$account"
+    val store = keyStore()
+    if (store.containsAlias(scoped)) return scoped
+    if (store.containsAlias(LEGACY_KEY_ALIAS)) return LEGACY_KEY_ALIAS
+    return scoped
+  }
+
+  /** Where a fresh enrolment writes. Never the legacy alias. */
+  private fun enrolmentAlias(account: String): String =
+    if (account.isEmpty()) LEGACY_KEY_ALIAS else "$LEGACY_KEY_ALIAS:$account"
 
   override fun definition() = ModuleDefinition {
     Name("HardwareKey")
 
-    AsyncFunction("enrol") { nonce: String ->
-      deleteKey()
-      generateKey(nonce.toByteArray())
+    AsyncFunction("enrol") { nonce: String, account: String ->
+      val alias = enrolmentAlias(account)
+      // Only this account's own alias. Deleting more than that is the bug this
+      // scoping exists to prevent.
+      deleteKey(alias)
+      generateKey(alias, nonce.toByteArray())
 
       val store = keyStore()
-      val chain = store.getCertificateChain(KEY_ALIAS)
+      val chain = store.getCertificateChain(alias)
         ?: throw CodedException("ERR_ATTESTATION", "no attestation chain", null)
 
       // Leaf first, PEM, JSON, base64. The backend walks it to a Google root
@@ -62,22 +122,23 @@ class HardwareKeyModule : Module() {
       }
       val attestation = Base64.encodeToString("[$pems]".toByteArray(), Base64.NO_WRAP)
 
-      mapOf("attestation" to attestation, "publicKey" to compressedPublicKey())
+      mapOf("attestation" to attestation, "publicKey" to compressedPublicKey(alias))
     }
 
-    AsyncFunction("getPublicKey") {
-      if (keyStore().containsAlias(KEY_ALIAS)) compressedPublicKey() else null
+    AsyncFunction("getPublicKey") { account: String ->
+      val alias = aliasFor(account)
+      if (keyStore().containsAlias(alias)) compressedPublicKey(alias) else null
     }
 
     // The prompt copy comes from the caller. This key signs account setup as
     // well as payments, and a Consumer told to "approve this payment" while
     // finishing onboarding is being asked to confirm something that is not
     // happening.
-    AsyncFunction("sign") { payloadHex: String, title: String, reason: String, promise: Promise ->
-      signWithBiometrics(payloadHex, title, reason, promise)
+    AsyncFunction("sign") { payloadHex: String, title: String, reason: String, account: String, promise: Promise ->
+      signWithBiometrics(aliasFor(account), payloadHex, title, reason, promise)
     }
 
-    AsyncFunction("reset") { deleteKey() }
+    AsyncFunction("reset") { account: String -> deleteKey(enrolmentAlias(account)) }
   }
 
   /**
@@ -88,6 +149,7 @@ class HardwareKeyModule : Module() {
    * binding, because that object was never authorised.
    */
   private fun signWithBiometrics(
+    alias: String,
     payloadHex: String,
     title: String,
     reason: String,
@@ -112,18 +174,29 @@ class HardwareKeyModule : Module() {
       )
 
     val entry = try {
-      keyStore().getEntry(KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry
+      keyStore().getEntry(alias, null) as? KeyStore.PrivateKeyEntry
     } catch (error: Exception) {
       null
     } ?: return promise.reject(
       CodedException("ERR_NO_KEY", "no usable approval key on this device", null),
     )
 
-    val signature = try {
+    // Which auth model this key was created under decides the order of the next
+    // two steps, and a key's parameters cannot be changed after creation, so
+    // both are supported for as long as any per-use key is still enrolled.
+    //
+    // A per-use key lets `initSign` through here and refuses to finish without
+    // the prompt, so the operation is opened now and carried across it. A
+    // time-bound key refuses `initSign` until a fingerprint has been given, so
+    // there is nothing to open yet and nothing to lose while the Consumer
+    // reads.
+    val pending = try {
       // NONEwithECDSA: the payload is already the digest Turnkey stamps over.
       // SHA256withECDSA would hash it a second time and produce a signature
       // Turnkey rejects.
       Signature.getInstance("NONEwithECDSA").apply { initSign(entry.privateKey) }
+    } catch (_: UserNotAuthenticatedException) {
+      null
     } catch (error: Exception) {
       return promise.reject(
         CodedException("ERR_NO_KEY", "approval key is unusable; re-enrol", error),
@@ -137,13 +210,21 @@ class HardwareKeyModule : Module() {
         override fun onAuthenticationSucceeded(
           result: BiometricPrompt.AuthenticationResult,
         ) {
-          val authorised = result.cryptoObject?.signature
-            ?: return promise.reject(
-              CodedException("ERR_SIGN", "no authorised signature", null),
-            )
           try {
-            authorised.update(digest)
-            promise.resolve(authorised.sign().toHex())
+            val signer = if (pending == null) {
+              // The fingerprint just given covers the key for the next few
+              // seconds. Opening the operation here rather than before the
+              // prompt is the whole point: nothing sat waiting to be evicted.
+              Signature.getInstance("NONEwithECDSA")
+                .apply { initSign(entry.privateKey) }
+            } else {
+              // Per-use: only the Signature this prompt authorised can finish,
+              // and a freshly built one would defeat the binding.
+              result.cryptoObject?.signature
+                ?: throw IllegalStateException("prompt returned no authorised signature")
+            }
+            signer.update(digest)
+            promise.resolve(signer.sign().toHex())
           } catch (error: Exception) {
             promise.reject(CodedException("ERR_SIGN", "signing failed", error))
           }
@@ -165,15 +246,16 @@ class HardwareKeyModule : Module() {
       .build()
 
     activity.runOnUiThread {
-      prompt.authenticate(info, BiometricPrompt.CryptoObject(signature))
+      if (pending == null) prompt.authenticate(info)
+      else prompt.authenticate(info, BiometricPrompt.CryptoObject(pending))
     }
   }
 
   private fun keyStore(): KeyStore =
     KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
 
-  private fun generateKey(challenge: ByteArray) {
-    val builder = KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_SIGN)
+  private fun generateKey(alias: String, challenge: ByteArray) {
+    val builder = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
       .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
       .setDigests(KeyProperties.DIGEST_NONE, KeyProperties.DIGEST_SHA256)
       .setUserAuthenticationRequired(true)
@@ -187,6 +269,12 @@ class HardwareKeyModule : Module() {
         KeyProperties.AUTH_BIOMETRIC_STRONG,
       )
     } else {
+      // Deliberately left authenticate-per-use below API 30, which keeps the
+      // eviction risk on those devices. The deprecated call cannot say
+      // "biometric only", so a positive duration there would also accept the
+      // device PIN, and trading the biometric guarantee for a signature that
+      // survives a slow prompt is the wrong way round on the key that approves
+      // payments. The signing path handles both models, so these keys work.
       @Suppress("DEPRECATION")
       builder.setUserAuthenticationValidityDurationSeconds(-1)
     }
@@ -210,14 +298,14 @@ class HardwareKeyModule : Module() {
       .generateKeyPair()
   }
 
-  private fun deleteKey() {
+  private fun deleteKey(alias: String) {
     val store = keyStore()
-    if (store.containsAlias(KEY_ALIAS)) store.deleteEntry(KEY_ALIAS)
+    if (store.containsAlias(alias)) store.deleteEntry(alias)
   }
 
   /** SEC1 compressed: 0x02 or 0x03 by the parity of Y, then X padded to 32. */
-  private fun compressedPublicKey(): String {
-    val certificate = keyStore().getCertificate(KEY_ALIAS)
+  private fun compressedPublicKey(alias: String): String {
+    val certificate = keyStore().getCertificate(alias)
       ?: throw CodedException("ERR_NO_KEY", "no approval key on this device", null)
     val point = (certificate.publicKey as ECPublicKey).w
 
