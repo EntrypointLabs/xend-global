@@ -220,7 +220,10 @@ export class AuthService {
       token,
       user: {
         id: userRow.id,
-        email,
+        // The stored contact address, not Privy's. A Consumer who signed up
+        // with a passkey and gave one afterwards has it here and nowhere in
+        // Privy, and echoing Privy's would tell the app they never gave one.
+        email: userRow.email,
         walletAddress,
         isNewUser,
       },

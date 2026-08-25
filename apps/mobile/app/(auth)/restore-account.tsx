@@ -21,11 +21,14 @@ function RestoreAccountScreen() {
   };
 
   const handleResend = async () => {
-    if (!user) {
+    // A passkey Consumer may have no contact address at all, and there is
+    // nothing to resend a code to. Sending them back to sign in beats calling
+    // register with nothing.
+    if (!user?.email) {
       router.push("/(auth)/login");
       return;
     }
-    await triggerSignUp(user.email!);
+    await triggerSignUp(user.email);
   };
 
   useResendTimer({

@@ -27,7 +27,9 @@ export const ExchangeResponseSchema = z.object({
   token: z.string(),
   user: z.object({
     id: z.string(),
-    email: z.string().email(),
+    // Null until the Consumer gives one: the passkey is the credential, so a
+    // sign-up arrives with no email and a passkey sign-in never carries one.
+    email: z.string().email().nullable(),
     walletAddress: z.string(),
     isNewUser: z.boolean(),
   }),
