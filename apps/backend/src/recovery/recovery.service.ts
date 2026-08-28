@@ -167,6 +167,17 @@ export class RecoveryService {
     return this.summarise(row, [...rows, row]);
   }
 
+  /**
+   * Whether an address is free to become a recovery key on this Account.
+   *
+   * Checked before a code is sent rather than after: a duplicate refused at the
+   * end costs the Consumer a mail they went and read for nothing.
+   */
+  async assertEmailUnused(userId: string, email: string): Promise<void> {
+    const rows = await this.store.findByUser(userId);
+    this.assertChannelUnused(rows, 'email', email.toLowerCase());
+  }
+
   async addEmail(
     userId: string,
     email: string,

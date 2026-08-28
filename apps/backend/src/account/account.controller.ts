@@ -44,18 +44,24 @@ import { AccountService } from './account.service';
 import { SweepService } from './sweep.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import {
+  AddRecoveryEmailSchema,
   AddRecoveryWalletSchema,
   EnrolAccountSchema,
   SubmitProvisioningStepSchema,
   NextDeviceRotationSchema,
+  RequestRecoveryEmailCodeSchema,
+  VerifyRecoveryEmailSchema,
   StartDeviceRotationSchema,
   SubmitRecoveryChangeSchema,
   SubmitRejectionSchema,
   VerifyRecoveryCodeSchema,
+  type AddRecoveryEmailDto,
   type AddRecoveryWalletDto,
   type EnrolAccountDto,
   type SubmitProvisioningStepDto,
   type NextDeviceRotationDto,
+  type RequestRecoveryEmailCodeDto,
+  type VerifyRecoveryEmailDto,
   type StartDeviceRotationDto,
   type SubmitRecoveryChangeDto,
   type SubmitRejectionDto,
@@ -242,6 +248,104 @@ export class AccountController {
       });
     } catch (err) {
       throw this.recoveryFailure(req.user.userId, 'add_wallet', err);
+    }
+  }
+
+  /**
+   * Sends a code to an address being offered as a recovery key.
+   *
+   * Refused before anything is mailed when the address is already a recovery
+   * channel on this Account, so a duplicate never costs the Consumer a mail
+   * they have to go and read.
+   */
+  @Post('recovery/email/challenge')
+  async requestRecoveryEmailCode(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(RequestRecoveryEmailCodeSchema))
+    body: RequestRecoveryEmailCodeDto,
+  ) {
+    try {
+      await this.recovery.assertEmailUnused(req.user.userId, body.email);
+      const { expiresAt } = await this.challenges.issue(
+        req.user.userId,
+        body.email,
+        'recovery_key_email',
+      );
+      return { sent: true, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'recovery_email_code', err);
+    }
+  }
+
+  /** Checks the code, ahead of the review step that adds the key. */
+  @Post('recovery/email/verify')
+  async verifyRecoveryEmail(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(VerifyRecoveryEmailSchema))
+    body: VerifyRecoveryEmailDto,
+  ) {
+    try {
+      const { grantId, expiresAt } = await this.challenges.verify(
+        req.user.userId,
+        'recovery_key_email',
+        body.code,
+      );
+      const grant = await this.challenges.assertGrant(
+        req.user.userId,
+        grantId,
+        'recovery_key_email',
+      );
+      if (grant.target !== body.email) {
+        throw new RecoveryGrantExpiredError(
+          'that code was sent to a different address',
+        );
+      }
+      return { grantId, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'verify_recovery_email', err);
+    }
+  }
+
+  /**
+   * Stages a proved email as a recovery key and starts the settings change
+   * carrying it.
+   *
+   * Same shape as the wallet route, plus the grant. The key is not real until
+   * that change executes, which waits out the time lock like every other.
+   */
+  @Post('recovery/email')
+  async addRecoveryEmail(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(AddRecoveryEmailSchema))
+    body: AddRecoveryEmailDto,
+  ) {
+    try {
+      const grant = await this.challenges.assertGrant(
+        req.user.userId,
+        body.grantId,
+        'recovery_key_email',
+      );
+      if (grant.target !== body.email) {
+        throw new RecoveryGrantExpiredError(
+          'that code proved a different address',
+        );
+      }
+
+      const result = await this.recovery.withChangeLock(
+        req.user.userId,
+        async () => {
+          const key = await this.recovery.addEmail(req.user.userId, body.email);
+          const plan = await this.recoveryChanges.start(
+            req.user.userId,
+            key.id,
+          );
+          return { key, plan };
+        },
+      );
+      await this.challenges.consume(body.grantId);
+      return result;
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'add_recovery_email', err);
     }
   }
 

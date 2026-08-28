@@ -50,7 +50,7 @@ export const recoverySignerStatusEnum = pgEnum('recovery_signer_status', [
  */
 export const recoveryChallengePurposeEnum = pgEnum(
   'recovery_challenge_purpose',
-  ['device_rotation', 'contact_verification'],
+  ['device_rotation', 'contact_verification', 'recovery_key_email'],
 );
 
 /**

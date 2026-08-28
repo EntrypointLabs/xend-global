@@ -159,6 +159,40 @@ export const StartDeviceRotationSchema = z.object({
 
 export type StartDeviceRotationDto = z.infer<typeof StartDeviceRotationSchema>;
 
+/** Asks for a code at an address being offered as a recovery key. */
+export const RequestRecoveryEmailCodeSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+});
+
+export type RequestRecoveryEmailCodeDto = z.infer<
+  typeof RequestRecoveryEmailCodeSchema
+>;
+
+/** Checks the code, ahead of the review step that actually adds the key. */
+export const VerifyRecoveryEmailSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  code: z.string().regex(/^\d{6}$/, 'a code is six digits'),
+});
+
+export type VerifyRecoveryEmailDto = z.infer<typeof VerifyRecoveryEmailSchema>;
+
+/**
+ * Adds an email recovery key, against the grant that proved the address.
+ *
+ * Proved for the same reason the first address is: a recovery key nobody can
+ * answer at is not a way back into an Account, it is a second thing that looks
+ * like one, and the Consumer only finds out when they need it.
+ *
+ * Separate from the check because the Consumer reviews the key between the
+ * two, which is a screen rather than an instant.
+ */
+export const AddRecoveryEmailSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  grantId: z.string().min(1),
+});
+
+export type AddRecoveryEmailDto = z.infer<typeof AddRecoveryEmailSchema>;
+
 export const NextDeviceRotationSchema = z.object({
   /** Only the recovery-approval step needs it, so later steps may omit it. */
   grantId: z.string().min(1).optional(),
