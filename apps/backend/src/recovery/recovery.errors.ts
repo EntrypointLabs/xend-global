@@ -43,3 +43,51 @@ export class RecoveryChangeInFlightError extends Error {
     this.name = 'RecoveryChangeInFlightError';
   }
 }
+
+export class TooManyRecoveryCodesError extends Error {
+  readonly code = 'TOO_MANY_RECOVERY_CODES';
+  constructor(message: string) {
+    super(message);
+    this.name = 'TooManyRecoveryCodesError';
+  }
+}
+
+export class NoRecoveryChallengeError extends Error {
+  readonly code = 'NO_RECOVERY_CHALLENGE';
+  constructor(message: string) {
+    super(message);
+    this.name = 'NoRecoveryChallengeError';
+  }
+}
+
+export class InvalidRecoveryCodeError extends Error {
+  readonly code = 'INVALID_RECOVERY_CODE';
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidRecoveryCodeError';
+  }
+}
+
+export class ChallengeAttemptsExhaustedError extends Error {
+  readonly code = 'CHALLENGE_ATTEMPTS_EXHAUSTED';
+  constructor(message: string) {
+    super(message);
+    this.name = 'ChallengeAttemptsExhaustedError';
+  }
+}
+
+export class RecoveryGrantExpiredError extends Error {
+  readonly code = 'RECOVERY_GRANT_EXPIRED';
+  constructor(message: string) {
+    super(message);
+    this.name = 'RecoveryGrantExpiredError';
+  }
+}
+
+export class NoRotationInFlightError extends Error {
+  readonly code = 'NO_ROTATION_IN_FLIGHT';
+  constructor(message: string) {
+    super(message);
+    this.name = 'NoRotationInFlightError';
+  }
+}

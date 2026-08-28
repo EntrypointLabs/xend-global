@@ -41,6 +41,19 @@ export const recoverySignerStatusEnum = pgEnum('recovery_signer_status', [
 ]);
 
 /**
+ * What a proved inbox is being asked to authorise.
+ *
+ * An enum rather than a boolean so that every use of a proved inbox has to
+ * name itself here, and a code issued for one purpose can never be spent on
+ * another. Proving the address at sign-up and releasing S3 to a new phone are
+ * the two that exist.
+ */
+export const recoveryChallengePurposeEnum = pgEnum(
+  'recovery_challenge_purpose',
+  ['device_rotation', 'contact_verification'],
+);
+
+/**
  * The kinds of thing that show up in Activity without being a payment.
  *
  * Activity is the Consumer's record of what happened to their account, and
@@ -51,6 +64,7 @@ export const accountEventKindEnum = pgEnum('account_event_kind', [
   'recovery_key_added',
   'recovery_key_removed',
   'wallet_renamed',
+  'device_rotated',
 ]);
 
 export const transferDirectionEnum = pgEnum('transfer_direction', [
@@ -337,6 +351,48 @@ export const recoverySigners = pgTable(
 );
 
 /**
+ * recovery_challenges — proof that somebody holds the Consumer's inbox.
+ *
+ * The row is the second factor in the only flow that opens S3, so it stores
+ * the code the way a password is stored, never the code itself. A six-digit
+ * code has almost no entropy, which is what `attempts` and the short
+ * expiry are for: the guard is the attempt cap, not the hash.
+ */
+export const recoveryChallenges = pgTable(
+  'recovery_challenges',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    purpose: recoveryChallengePurposeEnum('purpose').notNull(),
+    /**
+     * The address the code went to.
+     *
+     * For a rotation that is the address already on the Account. For a contact
+     * check it is the one being claimed, which deliberately does not reach the
+     * user row until this challenge says it was proved.
+     */
+    target: text('target'),
+    /** scrypt over the code, with `salt`. Never the code. */
+    codeHash: text('code_hash').notNull(),
+    salt: text('salt').notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    /** Set once the right code arrives. Starts the window the grant is usable in. */
+    verifiedAt: timestamp('verified_at'),
+    /** Set when the signature it authorised reached the chain. */
+    consumedAt: timestamp('consumed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('recovery_challenges_user_idx').on(table.userId, table.createdAt),
+  ],
+);
+
+/**
  * account_events — everything in Activity that is not a movement of money.
  *
  * A separate table rather than another `transfers.kind`. A transfer row is
@@ -422,6 +478,18 @@ export const squadsAccounts = pgTable('squads_accounts', {
   /** S2, the Turnkey sub-organization's Solana address. */
   approvalSigner: text('approval_signer').notNull(),
   approvalSubOrgId: text('approval_sub_org_id').notNull().unique(),
+  /**
+   * The approval signer a device rotation is moving to, while the settings
+   * change carrying it waits out the time lock.
+   *
+   * Held beside the live one rather than replacing it, because the swap is not
+   * real until the chain executes it. Overwriting on stage would leave a
+   * Consumer whose change is rejected pointing at a key that was never in the
+   * signer set.
+   */
+  pendingApprovalSigner: text('pending_approval_signer'),
+  pendingApprovalSubOrgId: text('pending_approval_sub_org_id'),
+  pendingApprovalChangeIndex: text('pending_approval_change_index'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
