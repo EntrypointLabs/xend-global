@@ -647,7 +647,10 @@ class BackendClient {
       });
       return AccountResponseSchema.parse(raw);
     } catch (err: any) {
-      if (err?.status === 404 || err?.data?.code === "NO_ACCOUNT") return null;
+      // Only our own "no Account yet", never any 404. A tunnel or a proxy
+      // answering 404 is an outage, and reading it as "this Consumer has no
+      // Account" tells a finished Consumer their sign-up is unfinished.
+      if (err?.data?.code === "NO_ACCOUNT") return null;
       throw err;
     }
   }
@@ -764,6 +767,47 @@ class BackendClient {
         auth: true,
       }
     );
+    return AddRecoveryKeyResponseSchema.parse(raw);
+  }
+
+  /**
+   * POST /account/recovery/email/challenge — sends a code to an address being
+   * offered as a recovery key. Refused before mailing if it is already one.
+   */
+  async requestRecoveryEmailCode(email: string): Promise<void> {
+    await this.request<unknown>("/account/recovery/email/challenge", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      auth: true,
+    });
+  }
+
+  /**
+   * POST /account/recovery/email — stages a proved address as a recovery key
+   * and starts the settings change that carries it.
+   */
+  /**
+   * POST /account/recovery/email/verify — checks the code and returns the
+   * grant the review step spends.
+   */
+  async verifyRecoveryEmail(body: { email: string; code: string }) {
+    const raw = await this.request<{ grantId: string }>(
+      "/account/recovery/email/verify",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        auth: true,
+      }
+    );
+    return raw;
+  }
+
+  async addRecoveryEmail(body: { email: string; grantId: string }) {
+    const raw = await this.request<unknown>("/account/recovery/email", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
     return AddRecoveryKeyResponseSchema.parse(raw);
   }
 

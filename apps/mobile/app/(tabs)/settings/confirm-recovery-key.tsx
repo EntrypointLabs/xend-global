@@ -8,7 +8,10 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { useAccount } from "@/hooks/useAccount";
 import { useRecoveryChange } from "@/hooks/useRecoveryChange";
-import { useAddRecoveryWallet } from "@/hooks/useRecoveryKeys";
+import {
+  useAddRecoveryEmail,
+  useAddRecoveryWallet,
+} from "@/hooks/useRecoveryKeys";
 import { truncateAddress } from "@/utils/helper";
 
 /**
@@ -20,20 +23,38 @@ import { truncateAddress } from "@/utils/helper";
  * covered a day early.
  */
 export default function ConfirmRecoveryKeyScreen() {
-  const { address } = useLocalSearchParams<{ address: string }>();
+  // One screen for both channels: the review, the two signatures and the wait
+  // are identical, and only the line in the card differs.
+  const { address, email, grantId } = useLocalSearchParams<{
+    address?: string;
+    email?: string;
+    grantId?: string;
+  }>();
   const { data: account } = useAccount();
   const addWallet = useAddRecoveryWallet();
+  const addEmail = useAddRecoveryEmail();
   const change = useRecoveryChange();
   const [error, setError] = useState<string | null>(null);
   const [activeAt, setActiveAt] = useState<string | null>(null);
 
-  const busy = addWallet.isPending || change.isPending;
+  const busy = addWallet.isPending || addEmail.isPending || change.isPending;
 
   const confirm = async () => {
-    if (!account || !address) return;
+    // Never silently: the button looks live, and a tap that does nothing reads
+    // as a broken screen rather than as "the Account has not loaded yet".
+    if (!account) {
+      setError("Your account is still loading. Try again in a moment.");
+      return;
+    }
     setError(null);
     try {
-      await addWallet.mutateAsync(address);
+      if (email && grantId) {
+        await addEmail.mutateAsync({ email, grantId });
+      } else if (address) {
+        await addWallet.mutateAsync(address);
+      } else {
+        return;
+      }
       const outcome = await change.mutateAsync(account);
       setActiveAt(outcome.waitingUntil);
     } catch (err) {
@@ -101,10 +122,10 @@ export default function ConfirmRecoveryKeyScreen() {
 
         <View className="mt-8 rounded-3xl bg-black/[0.03] p-5">
           <Typography weight="600" className="text-[15px] text-black">
-            Crypto wallet
+            {email ? "Email" : "Crypto wallet"}
           </Typography>
           <Typography weight="500" className="mt-4 text-[15px] text-black/40">
-            {truncateAddress(String(address ?? ""), 6, 6)}
+            {email ?? truncateAddress(String(address ?? ""), 6, 6)}
           </Typography>
         </View>
 
@@ -126,15 +147,15 @@ export default function ConfirmRecoveryKeyScreen() {
 
         <HapticPressable
           onPress={confirm}
-          disabled={busy}
+          disabled={busy || !account}
           className={`h-14 flex-row items-center justify-center gap-3 rounded-full ${
-            busy ? "bg-black/10" : "bg-black"
+            busy || !account ? "bg-black/10" : "bg-black"
           }`}
         >
           {busy && <ActivityIndicator size="small" color="#00000040" />}
           <Typography
             weight="700"
-            className={`text-lg ${busy ? "text-black/30" : "text-white"}`}
+            className={`text-lg ${busy || !account ? "text-black/30" : "text-white"}`}
           >
             {busy ? "Approving on this device" : "Add Recovery Key"}
           </Typography>

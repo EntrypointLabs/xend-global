@@ -6,6 +6,16 @@ import { useScreenTheme } from "@/contexts/ScreenThemeContext";
 interface ScreenVerificationCodeInputProps {
   length?: number;
   onCodeComplete: (code: string) => void;
+  /**
+   * `screen` follows the screen theme, which is what the auth stack wants.
+   *
+   * `light` is the fixed treatment the settings screens use: a barely-there
+   * fill on white, no border until the box is the live one. The screen theme
+   * is a mutable provider carried over from whichever screen set it last, so
+   * on a white screen it can hand back a mid-grey box, and these screens have
+   * a reference to match.
+   */
+  tone?: "screen" | "light";
 }
 
 /**
@@ -16,6 +26,7 @@ interface ScreenVerificationCodeInputProps {
 export function ScreenVerificationCodeInput({
   length = 6,
   onCodeComplete,
+  tone = "screen",
 }: ScreenVerificationCodeInputProps) {
   const [code, setCode] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -25,6 +36,12 @@ export function ScreenVerificationCodeInput({
   const isBackgroundDark =
     backgroundColor === "#000000" || backgroundColor.toLowerCase() === "#000";
   const inputBackgroundColor = isBackgroundDark ? "#FFFFFF" : "#000000";
+
+  const light = tone === "light";
+  const boxBackground = light ? "#00000008" : inputBackgroundColor + "40";
+  const digitColor = light ? "#00000066" : textColor;
+  const activeBorder = light ? "#00000026" : textColor;
+  const restingBorder = light ? "transparent" : textColor + "20";
 
   const handleChange = (text: string) => {
     const digits = text.replace(/\D/g, "").slice(0, length);
@@ -48,18 +65,18 @@ export function ScreenVerificationCodeInput({
           return (
             <View
               key={index}
-              className="h-[45px] w-[45px] items-center justify-center rounded-xl"
+              className="h-[52px] w-[52px] items-center justify-center rounded-2xl"
               // DYNAMIC-COLOR (theme-derived via ScreenThemeContext)
               style={{
-                backgroundColor: inputBackgroundColor + "40",
-                borderColor: isActive ? textColor : textColor + "20",
+                backgroundColor: boxBackground,
+                borderColor: isActive ? activeBorder : restingBorder,
                 borderWidth: isActive ? 2 : 1,
               }}
             >
               <Typography
                 weight="600"
                 className="text-2xl"
-                style={{ color: textColor }}
+                style={{ color: digitColor }}
               >
                 {digit}
               </Typography>
