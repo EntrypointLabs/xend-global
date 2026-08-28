@@ -3,6 +3,8 @@ import type { ImageSourcePropType } from "react-native";
 import { getUsdcMint } from "@/utils/cluster";
 
 export const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
+export const EURC_MINT = "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr";
+export const KMNO_MINT = "KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS";
 
 export interface TokenIdentity {
   /** What a Consumer calls it: "Solana", not "SOL". */
@@ -28,13 +30,15 @@ const KNOWN: Record<string, TokenIdentity> = {
  *
  * These take precedence over anything fetched, because the token index covers
  * mainnet and a Consumer on a test network holds cluster-specific mints it
- * will never resolve.
+ * will never resolve. Each `require` stays inside the branch so importing this
+ * module never pulls an image in.
  */
-const LOCAL_ICONS: Record<string, ImageSourcePropType> = {};
-
 export function localIconForMint(mint: string): ImageSourcePropType | null {
   if (mint === getUsdcMint()) return require("@/assets/icons/usdc.png");
-  return LOCAL_ICONS[mint] ?? null;
+  if (mint === WRAPPED_SOL_MINT) return require("@/assets/icons/sol.png");
+  if (mint === EURC_MINT) return require("@/assets/icons/eurc.png");
+  if (mint === KMNO_MINT) return require("@/assets/icons/kamino.png");
+  return null;
 }
 
 function truncateMint(mint: string): string {

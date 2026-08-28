@@ -1,9 +1,13 @@
+import type { ImageSourcePropType } from "react-native";
+
 export interface EarnProduct {
   id: string;
   provider: string;
   name: string;
   description: string;
   apyDisplay: string;
+  /** The provider's mark. Falls back to its initial when absent. */
+  icon?: ImageSourcePropType;
 }
 
 /**
@@ -21,6 +25,7 @@ export const EARN_PRODUCTS: EarnProduct[] = [
     description:
       "Deposit your stablecoins with Kamino to earn yield from optimized lending vaults.",
     apyDisplay: "4.37%",
+    icon: require("@/assets/icons/kamino.png"),
   },
 ];
 

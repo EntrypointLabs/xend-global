@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { View } from "react-native";
+import { Image, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -13,6 +13,7 @@ import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useToast } from "@/contexts/ToastContext";
 import { getUsdcMint } from "@/utils/cluster";
 import { formatRawAmount, WRAPPED_SOL_MINT } from "@/utils/swapQuote";
+import { localIconForMint } from "@/utils/tokens";
 import { cn } from "@/utils/cn";
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"];
@@ -240,12 +241,23 @@ export default function SwapScreen() {
 }
 
 function TokenPill({ token }: { token: SwapToken }) {
+  const icon = localIconForMint(token.mint);
+
   return (
     <View className="flex-row items-center gap-2 rounded-full bg-black/[0.04] py-2 pl-2 pr-3">
-      <View className="h-7 w-7 items-center justify-center rounded-full bg-black">
-        <Typography variant="caption" weight="700" className="text-white">
-          {token.symbol.slice(0, 1)}
-        </Typography>
+      <View
+        className={cn(
+          "h-7 w-7 items-center justify-center overflow-hidden rounded-full",
+          !icon && "bg-black"
+        )}
+      >
+        {icon ? (
+          <Image source={icon} className="h-7 w-7" resizeMode="contain" />
+        ) : (
+          <Typography variant="caption" weight="700" className="text-white">
+            {token.symbol.slice(0, 1)}
+          </Typography>
+        )}
       </View>
       <Typography variant="title2" weight="600">
         {token.symbol}
