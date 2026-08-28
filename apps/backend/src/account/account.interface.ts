@@ -46,6 +46,10 @@ export interface SquadsAccountRow {
   primarySigner: string;
   approvalSigner: string;
   approvalSubOrgId: string;
+  /** Set only while a device rotation is in flight. See DeviceRotationService. */
+  pendingApprovalSigner?: string | null;
+  pendingApprovalSubOrgId?: string | null;
+  pendingApprovalChangeIndex?: string | null;
 }
 
 export interface SquadsAccountStore {
@@ -61,6 +65,14 @@ export interface SquadsAccountStore {
    * an inbox they own.
    */
   findUserEmail(userId: string): Promise<string | null>;
+  /**
+   * Patches an existing Account. Used by device rotation to stage, commit and
+   * clear the approval signer it is swapping in.
+   */
+  updateByUserId(
+    userId: string,
+    patch: Partial<Omit<SquadsAccountRow, 'userId'>>,
+  ): Promise<SquadsAccountRow>;
 
   /**
    * Serialises enrolment for one Consumer.

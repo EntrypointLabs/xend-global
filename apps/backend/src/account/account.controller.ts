@@ -24,10 +24,16 @@ import { TurnkeyService } from '../turnkey/turnkey.service';
 import { AccountChangeService } from './account-change.service';
 import { UnsafeSubOrganizationError } from '../turnkey/turnkey.errors';
 import {
+  ChallengeAttemptsExhaustedError,
   DuplicateRecoveryChannelError,
+  InvalidRecoveryCodeError,
   LastRecoverySignerError,
+  NoRecoveryChallengeError,
+  NoRotationInFlightError,
   RecoveryChangeInFlightError,
+  RecoveryGrantExpiredError,
   RecoverySignerLimitError,
+  TooManyRecoveryCodesError,
   UnknownRecoverySignerError,
 } from '../recovery/recovery.errors';
 import {
@@ -41,17 +47,25 @@ import {
   AddRecoveryWalletSchema,
   EnrolAccountSchema,
   SubmitProvisioningStepSchema,
+  NextDeviceRotationSchema,
+  StartDeviceRotationSchema,
   SubmitRecoveryChangeSchema,
   SubmitRejectionSchema,
+  VerifyRecoveryCodeSchema,
   type AddRecoveryWalletDto,
   type EnrolAccountDto,
   type SubmitProvisioningStepDto,
+  type NextDeviceRotationDto,
+  type StartDeviceRotationDto,
   type SubmitRecoveryChangeDto,
   type SubmitRejectionDto,
+  type VerifyRecoveryCodeDto,
 } from './dtos';
 import { ProvisioningService } from './provisioning.service';
 import { RecoveryService } from '../recovery/recovery.service';
 import { RecoveryChangeService } from './recovery-change.service';
+import { RecoveryChallengeService } from '../recovery/recovery-challenge.service';
+import { DeviceRotationService } from './device-rotation.service';
 import { SpendingLimitService } from './spending-limit.service';
 
 interface AuthenticatedRequest extends Request {
@@ -73,6 +87,8 @@ export class AccountController {
     private readonly changes: AccountChangeService,
     private readonly recovery: RecoveryService,
     private readonly recoveryChanges: RecoveryChangeService,
+    private readonly challenges: RecoveryChallengeService,
+    private readonly rotations: DeviceRotationService,
   ) {}
 
   /**
@@ -294,6 +310,106 @@ export class AccountController {
    * covers nothing.
    */
   /**
+   * Mails a code to the address already on the Account.
+   *
+   * The response says nothing about the inbox. A caller holding a stolen
+   * passkey learns only that a code went somewhere, which is what the real
+   * owner needs them to learn.
+   */
+  @Post('recovery/device/challenge')
+  async requestDeviceRotationCode(@Req() req: AuthenticatedRequest) {
+    try {
+      const email = await this.accounts.contactEmail(req.user.userId);
+      if (!email) {
+        throw new IncompleteSignerSetError(
+          'this Account has no email on file to send a code to',
+        );
+      }
+      const { expiresAt } = await this.challenges.issue(
+        req.user.userId,
+        email,
+        'device_rotation',
+      );
+      return { sent: true, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'device_challenge', err);
+    }
+  }
+
+  @Post('recovery/device/verify')
+  async verifyDeviceRotationCode(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(VerifyRecoveryCodeSchema))
+    body: VerifyRecoveryCodeDto,
+  ) {
+    try {
+      const { grantId, expiresAt } = await this.challenges.verify(
+        req.user.userId,
+        'device_rotation',
+        body.code,
+      );
+      return { grantId, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'device_verify', err);
+    }
+  }
+
+  /**
+   * Enrols this phone's hardware key and stages the swap that puts it in the
+   * signer set. See {@link DeviceRotationService}.
+   */
+  @Post('recovery/device/start')
+  async startDeviceRotation(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(StartDeviceRotationSchema))
+    body: StartDeviceRotationDto,
+  ) {
+    try {
+      return await this.rotations.start(req.user.userId, body.grantId, {
+        hardwarePublicKey: body.hardwarePublicKey,
+        security: body.security,
+      });
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'device_start', err);
+    }
+  }
+
+  /**
+   * The next step, and the reconciler that commits the swap once the chain
+   * has executed it. Called until it says done.
+   */
+  @Post('recovery/device/next')
+  async nextDeviceRotationStep(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(NextDeviceRotationSchema))
+    body: NextDeviceRotationDto,
+  ) {
+    try {
+      return await this.rotations.next(req.user.userId, body.grantId);
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'device_next', err);
+    }
+  }
+
+  @Post('recovery/device/submit')
+  async submitDeviceRotationStep(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(SubmitRecoveryChangeSchema))
+    body: SubmitRecoveryChangeDto,
+  ) {
+    try {
+      return {
+        signature: await this.rotations.submit(
+          req.user.userId,
+          body.signedTxBase64,
+        ),
+      };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'device_submit', err);
+    }
+  }
+
+  /**
    * Logs why a recovery key operation failed, then maps it.
    *
    * `toHttp` flattens anything it does not recognise into "Could not create
@@ -436,6 +552,33 @@ function toHttp(err: unknown): HttpException {
     return new HttpException(
       { code: err.code, message: err.message },
       HttpStatus.NOT_FOUND,
+    );
+  }
+  // A wrong or spent code is the Consumer's to act on, and each answer means
+  // something different: try again, wait, or start over.
+  if (
+    err instanceof InvalidRecoveryCodeError ||
+    err instanceof NoRecoveryChallengeError
+  ) {
+    return new HttpException(
+      { code: err.code, message: err.message },
+      HttpStatus.UNAUTHORIZED,
+    );
+  }
+  if (err instanceof TooManyRecoveryCodesError) {
+    return new HttpException(
+      { code: err.code, message: err.message },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+  if (
+    err instanceof ChallengeAttemptsExhaustedError ||
+    err instanceof RecoveryGrantExpiredError ||
+    err instanceof NoRotationInFlightError
+  ) {
+    return new HttpException(
+      { code: err.code, message: err.message },
+      HttpStatus.CONFLICT,
     );
   }
   if (

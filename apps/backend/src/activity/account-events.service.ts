@@ -9,7 +9,8 @@ import {
 export type AccountEventKind =
   | 'recovery_key_added'
   | 'recovery_key_removed'
-  | 'wallet_renamed';
+  | 'wallet_renamed'
+  | 'device_rotated';
 
 export interface AccountEvent {
   id: string;
@@ -85,6 +86,27 @@ export class AccountEventsService {
       signature: params.signature,
       dedupeKey: `recovery_key_removed:${params.signerId}`,
       occurredAt: params.occurredAt,
+    });
+  }
+
+  /**
+   * The Account moved onto a new phone.
+   *
+   * Deduped on the incoming signer, so the reconciler that settles the change
+   * can run as often as it likes and the Consumer still sees it once.
+   */
+  recordDeviceRotated(
+    userId: string,
+    newApprovalSigner: string,
+    params: { previous?: string | null; signature?: string | null } = {},
+  ): Promise<AccountEvent | null> {
+    return this.record({
+      userId,
+      kind: 'device_rotated',
+      subject: newApprovalSigner,
+      previousSubject: params.previous,
+      signature: params.signature,
+      dedupeKey: `device_rotated:${newApprovalSigner}`,
     });
   }
 

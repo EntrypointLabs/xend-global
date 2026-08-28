@@ -21,6 +21,8 @@ import type {
   RecoverySignerStore,
 } from '../recovery/recovery-signer.store';
 import type { RecoveryChangeService } from './recovery-change.service';
+import type { RecoveryChallengeService } from '../recovery/recovery-challenge.service';
+import type { DeviceRotationService } from './device-rotation.service';
 
 const USDC = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const SEED = 7n;
@@ -69,6 +71,8 @@ function makeController(
     {} as unknown as AccountChangeService,
     {} as unknown as RecoveryService,
     {} as unknown as RecoveryChangeService,
+    {} as unknown as RecoveryChallengeService,
+    {} as unknown as DeviceRotationService,
   );
   return { controller, asked };
 }
@@ -156,6 +160,8 @@ describe('AccountController.enrol', () => {
       {} as unknown as AccountChangeService,
       {} as unknown as RecoveryService,
       {} as unknown as RecoveryChangeService,
+      {} as unknown as RecoveryChallengeService,
+      {} as unknown as DeviceRotationService,
     );
     return { controller, createAccount, verify };
   }
@@ -297,6 +303,8 @@ describe('AccountController recovery key changes', () => {
       {} as unknown as AccountChangeService,
       recovery,
       recoveryChanges,
+      {} as unknown as RecoveryChallengeService,
+      {} as unknown as DeviceRotationService,
     );
     return { controller, recovery, store, claimed };
   }

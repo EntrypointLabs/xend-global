@@ -19,6 +19,18 @@ export class DrizzleSquadsAccountStore implements SquadsAccountStore {
     return row ? toRow(row) : null;
   }
 
+  async updateByUserId(
+    userId: string,
+    patch: Partial<Omit<SquadsAccountRow, 'userId'>>,
+  ): Promise<SquadsAccountRow> {
+    const [row] = await this.db.client
+      .update(squadsAccounts)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(squadsAccounts.userId, userId))
+      .returning();
+    return toRow(row);
+  }
+
   async listAll(): Promise<SquadsAccountRow[]> {
     const rows = await this.db.client.select().from(squadsAccounts);
     return rows.map(toRow);
@@ -57,5 +69,8 @@ function toRow(row: typeof squadsAccounts.$inferSelect): SquadsAccountRow {
     primarySigner: row.primarySigner,
     approvalSigner: row.approvalSigner,
     approvalSubOrgId: row.approvalSubOrgId,
+    pendingApprovalSigner: row.pendingApprovalSigner,
+    pendingApprovalSubOrgId: row.pendingApprovalSubOrgId,
+    pendingApprovalChangeIndex: row.pendingApprovalChangeIndex,
   };
 }

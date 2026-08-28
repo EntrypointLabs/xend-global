@@ -34,6 +34,8 @@ function fakeStore(seed?: SquadsAccountRow) {
     listAll: () => Promise.resolve([]),
     findUserEmail: () => Promise.resolve('consumer@example.com'),
     withUserLock: <T>(_userId: string, fn: () => Promise<T>) => fn(),
+    updateByUserId: () =>
+      Promise.reject(new Error('updateByUserId is not exercised here')),
   };
   return { store, rows };
 }
@@ -341,6 +343,8 @@ describe('AccountService.createAccount under concurrency', () => {
         return Promise.resolve(row);
       },
       listAll: () => Promise.resolve([]),
+      updateByUserId: () =>
+        Promise.reject(new Error('updateByUserId is not exercised here')),
       findUserEmail: () => Promise.resolve('consumer@example.com'),
       withUserLock<T>(_userId: string, fn: () => Promise<T>): Promise<T> {
         const run = tail.then(fn);

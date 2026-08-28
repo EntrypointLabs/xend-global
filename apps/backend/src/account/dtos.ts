@@ -132,3 +132,36 @@ export const SubmitRecoveryChangeSchema = z.object({
 export type SubmitRecoveryChangeDto = z.infer<
   typeof SubmitRecoveryChangeSchema
 >;
+
+/**
+ * The code from a recovery mail.
+ *
+ * Six digits as a string rather than a number: leading zeroes are part of the
+ * code, and `012345` parsed as a number is a different code.
+ */
+export const VerifyRecoveryCodeSchema = z.object({
+  code: z.string().regex(/^\d{6}$/, 'a recovery code is six digits'),
+});
+
+export type VerifyRecoveryCodeDto = z.infer<typeof VerifyRecoveryCodeSchema>;
+
+/**
+ * Starting a device rotation.
+ *
+ * The hardware key is the new phone's, already attested through the enrolment
+ * path, and the grant is the proof that the Consumer's inbox asked for this.
+ */
+export const StartDeviceRotationSchema = z.object({
+  grantId: z.string().min(1),
+  hardwarePublicKey: z.string().min(1),
+  security: z.string().min(1).optional(),
+});
+
+export type StartDeviceRotationDto = z.infer<typeof StartDeviceRotationSchema>;
+
+export const NextDeviceRotationSchema = z.object({
+  /** Only the recovery-approval step needs it, so later steps may omit it. */
+  grantId: z.string().min(1).optional(),
+});
+
+export type NextDeviceRotationDto = z.infer<typeof NextDeviceRotationSchema>;
