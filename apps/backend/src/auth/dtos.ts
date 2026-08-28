@@ -43,7 +43,26 @@ export type MirrorPasskeyCredentialRequest = z.infer<
  * Not a credential: it never signs anyone in. It anchors the recovery signer
  * and receives the notices that tell a Consumer their keys changed.
  */
+/** Asks for a code at an address the Consumer is claiming. */
+export const RequestEmailCodeSchema = z.object({
+  email: z.string().email(),
+});
+
+export type RequestEmailCodeRequest = z.infer<typeof RequestEmailCodeSchema>;
+
+/**
+ * Records a contact address and the code that proves it, in one act.
+ *
+ * The code is not optional. S3 is anchored on this address at Account
+ * creation, so an unproved one buys an Account whose only route back points at
+ * an inbox nobody reads, discoverable only once the phone is already lost.
+ *
+ * Unlike a rotation, nothing here spans more than one call, so the grant stays
+ * an internal detail rather than something the client has to carry.
+ */
 export const SetEmailSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
+  /** The six digits from `auth/email/challenge`, sent to this address. */
+  code: z.string().regex(/^\d{6}$/, 'a code is six digits'),
 });
 export type SetEmailRequest = z.infer<typeof SetEmailSchema>;

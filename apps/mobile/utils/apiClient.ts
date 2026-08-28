@@ -575,10 +575,31 @@ class BackendClient {
    * unlocks nothing and losing it costs them notifications rather than the
    * account. 409 means another account already claims it.
    */
-  async setContactEmail(email: string): Promise<void> {
-    await this.request<unknown>("/auth/email", {
+  /**
+   * POST /auth/email/challenge — sends a code to an address being claimed.
+   *
+   * Refused with 409 when the address is already on another Account, before
+   * anything is mailed.
+   */
+  async requestContactEmailCode(email: string): Promise<void> {
+    await this.request<unknown>("/auth/email/challenge", {
       method: "POST",
       body: JSON.stringify({ email }),
+      auth: true,
+    });
+  }
+
+  /**
+   * POST /auth/email — records the address, with the code that proves it.
+   *
+   * The code is required: the recovery signer is anchored on this address at
+   * Account creation, so an unproved one leaves the only route back pointing
+   * at an inbox nobody reads.
+   */
+  async setContactEmail(email: string, code: string): Promise<void> {
+    await this.request<unknown>("/auth/email", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
       auth: true,
     });
   }

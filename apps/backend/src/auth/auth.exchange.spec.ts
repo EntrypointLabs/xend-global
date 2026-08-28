@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import type { RecoveryService } from '../recovery/recovery.service';
 import { AuthService, CredentialConflictError } from './auth.service';
 import type { DbService } from '../db/db.service';
 import type {
@@ -267,7 +268,9 @@ function makeService(opts: {
     secret: opts.jwtSecret ?? 'test-secret',
   });
   const solana = opts.solana ?? makeFakeSolana().rpc;
-  const service = new AuthService(jwt, db, opts.wallet, solana);
+  const service = new AuthService(jwt, db, opts.wallet, solana, {
+    reanchorEmailSigner: () => Promise.resolve(),
+  } as unknown as RecoveryService);
   return { service, store, solana };
 }
 
