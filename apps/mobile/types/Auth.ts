@@ -15,7 +15,13 @@ export interface AuthContextType {
   user: any | null;
   email: string | null;
   accountInfo: AccountInfo | null;
-  setEmail: React.Dispatch<React.SetStateAction<string | null>>;
+  /**
+   * Records the Consumer's contact address, in state and in storage.
+   *
+   * Not the raw state setter: the address is what the shell reads to decide
+   * whether sign-up is finished, so it has to survive a relaunch.
+   */
+  setEmail: (email: string | null) => void;
   setAccountInfo: React.Dispatch<React.SetStateAction<AccountInfo | null>>;
   authError: string | null;
   authenticate: (email: string) => Promise<void>;
@@ -27,10 +33,20 @@ export interface AuthContextType {
   wallet: string | null;
   isLoading: boolean;
   isLoggingOut: boolean;
-  pendingPasskeySetup: boolean;
-  completePasskeySetup: () => void;
-  /** Keeps sign-up on screen after a passkey has already signed the Consumer in. */
-  beginPasskeySignup: () => void;
+  /**
+   * Whether the shell should still be asking for a contact address.
+   *
+   * Not dismissable. S3 is anchored on this address and is mandatory at
+   * Account creation (D10b), so a Consumer without one has no Account and no
+   * recovery signer at all: the 0 of 3 state the design exists to prevent.
+   */
+  needsContactEmail: boolean;
+  /**
+   * True while a screen in the auth stack is finishing something after the
+   * session already exists, so the shell must not redirect out from under it.
+   */
+  holdAuthStack: boolean;
+  releaseAuthStack: () => void;
   /**
    * Finishes a sign-in that Privy has already authenticated with a passkey.
    * Everything after the credential is identical to any other sign-in.
