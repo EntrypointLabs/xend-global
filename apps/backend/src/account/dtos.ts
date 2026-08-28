@@ -78,6 +78,8 @@ export const AccountResponseSchema = z.object({
   address: z.string(),
   signers: z.object({ primary: z.string(), approval: z.string() }),
   approvalSubOrgId: z.string(),
+  /** The approval signer a device rotation is moving to, while one is in flight. */
+  pendingApprovalSigner: z.string().nullable(),
   /**
    * Null while the Account has no limit, which is every Account until
    * provisioning lands the policy. Null is not "no ceiling": with nothing
@@ -148,14 +150,29 @@ export type VerifyRecoveryCodeDto = z.infer<typeof VerifyRecoveryCodeSchema>;
 /**
  * Starting a device rotation.
  *
- * The hardware key is the new phone's, already attested through the enrolment
- * path, and the grant is the proof that the Consumer's inbox asked for this.
+ * Carries an attestation, exactly like enrolment, because this installs the
+ * Account's approval signer and the key it installs has to be hardware-backed.
+ * Taking the key off the request body instead would let a caller attest with a
+ * real device and rotate a software key it actually controls into the signer
+ * set, which is the attack {@link EnrolAccountSchema} exists to stop, on an
+ * Account that already holds money.
+ *
+ * The second shape is the resume: a key this Consumer already attested on this
+ * device, which is how an interrupted attempt carries on.
  */
-export const StartDeviceRotationSchema = z.object({
-  grantId: z.string().min(1),
-  hardwarePublicKey: z.string().min(1),
-  security: z.string().min(1).optional(),
-});
+export const StartDeviceRotationSchema = z.union([
+  z.object({
+    grantId: z.string().min(1),
+    platform: z.enum(['ios', 'android']),
+    attestation: z.string().min(1),
+    nonce: z.string().min(1),
+    hardwarePublicKey: z.string().min(1).optional(),
+  }),
+  z.object({
+    grantId: z.string().min(1),
+    hardwarePublicKey: z.string().min(1),
+  }),
+]);
 
 export type StartDeviceRotationDto = z.infer<typeof StartDeviceRotationSchema>;
 

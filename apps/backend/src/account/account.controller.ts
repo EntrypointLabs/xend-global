@@ -469,9 +469,22 @@ export class AccountController {
     body: StartDeviceRotationDto,
   ) {
     try {
+      // The key comes out of the attestation, never off the body. Same rule as
+      // enrolment, and it matters more here: this one joins the signer set of
+      // an Account that already exists.
+      const verified =
+        'attestation' in body
+          ? await this.attestation.verify(req.user.userId, {
+              platform: body.platform,
+              attestation: body.attestation,
+              nonce: body.nonce,
+              hardwarePublicKey: body.hardwarePublicKey,
+            })
+          : await this.resumeEnrolment(req.user.userId, body.hardwarePublicKey);
+
       return await this.rotations.start(req.user.userId, body.grantId, {
-        hardwarePublicKey: body.hardwarePublicKey,
-        security: body.security,
+        hardwarePublicKey: verified.hardwarePublicKey,
+        security: verified.security ?? undefined,
       });
     } catch (err) {
       throw this.recoveryFailure(req.user.userId, 'device_start', err);
@@ -619,6 +632,9 @@ export class AccountController {
       // sub-organization it is talking to. Not a secret: holding it proves
       // nothing without the hardware key that signs for it.
       approvalSubOrgId: account.approvalSubOrgId,
+      // Set while a device rotation is waiting out the time lock, so the app
+      // knows to land it rather than asking the Consumer to start again.
+      pendingApprovalSigner: account.pendingApprovalSigner ?? null,
       // Carried on the Account rather than given its own endpoint: everything
       // that wants the limit already holds the Account, and a second call
       // would let the two disagree about which Account they describe.
