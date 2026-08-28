@@ -18,7 +18,9 @@ export function useAccountSetupStatus() {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ACCOUNT_SETUP_STATUS_KEY,
+    // Keyed by Consumer: two accounts on one device must not read each other's
+    // answer out of the cache.
+    queryKey: [...ACCOUNT_SETUP_STATUS_KEY, user?.id ?? null],
     queryFn: async (): Promise<{ finished: boolean }> => {
       const account = await apiClient.getAccount();
       if (!account) return { finished: false };
@@ -27,6 +29,12 @@ export function useAccountSetupStatus() {
     },
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
-    retry: 1,
+    // Asked again on every mount, and retried harder than the default. A
+    // single failed read used to mean the offer to finish an Account never
+    // appeared again for the rest of the session, which is the one case it
+    // exists to catch: right after sign-up, when the token has just been
+    // written and the first call can lose the race.
+    refetchOnMount: "always",
+    retry: 3,
   });
 }

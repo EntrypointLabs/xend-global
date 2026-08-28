@@ -1,10 +1,12 @@
 import { useCallback, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import * as Sentry from "@sentry/react-native";
 
 import { useAccount } from "@/hooks/useAccount";
 import { useEnrolAccount } from "@/hooks/useEnrolAccount";
 import { useProvisionAccount } from "@/hooks/useProvisionAccount";
 import { useSweepToVault } from "@/hooks/useSweepToVault";
+import { ACCOUNT_SETUP_STATUS_KEY } from "@/hooks/useAccountSetupStatus";
 import { apiClient } from "@/utils/apiClient";
 
 /** What the Consumer is being shown while it happens. */
@@ -24,6 +26,7 @@ export type AccountSetupStage = "idle" | "creating" | "securing";
  */
 export function useAccountSetup() {
   const { data: account } = useAccount();
+  const queryClient = useQueryClient();
   const [stage, setStage] = useState<AccountSetupStage>("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -51,6 +54,14 @@ export function useAccountSetup() {
       }
       await sweep.mutateAsync();
 
+      // Nothing else clears it, and the answer it caches is exactly the one
+      // that decides whether the Consumer is asked again. Left alone, a
+      // finished Account keeps being told it is unfinished until the entry
+      // goes stale.
+      await queryClient.invalidateQueries({
+        queryKey: ACCOUNT_SETUP_STATUS_KEY,
+      });
+
       setStage("idle");
       return true;
     } catch (err) {
@@ -61,7 +72,7 @@ export function useAccountSetup() {
       );
       return false;
     }
-  }, [account, enrol, provision, sweep]);
+  }, [account, enrol, provision, sweep, queryClient]);
 
   return { stage, error, run, clearError: () => setError(null) };
 }
