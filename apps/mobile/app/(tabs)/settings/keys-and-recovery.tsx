@@ -20,11 +20,7 @@ import {
   type ExplainedKey,
 } from "@/components/ui/organisms/modals/KeyExplainerSheet";
 import { PasskeySetupModal } from "@/components/ui/organisms/modals/PasskeySetupModal";
-import { useQueryClient } from "@tanstack/react-query";
-
 import { useAccount } from "@/hooks/useAccount";
-import { DEVICE_RESTORE_KEY } from "@/hooks/useDeviceNeedsRestore";
-import { hardwareKey } from "@/modules/hardware-key/src";
 import { usePasskey } from "@/hooks/usePasskey";
 import { useRecoveryChange } from "@/hooks/useRecoveryChange";
 import { useRecoveryKeys, useRemoveRecoveryKey } from "@/hooks/useRecoveryKeys";
@@ -45,19 +41,6 @@ export default function KeysAndRecoveryScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const { data: account } = useAccount();
-  const queryClient = useQueryClient();
-
-  /**
-   * Simulates a lost phone, which is the only way to exercise the restore flow
-   * without a second device: it discards this account's Device Key from the
-   * Keystore, exactly as a new phone would never have had one. Recoverable
-   * only through the flow it exists to test, which is the point.
-   */
-  const forgetDeviceKey = async () => {
-    await hardwareKey.reset();
-    await queryClient.invalidateQueries({ queryKey: DEVICE_RESTORE_KEY });
-    router.replace("/(tabs)");
-  };
   const {
     hasPasskey,
     registerPasskey,
@@ -210,17 +193,6 @@ export default function KeysAndRecoveryScreen() {
             <Typography weight="500" className="mt-4 text-sm text-destructive">
               {error ?? passkeyError}
             </Typography>
-          )}
-
-          {__DEV__ && (
-            <HapticPressable
-              onPress={forgetDeviceKey}
-              className="mt-8 items-center p-2"
-            >
-              <Typography weight="500" className="text-sm text-destructive">
-                Forget this phone&apos;s Device Key (dev)
-              </Typography>
-            </HapticPressable>
           )}
         </ScrollView>
 

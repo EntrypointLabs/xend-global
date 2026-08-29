@@ -1,160 +1,96 @@
-# Handoff: finish sign-up end to end, then build email recovery
+# Handoff: sign-up, S3 and recovery
 
-Written 2026-08-25, rewritten 2026-08-26 after #87 merged. Everything described here is on `main`.
+Written 2026-08-25, rewritten 2026-08-29 after the recovery work landed. Everything described here is on `pay/p6-recovery`.
 
 Read [`account-security-model-decisions.md`](./account-security-model-decisions.md) first, at minimum D4, D10, D10b, D10c, O4 and O10. This document assumes it.
 
-## The one sentence that matters
+## What changed
 
-**An email inbox still unlocks S1, and S1 alone spends up to the daily limit with no second approval and no time lock.** Closing that is the whole job. Everything below is either a step toward it or a thing that got in the way.
+The last version of this opened by saying an email inbox still unlocked S1, and that closing it was the whole job. That is done, and so is most of what depended on it.
 
-It also gates the store. A dApp Store listing is general availability, and O10 says email login must not reach general availability, so the resubmission waits on the same blocker sign-up does.
+|                                           |                                                                     |
+| ----------------------------------------- | ------------------------------------------------------------------- |
+| Passkey sign-up                           | Works. XEN-29 did not reproduce, and one was created by hand        |
+| Sign-up end to end                        | Proven on a Seeker: passkey, verified email, Account, both policies |
+| Contact address, proved before it is used | Done. No verified address, no Account                               |
+| S3 minted, sealed, anchored               | Done, and the anchor moves when the contact address moves           |
+| S3 released against an emailed code       | Done. `vault.open()` finally has a caller                           |
+| Second email recovery key                 | Done. 2 of 3 on the test Account, waiting out its lock              |
+| Lost-phone restore onto a new device      | Built and driven end to end, minus the 24 hour wait                 |
+| Email login removed                       | **No.** Still the migration route. See "What is left"               |
 
-## Where it stands
+## The flows as they now run
 
-|                                               |                                                                 |
-| --------------------------------------------- | --------------------------------------------------------------- |
-| Email is contact detail, not a credential     | Done, backend and mobile                                        |
-| Passkey sign-in                               | Done, proven on a Seeker three times, `/auth/exchange 201`      |
-| Passkey sign-up                               | **Blocked on Privy.** See XEN-29                                |
-| `/add-email`                                  | Built. Only reachable after sign-up, or from the shell reminder |
-| Account creation, three signers               | Built. S3 is minted server-side and requires an email on file   |
-| Provisioning, both policies then the 24h lock | Built and device-driven. Never run on mainnet                   |
-| Sweep into the vault                          | Built, runs last in setup                                       |
-| Email login removed                           | **No.** Demoted to the recovery route only                      |
-| Email recovery release of S3                  | **Does not exist.** `vault.open()` still has no caller          |
+### Sign-up
 
-## The sign-up flow as it is built
+1. **`app/(auth)/login.tsx`.** "Continue with Passkey" signs in; "New here? Create an account" creates one. That second button is not decoration. On a device holding no credential for the relying party, Android does not answer `NoCredentials`: it offers to sign in from another device, and backing out of that reads as a cancellation. The path that used to reveal "create an account" was therefore unreachable for exactly the person who needed it, which on a fresh install is everyone.
+2. **`app/add-email.tsx`.** Address, then a six-digit code, then the Account is built. Not skippable: S3 is anchored on this address and is mandatory at creation (D10b), so a Consumer without one has no Account and no recovery signer at all, which is the 0 of 3 state the design exists to prevent. The only ways off that screen are a proved address or signing out.
+3. **`useAccountSetup`.** Enrol (Turnkey approval signer, S3 minted and sealed, Account created with all three signers), provision (one settings change carrying both policies and then the 24 hour lock), sweep.
 
-The whole path, so the next person does not have to reconstruct it from screens.
+Where the Consumer lands is derived from what is on file rather than from a flag raised mid-flow, so an interrupted sign-up resumes instead of stranding somebody on a dashboard with nothing behind it.
 
-1. **`app/(auth)/login.tsx`, "Continue with Passkey".** `usePasskeyLogin.signIn` authenticates with Privy, then `completePasskeySession` exchanges the identity token for a Xend JWT. A passkey that worked leaves the session in exactly the state an email code would have.
-2. **No credential on the device** surfaces as `no-passkey`, which opens `NoPasskeyModal`. "Create" calls `signUp()`. **This is where it stops today**, because Privy answers `passkeys/register/init` with a 200 and an empty body.
-3. **`app/add-email.tsx`.** Saves the contact address (`409` means the address already anchors another Account's recovery signer), then opens `AccountSetupModal` so the fingerprint prompt arrives as part of signing up rather than on an empty dashboard.
-4. **`useAccountSetup`**, in order: `enrol` creates the Turnkey approval signer (S2), mints and seals S3 against the contact address, and creates the Squads Account with all three; `provision` walks the settings change that creates both policies and sets the lock to 24 hours; `sweep` moves funds into the vault, last, because until both policies exist nothing can spend them back out.
-5. **"Not now" is allowed** and leaves the Consumer on their Privy wallet with no Account. `AccountSetupReminder` asks again once per launch, and routes back to `/add-email` when there is still no address on file. That is deliberate: `AccountService.build` throws `IncompleteSignerSetError` without an email, because the recovery signer is anchored on it, so no email means no Account by design.
+### What an emailed code buys
 
-What is proven on hardware: sign-in, `/auth/exchange`, enrolment, provisioning and a Spend, all on devnet, all through the email route. What is not proven anywhere: sign-up itself, and every step above on mainnet.
+Three uses, easy to confuse, so they are listed rather than described:
 
-## What to do, in order
+| Purpose                | What the code proves        | What it then permits                                    |
+| ---------------------- | --------------------------- | ------------------------------------------------------- |
+| `contact_verification` | The address at sign-up      | Anchoring S3 on it, and creating the Account            |
+| `recovery_key_email`   | A second address            | Staging it as an additional recovery key                |
+| `device_rotation`      | The address already on file | Releasing S3 to approve the swap of the approval signer |
 
-### 1. Chase XEN-29
+Codes are scrypt-hashed with a per-row salt, expire in ten minutes, survive five guesses and five sends an hour, and are spent once. A code issued for one purpose cannot be spent on another, which is why the purpose is an enum and not a boolean.
 
-Privy answers `passkeys/register/init` with a 200 and a zero-length body. The write-up is ready to send: [`privy-passkey-signup-blocked.md`](./privy-passkey-signup-blocked.md), and the reply to their support bot is already on the issue. The dashboard toggle and the SDK version are both ruled out with evidence, so do not spend time re-checking them. The open guess, worth asking rather than asserting, is that the Android signing certificate is allow-listed for authentication but not for registration.
+### Restoring onto a new phone
 
-`apps/mobile/utils/privyRequestLog.ts` has uncommitted changes that capture the request and response headers on every passkey call, with token-like fields redacted. Keep them until this closes.
+The phone holding S2 is gone and its key cannot be copied, so a new one is minted here and swapped in. That swap needs two of three and the missing one is S2, so the pair is S1 on the new phone and S3 in the vault.
 
-Nothing else in this workstream moves until it clears. Do not work around it by keeping email login: that is the thing being removed.
+1. The home banner says the phone cannot approve. Until it can, the Account can be looked at and not spent from, and nothing else on the screen explains that.
+2. A code goes to the address on file. Verifying it produces a grant good for fifteen minutes, which covers proposing and both approvals and deliberately does not cover executing.
+3. This phone mints a hardware key and **attests it**, exactly as enrolment does. The backend derives the key from the verified attestation and never from the request body: taking it on trust would let a caller attest with real hardware and rotate a software key into the signer set of an Account that already holds money.
+4. Propose and approve-primary are signed by the passkey. The recovery approval is produced server-side from the sealed key and never reaches the device.
+5. Twenty-four hours, then `DeviceRotationRunner` lands the execute step on whichever launch comes next.
 
-### 2. Verify the five-second auth window
+`buildRotateApprovalSigner` carries the policy update in the same change, and that is the part easy to miss. A policy holds **its own inline signer set**, copied at creation and never re-read from the Settings, so rotating only the Settings leaves a recovered Account able to make small Spends and permanently unable to make large ones. Four LiteSVM tests against the deployed bytecode pin it, including that the old key cannot spend afterwards.
 
-The last commit changed the approval key from authenticate-per-use to a five second validity, because a per-use key can only be finished through a Keystore operation opened before the biometric prompt and held across it, and Keystore prunes operations to make room. Measured on a Seeker: a one second wait signs, a 111 second wait does not. It was hitting every signing path including `(send)/confirm.tsx`, so it was intermittently losing payments.
+## Things that cost time, so they are written down
 
-**Auth parameters cannot be changed after a key is created.** Existing enrolled keys keep the old model forever, so this only takes effect for keys enrolled after the change, and the signing path detects which model a key uses and takes the matching route.
+**An unjournalled migration is silently skipped.** `drizzle-kit migrate` reads `drizzle/meta/_journal.json`, not the directory, and reports success either way. A hand-written `.sql` needs a journal entry or it never runs. Verify against the database, not the command's output.
 
-So the test needs a **fresh enrolment**, not an existing account:
+**A dead `nest --watch` parent leaves stale code serving.** Every route added that afternoon 404'd while the older ones worked normally. If a new endpoint 404s locally, check the backend is running what is on disk before debugging the endpoint.
 
-1. Install a dev client built from `main`. It must be an EAS `development` build, not `expo run:android`. See "The build trap" below.
-2. Create a new account and let it enrol.
-3. Trigger anything that signs with S2, then deliberately leave the fingerprint prompt sitting for two minutes before touching it.
-4. It should sign. Before this change it failed with `ERR_SIGN`, and `adb logcat | grep INVALID_OPERATION_HANDLE` showed why.
+**Not every 404 means "no Account".** `getAccount()` used to map any 404 to null, so one bad response from the tunnel told a finished Consumer their sign-up was unfinished, and the setup prompt nagged them about it.
 
-While you are there, confirm the second account does not destroy the first one's key: enrol A, enrol B, then check A can still sign. That is the other native fix and it has not been exercised on hardware.
+**A key on the device is not the same as this Account's key.** The native lookup falls back to the alias used before keys were scoped per account, so a phone that once enrolled a different account hands back that account's key: present, and useless here. The Account now reports the hardware key it enrolled with and the app compares rather than counts. Nothing but wiping a real key and watching what happened would have caught it.
 
-### 3. Walk the whole sign-up once and check the end state
+**Whose change it is, is a fact about a device.** The server sees one Account with one staged change, so any flag it sets silences the alarm everywhere, including on the phone somebody is taking the Account away from, which is the one place it has to ring. The phone that stages a change records the index locally and only that phone stays quiet about it. Tapping "review" outranks the suppression: asking to see it is not the same as being ambushed by it.
 
-Do this through the email route now, rather than waiting on XEN-29. Everything after step 2 of the flow is shared, so proving it early means that when passkey sign-up clears, the only untested thing left is passkey sign-up.
+**Testing the restore needs a second device.** A dev-only trigger on Keys & Recovery discarded this Account's Device Key while the flow was being built, which is the only way to simulate a lost phone on one handset; it has been removed. Re-add it against `hardwareKey.reset()`, which is still there, rather than clearing app data, which wipes the Keystore for every account on the phone.
 
-At the end of a completed sign-up all of this must be true:
+## What is left
 
-- Xend session established, `/auth/exchange 201`
-- Contact email stored, and an `active` row in `recovery_signers` for it
-- On-chain settings account carries three distinct signers at threshold 2
-- Both policies exist: the spending limit and the above-limit policy
-- Time lock reads 86400
-- The sweep landed and the vault holds the balance
-- One Spend under the limit succeeds with one signature, one above it succeeds with two
+**Email login is still the migration route, and O10 stays open until it is gone.** Passkey sign-up works, so the blocker is no longer technical. What remains is choosing when to disable the method in the Privy dashboard, and O7 is still unanswered, so we do not know whether disabling it breaks Consumers who already have an address linked. `(auth)/email-login.tsx` and the "Recover existing wallet" button come out with it, and the lost-phone flow is what replaces them.
 
-If any of those is missing the Consumer is in the half-built state `AccountSetupReminder` exists to catch, which is recoverable but should not be normal.
+**Passkeys are indistinguishable in the platform picker.** Privy sets the WebAuthn user name to the app name, so every credential shows as "Xend Mobile" and a Consumer with two accounts cannot tell them apart. `signupWithPasskey` takes only `relyingParty`, so this is Privy's to fix; worth raising alongside XEN-29. `exclude_credentials` is empty at sign-up too, which is why the platform will mint a second credential for an identity that already has one.
 
-### 4. Then build email recovery
+**The iPhone to Android case is knowingly unsupported.** The passkey does not cross, so S1 goes with it, S2 was already gone, and S3 alone is one vote against a threshold of two. A second recovery key covers it, and adding one now works, but nothing requires a Consumer to have one.
 
-This is the piece the product does not have. S3 is minted, sealed and stored at Account creation, and nothing can ever open it.
+**Custody of S3 is undecided.** Ours today, sealed under an env key with a `keyId` so KMS is a migration rather than a rewrite. A third vendor reads better commercially and buys the same security property.
 
-**What exists.** `apps/backend/src/recovery/` holds the whole signer lifecycle: `ensureEmailSigner` at onboarding (idempotent, so a failed enrolment can retry without stranding the Account), add and remove with the last-signer rule, rotation that mints a fresh keypair, the change lock that claims a Settings index, and the account events that log it. `RecoveryVault` seals under an env AES-256-GCM key with a `keyId` so custody can move to KMS as a migration.
+**The review card has no illustration.** The reference in `docs/design/references/fuse/add-recovery-key-review.png` has one, there is no asset for it, and the wallet screen never had one either.
 
-**What is missing.**
+## Before the dApp Store resubmission
 
-- Nothing calls `vault.open()`. There is no release path at all.
-- No proof of email that belongs to us. The only email proof in the product today is Privy's OTP login, and using that as the release factor is exactly what O10 forbids.
-- No lost-phone path. D10c's second row (new sub-org, new hardware key on the new phone, settings change swapping the old S2 pubkey for the new one) has no caller on either side.
-- "Recover existing wallet" on the login screen still routes to Privy email OTP.
+The sequencing decision still holds: the multisig ships before the resubmission.
 
-**The shape to build**, from D10c and D5b:
+1. **Email login has to be gone.** A listing is general availability, which is what O10 forbids. This is now the only thing between the work and the store.
+2. **The backend is a free ngrok tunnel on a laptop.** EAS `production` still carries that URL, there is no deploy pipeline, and it needs Postgres, Redis and Kafka. Largest remaining risk, and it needs a human.
+3. **Mainnet has never seen an Account.** The network config is right; every Account, provisioning run and Spend so far has been devnet or local. Create one on mainnet, provision it, then send once under the limit and once above it.
+4. **One real mainnet swap on a funded device.** It quotes through Socket and executes, and has never settled on chain.
+5. **The reviewer's balance.** Roughly 0.75 USDC on a mainnet Privy wallet. The sweep exists; run it. The address is readable from the Privy dashboard.
+6. **Reshoot the listing previews.** `assets/dapp-store/preview-*.png` still show a Visa card, a virtual bank account, 7.99% APY and merchant charges. Fresh captures are in `.gstack/previews-new/`; Home and Receive are the two to avoid.
+7. **Re-read the listing copy against what the app does.** It lives in the publisher portal, not the repo.
+8. **Three surfaces still look real and do nothing:** Xend Card, Earn Deposit, Hide My Wallet.
+9. **Two secrets gate the submission and neither is on the build machine:** `DAPP_STORE_API_KEY` and the Solana signer keypair.
 
-1. New phone, passkey signs in. That is S1.
-2. The device generates a hardware key and the backend creates a fresh Turnkey sub-org, giving a new S2 address. The old sub-org is unrecoverable by design, so this is a new key, not a port.
-3. The Consumer proves the contact address with an OTP we issue and verify ourselves.
-4. The backend opens the sealed key and signs the settings change that swaps old S2 for new. S1 signs on the device. That is threshold 2 without the backend ever holding two signers.
-5. The change sits under the 24 hour lock, notified, rejectable with S1 plus S2 from the old phone if it was not really lost.
-
-**Rules that are not negotiable.**
-
-- Email login must be gone before this ships. While it works, an inbox reaches S1, and an inbox that also releases S3 holds two of three.
-- The OTP is ours. Do not reach for Privy's.
-- The backend never gets a second signer, not even temporarily, not even to make provisioning simpler (O6).
-- The notification is load-bearing. Without a push on a pending settings change the time lock protects nobody, and that is the only control standing between a compromised inbox plus passkey and the Account.
-
-**One question for a human before any of it is built.** The iPhone to Android case. The passkey does not cross platforms, so S1 goes with it, S2 was already gone with the old phone, and S3 alone is one vote against a threshold of two. D10's table says S3 survives, which is true and not sufficient. Either a second recovery signer becomes mandatory so that pair can reach threshold, which means onboarding asks for something more, or the cross-platform switch is knowingly unsupported. That decision changes the sign-up screens, so take it first.
-
-The custody question, hold S3 ourselves or move it to a third vendor with email auth, is open and undecided. It was deferred deliberately, not forgotten, and the security property is identical either way.
-
-## Traps that cost time
-
-**The build trap.** The dev client is an EAS `development` build signed with EAS-managed credentials. `npx expo run:android` signs with `android/app/debug.keystore`, a different certificate, so it cannot install as an update. Forcing it means uninstalling, which wipes Android Keystore and kills the approval keys of every account on the device, and it changes the signing certificate, which breaks passkeys because Privy allow-lists the certificate. Use `eas build --profile development --platform android`, never `--local`.
-
-**Expo Go is not the dev client.** Launching `exp://127.0.0.1:8081` opens Expo Go, which cannot load custom native modules and dies with `Cannot find native module 'HardwareKey'`. Both apps are installed on the Seeker. Launch with:
-
-```
-adb shell am start -n com.giftedborg.xend/.MainActivity \
-  -a android.intent.action.VIEW \
-  -d "xend://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8081"
-```
-
-**Rejection needs two signatures.** At 2 of 3, one rejection is recorded and the change stays `Active`. A one-signature rejection reports success and stops nothing. Four LiteSVM tests in `packages/smart-account` pin this, including that a repeat from the same signer fails.
-
-**A device with two accounts.** One Keystore alias per app meant enrolling a second account deleted the first account's approval key, unrecoverably, because replacing a signer needs two of three and that key is one of them. Fixed. Any account broken before the fix stays broken.
-
-**Errors that lie.** Two layers were discarding the real reason. `toHttp` flattened chain failures into a 503 reading "Could not create the Account", and the mobile modal shows one message for every failure. Both now log the cause. If something fails and the reason looks generic, check the log before believing the message.
-
-## Known-broken state on the Seeker, do not chase it
-
-`gkenny896@gmail.com` has an `Active` proposal at index 2 that cannot be settled. S1 already rejected it, and only S2 can supply the second rejection, and that account's S2 key was destroyed on 2026-08-18 when a second account enrolled on the same phone. The banner is permanent for that account. It is dev residue, not a bug to fix.
-
-## Before we resubmit on the Solana dApp Store
-
-The sequencing decision still holds: the multisig ships before the resubmission, because the Account changes every Consumer's receive address and a listing is exactly the event that makes "there are no users yet" stop being true.
-
-What follows was checked against the repo and against EAS on 2026-08-26, not copied from [`dapp-store-resubmission.md`](./dapp-store-resubmission.md), which is stale in two places (see the end).
-
-### On the critical path
-
-1. **XEN-29, and email login removed after it.** Shipping to the store with email login live is the state O10 forbids, in the one place that makes it general.
-2. **The backend is a free ngrok tunnel on a laptop.** EAS `production` still carries `EXPO_PUBLIC_BACKEND_URL=https://unvertiginous-echinate-shawana.ngrok-free.dev`. There is no deploy pipeline, and the backend needs Postgres, Redis and Kafka. This is the largest remaining risk and it needs a human.
-3. **Mainnet has never seen an Account.** The network config is right: EAS `production` reads `EXPO_PUBLIC_SOLANA_CLUSTER=mainnet` with the mainnet USDC mint, which is what the last rejection was about. But every Account, provisioning run and Spend so far has been devnet or local. Create one Account on mainnet, provision it, then send once under the limit and once above it.
-4. **One real mainnet swap on a funded device.** Swap quotes through Socket and executes; it has never settled on chain.
-5. **The reviewer's balance.** Roughly 0.75 USDC still sits on a mainnet Privy wallet. The sweep exists. Run it and confirm it lands in the vault.
-
-### The listing itself, which needs the publisher
-
-6. **Reshoot the previews.** `assets/dapp-store/preview-*.png` still show a Visa-branded card, a virtual bank account, 7.99% APY and merchant charges, none of which the app can do. Fresh captures of the current build are in `.gstack/previews-new/`. Home and Receive are the two to avoid.
-7. **Re-read the listing copy against what the app actually does.** The rejection was about the gap between the two, and the copy lives in the publisher portal rather than in this repo.
-8. **Three surfaces look real and do nothing:** Xend Card raises a "coming soon" toast, Earn Deposit opens Receive, and Hide My Wallet is gated off. A feature the listing does not claim is a teaser; one it claims is the rejection repeating.
-9. **Token logos.** Kamino, SOL and USDC render as letter-in-a-circle placeholders because no artwork exists in the repo. Most visible on the Swap token pills.
-10. **Two secrets gate the submission and neither is on the build machine:** `DAPP_STORE_API_KEY` from the publisher portal, and the Solana signer keypair. Both are held by the publisher. Everything else about the submission is ready.
-
-### Do not relearn the build traps
-
-`.easignore` replaces `.gitignore` rather than extending it; an extraneous transitive dependency passes typecheck, lint, jest and `expo export` and then fails Metro on a clean builder; `eas build:view` hides the real error and the GraphQL API shows it; never run `eas build --local`, which fetches the production keystore onto the machine. All four are written up in [`dapp-store-resubmission.md`](./dapp-store-resubmission.md).
-
-**That document is stale in two places.** It says Swap has no quote provider wired, which is no longer true, and it says the mainnet cluster and mint are set in `eas.json`, when the `production` profile carries no env at all and those values live in EAS environment variables. Trust this list, and fix that document when you next touch it.
+Token artwork is off this list: SOL, EURC and Kamino ship as real marks rather than letters in a circle.
