@@ -11,6 +11,10 @@ const ENV: Record<string, string> = {
   JWT_SECRET: 'test-jwt-secret',
   PRIVY_APP_ID: 'test-privy-app-id',
   PRIVY_APP_SECRET: 'test-privy-app-secret',
+  // Present so the graph resolves a real mailer. Absent, MailModule refuses to
+  // build rather than fall back to logging recovery codes, which is what it is
+  // supposed to do everywhere that is not development.
+  RESEND_API_KEY: 'test-resend-key',
   HELIUS_API_KEY: 'test-helius-key',
   HELIUS_RPC_URL: 'https://devnet.helius-rpc.com',
   HELIUS_WEBHOOK_SECRET: 'test-helius-webhook-secret',
