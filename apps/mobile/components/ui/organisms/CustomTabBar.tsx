@@ -133,7 +133,9 @@ export function CustomTabBar({
             isHome
               ? {
                   backgroundColor: "transparent",
-                  borderWidth: 0,
+                  borderWidth: 1,
+                  borderColor: "#fff",
+                  shadowColor: "transparent",
                 }
               : {}
           }
