@@ -1002,6 +1002,55 @@ requires an email-verified session and is auditable, not that Xend is unable to.
 property the design actually rests on is elsewhere, in the threshold: this signer is
 one of three, and D5b keeps it out of every spend path.
 
+### Who sends the code, and who holds the key
+
+**Decided 2026-08-29: Resend sends, we hold, and the OTP is ours.**
+
+The email code that releases S3 is generated, hashed and checked by
+`RecoveryChallengeService`. Resend delivers the message and does nothing else: it
+never sees a code it was not handed, and replacing it touches no verification
+logic. Codes are scrypt-hashed with a per-row salt, expire in ten minutes,
+survive five guesses and five sends an hour, and are spent once. Each purpose
+names itself, so a code issued to prove a new address cannot be spent releasing
+S3.
+
+Dynamic was raised as an alternative, on the reasoning that holding every
+recovery key ourselves concentrates risk: a Consumer with three email recovery
+keys has three keypairs sealed in our database. Declined, for reasons worth
+keeping because the instinct behind it is sound and the mechanism is not what it
+looks like.
+
+**Moving the OTP changes nothing here.** Verifying an inbox and holding a key are
+different jobs. If a vendor checks the code and we still mint and seal the
+keypair, the exposure is identical. Only custody moves the needle.
+
+**The count is not what protects the invariant, the mask is.** Recovery signers
+carry `Vote` alone: they cannot propose a settings change and cannot execute one.
+Only S1 proposes; only S1 or S2 executes. Holding three recovery keys for one
+Consumer therefore does not let us act alone, and crosses no threshold that one
+key does not already cross. Tracked as `XEN-32` anyway, because the mask is a
+decision rather than a law, and accumulating custody we have no use for is cheap
+to avoid now and awkward to retrofit.
+
+**The concentration that does exist is cross-Consumer.** One wrapping key seals
+every recovery secret for everybody, so backend code execution yields all of them
+at once. Splitting one Consumer's keys across two vendors does nothing about
+that; KMS does, and the `keyId` on every sealed row exists so it is a migration.
+Tracked as `XEN-31`.
+
+**And the larger gap is elsewhere.** The device signs settings changes without
+decoding them, so a compromised backend could build a change that swaps every
+signer and the phone would sign it as readily as a legitimate rotation. The time
+lock, the push and the rejection window are what stand in the way, which is
+detection and delay rather than prevention. Tracked as `XEN-30`, and it is where
+effort in this area is worth spending first.
+
+**Against a vendor on the recovery path, specifically.** That flow runs when
+somebody has already lost their phone. A vendor outage or a vendor-side lock
+would strand them at exactly the moment recovery is the only thing left. The
+commercial argument for "we hold none of your keys" is real and unchanged from
+the finding above, but it is a positioning decision, not a security one.
+
 ## O6 resolved: a delegated `POLICY` user, never the root quorum
 
 Every Consumer gets a Turnkey **sub-organization**. Each sub-org has a **root quorum**:
