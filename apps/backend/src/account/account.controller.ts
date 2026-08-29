@@ -635,6 +635,10 @@ export class AccountController {
       // Set while a device rotation is waiting out the time lock, so the app
       // knows to land it rather than asking the Consumer to start again.
       pendingApprovalSigner: account.pendingApprovalSigner ?? null,
+      // Lets the app tell whether the key on this phone is the Account's, not
+      // merely that some key exists. A phone holding another account's key can
+      // approve nothing here.
+      deviceKey: await this.turnkey.enrolledDeviceKey(account.approvalSubOrgId),
       // Carried on the Account rather than given its own endpoint: everything
       // that wants the limit already holds the Account, and a second call
       // would let the two disagree about which Account they describe.

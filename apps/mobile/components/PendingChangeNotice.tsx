@@ -3,15 +3,21 @@ import {
   usePendingAccountChange,
   useRejectAccountChange,
 } from "@/hooks/usePendingAccountChange";
+import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { usePendingChangeAcknowledgement } from "@/hooks/usePendingChangeAcknowledgement";
 
 /**
  * Interrupts the Consumer when their Account is being changed by someone else.
  *
- * Only by someone else. A change they started from this app announces itself on
- * the home screen instead: raising the alarm over an action they just took
- * teaches them that the alarm means nothing, which is the one thing it cannot
- * afford to mean on the day it is real.
+ * Only by someone else, and "someone else" is decided by this device rather
+ * than by the server. A change this phone started announces itself on the home
+ * screen instead: raising the alarm over an action they just took teaches them
+ * that the alarm means nothing, which is the one thing it cannot afford to mean
+ * on the day it is real.
+ *
+ * The server cannot make that call. It sees one Account with one staged change,
+ * so a flag it sets would silence every device, including the phone somebody is
+ * trying to take the Account away from, which is the one that has to ring.
  *
  * Acknowledging is remembered across launches and keyed to that specific
  * change, so answering it once settles it. A different change later still
@@ -22,12 +28,13 @@ export function PendingChangeNotice() {
   const reject = useRejectAccountChange();
   const { acknowledged, isPending, acknowledge } =
     usePendingChangeAcknowledgement();
+  const { startedHere, isPending: readingInitiated } = useInitiatedChanges();
 
   // Nothing is shown until the stored answer is known: flashing the alarm at
   // someone who already answered it is the failure this exists to avoid.
-  if (isPending || !change) return null;
-  // Their own doing, so the home screen carries it rather than a modal.
-  if (change.selfInitiated) return null;
+  if (isPending || readingInitiated || !change) return null;
+  // Started on this phone, so the home screen carries it rather than a modal.
+  if (startedHere(change.transactionIndex)) return null;
   if (acknowledged === change.transactionIndex) return null;
 
   return (

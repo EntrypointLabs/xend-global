@@ -13,6 +13,7 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { useCountdown } from "@/hooks/useCountdown";
 import { usePendingAccountChange } from "@/hooks/usePendingAccountChange";
+import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { usePendingChangeAcknowledgement } from "@/hooks/usePendingChangeAcknowledgement";
 import { cn } from "@/utils/cn";
 
@@ -43,18 +44,24 @@ interface Banner {
 export function HomeBanners() {
   const { data: change } = usePendingAccountChange();
   const { reopen } = usePendingChangeAcknowledgement();
+  const { startedHere } = useInitiatedChanges();
   const [page, setPage] = useState(0);
   const width = useRef(Dimensions.get("window").width - SCREEN_PADDING * 2);
   const remaining = useCountdown(change?.executableAt ?? null);
 
   const banners: Banner[] = [];
 
+  // Whose change it is, decided by this device. A phone that did not start it
+  // is either the Consumer's other phone or somebody else's, and both want the
+  // wording that treats it as something to refuse.
+  const mine = change ? startedHere(change.transactionIndex) : false;
+
   if (change) {
     banners.push({
       key: "pending-change",
       icon: "time-outline",
       tint: "#0A0A0A",
-      title: change.selfInitiated
+      title: mine
         ? "Your key change is on its way"
         : "A change to your account is pending",
       description: remaining
@@ -65,7 +72,7 @@ export function HomeBanners() {
       // lives. Somebody else's is a thing to refuse, and the only screen that
       // offers that is the notice they dismissed to get here, so tapping puts
       // it back rather than sending them to a list that says nothing about it.
-      onPress: change.selfInitiated
+      onPress: mine
         ? () => router.push("/settings/keys-and-recovery" as never)
         : reopen,
     });

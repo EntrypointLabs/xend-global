@@ -23,7 +23,14 @@ export function useDeviceNeedsRestore() {
     queryKey: [...DEVICE_RESTORE_KEY, account?.address ?? null],
     queryFn: async () => {
       const key = await hardwareKey.getPublicKey();
-      return { needsRestore: key === null };
+      // Compared, not merely checked for absence. The native lookup falls back
+      // to the pre-scoping alias when this account has no key of its own, so a
+      // phone that once enrolled a different account hands back that account's
+      // key: present, and useless here.
+      const enrolled = account?.deviceKey ?? null;
+      return {
+        needsRestore: key === null || (enrolled !== null && key !== enrolled),
+      };
     },
     // Only meaningful once there is an Account to be locked out of.
     enabled: !!account,

@@ -92,6 +92,12 @@ export const AccountResponseSchema = z.object({
    */
   pendingApprovalSigner: z.string().nullable().optional(),
   /**
+   * The hardware key this Account enrolled with. Compared against the one on
+   * this phone: a phone holding a different account's key is as unable to
+   * approve as one holding none.
+   */
+  deviceKey: z.string().nullable().optional(),
+  /**
    * Null means the Account has no limit, so every send takes two
    * confirmations. Absent means this backend does not report limits at all,
    * which is not the same answer and must not be shown as one.

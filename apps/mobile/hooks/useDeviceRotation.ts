@@ -9,6 +9,7 @@ import { VersionedTransaction } from "@solana/web3.js";
 import { toByteArray, fromByteArray } from "base64-js";
 
 import { ACCOUNT_QUERY_KEY, useAccount } from "@/hooks/useAccount";
+import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { PENDING_CHANGE_KEY } from "@/hooks/usePendingAccountChange";
 import { devicePlatform, hardwareKey } from "@/modules/hardware-key/src";
 import { apiClient, type DeviceRotationStep } from "@/utils/apiClient";
@@ -102,6 +103,7 @@ export function useDeviceRotation() {
   const queryClient = useQueryClient();
   const embeddedSolana = useEmbeddedSolanaWallet();
   const { data: account } = useAccount();
+  const { recordStarted } = useInitiatedChanges();
 
   return useMutation({
     mutationFn: async (grantId: string): Promise<DeviceRotationOutcome> => {
@@ -115,10 +117,14 @@ export function useDeviceRotation() {
       const existing = await hardwareKey.getPublicKey();
       if (existing) {
         try {
-          await apiClient.startDeviceRotation({
+          const staged = await apiClient.startDeviceRotation({
             grantId,
             hardwarePublicKey: existing,
           });
+          // Written down before a step is signed. The alarm is driven off the
+          // chain, and a change staged without this recorded would go off on
+          // the phone that staged it.
+          if (staged.changeIndex) recordStarted(staged.changeIndex);
           return runDeviceRotation(
             account.signers.primary,
             (await wallet.getProvider()) as SolanaProvider,
@@ -142,13 +148,14 @@ export function useDeviceRotation() {
         throw err;
       }
 
-      await apiClient.startDeviceRotation({
+      const staged = await apiClient.startDeviceRotation({
         grantId,
         platform: devicePlatform(),
         attestation,
         nonce,
         hardwarePublicKey: publicKey,
       });
+      if (staged.changeIndex) recordStarted(staged.changeIndex);
 
       return runDeviceRotation(
         account.signers.primary,

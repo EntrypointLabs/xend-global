@@ -81,6 +81,18 @@ export class TurnkeyService {
       .then((row) => (row ? { security: row.security } : null));
   }
 
+  /**
+   * The hardware key the Account's approval signer was enrolled with.
+   *
+   * Handed to the app so it can tell "this phone holds the Account's Device
+   * Key" from "this phone holds some key". A public key, which proves nothing
+   * without the private half it never leaves the Keystore with.
+   */
+  async enrolledDeviceKey(subOrganizationId: string): Promise<string | null> {
+    const row = await this.store.findBySubOrganization(subOrganizationId);
+    return row?.hardwarePublicKey ?? null;
+  }
+
   async ensureApprovalSigner(
     params: EnrolApprovalSignerParams,
   ): Promise<EnrolledApprovalSigner> {

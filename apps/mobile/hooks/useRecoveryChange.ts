@@ -14,6 +14,7 @@ import {
   PENDING_CHANGE_KEY,
   usePendingAccountChange,
 } from "@/hooks/usePendingAccountChange";
+import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { RECOVERY_KEYS_QUERY_KEY } from "@/hooks/useRecoveryKeys";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
@@ -57,13 +58,19 @@ type SolanaProvider = {
  */
 export async function runRecoveryChange(
   account: AccountResponse,
-  provider: SolanaProvider
+  provider: SolanaProvider,
+  onStaged?: (changeIndex: string) => void
 ): Promise<RecoveryChangeOutcome> {
   let steps = 0;
 
   for (;;) {
     const plan: RecoveryChangeStep = await apiClient.nextRecoveryChangeStep();
     if (plan.done) return { waitingUntil: null, finished: true };
+
+    // The alarm reads the chain and cannot tell who staged a change, so the
+    // device that did has to say so. Recorded on every pass: cheap, and a
+    // resumed walk must not leave the phone shouting at itself.
+    if (plan.changeIndex) onStaged?.(plan.changeIndex);
 
     if (plan.step === "waiting") {
       return { waitingUntil: plan.executableAt ?? null, finished: false };
@@ -124,6 +131,7 @@ function invalidateAfterChange(queryClient: QueryClient) {
 export function useRecoveryChange() {
   const queryClient = useQueryClient();
   const embeddedSolana = useEmbeddedSolanaWallet();
+  const { recordStarted } = useInitiatedChanges();
 
   return useMutation({
     mutationFn: async (
@@ -133,7 +141,8 @@ export function useRecoveryChange() {
       if (!wallet) throw new Error("Wallet not ready");
       return runRecoveryChange(
         account,
-        (await wallet.getProvider()) as SolanaProvider
+        (await wallet.getProvider()) as SolanaProvider,
+        recordStarted
       );
     },
     // Settled rather than success: a change that failed part way through has

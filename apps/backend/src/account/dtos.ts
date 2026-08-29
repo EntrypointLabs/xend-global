@@ -80,6 +80,8 @@ export const AccountResponseSchema = z.object({
   approvalSubOrgId: z.string(),
   /** The approval signer a device rotation is moving to, while one is in flight. */
   pendingApprovalSigner: z.string().nullable(),
+  /** The hardware key this Account's approval signer was enrolled with. */
+  deviceKey: z.string().nullable(),
   /**
    * Null while the Account has no limit, which is every Account until
    * provisioning lands the policy. Null is not "no ceiling": with nothing

@@ -67,7 +67,9 @@ function makeController(
     {} as unknown as SweepService,
     {} as unknown as ProvisioningService,
     spendingLimits,
-    {} as unknown as TurnkeyService,
+    {
+      enrolledDeviceKey: () => Promise.resolve('03device'),
+    } as unknown as TurnkeyService,
     {} as unknown as AccountChangeService,
     {} as unknown as RecoveryService,
     {} as unknown as RecoveryChangeService,
@@ -299,7 +301,9 @@ describe('AccountController recovery key changes', () => {
       {} as unknown as SweepService,
       {} as unknown as ProvisioningService,
       {} as unknown as SpendingLimitService,
-      {} as unknown as TurnkeyService,
+      {
+        enrolledDeviceKey: () => Promise.resolve('03device'),
+      } as unknown as TurnkeyService,
       {} as unknown as AccountChangeService,
       recovery,
       recoveryChanges,
