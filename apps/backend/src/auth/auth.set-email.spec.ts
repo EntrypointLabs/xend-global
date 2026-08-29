@@ -1,4 +1,5 @@
 import { JwtService } from '@nestjs/jwt';
+import type { RecoveryService } from '../recovery/recovery.service';
 import { AuthService, EmailInUseError } from './auth.service';
 import type { DbService } from '../db/db.service';
 import type { WalletProvider } from '../wallet/wallet-provider.interface';
@@ -27,6 +28,8 @@ function makeFakeDb(rows: UsersRow[], updateError?: Error): DbService {
   const guard = (tbl: unknown) => {
     if (tbl !== users) throw new Error('unexpected table in fake db');
   };
+
+  const withAdvisoryLock = <T>(_key: string, fn: () => Promise<T>) => fn();
 
   const client = {
     select: () => ({
@@ -66,7 +69,7 @@ function makeFakeDb(rows: UsersRow[], updateError?: Error): DbService {
     },
   };
 
-  return { client } as unknown as DbService;
+  return { client, withAdvisoryLock } as unknown as DbService;
 }
 
 function makeUser(id: string, email: string | null): UsersRow {
@@ -79,13 +82,29 @@ function makeUser(id: string, email: string | null): UsersRow {
   } as UsersRow;
 }
 
-function makeService(rows: UsersRow[], updateError?: Error): AuthService {
-  return new AuthService(
+/**
+ * The recovery anchor has to move with the contact address, so the fake
+ * records what it was asked to move rather than swallowing the call.
+ */
+function makeService(rows: UsersRow[], updateError?: Error) {
+  const reanchored: { previous: string | null; next: string }[] = [];
+  const service = new AuthService(
     new JwtService({ secret: 'test-secret' }),
     makeFakeDb(rows, updateError),
     {} as WalletProvider,
     {} as SolanaRpc,
+    {
+      reanchorEmailSigner: (
+        _userId: string,
+        previous: string | null,
+        next: string,
+      ) => {
+        reanchored.push({ previous, next });
+        return Promise.resolve();
+      },
+    } as unknown as RecoveryService,
   );
+  return Object.assign(service, { reanchored });
 }
 
 describe('AuthService.setEmail', () => {
@@ -165,5 +184,28 @@ describe('AuthService.setEmail', () => {
     expect(rows[0].updatedAt.getTime()).toBeGreaterThanOrEqual(
       before.getTime(),
     );
+  });
+
+  it('moves the recovery anchor when the address changes', async () => {
+    const service = makeService([makeUser('u_1', 'old@example.com')]);
+
+    await service.setEmail('u_1', 'new@example.com');
+
+    // S3 is released against whatever address is on file, so a signer still
+    // recording the old inbox would be judged against one address and
+    // remembered against another.
+    expect(service.reanchored).toEqual([
+      { previous: 'old@example.com', next: 'new@example.com' },
+    ]);
+  });
+
+  it('has nothing to move on a first address', async () => {
+    const service = makeService([makeUser('u_1', null)]);
+
+    await service.setEmail('u_1', 'first@example.com');
+
+    expect(service.reanchored).toEqual([
+      { previous: null, next: 'first@example.com' },
+    ]);
   });
 });

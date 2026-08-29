@@ -88,10 +88,23 @@ export default function EarnScreen() {
             className="rounded-2xl bg-black/[0.03] px-4 py-4"
           >
             <View className="flex-row items-center gap-3">
-              <View className="h-11 w-11 items-center justify-center rounded-2xl bg-black/80">
-                <Typography variant="body" weight="700" className="text-white">
-                  {product.provider.slice(0, 1)}
-                </Typography>
+              <View
+                className={cn(
+                  "h-11 w-11 items-center justify-center overflow-hidden rounded-2xl",
+                  !product.icon && "bg-black/80"
+                )}
+              >
+                {product.icon ? (
+                  <Image source={product.icon} className="h-11 w-11" />
+                ) : (
+                  <Typography
+                    variant="body"
+                    weight="700"
+                    className="text-white"
+                  >
+                    {product.provider.slice(0, 1)}
+                  </Typography>
+                )}
               </View>
               <View className="flex-1">
                 <View className="flex-row items-center gap-1">

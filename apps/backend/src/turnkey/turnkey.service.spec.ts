@@ -68,6 +68,12 @@ class FakeApprovalStore implements ApprovalSignerStore {
     );
   }
 
+  findBySubOrganization(subOrganizationId: string) {
+    return Promise.resolve(
+      this.rows.find((r) => r.subOrganizationId === subOrganizationId) ?? null,
+    );
+  }
+
   insert(row: NewApprovalSigner) {
     const created = {
       id: `approval-${++this.seq}`,

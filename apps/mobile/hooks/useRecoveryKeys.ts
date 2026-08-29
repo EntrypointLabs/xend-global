@@ -29,6 +29,31 @@ export function useAddRecoveryWallet() {
   });
 }
 
+export function useRequestRecoveryEmailCode() {
+  return useMutation({
+    mutationFn: (email: string) => apiClient.requestRecoveryEmailCode(email),
+  });
+}
+
+export function useVerifyRecoveryEmail() {
+  return useMutation({
+    mutationFn: (body: { email: string; code: string }) =>
+      apiClient.verifyRecoveryEmail(body),
+  });
+}
+
+export function useAddRecoveryEmail() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: { email: string; grantId: string }) =>
+      apiClient.addRecoveryEmail(body),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: RECOVERY_KEYS_QUERY_KEY });
+    },
+  });
+}
+
 export function useRemoveRecoveryKey() {
   const queryClient = useQueryClient();
 

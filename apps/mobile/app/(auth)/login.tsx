@@ -8,7 +8,6 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Ionicons } from "@expo/vector-icons";
 import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { NoPasskeyModal } from "@/components/ui/organisms/modals/NoPasskeyModal";
-import { useAuth } from "@/contexts/AuthContext";
 
 function LoginScreen() {
   const {
@@ -18,7 +17,6 @@ function LoginScreen() {
     error: passkeyError,
     clearError,
   } = usePasskeyLogin();
-  const { beginPasskeySignup, completePasskeySetup } = useAuth();
   const [askingToCreate, setAskingToCreate] = useState(false);
 
   // Email OTP is a migration route now, not a way in. It is the one path that
@@ -26,6 +24,16 @@ function LoginScreen() {
   // exactly what recovering a wallet onto a new phone means.
   const recover = () => router.push("/(auth)/email-login");
 
+  /**
+   * Creating an account has its own way in, rather than only appearing when a
+   * sign-in fails.
+   *
+   * On a device holding no credential for the relying party, Android does not
+   * answer `NoCredentials`: it offers to sign in from another device instead,
+   * and a Consumer who backs out of that gets a cancellation. So the path that
+   * revealed "create an account" was unreachable for exactly the person who
+   * needed it, which on a fresh install is everyone.
+   */
   const onPasskey = async () => {
     const outcome = await signIn();
     // The signed-in shell decides where to land; a passkey that worked leaves
@@ -35,17 +43,13 @@ function LoginScreen() {
   };
 
   const onCreate = async () => {
-    beginPasskeySignup();
-    if (!(await signUp())) {
-      completePasskeySetup();
-      return;
-    }
+    if (!(await signUp())) return;
     setAskingToCreate(false);
     // The contact step, and the Account is built from there. It has to be:
     // the recovery signer is anchored on the Consumer's address, so there is
-    // no Account to create until they have given one. The auth-stack gate is
-    // released there too, once this screen can no longer be redirected out
-    // from under the flow.
+    // no Account to create until they have given one. The shell routes here on
+    // its own once the session exists, and this makes it immediate rather than
+    // leaving a frame of dashboard in between.
     router.replace("/add-email");
   };
 
@@ -119,6 +123,16 @@ function LoginScreen() {
               />
               <Typography weight="600" className="text-lg text-white">
                 Recover existing wallet
+              </Typography>
+            </HapticPressable>
+
+            <HapticPressable
+              onPress={() => setAskingToCreate(true)}
+              disabled={busy}
+              className="w-full items-center p-3"
+            >
+              <Typography weight="600" className="text-base text-white/90">
+                New here? Create an account
               </Typography>
             </HapticPressable>
           </View>

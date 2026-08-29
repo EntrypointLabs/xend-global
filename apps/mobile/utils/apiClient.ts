@@ -87,6 +87,17 @@ export const AccountResponseSchema = z.object({
   /** The Consumer's Turnkey sub-organization, which the device stamps against. */
   approvalSubOrgId: z.string(),
   /**
+   * Set while a device rotation is waiting out the time lock. Optional so an
+   * older backend that does not report it is absent rather than "none".
+   */
+  pendingApprovalSigner: z.string().nullable().optional(),
+  /**
+   * The hardware key this Account enrolled with. Compared against the one on
+   * this phone: a phone holding a different account's key is as unable to
+   * approve as one holding none.
+   */
+  deviceKey: z.string().nullable().optional(),
+  /**
    * Null means the Account has no limit, so every send takes two
    * confirmations. Absent means this backend does not report limits at all,
    * which is not the same answer and must not be shown as one.
@@ -200,6 +211,31 @@ export const RecoveryChangeStepSchema = z.object({
   needsApprovalSignature: z.boolean().optional(),
 });
 export type RecoveryChangeStep = z.infer<typeof RecoveryChangeStepSchema>;
+
+/**
+ * A step of the settings change that moves the approval signer to this phone.
+ *
+ * `approve-recovery` never reaches the device: it is the one approval the
+ * backend can produce, from the sealed recovery signer, once the Consumer has
+ * proved their inbox.
+ */
+export const DeviceRotationStepSchema = z.object({
+  done: z.boolean(),
+  step: z
+    .enum([
+      "propose",
+      "approve-primary",
+      "approve-recovery",
+      "waiting",
+      "execute",
+    ])
+    .optional(),
+  unsignedTxBase64: z.string().optional(),
+  changeIndex: z.string().optional(),
+  executableAt: z.string().optional(),
+  newApprovalSigner: z.string().optional(),
+});
+export type DeviceRotationStep = z.infer<typeof DeviceRotationStepSchema>;
 
 export const AddRecoveryKeyResponseSchema = z.object({
   key: RecoveryKeySchema,
@@ -575,10 +611,31 @@ class BackendClient {
    * unlocks nothing and losing it costs them notifications rather than the
    * account. 409 means another account already claims it.
    */
-  async setContactEmail(email: string): Promise<void> {
-    await this.request<unknown>("/auth/email", {
+  /**
+   * POST /auth/email/challenge — sends a code to an address being claimed.
+   *
+   * Refused with 409 when the address is already on another Account, before
+   * anything is mailed.
+   */
+  async requestContactEmailCode(email: string): Promise<void> {
+    await this.request<unknown>("/auth/email/challenge", {
       method: "POST",
       body: JSON.stringify({ email }),
+      auth: true,
+    });
+  }
+
+  /**
+   * POST /auth/email — records the address, with the code that proves it.
+   *
+   * The code is required: the recovery signer is anchored on this address at
+   * Account creation, so an unproved one leaves the only route back pointing
+   * at an inbox nobody reads.
+   */
+  async setContactEmail(email: string, code: string): Promise<void> {
+    await this.request<unknown>("/auth/email", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
       auth: true,
     });
   }
@@ -626,7 +683,10 @@ class BackendClient {
       });
       return AccountResponseSchema.parse(raw);
     } catch (err: any) {
-      if (err?.status === 404 || err?.data?.code === "NO_ACCOUNT") return null;
+      // Only our own "no Account yet", never any 404. A tunnel or a proxy
+      // answering 404 is an outage, and reading it as "this Consumer has no
+      // Account" tells a finished Consumer their sign-up is unfinished.
+      if (err?.data?.code === "NO_ACCOUNT") return null;
       throw err;
     }
   }
@@ -743,6 +803,102 @@ class BackendClient {
         auth: true,
       }
     );
+    return AddRecoveryKeyResponseSchema.parse(raw);
+  }
+
+  /**
+   * POST /account/recovery/email/challenge — sends a code to an address being
+   * offered as a recovery key. Refused before mailing if it is already one.
+   */
+  /** POST /account/recovery/device/challenge — mails a code to the address on file. */
+  async requestDeviceRotationCode(): Promise<{ expiresAt: string }> {
+    return this.request<{ expiresAt: string }>(
+      "/account/recovery/device/challenge",
+      { method: "POST", auth: true }
+    );
+  }
+
+  /** POST /account/recovery/device/verify — turns the code into a grant. */
+  async verifyDeviceRotationCode(code: string): Promise<{ grantId: string }> {
+    return this.request<{ grantId: string }>(
+      "/account/recovery/device/verify",
+      { method: "POST", body: JSON.stringify({ code }), auth: true }
+    );
+  }
+
+  /**
+   * POST /account/recovery/device/start — enrols this phone's hardware key and
+   * stages the swap. Attested, exactly like enrolment.
+   */
+  async startDeviceRotation(body: {
+    grantId: string;
+    platform?: string;
+    attestation?: string;
+    nonce?: string;
+    hardwarePublicKey?: string;
+  }) {
+    const raw = await this.request<unknown>("/account/recovery/device/start", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return DeviceRotationStepSchema.parse(raw);
+  }
+
+  /** POST /account/recovery/device/next — the next step, re-read from chain. */
+  async nextDeviceRotationStep(grantId?: string) {
+    const raw = await this.request<unknown>("/account/recovery/device/next", {
+      method: "POST",
+      body: JSON.stringify(grantId ? { grantId } : {}),
+      auth: true,
+    });
+    return DeviceRotationStepSchema.parse(raw);
+  }
+
+  /** POST /account/recovery/device/submit — hands back a signed step. */
+  async submitDeviceRotationStep(body: { signedTxBase64: string }) {
+    const raw = await this.request<unknown>("/account/recovery/device/submit", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return RecoveryChangeSubmitSchema.parse(raw);
+  }
+
+  async requestRecoveryEmailCode(email: string): Promise<void> {
+    await this.request<unknown>("/account/recovery/email/challenge", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      auth: true,
+    });
+  }
+
+  /**
+   * POST /account/recovery/email — stages a proved address as a recovery key
+   * and starts the settings change that carries it.
+   */
+  /**
+   * POST /account/recovery/email/verify — checks the code and returns the
+   * grant the review step spends.
+   */
+  async verifyRecoveryEmail(body: { email: string; code: string }) {
+    const raw = await this.request<{ grantId: string }>(
+      "/account/recovery/email/verify",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        auth: true,
+      }
+    );
+    return raw;
+  }
+
+  async addRecoveryEmail(body: { email: string; grantId: string }) {
+    const raw = await this.request<unknown>("/account/recovery/email", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
     return AddRecoveryKeyResponseSchema.parse(raw);
   }
 

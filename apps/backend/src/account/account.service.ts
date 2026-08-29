@@ -62,6 +62,16 @@ export class AccountService {
     return this.store.findByUserId(userId);
   }
 
+  /**
+   * The address a recovery code may be sent to.
+   *
+   * Read from the Account rather than accepted from the caller, so the only
+   * inbox a code can reach is the one the recovery signer is anchored on.
+   */
+  contactEmail(userId: string): Promise<string | null> {
+    return this.store.findUserEmail(userId);
+  }
+
   createAccount(params: CreateAccountParams): Promise<SquadsAccountRow> {
     // The whole sequence, not just the write. The check that decides whether to
     // build an Account is at the top and the write that records it is at the

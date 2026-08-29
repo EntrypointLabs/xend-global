@@ -9,6 +9,15 @@ import { cn } from "@/utils/cn";
 
 interface PendingChangeModalProps {
   visible: boolean;
+  /**
+   * True when this phone is the one that staged the change.
+   *
+   * Only the wording moves. The refusal stays exactly where it is: somebody
+   * reviewing their own change is often doing it because they have changed
+   * their mind, and a screen that congratulates them without offering the way
+   * out would be the wrong half of this.
+   */
+  startedHere?: boolean;
   /** ISO-8601, or null while the change has not been approved yet. */
   executableAt: string | null;
   rejecting: boolean;
@@ -39,6 +48,7 @@ interface PendingChangeModalProps {
  */
 export function PendingChangeModal({
   visible,
+  startedHere = false,
   executableAt,
   rejecting,
   error,
@@ -67,16 +77,20 @@ export function PendingChangeModal({
           </View>
 
           <Typography weight="600" className="mb-2 text-xl leading-7">
-            Someone is changing your account
+            {startedHere
+              ? "A change you started is pending"
+              : "Someone is changing your account"}
           </Typography>
 
           <Typography
             weight="400"
             className="mb-6 text-sm leading-5 opacity-70"
           >
-            {remaining === null
-              ? "A change to who can access your Xend account has been started. It needs one more approval, and then waits 24 hours before it takes effect. You can reject it at any point until then."
-              : "A change to who can access your Xend account has been approved. If this was not you, reject it before the time below runs out."}
+            {startedHere
+              ? "This changes who can access your Xend account. It takes effect after the delay below, and you can call it off at any point until then."
+              : remaining === null
+                ? "A change to who can access your Xend account has been started. It needs one more approval, and then waits 24 hours before it takes effect. You can reject it at any point until then."
+                : "A change to who can access your Xend account has been approved. If this was not you, reject it before the time below runs out."}
           </Typography>
 
           <View className="mb-6 rounded-2xl border border-border px-4 py-3.5">

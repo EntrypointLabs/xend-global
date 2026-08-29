@@ -13,7 +13,7 @@ function RestoreAccountScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [, setShowCodeInput] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { register, verifyCodeAndCreateAccount, user, setEmail } = useAuth();
+  const { register, verifyCodeAndCreateAccount, user } = useAuth();
 
   const triggerSignUp = async (emailToUse: string) => {
     setShowCodeInput(true);
@@ -52,7 +52,6 @@ function RestoreAccountScreen() {
     try {
       setIsLoading(true);
       setError(null);
-      setEmail(submittedEmail);
 
       if (formError) {
         setError(formError);

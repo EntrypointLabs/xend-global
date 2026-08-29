@@ -23,6 +23,7 @@ export {
   buildProvisionAccount,
   buildRejectSettingsChange,
   buildRemoveRecoverySigner,
+  buildRotateApprovalSigner,
   buildSetTimeLock,
   type AddRecoverySignerParams,
   type CreateAboveLimitPolicyParams,
@@ -32,6 +33,8 @@ export {
   type ProvisionAccountParams,
   type ProvisionAccountResult,
   type RemoveRecoverySignerParams,
+  type RotateApprovalSignerParams,
+  type RotateApprovalSignerResult,
   type SetTimeLockParams,
   type SpendingLimitTerms,
 } from "./policy.js";

@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { createKeyPairSignerFromPrivateKeyBytes } from '@solana/kit';
+import { Keypair, VersionedTransaction } from '@solana/web3.js';
 import { randomBytes } from 'node:crypto';
 import {
   RECOVERY_SIGNER_STORE,
@@ -166,6 +167,17 @@ export class RecoveryService {
     return this.summarise(row, [...rows, row]);
   }
 
+  /**
+   * Whether an address is free to become a recovery key on this Account.
+   *
+   * Checked before a code is sent rather than after: a duplicate refused at the
+   * end costs the Consumer a mail they went and read for nothing.
+   */
+  async assertEmailUnused(userId: string, email: string): Promise<void> {
+    const rows = await this.store.findByUser(userId);
+    this.assertChannelUnused(rows, 'email', email.toLowerCase());
+  }
+
   async addEmail(
     userId: string,
     email: string,
@@ -306,6 +318,54 @@ export class RecoveryService {
   }
 
   /**
+   * Moves the recovery anchor when the Consumer changes their contact address.
+   *
+   * The signer keeps its key and its on-chain address. Only the inbox that may
+   * ask for its release moves, which is why this needs no settings change and
+   * no time lock.
+   *
+   * That is a deliberate departure from `changeEmail` below, which mints a
+   * fresh keypair on the reasoning that a changed email may itself have been
+   * compromised. The distinction is what the old inbox actually held: never
+   * the key, which has not left the vault, only the ability to prove that
+   * address and so ask us to sign with it. Moving the anchor ends that
+   * ability, and re-keying would buy nothing while costing a settings change,
+   * a 24 hour lock and a window where the signer set is mid-flight.
+   *
+   * Silent when there is nothing anchored on the old address: an Account whose
+   * recovery signer was already pointed elsewhere is not one this should
+   * quietly redirect.
+   */
+  async reanchorEmailSigner(
+    userId: string,
+    previous: string | null,
+    next: string,
+  ): Promise<void> {
+    if (!previous || previous.toLowerCase() === next.toLowerCase()) return;
+
+    const rows = await this.store.findByUser(userId);
+    const anchored = rows.find(
+      (row) =>
+        row.channel === 'email' &&
+        row.channelValue === previous.toLowerCase() &&
+        row.status === 'active',
+    );
+    if (!anchored) return;
+
+    if (anchored.changeIndex) {
+      throw new RecoveryChangeInFlightError(
+        'this recovery key is already being changed',
+      );
+    }
+    this.assertChannelUnused(rows, 'email', next.toLowerCase());
+
+    await this.store.updateById(anchored.id, {
+      channelValue: next.toLowerCase(),
+    });
+    this.logger.log(`recovery.signer.reanchored user=${userId}`);
+  }
+
+  /**
    * Rotates an email recovery signer to a new address.
    *
    * This is the escape hatch that makes the at-least-one rule liveable: a
@@ -344,6 +404,56 @@ export class RecoveryService {
 
     this.logger.log(`recovery.signer.rotated user=${userId}`);
     return this.summarise(row, rows);
+  }
+
+  /**
+   * Adds the recovery signer's approval to a transaction the caller built.
+   *
+   * The only place `RecoveryVault.open` is ever called, and the reason the
+   * whole email-challenge apparatus exists. The opened key lives for the
+   * length of this call: it signs, and the bytes are wiped rather than
+   * returned, so no caller can hold S3 or use it for anything but the
+   * transaction it passed in.
+   *
+   * The caller is responsible for having proved the inbox first, and for
+   * having built the transaction itself. Neither check belongs here: this
+   * knows how to produce a signature, not when one is deserved.
+   */
+  async approveWithRecoverySigner(
+    userId: string,
+    transaction: VersionedTransaction,
+  ): Promise<VersionedTransaction> {
+    const rows = await this.store.findByUser(userId);
+    const signer = rows.find(
+      (row) => row.status === 'active' && row.sealedKey && row.sealedKeyId,
+    );
+    if (!signer?.sealedKey || !signer.sealedKeyId) {
+      throw new UnknownRecoverySignerError(
+        'this Account has no recovery signer whose key we hold',
+      );
+    }
+
+    const seed = await this.vault.open({
+      ciphertext: signer.sealedKey,
+      keyId: signer.sealedKeyId,
+    });
+    try {
+      const keypair = Keypair.fromSeed(seed);
+      // A mismatch means the row and the sealed key have drifted apart, and
+      // signing anyway would produce a signature the program discards without
+      // saying why.
+      if (keypair.publicKey.toBase58() !== signer.address) {
+        throw new UnknownRecoverySignerError(
+          'the sealed key does not match the stored recovery address',
+        );
+      }
+      transaction.sign([keypair]);
+    } finally {
+      seed.fill(0);
+    }
+
+    this.logger.log(`recovery.signer.approved user=${userId}`);
+    return transaction;
   }
 
   /**

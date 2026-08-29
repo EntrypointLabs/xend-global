@@ -116,7 +116,7 @@ if (process.env.EXPO_PUBLIC_GRID_ENV === "production") {
 
 function AuthLayout() {
   const segments = useSegments();
-  const { isAuthenticated, pendingPasskeySetup } = useAuth();
+  const { isAuthenticated, needsContactEmail, holdAuthStack } = useAuth();
   const { isLocked, isObscured } = useAppLock();
   const colorScheme = useColorScheme();
 
@@ -130,7 +130,21 @@ function AuthLayout() {
     return <Redirect href="/login" withAnchor />;
   }
 
-  if (isAuthenticated && !pendingPasskeySetup && inAuthGroup) {
+  // Before the tabs, and from anywhere. Sign-up finishes at the contact
+  // address: the recovery signer is anchored on it, so a Consumer without one
+  // has no Account at all. Deriving this from what is on file rather than from
+  // a flag raised during sign-up means an interrupted sign-up resumes instead
+  // of leaving somebody on a dashboard nothing has been created for.
+  if (
+    isAuthenticated &&
+    needsContactEmail &&
+    !holdAuthStack &&
+    segments[0] !== "add-email"
+  ) {
+    return <Redirect href="/add-email" withAnchor />;
+  }
+
+  if (isAuthenticated && !holdAuthStack && inAuthGroup) {
     return <Redirect href="/(tabs)" withAnchor />;
   }
 

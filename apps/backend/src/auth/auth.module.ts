@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { RecoveryModule } from '../recovery/recovery.module';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
@@ -10,6 +11,7 @@ import { SolanaModule } from '../solana/solana.module';
 
 @Module({
   imports: [
+    RecoveryModule,
     PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],

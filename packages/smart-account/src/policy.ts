@@ -4,7 +4,7 @@ import type { generated } from "@sqds/smart-account";
 
 import { ROLE_PERMISSIONS } from "./account.js";
 import { derivePolicyAddress } from "./pda.js";
-import type { AccountAddresses } from "./types.js";
+import type { AccountAddresses, SignerRole } from "./types.js";
 
 const { Permissions } = types;
 const PRIMARY_ACCOUNT_INDEX = 0;
@@ -307,7 +307,7 @@ export function buildAddRecoverySigner({
     transactionIndex,
     proposer,
     rentPayer,
-    actions: [addSignerAction(newSigner)],
+    actions: [addSignerAction(newSigner, "recovery")],
   });
 }
 
@@ -348,6 +348,86 @@ export function buildRemoveRecoverySigner({
     rentPayer,
     actions: [removeSignerAction(oldSigner)],
   });
+}
+
+export interface RotateApprovalSignerParams {
+  addresses: AccountAddresses;
+  /** The approval signer being retired, whose sub-organization went with the phone. */
+  oldApproval: PublicKey;
+  /** The new phone's approval signer. */
+  newApproval: PublicKey;
+  /** Stays in the above-limit policy's signer set beside the new approval signer. */
+  primary: PublicKey;
+  /** Identifies the above-limit policy whose signer set names the old approval signer. */
+  aboveLimitSeed: bigint;
+  /** Proposes the change. Must be a signer with `Initiate`, so S1. */
+  proposer: PublicKey;
+  /** Funds the rent. Defaults to `proposer`. */
+  rentPayer?: PublicKey;
+  /** The Settings account's current `transactionIndex`, plus one. */
+  transactionIndex: bigint;
+}
+
+export interface RotateApprovalSignerResult {
+  /** The policy the change rewrites, which {@link buildExecuteSettingsChange} has to carry. */
+  policies: PublicKey[];
+  /** Propose the change. Signed by `proposer` alone. */
+  propose: TransactionInstruction[];
+}
+
+/**
+ * Moves the approval signer to a new phone: out of the Settings signer set,
+ * out of the above-limit policy, and the new key into both.
+ *
+ * The policy half is the part that is easy to miss and expensive to get wrong.
+ * A policy carries its **own inline signer set**, copied at creation and never
+ * consulted against the Settings afterwards, so a rotation that only touches
+ * the Settings leaves the above-limit policy still naming a key whose
+ * sub-organization no longer exists. The Account looks recovered, one-signature
+ * Spends work because that policy names the primary signer, and every Spend
+ * over the limit is unsignable forever. Both halves belong in one change.
+ *
+ * The new key is added before the old one is removed. Either order satisfies
+ * the threshold here, but adding first never dips the vote-holding count, which
+ * keeps it correct for an Account that has since lost a recovery signer.
+ *
+ * The spending-limit policy is deliberately untouched: its signer is the
+ * primary, and the approval signer was never on the one-signature path.
+ */
+export function buildRotateApprovalSigner({
+  addresses,
+  oldApproval,
+  newApproval,
+  primary,
+  aboveLimitSeed,
+  proposer,
+  rentPayer,
+  transactionIndex,
+}: RotateApprovalSignerParams): RotateApprovalSignerResult {
+  if (oldApproval.equals(newApproval)) {
+    throw new Error("the new approval signer must differ from the old one");
+  }
+
+  const policy = derivePolicyAddress(addresses.settings, aboveLimitSeed);
+
+  return {
+    policies: [policy],
+    propose: proposeSettingsChange({
+      addresses,
+      transactionIndex,
+      proposer,
+      rentPayer,
+      actions: [
+        addSignerAction(newApproval, "approval"),
+        removeSignerAction(oldApproval),
+        aboveLimitPolicyUpdateAction({
+          policy,
+          primary,
+          approval: newApproval,
+        }),
+      ],
+    }),
+  };
 }
 
 export interface ProvisionAccountParams {
@@ -505,27 +585,68 @@ function aboveLimitPolicyAction({
   return {
     __kind: "PolicyCreate",
     seed: policySeed,
-    policyCreationPayload: {
-      __kind: "ProgramInteraction",
-      fields: [
-        {
-          accountIndex: PRIMARY_ACCOUNT_INDEX,
-          instructionsConstraints: [],
-          preHook: null,
-          postHook: null,
-          spendingLimits: [],
-        },
-      ],
-    },
-    signers: [
-      { key: primary, permissions: Permissions.all() },
-      { key: approval, permissions: Permissions.all() },
-    ],
+    policyCreationPayload: aboveLimitPayload(),
+    signers: aboveLimitSigners(primary, approval),
     threshold: 2,
     timeLock: 0,
     startTimestamp: null,
     expirationArgs: null,
   };
+}
+
+/**
+ * Rewrites the above-limit policy's signer set in place.
+ *
+ * `PolicyUpdate` replaces the whole policy rather than patching it, so the
+ * payload and threshold have to be restated exactly as created. They are read
+ * from the same two helpers the create path uses, which is what stops a
+ * rotation from quietly narrowing or widening the policy it was only meant to
+ * re-address.
+ */
+function aboveLimitPolicyUpdateAction({
+  policy,
+  primary,
+  approval,
+}: {
+  policy: PublicKey;
+  primary: PublicKey;
+  approval: PublicKey;
+}): generated.SettingsAction {
+  if (primary.equals(approval)) {
+    throw new Error("primary and approval signers must be distinct");
+  }
+
+  return {
+    __kind: "PolicyUpdate",
+    policy,
+    policyUpdatePayload: aboveLimitPayload(),
+    signers: aboveLimitSigners(primary, approval),
+    threshold: 2,
+    timeLock: 0,
+    expirationArgs: null,
+  };
+}
+
+function aboveLimitPayload(): generated.PolicyCreationPayload {
+  return {
+    __kind: "ProgramInteraction",
+    fields: [
+      {
+        accountIndex: PRIMARY_ACCOUNT_INDEX,
+        instructionsConstraints: [],
+        preHook: null,
+        postHook: null,
+        spendingLimits: [],
+      },
+    ],
+  };
+}
+
+function aboveLimitSigners(primary: PublicKey, approval: PublicKey) {
+  return [
+    { key: primary, permissions: Permissions.all() },
+    { key: approval, permissions: Permissions.all() },
+  ];
 }
 
 function setTimeLockAction(seconds: number): generated.SettingsAction {
@@ -537,12 +658,15 @@ function setTimeLockAction(seconds: number): generated.SettingsAction {
  * added later is granted exactly what account creation grants S3 and the two
  * cannot drift apart.
  */
-function addSignerAction(newSigner: PublicKey): generated.SettingsAction {
+function addSignerAction(
+  newSigner: PublicKey,
+  role: SignerRole,
+): generated.SettingsAction {
   return {
     __kind: "AddSigner",
     newSigner: {
       key: newSigner,
-      permissions: { mask: ROLE_PERMISSIONS.recovery },
+      permissions: { mask: ROLE_PERMISSIONS[role] },
     },
   };
 }

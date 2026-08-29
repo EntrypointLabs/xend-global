@@ -32,7 +32,7 @@ function EmailLoginScreen() {
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [showPasskeySetup, setShowPasskeySetup] = useState(false);
   const [showAccountSetup, setShowAccountSetup] = useState(false);
-  const { completeLogin, completePasskeySetup } = useAuth();
+  const { completeLogin, releaseAuthStack } = useAuth();
   const { showToast } = useToast();
   const {
     registerPasskey,
@@ -126,11 +126,11 @@ function EmailLoginScreen() {
     } catch {
       // An unreachable backend is not a reason to block sign-in. Setup is
       // offered again next time.
-      completePasskeySetup();
+      releaseAuthStack();
       return;
     }
 
-    completePasskeySetup();
+    releaseAuthStack();
   };
 
   const handleAddPasskey = async () => {
@@ -152,7 +152,7 @@ function EmailLoginScreen() {
     const ok = await runAccountSetup();
     if (ok) {
       setShowAccountSetup(false);
-      completePasskeySetup();
+      releaseAuthStack();
     }
   };
 
@@ -164,7 +164,7 @@ function EmailLoginScreen() {
   const handleSkipAccountSetup = () => {
     clearSetupError();
     setShowAccountSetup(false);
-    completePasskeySetup();
+    releaseAuthStack();
   };
 
   const handleResend = async () => {

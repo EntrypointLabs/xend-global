@@ -41,6 +41,8 @@ function store(row: SquadsAccountRow | null = ACCOUNT): SquadsAccountStore {
     listAll: () => Promise.resolve(row ? [row] : []),
     findUserEmail: () => Promise.resolve('consumer@example.com'),
     withUserLock: <T>(_userId: string, fn: () => Promise<T>) => fn(),
+    updateByUserId: () =>
+      Promise.reject(new Error('updateByUserId is not exercised here')),
   };
 }
 

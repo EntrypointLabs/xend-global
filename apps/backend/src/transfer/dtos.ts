@@ -121,6 +121,7 @@ export const AccountEventRowSchema = z.object({
     'recovery_key_added',
     'recovery_key_removed',
     'wallet_renamed',
+    'device_rotated',
   ]),
   subject: z.string().nullable(),
   previousSubject: z.string().nullable(),

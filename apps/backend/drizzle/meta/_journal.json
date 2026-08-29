@@ -183,6 +183,34 @@
       "when": 1785772800000,
       "tag": "0024_email_is_contact_not_credential",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1785859200000,
+      "tag": "0025_recovery_challenges",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1785945600000,
+      "tag": "0026_device_rotation",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1786032000000,
+      "tag": "0027_contact_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1786118400000,
+      "tag": "0028_recovery_key_email",
+      "breakpoints": true
     }
   ]
 }

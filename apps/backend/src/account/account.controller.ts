@@ -24,10 +24,16 @@ import { TurnkeyService } from '../turnkey/turnkey.service';
 import { AccountChangeService } from './account-change.service';
 import { UnsafeSubOrganizationError } from '../turnkey/turnkey.errors';
 import {
+  ChallengeAttemptsExhaustedError,
   DuplicateRecoveryChannelError,
+  InvalidRecoveryCodeError,
   LastRecoverySignerError,
+  NoRecoveryChallengeError,
+  NoRotationInFlightError,
   RecoveryChangeInFlightError,
+  RecoveryGrantExpiredError,
   RecoverySignerLimitError,
+  TooManyRecoveryCodesError,
   UnknownRecoverySignerError,
 } from '../recovery/recovery.errors';
 import {
@@ -38,20 +44,34 @@ import { AccountService } from './account.service';
 import { SweepService } from './sweep.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import {
+  AddRecoveryEmailSchema,
   AddRecoveryWalletSchema,
   EnrolAccountSchema,
   SubmitProvisioningStepSchema,
+  NextDeviceRotationSchema,
+  RequestRecoveryEmailCodeSchema,
+  VerifyRecoveryEmailSchema,
+  StartDeviceRotationSchema,
   SubmitRecoveryChangeSchema,
   SubmitRejectionSchema,
+  VerifyRecoveryCodeSchema,
+  type AddRecoveryEmailDto,
   type AddRecoveryWalletDto,
   type EnrolAccountDto,
   type SubmitProvisioningStepDto,
+  type NextDeviceRotationDto,
+  type RequestRecoveryEmailCodeDto,
+  type VerifyRecoveryEmailDto,
+  type StartDeviceRotationDto,
   type SubmitRecoveryChangeDto,
   type SubmitRejectionDto,
+  type VerifyRecoveryCodeDto,
 } from './dtos';
 import { ProvisioningService } from './provisioning.service';
 import { RecoveryService } from '../recovery/recovery.service';
 import { RecoveryChangeService } from './recovery-change.service';
+import { RecoveryChallengeService } from '../recovery/recovery-challenge.service';
+import { DeviceRotationService } from './device-rotation.service';
 import { SpendingLimitService } from './spending-limit.service';
 
 interface AuthenticatedRequest extends Request {
@@ -73,6 +93,8 @@ export class AccountController {
     private readonly changes: AccountChangeService,
     private readonly recovery: RecoveryService,
     private readonly recoveryChanges: RecoveryChangeService,
+    private readonly challenges: RecoveryChallengeService,
+    private readonly rotations: DeviceRotationService,
   ) {}
 
   /**
@@ -229,6 +251,104 @@ export class AccountController {
     }
   }
 
+  /**
+   * Sends a code to an address being offered as a recovery key.
+   *
+   * Refused before anything is mailed when the address is already a recovery
+   * channel on this Account, so a duplicate never costs the Consumer a mail
+   * they have to go and read.
+   */
+  @Post('recovery/email/challenge')
+  async requestRecoveryEmailCode(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(RequestRecoveryEmailCodeSchema))
+    body: RequestRecoveryEmailCodeDto,
+  ) {
+    try {
+      await this.recovery.assertEmailUnused(req.user.userId, body.email);
+      const { expiresAt } = await this.challenges.issue(
+        req.user.userId,
+        body.email,
+        'recovery_key_email',
+      );
+      return { sent: true, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'recovery_email_code', err);
+    }
+  }
+
+  /** Checks the code, ahead of the review step that adds the key. */
+  @Post('recovery/email/verify')
+  async verifyRecoveryEmail(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(VerifyRecoveryEmailSchema))
+    body: VerifyRecoveryEmailDto,
+  ) {
+    try {
+      const { grantId, expiresAt } = await this.challenges.verify(
+        req.user.userId,
+        'recovery_key_email',
+        body.code,
+      );
+      const grant = await this.challenges.assertGrant(
+        req.user.userId,
+        grantId,
+        'recovery_key_email',
+      );
+      if (grant.target !== body.email) {
+        throw new RecoveryGrantExpiredError(
+          'that code was sent to a different address',
+        );
+      }
+      return { grantId, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'verify_recovery_email', err);
+    }
+  }
+
+  /**
+   * Stages a proved email as a recovery key and starts the settings change
+   * carrying it.
+   *
+   * Same shape as the wallet route, plus the grant. The key is not real until
+   * that change executes, which waits out the time lock like every other.
+   */
+  @Post('recovery/email')
+  async addRecoveryEmail(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(AddRecoveryEmailSchema))
+    body: AddRecoveryEmailDto,
+  ) {
+    try {
+      const grant = await this.challenges.assertGrant(
+        req.user.userId,
+        body.grantId,
+        'recovery_key_email',
+      );
+      if (grant.target !== body.email) {
+        throw new RecoveryGrantExpiredError(
+          'that code proved a different address',
+        );
+      }
+
+      const result = await this.recovery.withChangeLock(
+        req.user.userId,
+        async () => {
+          const key = await this.recovery.addEmail(req.user.userId, body.email);
+          const plan = await this.recoveryChanges.start(
+            req.user.userId,
+            key.id,
+          );
+          return { key, plan };
+        },
+      );
+      await this.challenges.consume(body.grantId);
+      return result;
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'add_recovery_email', err);
+    }
+  }
+
   @Post('recovery/:id/remove')
   async removeRecoveryKey(
     @Req() req: AuthenticatedRequest,
@@ -293,6 +413,119 @@ export class AccountController {
    * recovery exists to cover the loss of an Active Key, and a key that is both
    * covers nothing.
    */
+  /**
+   * Mails a code to the address already on the Account.
+   *
+   * The response says nothing about the inbox. A caller holding a stolen
+   * passkey learns only that a code went somewhere, which is what the real
+   * owner needs them to learn.
+   */
+  @Post('recovery/device/challenge')
+  async requestDeviceRotationCode(@Req() req: AuthenticatedRequest) {
+    try {
+      const email = await this.accounts.contactEmail(req.user.userId);
+      if (!email) {
+        throw new IncompleteSignerSetError(
+          'this Account has no email on file to send a code to',
+        );
+      }
+      const { expiresAt } = await this.challenges.issue(
+        req.user.userId,
+        email,
+        'device_rotation',
+      );
+      return { sent: true, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'device_challenge', err);
+    }
+  }
+
+  @Post('recovery/device/verify')
+  async verifyDeviceRotationCode(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(VerifyRecoveryCodeSchema))
+    body: VerifyRecoveryCodeDto,
+  ) {
+    try {
+      const { grantId, expiresAt } = await this.challenges.verify(
+        req.user.userId,
+        'device_rotation',
+        body.code,
+      );
+      return { grantId, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'device_verify', err);
+    }
+  }
+
+  /**
+   * Enrols this phone's hardware key and stages the swap that puts it in the
+   * signer set. See {@link DeviceRotationService}.
+   */
+  @Post('recovery/device/start')
+  async startDeviceRotation(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(StartDeviceRotationSchema))
+    body: StartDeviceRotationDto,
+  ) {
+    try {
+      // The key comes out of the attestation, never off the body. Same rule as
+      // enrolment, and it matters more here: this one joins the signer set of
+      // an Account that already exists.
+      const verified =
+        'attestation' in body
+          ? await this.attestation.verify(req.user.userId, {
+              platform: body.platform,
+              attestation: body.attestation,
+              nonce: body.nonce,
+              hardwarePublicKey: body.hardwarePublicKey,
+            })
+          : await this.resumeEnrolment(req.user.userId, body.hardwarePublicKey);
+
+      return await this.rotations.start(req.user.userId, body.grantId, {
+        hardwarePublicKey: verified.hardwarePublicKey,
+        security: verified.security ?? undefined,
+      });
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'device_start', err);
+    }
+  }
+
+  /**
+   * The next step, and the reconciler that commits the swap once the chain
+   * has executed it. Called until it says done.
+   */
+  @Post('recovery/device/next')
+  async nextDeviceRotationStep(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(NextDeviceRotationSchema))
+    body: NextDeviceRotationDto,
+  ) {
+    try {
+      return await this.rotations.next(req.user.userId, body.grantId);
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'device_next', err);
+    }
+  }
+
+  @Post('recovery/device/submit')
+  async submitDeviceRotationStep(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(SubmitRecoveryChangeSchema))
+    body: SubmitRecoveryChangeDto,
+  ) {
+    try {
+      return {
+        signature: await this.rotations.submit(
+          req.user.userId,
+          body.signedTxBase64,
+        ),
+      };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'device_submit', err);
+    }
+  }
+
   /**
    * Logs why a recovery key operation failed, then maps it.
    *
@@ -399,6 +632,13 @@ export class AccountController {
       // sub-organization it is talking to. Not a secret: holding it proves
       // nothing without the hardware key that signs for it.
       approvalSubOrgId: account.approvalSubOrgId,
+      // Set while a device rotation is waiting out the time lock, so the app
+      // knows to land it rather than asking the Consumer to start again.
+      pendingApprovalSigner: account.pendingApprovalSigner ?? null,
+      // Lets the app tell whether the key on this phone is the Account's, not
+      // merely that some key exists. A phone holding another account's key can
+      // approve nothing here.
+      deviceKey: await this.turnkey.enrolledDeviceKey(account.approvalSubOrgId),
       // Carried on the Account rather than given its own endpoint: everything
       // that wants the limit already holds the Account, and a second call
       // would let the two disagree about which Account they describe.
@@ -436,6 +676,33 @@ function toHttp(err: unknown): HttpException {
     return new HttpException(
       { code: err.code, message: err.message },
       HttpStatus.NOT_FOUND,
+    );
+  }
+  // A wrong or spent code is the Consumer's to act on, and each answer means
+  // something different: try again, wait, or start over.
+  if (
+    err instanceof InvalidRecoveryCodeError ||
+    err instanceof NoRecoveryChallengeError
+  ) {
+    return new HttpException(
+      { code: err.code, message: err.message },
+      HttpStatus.UNAUTHORIZED,
+    );
+  }
+  if (err instanceof TooManyRecoveryCodesError) {
+    return new HttpException(
+      { code: err.code, message: err.message },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+  if (
+    err instanceof ChallengeAttemptsExhaustedError ||
+    err instanceof RecoveryGrantExpiredError ||
+    err instanceof NoRotationInFlightError
+  ) {
+    return new HttpException(
+      { code: err.code, message: err.message },
+      HttpStatus.CONFLICT,
     );
   }
   if (

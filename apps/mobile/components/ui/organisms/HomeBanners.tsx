@@ -11,8 +11,11 @@ import { Ionicons } from "@expo/vector-icons";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
+import { useAccount } from "@/hooks/useAccount";
 import { useCountdown } from "@/hooks/useCountdown";
+import { useDeviceNeedsRestore } from "@/hooks/useDeviceNeedsRestore";
 import { usePendingAccountChange } from "@/hooks/usePendingAccountChange";
+import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { usePendingChangeAcknowledgement } from "@/hooks/usePendingChangeAcknowledgement";
 import { cn } from "@/utils/cn";
 
@@ -41,20 +44,45 @@ interface Banner {
  * either.
  */
 export function HomeBanners() {
+  const { data: account } = useAccount();
   const { data: change } = usePendingAccountChange();
-  const { reopen } = usePendingChangeAcknowledgement();
+  const { data: restore } = useDeviceNeedsRestore();
+  const { reopen, requestReview } = usePendingChangeAcknowledgement();
+  const { startedHere } = useInitiatedChanges();
   const [page, setPage] = useState(0);
   const width = useRef(Dimensions.get("window").width - SCREEN_PADDING * 2);
   const remaining = useCountdown(change?.executableAt ?? null);
 
   const banners: Banner[] = [];
 
-  if (change) {
+  // Whose change it is, decided by this device. A phone that did not start it
+  // is either the Consumer's other phone or somebody else's, and both want the
+  // wording that treats it as something to refuse.
+  const mine = change ? startedHere(change.transactionIndex) : false;
+  // A rotation is a pending change like any other, so it gets one banner
+  // rather than two: the wording is the only thing that differs.
+  const restoring = !!account?.pendingApprovalSigner;
+
+  if (change && restoring) {
+    banners.push({
+      key: "pending-change",
+      icon: "phone-portrait-outline",
+      tint: "#0A0A0A",
+      title: mine ? "Restoring this phone" : "A phone is being added",
+      description: remaining
+        ? `Takes over in ${remaining}. Tap to review.`
+        : "Waiting on approval. Tap to review.",
+      // Review means the same thing either way here: the screen that shows the
+      // wait running down and still offers to call it off. Asked for, so it
+      // opens even on the phone that started the change.
+      onPress: requestReview,
+    });
+  } else if (change) {
     banners.push({
       key: "pending-change",
       icon: "time-outline",
       tint: "#0A0A0A",
-      title: change.selfInitiated
+      title: mine
         ? "Your key change is on its way"
         : "A change to your account is pending",
       description: remaining
@@ -65,9 +93,21 @@ export function HomeBanners() {
       // lives. Somebody else's is a thing to refuse, and the only screen that
       // offers that is the notice they dismissed to get here, so tapping puts
       // it back rather than sending them to a list that says nothing about it.
-      onPress: change.selfInitiated
+      onPress: mine
         ? () => router.push("/settings/keys-and-recovery" as never)
         : reopen,
+    });
+  } else if (restore?.needsRestore) {
+    // First, and ahead of everything else here: until this is done the Account
+    // can be looked at and not spent from, and nothing else on the screen
+    // explains why.
+    banners.push({
+      key: "device-restore",
+      icon: "phone-portrait-outline",
+      tint: "#0A0A0A",
+      title: "This phone cannot approve",
+      description: "Your Device Key is on another phone. Tap to restore it.",
+      onPress: () => router.push("/settings/restore-device" as never),
     });
   }
 

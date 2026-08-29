@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useCallback,
+  useState,
+} from "react";
 import { router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Sentry from "@sentry/react-native";
@@ -37,14 +43,54 @@ function emailArgFor(privyUser: unknown): string | null {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
+  const [email, setEmailState] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [wallet, setWallet] = useState<string | null>(null);
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
   const [user, setUser] = useState<any | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [needsTokenRefresh, setNeedsTokenRefresh] = useState(false);
-  const [pendingPasskeySetup, setPendingPasskeySetup] = useState(false);
+  /**
+   * Keeps a screen in the auth stack mounted after Privy has already signed
+   * the Consumer in.
+   *
+   * Email login runs its passkey and Account setup modals after the session
+   * exists, and the shell would otherwise redirect to the tabs and unmount
+   * them mid-flow. Distinct from the contact-address ask below: this is one
+   * screen asking to finish what it started, not a fact about the Account.
+   */
+  const [holdAuthStack, setHoldAuthStack] = useState(false);
+
+  /**
+   * Kept in storage as well as in state.
+   *
+   * The address is what the shell reads to decide whether sign-up is finished,
+   * and it is written here rather than at sign-in, because a Consumer who
+   * signs up with a passkey has no address at that point. Held only in state,
+   * it came back empty on the next launch and sent a finished Consumer back to
+   * the email screen.
+   */
+  /**
+   * Records an address the backend has confirmed, in state and in storage.
+   *
+   * Confirmed is the operative word. This also clears the ask that keeps a
+   * Consumer on the contact step, so writing an address here that the backend
+   * has not accepted would let somebody past it with no address on file, no
+   * Account and no recovery signer. Screens that are still collecting an
+   * address keep it in their own state until it comes back saved.
+   */
+  const setEmail = useCallback((value: string | null) => {
+    setEmailState(value);
+    setUser((current: { email?: string | null } | null) =>
+      current && current.email !== value
+        ? { ...current, email: value }
+        : current
+    );
+    if (!value) return;
+    void AuthStorage.saveEmail(value).catch((err) =>
+      console.warn("[auth] could not persist the contact address", err)
+    );
+  }, []);
 
   const queryClient = useQueryClient();
 
@@ -102,7 +148,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     initializeAuth();
-  }, []);
+    // `setEmail` is stable, so this still runs once: it is listed because the
+    // wrapper is a callback rather than a state setter the linter knows about.
+  }, [setEmail]);
 
   // Silent re-auth: when a restored session has no valid backend JWT, wait for
   // Privy to be ready and exchange its identity token for a fresh JWT. If Privy
@@ -337,6 +385,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     await AuthStorage.saveIsAuthenticated(true);
 
+    setHoldAuthStack(true);
     setUser(userData);
     setEmail(emailArg);
     setWallet(
@@ -344,7 +393,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
     // Gate the redirect out of the auth stack until the passkey step resolves,
     // so the setup modal isn't unmounted by the tabs redirect.
-    setPendingPasskeySetup(true);
     setIsAuthenticated(true);
     setAuthError(null);
   };
@@ -389,17 +437,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const completePasskeySetup = () => setPendingPasskeySetup(false);
-
   /**
-   * Holds the Consumer on the sign-up screen once they are authenticated.
+   * Stops the shell asking for a contact address again until the next launch.
    *
-   * Creating an account with a passkey signs them in about a second before
-   * sign-up is actually over, and the root layout redirects out of the auth
-   * stack the moment that happens. Account provisioning still has to run, and
-   * it cannot run on a screen that has just been unmounted.
+   * Sign-up used to be held open by a flag set just before the passkey was
+   * created, which meant a Consumer who was signed in a beat earlier than the
+   * flag took effect sailed past the ask and landed on the dashboard with no
+   * email, no Account and no recovery signer. The ask is derived from whether
+   * an address is actually on file now, so the only thing that has to be
+   * remembered is that they said no.
    */
-  const beginPasskeySignup = () => setPendingPasskeySetup(true);
+  const releaseAuthStack = () => setHoldAuthStack(false);
 
   // Derive the wallet address surfaced to consumers from the union of
   // Privy's embedded wallet and the local React state (set on completeLogin
@@ -428,9 +476,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         wallet: effectiveWallet,
         isLoading,
         isLoggingOut,
-        pendingPasskeySetup,
-        completePasskeySetup,
-        beginPasskeySignup,
+        // Read off the user the backend returned, not the local address: the
+        // legacy OTP screens put whatever was typed into that value before
+        // anything has confirmed it.
+        needsContactEmail: isAuthenticated === true && !user?.email,
+        holdAuthStack,
+        releaseAuthStack,
       }}
     >
       {children}

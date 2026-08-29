@@ -43,6 +43,11 @@ import * as Joi from 'joi';
         // reason as the Turnkey keys: recovery fails at the call, not at boot.
         RECOVERY_VAULT_KEY: Joi.string().optional().allow(''),
 
+        // Mail. Only recovery codes go out over this, and a deployment with no
+        // key logs them instead, which MailModule refuses in production.
+        RESEND_API_KEY: Joi.string().optional().allow(''),
+        MAIL_FROM: Joi.string().default('Xend <security@xend.global>'),
+
         // App Attest audience: "TEAMID.bundleid". Attestation fails closed
         // without it, so an unset value blocks iOS enrolment rather than
         // waving it through.

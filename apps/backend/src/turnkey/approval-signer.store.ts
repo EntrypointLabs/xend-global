@@ -20,11 +20,33 @@ export interface ApprovalSignerStore {
     hardwarePublicKey: string,
   ): Promise<ApprovalSignerRow | null>;
   insert(row: NewApprovalSigner): Promise<ApprovalSignerRow>;
+  /**
+   * The hardware key backing a given sub-organization.
+   *
+   * Read by the app to answer "is the key on this phone the one this Account
+   * enrolled": a device whose key is absent, or whose key belongs to another
+   * account on the same phone, cannot approve anything and needs the Device
+   * Key moved onto it.
+   */
+  findBySubOrganization(
+    subOrganizationId: string,
+  ): Promise<ApprovalSignerRow | null>;
 }
 
 @Injectable()
 export class DrizzleApprovalSignerStore implements ApprovalSignerStore {
   constructor(private readonly db: DbService) {}
+
+  async findBySubOrganization(
+    subOrganizationId: string,
+  ): Promise<ApprovalSignerRow | null> {
+    const [row] = await this.db.client
+      .select()
+      .from(approvalSigners)
+      .where(eq(approvalSigners.subOrganizationId, subOrganizationId))
+      .limit(1);
+    return row ?? null;
+  }
 
   async findByUserAndDevice(
     userId: string,

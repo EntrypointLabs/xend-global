@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { AccountEventsModule } from '../activity/account-events.module';
 import { AttestationModule } from '../attestation/attestation.module';
 import { DbModule } from '../db/db.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -9,6 +10,7 @@ import { SolanaModule } from '../solana/solana.module';
 import { TurnkeyModule } from '../turnkey/turnkey.module';
 import { AccountController } from './account.controller';
 import { AccountChangeService } from './account-change.service';
+import { DeviceRotationService } from './device-rotation.service';
 import { AccountChangeWatcher } from './account-change.watcher';
 import { Web3AccountChain } from './account-chain.web3';
 import { Web3ProvisioningChain } from './provisioning-chain.web3';
@@ -36,6 +38,7 @@ import { DrizzleSquadsAccountStore } from './squads-account.store';
     SolanaModule,
     RecoveryModule,
     NotificationsModule,
+    AccountEventsModule,
   ],
   controllers: [AccountController],
   providers: [
@@ -47,6 +50,7 @@ import { DrizzleSquadsAccountStore } from './squads-account.store';
     AccountChangeService,
     AccountChangeWatcher,
     RecoveryChangeService,
+    DeviceRotationService,
     { provide: ACCOUNT_CHAIN, useClass: Web3AccountChain },
     { provide: SPEND_CHAIN, useClass: Web3SpendChain },
     { provide: PROVISIONING_CHAIN, useClass: Web3ProvisioningChain },
@@ -60,6 +64,7 @@ import { DrizzleSquadsAccountStore } from './squads-account.store';
     ProvisioningService,
     AccountChangeService,
     RecoveryChangeService,
+    DeviceRotationService,
   ],
 })
 export class AccountModule {}

@@ -9,9 +9,9 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 /**
  * Picks which kind of recovery key to add.
  *
- * Email is shown and refused rather than hidden. It is the channel most
- * Consumers will look for, and an option that quietly does not exist reads as a
- * broken screen; saying why it is unavailable is the honest version.
+ * Both channels are real now. Email is the one most Consumers look for, and it
+ * is proved with a code before it is staged, so a recovery key is never an
+ * address nobody answers at.
  */
 export default function AddRecoveryKeyScreen() {
   return (
@@ -48,7 +48,7 @@ export default function AddRecoveryKeyScreen() {
           <Option
             icon="mail-outline"
             label="Email"
-            reason="Not yet available"
+            onPress={() => router.push("/settings/add-recovery-email" as never)}
           />
         </View>
       </View>
