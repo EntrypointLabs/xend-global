@@ -26,20 +26,22 @@ import { usePendingChangeAcknowledgement } from "@/hooks/usePendingChangeAcknowl
 export function PendingChangeNotice() {
   const { data: change } = usePendingAccountChange();
   const reject = useRejectAccountChange();
-  const { acknowledged, isPending, acknowledge } =
+  const { acknowledged, isPending, acknowledge, reviewRequested, clearReview } =
     usePendingChangeAcknowledgement();
   const { startedHere, isPending: readingInitiated } = useInitiatedChanges();
 
   // Nothing is shown until the stored answer is known: flashing the alarm at
   // someone who already answered it is the failure this exists to avoid.
   if (isPending || readingInitiated || !change) return null;
-  // Started on this phone, so the home screen carries it rather than a modal.
-  if (startedHere(change.transactionIndex)) return null;
+  // Started on this phone, so the home screen carries it rather than a modal,
+  // unless they tapped through from that banner and asked to see it.
+  if (startedHere(change.transactionIndex) && !reviewRequested) return null;
   if (acknowledged === change.transactionIndex) return null;
 
   return (
     <PendingChangeModal
       visible
+      startedHere={startedHere(change.transactionIndex)}
       executableAt={change.executableAt}
       rejecting={reject.isPending}
       error={
@@ -48,7 +50,10 @@ export function PendingChangeNotice() {
           : null
       }
       onReject={() => reject.mutate()}
-      onDismiss={() => acknowledge(change.transactionIndex)}
+      onDismiss={() => {
+        clearReview();
+        acknowledge(change.transactionIndex);
+      }}
     />
   );
 }

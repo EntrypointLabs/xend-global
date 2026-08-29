@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 const ACKNOWLEDGED_KEY = ["pending-change", "acknowledged"] as const;
+const REVIEW_KEY = ["pending-change", "review-requested"] as const;
 const ACKNOWLEDGED_STORE = "pending-change:acknowledged";
 
 /**
@@ -31,6 +32,14 @@ export function usePendingChangeAcknowledgement() {
     onSuccess: (index) => queryClient.setQueryData(ACKNOWLEDGED_KEY, index),
   });
 
+  const { data: reviewRequested } = useQuery({
+    queryKey: REVIEW_KEY,
+    queryFn: () => false,
+    initialData: false,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
   return {
     acknowledged,
     /** Still resolving the stored answer. Nothing should be shown yet. */
@@ -38,5 +47,20 @@ export function usePendingChangeAcknowledgement() {
     acknowledge: (index: string) => write.mutate(index),
     /** Puts the alarm back, so "review" has something to open. */
     reopen: () => write.mutate(null),
+    /**
+     * Whether the Consumer asked to see the change, rather than being shown it.
+     *
+     * The suppression that keeps a phone quiet about its own change is about
+     * what arrives unasked. Someone tapping "review" has asked, and the screen
+     * that offers to call the change off is the only one worth opening, so the
+     * request outranks the suppression. Session-only: it is an intent, not a
+     * setting.
+     */
+    reviewRequested,
+    requestReview: () => {
+      write.mutate(null);
+      queryClient.setQueryData(REVIEW_KEY, true);
+    },
+    clearReview: () => queryClient.setQueryData(REVIEW_KEY, false),
   };
 }
