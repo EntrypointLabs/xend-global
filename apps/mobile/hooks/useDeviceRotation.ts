@@ -9,6 +9,7 @@ import { VersionedTransaction } from "@solana/web3.js";
 import { toByteArray, fromByteArray } from "base64-js";
 
 import { ACCOUNT_QUERY_KEY, useAccount } from "@/hooks/useAccount";
+import { DEVICE_RESTORE_KEY } from "@/hooks/useDeviceNeedsRestore";
 import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { PENDING_CHANGE_KEY } from "@/hooks/usePendingAccountChange";
 import { devicePlatform, hardwareKey } from "@/modules/hardware-key/src";
@@ -88,6 +89,10 @@ export async function runDeviceRotation(
 function invalidateAfterRotation(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: ACCOUNT_QUERY_KEY });
   queryClient.invalidateQueries({ queryKey: PENDING_CHANGE_KEY });
+  // Whether this phone can approve is exactly what a rotation changes, and the
+  // answer is cached for five minutes under a key the swap does not move. Left
+  // alone, the phone that just took over goes on offering to restore itself.
+  queryClient.invalidateQueries({ queryKey: DEVICE_RESTORE_KEY });
 }
 
 /**

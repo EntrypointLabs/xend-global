@@ -116,6 +116,21 @@ export class DeviceRotationService {
     device: { hardwarePublicKey: string; security?: string },
   ): Promise<DeviceRotationPlan> {
     await this.challenges.assertGrant(userId, grantId, 'device_rotation');
+    // Serialised for the same reason enrolment is. Reading the next settings
+    // index and staging against it are two statements, and two starts that
+    // cross in between both claim the index and the second overwrites the
+    // first's key: the change that lands installs one key while the row
+    // records the other, and the database disagrees with the signer set.
+    return this.store.withUserLock(userId, () =>
+      this.stage(userId, grantId, device),
+    );
+  }
+
+  private async stage(
+    userId: string,
+    grantId: string,
+    device: { hardwarePublicKey: string; security?: string },
+  ): Promise<DeviceRotationPlan> {
     const account = await this.requireAccount(userId);
 
     const enrolled = await this.turnkey.ensureApprovalSigner({

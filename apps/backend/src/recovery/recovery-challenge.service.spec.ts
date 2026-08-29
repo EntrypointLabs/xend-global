@@ -66,6 +66,12 @@ function makeStore() {
           .length,
       );
     },
+    claimAttempt(id, maxAttempts) {
+      const row = rows.find((candidate) => candidate.id === id);
+      if (!row || row.attempts >= maxAttempts) return Promise.resolve(null);
+      row.attempts += 1;
+      return Promise.resolve(row);
+    },
     updateById(id, patch) {
       const row = rows.find((candidate) => candidate.id === id);
       if (!row) throw new Error(`no challenge ${id}`);
@@ -159,6 +165,25 @@ describe('RecoveryChallengeService', () => {
 
     // Even the right code is refused now. Exhausting the attempts burns the
     // challenge rather than the guess, so the answer is a new code.
+    await expect(service.verify(USER, PURPOSE, code)).rejects.toBeInstanceOf(
+      ChallengeAttemptsExhaustedError,
+    );
+  });
+
+  it('spends one attempt per guess, even when they arrive together', async () => {
+    const { service, sent } = setUp();
+    await service.issue(USER, EMAIL, PURPOSE);
+    const code = codeFrom(sent);
+    const wrong = code === '000000' ? '111111' : '000000';
+
+    // Five at once, not five in a row. Read-then-write lets a batch share a
+    // single attempt, which turns a five-guess cap on a six-digit code into no
+    // cap at all for anyone willing to open five connections.
+    const outcomes = await Promise.allSettled(
+      Array.from({ length: 5 }, () => service.verify(USER, PURPOSE, wrong)),
+    );
+    expect(outcomes.every((o) => o.status === 'rejected')).toBe(true);
+
     await expect(service.verify(USER, PURPOSE, code)).rejects.toBeInstanceOf(
       ChallengeAttemptsExhaustedError,
     );

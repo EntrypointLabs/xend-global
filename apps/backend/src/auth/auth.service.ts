@@ -278,6 +278,24 @@ export class AuthService {
    * against another.
    */
   async setEmail(userId: string, email: string): Promise<{ email: string }> {
+    return this.db.withAdvisoryLock(`auth:email:${userId}`, () =>
+      this.writeEmail(userId, email),
+    );
+  }
+
+  /**
+   * The address and the anchor move together, or neither does.
+   *
+   * S3 is released against whatever address is on file, so a user row that has
+   * moved on while the signer still records the old inbox is a permanent
+   * mismatch: the retry reads the new address as the previous one and does
+   * nothing. The anchor moves first because a refusal there leaves both
+   * records untouched, and the row write is undone if it fails after it.
+   */
+  private async writeEmail(
+    userId: string,
+    email: string,
+  ): Promise<{ email: string }> {
     await this.assertEmailClaimable(userId, email);
 
     const [current] = await this.db.client
@@ -290,6 +308,8 @@ export class AuthService {
     // back a copy or a live reference.
     const previousEmail = current?.email ?? null;
 
+    await this.recovery.reanchorEmailSigner(userId, previousEmail, email);
+
     try {
       await this.db.client
         .update(users)
@@ -300,13 +320,21 @@ export class AuthService {
       // unique index is what actually settles it, and the one it turns away
       // has to hear the same refusal as the one who read the clash, not a
       // 500 that reads like an outage.
+      // The anchor already moved, so put it back rather than leave the two
+      // records describing different inboxes.
+      await this.recovery
+        .reanchorEmailSigner(userId, email, previousEmail ?? email)
+        .catch((undoError) =>
+          this.logger.error(
+            `auth.email_rollback_failed userId=${userId}`,
+            undoError,
+          ),
+        );
       if (pgErrorCode(err) === '23505') {
         throw new EmailInUseError('that email is already on another account');
       }
       throw err;
     }
-
-    await this.recovery.reanchorEmailSigner(userId, previousEmail, email);
 
     this.logger.log(`auth.email_set userId=${userId}`);
     return { email };

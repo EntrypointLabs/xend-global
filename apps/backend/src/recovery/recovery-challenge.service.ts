@@ -144,14 +144,15 @@ export class RecoveryChallengeService {
     if (!row) {
       throw new NoRecoveryChallengeError('no code is outstanding');
     }
-    if (row.attempts >= MAX_ATTEMPTS) {
+    // Claimed rather than counted: guesses that arrive together must not share
+    // one attempt between them.
+    const claimed = await this.store.claimAttempt(row.id, MAX_ATTEMPTS);
+    if (!claimed) {
       throw new ChallengeAttemptsExhaustedError(
         'that code has been guessed too many times',
       );
     }
-
-    const attempts = row.attempts + 1;
-    await this.store.updateById(row.id, { attempts });
+    const attempts = claimed.attempts;
 
     const candidate = await scryptAsync(code, row.salt, HASH_BYTES);
     const expected = Buffer.from(row.codeHash, 'base64');

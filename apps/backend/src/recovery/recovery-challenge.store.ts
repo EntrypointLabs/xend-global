@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, gt, isNull } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { recoveryChallenges } from '../db/schema';
 
@@ -31,6 +31,19 @@ export interface RecoveryChallengeStore {
     id: string,
     patch: Partial<NewRecoveryChallenge>,
   ): Promise<RecoveryChallengeRow>;
+  /**
+   * Takes one of the allowed guesses, or returns null when they are gone.
+   *
+   * A read-then-write cannot do this. Requests that arrive together all read
+   * the same count and all write the same next value, so a batch of guesses
+   * costs one attempt instead of one each, and the cap that makes six digits
+   * safe stops being a cap. The increment and the bound are one statement here
+   * so exactly one caller can win each attempt.
+   */
+  claimAttempt(
+    id: string,
+    maxAttempts: number,
+  ): Promise<RecoveryChallengeRow | null>;
   /**
    * Expires every open challenge for this purpose.
    *
@@ -97,6 +110,23 @@ export class DrizzleRecoveryChallengeStore implements RecoveryChallengeStore {
         ),
       );
     return rows.length;
+  }
+
+  async claimAttempt(
+    id: string,
+    maxAttempts: number,
+  ): Promise<RecoveryChallengeRow | null> {
+    const [row] = await this.db.client
+      .update(recoveryChallenges)
+      .set({ attempts: sql`${recoveryChallenges.attempts} + 1` })
+      .where(
+        and(
+          eq(recoveryChallenges.id, id),
+          lt(recoveryChallenges.attempts, maxAttempts),
+        ),
+      )
+      .returning();
+    return row ?? null;
   }
 
   async updateById(

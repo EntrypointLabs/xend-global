@@ -20,9 +20,13 @@ import { ResendMailer } from './resend.mailer';
         const apiKey = config.get<string>('RESEND_API_KEY');
         if (apiKey) return new ResendMailer(config);
 
-        if (config.get<string>('NODE_ENV') === 'production') {
+        // Explicitly development, not merely "not production". NODE_ENV is
+        // defaulted rather than required, so a deployment that forgets to set
+        // it would otherwise boot writing recovery codes to its own logs,
+        // which turns the inbox factor into whoever can read them.
+        if (config.get<string>('NODE_ENV') !== 'development') {
           throw new Error(
-            'RESEND_API_KEY is unset: production cannot fall back to the console mailer',
+            'RESEND_API_KEY is unset and NODE_ENV is not development: refusing to log recovery codes',
           );
         }
         new Logger('MailModule').warn(

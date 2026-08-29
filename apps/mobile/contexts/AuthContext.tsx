@@ -70,8 +70,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * it came back empty on the next launch and sent a finished Consumer back to
    * the email screen.
    */
+  /**
+   * Records an address the backend has confirmed, in state and in storage.
+   *
+   * Confirmed is the operative word. This also clears the ask that keeps a
+   * Consumer on the contact step, so writing an address here that the backend
+   * has not accepted would let somebody past it with no address on file, no
+   * Account and no recovery signer. Screens that are still collecting an
+   * address keep it in their own state until it comes back saved.
+   */
   const setEmail = useCallback((value: string | null) => {
     setEmailState(value);
+    setUser((current: { email?: string | null } | null) =>
+      current && current.email !== value
+        ? { ...current, email: value }
+        : current
+    );
     if (!value) return;
     void AuthStorage.saveEmail(value).catch((err) =>
       console.warn("[auth] could not persist the contact address", err)
@@ -462,7 +476,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         wallet: effectiveWallet,
         isLoading,
         isLoggingOut,
-        needsContactEmail: isAuthenticated === true && !email,
+        // Read off the user the backend returned, not the local address: the
+        // legacy OTP screens put whatever was typed into that value before
+        // anything has confirmed it.
+        needsContactEmail: isAuthenticated === true && !user?.email,
         holdAuthStack,
         releaseAuthStack,
       }}

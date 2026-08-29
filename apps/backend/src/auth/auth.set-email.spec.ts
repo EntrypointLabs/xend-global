@@ -29,6 +29,8 @@ function makeFakeDb(rows: UsersRow[], updateError?: Error): DbService {
     if (tbl !== users) throw new Error('unexpected table in fake db');
   };
 
+  const withAdvisoryLock = <T>(_key: string, fn: () => Promise<T>) => fn();
+
   const client = {
     select: () => ({
       from: (tbl: unknown) => {
@@ -67,7 +69,7 @@ function makeFakeDb(rows: UsersRow[], updateError?: Error): DbService {
     },
   };
 
-  return { client } as unknown as DbService;
+  return { client, withAdvisoryLock } as unknown as DbService;
 }
 
 function makeUser(id: string, email: string | null): UsersRow {
