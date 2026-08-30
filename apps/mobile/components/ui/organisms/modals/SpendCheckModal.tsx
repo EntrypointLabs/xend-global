@@ -6,68 +6,87 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
-import { formatAmount } from "@/utils/helper";
 import { cn } from "@/utils/cn";
 
 /**
- * Where the send has got to. Each one is a place the code actually reaches, so
+ * Where the Spend has got to. Each one is a place the code actually reaches, so
  * the Consumer is never shown progress that has not happened.
+ *
+ * There is no step for the primary signature. It is produced from a session
+ * rather than from anything the Consumer does, so a row for it sat on screen
+ * describing a check nobody was being asked for.
  */
-export type AboveLimitSendStep =
-  | "reason"
-  | "identity"
-  | "approval"
-  | "sending"
-  | "sent";
+export type SpendCheckStep = "reason" | "identity" | "sending" | "sent";
 
 /**
  * `paused` is the Consumer dismissing a prompt: a decision, not a fault, so it
  * holds position on the step instead of failing the send.
  */
-export type AboveLimitSendState = "working" | "paused" | "failed" | "done";
+export type SpendCheckState = "working" | "paused" | "failed" | "done";
 
-interface AboveLimitSendModalProps {
+interface SpendCheckModalProps {
   visible: boolean;
-  step: AboveLimitSendStep;
-  state: AboveLimitSendState;
-  /** Decimal string, as typed on the amount screen. */
+  step: SpendCheckStep;
+  state: SpendCheckState;
+  /** What is happening, in the Consumer's words: "Sending", "Paying". */
+  heading: string;
+  /** Already formatted for display, including its currency or token. */
   amount: string;
-  recipient: string | undefined;
+  /** Who is being paid, already shortened or named by the caller. */
+  counterparty: string;
   /** Shown in place of the step's own line when it is paused or failed. */
   message: string | null;
-  /** False for an Account with no limit yet, where every send is checked twice. */
+  /**
+   * Whether the Account is approving this one as well as the Consumer. Adds the
+   * row that says why; the check the Consumer performs is the same either way.
+   */
   aboveDailyLimit: boolean;
   onRetry: () => void;
   onDismiss: () => void;
 }
 
 /**
- * The send that takes two confirmations, given its own screen.
+ * A Spend in progress, given its own screen.
  *
- * A dark full screen rather than the app's usual card because this is the only
- * moment a Consumer is asked for two prompts in a row, and the previous version
- * of it, a spinner and a toast, was indistinguishable from an ordinary send
- * right up until the second prompt appeared with nothing to explain it.
+ * A dark full screen rather than the app's usual card because a Spend is the
+ * moment money leaves, and it is worth reading. The version this replaced was a
+ * spinner and a toast, which said nothing about the prompt that was about to
+ * appear over it.
+ *
+ * Shown for every Spend, not only the large ones. Every Spend now asks the
+ * Consumer for exactly one thing, so a screen reserved for the large ones would
+ * make the ordinary case the unexplained one.
+ *
+ * Shared by a Send and by a Payment finished here after a checkout could not:
+ * the amount and who is being paid differ, and the moment does not, so a second
+ * copy of this would drift from it the first time either was touched.
  *
  * The mechanism is deliberately not the story: nothing here mentions signers,
- * thresholds or policies. What a Consumer needs is that a larger amount is
- * checked twice, and which check they are being asked for now.
+ * thresholds or policies. What a Consumer needs is that Xend checked it was
+ * them, and where the money has got to.
  */
-export function AboveLimitSendModal({
+export function SpendCheckModal({
   visible,
   step,
   state,
+  heading,
   amount,
-  recipient,
+  counterparty,
   message,
   aboveDailyLimit,
   onRetry,
   onDismiss,
-}: AboveLimitSendModalProps) {
-  const current = STEP_ORDER.indexOf(step);
+}: SpendCheckModalProps) {
+  const steps = stepsFor(aboveDailyLimit);
   const settled = state === "paused" || state === "failed";
   const finished = step === "sent";
-  const steps = stepsFor(aboveDailyLimit);
+  // Located in the rendered rows rather than in a fixed order, because the
+  // reason row is absent under the limit and an index into a list that is not
+  // on screen puts the tick on the wrong line. `sent` sits past the last row so
+  // every one of them reads as done; a step with no row of its own falls to the
+  // first, which is where the send has got to.
+  const found = steps.findIndex((row) => row.key === step);
+  const current = finished ? steps.length : found < 0 ? 0 : found;
 
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent>
@@ -78,13 +97,13 @@ export function AboveLimitSendModal({
       <SafeAreaView edges={["top", "bottom"]} className="flex-1 bg-black">
         <View className="flex-1 px-6 pb-8 pt-6">
           <Typography weight="500" className="text-white/50">
-            Sending
+            {heading}
           </Typography>
           <Typography weight="700" variant="h3" className="mt-1 text-white">
-            {formatAmount({ amount })} USDC
+            {amount}
           </Typography>
           <Typography weight="400" className="mt-1 text-white/50">
-            to {shorten(recipient)}
+            to {counterparty}
           </Typography>
 
           <View className="my-8 h-px bg-white/10" />
@@ -234,39 +253,31 @@ function Step({
   );
 }
 
-type StepCopy = { key: AboveLimitSendStep; title: string; body: string };
+type StepCopy = { key: SpendCheckStep; title: string; body: string };
 
 /**
- * An Account that has not finished being set up has no limit to be over, so
- * the first step says why the checks are happening without naming one.
+ * Above the limit the Account approves the Spend alongside the Consumer. That
+ * costs them nothing extra to do, so it is stated as a fact about the amount
+ * rather than as a step they are about to be asked for.
  */
 function stepsFor(aboveDailyLimit: boolean): StepCopy[] {
-  return [
-    aboveDailyLimit
-      ? {
+  return aboveDailyLimit
+    ? [
+        {
           key: "reason",
           title: "Above your daily limit",
-          body: "Larger amounts are checked twice, so nobody who picks up your phone can empty your account.",
-        }
-      : {
-          key: "reason",
-          title: "This one takes two checks",
-          body: "Two checks mean nobody who picks up your phone can empty your account.",
+          body: "Your Account approves larger amounts as well as you.",
         },
-    ...REMAINING_STEPS,
-  ];
+        ...CHECK_STEPS,
+      ]
+    : CHECK_STEPS;
 }
 
-const REMAINING_STEPS: StepCopy[] = [
+const CHECK_STEPS: StepCopy[] = [
   {
     key: "identity",
     title: "Check it is you",
     body: "Your phone asks for your face or your fingerprint.",
-  },
-  {
-    key: "approval",
-    title: "Approve on this phone",
-    body: "The second check, done by your wallet.",
   },
   {
     key: "sending",
@@ -274,25 +285,3 @@ const REMAINING_STEPS: StepCopy[] = [
     body: "Handing the payment to the network.",
   },
 ];
-
-/** `sent` is the last row finished rather than a row of its own. */
-const STEP_ORDER: AboveLimitSendStep[] = [
-  "reason",
-  "identity",
-  "approval",
-  "sending",
-  "sent",
-];
-
-/**
- * Tolerates a missing address because it is fed from router params, which are
- * typed as strings and are not guaranteed to be there. `Modal` renders its
- * children whether or not it is visible, so an absent recipient took the whole
- * confirm screen down rather than just this line.
- */
-function shorten(address: string | undefined): string {
-  if (!address) return "";
-  return address.length > 12
-    ? `${address.slice(0, 4)}...${address.slice(-4)}`
-    : address;
-}

@@ -104,13 +104,58 @@ export class NotificationsService {
     userId: string,
     alert: { title: string; body: string },
   ): Promise<void> {
+    await this.notifyUser(userId, alert, 'security_alert');
+  }
+
+  /**
+   * Tells a Consumer a Merchant is waiting on them to finish a Payment.
+   *
+   * The one notice where being late is the whole failure: somebody who tapped
+   * Pay with Xend and was told to open the app is standing at a checkout with
+   * a card reader in front of them, and a Payment they cannot see is a Payment
+   * they abandon.
+   *
+   * Not gated on `users.notifications_enabled`, for the same reason a security
+   * alert is not. That toggle is about being told money arrived. This is not
+   * news about something that happened; it is a thing they have asked to do
+   * and cannot complete anywhere else.
+   */
+  async notifyPaymentNeedsApproval(
+    userId: string,
+    payment: { merchantName: string; amount: string },
+  ): Promise<void> {
+    await this.notifyUser(
+      userId,
+      {
+        title: 'Finish your payment',
+        // Named and priced: a Consumer with a notice that says only "a payment
+        // needs you" has to open the app to find out whether it is theirs.
+        body: `${payment.merchantName} is waiting on ${payment.amount}. Tap to confirm on this phone.`,
+      },
+      'payment_approval',
+    );
+  }
+
+  /**
+   * Delivery for everything a Consumer must be told regardless of preference.
+   *
+   * Never throws: a notification is not worth failing the thing that triggered
+   * it, and the thing that triggered this one is a Payment that is otherwise
+   * fine. An undeliverable notice is logged loudly instead, because a Consumer
+   * with no reachable device is one who will never learn a Merchant is waiting.
+   */
+  private async notifyUser(
+    userId: string,
+    alert: { title: string; body: string },
+    kind: string,
+  ): Promise<void> {
     try {
       const devices = await this.db.client
         .select({ token: pushDevices.token })
         .from(pushDevices)
         .where(eq(pushDevices.userId, userId));
       if (devices.length === 0) {
-        this.logger.warn(`push.security_alert_undeliverable userId=${userId}`);
+        this.logger.warn(`push.${kind}_undeliverable userId=${userId}`);
         return;
       }
 
@@ -122,7 +167,7 @@ export class NotificationsService {
         })),
       );
       this.logger.log(
-        `push.security_alert_sent userId=${userId} devices=${devices.length}`,
+        `push.${kind}_sent userId=${userId} devices=${devices.length}`,
       );
 
       if (invalidTokens.length > 0) {
@@ -131,7 +176,7 @@ export class NotificationsService {
           .where(inArray(pushDevices.token, invalidTokens));
       }
     } catch (err) {
-      this.logger.warn('push.security_alert_failed', err);
+      this.logger.warn(`push.${kind}_failed`, err);
     }
   }
 

@@ -326,9 +326,50 @@ export type PrepareTransferResponse = z.infer<
   typeof PrepareTransferResponseSchema
 >;
 
+/**
+ * A Payment waiting on this phone.
+ *
+ * Checkout can only reach the primary signer, so a Payment above the band that
+ * signer carries alone is left for the Consumer to finish here, where the
+ * approval signer lives.
+ */
+export const AwaitingPaymentSchema = z.object({
+  reference: z.string(),
+  merchantDisplayName: z.string(),
+  /** ISO 4217, whatever the Merchant priced in. */
+  displayCurrency: z.string(),
+  displayAmountMinor: z.string(),
+  /** When Checkout handed this over, which is when the Consumer was asked. */
+  deferredAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+});
+export type AwaitingPayment = z.infer<typeof AwaitingPaymentSchema>;
+
+export const AwaitingPaymentsResponseSchema = z.object({
+  payments: z.array(AwaitingPaymentSchema),
+});
+
+export const PreparePaymentResponseSchema = z.object({
+  unsignedTxBase64: z.string(),
+  needsApprovalSignature: z.boolean(),
+});
+export type PreparePaymentResponse = z.infer<
+  typeof PreparePaymentResponseSchema
+>;
+
+export const SubmitPaymentResponseSchema = z.object({
+  signature: z.string(),
+});
+
 export const SubmitTransferRequestSchema = z.object({
   intentId: z.string(),
   signedTxBase64: z.string(),
+  /**
+   * The device key's signature over the prepared message, proving the Consumer
+   * was here. Required by the backend for a send that settles on one signature;
+   * omitted above the limit, where the approval signature already is one.
+   */
+  presenceProof: z.string().optional(),
 });
 export type SubmitTransferRequest = z.infer<typeof SubmitTransferRequestSchema>;
 
@@ -1033,6 +1074,39 @@ class BackendClient {
       auth: true,
     });
     return SubmitTransferResponseSchema.parse(raw);
+  }
+
+  /** GET /payments/pending — Payments a Merchant is waiting on, that only
+   *  this phone can finish. */
+  async listAwaitingPayments(): Promise<AwaitingPayment[]> {
+    if (SEED_DEMO) return [];
+    const raw = await this.request<unknown>("/payments/pending", {
+      auth: true,
+    });
+    return AwaitingPaymentsResponseSchema.parse(raw).payments;
+  }
+
+  /** POST /payments/pending/:reference/prepare — builds the Spend and
+   *  authorizes the Payment. The transaction comes back needing both signers. */
+  async preparePayment(reference: string): Promise<PreparePaymentResponse> {
+    const raw = await this.request<unknown>(
+      `/payments/pending/${encodeURIComponent(reference)}/prepare`,
+      { method: "POST", auth: true }
+    );
+    return PreparePaymentResponseSchema.parse(raw);
+  }
+
+  /** POST /payments/pending/:reference/submit — the fee payer completes and
+   *  broadcasts what this phone signed. */
+  async submitPayment(
+    reference: string,
+    signedTxBase64: string
+  ): Promise<string> {
+    const raw = await this.request<unknown>(
+      `/payments/pending/${encodeURIComponent(reference)}/submit`,
+      { method: "POST", body: JSON.stringify({ signedTxBase64 }), auth: true }
+    );
+    return SubmitPaymentResponseSchema.parse(raw).signature;
   }
 
   /** GET /transfers — cursor-paginated list of the authenticated user's

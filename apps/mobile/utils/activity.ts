@@ -1,4 +1,8 @@
-import type { AccountEventRow, TransferRow } from "@/utils/apiClient";
+import type {
+  AccountEventRow,
+  AwaitingPayment,
+  TransferRow,
+} from "@/utils/apiClient";
 import { describeToken, formatTokenAmount } from "@/utils/tokens";
 
 /**
@@ -10,11 +14,12 @@ export interface ActivityEntry {
   id: string;
   direction: "send" | "receive";
   status: "pending" | "confirmed" | "failed";
-  // A plain send/receive, a settled merchant Payment, or a non-money account
-  // event. The first two are lowercase matching the backend transfer_kind wire
-  // literal; "security" is client-side only, since CONTEXT.md defines Activity
-  // as covering non-money events too.
-  kind: "transfer" | "payment" | "security";
+  // A plain send/receive, a settled merchant Payment, a non-money account
+  // event, or a Payment still waiting on this phone. The first two are
+  // lowercase matching the backend transfer_kind wire literal; "security" and
+  // "awaiting" are client-side only, since CONTEXT.md defines Activity as
+  // covering non-money events too.
+  kind: "transfer" | "payment" | "security" | "awaiting";
   /** Set only on `security` entries: what changed on the Account. */
   securityLabel?: string;
   /**
@@ -33,6 +38,16 @@ export interface ActivityEntry {
    */
   securityKind?: AccountEventRow["kind"];
   merchantName: string | null;
+  /**
+   * Set only on `awaiting` entries: the Merchant's own currency and the figure
+   * they quoted.
+   *
+   * Carried instead of the token amount because nothing has moved yet. There is
+   * no settlement figure to render, and showing one would put a number on the
+   * feed that no Payment has produced.
+   */
+  displayCurrency?: string;
+  displayAmountMinor?: string;
   mint: string;
   amountRaw: string;
   decimals: number;
@@ -158,6 +173,9 @@ export function statusLabel(entry: ActivityEntry): string {
   if (entry.kind === "security") {
     return entry.securityLabel ?? "Account updated";
   }
+  if (entry.kind === "awaiting") {
+    return "Needs your approval";
+  }
   if (entry.kind === "payment") {
     if (entry.status === "pending") return "Paying…";
     if (entry.status === "failed") return "Failed";
@@ -202,6 +220,45 @@ export function securityActivityEntry(params: {
     memo: null,
     createdAt: params.at,
     confirmedAt: params.at,
+  };
+}
+
+/**
+ * A Payment a checkout could not finish, shaped as an Activity so it sits in
+ * the feed rather than only in a banner.
+ *
+ * Client-side only, and deliberately not a row the backend hands over: nothing
+ * has happened on chain, so there is no transfer to read. It leaves the feed
+ * the moment the Payment settles, and the settled Payment arrives as its own
+ * entry, so one Payment is never two rows at rest.
+ *
+ * `pending` rather than a status of its own: it is the one the feed already
+ * renders as inactive and unfinished, which is what this is.
+ */
+export function awaitingPaymentActivityEntry(
+  payment: AwaitingPayment,
+  selfAddress: string
+): ActivityEntry {
+  return {
+    id: `awaiting:${payment.reference}`,
+    direction: "send",
+    status: "pending",
+    kind: "awaiting",
+    merchantName: payment.merchantDisplayName,
+    displayCurrency: payment.displayCurrency,
+    displayAmountMinor: payment.displayAmountMinor,
+    mint: "",
+    amountRaw: "0",
+    decimals: 0,
+    self: selfAddress,
+    counterparty: "",
+    signature: null,
+    memo: null,
+    // When the Consumer was asked, not when this was rendered. A timestamp
+    // computed here would move on every render and drift between the row's
+    // sort position and the day it is filed under.
+    createdAt: payment.deferredAt,
+    confirmedAt: null,
   };
 }
 

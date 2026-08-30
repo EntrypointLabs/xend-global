@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { useAccount } from "@/hooks/useAccount";
+import { useAwaitingPayments } from "@/hooks/useAwaitingPayments";
 import { useCountdown } from "@/hooks/useCountdown";
 import { useDeviceNeedsRestore } from "@/hooks/useDeviceNeedsRestore";
 import { usePendingAccountChange } from "@/hooks/usePendingAccountChange";
@@ -47,6 +48,7 @@ export function HomeBanners() {
   const { data: account } = useAccount();
   const { data: change } = usePendingAccountChange();
   const { data: restore } = useDeviceNeedsRestore();
+  const { data: awaiting } = useAwaitingPayments();
   const { reopen, requestReview } = usePendingChangeAcknowledgement();
   const { startedHere } = useInitiatedChanges();
   const [page, setPage] = useState(0);
@@ -62,6 +64,24 @@ export function HomeBanners() {
   // A rotation is a pending change like any other, so it gets one banner
   // rather than two: the wording is the only thing that differs.
   const restoring = !!account?.pendingApprovalSigner;
+
+  // First, and above everything else here. Somebody with a Payment waiting was
+  // told to open the app by a checkout they are still standing at, so it has to
+  // be the thing they see, not a card they have to swipe to.
+  const waiting = awaiting ?? [];
+  if (waiting.length > 0) {
+    banners.push({
+      key: "finish-payment",
+      icon: "storefront-outline",
+      tint: "#0A0A0A",
+      title:
+        waiting.length === 1
+          ? `Finish paying ${waiting[0].merchantDisplayName}`
+          : `${waiting.length} payments need you`,
+      description: "Checked twice at this size. Tap to finish.",
+      onPress: () => router.push("/settings/finish-payment" as never),
+    });
+  }
 
   if (change && restoring) {
     banners.push({
@@ -98,9 +118,9 @@ export function HomeBanners() {
         : reopen,
     });
   } else if (restore?.needsRestore) {
-    // First, and ahead of everything else here: until this is done the Account
-    // can be looked at and not spent from, and nothing else on the screen
-    // explains why.
+    // Ahead of everything except a Payment somebody is waiting to finish: until
+    // this is done the Account can be looked at and not spent from, and nothing
+    // else on the screen explains why.
     banners.push({
       key: "device-restore",
       icon: "phone-portrait-outline",

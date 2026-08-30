@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
+import { router } from "expo-router";
 import { ScreenLayout } from "@/components/ui/layout";
 import {
   ActivityList,
@@ -9,7 +10,9 @@ import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { useTransfersInfinite, usePendingWatch } from "@/hooks/useTransfers";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useBalances } from "@/hooks/useBalances";
+import { useAwaitingPayments } from "@/hooks/useAwaitingPayments";
 import {
+  awaitingPaymentActivityEntry,
   groupIntoSections,
   mapAccountEventToActivityEntry,
   mapTransferRowToActivityEntry,
@@ -27,6 +30,8 @@ export default function HistoryScreen() {
     isLoading,
     refetch,
   } = useTransfersInfinite();
+
+  const { data: awaiting } = useAwaitingPayments();
 
   const [selectedItem, setSelectedItem] = useState<ActivityEntry | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -49,7 +54,15 @@ export default function HistoryScreen() {
     (event) => mapAccountEventToActivityEntry(event, address ?? "")
   );
 
-  const rows = [...transferRows, ...eventRows].sort(
+  // A Payment waiting on this phone, merged the same way and for the same
+  // reason: nothing about it exists on chain, so it cannot arrive as a
+  // transfer. It leaves the feed when it settles and the settled Payment
+  // arrives in its place, so one Payment is never two rows at rest.
+  const awaitingRows = (awaiting ?? []).map((payment) =>
+    awaitingPaymentActivityEntry(payment, address ?? "")
+  );
+
+  const rows = [...transferRows, ...eventRows, ...awaitingRows].sort(
     (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
   );
 
@@ -57,6 +70,13 @@ export default function HistoryScreen() {
   usePendingWatch(transferRows.some((row) => row.status === "pending"));
 
   const handleItemPress = useCallback((item: ActivityEntry) => {
+    // An unfinished Payment is the one row here that is an instruction rather
+    // than a record. There is no receipt to open, so it goes where it can be
+    // finished instead.
+    if (item.kind === "awaiting") {
+      router.push("/settings/finish-payment" as never);
+      return;
+    }
     setSelectedItem(item);
     setModalVisible(true);
   }, []);
