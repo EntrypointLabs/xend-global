@@ -1,11 +1,34 @@
 /** DI token for the active push provider. */
 export const PUSH_SENDER = Symbol('PushSender');
 
+/**
+ * What a notice is about, and by extension where tapping it should land.
+ *
+ * Every notice carries one. A notification that opens the app and leaves the
+ * Consumer to go and find the thing it was about has told them something is
+ * wrong and then made the finding their problem.
+ */
+export const NOTICE_KIND = {
+  /** Money arrived. Lands on Activity, where the row is. */
+  arrival: 'arrival',
+  /** Something is changing on the Account. Lands home, where the notice is. */
+  securityAlert: 'security_alert',
+  /** A Merchant is waiting. Lands on the Payment they have to finish. */
+  paymentApproval: 'payment_approval',
+} as const;
+
+export type NoticeKind = (typeof NOTICE_KIND)[keyof typeof NOTICE_KIND];
+
 export interface PushMessage {
   /** Provider address for one installation. */
   token: string;
   title: string;
   body: string;
+  /**
+   * What the notice is about, carried so the app can open the right screen
+   * when it is tapped. Read by the device, never shown.
+   */
+  data?: { kind: NoticeKind };
 }
 
 export interface PushSender {

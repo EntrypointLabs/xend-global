@@ -2,8 +2,8 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { pushDevices, users } from '../db/schema';
-import { PUSH_SENDER } from './push-sender.interface';
-import type { PushSender } from './push-sender.interface';
+import { NOTICE_KIND, PUSH_SENDER } from './push-sender.interface';
+import type { NoticeKind, PushSender } from './push-sender.interface';
 
 export interface ArrivalNotice {
   smartAccountId: string;
@@ -104,7 +104,11 @@ export class NotificationsService {
     userId: string,
     alert: { title: string; body: string },
   ): Promise<void> {
-    await this.notifyUser(userId, alert, 'security_alert');
+    await this.notifyUser(
+      userId,
+      { ...alert, data: { kind: NOTICE_KIND.securityAlert } },
+      NOTICE_KIND.securityAlert,
+    );
   }
 
   /**
@@ -131,8 +135,9 @@ export class NotificationsService {
         // Named and priced: a Consumer with a notice that says only "a payment
         // needs you" has to open the app to find out whether it is theirs.
         body: `${payment.merchantName} is waiting on ${payment.amount}. Tap to confirm on this phone.`,
+        data: { kind: NOTICE_KIND.paymentApproval },
       },
-      'payment_approval',
+      NOTICE_KIND.paymentApproval,
     );
   }
 
@@ -146,7 +151,7 @@ export class NotificationsService {
    */
   private async notifyUser(
     userId: string,
-    alert: { title: string; body: string },
+    alert: { title: string; body: string; data?: { kind: NoticeKind } },
     kind: string,
   ): Promise<void> {
     try {
@@ -164,6 +169,7 @@ export class NotificationsService {
           token: d.token,
           title: alert.title,
           body: alert.body,
+          ...(alert.data ? { data: alert.data } : {}),
         })),
       );
       this.logger.log(
@@ -200,6 +206,7 @@ export class NotificationsService {
           token: d.token,
           title: 'Money in',
           body: `You received ${notice.amount}`,
+          data: { kind: NOTICE_KIND.arrival },
         })),
       );
 

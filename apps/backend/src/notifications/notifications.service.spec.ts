@@ -102,9 +102,21 @@ describe('NotificationsService', () => {
 
       await service.notifyArrival({ smartAccountId: 'sa_1', amount: '5 SOL' });
 
+      // Carries where it leads, like every notice: tapping it opens Activity
+      // rather than dropping the Consumer wherever the app happened to be.
       expect(sender.send).toHaveBeenCalledWith([
-        { token: 'tok-phone', title: 'Money in', body: 'You received 5 SOL' },
-        { token: 'tok-tablet', title: 'Money in', body: 'You received 5 SOL' },
+        {
+          token: 'tok-phone',
+          title: 'Money in',
+          body: 'You received 5 SOL',
+          data: { kind: 'arrival' },
+        },
+        {
+          token: 'tok-tablet',
+          title: 'Money in',
+          body: 'You received 5 SOL',
+          data: { kind: 'arrival' },
+        },
       ]);
     });
 
@@ -204,6 +216,8 @@ describe('NotificationsService', () => {
       expect(sent[0][0].title).toBe('Finish your payment');
       expect(sent[0][0].body).toContain('Sabi Market');
       expect(sent[0][0].body).toContain('₦200,000');
+      // Carried so the app opens the Payment rather than the home screen.
+      expect(sent[0][0].data).toEqual({ kind: 'payment_approval' });
     });
 
     it('reaches a Consumer who has turned arrival notices off', async () => {
