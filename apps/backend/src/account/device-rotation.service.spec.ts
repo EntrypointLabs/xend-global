@@ -162,13 +162,33 @@ function fakeTurnkey(address = NEW_APPROVAL) {
 
 function fakeEvents() {
   const recorded: string[] = [];
+  const changes: string[] = [];
+  const stamp = (
+    stage: string,
+    params: { changeIndex: bigint | string; subject?: string | null },
+  ) => {
+    changes.push(`${stage}:${params.changeIndex}:${params.subject ?? ''}`);
+    return Promise.resolve(null);
+  };
   const events = {
     recordDeviceRotated: (_userId: string, signer: string) => {
       recorded.push(signer);
       return Promise.resolve(null);
     },
+    recordSettingsChangeStaged: (
+      _userId: string,
+      params: { changeIndex: bigint; subject?: string | null; change?: string },
+    ) => stamp(`staged:${params.change}`, params),
+    recordSettingsChangeExecuted: (
+      _userId: string,
+      params: { changeIndex: string; subject?: string | null },
+    ) => stamp('executed', params),
+    recordSettingsChangeRejected: (
+      _userId: string,
+      params: { changeIndex: string; subject?: string | null },
+    ) => stamp('rejected', params),
   } as unknown as AccountEventsService;
-  return { events, recorded };
+  return { events, recorded, changes };
 }
 
 function setUp({
@@ -181,7 +201,7 @@ function setUp({
   const { chain, submitted } = fakeChain(proposal);
   const { recovery, signed } = fakeRecovery();
   const { challenges, consumed } = fakeChallenges({ valid: grantValid });
-  const { events, recorded } = fakeEvents();
+  const { events, recorded, changes } = fakeEvents();
 
   return {
     service: new DeviceRotationService(
@@ -198,6 +218,7 @@ function setUp({
     signed,
     consumed,
     recorded,
+    changes,
   };
 }
 
@@ -213,7 +234,7 @@ describe('DeviceRotationService', () => {
   });
 
   it('stages the incoming signer beside the live one, never over it', async () => {
-    const { service, read } = setUp();
+    const { service, read, changes } = setUp();
 
     const plan = await service.start(USER, 'grant-1', {
       hardwarePublicKey: 'key',
@@ -224,6 +245,10 @@ describe('DeviceRotationService', () => {
     // The Account still points at the old key: the swap is not real until the
     // chain executes it, and a rejected change must leave no trace.
     expect(read().approvalSigner).toBe(OLD_APPROVAL);
+    // The old phone hears about it now, not on the watcher's next pass: an
+    // inbox plus a passkey can start this from anywhere, and rejecting it
+    // from the old phone inside the delay is the only thing that stops it.
+    expect(changes).toEqual([`staged:device:8:${NEW_APPROVAL}`]);
   });
 
   it('does nothing when this phone already holds the approval signer', async () => {
@@ -322,7 +347,7 @@ describe('DeviceRotationService', () => {
   });
 
   it('commits the swap when the chain executed it', async () => {
-    const { service, read, recorded } = setUp({
+    const { service, read, recorded, changes } = setUp({
       row: account({
         pendingApprovalSigner: NEW_APPROVAL,
         pendingApprovalSubOrgId: 'suborg-2',
@@ -338,10 +363,11 @@ describe('DeviceRotationService', () => {
     expect(read().approvalSubOrgId).toBe('suborg-2');
     expect(read().pendingApprovalSigner).toBeNull();
     expect(recorded).toEqual([NEW_APPROVAL]);
+    expect(changes).toEqual([`executed:8:${NEW_APPROVAL}`]);
   });
 
   it('forgets the swap when the change was rejected', async () => {
-    const { service, read, recorded } = setUp({
+    const { service, read, recorded, changes } = setUp({
       row: account({
         pendingApprovalSigner: NEW_APPROVAL,
         pendingApprovalSubOrgId: 'suborg-2',
@@ -357,5 +383,6 @@ describe('DeviceRotationService', () => {
     expect(read().approvalSigner).toBe(OLD_APPROVAL);
     expect(read().pendingApprovalSigner).toBeNull();
     expect(recorded).toEqual([]);
+    expect(changes).toEqual([`rejected:8:${NEW_APPROVAL}`]);
   });
 });

@@ -13,6 +13,7 @@ import {
   SETTINGS_TIME_LOCK_SECONDS,
 } from '@xend/smart-account';
 
+import { AccountEventsService } from '../activity/account-events.service';
 import { RecoveryService } from '../recovery/recovery.service';
 import { AccountCreationError } from './account.errors';
 import { PROVISIONING_CHAIN, SQUADS_ACCOUNT_STORE } from './account.interface';
@@ -79,6 +80,7 @@ export class RecoveryChangeService {
     @Inject(SQUADS_ACCOUNT_STORE) private readonly store: SquadsAccountStore,
     @Inject(PROVISIONING_CHAIN) private readonly chain: ProvisioningChain,
     private readonly recovery: RecoveryService,
+    private readonly events: AccountEventsService,
   ) {}
 
   /**
@@ -111,10 +113,21 @@ export class RecoveryChangeService {
       // that as executed would mark a recovery key active that never reached
       // the signer set.
       const executed = proposal.status === 'Executed';
+      // Read before settling: settling a removal deletes the row, and the
+      // outcome is recorded against the key it was about.
+      const subject = await this.channelValueOf(userId, open.signerId);
       if (executed) {
         await this.recovery.settle(userId, open.changeIndex);
+        await this.events.recordSettingsChangeExecuted(userId, {
+          changeIndex: open.changeIndex,
+          subject,
+        });
       } else {
         await this.recovery.abandon(userId, open.changeIndex);
+        await this.events.recordSettingsChangeRejected(userId, {
+          changeIndex: open.changeIndex,
+          subject,
+        });
       }
       this.prepared.delete(userId);
       this.logger.log(
@@ -162,6 +175,14 @@ export class RecoveryChangeService {
     const changeIndex = settings.transactionIndex + 1n;
 
     await this.recovery.markChange(signerId, changeIndex);
+    // Announced here, at the moment of staging, rather than when the watcher
+    // next sees it on chain: the notice is the Consumer's only warning that
+    // the delay has started, and it cannot depend on a poll or on the app.
+    await this.events.recordSettingsChangeStaged(userId, {
+      changeIndex,
+      subject: await this.channelValueOf(userId, signerId),
+      change: 'recovery_key',
+    });
     this.logger.log(
       `recovery_change.started userId=${userId} index=${changeIndex}`,
     );
@@ -258,6 +279,16 @@ export class RecoveryChangeService {
             : new PublicKey(account.approvalSigner),
       }),
     ];
+  }
+
+  private async channelValueOf(
+    userId: string,
+    signerId: string,
+  ): Promise<string | null> {
+    const signer = (await this.recovery.list(userId)).find(
+      (candidate) => candidate.id === signerId,
+    );
+    return signer?.channelValue ?? null;
   }
 
   /** The row this change is carrying. */

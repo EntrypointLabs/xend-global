@@ -6,6 +6,7 @@ import {
 import { SETTINGS_TIME_LOCK_SECONDS } from '@xend/smart-account';
 
 import { AccountChangeService } from './account-change.service';
+import type { AccountEventsService } from '../activity/account-events.service';
 import type { RecoveryService } from '../recovery/recovery.service';
 import {
   ABOVE_LIMIT_POLICY_SEED,
@@ -117,12 +118,28 @@ function fakeRecovery(changeIndex: bigint | null = null) {
   return { recovery, abandoned };
 }
 
+/** Only what a rejection records. */
+function fakeEvents() {
+  const rejected: string[] = [];
+  const events = {
+    recordSettingsChangeRejected: (
+      _userId: string,
+      params: { changeIndex: string; signature?: string | null },
+    ) => {
+      rejected.push(`${params.changeIndex}:${params.signature ?? ''}`);
+      return Promise.resolve(null);
+    },
+  } as unknown as AccountEventsService;
+  return { events, rejected };
+}
+
 function service(
   chain: ProvisioningChain,
   row?: SquadsAccountRow | null,
   recovery: RecoveryService = fakeRecovery().recovery,
+  events: AccountEventsService = fakeEvents().events,
 ) {
-  return new AccountChangeService(store(row), chain, recovery);
+  return new AccountChangeService(store(row), chain, recovery, events);
 }
 
 function signable() {
@@ -312,6 +329,24 @@ describe('AccountChangeService rejection', () => {
     // A rejected change never reaches the signer set, so a key staged against
     // it would otherwise read as pending forever and block the next change.
     expect(abandoned).toEqual(['7']);
+  });
+
+  it('records the rejection against the change it decided', async () => {
+    const tx = signable();
+    const { chain } = fakeChain(
+      { proposal: { status: 'Active' } },
+      tx.messageBase64,
+    );
+    const { events, rejected } = fakeEvents();
+    const svc = service(chain, undefined, undefined, events);
+
+    await svc.prepareRejection(USER);
+    await svc.submitRejection(USER, tx.base64);
+
+    // The index was pinned at prepare time: once the rejection lands the
+    // proposal is settled and no longer reads as pending, so it cannot be
+    // looked up afterwards.
+    expect(rejected).toEqual(['7:sig-reject']);
   });
 
   it('refuses a submission with no rejection awaiting a signature', async () => {

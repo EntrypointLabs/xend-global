@@ -10,6 +10,7 @@ import type {
   RecoverySignerStatus,
   RecoverySignerSummary,
 } from '../recovery/recovery.service';
+import type { AccountEventsService } from '../activity/account-events.service';
 import { RecoveryService } from '../recovery/recovery.service';
 import type {
   ProposalState,
@@ -141,6 +142,33 @@ function fakeRecovery({
   return { recovery, calls };
 }
 
+/** Only what RecoveryChangeService records. */
+function fakeEvents() {
+  const recorded: string[] = [];
+  const stamp = (
+    stage: string,
+    params: { changeIndex: bigint | string; subject?: string | null },
+  ) => {
+    recorded.push(`${stage}:${params.changeIndex}:${params.subject ?? ''}`);
+    return Promise.resolve(null);
+  };
+  const events = {
+    recordSettingsChangeStaged: (
+      _userId: string,
+      params: { changeIndex: bigint; subject?: string | null; change?: string },
+    ) => stamp(`staged:${params.change}`, params),
+    recordSettingsChangeExecuted: (
+      _userId: string,
+      params: { changeIndex: bigint; subject?: string | null },
+    ) => stamp('executed', params),
+    recordSettingsChangeRejected: (
+      _userId: string,
+      params: { changeIndex: bigint; subject?: string | null },
+    ) => stamp('rejected', params),
+  } as unknown as AccountEventsService;
+  return { events, recorded };
+}
+
 /** A transaction whose compiled message is `messageBase64`. */
 function signedFor(messageBase64: string): string {
   const message = new TransactionMessage({
@@ -164,11 +192,13 @@ describe('RecoveryChangeService.start', () => {
   it('stages the change at the index after the current one', async () => {
     const { chain, compiled } = fakeChain({ transactionIndex: 7n });
     const { recovery, calls } = fakeRecovery();
+    const { events, recorded } = fakeEvents();
 
     const plan = await new RecoveryChangeService(
       store(),
       chain,
       recovery,
+      events,
     ).start(USER, 'signer-1');
 
     expect(plan.step).toBe('propose');
@@ -177,16 +207,21 @@ describe('RecoveryChangeService.start', () => {
     // and re-proposed rather than lost.
     expect(calls).toContain('markChange:8');
     expect(compiled).toHaveLength(1);
+    // Announced at the moment of staging, naming the key, so the Consumer's
+    // warning does not wait on a poll or on the app being open.
+    expect(recorded).toEqual([`staged:recovery_key:8:${SIGNER_ADDRESS}`]);
   });
 
   it('proposes an addition that names the staged signer', async () => {
     const { chain, compiled } = fakeChain();
     const { recovery } = fakeRecovery({ status: 'pending_add' });
 
-    await new RecoveryChangeService(store(), chain, recovery).start(
-      USER,
-      'signer-1',
-    );
+    await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).start(USER, 'signer-1');
 
     expect(keysOf(compiled[0])).toContain(ADDRESSES.settings.toBase58());
     // The Consumer's S1 proposes; the authority only funds it.
@@ -199,10 +234,12 @@ describe('RecoveryChangeService.start', () => {
     const { recovery } = fakeRecovery();
 
     await expect(
-      new RecoveryChangeService(store(null), chain, recovery).start(
-        USER,
-        'signer-1',
-      ),
+      new RecoveryChangeService(
+        store(null),
+        chain,
+        recovery,
+        fakeEvents().events,
+      ).start(USER, 'signer-1'),
     ).rejects.toThrow();
   });
 });
@@ -212,9 +249,12 @@ describe('RecoveryChangeService.next', () => {
     const { chain } = fakeChain();
     const { recovery } = fakeRecovery({ changeIndex: null });
 
-    const plan = await new RecoveryChangeService(store(), chain, recovery).next(
-      USER,
-    );
+    const plan = await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).next(USER);
 
     expect(plan.done).toBe(true);
   });
@@ -223,9 +263,12 @@ describe('RecoveryChangeService.next', () => {
     const { chain } = fakeChain({ proposal: null });
     const { recovery } = fakeRecovery({ changeIndex: 8n });
 
-    const plan = await new RecoveryChangeService(store(), chain, recovery).next(
-      USER,
-    );
+    const plan = await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).next(USER);
 
     expect(plan.step).toBe('propose');
     expect(plan.changeIndex).toBe('8');
@@ -241,6 +284,7 @@ describe('RecoveryChangeService.next', () => {
           store(),
           first.chain,
           fakeRecovery({ changeIndex: 8n }).recovery,
+          fakeEvents().events,
         ).next(USER)
       ).step,
     ).toBe('approve-primary');
@@ -249,6 +293,7 @@ describe('RecoveryChangeService.next', () => {
       store(),
       second.chain,
       fakeRecovery({ changeIndex: 8n }).recovery,
+      fakeEvents().events,
     ).next(USER);
     expect(plan.step).toBe('approve-approval');
     expect(plan.needsApprovalSignature).toBe(true);
@@ -265,9 +310,12 @@ describe('RecoveryChangeService.next', () => {
     });
     const { recovery } = fakeRecovery({ changeIndex: 8n });
 
-    const plan = await new RecoveryChangeService(store(), chain, recovery).next(
-      USER,
-    );
+    const plan = await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).next(USER);
 
     expect(plan.step).toBe('waiting');
     // The deadline for rejecting it, and the moment it can be finished.
@@ -286,9 +334,12 @@ describe('RecoveryChangeService.next', () => {
     });
     const { recovery } = fakeRecovery({ changeIndex: 8n });
 
-    const plan = await new RecoveryChangeService(store(), chain, recovery).next(
-      USER,
-    );
+    const plan = await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).next(USER);
 
     expect(plan.step).toBe('execute');
   });
@@ -298,13 +349,18 @@ describe('RecoveryChangeService.next', () => {
       proposal: { settled: true, status: 'Executed', approved: [PRIMARY] },
     });
     const { recovery, calls } = fakeRecovery({ changeIndex: 8n });
+    const { events, recorded } = fakeEvents();
 
-    const plan = await new RecoveryChangeService(store(), chain, recovery).next(
-      USER,
-    );
+    const plan = await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      events,
+    ).next(USER);
 
     expect(plan.done).toBe(true);
     expect(calls).toContain('settle:8');
+    expect(recorded).toEqual([`executed:8:${SIGNER_ADDRESS}`]);
   });
 
   it('abandons the staged rows when a fully approved change was rejected', async () => {
@@ -319,14 +375,19 @@ describe('RecoveryChangeService.next', () => {
       },
     });
     const { recovery, calls } = fakeRecovery({ changeIndex: 8n });
+    const { events, recorded } = fakeEvents();
 
-    const plan = await new RecoveryChangeService(store(), chain, recovery).next(
-      USER,
-    );
+    const plan = await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      events,
+    ).next(USER);
 
     expect(plan.done).toBe(true);
     expect(calls).toContain('abandon:8');
     expect(calls).not.toContain('settle:8');
+    expect(recorded).toEqual([`rejected:8:${SIGNER_ADDRESS}`]);
   });
 
   it('abandons the staged rows when the change was cancelled', async () => {
@@ -335,7 +396,12 @@ describe('RecoveryChangeService.next', () => {
     });
     const { recovery, calls } = fakeRecovery({ changeIndex: 8n });
 
-    await new RecoveryChangeService(store(), chain, recovery).next(USER);
+    await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).next(USER);
 
     expect(calls).toContain('abandon:8');
   });
@@ -345,7 +411,12 @@ describe('RecoveryChangeService.submit', () => {
   it('refuses a transaction that is not the step it prepared', async () => {
     const { chain } = fakeChain({ transactionIndex: 7n }, 'prepared-message');
     const { recovery } = fakeRecovery();
-    const service = new RecoveryChangeService(store(), chain, recovery);
+    const service = new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    );
     await service.start(USER, 'signer-1');
 
     // The authority partially signs whatever arrives, so anything but the
@@ -360,17 +431,24 @@ describe('RecoveryChangeService.submit', () => {
     const { recovery } = fakeRecovery();
 
     await expect(
-      new RecoveryChangeService(store(), chain, recovery).submit(
-        USER,
-        signedFor('anything'),
-      ),
+      new RecoveryChangeService(
+        store(),
+        chain,
+        recovery,
+        fakeEvents().events,
+      ).submit(USER, signedFor('anything')),
     ).rejects.toThrow('No recovery key step is awaiting a signature');
   });
 
   it('refuses bytes that are not a transaction at all', async () => {
     const { chain } = fakeChain({ transactionIndex: 7n });
     const { recovery } = fakeRecovery();
-    const service = new RecoveryChangeService(store(), chain, recovery);
+    const service = new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    );
     await service.start(USER, 'signer-1');
 
     await expect(service.submit(USER, 'bm90LWEtdHg=')).rejects.toThrow(
@@ -381,7 +459,12 @@ describe('RecoveryChangeService.submit', () => {
   it('spends the prepared step so it cannot be replayed', async () => {
     const { chain, submitted } = fakeChain({ transactionIndex: 7n });
     const { recovery } = fakeRecovery();
-    const service = new RecoveryChangeService(store(), chain, recovery);
+    const service = new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    );
     const plan = await service.start(USER, 'signer-1');
 
     // Sign exactly what was prepared, by reusing the fake's message.
@@ -398,6 +481,7 @@ describe('RecoveryChangeService.submit', () => {
       store(),
       replayable.chain,
       fakeRecovery().recovery,
+      fakeEvents().events,
     );
     await pinned.start(USER, 'signer-1');
 

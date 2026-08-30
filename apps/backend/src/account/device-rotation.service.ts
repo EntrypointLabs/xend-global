@@ -160,6 +160,16 @@ export class DeviceRotationService {
       pendingApprovalChangeIndex: changeIndex.toString(),
     });
 
+    // The phone that is being replaced is the one this has to reach, and it
+    // has to reach it now: an inbox plus a passkey can start this from a
+    // stranger's device, and the old phone rejecting it inside the delay is
+    // the only thing that stops it.
+    await this.events.recordSettingsChangeStaged(userId, {
+      changeIndex,
+      subject: enrolled.address,
+      change: 'device',
+    });
+
     this.logger.log(
       `device_rotation.started userId=${userId} index=${changeIndex}`,
     );
@@ -323,6 +333,7 @@ export class DeviceRotationService {
     account: SquadsAccountRow,
     executed: boolean,
   ): Promise<void> {
+    const changeIndex = account.pendingApprovalChangeIndex;
     if (executed && account.pendingApprovalSigner) {
       await this.store.updateByUserId(account.userId, {
         approvalSigner: account.pendingApprovalSigner,
@@ -335,12 +346,24 @@ export class DeviceRotationService {
         account.userId,
         account.pendingApprovalSigner,
       );
+      if (changeIndex) {
+        await this.events.recordSettingsChangeExecuted(account.userId, {
+          changeIndex,
+          subject: account.pendingApprovalSigner,
+        });
+      }
     } else {
       await this.store.updateByUserId(account.userId, {
         pendingApprovalSigner: null,
         pendingApprovalSubOrgId: null,
         pendingApprovalChangeIndex: null,
       });
+      if (changeIndex) {
+        await this.events.recordSettingsChangeRejected(account.userId, {
+          changeIndex,
+          subject: account.pendingApprovalSigner,
+        });
+      }
     }
 
     this.logger.log(

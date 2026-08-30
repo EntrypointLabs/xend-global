@@ -1,9 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { sql } from 'drizzle-orm';
 
-import { DbService } from '../db/db.service';
-import { NotificationsService } from '../notifications/notifications.service';
+import { AccountEventsService } from '../activity/account-events.service';
 import { AccountChangeService } from './account-change.service';
 import { SQUADS_ACCOUNT_STORE } from './account.interface';
 import type { SquadsAccountRow, SquadsAccountStore } from './account.interface';
@@ -23,15 +21,19 @@ const WATCH_CRON = '0 */5 * * * *';
  * Polled rather than driven by a webhook because the trigger is a change to the
  * Settings account, which is not a transfer and so not something the activity
  * webhook is subscribed to.
+ *
+ * A change staged through our own endpoints was recorded, and announced, the
+ * moment it was staged, and recording it again here is a no-op. What this
+ * catches is everything else: a change that reached the chain without passing
+ * through here gets its only notice from this loop.
  */
 @Injectable()
 export class AccountChangeWatcher {
   private readonly logger = new Logger(AccountChangeWatcher.name);
 
   constructor(
-    private readonly db: DbService,
     private readonly changes: AccountChangeService,
-    private readonly notifications: NotificationsService,
+    private readonly events: AccountEventsService,
     @Inject(SQUADS_ACCOUNT_STORE) private readonly store: SquadsAccountStore,
   ) {}
 
@@ -63,62 +65,21 @@ export class AccountChangeWatcher {
     const staged = await this.changes.pendingFor(account);
     if (!staged) return;
 
-    if (!(await this.claimAnnouncement(account, staged.transactionIndex))) {
-      return;
-    }
-
-    // A change the Consumer started themselves still gets a notice, because a
-    // stolen phone can start one the same way, but not the alarm: crying wolf
-    // over a deliberate action is what teaches people to swipe the real one
-    // away.
-    await this.notifications.notifySecurityAlert(
+    // `selfInitiated` means the backend holds a recovery key row for this
+    // index, so the only thing this can name is a recovery key change. Any
+    // other change it finds is one nobody here staged, and the notice for
+    // that says so rather than guessing.
+    const written = await this.events.recordSettingsChangeStaged(
       account.userId,
-      staged.selfInitiated
-        ? {
-            title: 'Your recovery key change is on its way',
-            body: staged.executableAt
-              ? 'It goes through once the security delay ends. Open Xend to cancel it.'
-              : 'It needs one more approval. Open Xend to cancel it.',
-          }
-        : {
-            title: 'Check your Xend account',
-            body: staged.executableAt
-              ? 'A change to your account is waiting to go through. If it was not you, open Xend and reject it.'
-              : 'Someone started a change to your account. If it was not you, open Xend and reject it.',
-          },
+      {
+        changeIndex: staged.transactionIndex,
+        change: staged.selfInitiated ? 'recovery_key' : undefined,
+      },
     );
+    if (written) {
+      this.logger.warn(
+        `account_change.found_unannounced userId=${account.userId} index=${staged.transactionIndex}`,
+      );
+    }
   }
-
-  /**
-   * Records the announcement, and says whether this call is the one that made
-   * it. Written before the notice goes out, so a failure to send costs one
-   * notice rather than repeating it every five minutes forever.
-   */
-  private async claimAnnouncement(
-    account: SquadsAccountRow,
-    transactionIndex: string,
-  ): Promise<boolean> {
-    const result = (await this.db.client.execute(sql`
-      INSERT INTO announced_account_changes
-        (id, user_id, settings_address, transaction_index, announced_at)
-      VALUES (
-        ${createId()},
-        ${account.userId},
-        ${account.settingsAddress},
-        ${transactionIndex}::bigint,
-        NOW()
-      )
-      ON CONFLICT (settings_address, transaction_index) DO NOTHING
-      RETURNING id
-    `)) as unknown as { rows: { id: string }[] };
-    return (result.rows?.length ?? 0) > 0;
-  }
-}
-
-function createId(): string {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { createId: mint } = require('@paralleldrive/cuid2') as {
-    createId: () => string;
-  };
-  return mint();
 }
