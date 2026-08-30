@@ -75,9 +75,13 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /account/recovery/:id/remove',
   'POST /account/recovery/change/next',
   'POST /account/recovery/change/submit',
-  // The contact address, and closing the account.
+  // The contact address, and closing the account. Moving the address moves
+  // the entry point, which an entry session must never be able to do.
   'POST /auth/email/challenge',
   'POST /auth/email',
+  'POST /account/recovery/contact/challenge',
+  'POST /account/recovery/contact/verify',
+  'POST /account/recovery/contact',
   'DELETE /wallet/me',
   // Where notices go and whether they are wanted.
   'POST /notifications/devices',
@@ -103,7 +107,10 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'GET /console/payments',
   'GET /console/deliveries',
   'GET /console/keys',
+  'GET /console/accounts',
   'POST /console/deliveries/:id/redeliver',
+  'POST /console/accounts/:userId/recovery/freeze',
+  'POST /console/accounts/:userId/recovery/unfreeze',
   'POST /webhooks/blockradar',
   'POST /webhooks/helius',
   'GET /test-dashboard',
@@ -252,6 +259,9 @@ describe('entry session route inventory', () => {
       'POST /auth/passkey-credentials',
       'POST /auth/email/challenge',
       'POST /auth/email',
+      'POST /account/recovery/contact/challenge',
+      'POST /account/recovery/contact/verify',
+      'POST /account/recovery/contact',
       'POST /account/recovery/email/challenge',
       'POST /account/recovery/email/verify',
       'POST /account/recovery/email',

@@ -100,7 +100,9 @@ export class DrizzleSignupStore implements SignupStore {
 
     // An Account moving its contact address to this one holds it from the
     // moment the change is staged, not the day it executes: letting a
-    // sign-up take it in between would leave that change unable to land.
+    // sign-up take it in between would leave that change unable to land, and
+    // it is not a way in either until the change has executed. Answered the
+    // way a closed address is: same shape, no mail.
     const [reserved] = await this.db.client
       .select({ boundId: smartAccounts.id })
       .from(recoverySigners)
@@ -114,7 +116,7 @@ export class DrizzleSignupStore implements SignupStore {
         ),
       )
       .limit(1);
-    if (reserved?.boundId) return { kind: 'claimed' };
+    if (reserved?.boundId) return { kind: 'closed' };
 
     // The address is not on any row yet. A code may still have gone out for
     // it: the row it was issued against carries no email until the code is
