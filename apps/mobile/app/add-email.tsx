@@ -9,7 +9,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { Typography } from "@/components/ui/atoms/Typography";
@@ -50,11 +50,13 @@ function AddEmailScreen() {
     logout,
   } = useAuth();
   const {
+    signIn,
     signUp,
     busy: creatingPasskey,
     error: passkeyError,
     clearError: clearPasskeyError,
   } = usePasskeyLogin();
+  const { intent } = useLocalSearchParams<{ intent?: string }>();
   const [step, setStep] = useState<Step>("address");
   const [value, setValue] = useState("");
   /**
@@ -132,10 +134,18 @@ function AddEmailScreen() {
       } else {
         const proof = await apiClient.verifySignupEmail(claimed, entered);
         if (proof.kind === "entry") {
-          // An address already on an account. The session it opens is the
-          // one the home screen explains; there is nothing to create here.
+          // An address already on an account, so there is nothing to create.
+          // The session the code opens can only look, which is why the
+          // passkey is offered right away: taking it lands them signed in
+          // fully, declining just means looking for now, and the home banner
+          // repeats the offer.
           await enterWithEmail(proof);
-          done();
+          await signIn();
+          if (intent === "recover") {
+            router.replace("/(tabs)/settings/restore-device");
+          } else {
+            done();
+          }
           return;
         }
         setSignupToken(proof.signupToken);
