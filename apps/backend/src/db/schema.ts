@@ -46,8 +46,9 @@ export const recoverySignerStatusEnum = pgEnum('recovery_signer_status', [
  * An enum rather than a boolean so that every use of a proved inbox has to
  * name itself here, and a code issued for one purpose can never be spent on
  * another. Proving the address at sign-up, releasing S3 to a new phone,
- * proving an extra recovery address, and proving the address that replaces
- * the one on file are the four that exist.
+ * proving an extra recovery address, proving the address that replaces the
+ * one on file, and opening a limited session on an address that already has
+ * an Account are the ones that exist.
  */
 export const recoveryChallengePurposeEnum = pgEnum(
   'recovery_challenge_purpose',
@@ -56,6 +57,7 @@ export const recoveryChallengePurposeEnum = pgEnum(
     'contact_verification',
     'recovery_key_email',
     'contact_rotation',
+    'entry_session',
   ],
 );
 
@@ -442,6 +444,33 @@ export const signupTokens = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [index('signup_tokens_user_idx').on(table.userId)],
+);
+
+/**
+ * entry_sessions: the limited session an email code opens on an Account that
+ * already exists.
+ *
+ * Its own table rather than a `kind` on signup_tokens, because the two are
+ * different credentials with different lifecycles. A sign-up token is spent
+ * once, by the exchange, and binds a passkey. An entry session is presented
+ * on every request until it expires or is revoked, and binds nothing. Kept
+ * apart, a query written for one can never read the other. Hash at rest only.
+ */
+export const entrySessions = pgTable(
+  'entry_sessions',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at').notNull(),
+    revokedAt: timestamp('revoked_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('entry_sessions_user_idx').on(table.userId)],
 );
 
 /**
