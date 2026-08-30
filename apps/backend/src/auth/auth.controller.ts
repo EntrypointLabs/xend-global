@@ -7,7 +7,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { ConsumerAuthGuard } from './consumer-auth.guard';
 import type { Request } from 'express';
 import {
   AuthService,
@@ -40,9 +40,12 @@ import {
 } from './dtos';
 import { SignupService } from './signup.service';
 import { TooManySignupAttemptsError } from './signup.errors';
+import { AllowEntry } from './allow-entry.decorator';
+import { EntrySessionService } from './entry-session.service';
+import type { Principal } from './principal';
 
 interface AuthenticatedRequest extends Request {
-  user: { userId: string; walletAddress: string };
+  user: Principal;
 }
 
 @Controller()
@@ -51,6 +54,7 @@ export class AuthController {
     private auth: AuthService,
     private challenges: RecoveryChallengeService,
     private signup: SignupService,
+    private entrySessions: EntrySessionService,
   ) {}
 
   @Post('auth/exchange')
@@ -78,7 +82,10 @@ export class AuthController {
     }
   }
 
-  /** Proves the address and hands back the token the passkey step carries. */
+  /**
+   * Proves the address and hands back what it earns: a sign-up token for an
+   * address nobody holds, or an entry session for one already on an Account.
+   */
   @Post('auth/signup/email')
   async verifySignupCode(
     @Req() req: Request,
@@ -96,6 +103,23 @@ export class AuthController {
   }
 
   /**
+   * Ends the session behind the presented credential.
+   *
+   * Only an entry session has anything to revoke: a JWT carries its own expiry
+   * and the app forgets it. Reachable from an entry session because signing
+   * out is the one thing every session must be able to do.
+   */
+  @Post('auth/signout')
+  @UseGuards(ConsumerAuthGuard)
+  @AllowEntry()
+  async signOut(@Req() req: AuthenticatedRequest) {
+    if (req.user.tier === 'entry' && req.user.entrySessionId) {
+      await this.entrySessions.revoke(req.user.entrySessionId);
+    }
+    return { signedOut: true as const };
+  }
+
+  /**
    * Sends a code to an address a Consumer is claiming.
    *
    * The conflict check runs before the mail does, so an address already on
@@ -103,7 +127,7 @@ export class AuthController {
    * somebody else's inbox.
    */
   @Post('auth/email/challenge')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(ConsumerAuthGuard)
   async requestEmailCode(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(RequestEmailCodeSchema))
@@ -125,7 +149,7 @@ export class AuthController {
 
   /** Records the contact address, against the grant that proved it. */
   @Post('auth/email')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(ConsumerAuthGuard)
   async setEmail(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(SetEmailSchema)) dto: SetEmailRequest,
@@ -161,7 +185,7 @@ export class AuthController {
    * Consumer. Cross-account credential claims map to 409 CREDENTIAL_CONFLICT.
    */
   @Post('auth/passkey-credentials')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(ConsumerAuthGuard)
   async mirrorPasskeyCredential(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(MirrorPasskeyCredentialSchema))

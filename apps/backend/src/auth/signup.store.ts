@@ -17,13 +17,16 @@ export type SignupTokenRow = typeof signupTokens.$inferSelect;
 /**
  * What an address is to the platform before a code goes out.
  *
- * `claimed` means a Consumer exists behind it: a Privy user has been bound, or
- * the account was closed and the address is kept for the records. `pending`
- * is a users row created by an earlier code request that nothing has claimed.
+ * `claimed` means a Consumer exists behind it: a Privy user has been bound,
+ * and a code sent there opens an entry session rather than a sign-up.
+ * `closed` is an account that was deleted and whose address is kept for the
+ * records; nothing is sent there. `pending` is a users row created by an
+ * earlier code request that nothing has claimed.
  */
 export type AddressStanding =
   | { kind: 'free' }
-  | { kind: 'claimed' }
+  | { kind: 'claimed'; user: UsersRow; walletAddress: string }
+  | { kind: 'closed' }
   | { kind: 'pending'; user: UsersRow };
 
 /**
@@ -73,14 +76,25 @@ export class DrizzleSignupStore implements SignupStore {
 
   async standingOf(email: string): Promise<AddressStanding> {
     const [onRow] = await this.db.client
-      .select({ user: users, boundId: smartAccounts.id })
+      .select({
+        user: users,
+        boundId: smartAccounts.id,
+        walletAddress: smartAccounts.walletAddress,
+      })
       .from(users)
       .leftJoin(smartAccounts, eq(smartAccounts.userId, users.id))
       .where(eq(users.email, email))
       .limit(1);
 
     if (onRow) {
-      if (onRow.boundId || onRow.user.deletedAt) return { kind: 'claimed' };
+      if (onRow.user.deletedAt) return { kind: 'closed' };
+      if (onRow.boundId && onRow.walletAddress) {
+        return {
+          kind: 'claimed',
+          user: onRow.user,
+          walletAddress: onRow.walletAddress,
+        };
+      }
       return { kind: 'pending', user: onRow.user };
     }
 

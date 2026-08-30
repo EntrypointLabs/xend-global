@@ -15,11 +15,18 @@ import {
 } from '../recovery/recovery.errors';
 import type { RecoveryService } from '../recovery/recovery.service';
 import { EmailInUseError } from './auth.errors';
+import { EntrySessionInvalidError } from './entry-session.errors';
+import { EntrySessionService } from './entry-session.service';
+import type { EntrySessionRow, EntrySessionStore } from './entry-session.store';
 import {
   SignupTokenInvalidError,
   TooManySignupAttemptsError,
 } from './signup.errors';
-import { SIGNUP_TOKEN_TTL_MS, SignupService } from './signup.service';
+import {
+  SIGNUP_TOKEN_TTL_MS,
+  SignupService,
+  type EmailProofOutcome,
+} from './signup.service';
 import type {
   AddressStanding,
   SignupStore,
@@ -28,10 +35,11 @@ import type {
 } from './signup.store';
 
 /**
- * The two unauthenticated endpoints of sign-up, and the token that ties them
- * to the exchange. What is worth pinning is what a stranger can learn or
- * take: whether an address has an Account, and whether a row somebody else
- * proved can be bound by anyone but them.
+ * The two unauthenticated endpoints of the email door, and what they hand
+ * out. What is worth pinning is what a stranger can learn or take: whether an
+ * address has an Account before its inbox is proved, whether a row somebody
+ * else proved can be bound by anyone but them, and whether an inbox alone can
+ * ever reach a signer.
  */
 
 const EMAIL = 'new@example.com';
@@ -39,6 +47,7 @@ const IP = '203.0.113.7';
 
 interface FakeAccount {
   userId: string;
+  walletAddress: string;
 }
 
 /**
@@ -54,15 +63,22 @@ function makeStore() {
   let clashOnWrite = false;
   let seq = 0;
 
-  const bound = (userId: string) =>
-    bindings.some((binding) => binding.userId === userId);
+  const bindingOf = (userId: string) =>
+    bindings.find((binding) => binding.userId === userId);
+  const bound = (userId: string) => bindingOf(userId) !== undefined;
 
   const store: SignupStore = {
     standingOf(email): Promise<AddressStanding> {
       const onRow = users.find((user) => user.email === email);
       if (onRow) {
-        if (bound(onRow.id) || onRow.deletedAt) {
-          return Promise.resolve({ kind: 'claimed' });
+        if (onRow.deletedAt) return Promise.resolve({ kind: 'closed' });
+        const binding = bindingOf(onRow.id);
+        if (binding) {
+          return Promise.resolve({
+            kind: 'claimed',
+            user: onRow,
+            walletAddress: binding.walletAddress,
+          });
         }
         return Promise.resolve({ kind: 'pending', user: onRow });
       }
@@ -282,6 +298,49 @@ function codeFrom(sent: OutgoingMail[]): string {
   return match[1];
 }
 
+/** Entry sessions over memory, keyed by hash exactly as the table is. */
+function makeEntryStore(db: ReturnType<typeof makeStore>) {
+  const sessions: EntrySessionRow[] = [];
+  let next = 0;
+  const store: EntrySessionStore = {
+    insert(row) {
+      const inserted: EntrySessionRow = {
+        id: `entry-${++next}`,
+        userId: row.userId,
+        tokenHash: row.tokenHash,
+        expiresAt: row.expiresAt,
+        revokedAt: null,
+        createdAt: new Date(),
+      };
+      sessions.push(inserted);
+      return Promise.resolve(inserted);
+    },
+    findLive(tokenHash, now) {
+      const session = sessions.find(
+        (candidate) =>
+          candidate.tokenHash === tokenHash &&
+          !candidate.revokedAt &&
+          candidate.expiresAt > now,
+      );
+      if (!session) return Promise.resolve(null);
+      const user = db.users.find((row) => row.id === session.userId);
+      const binding = db.bindings.find((row) => row.userId === session.userId);
+      if (!user || user.deletedAt || !binding) return Promise.resolve(null);
+      return Promise.resolve({
+        session,
+        userId: user.id,
+        walletAddress: binding.walletAddress,
+      });
+    },
+    revoke(id, now) {
+      const session = sessions.find((candidate) => candidate.id === id);
+      if (session && !session.revokedAt) session.revokedAt = now;
+      return Promise.resolve();
+    },
+  };
+  return { store, sessions };
+}
+
 function setUp() {
   const db = makeStore();
   const { challenges, sent } = makeChallenges((userId, target) =>
@@ -295,18 +354,61 @@ function setUp() {
       return Promise.resolve({ address: `signer-for-${userId}` });
     },
   } as unknown as RecoveryService;
-  const service = new SignupService(db.store, counter, challenges, recovery);
-  return { service, db, sent, counts, minted };
+  const entryStore = makeEntryStore(db);
+  const entry = new EntrySessionService(entryStore.store);
+  const service = new SignupService(
+    db.store,
+    counter,
+    challenges,
+    recovery,
+    entry,
+  );
+  return {
+    service,
+    db,
+    sent,
+    counts,
+    minted,
+    entry,
+    entrySessions: entryStore.sessions,
+  };
 }
 
-/** Runs the whole email step and hands back the token the app would hold. */
+/** Runs the whole email step and hands back whatever the address earned. */
 async function proveAddress(
   ctx: ReturnType<typeof setUp>,
   email = EMAIL,
   now = new Date(),
-) {
+): Promise<EmailProofOutcome> {
   await ctx.service.startEmailSignup(email, IP, now);
   return ctx.service.verifyEmailSignup(email, codeFrom(ctx.sent), IP, now);
+}
+
+/** The sign-up half of an outcome, or a failed test if it was the other. */
+function signupOf(outcome: EmailProofOutcome) {
+  if (outcome.kind !== 'signup') {
+    throw new Error(`expected a sign-up token, got ${outcome.kind}`);
+  }
+  return outcome;
+}
+
+function entryOf(outcome: EmailProofOutcome) {
+  if (outcome.kind !== 'entry') {
+    throw new Error(`expected an entry session, got ${outcome.kind}`);
+  }
+  return outcome;
+}
+
+/** Signs an address up and binds a passkey to it, so it is claimed. */
+async function claimAddress(
+  ctx: ReturnType<typeof setUp>,
+  email: string,
+  now = new Date(),
+) {
+  const { signupToken } = signupOf(await proveAddress(ctx, email, now));
+  const user = await ctx.service.claimSignupToken(signupToken, now);
+  ctx.db.bindings.push({ userId: user.id, walletAddress: `wallet-${user.id}` });
+  return user;
 }
 
 describe('SignupService.startEmailSignup', () => {
@@ -334,14 +436,12 @@ describe('SignupService.startEmailSignup', () => {
     expect(ctx.sent).toHaveLength(2);
   });
 
-  it('answers a claimed address exactly like a free one, and mails nothing', async () => {
+  it('answers a claimed address exactly like a free one, and mails both', async () => {
     const ctx = setUp();
     const now = new Date('2026-08-30T10:00:00Z');
-    const { signupToken } = await proveAddress(ctx, 'taken@example.com', now);
-    ctx.db.bindings.push({
-      userId: (await ctx.service.claimSignupToken(signupToken, now)).id,
-    });
+    await claimAddress(ctx, 'taken@example.com', now);
     const before = ctx.sent.length;
+    const rows = ctx.db.users.length;
 
     const claimed = await ctx.service.startEmailSignup(
       'taken@example.com',
@@ -354,11 +454,38 @@ describe('SignupService.startEmailSignup', () => {
       now,
     );
 
-    // Same keys, same shape, same expiry. Nothing in the body says which is
-    // which, and no row was made for the claimed one.
+    // Same keys, same shape, same expiry, and a code in both inboxes. Nothing
+    // a stranger can see says which is which; only the inbox learns.
     expect(Object.keys(claimed)).toEqual(Object.keys(free));
     expect(claimed.sent).toBe(free.sent);
     expect(claimed.expiresAt).toBe(free.expiresAt);
+    expect(ctx.sent.length - before).toBe(2);
+    expect(ctx.sent.at(-2)?.to).toBe('taken@example.com');
+    expect(ctx.sent.at(-1)?.to).toBe('free@example.com');
+    // No row was made for the claimed one; it already has its own.
+    expect(ctx.db.users.length - rows).toBe(1);
+  });
+
+  it('answers a closed account the same way, and mails nothing', async () => {
+    const ctx = setUp();
+    const now = new Date('2026-08-30T10:00:00Z');
+    const user = await claimAddress(ctx, 'gone@example.com', now);
+    user.deletedAt = now;
+    const before = ctx.sent.length;
+
+    const closed = await ctx.service.startEmailSignup(
+      'gone@example.com',
+      IP,
+      now,
+    );
+    const free = await ctx.service.startEmailSignup(
+      'free@example.com',
+      IP,
+      now,
+    );
+
+    expect(Object.keys(closed)).toEqual(Object.keys(free));
+    expect(closed.expiresAt).toBe(free.expiresAt);
     expect(ctx.sent.length - before).toBe(1);
     expect(ctx.sent.at(-1)?.to).toBe('free@example.com');
   });
@@ -396,7 +523,7 @@ describe('SignupService.verifyEmailSignup', () => {
   it('proves the address, mints the recovery signer and issues a token', async () => {
     const ctx = setUp();
 
-    const { signupToken, expiresAt } = await proveAddress(ctx);
+    const { signupToken, expiresAt } = signupOf(await proveAddress(ctx));
 
     expect(signupToken).toMatch(/^xsign_[A-Za-z0-9_-]{43}$/);
     expect(ctx.db.users[0].email).toBe(EMAIL);
@@ -430,16 +557,16 @@ describe('SignupService.verifyEmailSignup', () => {
     ).rejects.toThrow(RecoveryGrantExpiredError);
   });
 
-  it('refuses the same way for a claimed address, so a guess learns nothing', async () => {
+  it('refuses the same way for a claimed address nobody asked a code for', async () => {
     const ctx = setUp();
-    const { signupToken } = await proveAddress(ctx, 'taken@example.com');
-    ctx.db.bindings.push({
-      userId: (await ctx.service.claimSignupToken(signupToken)).id,
-    });
+    await claimAddress(ctx, 'taken@example.com');
 
+    // The free-address refusal, not the "no code outstanding" one: which of
+    // the two an address gets is exactly what a guess would be probing for.
     await expect(
       ctx.service.verifyEmailSignup('taken@example.com', '123456', IP),
     ).rejects.toThrow(RecoveryGrantExpiredError);
+    expect(ctx.entrySessions).toHaveLength(0);
   });
 
   it('names the clash when an Account took the address mid-flight', async () => {
@@ -459,8 +586,8 @@ describe('SignupService.verifyEmailSignup', () => {
 
   it('proving the inbox again keeps the signer and replaces the token', async () => {
     const ctx = setUp();
-    const first = await proveAddress(ctx);
-    const second = await proveAddress(ctx);
+    const first = signupOf(await proveAddress(ctx));
+    const second = signupOf(await proveAddress(ctx));
 
     expect(second.signupToken).not.toBe(first.signupToken);
     expect(ctx.db.users).toHaveLength(1);
@@ -479,7 +606,7 @@ describe('SignupService.verifyEmailSignup', () => {
 describe('SignupService.claimSignupToken', () => {
   it('spends a live token once and returns the row it binds', async () => {
     const ctx = setUp();
-    const { signupToken } = await proveAddress(ctx);
+    const { signupToken } = signupOf(await proveAddress(ctx));
 
     const user = await ctx.service.claimSignupToken(signupToken);
 
@@ -490,7 +617,7 @@ describe('SignupService.claimSignupToken', () => {
 
   it('refuses a token that was already spent', async () => {
     const ctx = setUp();
-    const { signupToken } = await proveAddress(ctx);
+    const { signupToken } = signupOf(await proveAddress(ctx));
     await ctx.service.claimSignupToken(signupToken);
 
     await expect(ctx.service.claimSignupToken(signupToken)).rejects.toThrow(
@@ -501,7 +628,7 @@ describe('SignupService.claimSignupToken', () => {
   it('refuses a token past its lifetime', async () => {
     const ctx = setUp();
     const issued = new Date('2026-08-30T10:00:00Z');
-    const { signupToken } = await proveAddress(ctx, EMAIL, issued);
+    const { signupToken } = signupOf(await proveAddress(ctx, EMAIL, issued));
 
     const late = new Date(issued.getTime() + SIGNUP_TOKEN_TTL_MS + 1);
     await expect(
@@ -526,8 +653,8 @@ describe('SignupService.claimSignupToken', () => {
 
   it('refuses a token whose row has since been bound', async () => {
     const ctx = setUp();
-    const { signupToken } = await proveAddress(ctx);
-    ctx.db.bindings.push({ userId: ctx.db.users[0].id });
+    const { signupToken } = signupOf(await proveAddress(ctx));
+    ctx.db.bindings.push({ userId: ctx.db.users[0].id, walletAddress: 'w' });
 
     await expect(ctx.service.claimSignupToken(signupToken)).rejects.toThrow(
       SignupTokenInvalidError,
@@ -536,7 +663,7 @@ describe('SignupService.claimSignupToken', () => {
 
   it('lets two racing exchanges spend a token exactly once', async () => {
     const ctx = setUp();
-    const { signupToken } = await proveAddress(ctx);
+    const { signupToken } = signupOf(await proveAddress(ctx));
 
     const outcomes = await Promise.allSettled([
       ctx.service.claimSignupToken(signupToken),
@@ -545,5 +672,120 @@ describe('SignupService.claimSignupToken', () => {
 
     expect(outcomes.filter((o) => o.status === 'fulfilled')).toHaveLength(1);
     expect(outcomes.filter((o) => o.status === 'rejected')).toHaveLength(1);
+  });
+});
+
+describe('SignupService entry session', () => {
+  const TAKEN = 'taken@example.com';
+
+  it('opens an entry session on the right code, and touches no signer', async () => {
+    const ctx = setUp();
+    const user = await claimAddress(ctx, TAKEN);
+    const mintedBefore = ctx.minted.length;
+    const tokensBefore = ctx.db.tokens.length;
+
+    const outcome = entryOf(await proveAddress(ctx, TAKEN));
+
+    expect(outcome.entryToken).toMatch(/^xentry_[A-Za-z0-9_-]{43}$/);
+    expect(outcome.user).toEqual({
+      id: user.id,
+      email: TAKEN,
+      walletAddress: `wallet-${user.id}`,
+    });
+    expect(new Date(outcome.expiresAt).getTime()).toBeGreaterThan(Date.now());
+    // Only the hash is at rest, and nothing else was minted: no sign-up token
+    // to bind a passkey with, and no signer.
+    expect(ctx.entrySessions).toHaveLength(1);
+    expect(ctx.entrySessions[0].tokenHash).toBe(
+      createHash('sha256').update(outcome.entryToken).digest('hex'),
+    );
+    expect(ctx.db.tokens.length).toBe(tokensBefore);
+    expect(ctx.minted.length).toBe(mintedBefore);
+  });
+
+  it('the session it opens authenticates as the entry tier for that account', async () => {
+    const ctx = setUp();
+    const user = await claimAddress(ctx, TAKEN);
+    const { entryToken } = entryOf(await proveAddress(ctx, TAKEN));
+
+    await expect(ctx.entry.authenticate(entryToken)).resolves.toEqual({
+      userId: user.id,
+      walletAddress: `wallet-${user.id}`,
+      tier: 'entry',
+      entrySessionId: ctx.entrySessions[0].id,
+    });
+  });
+
+  it('an entry token is never a sign-up token', async () => {
+    const ctx = setUp();
+    await claimAddress(ctx, TAKEN);
+    const { entryToken } = entryOf(await proveAddress(ctx, TAKEN));
+
+    await expect(ctx.service.claimSignupToken(entryToken)).rejects.toThrow(
+      SignupTokenInvalidError,
+    );
+  });
+
+  it('a sign-up token is never an entry session', async () => {
+    const ctx = setUp();
+    const { signupToken } = signupOf(await proveAddress(ctx));
+
+    await expect(ctx.entry.authenticate(signupToken)).rejects.toThrow(
+      EntrySessionInvalidError,
+    );
+  });
+
+  it('refuses a wrong code and opens nothing', async () => {
+    const ctx = setUp();
+    await claimAddress(ctx, TAKEN);
+    await ctx.service.startEmailSignup(TAKEN, IP);
+    const wrong = codeFrom(ctx.sent) === '000000' ? '000001' : '000000';
+
+    await expect(
+      ctx.service.verifyEmailSignup(TAKEN, wrong, IP),
+    ).rejects.toThrow(InvalidRecoveryCodeError);
+    expect(ctx.entrySessions).toHaveLength(0);
+  });
+
+  it('a code minted before the address was claimed does not open a session', async () => {
+    const ctx = setUp();
+    const first = await proveAddress(ctx, TAKEN);
+    const user = await ctx.service.claimSignupToken(
+      signupOf(first).signupToken,
+    );
+    // A sign-up code is still outstanding for this row when the passkey binds.
+    await ctx.service.startEmailSignup(TAKEN, IP);
+    const signupCode = codeFrom(ctx.sent);
+    ctx.db.bindings.push({ userId: user.id, walletAddress: 'w' });
+
+    // Its purpose is sign-up, and the address now answers as an Account, so
+    // the code is refused rather than promoted.
+    await expect(
+      ctx.service.verifyEmailSignup(TAKEN, signupCode, IP),
+    ).rejects.toThrow(RecoveryGrantExpiredError);
+    expect(ctx.entrySessions).toHaveLength(0);
+  });
+
+  it('keeps the per-address and per-network caps on the entry path', async () => {
+    const ctx = setUp();
+    await claimAddress(ctx, TAKEN);
+    const already = ctx.sent.filter((mail) => mail.to === TAKEN).length;
+
+    for (let i = already; i < 5; i++) {
+      await ctx.service.startEmailSignup(TAKEN, IP);
+    }
+    await expect(ctx.service.startEmailSignup(TAKEN, IP)).rejects.toThrow(
+      TooManyRecoveryCodesError,
+    );
+
+    const other = setUp();
+    for (let i = 0; i < 60; i++) {
+      await other.service
+        .verifyEmailSignup(`x${i}@example.com`, '000000', IP)
+        .catch(() => undefined);
+    }
+    await expect(
+      other.service.verifyEmailSignup(TAKEN, '000000', IP),
+    ).rejects.toThrow(TooManySignupAttemptsError);
   });
 });

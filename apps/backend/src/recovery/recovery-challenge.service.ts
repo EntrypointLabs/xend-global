@@ -122,6 +122,16 @@ export class RecoveryChallengeService {
                 'through. Until then the address already on your account stays in place,',
                 'and we will write to it too.',
               ].join('\n')
+          : purpose === 'entry_session'
+            ? [
+                `${code} lets you into your Xend account to look around.`,
+                '',
+                'It expires in 10 minutes, and what it opens lasts an hour.',
+                '',
+                'It cannot send money or change your keys: those need your passkey.',
+                'If you did not ask for this, someone else knows your email address.',
+                'They cannot spend with it.',
+              ].join('\n')
             : [
                 `${code} is your Xend recovery code.`,
                 '',

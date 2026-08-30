@@ -5,13 +5,34 @@ import { RATE_COUNTER } from '../counters/rate-counter.interface';
 import type { RateCounter } from '../counters/rate-counter.interface';
 import { RecoveryChallengeService } from '../recovery/recovery-challenge.service';
 import { RecoveryService } from '../recovery/recovery.service';
-import { RecoveryGrantExpiredError } from '../recovery/recovery.errors';
+import {
+  NoRecoveryChallengeError,
+  RecoveryGrantExpiredError,
+} from '../recovery/recovery.errors';
 import { EmailInUseError } from './auth.errors';
+import { EntrySessionService } from './entry-session.service';
 import {
   SignupTokenInvalidError,
   TooManySignupAttemptsError,
 } from './signup.errors';
 import { SIGNUP_STORE, type SignupStore, type UsersRow } from './signup.store';
+
+/**
+ * What proving an inbox earns, decided only after the code came back right.
+ *
+ * `signup` is a row nothing has claimed: the token binds the passkey created
+ * next. `entry` is an address already on an Account: a limited session that
+ * can look and start a recovery, and never a signer. The response says which
+ * only once the inbox is proved, so existence is not leaked to a stranger.
+ */
+export type EmailProofOutcome =
+  | { kind: 'signup'; signupToken: string; expiresAt: string }
+  | {
+      kind: 'entry';
+      entryToken: string;
+      expiresAt: string;
+      user: { id: string; email: string; walletAddress: string };
+    };
 
 const TOKEN_PREFIX = 'xsign_';
 const TOKEN_BYTES = 32;
@@ -30,15 +51,17 @@ const MAX_CHALLENGES_PER_IP_PER_HOUR = 20;
 const MAX_VERIFIES_PER_IP_PER_HOUR = 60;
 
 /**
- * The half of sign-up that happens before there is a passkey.
+ * The email door, for a stranger and for a Consumer alike.
  *
  * Email proves the inbox and unlocks the recovery signer. It does not sign
- * anyone in: what comes out of here is a token that lets the passkey created
- * next bind to the row the code was proved against, and nothing else.
+ * anyone in. For an address nobody holds, what comes out is a token that lets
+ * the passkey created next bind to the row the code was proved against. For
+ * an address already on an Account, it is a limited session that cannot
+ * spend, cannot change the signer set and cannot enrol a passkey.
  *
  * Both endpoints are unauthenticated, so the two things they must never do
- * are say whether an address already has an Account, and let one caller bind
- * a row another caller proved.
+ * are say whether an address already has an Account before the inbox is
+ * proved, and let one caller bind a row another caller proved.
  */
 @Injectable()
 export class SignupService {
@@ -49,15 +72,16 @@ export class SignupService {
     @Inject(RATE_COUNTER) private readonly counter: RateCounter,
     private readonly challenges: RecoveryChallengeService,
     private readonly recovery: RecoveryService,
+    private readonly entry: EntrySessionService,
   ) {}
 
   /**
-   * Mails a code to an address nobody has claimed.
+   * Mails a code to the address, whatever it is to the platform.
    *
    * The answer is the same whether or not the address is already on an
-   * Account. An address that is claimed gets no mail and the same shape back,
-   * so the only way to learn what the platform knows about an inbox is to
-   * read it.
+   * Account, and so is the mail: a code goes out either way, minted for the
+   * purpose the address can actually use. The only address that gets no mail
+   * is one on a closed account, and it still gets the same shape back.
    */
   async startEmailSignup(
     email: string,
@@ -71,12 +95,21 @@ export class SignupService {
     );
 
     const standing = await this.store.standingOf(email);
-    if (standing.kind === 'claimed') {
-      this.logger.log('signup.challenge.claimed_address');
+    if (standing.kind === 'closed') {
+      this.logger.log('signup.challenge.closed_address');
       return {
         sent: true,
         expiresAt: new Date(now.getTime() + CODE_TTL_MS).toISOString(),
       };
+    }
+    if (standing.kind === 'claimed') {
+      const { expiresAt } = await this.challenges.issue(
+        standing.user.id,
+        email,
+        'entry_session',
+        now,
+      );
+      return { sent: true, expiresAt: expiresAt.toISOString() };
     }
 
     let user: UsersRow;
@@ -97,19 +130,29 @@ export class SignupService {
   }
 
   /**
-   * Turns a correct code into a proved address, a sealed recovery signer, and
-   * the token that lets the next step bind a passkey to them.
+   * Turns a correct code into what the address earns: for a row nothing has
+   * claimed, a proved address, a sealed recovery signer and the token that
+   * binds the passkey created next; for an Account, an entry session.
    */
   async verifyEmailSignup(
     email: string,
     code: string,
     ip: string,
     now = new Date(),
-  ): Promise<{ signupToken: string; expiresAt: string }> {
+  ): Promise<EmailProofOutcome> {
     await this.assertIpAllowance('verify', ip, MAX_VERIFIES_PER_IP_PER_HOUR);
 
     const standing = await this.store.standingOf(email);
-    // Same refusal as a wrong code on a live challenge. A claimed address is
+    if (standing.kind === 'claimed') {
+      return this.openEntrySession(
+        standing.user,
+        standing.walletAddress,
+        email,
+        code,
+        now,
+      );
+    }
+    // Same refusal as a wrong code on a live challenge. A closed address is
     // not a case this may name.
     if (standing.kind !== 'pending') {
       throw new RecoveryGrantExpiredError('that code is not right');
@@ -164,7 +207,62 @@ export class SignupService {
     });
 
     this.logger.log(`signup.email.verified user=${user.id}`);
-    return { signupToken: raw, expiresAt: row.expiresAt.toISOString() };
+    return {
+      kind: 'signup',
+      signupToken: raw,
+      expiresAt: row.expiresAt.toISOString(),
+    };
+  }
+
+  /**
+   * The code was minted for this purpose and no other, so a sign-up code
+   * guessed against a claimed address, or the other way round, is a wrong
+   * code. Nothing here touches a signer: the session it opens holds none.
+   */
+  private async openEntrySession(
+    user: UsersRow,
+    walletAddress: string,
+    email: string,
+    code: string,
+    now: Date,
+  ): Promise<EmailProofOutcome> {
+    let grantId: string;
+    try {
+      ({ grantId } = await this.challenges.verify(
+        user.id,
+        'entry_session',
+        code,
+        now,
+      ));
+    } catch (err) {
+      // An address nobody asked a code for answers the same whether or not
+      // it is on an Account; the difference is what a stranger is probing for.
+      if (err instanceof NoRecoveryChallengeError) {
+        throw new RecoveryGrantExpiredError('that code is not right');
+      }
+      throw err;
+    }
+    const grant = await this.challenges.assertGrant(
+      user.id,
+      grantId,
+      'entry_session',
+      now,
+    );
+    if (grant.target !== email) {
+      throw new RecoveryGrantExpiredError(
+        'that code was sent to a different address',
+      );
+    }
+    await this.challenges.consume(grantId, now);
+
+    const opened = await this.entry.open(user.id, now);
+    this.logger.log(`signup.entry.opened user=${user.id}`);
+    return {
+      kind: 'entry',
+      entryToken: opened.entryToken,
+      expiresAt: opened.expiresAt,
+      user: { id: user.id, email, walletAddress },
+    };
   }
 
   /**
