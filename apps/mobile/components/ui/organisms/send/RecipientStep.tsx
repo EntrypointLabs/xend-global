@@ -15,24 +15,18 @@ import {
 } from "@expo/vector-icons";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import {
+  BottomSheetTextInput,
+  BottomSheetScrollView,
+} from "@gorhom/bottom-sheet";
 import { truncateAddress } from "@/utils/helper";
 import { TextInput } from "react-native-gesture-handler";
 import { isPublicKey, isSnsName, resolveSnsName } from "@/utils/solana";
 import { cn } from "@/utils/cn";
 import { useQuery } from "@tanstack/react-query";
 import { useDebounce } from "@/hooks/useDebounce";
-
-const solanaAddress = "AtfWTb16gD8P7D975ZwMfUvABZvkqyLCF6wySvpTntZj";
-
-// Mock Recent Addresses
-const RECENT_ADDRESSES = [
-  {
-    address: solanaAddress,
-    sends: 2,
-    icon: require("@/assets/icons/wallet.png"),
-  },
-];
+import { useContacts } from "@/hooks/useContacts";
+import { useRecentRecipients } from "@/hooks/useRecentRecipients";
 
 interface RecipientStepProps {
   onClose: () => void;
@@ -50,6 +44,18 @@ export default memo(function RecipientStep({
 }: RecipientStepProps) {
   const inputRef = useRef<TextInput | null>(null);
   const debouncedRecipient = useDebounce(recipient, 400);
+  const { contacts } = useContacts();
+  // Saved addresses are listed above under their own name, so repeating them
+  // here would put the same wallet on screen twice with two different labels.
+  const savedAddresses = useMemo(
+    () => contacts.map((c) => c.address),
+    [contacts]
+  );
+  const { recipients } = useRecentRecipients({ exclude: savedAddresses });
+  const sendsTo = useMemo(
+    () => new Map(recipients.map((r) => [r.address, r.sends])),
+    [recipients]
+  );
 
   const isSns = debouncedRecipient.includes(".");
 
@@ -104,7 +110,10 @@ export default memo(function RecipientStep({
       return { isValid: true, label: "Enter Solana address or .sol handle" };
     }
 
-    const sends = 0;
+    const target = isPublicKey(debouncedRecipient)
+      ? debouncedRecipient
+      : resolvedAddress;
+    const sends = (target && sendsTo.get(target)) ?? 0;
     const sendsLabel =
       sends === 0 ? "New address" : `${sends} send${sends === 1 ? "" : "s"}`;
 
@@ -171,7 +180,14 @@ export default memo(function RecipientStep({
     }
 
     return { isValid: false, label: "Invalid Solana address" };
-  }, [debouncedRecipient, isResolving, resolveError, resolvedAddress, isSns]);
+  }, [
+    debouncedRecipient,
+    isResolving,
+    resolveError,
+    resolvedAddress,
+    isSns,
+    sendsTo,
+  ]);
 
   const isContinueDisabled = useMemo(() => {
     if (debouncedRecipient.length === 0 || !isValid) return true;
@@ -266,37 +282,86 @@ export default memo(function RecipientStep({
           </View>
         </View>
 
-        {/* Recent Addresses */}
-        <Typography weight="600" className="mb-4 ml-5 text-lg">
-          Recent addresses
-        </Typography>
+        {/* A section with nothing in it is dropped rather than shown empty: a
+            Consumer who has never sent has no use for a heading saying so. */}
+        <BottomSheetScrollView showsVerticalScrollIndicator={false}>
+          {contacts.length > 0 && (
+            <>
+              <Typography weight="600" className="mb-4 ml-5 text-lg">
+                Address book
+              </Typography>
+              {contacts.map((contact) => (
+                <RecipientRow
+                  key={contact.address}
+                  title={contact.name}
+                  subtitle={truncateAddress(contact.address)}
+                  onPress={() => {
+                    setRecipient(contact.address);
+                    onNext(contact.address);
+                  }}
+                />
+              ))}
+            </>
+          )}
 
-        {RECENT_ADDRESSES.map((item, index) => (
-          <TouchableOpacity
-            key={index}
-            className="mx-5 mb-4 flex-row items-center"
-            onPress={() => {
-              setRecipient(item.address);
-              onNext(item.address);
-            }}
-          >
-            <View
-              className="mr-3 h-12 w-12 items-center justify-center rounded-full border bg-gray-200/60"
-              style={{ borderColor: "#F2F4F7" }}
-            >
-              <MaterialIcons name="wallet" size={22} color="black" />
-            </View>
-            <View>
-              <Typography weight="600" className="text-base">
-                {truncateAddress(item.address)}
+          {recipients.length > 0 && (
+            <>
+              <Typography
+                weight="600"
+                className={cn(
+                  "mb-4 ml-5 text-lg",
+                  contacts.length > 0 && "mt-4"
+                )}
+              >
+                Recent addresses
               </Typography>
-              <Typography weight="500" className="text-sm text-gray-400">
-                {item.sends} sends
-              </Typography>
-            </View>
-          </TouchableOpacity>
-        ))}
+              {recipients.map((entry) => (
+                <RecipientRow
+                  key={entry.address}
+                  title={truncateAddress(entry.address)}
+                  subtitle={`${entry.sends} send${entry.sends === 1 ? "" : "s"}`}
+                  onPress={() => {
+                    setRecipient(entry.address);
+                    onNext(entry.address);
+                  }}
+                />
+              ))}
+            </>
+          )}
+        </BottomSheetScrollView>
       </View>
     </TouchableWithoutFeedback>
   );
 });
+
+function RecipientRow({
+  title,
+  subtitle,
+  onPress,
+}: {
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      className="mx-5 mb-4 flex-row items-center"
+      onPress={onPress}
+    >
+      <View
+        className="mr-3 h-12 w-12 items-center justify-center rounded-full border bg-gray-200/60"
+        style={{ borderColor: "#F2F4F7" }}
+      >
+        <MaterialIcons name="wallet" size={22} color="black" />
+      </View>
+      <View>
+        <Typography weight="600" className="text-base">
+          {title}
+        </Typography>
+        <Typography weight="500" className="text-sm text-gray-400">
+          {subtitle}
+        </Typography>
+      </View>
+    </TouchableOpacity>
+  );
+}
