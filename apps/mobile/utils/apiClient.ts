@@ -20,6 +20,12 @@ import {
  */
 export const ExchangeRequestSchema = z.object({
   privyIdToken: z.string().min(1),
+  /**
+   * Carried on the exchange that follows sign-up. It is what binds the passkey
+   * just created to the address proved a moment earlier; without it the
+   * backend would have nothing to attach the new Privy user to.
+   */
+  signupToken: z.string().min(1).optional(),
 });
 export type ExchangeRequest = z.infer<typeof ExchangeRequestSchema>;
 
@@ -44,6 +50,18 @@ export const MirrorPasskeyCredentialRequestSchema = z.object({
 export type MirrorPasskeyCredentialRequest = z.infer<
   typeof MirrorPasskeyCredentialRequestSchema
 >;
+
+/** Mirrors the sign-up email responses in apps/backend/src/auth/dtos.ts. */
+export const SignupEmailChallengeResponseSchema = z.object({
+  sent: z.literal(true),
+  expiresAt: z.string(),
+});
+
+export const SignupEmailResponseSchema = z.object({
+  signupToken: z.string().min(1),
+  expiresAt: z.string(),
+});
+export type SignupEmailResponse = z.infer<typeof SignupEmailResponseSchema>;
 
 export const MirrorPasskeyCredentialResponseSchema = z.object({
   mirrored: z.boolean(),
@@ -492,6 +510,12 @@ export function apiErrorStatus(err: unknown): number | null {
   return err instanceof ApiError ? err.status : null;
 }
 
+/** The backend's typed refusal, when the response body carried one. */
+export function apiErrorCode(err: unknown): string | null {
+  const code = err instanceof ApiError ? err.data?.code : null;
+  return typeof code === "string" ? code : null;
+}
+
 class BackendClient {
   private baseUrl: string;
   private defaultHeaders: Record<string, string>;
@@ -646,14 +670,36 @@ class BackendClient {
   }
 
   /**
-   * POST /auth/email — records the contact address given after sign-up.
-   *
-   * Contact only. A passkey is what signs the Consumer in, so this address
-   * unlocks nothing and losing it costs them notifications rather than the
-   * account. 409 means another account already claims it.
+   * POST /auth/signup/email/challenge: the first step of sign-up, before any
+   * session exists. Answers the same way whether or not the address already
+   * has an account, so a code not arriving is the only signal there is.
    */
+  async requestSignupEmailCode(email: string): Promise<void> {
+    const raw = await this.request<unknown>("/auth/signup/email/challenge", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+    SignupEmailChallengeResponseSchema.parse(raw);
+  }
+
   /**
-   * POST /auth/email/challenge — sends a code to an address being claimed.
+   * POST /auth/signup/email: proves the address and returns the token the
+   * passkey step hands to the exchange. Single use, and short-lived.
+   */
+  async verifySignupEmail(
+    email: string,
+    code: string
+  ): Promise<SignupEmailResponse> {
+    const raw = await this.request<unknown>("/auth/signup/email", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
+    });
+    return SignupEmailResponseSchema.parse(raw);
+  }
+
+  /**
+   * POST /auth/email/challenge: sends a code to an address a signed-in
+   * Consumer with no address on file is claiming.
    *
    * Refused with 409 when the address is already on another Account, before
    * anything is mailed.
@@ -667,11 +713,11 @@ class BackendClient {
   }
 
   /**
-   * POST /auth/email — records the address, with the code that proves it.
+   * POST /auth/email: records the address, with the code that proves it.
    *
-   * The code is required: the recovery signer is anchored on this address at
-   * Account creation, so an unproved one leaves the only route back pointing
-   * at an inbox nobody reads.
+   * The code is required: the recovery signer is anchored on this address, so
+   * an unproved one leaves the only route back pointing at an inbox nobody
+   * reads.
    */
   async setContactEmail(email: string, code: string): Promise<void> {
     await this.request<unknown>("/auth/email", {

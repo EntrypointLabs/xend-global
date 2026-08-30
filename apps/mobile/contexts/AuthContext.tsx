@@ -244,7 +244,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * mark the session authenticated.
    */
   const finalizeSession = async (
-    fallbackEmail: string | null
+    fallbackEmail: string | null,
+    signupToken?: string
   ): Promise<boolean> => {
     try {
       // Wait for the embedded Solana wallet to finish provisioning before the
@@ -259,7 +260,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       let exchange: Awaited<ReturnType<typeof apiClient.exchange>>;
       try {
-        exchange = await apiClient.exchange({ privyIdToken: idToken });
+        exchange = await apiClient.exchange({
+          privyIdToken: idToken,
+          signupToken,
+        });
       } catch (exchangeError) {
         // Privy has already authenticated the Consumer and provisioned their
         // wallet, so identity is settled; only our JWT is missing. Let them in
@@ -267,8 +271,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // and let the existing refresh effect pick the JWT up when the backend
         // is reachable again. Balances and activity fall back to Solana RPC in
         // the meantime, so the wallet still works.
+        //
+        // Not during sign-up. The token is what attaches this passkey to the
+        // address that was just proved, and a silent refresh later would
+        // exchange without it and start an empty account instead.
         const fallbackAddress = embeddedSolana.wallets?.[0]?.address ?? null;
-        if (!fallbackAddress) throw exchangeError;
+        if (!fallbackAddress || signupToken) throw exchangeError;
 
         Sentry.captureException(
           new Error(
@@ -356,8 +364,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * the same as any other sign-in, which is the point: the credential changes
    * and nothing downstream does.
    */
-  const completePasskeySession = async (privyUser: unknown): Promise<boolean> =>
-    finalizeSession(emailArgFor(privyUser));
+  const completePasskeySession = async (
+    privyUser: unknown,
+    signupToken?: string
+  ): Promise<boolean> => finalizeSession(emailArgFor(privyUser), signupToken);
 
   const verifyCode = completeOtpAndExchange;
   const verifyCodeAndCreateAccount = completeOtpAndExchange;

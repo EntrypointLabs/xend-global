@@ -7,56 +7,38 @@ import Logo from "@/components/Logo";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Ionicons } from "@expo/vector-icons";
 import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
-import { NoPasskeyModal } from "@/components/ui/organisms/modals/NoPasskeyModal";
 
+/**
+ * The front door. Email leads because it works on any device, including one
+ * that holds no passkey yet, which on a fresh install is every device. The
+ * passkey stays right beneath it because on a phone that has one it is the
+ * faster way in, and a returning Consumer should not have to look for it.
+ */
 function LoginScreen() {
-  const {
-    signIn,
-    signUp,
-    busy,
-    error: passkeyError,
-    clearError,
-  } = usePasskeyLogin();
-  const [askingToCreate, setAskingToCreate] = useState(false);
+  const { signIn, busy, error: passkeyError, clearError } = usePasskeyLogin();
+  const [noPasskey, setNoPasskey] = useState(false);
 
   // Email OTP is a migration route now, not a way in. It is the one path that
   // signs an older Consumer in and enrols a passkey on this device, which is
   // exactly what recovering a wallet onto a new phone means.
   const recover = () => router.push("/(auth)/email-login");
 
-  /**
-   * Creating an account has its own way in, rather than only appearing when a
-   * sign-in fails.
-   *
-   * On a device holding no credential for the relying party, Android does not
-   * answer `NoCredentials`: it offers to sign in from another device instead,
-   * and a Consumer who backs out of that gets a cancellation. So the path that
-   * revealed "create an account" was unreachable for exactly the person who
-   * needed it, which on a fresh install is everyone.
-   */
+  const onEmail = () => {
+    clearError();
+    setNoPasskey(false);
+    router.push("/add-email");
+  };
+
   const onPasskey = async () => {
+    setNoPasskey(false);
     const outcome = await signIn();
     // The signed-in shell decides where to land; a passkey that worked leaves
     // the session in exactly the state an email code would have.
     if (outcome === "signed-in") router.replace("/(tabs)");
-    if (outcome === "no-passkey") setAskingToCreate(true);
-  };
-
-  const onCreate = async () => {
-    if (!(await signUp())) return;
-    setAskingToCreate(false);
-    // The contact step, and the Account is built from there. It has to be:
-    // the recovery signer is anchored on the Consumer's address, so there is
-    // no Account to create until they have given one. The shell routes here on
-    // its own once the session exists, and this makes it immediate rather than
-    // leaving a frame of dashboard in between.
-    router.replace("/add-email");
-  };
-
-  const onRecoverInstead = () => {
-    setAskingToCreate(false);
-    clearError();
-    recover();
+    // Not a failure and not an offer to create anything: a passkey from
+    // another ecosystem looks the same as none at all, and the email door
+    // above is the one that works for both.
+    if (outcome === "no-passkey") setNoPasskey(true);
   };
 
   return (
@@ -94,13 +76,24 @@ function LoginScreen() {
           </View>
           <View className="gap-2.5">
             <HapticPressable
-              onPress={onPasskey}
+              onPress={onEmail}
               disabled={busy}
               className="w-full flex-row items-center justify-center gap-4 rounded-full border border-white bg-white p-4"
             >
-              <Ionicons name="finger-print-outline" size={22} color="#000000" />
+              <Ionicons name="mail-outline" size={22} color="#000000" />
               <Typography weight="600" className="text-lg text-black">
-                {busy ? "Signing in\u2026" : "Continue with Passkey"}
+                Continue with email
+              </Typography>
+            </HapticPressable>
+
+            <HapticPressable
+              onPress={onPasskey}
+              disabled={busy}
+              className="w-full flex-row items-center justify-center gap-4 rounded-full border border-white bg-transparent p-4"
+            >
+              <Ionicons name="finger-print-outline" size={22} color="#FFFFFF" />
+              <Typography weight="600" className="text-lg text-white">
+                {busy ? "Signing in…" : "Sign in with passkey"}
               </Typography>
             </HapticPressable>
 
@@ -112,44 +105,32 @@ function LoginScreen() {
                 {passkeyError}
               </Typography>
             )}
+            {noPasskey && !passkeyError && (
+              <Typography
+                weight="500"
+                className="px-1 text-sm leading-5 text-white/80"
+              >
+                No passkey on this phone yet. Continue with email to create one,
+                or to reach an account you made elsewhere.
+              </Typography>
+            )}
 
             <HapticPressable
               onPress={recover}
-              className="w-full flex-row items-center justify-center gap-3 rounded-full border border-white/20 bg-white/20 p-4"
+              disabled={busy}
+              className="w-full flex-row items-center justify-center gap-3 p-3"
             >
               <Image
                 source={require("@/assets/icons/redo.png")}
-                className="size-6"
+                className="size-5"
               />
-              <Typography weight="600" className="text-lg text-white">
-                Recover existing wallet
-              </Typography>
-            </HapticPressable>
-
-            <HapticPressable
-              onPress={() => setAskingToCreate(true)}
-              disabled={busy}
-              className="w-full items-center p-3"
-            >
               <Typography weight="600" className="text-base text-white/90">
-                New here? Create an account
+                Recover existing wallet
               </Typography>
             </HapticPressable>
           </View>
         </View>
       </View>
-
-      <NoPasskeyModal
-        visible={askingToCreate}
-        onRecover={onRecoverInstead}
-        onCreate={onCreate}
-        onDismiss={() => {
-          setAskingToCreate(false);
-          clearError();
-        }}
-        isCreating={busy}
-        error={passkeyError}
-      />
     </View>
   );
 }

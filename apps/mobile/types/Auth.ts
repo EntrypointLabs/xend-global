@@ -50,6 +50,12 @@ export interface AuthContextType {
   /**
    * Finishes a sign-in that Privy has already authenticated with a passkey.
    * Everything after the credential is identical to any other sign-in.
+   *
+   * With a sign-up token, the exchange binds the new passkey to the address
+   * the token was issued for instead of starting an empty account.
    */
-  completePasskeySession: (privyUser: unknown) => Promise<boolean>;
+  completePasskeySession: (
+    privyUser: unknown,
+    signupToken?: string
+  ) => Promise<boolean>;
 }

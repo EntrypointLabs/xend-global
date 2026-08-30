@@ -128,13 +128,17 @@ function AuthLayout() {
   }
 
   const inAuthGroup = segments[0] === "(auth)";
+  // Sign-up starts at the address, before there is a session, so the email
+  // screen is reachable signed out. It stays outside the auth group because a
+  // sign-up finishes on it too, after the session exists.
+  const atEmailScreen = segments[0] === "add-email";
 
-  if (!isAuthenticated && !inAuthGroup) {
+  if (!isAuthenticated && !inAuthGroup && !atEmailScreen) {
     return <Redirect href="/login" withAnchor />;
   }
 
-  // Before the tabs, and from anywhere. Sign-up finishes at the contact
-  // address: the recovery signer is anchored on it, so a Consumer without one
+  // Before the tabs, and from anywhere. An Account needs a contact address:
+  // the recovery signer is anchored on it, so a signed-in Consumer without one
   // has no Account at all. Deriving this from what is on file rather than from
   // a flag raised during sign-up means an interrupted sign-up resumes instead
   // of leaving somebody on a dashboard nothing has been created for.
@@ -142,7 +146,7 @@ function AuthLayout() {
     isAuthenticated &&
     needsContactEmail &&
     !holdAuthStack &&
-    segments[0] !== "add-email"
+    !atEmailScreen
   ) {
     return <Redirect href="/add-email" withAnchor />;
   }

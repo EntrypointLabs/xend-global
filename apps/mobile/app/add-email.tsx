@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
@@ -18,39 +19,53 @@ import { ThemedTextInput } from "@/components/ui/molecules";
 import { ScreenVerificationCodeInput } from "@/components/ui/organisms";
 import { WithScreenTheme } from "@/components/WithScreenTheme";
 import { useAccountSetup } from "@/hooks/useAccountSetup";
+import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { useAuth } from "@/contexts/AuthContext";
 import { Email } from "@/types/Auth";
-import { apiClient, apiErrorStatus } from "@/utils/apiClient";
+import { apiClient, apiErrorCode, apiErrorStatus } from "@/utils/apiClient";
+import { cn } from "@/utils/cn";
 
 /**
- * The last step of signing up, and not a skippable one.
+ * Where sign-up starts: the address a Consumer is reached at, proved by a
+ * code, before there is a passkey or a session.
  *
- * A passkey is the credential now, so this address is a way to reach the
- * Consumer rather than a way in. It is still required, because the recovery
- * signer is anchored on it and S3 is mandatory at Account creation (D10b).
- * Skipping left a Consumer with no Account, no recovery signer and no way to
- * recover a lost phone: the 0 of 3 state the whole design exists to prevent.
+ * The address anchors the recovery signer, which is minted the moment the
+ * code is confirmed. The passkey comes next and is the credential; the
+ * Account is built after that. Email proves the inbox and nothing more: it
+ * never signs anyone in.
  *
- * The only ways off this screen are a proved address or signing out, which is
- * deliberate. Everything else would be a route into the app for somebody the
- * product cannot get back to.
- *
- * The Account is built from here rather than from the sign-up screen, because
- * the recovery signer is anchored on this address: there is nothing to create
- * until it exists. Skipping leaves the Consumer on their Privy wallet, and the
- * signed-in shell asks again on the next launch.
+ * A signed-in Consumer with no address on file lands here as well, and leaves
+ * through the same Account setup once one is proved.
  */
+type Step = "address" | "code" | "passkey";
+
 function AddEmailScreen() {
-  const { email: onFile, setEmail: setSessionEmail, logout } = useAuth();
+  const {
+    isAuthenticated,
+    email: onFile,
+    setEmail: setSessionEmail,
+    logout,
+  } = useAuth();
+  const {
+    signUp,
+    busy: creatingPasskey,
+    error: passkeyError,
+    clearError: clearPasskeyError,
+  } = usePasskeyLogin();
+  const [step, setStep] = useState<Step>("address");
   const [value, setValue] = useState("");
   /**
-   * Null until a code has been sent, then the address it went to.
-   *
-   * Held separately from the input so the code step confirms the address that
-   * was actually mailed, not whatever the field says by the time it is
-   * submitted.
+   * The address a code went to, held apart from the input so the code step
+   * confirms what was actually mailed rather than whatever the field says by
+   * the time it is submitted.
    */
   const [claimed, setClaimed] = useState<string | null>(null);
+  /**
+   * What the code earned, and the only thing that lets the passkey created
+   * next land on this address. Held in memory only: it lives fifteen minutes
+   * and a fresh code replaces it.
+   */
+  const [signupToken, setSignupToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [settingUpAccount, setSettingUpAccount] = useState(false);
@@ -61,6 +76,7 @@ function AddEmailScreen() {
     clearError: clearSetupError,
   } = useAccountSetup();
 
+  const signedIn = isAuthenticated === true;
   const done = () => router.replace("/(tabs)");
 
   const requestCode = async () => {
@@ -73,14 +89,22 @@ function AddEmailScreen() {
     setError(null);
     setSaving(true);
     try {
-      await apiClient.requestContactEmailCode(parsed.data);
+      if (signedIn) {
+        await apiClient.requestContactEmailCode(parsed.data);
+      } else {
+        await apiClient.requestSignupEmailCode(parsed.data);
+      }
       setClaimed(parsed.data);
+      setStep("code");
     } catch (err) {
       console.error("[add-email] could not send the code", err);
+      const status = apiErrorStatus(err);
       setError(
-        apiErrorStatus(err) === 409
+        status === 409
           ? "That email is already on another account."
-          : "Could not send a code to that address. Please try again."
+          : status === 429
+            ? "Too many codes. Wait a few minutes and try again."
+            : "Could not send a code to that address. Please try again."
       );
     } finally {
       setSaving(false);
@@ -96,32 +120,48 @@ function AddEmailScreen() {
     setError(null);
     setSaving(true);
     try {
-      await apiClient.setContactEmail(claimed, entered);
-      setSessionEmail(claimed);
-      // The one moment the fingerprint prompts it costs read as part of
-      // signing up rather than as an ambush on an empty dashboard.
-      setSettingUpAccount(true);
+      if (signedIn) {
+        await apiClient.setContactEmail(claimed, entered);
+        setSessionEmail(claimed);
+        // The one moment the fingerprint prompts it costs read as part of
+        // signing up rather than as an ambush on an empty dashboard.
+        setSettingUpAccount(true);
+      } else {
+        const proof = await apiClient.verifySignupEmail(claimed, entered);
+        setSignupToken(proof.signupToken);
+        setStep("passkey");
+      }
     } catch (err) {
       console.error("[add-email] could not confirm the code", err);
       const status = apiErrorStatus(err);
       setError(
         status === 401
           ? "That code is not right. Check the email and try again."
-          : status === 409
-            ? "That code has expired. Send a new one."
-            : status === 429
-              ? "Too many codes. Wait a few minutes and try again."
-              : "Could not confirm that code. Please try again."
+          : apiErrorCode(err) === "EMAIL_IN_USE"
+            ? "That email is already on another account."
+            : status === 409
+              ? "That code has expired. Send a new one."
+              : status === 429
+                ? "Too many attempts. Wait a few minutes and try again."
+                : "Could not confirm that code. Please try again."
       );
     } finally {
       setSaving(false);
     }
   };
 
+  const createPasskey = async () => {
+    if (!signupToken) return;
+    if (await signUp(signupToken)) setSettingUpAccount(true);
+  };
+
   /** Back to the address, so a typo is fixable without leaving the screen. */
   const editAddress = () => {
+    setStep("address");
     setClaimed(null);
+    setSignupToken(null);
     setError(null);
+    clearPasskeyError();
   };
 
   const onRunAccountSetup = async () => {
@@ -147,7 +187,7 @@ function AddEmailScreen() {
 
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={{ flex: 1 }}
+          className="flex-1"
         >
           <ScrollView
             className="flex-1"
@@ -158,26 +198,34 @@ function AddEmailScreen() {
           >
             <View className="flex-1 justify-end px-8 py-16">
               <Typography weight="600" className="mb-3 text-3xl text-white">
-                {claimed ? "Check your email" : "Add your email"}
+                {step === "address"
+                  ? signedIn
+                    ? "Add your email"
+                    : "What's your email?"
+                  : step === "code"
+                    ? "Check your email"
+                    : "Create your passkey"}
               </Typography>
               <Typography
                 weight="400"
                 className="mb-8 text-base leading-6 text-[#8FE5F6]"
               >
-                {claimed
-                  ? `We sent a six-digit code to ${claimed}. Confirming it is what lets this address bring your account back if you lose this phone.`
-                  : "For receipts and security alerts. Your passkey is what signs you in, so this is not a way into your account."}
+                {step === "address"
+                  ? "For receipts and security alerts, and how your account comes back if you lose this phone. It is not how you sign in: that is your passkey."
+                  : step === "code"
+                    ? `We sent a six-digit code to ${claimed}. Confirming it is what lets this address bring your account back if you lose this phone.`
+                    : "Your passkey is what signs you in. It lives in your phone's password manager, so there is nothing to remember."}
               </Typography>
 
-              {claimed ? (
-                // The same six boxes the email sign-in used, so a code looks
-                // like a code everywhere in the product. It submits on the
+              {step === "code" ? (
+                // The same six boxes everywhere a code is typed, so a code
+                // looks like a code across the product. It submits on the
                 // sixth digit, which is why there is no separate button.
                 <ScreenVerificationCodeInput
                   key={claimed}
                   onCodeComplete={confirmCode}
                 />
-              ) : (
+              ) : step === "address" ? (
                 <ThemedTextInput
                   value={value}
                   onChangeText={(text) => {
@@ -194,26 +242,27 @@ function AddEmailScreen() {
                   returnKeyType="go"
                   editable={!saving}
                 />
-              )}
+              ) : null}
 
               {error && (
                 <Typography weight="400" className="mt-2 text-sm text-red-400">
                   {error}
                 </Typography>
               )}
+              {step === "passkey" && passkeyError && (
+                <Typography weight="400" className="mb-2 text-sm text-red-400">
+                  {passkeyError}
+                </Typography>
+              )}
 
-              {claimed ? (
-                saving ? (
-                  <View className="mt-2 items-center p-4">
-                    <ActivityIndicator color="#FFF" />
-                  </View>
-                ) : null
-              ) : (
+              {step === "address" && (
                 <HapticPressable
                   onPress={requestCode}
                   disabled={disabled}
-                  className="mt-6 items-center justify-center rounded-full bg-white p-4"
-                  style={{ opacity: disabled ? 0.5 : 1 }}
+                  className={cn(
+                    "mt-6 items-center justify-center rounded-full bg-white p-4",
+                    disabled && "opacity-50"
+                  )}
                 >
                   {saving ? (
                     <ActivityIndicator color="#000" />
@@ -225,14 +274,54 @@ function AddEmailScreen() {
                 </HapticPressable>
               )}
 
-              {claimed ? (
+              {step === "code" && saving && (
+                <View className="mt-2 items-center p-4">
+                  <ActivityIndicator color="#FFF" />
+                </View>
+              )}
+
+              {step === "passkey" && (
+                <HapticPressable
+                  onPress={createPasskey}
+                  disabled={creatingPasskey}
+                  className={cn(
+                    "w-full flex-row items-center justify-center gap-4 rounded-full bg-white p-4",
+                    creatingPasskey && "opacity-50"
+                  )}
+                >
+                  <Ionicons
+                    name="finger-print-outline"
+                    size={22}
+                    color="#000000"
+                  />
+                  <Typography weight="600" className="text-lg text-black">
+                    {creatingPasskey
+                      ? "Creating…"
+                      : passkeyError
+                        ? "Try again"
+                        : "Create passkey"}
+                  </Typography>
+                </HapticPressable>
+              )}
+
+              {step !== "address" ? (
                 <HapticPressable
                   onPress={editAddress}
-                  disabled={saving}
+                  disabled={saving || creatingPasskey}
                   className="mt-4 items-center p-2"
                 >
                   <Typography weight="500" className="text-base text-white">
                     Use a different address
+                  </Typography>
+                </HapticPressable>
+              ) : !signedIn ? (
+                <HapticPressable
+                  onPress={() => router.replace("/(auth)/login")}
+                  disabled={saving}
+                  className="mt-4 items-center p-2"
+                >
+                  <Typography weight="500" className="text-base text-white">
+                    Back
                   </Typography>
                 </HapticPressable>
               ) : onFile ? (

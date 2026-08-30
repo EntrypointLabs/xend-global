@@ -45,7 +45,8 @@ export function usePasskeyLogin() {
    */
   const run = async (
     authenticate: () => Promise<{ id?: string } | undefined | null>,
-    noUser: string
+    noUser: string,
+    signupToken?: string
   ): Promise<PasskeySignInOutcome> => {
     setError(null);
     setBusy(true);
@@ -60,7 +61,7 @@ export function usePasskeyLogin() {
         setError(noUser);
         return "failed";
       }
-      if (await completePasskeySession(user)) return "signed-in";
+      if (await completePasskeySession(user, signupToken)) return "signed-in";
 
       setError("Signed in, but Xend could not start your session.");
       return "failed";
@@ -89,12 +90,18 @@ export function usePasskeyLogin() {
       "That passkey did not sign you in."
     );
 
-  /** Creates a brand new account. Never signs in to an existing one. */
-  const signUp = async () =>
+  /**
+   * Creates a brand new account. Never signs in to an existing one.
+   *
+   * The token comes from the email step and is what the exchange uses to put
+   * this passkey on the row whose address was just proved.
+   */
+  const signUp = async (signupToken: string) =>
     (await run(
       async () =>
         (await signupWithPasskey({ relyingParty: RELYING_PARTY })).user,
-      "The passkey was not created."
+      "The passkey was not created.",
+      signupToken
     )) === "signed-in";
 
   return {

@@ -15,8 +15,13 @@ export type AccountSetupStage = "idle" | "creating" | "securing";
 /**
  * Creates the Consumer's wallet and makes it spendable, on demand.
  *
+ * By the time this runs the recovery signer already exists: it was minted
+ * when the Consumer proved their address, before the passkey. What is left is
+ * the phone's own signer and the Account itself, then the settings that make
+ * it spendable.
+ *
  * Driven by a button rather than by mounting. Every step needs a signature
- * from the phone -- securing the wallet means changing its on-chain settings,
+ * from the phone: securing the wallet means changing its on-chain settings,
  * and those need two of its three signers, of which the phone holds two. So a
  * fingerprint prompt is unavoidable; what is avoidable is it arriving
  * unannounced, which is what running this from a screen effect produced.
