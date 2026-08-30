@@ -76,6 +76,7 @@ export function layout(title: string, body: string): string {
   <a href="/console/payments">Payments</a>
   <a href="/console/deliveries">Deliveries</a>
   <a href="/console/keys">Keys</a>
+  <a href="/console/accounts">Accounts</a>
 </nav>
 <h1>${escapeHtml(title)}</h1>
 ${body}

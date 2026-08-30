@@ -6,6 +6,8 @@ import {
   merchants,
   payments,
   paymentIntents,
+  squadsAccounts,
+  users,
   webhookDeliveries,
   webhookEndpoints,
 } from '../db/schema';
@@ -46,6 +48,15 @@ export interface ConsoleKeyRow {
   createdAt: Date;
   lastUsedAt: Date | null;
   revokedAt: Date | null;
+}
+
+export interface ConsoleAccountRow {
+  userId: string;
+  email: string | null;
+  vaultAddress: string;
+  createdAt: Date;
+  /** Set while support is refusing to release the recovery signer. */
+  recoveryReleaseFrozenAt: Date | null;
 }
 
 /** Truncate a base58 signature to head…tail for display. */
@@ -151,6 +162,38 @@ export class ConsoleService {
       .limit(LIST_LIMIT);
 
     return rows;
+  }
+
+  /**
+   * Consumer Accounts, newest first, with the one thing support can do to
+   * them: freeze or release the recovery signer.
+   *
+   * The email is shown because a compromise report names an inbox and the
+   * operator has to find the Account it anchors. Nothing else about the
+   * Consumer is surfaced.
+   */
+  async listAccounts(): Promise<ConsoleAccountRow[]> {
+    return this.db.client
+      .select({
+        userId: users.id,
+        email: users.email,
+        vaultAddress: squadsAccounts.vaultAddress,
+        createdAt: squadsAccounts.createdAt,
+        recoveryReleaseFrozenAt: users.recoveryReleaseFrozenAt,
+      })
+      .from(squadsAccounts)
+      .innerJoin(users, eq(squadsAccounts.userId, users.id))
+      .orderBy(desc(squadsAccounts.createdAt), desc(squadsAccounts.id))
+      .limit(LIST_LIMIT);
+  }
+
+  async hasAccount(userId: string): Promise<boolean> {
+    const [row] = await this.db.client
+      .select({ userId: squadsAccounts.userId })
+      .from(squadsAccounts)
+      .where(eq(squadsAccounts.userId, userId))
+      .limit(1);
+    return row !== undefined;
   }
 
   async listKeyFingerprints(): Promise<ConsoleKeyRow[]> {
