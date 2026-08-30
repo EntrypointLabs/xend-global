@@ -5,6 +5,7 @@ import { AccountModule } from '../account/account.module';
 import { SolanaModule } from '../solana/solana.module';
 import { TokensModule } from '../tokens/tokens.module';
 import { AccountEventsModule } from '../activity/account-events.module';
+import { TurnkeyModule } from '../turnkey/turnkey.module';
 
 /**
  * prepare/submit/list endpoints at /transfers/*. DbModule is @Global so
@@ -12,8 +13,15 @@ import { AccountEventsModule } from '../activity/account-events.module';
  * the service consumes for blockhash + ATA-existence reads + submit.
  */
 @Module({
-  // TokensModule names the mints on a page of activity.
-  imports: [SolanaModule, AccountModule, TokensModule, AccountEventsModule],
+  // TokensModule names the mints on a page of activity. TurnkeyModule carries
+  // the enrolled device keys a Spend's presence proof is checked against.
+  imports: [
+    SolanaModule,
+    AccountModule,
+    TokensModule,
+    AccountEventsModule,
+    TurnkeyModule,
+  ],
   controllers: [TransferController],
   providers: [TransferService],
   exports: [TransferService],

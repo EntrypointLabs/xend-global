@@ -25,6 +25,8 @@ import {
   InvalidRecipientError,
   IntentExpiredError,
   IntentMismatchError,
+  PresenceProofInvalidError,
+  PresenceProofRequiredError,
   RpcUnavailableError,
   UnsupportedMintError,
 } from './transfer.errors';
@@ -41,6 +43,8 @@ interface AuthenticatedRequest extends Request {
  *   UnsupportedMintError  -> 400 UNSUPPORTED_MINT
  *   IntentMismatchError   -> 400 INTENT_MISMATCH
  *   IntentExpiredError    -> 410 INTENT_EXPIRED
+ *   PresenceProofRequired -> 428 PRESENCE_REQUIRED
+ *   PresenceProofInvalid  -> 403 PRESENCE_INVALID
  *   RpcUnavailableError   -> 502 RPC_UNAVAILABLE
  *
  * Service-thrown HttpException (e.g. NotFoundException from missing
@@ -115,6 +119,20 @@ export class TransferController {
       throw new HttpException(
         { code: err.code, message: err.message },
         HttpStatus.BAD_REQUEST,
+      );
+    }
+    // 428 rather than 400: nothing about the request is malformed, it is
+    // missing a precondition the client can go and satisfy.
+    if (err instanceof PresenceProofRequiredError) {
+      throw new HttpException(
+        { code: err.code, message: err.message },
+        HttpStatus.PRECONDITION_REQUIRED,
+      );
+    }
+    if (err instanceof PresenceProofInvalidError) {
+      throw new HttpException(
+        { code: err.code, message: err.message },
+        HttpStatus.FORBIDDEN,
       );
     }
     if (err instanceof RpcUnavailableError) {

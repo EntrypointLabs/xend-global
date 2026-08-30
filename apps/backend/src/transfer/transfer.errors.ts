@@ -53,3 +53,30 @@ export class RpcUnavailableError extends Error {
     this.name = 'RpcUnavailableError';
   }
 }
+
+/**
+ * A Spend that carries one on-chain signature reached submit without a
+ * signature from the device key.
+ *
+ * Distinct from PRESENCE_INVALID so an app too old to produce one can be told
+ * to update, rather than shown the message meant for a proof that failed.
+ */
+export class PresenceProofRequiredError extends Error {
+  readonly code = 'PRESENCE_REQUIRED';
+  constructor(message: string) {
+    super(message);
+    this.name = 'PresenceProofRequiredError';
+  }
+}
+
+/**
+ * The device signature did not verify against any key this Consumer enrolled,
+ * or the approval signature this route needs is missing from the transaction.
+ */
+export class PresenceProofInvalidError extends Error {
+  readonly code = 'PRESENCE_INVALID';
+  constructor(message: string) {
+    super(message);
+    this.name = 'PresenceProofInvalidError';
+  }
+}

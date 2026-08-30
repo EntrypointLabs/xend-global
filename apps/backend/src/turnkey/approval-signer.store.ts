@@ -21,6 +21,15 @@ export interface ApprovalSignerStore {
   ): Promise<ApprovalSignerRow | null>;
   insert(row: NewApprovalSigner): Promise<ApprovalSignerRow>;
   /**
+   * Every device this Consumer has enrolled.
+   *
+   * Presence proofs are checked against all of them rather than one the client
+   * names: which phone is in their hand is not a claim the client should get to
+   * make, and a Consumer with the app on two devices must not be refused on the
+   * one they are holding.
+   */
+  listByUser(userId: string): Promise<ApprovalSignerRow[]>;
+  /**
    * The hardware key backing a given sub-organization.
    *
    * Read by the app to answer "is the key on this phone the one this Account
@@ -63,6 +72,13 @@ export class DrizzleApprovalSignerStore implements ApprovalSignerStore {
       )
       .limit(1);
     return row ?? null;
+  }
+
+  async listByUser(userId: string): Promise<ApprovalSignerRow[]> {
+    return this.db.client
+      .select()
+      .from(approvalSigners)
+      .where(eq(approvalSigners.userId, userId));
   }
 
   async insert(row: NewApprovalSigner): Promise<ApprovalSignerRow> {

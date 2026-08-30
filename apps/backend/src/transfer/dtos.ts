@@ -41,6 +41,20 @@ export type PrepareResponse = z.infer<typeof PrepareResponseSchema>;
 export const SubmitRequestSchema = z.object({
   intentId: z.string(),
   signedTxBase64: z.string(),
+  /**
+   * DER ECDSA signature, hex, from the biometric-gated device key, over the
+   * digest of the prepared message. See presence-proof.ts.
+   *
+   * Required for a Spend the chain settles on one signature, where nothing else
+   * in the request establishes that the Consumer was there. Omitted above the
+   * limit, where the approval signature on the transaction is the same key
+   * behind the same prompt.
+   */
+  presenceProof: z
+    .string()
+    .regex(/^[0-9a-fA-F]+$/)
+    .max(256)
+    .optional(),
 });
 export type SubmitRequest = z.infer<typeof SubmitRequestSchema>;
 
