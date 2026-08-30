@@ -56,12 +56,10 @@ function Row({
     const d = distance(index, progress.value);
     return {
       transform: [{ translateY: d * ROW_HEIGHT }],
-      opacity: interpolate(
-        Math.abs(d),
-        [0, 1, 2, 2.5],
-        [1, 0.32, 0.12, 0],
-        "clamp"
-      ),
+      // Three words at a time: the active one, and one ghost on each side.
+      // The outer pair is fully out by the time it rests, so it only exists
+      // mid-turn, fading in as it approaches.
+      opacity: interpolate(Math.abs(d), [0, 1, 2], [1, 0.18, 0], "clamp"),
     };
   });
 
