@@ -22,7 +22,7 @@ function LoginScreen() {
     <View className="flex-1">
       <GradientBackround />
 
-      <View className="flex-1 justify-between border border-green-950 px-8 py-16">
+      <View className="flex-1 justify-between px-8 py-16">
         <View className="h-full flex-1 justify-center">
           <Typography weight="500" className="text-4xl">
             Invest
