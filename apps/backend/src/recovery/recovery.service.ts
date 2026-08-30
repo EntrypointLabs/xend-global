@@ -407,7 +407,21 @@ export class RecoveryService {
 
     // Before the rows, not after. A failure between the two then leaves the
     // rows still staged, and the next poll comes back through here.
-    await this.followContactRotation(userId, rows);
+    const rotation = await this.followContactRotation(userId, rows);
+    if (rotation) {
+      await this.events.recordContactEmailChanged(userId, {
+        changeIndex,
+        previousEmail: rotation.retiring.channelValue,
+        nextEmail: rotation.replacement.channelValue,
+        signature: rotation.replacement.changeSignature,
+      });
+    }
+    // The two rows a rotation carries are one fact to the Consumer, told
+    // above; announcing them as a key added and a key removed as well would
+    // say the same thing three times.
+    const rotated = new Set(
+      rotation ? [rotation.retiring.id, rotation.replacement.id] : [],
+    );
 
     for (const row of rows) {
       if (row.status === 'pending_add') {
@@ -419,17 +433,21 @@ export class RecoveryService {
         // Recorded here rather than when the Consumer asked for it, because
         // this is the moment it became true: until the change executed the key
         // protected nothing.
-        await this.events.recordRecoveryKeyAdded(userId, {
-          signerId: row.id,
-          subject: row.channelValue,
-          signature: row.changeSignature,
-        });
+        if (!rotated.has(row.id)) {
+          await this.events.recordRecoveryKeyAdded(userId, {
+            signerId: row.id,
+            subject: row.channelValue,
+            signature: row.changeSignature,
+          });
+        }
       } else if (row.status === 'pending_remove') {
-        await this.events.recordRecoveryKeyRemoved(userId, {
-          signerId: row.id,
-          subject: row.channelValue,
-          signature: row.changeSignature,
-        });
+        if (!rotated.has(row.id)) {
+          await this.events.recordRecoveryKeyRemoved(userId, {
+            signerId: row.id,
+            subject: row.channelValue,
+            signature: row.changeSignature,
+          });
+        }
         // After the event, because the row is the only place the subject
         // lives and deleting first would leave nothing to record.
         await this.store.deleteById(row.id);
@@ -597,7 +615,10 @@ export class RecoveryService {
   private async followContactRotation(
     userId: string,
     rows: RecoverySignerRow[],
-  ): Promise<void> {
+  ): Promise<{
+    retiring: RecoverySignerRow;
+    replacement: RecoverySignerRow;
+  } | null> {
     const contact = await this.store.findContactEmail(userId);
     const retiring = rows.find(
       (row) => row.status === 'pending_remove' && anchorsContact(row, contact),
@@ -605,10 +626,11 @@ export class RecoveryService {
     const replacement = rows.find(
       (row) => row.status === 'pending_add' && row.channel === 'email',
     );
-    if (!retiring || !replacement) return;
+    if (!retiring || !replacement) return null;
 
     await this.store.updateContactEmail(userId, replacement.channelValue);
     this.logger.log(`recovery.contact.moved user=${userId}`);
+    return { retiring, replacement };
   }
 
   /**

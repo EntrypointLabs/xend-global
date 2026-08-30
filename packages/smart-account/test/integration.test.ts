@@ -1636,7 +1636,6 @@ describe.skipIf(!HAVE_FIXTURES)(
   },
 );
 
-
 describe.skipIf(!HAVE_FIXTURES)("recovery signer rotation", () => {
   /**
    * Changing the contact address. The Consumer holds both Active Keys, so the

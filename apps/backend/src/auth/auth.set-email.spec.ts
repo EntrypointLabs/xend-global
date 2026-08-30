@@ -1,3 +1,4 @@
+import type { AccountEventsService } from '../activity/account-events.service';
 import { JwtService } from '@nestjs/jwt';
 import {
   AuthService,
@@ -106,6 +107,7 @@ function makeService(
     {} as WalletProvider,
     {} as SolanaRpc,
     {} as SignupService,
+    {} as AccountEventsService,
   );
 }
 

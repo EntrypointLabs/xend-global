@@ -31,6 +31,7 @@ import {
   EmailRotationRequiredError,
 } from './auth.errors';
 import { SignupService } from './signup.service';
+import { AccountEventsService } from '../activity/account-events.service';
 import { SignupTokenInvalidError } from './signup.errors';
 
 export { CredentialConflictError, EmailInUseError, EmailRotationRequiredError };
@@ -51,6 +52,7 @@ export class AuthService {
     @Inject(WALLET_PROVIDER) private wallet: WalletProvider,
     @Inject(SOLANA_RPC) private solana: SolanaRpc,
     private signup: SignupService,
+    private events: AccountEventsService,
   ) {}
 
   /**
@@ -384,6 +386,9 @@ export class AuthService {
       userId,
       credentialId: dto.credentialId,
       publicKey: dto.publicKey,
+    });
+    await this.events.recordPasskeyEnrolled(userId, {
+      credentialId: dto.credentialId,
     });
     return { mirrored: true };
   }

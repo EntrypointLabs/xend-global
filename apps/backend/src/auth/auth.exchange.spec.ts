@@ -1,3 +1,4 @@
+import type { AccountEventsService } from '../activity/account-events.service';
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AuthService, CredentialConflictError } from './auth.service';
@@ -327,13 +328,9 @@ function makeService(opts: {
   });
   const solana = opts.solana ?? makeFakeSolana().rpc;
   const { signup, claimed } = makeFakeSignup(store, opts.tokens ?? {});
-  const service = new AuthService(
-    jwt,
-    db,
-    opts.wallet,
-    solana,
-    signup,
-  );
+  const service = new AuthService(jwt, db, opts.wallet, solana, signup, {
+    recordPasskeyEnrolled: () => Promise.resolve(null),
+  } as unknown as AccountEventsService);
   return { service, store, solana, claimed };
 }
 

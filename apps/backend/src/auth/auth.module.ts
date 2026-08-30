@@ -10,6 +10,7 @@ import { WalletModule } from '../wallet/wallet.module';
 import { SolanaModule } from '../solana/solana.module';
 import { CountersModule } from '../counters/counters.module';
 import { DbModule } from '../db/db.module';
+import { AccountEventsModule } from '../activity/account-events.module';
 import { SignupService } from './signup.service';
 import { SignupReaper } from './signup.reaper';
 import { DrizzleSignupStore, SIGNUP_STORE } from './signup.store';
@@ -17,6 +18,7 @@ import { DrizzleSignupStore, SIGNUP_STORE } from './signup.store';
 @Module({
   imports: [
     RecoveryModule,
+    AccountEventsModule,
     PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],

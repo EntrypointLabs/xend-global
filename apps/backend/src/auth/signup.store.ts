@@ -84,6 +84,24 @@ export class DrizzleSignupStore implements SignupStore {
       return { kind: 'pending', user: onRow.user };
     }
 
+    // An Account moving its contact address to this one holds it from the
+    // moment the change is staged, not the day it executes: letting a
+    // sign-up take it in between would leave that change unable to land.
+    const [reserved] = await this.db.client
+      .select({ boundId: smartAccounts.id })
+      .from(recoverySigners)
+      .innerJoin(users, eq(users.id, recoverySigners.userId))
+      .leftJoin(smartAccounts, eq(smartAccounts.userId, users.id))
+      .where(
+        and(
+          eq(recoverySigners.channel, 'email'),
+          eq(recoverySigners.channelValue, email),
+          isNull(users.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (reserved?.boundId) return { kind: 'claimed' };
+
     // The address is not on any row yet. A code may still have gone out for
     // it: the row it was issued against carries no email until the code is
     // proved, so the challenge is the only thing that names it.

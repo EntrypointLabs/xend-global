@@ -182,6 +182,7 @@ function setUp() {
   const recovery = new RecoveryService(signers, vault, {
     recordRecoveryKeyAdded: () => Promise.resolve(null),
     recordRecoveryKeyRemoved: () => Promise.resolve(null),
+    recordContactEmailChanged: () => Promise.resolve(null),
   } as unknown as AccountEventsService);
 
   const patches: Partial<SquadsAccountRow>[] = [];
@@ -223,9 +224,16 @@ function setUp() {
       turnkey,
       {
         recordDeviceRotated: () => Promise.resolve(null),
+        recordSettingsChangeStaged: () => Promise.resolve(null),
+        recordSettingsChangeExecuted: () => Promise.resolve(null),
+        recordSettingsChangeRejected: () => Promise.resolve(null),
       } as unknown as AccountEventsService,
     ),
-    changes: new RecoveryChangeService(accounts, chain, recovery),
+    changes: new RecoveryChangeService(accounts, chain, recovery, {
+      recordSettingsChangeStaged: () => Promise.resolve(null),
+      recordSettingsChangeExecuted: () => Promise.resolve(null),
+      recordSettingsChangeRejected: () => Promise.resolve(null),
+    } as unknown as AccountEventsService),
   };
 }
 

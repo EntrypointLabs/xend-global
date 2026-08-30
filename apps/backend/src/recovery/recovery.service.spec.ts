@@ -136,9 +136,11 @@ const vault: RecoveryVault = {
 /** Only what RecoveryService reaches. Recorded facts are asserted here too. */
 const recordAdded = jest.fn().mockResolvedValue(null);
 const recordRemoved = jest.fn().mockResolvedValue(null);
+const recordContactChanged = jest.fn().mockResolvedValue(null);
 const events = {
   recordRecoveryKeyAdded: recordAdded,
   recordRecoveryKeyRemoved: recordRemoved,
+  recordContactEmailChanged: recordContactChanged,
 } as unknown as AccountEventsService;
 
 describe('RecoveryService', () => {
@@ -475,6 +477,18 @@ describe('RecoveryService', () => {
     await service.settle('user-1', 20n);
 
     expect(await store.findContactEmail('user-1')).toBe('new@example.com');
+    // One fact, told once, to both inboxes: not a key added and a key removed.
+    expect(recordContactChanged).toHaveBeenCalledTimes(1);
+    expect(recordContactChanged).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({
+        changeIndex: 20n,
+        previousEmail: 'old@example.com',
+        nextEmail: 'new@example.com',
+      }),
+    );
+    expect(recordAdded).not.toHaveBeenCalled();
+    expect(recordRemoved).not.toHaveBeenCalled();
     const signers = await service.list('user-1');
     expect(signers).toHaveLength(1);
     expect(signers[0]).toMatchObject({
