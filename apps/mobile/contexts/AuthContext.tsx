@@ -20,7 +20,7 @@ import { apiClient, apiErrorCode, type EntryProof } from "@/utils/apiClient";
 import { isJwtExpired } from "@/utils/jwt";
 import { PasskeyHasNoAccountError } from "@/utils/passkeyOutcome";
 import { useEnsureSolanaWallet } from "@/hooks/useEnsureSolanaWallet";
-import { SEED_DEMO, SEED_USER } from "@/utils/devSeed";
+import { SEED_DEMO, SEED_TIER, SEED_USER } from "@/utils/devSeed";
 import { forgetThisDevice } from "@/utils/pushDevice";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -99,7 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(SEED_USER);
         setEmail(SEED_USER.email);
         setWallet(SEED_USER.walletAddress);
-        setSessionTier("full");
+        setSessionTier(SEED_TIER);
         setIsAuthenticated(true);
         setIsLoading(false);
         return;

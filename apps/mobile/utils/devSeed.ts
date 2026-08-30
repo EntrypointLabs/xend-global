@@ -20,6 +20,14 @@ import { getUsdcMint } from "@/utils/cluster";
 export const SEED_DEMO =
   __DEV__ && process.env.EXPO_PUBLIC_SEED_DEMO === "true";
 
+/**
+ * Which session tier the seeded session pretends to hold. `entry` renders the
+ * looking-not-spending state, which is otherwise unreachable on a simulator
+ * because opening a real entry session needs a mailed code.
+ */
+export const SEED_TIER: "full" | "entry" =
+  process.env.EXPO_PUBLIC_SEED_TIER === "entry" ? "entry" : "full";
+
 const WALLET = "GkP9xL7mQwR2sT4vB6nH8jC3dF5aZ1yU2eW4rK6tN9pM";
 
 export const SEED_USER = {
