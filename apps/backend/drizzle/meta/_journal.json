@@ -225,6 +225,13 @@
       "when": 1787086400000,
       "tag": "0030_approval_deferred",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1787172800000,
+      "tag": "0031_a_signup_tokens",
+      "breakpoints": true
     }
   ]
 }

@@ -393,6 +393,33 @@ export const recoveryChallenges = pgTable(
 );
 
 /**
+ * signup_tokens: the single-use proof that carries a Consumer from the code
+ * they typed to the passkey they create next.
+ *
+ * A sign-up is two unauthenticated calls with a passkey ceremony between them,
+ * and nothing else ties the second call to the address the first one proved.
+ * The token is what does. Only its SHA-256 is stored; the raw value is handed
+ * out once and never logged.
+ */
+export const signupTokens = pgTable(
+  'signup_tokens',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at').notNull(),
+    /** Set by the exchange that spent it. A spent token never validates again. */
+    consumedAt: timestamp('consumed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('signup_tokens_user_idx').on(table.userId)],
+);
+
+/**
  * account_events — everything in Activity that is not a movement of money.
  *
  * A separate table rather than another `transfers.kind`. A transfer row is
