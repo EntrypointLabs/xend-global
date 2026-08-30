@@ -7,7 +7,10 @@ import { ScreenLayout } from "@/components/ui/layout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { ScreenVerificationCodeInput } from "@/components/ui/organisms";
-import { useVerifyRecoveryEmail } from "@/hooks/useRecoveryKeys";
+import {
+  useVerifyContactRotation,
+  useVerifyRecoveryEmail,
+} from "@/hooks/useRecoveryKeys";
 import { apiErrorStatus } from "@/utils/apiClient";
 
 /**
@@ -16,10 +19,21 @@ import { apiErrorStatus } from "@/utils/apiClient";
  * There is no button: the sixth digit submits. A code is either right or it is
  * not, and asking someone to confirm what they just finished typing is a tap
  * that decides nothing.
+ *
+ * A code proves one purpose. The one sent for a contact address change is
+ * checked against that purpose, so a code for adding a key cannot be spent on
+ * moving the address, and the other way round.
  */
 export default function ConfirmRecoveryEmailScreen() {
-  const { email } = useLocalSearchParams<{ email: string }>();
-  const verify = useVerifyRecoveryEmail();
+  const { email, intent, current } = useLocalSearchParams<{
+    email: string;
+    intent?: "change";
+    current?: string;
+  }>();
+  const changing = intent === "change";
+  const verifyAdd = useVerifyRecoveryEmail();
+  const verifyRotation = useVerifyContactRotation();
+  const verify = changing ? verifyRotation : verifyAdd;
   const [error, setError] = useState<string | null>(null);
   /** Remounts the boxes after a refusal, so the next attempt starts empty. */
   const [attempt, setAttempt] = useState(0);
@@ -31,7 +45,9 @@ export default function ConfirmRecoveryEmailScreen() {
       const { grantId } = await verify.mutateAsync({ email, code });
       router.push({
         pathname: "/settings/confirm-recovery-key",
-        params: { email, grantId },
+        params: changing
+          ? { email, grantId, intent, current }
+          : { email, grantId },
       } as never);
     } catch (err) {
       const status = apiErrorStatus(err);

@@ -11,6 +11,7 @@ import { useRecoveryChange } from "@/hooks/useRecoveryChange";
 import {
   useAddRecoveryEmail,
   useAddRecoveryWallet,
+  useRotateContactEmail,
 } from "@/hooks/useRecoveryKeys";
 import { truncateAddress } from "@/utils/helper";
 
@@ -20,24 +21,33 @@ import { truncateAddress } from "@/utils/helper";
  * The wait is stated here rather than after the fact. Adding a recovery key is
  * a settings change, so it serves out the time lock before it protects
  * anything, and a Consumer who was not told that would believe they were
- * covered a day early.
+ * covered a day early. A contact address change is the same change with a
+ * key going out as well as one coming in, and the same day of waiting.
  */
 export default function ConfirmRecoveryKeyScreen() {
-  // One screen for both channels: the review, the two signatures and the wait
-  // are identical, and only the line in the card differs.
-  const { address, email, grantId } = useLocalSearchParams<{
+  // One screen for both channels and for the address change: the review, the
+  // two signatures and the wait are identical, and only the card differs.
+  const { address, email, grantId, intent, current } = useLocalSearchParams<{
     address?: string;
     email?: string;
     grantId?: string;
+    intent?: "change";
+    current?: string;
   }>();
+  const changing = intent === "change";
   const { data: account } = useAccount();
   const addWallet = useAddRecoveryWallet();
   const addEmail = useAddRecoveryEmail();
+  const rotateEmail = useRotateContactEmail();
   const change = useRecoveryChange();
   const [error, setError] = useState<string | null>(null);
   const [activeAt, setActiveAt] = useState<string | null>(null);
 
-  const busy = addWallet.isPending || addEmail.isPending || change.isPending;
+  const busy =
+    addWallet.isPending ||
+    addEmail.isPending ||
+    rotateEmail.isPending ||
+    change.isPending;
 
   const confirm = async () => {
     // Never silently: the button looks live, and a tap that does nothing reads
@@ -48,7 +58,9 @@ export default function ConfirmRecoveryKeyScreen() {
     }
     setError(null);
     try {
-      if (email && grantId) {
+      if (email && grantId && changing) {
+        await rotateEmail.mutateAsync({ email, grantId });
+      } else if (email && grantId) {
         await addEmail.mutateAsync({ email, grantId });
       } else if (address) {
         await addWallet.mutateAsync(address);
@@ -58,7 +70,13 @@ export default function ConfirmRecoveryKeyScreen() {
       const outcome = await change.mutateAsync(account);
       setActiveAt(outcome.waitingUntil);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add the key.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : changing
+            ? "Could not change the email."
+            : "Could not add the key."
+      );
     }
   };
 
@@ -71,14 +89,15 @@ export default function ConfirmRecoveryKeyScreen() {
               <Ionicons name="time-outline" size={30} color="#FFFFFF" />
             </View>
             <Typography weight="700" className="mt-6 text-3xl text-black">
-              Recovery Key added
+              {changing ? "Email change started" : "Recovery Key added"}
             </Typography>
             <Typography
               weight="500"
               className="mt-3 text-center text-base leading-6 text-black/40"
             >
-              It becomes active on {when(activeAt)}. Nothing about your account
-              changes until then, and you can cancel it any time before.
+              {changing
+                ? `The new address takes over on ${when(activeAt)}. Until then your current address stays on your account, and you can cancel any time before.`
+                : `It becomes active on ${when(activeAt)}. Nothing about your account changes until then, and you can cancel it any time before.`}
             </Typography>
           </View>
 
@@ -113,11 +132,13 @@ export default function ConfirmRecoveryKeyScreen() {
           weight="700"
           className="mt-8 text-5xl leading-[44px] text-black"
         >
-          Add{"\n"}Recovery Key
+          {changing ? "Change\nemail" : "Add\nRecovery Key"}
         </Typography>
 
         <Typography weight="500" className="mt-6 text-lg leading-7 text-black">
-          Please review your new key below{"\n"}and confirm to finish.
+          {changing
+            ? "Please review the new address below\nand confirm to finish."
+            : "Please review your new key below\nand confirm to finish."}
         </Typography>
 
         <View className="mt-8 rounded-3xl bg-black/[0.03] p-5">
@@ -127,14 +148,24 @@ export default function ConfirmRecoveryKeyScreen() {
           <Typography weight="500" className="mt-4 text-[15px] text-black/40">
             {email ?? truncateAddress(String(address ?? ""), 6, 6)}
           </Typography>
+          {changing && current && (
+            <Typography
+              weight="500"
+              className="mt-2 text-[13px] text-black/30"
+              numberOfLines={1}
+            >
+              Replaces {current}
+            </Typography>
+          )}
         </View>
 
         <Typography
           weight="400"
           className="mt-5 text-[12px] leading-[18px] text-black/40"
         >
-          Both Active Keys approve this, then a one day security delay before
-          the key becomes active.
+          {changing
+            ? "Both Active Keys approve this, then a one day security delay before the new address takes over. Until then the current one stays on your account."
+            : "Both Active Keys approve this, then a one day security delay before the key becomes active."}
         </Typography>
 
         {error && (
@@ -157,7 +188,11 @@ export default function ConfirmRecoveryKeyScreen() {
             weight="700"
             className={`text-lg ${busy || !account ? "text-black/30" : "text-white"}`}
           >
-            {busy ? "Approving on this device" : "Add Recovery Key"}
+            {busy
+              ? "Approving on this device"
+              : changing
+                ? "Change email"
+                : "Add Recovery Key"}
           </Typography>
         </HapticPressable>
       </View>

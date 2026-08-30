@@ -54,6 +54,38 @@ export function useAddRecoveryEmail() {
   });
 }
 
+export function useRequestContactRotationCode() {
+  return useMutation({
+    mutationFn: (email: string) => apiClient.requestContactRotationCode(email),
+  });
+}
+
+export function useVerifyContactRotation() {
+  return useMutation({
+    mutationFn: (body: { email: string; code: string }) =>
+      apiClient.verifyContactRotation(body),
+  });
+}
+
+/**
+ * Stages the change that moves the contact address.
+ *
+ * Invalidates the key list on settle rather than success: a staged rotation
+ * shows as two rows, the one coming in and the one going out, and the screen
+ * has to show that whether or not the signing that follows finishes.
+ */
+export function useRotateContactEmail() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: { email: string; grantId: string }) =>
+      apiClient.rotateContactEmail(body),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: RECOVERY_KEYS_QUERY_KEY });
+    },
+  });
+}
+
 export function useRemoveRecoveryKey() {
   const queryClient = useQueryClient();
 

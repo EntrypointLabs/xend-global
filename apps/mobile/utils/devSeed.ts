@@ -257,6 +257,7 @@ export function seedPrepareTransfer(): PrepareTransferResponse {
  * - `one`       a single email key, which is every real Account today
  * - `pending`   a second key staged and still waiting on the chain
  * - `removing`  a key on its way out
+ * - `rotating`  the contact address being changed: old key out, new key in
  * - `full`      three keys, so the add button is at capacity
  * - `empty`     no keys, which the backend forbids but the screen must survive
  */
@@ -271,6 +272,7 @@ export function seedRecoveryKeys(): RecoveryKey[] {
     createdAt: new Date(Date.now() - 86_400_000 * 30).toISOString(),
     status: "active",
     removable: false,
+    isContactAddress: true,
   };
   const wallet = (
     id: string,
@@ -284,9 +286,23 @@ export function seedRecoveryKeys(): RecoveryKey[] {
     createdAt: new Date(Date.now() - 86_400_000).toISOString(),
     status,
     removable,
+    isContactAddress: false,
   });
 
   if (state === "empty") return [];
+  if (state === "rotating") {
+    return [
+      { ...email, status: "pending_remove" },
+      {
+        ...email,
+        id: "rk-02",
+        channelValue: "amara@proton.me",
+        createdAt: new Date().toISOString(),
+        status: "pending_add",
+        isContactAddress: false,
+      },
+    ];
+  }
   if (state === "pending") {
     return [
       { ...email, removable: false },

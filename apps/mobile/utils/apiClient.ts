@@ -199,6 +199,12 @@ export const RecoveryKeySchema = z.object({
   createdAt: z.string(),
   status: z.enum(["pending_add", "active", "pending_remove"]),
   removable: z.boolean(),
+  /**
+   * The key anchored on the address on file. Changing that address means
+   * rotating this key, which is why it is the only one offered a Change
+   * action and never a Delete.
+   */
+  isContactAddress: z.boolean().default(false),
 });
 export type RecoveryKey = z.infer<typeof RecoveryKeySchema>;
 
@@ -261,6 +267,13 @@ export const AddRecoveryKeyResponseSchema = z.object({
 });
 
 export const RemoveRecoveryKeyResponseSchema = z.object({
+  plan: RecoveryChangeStepSchema,
+});
+
+/** A contact address change: the key coming in, the one it retires, and the first step. */
+export const RotateContactEmailResponseSchema = z.object({
+  key: RecoveryKeySchema,
+  retiring: RecoveryKeySchema,
   plan: RecoveryChangeStepSchema,
 });
 
@@ -987,6 +1000,45 @@ class BackendClient {
       auth: true,
     });
     return AddRecoveryKeyResponseSchema.parse(raw);
+  }
+
+  /**
+   * POST /account/recovery/contact/challenge: sends a code to the address
+   * that will replace the one on file. Refused before mailing when it is
+   * already a recovery key here or on another account.
+   */
+  async requestContactRotationCode(email: string): Promise<void> {
+    await this.request<unknown>("/account/recovery/contact/challenge", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      auth: true,
+    });
+  }
+
+  /** POST /account/recovery/contact/verify: checks the code and returns the grant. */
+  async verifyContactRotation(body: { email: string; code: string }) {
+    return this.request<{ grantId: string }>(
+      "/account/recovery/contact/verify",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        auth: true,
+      }
+    );
+  }
+
+  /**
+   * POST /account/recovery/contact: stages the change that moves the
+   * contact address and starts it. The address on file moves only when the
+   * change executes, a day after both Active Keys approve it.
+   */
+  async rotateContactEmail(body: { email: string; grantId: string }) {
+    const raw = await this.request<unknown>("/account/recovery/contact", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return RotateContactEmailResponseSchema.parse(raw);
   }
 
   /** POST /account/recovery/:id/remove — stages a recovery key's removal. */

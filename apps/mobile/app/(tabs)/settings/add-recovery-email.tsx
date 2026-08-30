@@ -6,13 +6,16 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { ScreenLayout } from "@/components/ui/layout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
-import { useRequestRecoveryEmailCode } from "@/hooks/useRecoveryKeys";
+import {
+  useRequestContactRotationCode,
+  useRequestRecoveryEmailCode,
+} from "@/hooks/useRecoveryKeys";
 import { Email } from "@/types/Auth";
 import { apiErrorStatus } from "@/utils/apiClient";
 
@@ -22,14 +25,24 @@ import { apiErrorStatus } from "@/utils/apiClient";
  * Proved before it is staged, for the same reason the Consumer's first address
  * is: an inbox nobody answers at is not a way back into an Account, it is a
  * second thing that looks like one, and they only find out when they need it.
+ *
+ * With `intent=change` the address replaces the one on file instead of
+ * joining it. Same screen, same code: the difference is which key the change
+ * that follows carries out.
  */
 export default function AddRecoveryEmailScreen() {
+  const { intent, current } = useLocalSearchParams<{
+    intent?: "change";
+    current?: string;
+  }>();
+  const changing = intent === "change";
   const requestCode = useRequestRecoveryEmailCode();
+  const requestRotationCode = useRequestContactRotationCode();
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const parsed = Email.safeParse(value.trim());
-  const busy = requestCode.isPending;
+  const busy = requestCode.isPending || requestRotationCode.isPending;
 
   const send = async () => {
     if (!parsed.success) {
@@ -38,15 +51,21 @@ export default function AddRecoveryEmailScreen() {
     }
     setError(null);
     try {
-      await requestCode.mutateAsync(parsed.data);
+      await (changing ? requestRotationCode : requestCode).mutateAsync(
+        parsed.data
+      );
       router.push({
         pathname: "/settings/confirm-recovery-email",
-        params: { email: parsed.data },
+        params: changing
+          ? { email: parsed.data, intent, current }
+          : { email: parsed.data },
       } as never);
     } catch (err) {
       setError(
         apiErrorStatus(err) === 409
-          ? "That address is already a recovery key on this account."
+          ? changing
+            ? "That address is already on this account, or belongs to another one."
+            : "That address is already a recovery key on this account."
           : "Could not send a code to that address."
       );
     }
@@ -70,14 +89,16 @@ export default function AddRecoveryEmailScreen() {
           weight="700"
           className="mt-10 text-5xl leading-[44px] text-black"
         >
-          Email
+          {changing ? "New email" : "Email"}
         </Typography>
 
         <Typography
           weight="600"
           className="mt-5 text-[15px] leading-6 text-black"
         >
-          Enter an address you can still reach{"\n"}if you lose this phone
+          {changing
+            ? "Enter the address that will replace\nthe one on your account"
+            : "Enter an address you can still reach\nif you lose this phone"}
         </Typography>
 
         <View className="mt-7 rounded-3xl bg-black/[0.03] px-5 py-4">
@@ -113,7 +134,9 @@ export default function AddRecoveryEmailScreen() {
             }`}
           >
             {error ??
-              "A Recovery Key restores your account. It can never move money on its own."}
+              (changing
+                ? "Your current address stays on your account until both Active Keys approve the change and a one day delay passes."
+                : "A Recovery Key restores your account. It can never move money on its own.")}
           </Typography>
         </View>
 
