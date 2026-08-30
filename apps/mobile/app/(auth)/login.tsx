@@ -5,6 +5,7 @@ import { WithScreenTheme } from "@/components/WithScreenTheme";
 import { router } from "expo-router";
 import Logo from "@/components/Logo";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { WordWheel } from "@/components/ui/molecules/WordWheel";
 import { Ionicons } from "@expo/vector-icons";
 
 /**
@@ -24,9 +25,7 @@ function LoginScreen() {
 
       <View className="flex-1 justify-between px-8 py-16">
         <View className="h-full flex-1 justify-center">
-          <Typography weight="500" className="text-4xl">
-            Invest
-          </Typography>
+          <WordWheel />
         </View>
 
         <View className="h-full flex-1 justify-end">
