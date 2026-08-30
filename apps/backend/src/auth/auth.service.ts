@@ -60,9 +60,10 @@ export class AuthService {
    *
    * With a sign-up token, the Privy user is bound to the users row whose
    * address the token was issued for. Without one, the only row this can
-   * reach is one the Privy user is already bound to, or a fresh one. A row
-   * waiting to be bound is never matched by anything else, which is what
-   * keeps one Consumer from landing on an address another Consumer proved.
+   * reach is one the Privy user is already bound to; a passkey nothing knows
+   * is refused rather than given a row. A row waiting to be bound is never
+   * matched by anything else, which is what keeps one Consumer from landing
+   * on an address another Consumer proved.
    */
   async exchange(
     privyIdToken: string,
@@ -103,10 +104,9 @@ export class AuthService {
       );
     }
 
-    const { providerUserId, email, walletAddress, passkeys } = privyUser;
+    const { providerUserId, walletAddress, passkeys } = privyUser;
 
-    // Keyed on the Privy DID, never on the email. The passkey is the
-    // credential, so a sign-up arrives with no email at all, and an address
+    // Keyed on the Privy DID, never on the email Privy may carry. An address
     // is only ever on a row because somebody proved it there: adopting a row
     // by address would hand that proof to whoever Privy says holds the same
     // one.
@@ -156,29 +156,19 @@ export class AuthService {
       userRow = touched;
       isNewUser = false;
     } else {
-      try {
-        const [inserted] = await this.db.client
-          .insert(users)
-          .values({ email })
-          .returning();
-        userRow = inserted;
-      } catch (err) {
-        // Privy vouches for this address, but a row already holds it, and
-        // the only rows this path may reach are the ones above. Somebody
-        // mid-sign-up with the same address finishes that instead.
-        if (pgErrorCode(err) === '23505') {
-          throw new HttpException(
-            {
-              code: 'EMAIL_IN_USE',
-              message:
-                'that email is already being used to sign up; finish that sign-up or sign in with your passkey',
-            },
-            HttpStatus.CONFLICT,
-          );
-        }
-        throw err;
-      }
-      isNewUser = true;
+      // A passkey no Account knows creates nothing. Every Account starts from
+      // a proved address, and the sign-up token is the only thing that may
+      // attach a passkey to one; a fresh row minted here would be an Account
+      // with no contact address and no recovery signer behind it.
+      this.logger.log('auth.exchange.unknown_passkey');
+      throw new HttpException(
+        {
+          code: 'NO_ACCOUNT_FOR_PASSKEY',
+          message:
+            'this passkey is not on a Xend account yet; continue with your email to create one',
+        },
+        HttpStatus.NOT_FOUND,
+      );
     }
 
     // Upsert smart_accounts keyed by user_id (UNIQUE). Matching on

@@ -355,33 +355,28 @@ const validPrivyUser: WalletProviderUser = {
 };
 
 describe('AuthService.exchange', () => {
-  it('new user inserts users + smart_accounts (isNewUser=true)', async () => {
+  it('refuses a passkey no Account knows, and creates nothing', async () => {
+    // Every Account starts from a proved address, and only a sign-up token
+    // may attach a passkey to one. A fresh row minted here would be an
+    // Account with no contact address and no recovery signer.
     const verifyIdToken = jest.fn().mockResolvedValue(validPrivyUser);
     const wallet = {
       verifyIdToken,
       getUser: jest.fn(),
     } as unknown as WalletProvider;
+    const { rpc, registerWebhookAddress } = makeFakeSolana();
+    const { service, store } = makeService({ wallet, solana: rpc });
 
-    const { service, store } = makeService({ wallet });
-
-    const result = await service.exchange('valid.privy.token');
+    await expect(service.exchange('valid.privy.token')).rejects.toMatchObject({
+      status: HttpStatus.NOT_FOUND,
+      response: { code: 'NO_ACCOUNT_FOR_PASSKEY' },
+    });
 
     expect(verifyIdToken).toHaveBeenCalledWith('valid.privy.token');
-    expect(result.user.isNewUser).toBe(true);
-    expect(result.user.email).toBe(validPrivyUser.email);
-    expect(result.user.walletAddress).toBe(validPrivyUser.walletAddress);
-    expect(result.token).toEqual(expect.any(String));
-    expect(result.token.length).toBeGreaterThan(0);
-    expect(store.users).toHaveLength(1);
-    expect(store.users[0].email).toBe(validPrivyUser.email);
-    expect(store.smartAccounts).toHaveLength(1);
-    expect(store.smartAccounts[0].walletAddress).toBe(
-      validPrivyUser.walletAddress,
-    );
-    expect(store.smartAccounts[0].providerUserId).toBe(
-      validPrivyUser.providerUserId,
-    );
-    expect(store.smartAccounts[0].provider).toBe('privy');
+    expect(store.users).toHaveLength(0);
+    expect(store.smartAccounts).toHaveLength(0);
+    expect(store.passkeyCredentials).toHaveLength(0);
+    expect(registerWebhookAddress).not.toHaveBeenCalled();
   });
 
   it('existing user returns same row (isNewUser=false)', async () => {
@@ -437,7 +432,7 @@ describe('AuthService.exchange', () => {
     );
   });
 
-  it('answers a passkey-only sign-up with no email at all', async () => {
+  it('refuses an unknown passkey the same way whether or not Privy carries an email', async () => {
     const wallet = {
       verifyIdToken: jest.fn().mockResolvedValue({
         ...validPrivyUser,
@@ -448,13 +443,11 @@ describe('AuthService.exchange', () => {
 
     const { service, store } = makeService({ wallet });
 
-    const result = await service.exchange('valid.privy.token');
-
-    // The passkey is the credential, so there is nothing to put here until
-    // the Consumer offers a contact address.
-    expect(result.user.email).toBeNull();
-    expect(result.user.isNewUser).toBe(true);
-    expect(store.users[0].email).toBeNull();
+    await expect(service.exchange('valid.privy.token')).rejects.toMatchObject({
+      status: HttpStatus.NOT_FOUND,
+      response: { code: 'NO_ACCOUNT_FOR_PASSKEY' },
+    });
+    expect(store.users).toHaveLength(0);
   });
 
   it("gives back the contact address the Consumer saved, not Privy's", async () => {
@@ -554,9 +547,17 @@ describe('AuthService.exchange', () => {
       getUser: jest.fn(),
     } as unknown as WalletProvider;
     const { rpc, registerWebhookAddress } = makeFakeSolana();
-    const { service } = makeService({ wallet, solana: rpc });
+    const { service } = makeService({
+      wallet,
+      solana: rpc,
+      store: {
+        users: [pendingUser('u_pending', validPrivyUser.email as string)],
+        smartAccounts: [],
+      },
+      tokens: { xsign_good: 'u_pending' },
+    });
 
-    await service.exchange('valid.privy.token');
+    await service.exchange('valid.privy.token', 'xsign_good');
     expect(registerWebhookAddress).toHaveBeenCalledWith(
       validPrivyUser.walletAddress,
     );
@@ -573,9 +574,17 @@ describe('AuthService.exchange', () => {
         .fn()
         .mockRejectedValue(new Error('helius webhook api down')),
     });
-    const { service, store } = makeService({ wallet, solana: rpc });
+    const { service, store } = makeService({
+      wallet,
+      solana: rpc,
+      store: {
+        users: [pendingUser('u_pending', validPrivyUser.email as string)],
+        smartAccounts: [],
+      },
+      tokens: { xsign_good: 'u_pending' },
+    });
 
-    const result = await service.exchange('valid.privy.token');
+    const result = await service.exchange('valid.privy.token', 'xsign_good');
     expect(result.user.walletAddress).toBe(validPrivyUser.walletAddress);
     expect(result.token).toEqual(expect.any(String));
     // smart_account was still written; webhook failure is non-fatal.
@@ -637,9 +646,11 @@ describe('AuthService.exchange', () => {
     };
     const { service, store } = makeService({ wallet, store: seedStore });
 
+    // The same refusal an unknown passkey gets anywhere: the row's existence
+    // is not something a passkey that never proved the address may learn.
     await expect(service.exchange('valid.privy.token')).rejects.toMatchObject({
-      status: HttpStatus.CONFLICT,
-      response: { code: 'EMAIL_IN_USE' },
+      status: HttpStatus.NOT_FOUND,
+      response: { code: 'NO_ACCOUNT_FOR_PASSKEY' },
     });
     expect(store.smartAccounts).toHaveLength(0);
     expect(store.users).toHaveLength(1);
@@ -799,9 +810,16 @@ describe('AuthService.exchange', () => {
       verifyIdToken: jest.fn().mockResolvedValue(privyUserWithPasskey),
       getUser: jest.fn(),
     } as unknown as WalletProvider;
-    const { service, store } = makeService({ wallet });
+    const { service, store } = makeService({
+      wallet,
+      store: {
+        users: [pendingUser('u_pending', validPrivyUser.email as string)],
+        smartAccounts: [],
+      },
+      tokens: { xsign_good: 'u_pending' },
+    });
 
-    await service.exchange('valid.privy.token');
+    await service.exchange('valid.privy.token', 'xsign_good');
 
     expect(store.passkeyCredentials).toHaveLength(1);
     expect(store.passkeyCredentials![0].credentialId).toBe('cred_login_1');
