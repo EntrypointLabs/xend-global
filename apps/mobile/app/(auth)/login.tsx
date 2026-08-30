@@ -10,35 +10,33 @@ import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 
 /**
  * The front door. Email leads because it works on any device, including one
- * that holds no passkey yet, which on a fresh install is every device. The
- * passkey stays right beneath it because on a phone that has one it is the
- * faster way in, and a returning Consumer should not have to look for it.
+ * that holds no passkey yet, which on a fresh install is every device: it
+ * signs a new Consumer up and lets an existing one in to look. The passkey
+ * stays right beneath it because on a phone that has one it is the faster
+ * way in, and the only way to spend.
  */
+type Hint = "no-passkey" | "no-account" | null;
+
 function LoginScreen() {
   const { signIn, busy, error: passkeyError, clearError } = usePasskeyLogin();
-  const [noPasskey, setNoPasskey] = useState(false);
-
-  // Email OTP is a migration route now, not a way in. It is the one path that
-  // signs an older Consumer in and enrols a passkey on this device, which is
-  // exactly what recovering a wallet onto a new phone means.
-  const recover = () => router.push("/(auth)/email-login");
+  const [hint, setHint] = useState<Hint>(null);
 
   const onEmail = () => {
     clearError();
-    setNoPasskey(false);
+    setHint(null);
     router.push("/add-email");
   };
 
   const onPasskey = async () => {
-    setNoPasskey(false);
+    setHint(null);
     const outcome = await signIn();
-    // The signed-in shell decides where to land; a passkey that worked leaves
-    // the session in exactly the state an email code would have.
+    // The signed-in shell decides where to land.
     if (outcome === "signed-in") router.replace("/(tabs)");
-    // Not a failure and not an offer to create anything: a passkey from
-    // another ecosystem looks the same as none at all, and the email door
-    // above is the one that works for both.
-    if (outcome === "no-passkey") setNoPasskey(true);
+    // Neither is a failure and neither is an offer to create anything here.
+    // A passkey from another ecosystem looks the same as none at all, and a
+    // passkey with no account behind it has to start at the address; the
+    // email door above is the one that answers both.
+    if (outcome === "no-passkey" || outcome === "no-account") setHint(outcome);
   };
 
   return (
@@ -105,29 +103,16 @@ function LoginScreen() {
                 {passkeyError}
               </Typography>
             )}
-            {noPasskey && !passkeyError && (
+            {hint && !passkeyError && (
               <Typography
                 weight="500"
                 className="px-1 text-sm leading-5 text-white/80"
               >
-                No passkey on this phone yet. Continue with email to create one,
-                or to reach an account you made elsewhere.
+                {hint === "no-passkey"
+                  ? "No passkey on this phone yet. Continue with email to create one, or to reach an account you made elsewhere."
+                  : "That passkey is not on a Xend account yet. Continue with email to create one."}
               </Typography>
             )}
-
-            <HapticPressable
-              onPress={recover}
-              disabled={busy}
-              className="w-full flex-row items-center justify-center gap-3 p-3"
-            >
-              <Image
-                source={require("@/assets/icons/redo.png")}
-                className="size-5"
-              />
-              <Typography weight="600" className="text-base text-white/90">
-                Recover existing wallet
-              </Typography>
-            </HapticPressable>
           </View>
         </View>
       </View>
