@@ -11,6 +11,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
+import { useAuth } from "@/contexts/AuthContext";
 import { useAccount } from "@/hooks/useAccount";
 import { useAwaitingPayments } from "@/hooks/useAwaitingPayments";
 import { useCountdown } from "@/hooks/useCountdown";
@@ -18,6 +19,7 @@ import { useDeviceNeedsRestore } from "@/hooks/useDeviceNeedsRestore";
 import { usePendingAccountChange } from "@/hooks/usePendingAccountChange";
 import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { usePendingChangeAcknowledgement } from "@/hooks/usePendingChangeAcknowledgement";
+import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { cn } from "@/utils/cn";
 
 /** The card is inset by the screen's own padding on both sides. */
@@ -45,17 +47,49 @@ interface Banner {
  * either.
  */
 export function HomeBanners() {
+  const { sessionTier } = useAuth();
   const { data: account } = useAccount();
   const { data: change } = usePendingAccountChange();
   const { data: restore } = useDeviceNeedsRestore();
   const { data: awaiting } = useAwaitingPayments();
   const { reopen, requestReview } = usePendingChangeAcknowledgement();
   const { startedHere } = useInitiatedChanges();
+  const passkey = usePasskeyLogin();
+  const [passkeyHint, setPasskeyHint] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const width = useRef(Dimensions.get("window").width - SCREEN_PADDING * 2);
   const remaining = useCountdown(change?.executableAt ?? null);
 
   const banners: Banner[] = [];
+
+  // Before everything, including a waiting Payment: nothing else on the
+  // screen can be finished until this is. An email code opened this session,
+  // so it can look and nothing more, and the passkey is the one thing that
+  // changes that. Signing in with it replaces the session in place and this
+  // card goes with it.
+  if (sessionTier === "entry") {
+    const upgrade = async () => {
+      if (passkey.busy) return;
+      setPasskeyHint(null);
+      const outcome = await passkey.signIn();
+      if (outcome === "no-passkey") {
+        setPasskeyHint("No passkey on this phone. Use the phone that has it.");
+      } else if (outcome === "failed") {
+        setPasskeyHint(passkey.error ?? "That did not work. Tap to try again.");
+      }
+    };
+    banners.push({
+      key: "entry-session",
+      icon: "finger-print-outline",
+      tint: "#0A0A0A",
+      title: "Looking, not spending",
+      description: passkey.busy
+        ? "Waiting for your passkey."
+        : (passkeyHint ??
+          "Sending and key changes need your passkey. Tap to sign in."),
+      onPress: () => void upgrade(),
+    });
+  }
 
   // Whose change it is, decided by this device. A phone that did not start it
   // is either the Consumer's other phone or somebody else's, and both want the

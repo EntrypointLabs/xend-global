@@ -119,7 +119,7 @@ if (process.env.EXPO_PUBLIC_GRID_ENV === "production") {
 
 function AuthLayout() {
   const segments = useSegments();
-  const { isAuthenticated, needsContactEmail, holdAuthStack } = useAuth();
+  const { isAuthenticated, needsContactEmail } = useAuth();
   const { isLocked, isObscured } = useAppLock();
   const colorScheme = useColorScheme();
 
@@ -142,16 +142,11 @@ function AuthLayout() {
   // has no Account at all. Deriving this from what is on file rather than from
   // a flag raised during sign-up means an interrupted sign-up resumes instead
   // of leaving somebody on a dashboard nothing has been created for.
-  if (
-    isAuthenticated &&
-    needsContactEmail &&
-    !holdAuthStack &&
-    !atEmailScreen
-  ) {
+  if (isAuthenticated && needsContactEmail && !atEmailScreen) {
     return <Redirect href="/add-email" withAnchor />;
   }
 
-  if (isAuthenticated && !holdAuthStack && inAuthGroup) {
+  if (isAuthenticated && inAuthGroup) {
     return <Redirect href="/(tabs)" withAnchor />;
   }
 

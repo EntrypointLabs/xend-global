@@ -11,14 +11,14 @@ import * as Sentry from "@sentry/react-native";
 import {
   useEmbeddedSolanaWallet,
   useIdentityToken,
-  useLoginWithEmail,
   usePrivy,
 } from "@privy-io/expo";
 
-import { AccountInfo, AuthContextType } from "@/types/Auth";
+import { AccountInfo, AuthContextType, SessionTier } from "@/types/Auth";
 import { AuthStorage } from "@/utils/storage/authStorage";
-import { apiClient } from "@/utils/apiClient";
+import { apiClient, apiErrorCode, type EntryProof } from "@/utils/apiClient";
 import { isJwtExpired } from "@/utils/jwt";
+import { PasskeyHasNoAccountError } from "@/utils/passkeyOutcome";
 import { useEnsureSolanaWallet } from "@/hooks/useEnsureSolanaWallet";
 import { SEED_DEMO, SEED_USER } from "@/utils/devSeed";
 import { forgetThisDevice } from "@/utils/pushDevice";
@@ -39,6 +39,13 @@ function emailArgFor(privyUser: unknown): string | null {
 /**
  * Privy-backed auth provider. Must render inside the `<PrivyProvider>` wrap
  * in `app/_layout.tsx`, since it consumes Privy hooks.
+ *
+ * Two kinds of session pass through here. A passkey sign-in exchanges a Privy
+ * identity for a Xend JWT and is the full session. An email code on an
+ * existing account opens an entry session, which is Xend's own token with no
+ * Privy session behind it: it can look and start a recovery, and the server
+ * refuses everything else. The passkey is what turns the second into the
+ * first.
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
@@ -50,26 +57,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [needsTokenRefresh, setNeedsTokenRefresh] = useState(false);
-  /**
-   * Keeps a screen in the auth stack mounted after Privy has already signed
-   * the Consumer in.
-   *
-   * Email login runs its passkey and Account setup modals after the session
-   * exists, and the shell would otherwise redirect to the tabs and unmount
-   * them mid-flow. Distinct from the contact-address ask below: this is one
-   * screen asking to finish what it started, not a fact about the Account.
-   */
-  const [holdAuthStack, setHoldAuthStack] = useState(false);
+  const [sessionTier, setSessionTier] = useState<SessionTier | null>(null);
 
-  /**
-   * Kept in storage as well as in state.
-   *
-   * The address is what the shell reads to decide whether sign-up is finished,
-   * and it is written here rather than at sign-in, because a Consumer who
-   * signs up with a passkey has no address at that point. Held only in state,
-   * it came back empty on the next launch and sent a finished Consumer back to
-   * the email screen.
-   */
   /**
    * Records an address the backend has confirmed, in state and in storage.
    *
@@ -94,7 +83,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const queryClient = useQueryClient();
 
-  const { sendCode, loginWithCode } = useLoginWithEmail();
   const { getIdentityToken } = useIdentityToken();
   const {
     logout: privyLogout,
@@ -111,6 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(SEED_USER);
         setEmail(SEED_USER.email);
         setWallet(SEED_USER.walletAddress);
+        setSessionTier("full");
         setIsAuthenticated(true);
         setIsLoading(false);
         return;
@@ -122,7 +111,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setEmail(savedEmail);
 
         const token = await AuthStorage.getToken();
-        if (token && !isJwtExpired(token)) {
+        const tier = await AuthStorage.getSessionTier();
+
+        if (tier === "entry") {
+          // An entry session has nothing to refresh from: no Privy session
+          // stands behind it. Past its hour it is simply over, and the way
+          // back in is another code or the passkey.
+          const expiresAt = await AuthStorage.getSessionExpiresAt();
+          const live =
+            !!token &&
+            !!expiresAt &&
+            new Date(expiresAt).getTime() > Date.now();
+          if (live) {
+            setWallet(storedUser?.walletAddress ?? null);
+            setSessionTier("entry");
+            setIsAuthenticated(true);
+          } else {
+            await AuthStorage.clearAuthData();
+            setUser(null);
+            setIsAuthenticated(false);
+          }
+        } else if (token && !isJwtExpired(token)) {
+          setSessionTier("full");
           setIsAuthenticated(true);
         } else if (await AuthStorage.isAuthenticated()) {
           // Session restored but the backend JWT is missing or expired. Defer
@@ -176,6 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           smart_account_address: exchange.user.walletAddress,
         };
         await AuthStorage.saveToken(exchange.token);
+        await AuthStorage.saveSessionTier("full");
         await AuthStorage.saveUserData(refreshedUser);
         if (exchange.user.email)
           await AuthStorage.saveEmail(exchange.user.email);
@@ -185,6 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(refreshedUser);
         setEmail(exchange.user.email ?? "");
         setWallet(exchange.user.walletAddress);
+        setSessionTier("full");
         setIsAuthenticated(true);
       } catch (error) {
         Sentry.captureException(
@@ -194,6 +206,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         setUser(null);
         setWallet(null);
+        setSessionTier(null);
         setIsAuthenticated(false);
       } finally {
         if (!cancelled) setNeedsTokenRefresh(false);
@@ -209,39 +222,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [needsTokenRefresh, privyReady, privyUser]);
 
   /**
-   * Step 1 of email login (and registration — Privy collapses the two).
-   * Records the email and triggers Privy to send the OTP. The screen calls
-   * `verifyCode(code)` next.
-   */
-  const authenticate = async (emailArg: string): Promise<void> => {
-    setEmail(emailArg);
-    setAuthError(null);
-    await AuthStorage.saveEmail(emailArg);
-    try {
-      // A stale Privy session blocks a fresh loginWithCode; clear it first.
-      if (privyUser) {
-        await privyLogout();
-      }
-      await sendCode({ email: emailArg });
-    } catch (error) {
-      Sentry.captureException(
-        new Error(`Privy sendCode failed: ${error}. authenticate()`)
-      );
-      const errorMessage =
-        error instanceof Error ? error.message : "An unknown error occurred";
-      setAuthError(errorMessage);
-      throw error;
-    }
-  };
-
-  // Privy collapses register into the same OTP flow as login.
-  const register = authenticate;
-
-  /**
-   * Shared OTP-verify path for both login and register: Privy validates the
-   * code, returns the user object; we then ask Privy for the ID token, send
-   * it to our backend `/auth/exchange`, persist the returned JWT + user, and
-   * mark the session authenticated.
+   * Turns a Privy identity into the full session: asks Privy for the ID
+   * token, sends it to `/auth/exchange`, persists the returned JWT + user, and
+   * marks the session authenticated.
    */
   const finalizeSession = async (
     fallbackEmail: string | null,
@@ -265,6 +248,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           signupToken,
         });
       } catch (exchangeError) {
+        // A passkey no account knows. The credential worked and there is
+        // nothing to sign in to; the only next step is the email door, and
+        // it must not be papered over with a degraded session.
+        if (apiErrorCode(exchangeError) === "NO_ACCOUNT_FOR_PASSKEY") {
+          throw new PasskeyHasNoAccountError();
+        }
+
         // Privy has already authenticated the Consumer and provisioned their
         // wallet, so identity is settled; only our JWT is missing. Let them in
         // on a degraded session rather than stranding them at the OTP screen,
@@ -275,8 +265,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Not during sign-up. The token is what attaches this passkey to the
         // address that was just proved, and a silent refresh later would
         // exchange without it and start an empty account instead.
+        //
+        // Not from an entry session either. That session already works for
+        // looking; a degraded one would only be a worse version of it.
         const fallbackAddress = embeddedSolana.wallets?.[0]?.address ?? null;
-        if (!fallbackAddress || signupToken) throw exchangeError;
+        if (!fallbackAddress || signupToken || sessionTier === "entry") {
+          throw exchangeError;
+        }
 
         Sentry.captureException(
           new Error(
@@ -301,7 +296,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return true;
       }
 
+      // The entry token is about to be replaced. Revoked while it can still
+      // authenticate, so it is not left live for the rest of its hour.
+      if (sessionTier === "entry") {
+        await apiClient.signOut().catch(() => undefined);
+      }
+
       await AuthStorage.saveToken(exchange.token);
+      await AuthStorage.saveSessionTier("full");
       await AuthStorage.saveUserData({
         id: exchange.user.id,
         email: exchange.user.email,
@@ -321,10 +323,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       setEmail(exchange.user.email ?? fallbackEmail ?? "");
       setWallet(exchange.user.walletAddress);
+      setSessionTier("full");
       setIsAuthenticated(true);
       setAuthError(null);
       return true;
     } catch (error) {
+      if (error instanceof PasskeyHasNoAccountError) throw error;
       Sentry.captureException(
         new Error(
           `Privy session finalize failed: ${error}. (contexts)/AuthContext.tsx`
@@ -338,71 +342,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   /**
-   * Email OTP, kept only so an existing Consumer can sign in once and move to
-   * a passkey. Nothing new should reach it, and it comes out with the
-   * migration.
-   */
-  const completeOtpAndExchange = async (code: string): Promise<boolean> => {
-    try {
-      const loggedInUser = await loginWithCode({ code });
-      if (!loggedInUser) {
-        throw new Error("Privy loginWithCode returned no user");
-      }
-      return await finalizeSession(emailArgFor(loggedInUser) ?? email);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "An unknown error occurred";
-      setAuthError(message);
-      return false;
-    }
-  };
-
-  /**
    * Signing in with a passkey alone.
    *
    * Privy has already authenticated by the time this runs; everything after is
    * the same as any other sign-in, which is the point: the credential changes
-   * and nothing downstream does.
+   * and nothing downstream does. From an entry session this is the upgrade.
    */
   const completePasskeySession = async (
     privyUser: unknown,
     signupToken?: string
   ): Promise<boolean> => finalizeSession(emailArgFor(privyUser), signupToken);
 
-  const verifyCode = completeOtpAndExchange;
-  const verifyCodeAndCreateAccount = completeOtpAndExchange;
-
   /**
-   * Mirror of the legacy `completeLogin` — kept for `email-login.tsx`, which
-   * uses `useLoginMutation` (not `verifyCode` above) and then calls
-   * `completeLogin(...)` itself. State-sync shim only.
+   * Persisted before any of it reaches React state, and in that order for a
+   * reason. Setting the user is what enables every authenticated query, and
+   * those read the token straight back out of storage. Flipping state first
+   * lets them fire against a token that has not been written yet.
    */
-  const completeLogin = async (
-    userData: any,
-    emailArg: string,
-    token: string
-  ): Promise<void> => {
-    // Persisted before any of it reaches React state, and in that order for a
-    // reason. Setting the user is what enables every authenticated query, and
-    // those read the token straight back out of storage. Flipping state first
-    // let them fire against a token that had not been written yet, so they went
-    // out with no Authorization header at all and came back 401 while requests
-    // a beat behind them succeeded.
-    await AuthStorage.saveUserData(userData);
-    await AuthStorage.saveEmail(emailArg);
-    if (token) {
-      await AuthStorage.saveToken(token);
-    }
+  const enterWithEmail = async (proof: EntryProof): Promise<void> => {
+    const entered = {
+      id: proof.user.id,
+      email: proof.user.email,
+      walletAddress: proof.user.walletAddress,
+      smart_account_address: proof.user.walletAddress,
+    };
+    await AuthStorage.saveToken(proof.entryToken);
+    await AuthStorage.saveSessionTier("entry");
+    await AuthStorage.saveSessionExpiresAt(proof.expiresAt);
+    await AuthStorage.saveUserData(entered);
+    await AuthStorage.saveEmail(proof.user.email);
     await AuthStorage.saveIsAuthenticated(true);
 
-    setHoldAuthStack(true);
-    setUser(userData);
-    setEmail(emailArg);
-    setWallet(
-      userData?.walletAddress ?? userData?.smart_account_address ?? null
-    );
-    // Gate the redirect out of the auth stack until the passkey step resolves,
-    // so the setup modal isn't unmounted by the tabs redirect.
+    setUser(entered);
+    setEmail(proof.user.email);
+    setWallet(proof.user.walletAddress);
+    setSessionTier("entry");
     setIsAuthenticated(true);
     setAuthError(null);
   };
@@ -410,10 +384,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     setIsLoggingOut(true);
     try {
-      // Before the session is torn down, while the call can still authenticate.
-      // Left registered, this phone keeps receiving arrivals for the Consumer
-      // who just signed out.
-      await forgetThisDevice();
+      if (sessionTier === "entry") {
+        // The token is revoked rather than merely forgotten, while it can
+        // still authenticate the call that revokes it.
+        await apiClient.signOut().catch((err) => {
+          if (__DEV__) console.warn("[auth] could not revoke the session", err);
+        });
+      } else {
+        // Before the session is torn down, while the call can still
+        // authenticate. Left registered, this phone keeps receiving arrivals
+        // for the Consumer who just signed out.
+        await forgetThisDevice();
+      }
 
       try {
         await privyLogout();
@@ -430,6 +412,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       queryClient.clear();
 
       setIsAuthenticated(false);
+      setSessionTier(null);
       setUser(null);
       setEmail(null);
       setAccountInfo(null);
@@ -447,22 +430,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  /**
-   * Stops the shell asking for a contact address again until the next launch.
-   *
-   * Sign-up used to be held open by a flag set just before the passkey was
-   * created, which meant a Consumer who was signed in a beat earlier than the
-   * flag took effect sailed past the ask and landed on the dashboard with no
-   * email, no Account and no recovery signer. The ask is derived from whether
-   * an address is actually on file now, so the only thing that has to be
-   * remembered is that they said no.
-   */
-  const releaseAuthStack = () => setHoldAuthStack(false);
-
   // Derive the wallet address surfaced to consumers from the union of
-  // Privy's embedded wallet and the local React state (set on completeLogin
-  // / verifyCode after the backend exchange returns). Render-time derivation
-  // avoids the banned `setState` inside a `useEffect`.
+  // Privy's embedded wallet and the local React state (set after the backend
+  // exchange returns, or from the entry proof). Render-time derivation avoids
+  // the banned `setState` inside a `useEffect`.
   const embeddedAddress = embeddedSolana.wallets?.[0]?.address ?? null;
   const effectiveWallet = wallet ?? embeddedAddress;
 
@@ -476,22 +447,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         accountInfo,
         setAccountInfo,
         authError,
-        authenticate,
-        completeLogin,
         completePasskeySession,
-        register,
-        verifyCode,
-        verifyCodeAndCreateAccount,
+        enterWithEmail,
         logout,
         wallet: effectiveWallet,
         isLoading,
         isLoggingOut,
-        // Read off the user the backend returned, not the local address: the
-        // legacy OTP screens put whatever was typed into that value before
-        // anything has confirmed it.
+        sessionTier,
+        // Read off the user the backend returned, not the local address, so
+        // only an address the backend confirmed counts.
         needsContactEmail: isAuthenticated === true && !user?.email,
-        holdAuthStack,
-        releaseAuthStack,
       }}
     >
       {children}

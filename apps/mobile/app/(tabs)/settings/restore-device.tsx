@@ -9,6 +9,7 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { ScreenVerificationCodeInput } from "@/components/ui/organisms";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeviceRotation } from "@/hooks/useDeviceRotation";
+import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { apiClient, apiErrorStatus } from "@/utils/apiClient";
 
 type Stage = "explain" | "code" | "working" | "waiting";
@@ -28,8 +29,13 @@ type Stage = "explain" | "code" | "working" | "waiting";
  * inside the window.
  */
 export default function RestoreDeviceScreen() {
-  const { email } = useAuth();
+  const { email, sessionTier } = useAuth();
   const rotation = useDeviceRotation();
+  // The swap is signed by the passkey on this phone, and an email-only
+  // session has none to sign with. Asked for here, before the code goes out,
+  // rather than discovered when the first step fails to sign.
+  const passkey = usePasskeyLogin();
+  const needsPasskey = sessionTier === "entry";
   const [stage, setStage] = useState<Stage>("explain");
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -193,23 +199,47 @@ export default function RestoreDeviceScreen() {
           </View>
         )}
 
-        {error && (
+        {(error ?? (needsPasskey ? passkey.error : null)) && (
           <Typography weight="500" className="mt-6 text-sm text-destructive">
-            {error}
+            {error ?? passkey.error}
           </Typography>
         )}
 
         <View className="flex-1" />
 
-        {stage === "explain" && (
-          <HapticPressable
-            onPress={sendCode}
-            className="h-14 items-center justify-center rounded-full bg-black"
-          >
-            <Typography weight="700" className="text-[15px] text-white">
-              Email me a code
+        {stage === "explain" && needsPasskey ? (
+          <>
+            <Typography
+              weight="500"
+              className="mb-4 text-center text-sm leading-5 text-black/40"
+            >
+              Your passkey signs this swap, so sign in with it first. The code
+              comes after.
             </Typography>
-          </HapticPressable>
+            <HapticPressable
+              onPress={() => void passkey.signIn()}
+              disabled={passkey.busy}
+              className="h-14 flex-row items-center justify-center gap-3 rounded-full bg-black"
+            >
+              <Ionicons name="finger-print-outline" size={20} color="#FFFFFF" />
+              <Typography weight="700" className="text-[15px] text-white">
+                {passkey.busy
+                  ? "Waiting for your passkey"
+                  : "Sign in with passkey"}
+              </Typography>
+            </HapticPressable>
+          </>
+        ) : (
+          stage === "explain" && (
+            <HapticPressable
+              onPress={sendCode}
+              className="h-14 items-center justify-center rounded-full bg-black"
+            >
+              <Typography weight="700" className="text-[15px] text-white">
+                Email me a code
+              </Typography>
+            </HapticPressable>
+          )
         )}
       </View>
     </ScreenLayout>

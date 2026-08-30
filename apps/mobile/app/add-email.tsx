@@ -26,13 +26,15 @@ import { apiClient, apiErrorCode, apiErrorStatus } from "@/utils/apiClient";
 import { cn } from "@/utils/cn";
 
 /**
- * Where sign-up starts: the address a Consumer is reached at, proved by a
- * code, before there is a passkey or a session.
+ * The email door: the address a Consumer is reached at, proved by a code,
+ * before there is a passkey or a session.
  *
- * The address anchors the recovery signer, which is minted the moment the
- * code is confirmed. The passkey comes next and is the credential; the
- * Account is built after that. Email proves the inbox and nothing more: it
- * never signs anyone in.
+ * What the code earns depends on the address, and is only known once it is
+ * right. New here, the address anchors the recovery signer, minted the moment
+ * the code is confirmed; the passkey comes next and is the credential, and
+ * the Account is built after that. Already on an account, the code opens a
+ * session that can look and start a recovery, and nothing more: spending
+ * needs the passkey. Either way email never becomes a way to spend.
  *
  * A signed-in Consumer with no address on file lands here as well, and leaves
  * through the same Account setup once one is proved.
@@ -44,6 +46,7 @@ function AddEmailScreen() {
     isAuthenticated,
     email: onFile,
     setEmail: setSessionEmail,
+    enterWithEmail,
     logout,
   } = useAuth();
   const {
@@ -128,6 +131,13 @@ function AddEmailScreen() {
         setSettingUpAccount(true);
       } else {
         const proof = await apiClient.verifySignupEmail(claimed, entered);
+        if (proof.kind === "entry") {
+          // An address already on an account. The session it opens is the
+          // one the home screen explains; there is nothing to create here.
+          await enterWithEmail(proof);
+          done();
+          return;
+        }
         setSignupToken(proof.signupToken);
         setStep("passkey");
       }
@@ -213,7 +223,7 @@ function AddEmailScreen() {
                 {step === "address"
                   ? "For receipts and security alerts, and how your account comes back if you lose this phone. It is not how you sign in: that is your passkey."
                   : step === "code"
-                    ? `We sent a six-digit code to ${claimed}. Confirming it is what lets this address bring your account back if you lose this phone.`
+                    ? `We sent a six-digit code to ${claimed}. Enter it to prove this inbox is yours.`
                     : "Your passkey is what signs you in. It lives in your phone's password manager, so there is nothing to remember."}
               </Typography>
 

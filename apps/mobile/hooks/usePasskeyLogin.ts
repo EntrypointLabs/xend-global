@@ -9,6 +9,7 @@ import { usePrivy } from "@privy-io/expo";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   classifyPasskeyError,
+  PasskeyHasNoAccountError,
   type PasskeySignInOutcome,
 } from "@/utils/passkeyOutcome";
 
@@ -66,6 +67,14 @@ export function usePasskeyLogin() {
       setError("Signed in, but Xend could not start your session.");
       return "failed";
     } catch (err) {
+      // The passkey is real and Xend has nothing behind it. Not a failure to
+      // show in red: the answer is the email door, and Privy's half-open
+      // session is closed so the next attempt starts clean.
+      if (err instanceof PasskeyHasNoAccountError) {
+        await privyLogout().catch(() => undefined);
+        console.log("[passkey] sign-in ended as no-account");
+        return "no-account";
+      }
       const outcome = classifyPasskeyError(err, Platform.OS);
       // Both of the other outcomes are answered with a screen rather than a
       // line of red text, and a dismissed sheet is not a failure at all.

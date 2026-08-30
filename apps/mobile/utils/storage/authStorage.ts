@@ -53,6 +53,23 @@ export const AuthStorage = {
     return cachedToken;
   },
 
+  async saveSessionTier(tier: "full" | "entry") {
+    await SecureStore.setItemAsync(AUTH_STORAGE_KEYS.SESSION_TIER, tier);
+  },
+
+  async getSessionTier(): Promise<"full" | "entry" | null> {
+    const tier = await SecureStore.getItemAsync(AUTH_STORAGE_KEYS.SESSION_TIER);
+    return tier === "full" || tier === "entry" ? tier : null;
+  },
+
+  async saveSessionExpiresAt(iso: string) {
+    await SecureStore.setItemAsync(AUTH_STORAGE_KEYS.SESSION_EXPIRES_AT, iso);
+  },
+
+  async getSessionExpiresAt() {
+    return SecureStore.getItemAsync(AUTH_STORAGE_KEYS.SESSION_EXPIRES_AT);
+  },
+
   async saveUserData(user: any) {
     await SecureStore.setItemAsync(
       AUTH_STORAGE_KEYS.USER,
@@ -83,6 +100,8 @@ export const AuthStorage = {
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.USER),
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.EMAIL),
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.TOKEN),
+      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.SESSION_TIER),
+      SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.SESSION_EXPIRES_AT),
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.IS_AUTHENTICATED),
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.KYC_STATUS),
       SecureStore.deleteItemAsync(AUTH_STORAGE_KEYS.KYC_LINK),

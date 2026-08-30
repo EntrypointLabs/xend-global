@@ -99,14 +99,16 @@ export function useNotificationRouting() {
 
 /** The Consumer's own answer about notifications, as the server holds it. */
 export function useNotificationPreference() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, sessionTier } = useAuth();
   const userId = useUserId();
   const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: ["notifications", "preference", userId],
     queryFn: () => apiClient.getNotificationPreference(),
-    enabled: Boolean(isAuthenticated),
+    // Where notices go is not something an inbox alone gets to read or set,
+    // and with no answer here registration below never runs either.
+    enabled: Boolean(isAuthenticated) && sessionTier === "full",
     staleTime: 60_000,
   });
 

@@ -57,11 +57,34 @@ export const SignupEmailChallengeResponseSchema = z.object({
   expiresAt: z.string(),
 });
 
-export const SignupEmailResponseSchema = z.object({
-  signupToken: z.string().min(1),
-  expiresAt: z.string(),
-});
-export type SignupEmailResponse = z.infer<typeof SignupEmailResponseSchema>;
+/**
+ * What proving an inbox earned. Mirrors `EmailProofOutcome` in
+ * apps/backend/src/auth/signup.service.ts.
+ *
+ * `signup` is an address nobody held: the token binds the passkey created
+ * next. `entry` is an address already on an account: a session that can look
+ * and start a recovery, and nothing else. Which one only becomes known after
+ * the code is right, so a stranger typing an address learns nothing.
+ */
+export const EmailProofResponseSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("signup"),
+    signupToken: z.string().min(1),
+    expiresAt: z.string(),
+  }),
+  z.object({
+    kind: z.literal("entry"),
+    entryToken: z.string().min(1),
+    expiresAt: z.string(),
+    user: z.object({
+      id: z.string(),
+      email: z.string().email(),
+      walletAddress: z.string(),
+    }),
+  }),
+]);
+export type EmailProofResponse = z.infer<typeof EmailProofResponseSchema>;
+export type EntryProof = Extract<EmailProofResponse, { kind: "entry" }>;
 
 export const MirrorPasskeyCredentialResponseSchema = z.object({
   mirrored: z.boolean(),
@@ -696,18 +719,31 @@ class BackendClient {
   }
 
   /**
-   * POST /auth/signup/email: proves the address and returns the token the
-   * passkey step hands to the exchange. Single use, and short-lived.
+   * POST /auth/signup/email: proves the address and returns what it earned,
+   * a sign-up token for a new account or an entry session for an existing
+   * one. Both are single-purpose and short-lived.
    */
   async verifySignupEmail(
     email: string,
     code: string
-  ): Promise<SignupEmailResponse> {
+  ): Promise<EmailProofResponse> {
     const raw = await this.request<unknown>("/auth/signup/email", {
       method: "POST",
       body: JSON.stringify({ email, code }),
     });
-    return SignupEmailResponseSchema.parse(raw);
+    return EmailProofResponseSchema.parse(raw);
+  }
+
+  /**
+   * POST /auth/signout: ends the session behind the stored token. Only an
+   * entry session has anything to revoke server-side; a JWT is simply
+   * forgotten, so this is called before the token is dropped.
+   */
+  async signOut(): Promise<void> {
+    await this.request<unknown>("/auth/signout", {
+      method: "POST",
+      auth: true,
+    });
   }
 
   /**
