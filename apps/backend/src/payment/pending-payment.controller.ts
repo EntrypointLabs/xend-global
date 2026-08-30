@@ -9,7 +9,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { ConsumerAuthGuard } from '../auth/consumer-auth.guard';
 import { eq } from 'drizzle-orm';
 import type { Request } from 'express';
 import { z } from 'zod';
@@ -61,7 +61,7 @@ export interface PendingPaymentView {
  * their phone.
  */
 @Controller('payments/pending')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ConsumerAuthGuard)
 export class PendingPaymentController {
   constructor(
     private readonly intents: PaymentIntentService,

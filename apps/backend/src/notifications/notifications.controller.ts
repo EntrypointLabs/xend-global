@@ -10,7 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { ConsumerAuthGuard } from '../auth/consumer-auth.guard';
 import { Request } from 'express';
 import {
   ForgetDeviceSchema,
@@ -37,7 +37,7 @@ interface AuthenticatedRequest extends Request {
  * nothing in the app needs to see one to work.
  */
 @Controller('notifications')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ConsumerAuthGuard)
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}
 

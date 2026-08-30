@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { users } from '../db/schema';
+import type { Principal } from './principal';
 
 /**
  * JWT payload shape. The JWT identifies the user (`sub`) and pins the
@@ -37,7 +38,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    * the token's own signature/expiry — is what actually locks a deleted
    * account out immediately.
    */
-  async validate(payload: JwtPayload) {
+  async validate(payload: JwtPayload): Promise<Principal> {
     const [user] = await this.db.client
       .select({ deletedAt: users.deletedAt })
       .from(users)
@@ -48,6 +49,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException();
     }
 
-    return { userId: payload.sub, walletAddress: payload.walletAddress };
+    // A JWT is only ever minted by the exchange, behind a passkey, so it is
+    // the full tier by construction.
+    return {
+      userId: payload.sub,
+      walletAddress: payload.walletAddress,
+      tier: 'full',
+    };
   }
 }

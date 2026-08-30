@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { ConfigModule } from './config/config.module';
 import { DbModule } from './db/db.module';
 import { AuthModule } from './auth/auth.module';
+import { EntrySessionModule } from './auth/entry-session.module';
 import { WalletsModule } from './wallets/wallets.module';
 import { WalletModule } from './wallet/wallet.module';
 import { SolanaModule } from './solana/solana.module';
@@ -33,6 +34,7 @@ import { TestDashboardModule } from './test-dashboard/test-dashboard.module';
     NotificationsModule,
     ConfigModule,
     DbModule,
+    EntrySessionModule,
     AuthModule,
     WalletsModule,
     WalletModule,

@@ -9,7 +9,8 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { AllowEntry } from '../auth/allow-entry.decorator';
+import { ConsumerAuthGuard } from '../auth/consumer-auth.guard';
 import { Request } from 'express';
 import { TransferService } from './transfer.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -51,7 +52,7 @@ interface AuthenticatedRequest extends Request {
  * smart_account) passes through untouched.
  */
 @Controller('transfers')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ConsumerAuthGuard)
 export class TransferController {
   constructor(private readonly transfer: TransferService) {}
 
@@ -80,6 +81,7 @@ export class TransferController {
   }
 
   @Get()
+  @AllowEntry()
   async list(
     @Req() req: AuthenticatedRequest,
     @Query(new ZodValidationPipe(ListTransfersQuerySchema))

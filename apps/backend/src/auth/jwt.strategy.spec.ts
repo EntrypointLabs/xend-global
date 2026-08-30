@@ -33,6 +33,7 @@ describe('JwtStrategy.validate', () => {
     await expect(strategy.validate(payload)).resolves.toEqual({
       userId: 'u_1',
       walletAddress: 'Wallet1',
+      tier: 'full',
     });
   });
 

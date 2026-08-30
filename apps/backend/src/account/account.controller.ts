@@ -11,7 +11,8 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { AllowEntry } from '../auth/allow-entry.decorator';
+import { ConsumerAuthGuard } from '../auth/consumer-auth.guard';
 import { Request } from 'express';
 
 import { AttestationService } from '../attestation/attestation.service';
@@ -82,7 +83,7 @@ interface AuthenticatedRequest extends Request {
 }
 
 @Controller('account')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ConsumerAuthGuard)
 export class AccountController {
   private readonly logger = new Logger(AccountController.name);
 
@@ -177,6 +178,7 @@ export class AccountController {
    * the change the next time they open Xend.
    */
   @Get('changes/pending')
+  @AllowEntry()
   pendingChange(@Req() req: AuthenticatedRequest) {
     return this.changes.pending(req.user.userId).then((change) => ({ change }));
   }
@@ -217,6 +219,7 @@ export class AccountController {
 
   /** The Consumer's recovery keys, including any change still in flight. */
   @Get('recovery')
+  @AllowEntry()
   async recoveryKeys(@Req() req: AuthenticatedRequest) {
     try {
       return { keys: await this.recovery.list(req.user.userId) };
@@ -533,6 +536,7 @@ export class AccountController {
    * owner needs them to learn.
    */
   @Post('recovery/device/challenge')
+  @AllowEntry()
   async requestDeviceRotationCode(@Req() req: AuthenticatedRequest) {
     try {
       const email = await this.accounts.contactEmail(req.user.userId);
@@ -553,6 +557,7 @@ export class AccountController {
   }
 
   @Post('recovery/device/verify')
+  @AllowEntry()
   async verifyDeviceRotationCode(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(VerifyRecoveryCodeSchema))
@@ -575,6 +580,7 @@ export class AccountController {
    * signer set. See {@link DeviceRotationService}.
    */
   @Post('recovery/device/start')
+  @AllowEntry()
   async startDeviceRotation(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(StartDeviceRotationSchema))
@@ -608,6 +614,7 @@ export class AccountController {
    * has executed it. Called until it says done.
    */
   @Post('recovery/device/next')
+  @AllowEntry()
   async nextDeviceRotationStep(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(NextDeviceRotationSchema))
@@ -621,6 +628,7 @@ export class AccountController {
   }
 
   @Post('recovery/device/submit')
+  @AllowEntry()
   async submitDeviceRotationStep(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(SubmitRecoveryChangeSchema))
@@ -726,6 +734,7 @@ export class AccountController {
   }
 
   @Get('me')
+  @AllowEntry()
   async getMe(@Req() req: AuthenticatedRequest) {
     const account = await this.accounts.findByUserId(req.user.userId);
     if (!account) {
