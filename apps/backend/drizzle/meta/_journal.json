@@ -239,6 +239,13 @@
       "when": 1787259200000,
       "tag": "0032_d_security_notice_events",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1787345600000,
+      "tag": "0033_c_contact_rotation_and_release_freeze",
+      "breakpoints": true
     }
   ]
 }

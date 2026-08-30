@@ -9,7 +9,11 @@ import type { AccountEventsService } from '../activity/account-events.service';
 import type { RecoveryChallengeService } from '../recovery/recovery-challenge.service';
 import type { RecoveryService } from '../recovery/recovery.service';
 import type { RecoverySignerSummary } from '../recovery/recovery.service';
-import { RecoveryGrantExpiredError } from '../recovery/recovery.errors';
+import {
+  RecoveryGrantExpiredError,
+  RecoveryReleaseFrozenError,
+  UnknownRecoverySignerError,
+} from '../recovery/recovery.errors';
 import type { TurnkeyService } from '../turnkey/turnkey.service';
 import type {
   ProposalState,
@@ -110,25 +114,60 @@ function fakeChain(proposal?: Partial<ProposalState> | null) {
   return { chain, submitted };
 }
 
-function fakeRecovery() {
+const CONTACT = 'consumer@example.com';
+
+/** A second sealed signer on the Account, anchored on a different inbox. */
+const OTHER_RECOVERY_ADDRESS = Keypair.generate().publicKey.toBase58();
+
+function fakeRecovery({ frozen = false } = {}) {
+  /** `signerId` of every approval produced. */
   const signed: string[] = [];
-  const summary: RecoverySignerSummary = {
-    id: 'signer-1',
-    address: RECOVERY_ADDRESS,
-    channel: 'email',
-    channelValue: 'consumer@example.com',
-    createdAt: new Date(0),
-    status: 'active',
-    removable: false,
-  };
+  const signers: RecoverySignerSummary[] = [
+    {
+      id: 'signer-1',
+      address: RECOVERY_ADDRESS,
+      channel: 'email',
+      channelValue: CONTACT,
+      createdAt: new Date(0),
+      status: 'active',
+      removable: false,
+      isContactAddress: true,
+    },
+    {
+      id: 'signer-2',
+      address: OTHER_RECOVERY_ADDRESS,
+      channel: 'email',
+      channelValue: 'other@example.com',
+      createdAt: new Date(0),
+      status: 'active',
+      removable: true,
+      isContactAddress: false,
+    },
+  ];
 
   const recovery = {
-    list: () => Promise.resolve([summary]),
+    list: () => Promise.resolve(signers),
+    signerAnchoredOn: (_userId: string, email: string) => {
+      const found = signers.find((s) => s.channelValue === email);
+      return found
+        ? Promise.resolve(found)
+        : Promise.reject(
+            new UnknownRecoverySignerError('no signer on that address'),
+          );
+    },
+    assertReleaseAllowed: () =>
+      frozen
+        ? Promise.reject(new RecoveryReleaseFrozenError('paused'))
+        : Promise.resolve(),
     approveWithRecoverySigner: (
-      userId: string,
+      _userId: string,
       transaction: VersionedTransaction,
+      signerId: string,
     ) => {
-      signed.push(userId);
+      if (frozen) {
+        return Promise.reject(new RecoveryReleaseFrozenError('paused'));
+      }
+      signed.push(signerId);
       return Promise.resolve(transaction);
     },
   } as unknown as RecoveryService;
@@ -136,12 +175,12 @@ function fakeRecovery() {
   return { recovery, signed };
 }
 
-function fakeChallenges({ valid = true } = {}) {
+function fakeChallenges({ valid = true, target = CONTACT } = {}) {
   const consumed: string[] = [];
   const challenges = {
     assertGrant: () =>
       valid
-        ? Promise.resolve({})
+        ? Promise.resolve({ target })
         : Promise.reject(
             new RecoveryGrantExpiredError('that recovery session is not open'),
           ),
@@ -195,12 +234,17 @@ function setUp({
   row = account(),
   proposal = null as Partial<ProposalState> | null,
   grantValid = true,
+  grantTarget = CONTACT,
+  frozen = false,
   newApproval = NEW_APPROVAL,
 } = {}) {
   const { store, patches, read } = fakeStore(row);
   const { chain, submitted } = fakeChain(proposal);
-  const { recovery, signed } = fakeRecovery();
-  const { challenges, consumed } = fakeChallenges({ valid: grantValid });
+  const { recovery, signed } = fakeRecovery({ frozen });
+  const { challenges, consumed } = fakeChallenges({
+    valid: grantValid,
+    target: grantTarget,
+  });
   const { events, recorded, changes } = fakeEvents();
 
   return {
@@ -288,12 +332,87 @@ describe('DeviceRotationService', () => {
     const plan = await service.next(USER, 'grant-1');
 
     // S3 signed here, not on the phone, and the grant is spent on the way out.
-    expect(signed).toEqual([USER]);
+    expect(signed).toEqual(['signer-1']);
     expect(consumed).toEqual(['grant-1']);
     // The chain fake never records the approval, which is what an RPC lagging
     // behind looks like. One signature is sent, not a stream of them.
     expect(plan.step).toBe('approve-recovery');
     expect(signed).toHaveLength(1);
+  });
+
+  it('signs with the signer anchored on the inbox the code went to', async () => {
+    const { service, signed } = setUp({
+      row: account({
+        pendingApprovalSigner: NEW_APPROVAL,
+        pendingApprovalChangeIndex: '8',
+      }),
+      proposal: { approved: [PRIMARY] },
+      grantTarget: 'other@example.com',
+    });
+
+    await service.next(USER, 'grant-1');
+
+    // Two sealed keys on the Account, one inbox proved. The key that signs is
+    // the one that inbox anchors, not whichever row came first.
+    expect(signed).toEqual(['signer-2']);
+  });
+
+  it('refuses a grant whose inbox anchors no signer on this Account', async () => {
+    const { service, signed } = setUp({
+      row: account({
+        pendingApprovalSigner: NEW_APPROVAL,
+        pendingApprovalChangeIndex: '8',
+      }),
+      proposal: { approved: [PRIMARY] },
+      grantTarget: 'stranger@example.com',
+    });
+
+    await expect(service.next(USER, 'grant-1')).rejects.toBeInstanceOf(
+      UnknownRecoverySignerError,
+    );
+    expect(signed).toEqual([]);
+  });
+
+  it('treats any held signer having approved as S3 being in', async () => {
+    const { service, signed } = setUp({
+      row: account({
+        pendingApprovalSigner: NEW_APPROVAL,
+        pendingApprovalChangeIndex: '8',
+      }),
+      proposal: { approved: [PRIMARY, OTHER_RECOVERY_ADDRESS] },
+    });
+
+    const plan = await service.next(USER, 'grant-1');
+
+    expect(signed).toEqual([]);
+    expect(plan.step).not.toBe('approve-recovery');
+  });
+
+  it('refuses to start while support has frozen the recovery release', async () => {
+    const { service, patches } = setUp({ frozen: true });
+
+    await expect(
+      service.start(USER, 'grant-1', { hardwarePublicKey: 'key' }),
+    ).rejects.toBeInstanceOf(RecoveryReleaseFrozenError);
+    // Refused before anything is staged, so no index is burned on a change
+    // that could never collect S3's vote.
+    expect(patches).toHaveLength(0);
+  });
+
+  it('withholds S3 from a change already staged while frozen', async () => {
+    const { service, signed } = setUp({
+      row: account({
+        pendingApprovalSigner: NEW_APPROVAL,
+        pendingApprovalChangeIndex: '8',
+      }),
+      proposal: { approved: [PRIMARY] },
+      frozen: true,
+    });
+
+    await expect(service.next(USER, 'grant-1')).rejects.toBeInstanceOf(
+      RecoveryReleaseFrozenError,
+    );
+    expect(signed).toEqual([]);
   });
 
   it('refuses the recovery approval when no grant is carried', async () => {

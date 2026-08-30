@@ -9,6 +9,7 @@ import {
   buildApproveSettingsChange,
   buildExecuteSettingsChange,
   buildRemoveRecoverySigner,
+  buildRotateRecoverySigner,
   deriveAccountAddresses,
   SETTINGS_TIME_LOCK_SECONDS,
 } from '@xend/smart-account';
@@ -52,12 +53,13 @@ export interface RecoveryChangePlan {
 }
 
 /**
- * Drives the settings change that adds or removes a recovery key.
+ * Drives the settings change that adds, removes or rotates a recovery key.
  *
  * Provisioning's shape with a different payload, and for the same reason: the
  * two approvals are S1 and S2, both of which live on the phone, so the backend
  * can only prepare bytes and take them back signed. It holds S3, which is
- * deliberately not one of the two.
+ * deliberately not one of the two. That is also what makes a contact address
+ * change safe to run through here: the inbox being replaced never votes.
  *
  * Every decision is re-read from the chain rather than stored, so an
  * interrupted change resumes and a client that lies about where it is gets
@@ -165,23 +167,31 @@ export class RecoveryChangeService {
   /**
    * Stages a change and returns its first step.
    *
-   * The row is written before the chain is touched, so a failure between the
-   * two leaves a staged row with a `changeIndex` that `next` will find and
-   * re-propose rather than a row nobody remembers.
+   * The rows are written before the chain is touched, so a failure between
+   * the two leaves staged rows with a `changeIndex` that `next` will find and
+   * re-propose rather than rows nobody remembers. A rotation carries two: the
+   * key coming in and the one going out share the index.
    */
-  async start(userId: string, signerId: string): Promise<RecoveryChangePlan> {
+  async start(
+    userId: string,
+    ...signerIds: string[]
+  ): Promise<RecoveryChangePlan> {
     const account = await this.requireAccount(userId);
     const settings = await this.chain.readSettings(account.settingsAddress);
     const changeIndex = settings.transactionIndex + 1n;
 
-    await this.recovery.markChange(signerId, changeIndex);
+    for (const signerId of signerIds) {
+      await this.recovery.markChange(signerId, changeIndex);
+    }
     // Announced here, at the moment of staging, rather than when the watcher
     // next sees it on chain: the notice is the Consumer's only warning that
     // the delay has started, and it cannot depend on a poll or on the app.
+    // A rotation carries two rows, the incoming one first, and the incoming
+    // one is what the notice is about.
     await this.events.recordSettingsChangeStaged(userId, {
       changeIndex,
-      subject: await this.channelValueOf(userId, signerId),
-      change: 'recovery_key',
+      subject: await this.channelValueOf(userId, signerIds[0]),
+      change: signerIds.length > 1 ? 'contact_email' : 'recovery_key',
     });
     this.logger.log(
       `recovery_change.started userId=${userId} index=${changeIndex}`,
@@ -240,22 +250,40 @@ export class RecoveryChangeService {
     const rentPayer = new PublicKey(this.chain.rentPayer);
 
     if (step === 'propose') {
-      const signer = await this.stagedSigner(userId);
+      const staged = await this.recovery.stagedSigners(
+        userId,
+        transactionIndex,
+      );
+      const [incoming] = staged.filter((s) => s.status === 'pending_add');
+      const [outgoing] = staged.filter((s) => s.status === 'pending_remove');
       const params = {
         addresses,
         proposer: primary,
         rentPayer,
         transactionIndex,
       };
-      return signer.status === 'pending_add'
-        ? buildAddRecoverySigner({
-            ...params,
-            newSigner: new PublicKey(signer.address),
-          })
-        : buildRemoveRecoverySigner({
-            ...params,
-            oldSigner: new PublicKey(signer.address),
-          });
+      if (incoming && outgoing) {
+        return buildRotateRecoverySigner({
+          ...params,
+          oldSigner: new PublicKey(outgoing.address),
+          newSigner: new PublicKey(incoming.address),
+        });
+      }
+      if (incoming) {
+        return buildAddRecoverySigner({
+          ...params,
+          newSigner: new PublicKey(incoming.address),
+        });
+      }
+      if (outgoing) {
+        return buildRemoveRecoverySigner({
+          ...params,
+          oldSigner: new PublicKey(outgoing.address),
+        });
+      }
+      throw new AccountCreationError(
+        'no recovery key change is staged for this Consumer',
+      );
     }
 
     if (step === 'execute') {
@@ -289,20 +317,6 @@ export class RecoveryChangeService {
       (candidate) => candidate.id === signerId,
     );
     return signer?.channelValue ?? null;
-  }
-
-  /** The row this change is carrying. */
-  private async stagedSigner(userId: string) {
-    const open = await this.recovery.pendingChange(userId);
-    const signer = (await this.recovery.list(userId)).find(
-      (candidate) => candidate.id === open?.signerId,
-    );
-    if (!signer) {
-      throw new AccountCreationError(
-        'no recovery key change is staged for this Consumer',
-      );
-    }
-    return signer;
   }
 
   /**

@@ -1,56 +1,68 @@
 import { JwtService } from '@nestjs/jwt';
-import type { RecoveryService } from '../recovery/recovery.service';
-import { AuthService, EmailInUseError } from './auth.service';
+import {
+  AuthService,
+  EmailInUseError,
+  EmailRotationRequiredError,
+} from './auth.service';
 import type { DbService } from '../db/db.service';
 import type { WalletProvider } from '../wallet/wallet-provider.interface';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { SignupService } from './signup.service';
-import { users } from '../db/schema';
+import { squadsAccounts, users } from '../db/schema';
 
 /**
- * `AuthService.setEmail` decides one thing: whether the address the Consumer
- * typed already belongs to somebody else.
+ * `AuthService.setEmail` decides two things: whether this Consumer is still
+ * at the point in sign-up where an address is written rather than rotated,
+ * and whether the address they typed already belongs to somebody else.
  *
  * Email stopped being a credential when passkeys took over sign-in, so this is
  * contact detail. What it must still refuse is two accounts claiming the same
  * inbox, because a notification is only worth sending if exactly one person
- * can receive it.
+ * can receive it. And once an Account exists the address anchors a signer in
+ * its set, so the write closes and the rotation is the only way it moves.
  */
 
 type UsersRow = typeof users.$inferSelect;
 
 /**
- * Drizzle's chain, reduced to the two shapes this path uses. `where` matches
+ * Drizzle's chain, reduced to the shapes this path uses. `where` matches
  * everything: the service's own branch is `clash.id !== userId`, so a fixture
  * of one row is enough to drive both sides of it, and honouring the predicate
- * would only mean reimplementing `eq()` in the test.
+ * would only mean reimplementing `eq()` in the test. A select from
+ * `squads_accounts` answers with `accounts`, so a non-empty list means the
+ * Consumer has an Account.
  */
-function makeFakeDb(rows: UsersRow[], updateError?: Error): DbService {
-  const guard = (tbl: unknown) => {
-    if (tbl !== users) throw new Error('unexpected table in fake db');
-  };
-
+function makeFakeDb(
+  rows: UsersRow[],
+  updateError?: Error,
+  accounts: { userId: string }[] = [],
+): DbService {
   const withAdvisoryLock = <T>(_key: string, fn: () => Promise<T>) => fn();
+
+  const selectFrom = (source: unknown[]) => {
+    const chain: Record<string, unknown> = {
+      where: () => chain,
+      limit: (n: number) => {
+        const sliced = source.slice(0, n);
+        return {
+          then: (resolve: (v: unknown) => unknown) =>
+            Promise.resolve(sliced).then(resolve),
+        };
+      },
+    };
+    return chain;
+  };
 
   const client = {
     select: () => ({
       from: (tbl: unknown) => {
-        guard(tbl);
-        const chain: Record<string, unknown> = {
-          where: () => chain,
-          limit: (n: number) => {
-            const sliced = rows.slice(0, n);
-            return {
-              then: (resolve: (v: unknown) => unknown) =>
-                Promise.resolve(sliced).then(resolve),
-            };
-          },
-        };
-        return chain;
+        if (tbl === users) return selectFrom(rows);
+        if (tbl === squadsAccounts) return selectFrom(accounts);
+        throw new Error('unexpected table in fake db');
       },
     }),
     update: (tbl: unknown) => {
-      guard(tbl);
+      if (tbl !== users) throw new Error('unexpected table in fake db');
       const ctx: { values?: Partial<UsersRow> } = {};
       const apply = () => {
         if (updateError) throw updateError;
@@ -83,30 +95,18 @@ function makeUser(id: string, email: string | null): UsersRow {
   } as UsersRow;
 }
 
-/**
- * The recovery anchor has to move with the contact address, so the fake
- * records what it was asked to move rather than swallowing the call.
- */
-function makeService(rows: UsersRow[], updateError?: Error) {
-  const reanchored: { previous: string | null; next: string }[] = [];
-  const service = new AuthService(
+function makeService(
+  rows: UsersRow[],
+  updateError?: Error,
+  accounts: { userId: string }[] = [],
+) {
+  return new AuthService(
     new JwtService({ secret: 'test-secret' }),
-    makeFakeDb(rows, updateError),
+    makeFakeDb(rows, updateError, accounts),
     {} as WalletProvider,
     {} as SolanaRpc,
-    {
-      reanchorEmailSigner: (
-        _userId: string,
-        previous: string | null,
-        next: string,
-      ) => {
-        reanchored.push({ previous, next });
-        return Promise.resolve();
-      },
-    } as unknown as RecoveryService,
     {} as SignupService,
   );
-  return Object.assign(service, { reanchored });
 }
 
 describe('AuthService.setEmail', () => {
@@ -151,6 +151,34 @@ describe('AuthService.setEmail', () => {
     });
   });
 
+  it('closes the write once an Account exists', async () => {
+    const rows = [makeUser('u_1', 'old@example.com')];
+    const service = makeService(rows, undefined, [{ userId: 'u_1' }]);
+
+    // The address anchors a signer in the Account's set now. It moves by
+    // rotating that signer through a settings change, never by writing here,
+    // and a stolen session that could write here would hand the entry point
+    // over with no approval and no delay.
+    await expect(service.setEmail('u_1', 'new@example.com')).rejects.toThrow(
+      EmailRotationRequiredError,
+    );
+    expect(rows[0].email).toBe('old@example.com');
+  });
+
+  it('refuses to mail a code for an Account that already has an address', async () => {
+    const service = makeService(
+      [makeUser('u_1', 'old@example.com')],
+      undefined,
+      [{ userId: 'u_1' }],
+    );
+
+    // Checked where the challenge is issued, so the refusal comes before a
+    // code is sent to an inbox it could never be used from.
+    await expect(
+      service.assertEmailClaimable('u_1', 'new@example.com'),
+    ).rejects.toThrow(EmailRotationRequiredError);
+  });
+
   it('answers a lost race the way it answers a clash it could read', async () => {
     // Two Consumers claiming one address both read no clash, and the unique
     // index turns one of them away. Untranslated that is a 500 reading like an
@@ -186,28 +214,5 @@ describe('AuthService.setEmail', () => {
     expect(rows[0].updatedAt.getTime()).toBeGreaterThanOrEqual(
       before.getTime(),
     );
-  });
-
-  it('moves the recovery anchor when the address changes', async () => {
-    const service = makeService([makeUser('u_1', 'old@example.com')]);
-
-    await service.setEmail('u_1', 'new@example.com');
-
-    // S3 is released against whatever address is on file, so a signer still
-    // recording the old inbox would be judged against one address and
-    // remembered against another.
-    expect(service.reanchored).toEqual([
-      { previous: 'old@example.com', next: 'new@example.com' },
-    ]);
-  });
-
-  it('has nothing to move on a first address', async () => {
-    const service = makeService([makeUser('u_1', null)]);
-
-    await service.setEmail('u_1', 'first@example.com');
-
-    expect(service.reanchored).toEqual([
-      { previous: null, next: 'first@example.com' },
-    ]);
   });
 });

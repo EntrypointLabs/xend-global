@@ -116,6 +116,9 @@ export class DeviceRotationService {
     device: { hardwarePublicKey: string; security?: string },
   ): Promise<DeviceRotationPlan> {
     await this.challenges.assertGrant(userId, grantId, 'device_rotation');
+    // Checked before anything is staged: a rotation that will be refused S3's
+    // vote a step later would only burn an index.
+    await this.recovery.assertReleaseAllowed(userId);
     // Serialised for the same reason enrolment is. Reading the next settings
     // index and staging against it are two statements, and two starts that
     // cross in between both claim the index and the second overwrites the
@@ -229,8 +232,8 @@ export class DeviceRotationService {
       return this.prepare(userId, account, 'approve-primary', changeIndex);
     }
 
-    const recoverySigner = await this.recoveryAddress(userId);
-    if (!approved.includes(recoverySigner)) {
+    const held = await this.heldRecoveryAddresses(userId);
+    if (!held.some((address) => approved.includes(address))) {
       if (!mayApprove) {
         // Sent, and the chain has not shown it yet. Reporting the step the
         // Consumer is on beats sending a second signature at an RPC that is
@@ -280,6 +283,11 @@ export class DeviceRotationService {
   /**
    * Produces S3's approval and sends it, without the phone.
    *
+   * The signer is the one anchored on the inbox the code went to, read off
+   * the grant. Not "an active sealed signer": an Account with two email
+   * recovery keys holds two sealed keys, and proving one inbox must not
+   * release the other.
+   *
    * The grant is consumed after the transaction lands rather than before it is
    * built. A submit that fails on a stale blockhash would otherwise leave the
    * Consumer holding a code that no longer works, and the retry authorises
@@ -291,16 +299,25 @@ export class DeviceRotationService {
     account: SquadsAccountRow,
     changeIndex: bigint,
   ): Promise<void> {
-    await this.challenges.assertGrant(userId, grantId, 'device_rotation');
+    const grant = await this.challenges.assertGrant(
+      userId,
+      grantId,
+      'device_rotation',
+    );
+    if (!grant.target) {
+      throw new NoRotationInFlightError(
+        'this recovery session names no address',
+      );
+    }
+    const signer = await this.recovery.signerAnchoredOn(userId, grant.target);
 
     const addresses = deriveAccountAddresses(account.settingsSeed);
-    const recoverySigner = await this.recoveryAddress(userId);
     const compiled = await this.chain.compile({
       instructions: [
         buildApproveSettingsChange({
           addresses,
           transactionIndex: changeIndex,
-          signer: new PublicKey(recoverySigner),
+          signer: new PublicKey(signer.address),
         }),
       ],
     });
@@ -310,6 +327,7 @@ export class DeviceRotationService {
       VersionedTransaction.deserialize(
         Buffer.from(compiled.unsignedTxBase64, 'base64'),
       ),
+      signer.id,
     );
 
     const signature = await this.chain.submit(
@@ -458,17 +476,25 @@ export class DeviceRotationService {
     });
   }
 
-  private async recoveryAddress(userId: string): Promise<string> {
+  /**
+   * Every signer in the on-chain set whose key we hold. Any of them counting
+   * as approved means S3's vote is in; which one is chosen when the vote is
+   * produced, not when it is looked for.
+   */
+  private async heldRecoveryAddresses(userId: string): Promise<string[]> {
     const signers = await this.recovery.list(userId);
-    const active = signers.find(
-      (signer) => signer.status === 'active' && signer.channel === 'email',
-    );
-    if (!active) {
+    const held = signers
+      .filter(
+        (signer) =>
+          signer.channel === 'email' && signer.status !== 'pending_add',
+      )
+      .map((signer) => signer.address);
+    if (held.length === 0) {
       throw new NoRotationInFlightError(
-        'this Account has no active email recovery signer',
+        'this Account has no email recovery signer',
       );
     }
-    return active.address;
+    return held;
   }
 
   private executableAt(statusTimestamp: bigint | null): Date | null {

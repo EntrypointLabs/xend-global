@@ -1,6 +1,5 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import type { RecoveryService } from '../recovery/recovery.service';
 import { AuthService, CredentialConflictError } from './auth.service';
 import type { DbService } from '../db/db.service';
 import type {
@@ -333,9 +332,6 @@ function makeService(opts: {
     db,
     opts.wallet,
     solana,
-    {
-      reanchorEmailSigner: () => Promise.resolve(),
-    } as unknown as RecoveryService,
     signup,
   );
   return { service, store, solana, claimed };
@@ -350,6 +346,7 @@ function pendingUser(id: string, email: string): UsersRow {
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     deletedAt: null,
+    recoveryReleaseFrozenAt: null,
   };
 }
 
@@ -406,6 +403,7 @@ describe('AuthService.exchange', () => {
           createdAt: new Date('2026-01-01'),
           updatedAt: new Date('2026-01-01'),
           deletedAt: null,
+          recoveryReleaseFrozenAt: null,
         },
       ],
       smartAccounts: [
@@ -480,6 +478,7 @@ describe('AuthService.exchange', () => {
           createdAt: new Date('2026-01-01'),
           updatedAt: new Date('2026-01-01'),
           deletedAt: null,
+          recoveryReleaseFrozenAt: null,
         },
       ],
       smartAccounts: [
@@ -600,6 +599,7 @@ describe('AuthService.exchange', () => {
           createdAt: new Date('2026-01-01'),
           updatedAt: new Date('2026-01-01'),
           deletedAt: null,
+          recoveryReleaseFrozenAt: null,
         },
       ],
       smartAccounts: [
@@ -829,6 +829,7 @@ describe('AuthService.exchange', () => {
           createdAt: new Date('2026-01-01'),
           updatedAt: new Date('2026-01-01'),
           deletedAt: null,
+          recoveryReleaseFrozenAt: null,
         },
       ],
       smartAccounts: [

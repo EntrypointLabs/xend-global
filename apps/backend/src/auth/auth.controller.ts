@@ -13,6 +13,7 @@ import {
   AuthService,
   CredentialConflictError,
   EmailInUseError,
+  EmailRotationRequiredError,
 } from './auth.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { RecoveryChallengeService } from '../recovery/recovery-challenge.service';
@@ -188,7 +189,10 @@ export class AuthController {
  * leave the screen with nothing useful to say.
  */
 function toEmailHttp(err: unknown): HttpException {
-  if (err instanceof EmailInUseError) {
+  if (
+    err instanceof EmailInUseError ||
+    err instanceof EmailRotationRequiredError
+  ) {
     return new HttpException(
       { code: err.code, message: err.message },
       HttpStatus.CONFLICT,

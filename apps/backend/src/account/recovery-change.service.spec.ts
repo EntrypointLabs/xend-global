@@ -100,21 +100,36 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
   return { chain, compiled, submitted };
 }
 
-/** Only the parts of RecoveryService this service actually reaches. */
-function fakeRecovery({
-  status = 'pending_add',
-  changeIndex = null,
-}: { status?: RecoverySignerStatus; changeIndex?: bigint | null } = {}) {
-  const calls: string[] = [];
-  const summary: RecoverySignerSummary = {
+function signerSummary(
+  patch: Partial<RecoverySignerSummary> = {},
+): RecoverySignerSummary {
+  return {
     id: 'signer-1',
     address: SIGNER_ADDRESS,
     channel: 'external_wallet',
     channelValue: SIGNER_ADDRESS,
     createdAt: new Date(0),
-    status,
+    status: 'pending_add',
     removable: false,
+    isContactAddress: false,
+    ...patch,
   };
+}
+
+/** Only the parts of RecoveryService this service actually reaches. */
+function fakeRecovery({
+  status = 'pending_add',
+  changeIndex = null,
+  staged,
+}: {
+  status?: RecoverySignerStatus;
+  changeIndex?: bigint | null;
+  /** The rows the staged change carries. One by default; two for a rotation. */
+  staged?: RecoverySignerSummary[];
+} = {}) {
+  const calls: string[] = [];
+  const summary = signerSummary({ status });
+  const carried = staged ?? [summary];
   let index = changeIndex;
 
   const recovery = {
@@ -122,11 +137,13 @@ function fakeRecovery({
       Promise.resolve(
         index === null ? null : { signerId: summary.id, changeIndex: index },
       ),
-    list: () => Promise.resolve([summary]),
+    list: () => Promise.resolve(carried),
+    stagedSigners: (_userId: string, at: bigint) =>
+      Promise.resolve(index === at ? carried : []),
     markSignature: () => Promise.resolve(),
-    markChange: (_id: string, at: bigint) => {
+    markChange: (id: string, at: bigint) => {
       index = at;
-      calls.push(`markChange:${at}`);
+      calls.push(`markChange:${id}:${at}`);
       return Promise.resolve();
     },
     settle: (_userId: string, at: bigint) => {
@@ -205,11 +222,73 @@ describe('RecoveryChangeService.start', () => {
     expect(plan.changeIndex).toBe('8');
     // Recorded before the chain is touched, so an interrupted change is found
     // and re-proposed rather than lost.
-    expect(calls).toContain('markChange:8');
+    expect(calls).toContain('markChange:signer-1:8');
     expect(compiled).toHaveLength(1);
     // Announced at the moment of staging, naming the key, so the Consumer's
     // warning does not wait on a poll or on the app being open.
     expect(recorded).toEqual([`staged:recovery_key:8:${SIGNER_ADDRESS}`]);
+  });
+
+  it('stages a rotation with both rows on the same index', async () => {
+    const { chain } = fakeChain({ transactionIndex: 7n });
+    const { recovery, calls } = fakeRecovery();
+
+    const plan = await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).start(USER, 'signer-new', 'signer-old');
+
+    expect(plan.changeIndex).toBe('8');
+    // One change, not two: the key coming in and the key going out are the
+    // same act, and the same day of waiting.
+    expect(calls).toEqual([
+      'markChange:signer-new:8',
+      'markChange:signer-old:8',
+    ]);
+  });
+
+  it('proposes a rotation naming both the incoming and the outgoing key', async () => {
+    const incoming = Keypair.generate().publicKey;
+    const outgoing = Keypair.generate().publicKey;
+    const { chain, compiled } = fakeChain({ transactionIndex: 7n });
+    const { recovery } = fakeRecovery({
+      staged: [
+        signerSummary({
+          id: 'signer-new',
+          address: incoming.toBase58(),
+          channel: 'email',
+          channelValue: 'new@example.com',
+          status: 'pending_add',
+        }),
+        signerSummary({
+          id: 'signer-old',
+          address: outgoing.toBase58(),
+          channel: 'email',
+          channelValue: 'old@example.com',
+          status: 'pending_remove',
+          isContactAddress: true,
+        }),
+      ],
+    });
+
+    await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).start(USER, 'signer-new', 'signer-old');
+
+    // A single settings transaction whose action list carries both keys,
+    // rather than an add at one index and a remove at the next.
+    const [proposal] = compiled;
+    expect(proposal.instructions).toHaveLength(2);
+    const data = Buffer.from(
+      (proposal.instructions[0] as { data: Uint8Array }).data,
+    );
+    expect(data.includes(incoming.toBuffer())).toBe(true);
+    expect(data.includes(outgoing.toBuffer())).toBe(true);
   });
 
   it('proposes an addition that names the staged signer', async () => {

@@ -1,12 +1,19 @@
-import { PublicKey } from '@solana/web3.js';
+import {
+  PublicKey,
+  TransactionMessage,
+  VersionedTransaction,
+} from '@solana/web3.js';
 import { Test } from '@nestjs/testing';
 import { RECOVERY_VAULT, type RecoveryVault } from './recovery-vault.interface';
 import { AccountEventsService } from '../activity/account-events.service';
 import { RecoveryService } from './recovery.service';
 import {
+  ContactEmailTakenError,
+  ContactRecoverySignerError,
   DuplicateRecoveryChannelError,
   LastRecoverySignerError,
   RecoveryChangeInFlightError,
+  RecoveryReleaseFrozenError,
   RecoverySignerLimitError,
   UnknownRecoverySignerError,
 } from './recovery.errors';
@@ -75,6 +82,45 @@ class FakeStore implements RecoverySignerStore {
     Object.assign(target, patch);
     return Promise.resolve(target);
   }
+
+  /** The address on file per Consumer. Unset means no address yet. */
+  contacts = new Map<string, string>();
+  freezes = new Map<string, Date | null>();
+
+  findContactEmail(userId: string): Promise<string | null> {
+    return Promise.resolve(this.contacts.get(userId) ?? null);
+  }
+
+  updateContactEmail(userId: string, email: string): Promise<void> {
+    this.contacts.set(userId, email);
+    return Promise.resolve();
+  }
+
+  isContactEmailTaken(userId: string, email: string): Promise<boolean> {
+    return Promise.resolve(
+      [...this.contacts].some(([id, held]) => id !== userId && held === email),
+    );
+  }
+
+  findReleaseFreeze(userId: string): Promise<Date | null> {
+    return Promise.resolve(this.freezes.get(userId) ?? null);
+  }
+
+  setReleaseFreeze(userId: string, frozenAt: Date | null): Promise<void> {
+    this.freezes.set(userId, frozenAt);
+    return Promise.resolve();
+  }
+}
+
+/** A transaction only `address` can sign, so the wrong key is refused. */
+function transactionSignedBy(address: string): VersionedTransaction {
+  return new VersionedTransaction(
+    new TransactionMessage({
+      payerKey: new PublicKey(address),
+      recentBlockhash: PublicKey.default.toBase58(),
+      instructions: [],
+    }).compileToV0Message(),
+  );
 }
 
 const vault: RecoveryVault = {
@@ -365,23 +411,263 @@ describe('RecoveryService', () => {
     );
   });
 
-  it('rotates the sole signer to a new email and a fresh key', async () => {
+  /** Lands a second email signer, so the Account holds two sealed keys. */
+  async function landSecondEmail(userId: string, email: string) {
+    const added = await service.addEmail(userId, email);
+    await service.markChange(added.id, 5n);
+    await service.settle(userId, 5n);
+    return added;
+  }
+
+  it('stages a rotation as a fresh key coming in and the anchored key going out', async () => {
+    store.contacts.set('user-1', 'old@example.com');
     const before = await service.provisionEmailSigner(
       'user-1',
       'old@example.com',
     );
 
-    const after = await service.changeEmail(
+    const { key, retiring } = await service.stageContactRotation(
       'user-1',
-      before.id,
       'New@Example.com',
     );
 
-    expect(after.channelValue).toBe('new@example.com');
+    expect(retiring.id).toBe(before.id);
+    expect(retiring.status).toBe('pending_remove');
+    expect(key.status).toBe('pending_add');
+    expect(key.channelValue).toBe('new@example.com');
     // A fresh keypair, not the old secret re-addressed: the old email may be
     // exactly what was compromised.
-    expect(after.address).not.toBe(before.address);
-    expect(await service.list('user-1')).toHaveLength(1);
+    expect(key.address).not.toBe(before.address);
+    expect(store.rows.find((r) => r.id === key.id)?.sealedKey).toBeTruthy();
+    // Staging hands nothing over. The address on file is untouched until the
+    // chain has executed the change.
+    expect(await store.findContactEmail('user-1')).toBe('old@example.com');
+  });
+
+  it('rotates the signer anchored on the address on file, not the first email signer', async () => {
+    const first = await service.provisionEmailSigner(
+      'user-1',
+      'first@example.com',
+    );
+    const second = await landSecondEmail('user-1', 'second@example.com');
+    store.contacts.set('user-1', 'second@example.com');
+
+    const { retiring } = await service.stageContactRotation(
+      'user-1',
+      'next@example.com',
+    );
+
+    expect(retiring.id).toBe(second.id);
+    expect(store.rows.find((r) => r.id === first.id)?.status).toBe('active');
+  });
+
+  it('moves the address on file only when the rotation executes', async () => {
+    store.contacts.set('user-1', 'old@example.com');
+    await service.provisionEmailSigner('user-1', 'old@example.com');
+    const { key, retiring } = await service.stageContactRotation(
+      'user-1',
+      'new@example.com',
+    );
+    await service.markChange(key.id, 20n);
+    await service.markChange(retiring.id, 20n);
+    expect(await store.findContactEmail('user-1')).toBe('old@example.com');
+
+    await service.settle('user-1', 20n);
+
+    expect(await store.findContactEmail('user-1')).toBe('new@example.com');
+    const signers = await service.list('user-1');
+    expect(signers).toHaveLength(1);
+    expect(signers[0]).toMatchObject({
+      id: key.id,
+      status: 'active',
+      isContactAddress: true,
+    });
+    // Idempotent: the poller calls this until it sees done.
+    await service.settle('user-1', 20n);
+    expect(await store.findContactEmail('user-1')).toBe('new@example.com');
+  });
+
+  it('leaves the address on file alone when the rotation is rejected', async () => {
+    store.contacts.set('user-1', 'old@example.com');
+    const before = await service.provisionEmailSigner(
+      'user-1',
+      'old@example.com',
+    );
+    const { key, retiring } = await service.stageContactRotation(
+      'user-1',
+      'new@example.com',
+    );
+    await service.markChange(key.id, 21n);
+    await service.markChange(retiring.id, 21n);
+
+    await service.abandon('user-1', 21n);
+
+    expect(await store.findContactEmail('user-1')).toBe('old@example.com');
+    const signers = await service.list('user-1');
+    expect(signers).toHaveLength(1);
+    expect(signers[0]).toMatchObject({
+      id: before.id,
+      status: 'active',
+      isContactAddress: true,
+    });
+  });
+
+  it('refuses a replacement address another Consumer has on file', async () => {
+    store.contacts.set('user-1', 'old@example.com');
+    store.contacts.set('user-2', 'theirs@example.com');
+    await service.provisionEmailSigner('user-1', 'old@example.com');
+
+    await expect(
+      service.assertContactEmailAvailable('user-1', 'theirs@example.com'),
+    ).rejects.toThrow(ContactEmailTakenError);
+    await expect(
+      service.stageContactRotation('user-1', 'theirs@example.com'),
+    ).rejects.toThrow(ContactEmailTakenError);
+  });
+
+  it('refuses to rotate onto the address already on file', async () => {
+    store.contacts.set('user-1', 'old@example.com');
+    await service.provisionEmailSigner('user-1', 'old@example.com');
+
+    await expect(
+      service.stageContactRotation('user-1', 'OLD@example.com'),
+    ).rejects.toThrow(DuplicateRecoveryChannelError);
+  });
+
+  it('refuses to rotate while another change is in flight', async () => {
+    store.contacts.set('user-1', 'old@example.com');
+    await service.provisionEmailSigner('user-1', 'old@example.com');
+    const added = await service.addExternalWallet(
+      'user-1',
+      'So11111111111111111111111111111111111111112',
+    );
+    await service.markChange(added.id, 22n);
+
+    await expect(
+      service.stageContactRotation('user-1', 'new@example.com'),
+    ).rejects.toThrow(RecoveryChangeInFlightError);
+  });
+
+  it('does not count a rotation against the signer cap', async () => {
+    store.contacts.set('user-1', 'a@example.com');
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111112');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111113');
+
+    // Three signers is the cap, and a rotation leaves it at three: one in,
+    // one out, in the same change.
+    await expect(
+      service.stageContactRotation('user-1', 'b@example.com'),
+    ).resolves.toBeDefined();
+  });
+
+  it('refuses to remove the signer anchored on the address on file', async () => {
+    store.contacts.set('user-1', 'a@example.com');
+    const first = await service.provisionEmailSigner('user-1', 'a@example.com');
+    await landAdd('user-1', 'So11111111111111111111111111111111111111112');
+
+    const contact = (await service.list('user-1')).find(
+      (s) => s.isContactAddress,
+    );
+    expect(contact?.id).toBe(first.id);
+    expect(contact?.removable).toBe(false);
+    await expect(service.remove('user-1', first.id)).rejects.toThrow(
+      ContactRecoverySignerError,
+    );
+  });
+
+  it('signs with the signer it was given, never the first sealed one', async () => {
+    const first = await service.provisionEmailSigner('user-1', 'a@example.com');
+    const second = await landSecondEmail('user-1', 'b@example.com');
+
+    const signed = await service.approveWithRecoverySigner(
+      'user-1',
+      transactionSignedBy(second.address),
+      second.id,
+    );
+    expect(signed.signatures[0].some((byte) => byte !== 0)).toBe(true);
+
+    // Asked to sign with the other row, the key opened is the other key, and
+    // it cannot sign for a slot it does not occupy.
+    await expect(
+      service.approveWithRecoverySigner(
+        'user-1',
+        transactionSignedBy(second.address),
+        first.id,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('finds the signer a proved inbox anchors', async () => {
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    const second = await landSecondEmail('user-1', 'b@example.com');
+
+    expect((await service.signerAnchoredOn('user-1', 'B@example.com')).id).toBe(
+      second.id,
+    );
+    await expect(
+      service.signerAnchoredOn('user-1', 'c@example.com'),
+    ).rejects.toThrow(UnknownRecoverySignerError);
+  });
+
+  it('refuses to sign with a key that is not yet in the signer set', async () => {
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    const staged = await service.addEmail('user-1', 'b@example.com');
+
+    await expect(
+      service.approveWithRecoverySigner(
+        'user-1',
+        transactionSignedBy(staged.address),
+        staged.id,
+      ),
+    ).rejects.toThrow(UnknownRecoverySignerError);
+  });
+
+  it('withholds every sealed key while support has the release frozen', async () => {
+    const signer = await service.provisionEmailSigner(
+      'user-1',
+      'a@example.com',
+    );
+
+    await service.freezeRelease('user-1');
+
+    await expect(service.assertReleaseAllowed('user-1')).rejects.toThrow(
+      RecoveryReleaseFrozenError,
+    );
+    await expect(
+      service.approveWithRecoverySigner(
+        'user-1',
+        transactionSignedBy(signer.address),
+        signer.id,
+      ),
+    ).rejects.toThrow(RecoveryReleaseFrozenError);
+
+    await service.unfreezeRelease('user-1');
+    await expect(
+      service.approveWithRecoverySigner(
+        'user-1',
+        transactionSignedBy(signer.address),
+        signer.id,
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it('lets a change the Consumer signs themselves through the freeze', async () => {
+    await service.provisionEmailSigner('user-1', 'a@example.com');
+    await service.freezeRelease('user-1');
+
+    // The freeze withholds our vote and nothing else. A change approved by
+    // the passkey and the phone never needed it.
+    const added = await service.addExternalWallet(
+      'user-1',
+      'So11111111111111111111111111111111111111112',
+    );
+    await service.markChange(added.id, 32n);
+    await service.settle('user-1', 32n);
+
+    expect(
+      (await service.list('user-1')).find((s) => s.id === added.id)?.status,
+    ).toBe('active');
   });
 
   it('rejects a duplicate channel rather than adding a second row', async () => {

@@ -6,9 +6,13 @@ import {
   Inject,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { RecoveryService } from '../recovery/recovery.service';
 import { DbService } from '../db/db.service';
-import { users, smartAccounts, passkeyCredentials } from '../db/schema';
+import {
+  users,
+  smartAccounts,
+  passkeyCredentials,
+  squadsAccounts,
+} from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { WALLET_PROVIDER } from '../wallet/wallet-provider.interface';
 import type { WalletProvider } from '../wallet/wallet-provider.interface';
@@ -21,11 +25,15 @@ import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { ExchangeResponse, MirrorPasskeyCredentialRequest } from './dtos';
 
-import { CredentialConflictError, EmailInUseError } from './auth.errors';
+import {
+  CredentialConflictError,
+  EmailInUseError,
+  EmailRotationRequiredError,
+} from './auth.errors';
 import { SignupService } from './signup.service';
 import { SignupTokenInvalidError } from './signup.errors';
 
-export { CredentialConflictError, EmailInUseError };
+export { CredentialConflictError, EmailInUseError, EmailRotationRequiredError };
 
 /** Postgres unique-violation SQLSTATE, surfaced by node-postgres. */
 function pgErrorCode(err: unknown): string | undefined {
@@ -42,7 +50,6 @@ export class AuthService {
     private db: DbService,
     @Inject(WALLET_PROVIDER) private wallet: WalletProvider,
     @Inject(SOLANA_RPC) private solana: SolanaRpc,
-    private recovery: RecoveryService,
     private signup: SignupService,
   ) {}
 
@@ -265,20 +272,29 @@ export class AuthService {
   }
 
   /**
-   * Records the Consumer's contact address.
-   *
-   * Refused when it already belongs to someone else rather than adopted: the
-   * address anchors a recovery signer, and two Accounts claiming one inbox
-   * would mean either could be restored through it.
-   */
-  /**
    * Whether this Consumer may claim an address, checked before a code is sent.
    *
    * Sending first and refusing afterwards would mail a code to somebody else's
    * inbox to tell the wrong person that an address they own was typed into an
    * account they do not have.
+   *
+   * Refused outright once an Account exists. From then on the address anchors
+   * a signer in the Account's set, and it moves by rotating that signer, not
+   * by writing here. Gated on the Account rather than on which route called,
+   * so the sign-up write stays open however sign-up is sequenced.
    */
   async assertEmailClaimable(userId: string, email: string): Promise<void> {
+    const [account] = await this.db.client
+      .select({ userId: squadsAccounts.userId })
+      .from(squadsAccounts)
+      .where(eq(squadsAccounts.userId, userId))
+      .limit(1);
+    if (account) {
+      throw new EmailRotationRequiredError(
+        'this Account already has an address on file; change it from Keys & Recovery',
+      );
+    }
+
     const [clash] = await this.db.client
       .select({ id: users.id })
       .from(users)
@@ -291,12 +307,11 @@ export class AuthService {
   }
 
   /**
-   * Records the contact address, and moves the recovery anchor with it.
+   * Records the contact address during sign-up.
    *
-   * The two have to change together. S3 is released against whatever address
-   * is on file, so a user row that has moved on while the signer still records
-   * the old inbox means recovery is judged against one address and remembered
-   * against another.
+   * The initial write only. Once an Account exists the address anchors S3 and
+   * is changed by rotating that signer, which is a settings change with two
+   * approvals and a time lock, never a write here.
    */
   async setEmail(userId: string, email: string): Promise<{ email: string }> {
     return this.db.withAdvisoryLock(`auth:email:${userId}`, () =>
@@ -304,32 +319,11 @@ export class AuthService {
     );
   }
 
-  /**
-   * The address and the anchor move together, or neither does.
-   *
-   * S3 is released against whatever address is on file, so a user row that has
-   * moved on while the signer still records the old inbox is a permanent
-   * mismatch: the retry reads the new address as the previous one and does
-   * nothing. The anchor moves first because a refusal there leaves both
-   * records untouched, and the row write is undone if it fails after it.
-   */
   private async writeEmail(
     userId: string,
     email: string,
   ): Promise<{ email: string }> {
     await this.assertEmailClaimable(userId, email);
-
-    const [current] = await this.db.client
-      .select({ email: users.email })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    // Read off the row now rather than after the update. Holding the row and
-    // reading it later makes the answer depend on whether the driver handed
-    // back a copy or a live reference.
-    const previousEmail = current?.email ?? null;
-
-    await this.recovery.reanchorEmailSigner(userId, previousEmail, email);
 
     try {
       await this.db.client
@@ -341,16 +335,6 @@ export class AuthService {
       // unique index is what actually settles it, and the one it turns away
       // has to hear the same refusal as the one who read the clash, not a
       // 500 that reads like an outage.
-      // The anchor already moved, so put it back rather than leave the two
-      // records describing different inboxes.
-      await this.recovery
-        .reanchorEmailSigner(userId, email, previousEmail ?? email)
-        .catch((undoError) =>
-          this.logger.error(
-            `auth.email_rollback_failed userId=${userId}`,
-            undoError,
-          ),
-        );
       if (pgErrorCode(err) === '23505') {
         throw new EmailInUseError('that email is already on another account');
       }

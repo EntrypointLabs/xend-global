@@ -81,6 +81,7 @@ function makeStore() {
         id: `user-${++seq}`,
         email: null,
         notificationsEnabled: true,
+        recoveryReleaseFrozenAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
         deletedAt: null,

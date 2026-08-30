@@ -45,12 +45,18 @@ export const recoverySignerStatusEnum = pgEnum('recovery_signer_status', [
  *
  * An enum rather than a boolean so that every use of a proved inbox has to
  * name itself here, and a code issued for one purpose can never be spent on
- * another. Proving the address at sign-up and releasing S3 to a new phone are
- * the two that exist.
+ * another. Proving the address at sign-up, releasing S3 to a new phone,
+ * proving an extra recovery address, and proving the address that replaces
+ * the one on file are the four that exist.
  */
 export const recoveryChallengePurposeEnum = pgEnum(
   'recovery_challenge_purpose',
-  ['device_rotation', 'contact_verification', 'recovery_key_email'],
+  [
+    'device_rotation',
+    'contact_verification',
+    'recovery_key_email',
+    'contact_rotation',
+  ],
 );
 
 /**
@@ -190,6 +196,16 @@ export const users = pgTable('users', {
    * claim the same inbox.
    */
   email: text('email').unique(),
+  /**
+   * Set while support is refusing to release the server-held recovery signer,
+   * typically because a compromise report is open.
+   *
+   * On the person rather than a signer row: every sealed recovery key we hold
+   * for them is released against an inbox, and a report that one inbox is
+   * compromised is a reason to release none of them. It costs the Consumer
+   * nothing, since their passkey plus their phone is threshold without us.
+   */
+  recoveryReleaseFrozenAt: timestamp('recovery_release_frozen_at'),
   /**
    * Whether they want to be told when money arrives.
    *

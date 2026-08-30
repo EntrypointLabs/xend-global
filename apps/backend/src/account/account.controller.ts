@@ -25,6 +25,8 @@ import { AccountChangeService } from './account-change.service';
 import { UnsafeSubOrganizationError } from '../turnkey/turnkey.errors';
 import {
   ChallengeAttemptsExhaustedError,
+  ContactEmailTakenError,
+  ContactRecoverySignerError,
   DuplicateRecoveryChannelError,
   InvalidRecoveryCodeError,
   LastRecoverySignerError,
@@ -32,6 +34,7 @@ import {
   NoRotationInFlightError,
   RecoveryChangeInFlightError,
   RecoveryGrantExpiredError,
+  RecoveryReleaseFrozenError,
   RecoverySignerLimitError,
   TooManyRecoveryCodesError,
   UnknownRecoverySignerError,
@@ -346,6 +349,115 @@ export class AccountController {
       return result;
     } catch (err) {
       throw this.recoveryFailure(req.user.userId, 'add_recovery_email', err);
+    }
+  }
+
+  /**
+   * Sends a code to the address that will replace the one on file.
+   *
+   * Refused before anything is mailed when the address is already a recovery
+   * channel here or another Consumer's contact address. The current address
+   * is not asked to prove anything: an attacker holding it could, and a
+   * Consumer who has lost it could not, so proving it protects the wrong
+   * party. The change is guarded by the two keys on the phone and the day it
+   * takes instead.
+   */
+  @Post('recovery/contact/challenge')
+  async requestContactRotationCode(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(RequestRecoveryEmailCodeSchema))
+    body: RequestRecoveryEmailCodeDto,
+  ) {
+    try {
+      await this.recovery.assertContactEmailAvailable(
+        req.user.userId,
+        body.email,
+      );
+      const { expiresAt } = await this.challenges.issue(
+        req.user.userId,
+        body.email,
+        'contact_rotation',
+      );
+      return { sent: true, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'contact_code', err);
+    }
+  }
+
+  @Post('recovery/contact/verify')
+  async verifyContactRotation(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(VerifyRecoveryEmailSchema))
+    body: VerifyRecoveryEmailDto,
+  ) {
+    try {
+      const { grantId, expiresAt } = await this.challenges.verify(
+        req.user.userId,
+        'contact_rotation',
+        body.code,
+      );
+      const grant = await this.challenges.assertGrant(
+        req.user.userId,
+        grantId,
+        'contact_rotation',
+      );
+      if (grant.target !== body.email) {
+        throw new RecoveryGrantExpiredError(
+          'that code was sent to a different address',
+        );
+      }
+      return { grantId, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'contact_verify', err);
+    }
+  }
+
+  /**
+   * Stages the change that moves the contact address, and starts it.
+   *
+   * A fresh recovery key sealed against the proved address goes in and the
+   * key anchored on the current address comes out, in one settings change
+   * that both Active Keys approve and that waits out the time lock. The
+   * address on file does not move here. It follows the key when the change
+   * executes, so a stolen session can stage this and still hand nothing over.
+   */
+  @Post('recovery/contact')
+  async rotateContactEmail(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(AddRecoveryEmailSchema))
+    body: AddRecoveryEmailDto,
+  ) {
+    try {
+      const grant = await this.challenges.assertGrant(
+        req.user.userId,
+        body.grantId,
+        'contact_rotation',
+      );
+      if (grant.target !== body.email) {
+        throw new RecoveryGrantExpiredError(
+          'that code proved a different address',
+        );
+      }
+
+      const result = await this.recovery.withChangeLock(
+        req.user.userId,
+        async () => {
+          const { key, retiring } = await this.recovery.stageContactRotation(
+            req.user.userId,
+            body.email,
+          );
+          const plan = await this.recoveryChanges.start(
+            req.user.userId,
+            key.id,
+            retiring.id,
+          );
+          return { key, retiring, plan };
+        },
+      );
+      await this.challenges.consume(body.grantId);
+      return result;
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'contact_rotate', err);
     }
   }
 
@@ -705,11 +817,21 @@ function toHttp(err: unknown): HttpException {
       HttpStatus.CONFLICT,
     );
   }
+  // Support's refusal, not the Consumer's mistake. Forbidden rather than a
+  // conflict: nothing they retry changes the answer, only a call to support.
+  if (err instanceof RecoveryReleaseFrozenError) {
+    return new HttpException(
+      { code: err.code, message: err.message },
+      HttpStatus.FORBIDDEN,
+    );
+  }
   if (
     err instanceof LastRecoverySignerError ||
     err instanceof RecoverySignerLimitError ||
     err instanceof DuplicateRecoveryChannelError ||
-    err instanceof RecoveryChangeInFlightError
+    err instanceof RecoveryChangeInFlightError ||
+    err instanceof ContactRecoverySignerError ||
+    err instanceof ContactEmailTakenError
   ) {
     return new HttpException(
       { code: err.code, message: err.message },

@@ -263,6 +263,26 @@ describe('AccountController recovery key changes', () => {
       Object.assign(target, patch);
       return Promise.resolve(target);
     }
+
+    findContactEmail(): Promise<string | null> {
+      return Promise.resolve('a@example.com');
+    }
+
+    updateContactEmail(): Promise<void> {
+      return Promise.resolve();
+    }
+
+    isContactEmailTaken(): Promise<boolean> {
+      return Promise.resolve(false);
+    }
+
+    findReleaseFreeze(): Promise<Date | null> {
+      return Promise.resolve(null);
+    }
+
+    setReleaseFreeze(): Promise<void> {
+      return Promise.resolve();
+    }
   }
 
   function recoveryController() {

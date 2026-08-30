@@ -23,3 +23,17 @@ export class CredentialConflictError extends Error {
     this.name = 'CredentialConflictError';
   }
 }
+
+/**
+ * The Consumer already has an Account, so the address on file anchors a
+ * signer in its set and is not edited. It moves by rotating that signer
+ * through a settings change; the controller maps this to 409
+ * EMAIL_ROTATION_REQUIRED so the app can send them there.
+ */
+export class EmailRotationRequiredError extends Error {
+  readonly code = 'EMAIL_ROTATION_REQUIRED';
+  constructor(message: string) {
+    super(message);
+    this.name = 'EmailRotationRequiredError';
+  }
+}
