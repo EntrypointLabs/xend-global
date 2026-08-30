@@ -1451,3 +1451,186 @@ describe.skipIf(!HAVE_FIXTURES)("approval signer rotation", () => {
     expect(h.svm.getBalance(destination)).toBe(BigInt(LAMPORTS_PER_SOL));
   });
 });
+
+/*
+ * A Merchant is paid into a token account Xend provisions for it, which is a
+ * bare account rather than anybody's ATA. These pin the two facts Checkout
+ * settlement rests on: the program accepts such an account, and it accepts it
+ * on the route an everyday Payment actually takes.
+ */
+describe.skipIf(!HAVE_FIXTURES)(
+  "paying a Merchant's settlement account",
+  () => {
+    const SETTLEMENT_AMOUNT = 1_000_000n;
+
+    /** An Account whose spending limit is denominated in the token, not in SOL. */
+    function withTokenLimit(): Harness & { mint: PublicKey } {
+      const h = setUp({ timeLockSeconds: 0 });
+      const mint = Keypair.generate().publicKey;
+      writeMint(h.svm, mint, TOKEN_DECIMALS);
+
+      // Both policies, the way a real Account is provisioned: the above-limit
+      // route has no policy to execute under otherwise.
+      const index = BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
+      const { propose } = buildProvisionAccount({
+        addresses: h.addresses,
+        spendingLimitSeed: LIMIT_POLICY_SEED,
+        aboveLimitSeed: ABOVE_LIMIT_POLICY_SEED,
+        terms: {
+          mint,
+          maxPerUse: 100_000_000n,
+          maxPerPeriod: 100_000_000n,
+          period: "Daily",
+          destinations: [],
+        },
+        primary: h.primary.publicKey,
+        approval: h.approval.publicKey,
+        proposer: h.primary.publicKey,
+        transactionIndex: index,
+        timeLockSeconds: SETTINGS_TIME_LOCK,
+      });
+
+      expect(failed(send(h.svm, h.primary, propose, [h.primary]))).toBe(false);
+      for (const signer of [h.primary, h.approval]) {
+        expect(
+          failed(
+            send(
+              h.svm,
+              signer,
+              [
+                buildApproveSettingsChange({
+                  addresses: h.addresses,
+                  transactionIndex: index,
+                  signer: signer.publicKey,
+                }),
+              ],
+              [signer],
+            ),
+          ),
+        ).toBe(false);
+      }
+      h.svm.expireBlockhash();
+      expect(
+        failed(
+          send(
+            h.svm,
+            h.primary,
+            [
+              buildExecuteSettingsChange({
+                addresses: h.addresses,
+                transactionIndex: index,
+                signer: h.primary.publicKey,
+                policies: [h.policy, h.abovePolicy],
+              }),
+            ],
+            [h.primary],
+          ),
+        ),
+      ).toBe(false);
+
+      writeTokenAccount(
+        h.svm,
+        associatedTokenAddress(h.addresses.vault, mint, TOKEN_PROGRAM),
+        { mint, owner: h.addresses.vault, amount: 20_000_000n },
+      );
+      return { ...h, mint };
+    }
+
+    /** The settlement account: owned by the authority, derived from nothing. */
+    function settlementAccount(
+      h: Harness & { mint: PublicKey },
+      owner: PublicKey,
+    ): PublicKey {
+      const account = Keypair.generate().publicKey;
+      writeTokenAccount(h.svm, account, {
+        mint: h.mint,
+        owner,
+        amount: 0n,
+      });
+      return account;
+    }
+
+    it("settles under the limit on one signature", () => {
+      const h = withTokenLimit();
+      const authority = Keypair.generate().publicKey;
+      const account = settlementAccount(h, authority);
+
+      const instruction = buildSpend({
+        addresses: h.addresses,
+        request: {
+          mint: h.mint,
+          amount: SETTLEMENT_AMOUNT,
+          destination: authority,
+          destinationTokenAccount: account,
+        },
+        route: { kind: "spending-limit", policy: h.policy },
+        signers: [h.primary.publicKey],
+        decimals: TOKEN_DECIMALS,
+        tokenProgram: TOKEN_PROGRAM,
+      });
+
+      expect(failed(send(h.svm, h.primary, [instruction], [h.primary]))).toBe(
+        false,
+      );
+      expect(tokenBalance(h.svm, account)).toBe(SETTLEMENT_AMOUNT);
+    });
+
+    it("settles above the limit on two signatures", () => {
+      const h = withTokenLimit();
+      const authority = Keypair.generate().publicKey;
+      const account = settlementAccount(h, authority);
+
+      const instruction = buildSpend({
+        addresses: h.addresses,
+        request: {
+          mint: h.mint,
+          amount: SETTLEMENT_AMOUNT,
+          destination: authority,
+          destinationTokenAccount: account,
+        },
+        route: {
+          kind: "two-signature",
+          reason: "exceeds-per-use",
+          policy: h.abovePolicy,
+        },
+        signers: [h.primary.publicKey, h.approval.publicKey],
+        decimals: TOKEN_DECIMALS,
+        tokenProgram: TOKEN_PROGRAM,
+      });
+
+      expect(
+        failed(send(h.svm, h.primary, [instruction], [h.primary, h.approval])),
+      ).toBe(false);
+      expect(tokenBalance(h.svm, account)).toBe(SETTLEMENT_AMOUNT);
+    });
+
+    it("refuses an account the named destination does not own", () => {
+      // The destination is what a policy allowlist would be checked against, so
+      // a token account belonging to someone else must not be reachable by
+      // naming an allowed destination beside it.
+      const h = withTokenLimit();
+      const authority = Keypair.generate().publicKey;
+      const stranger = Keypair.generate().publicKey;
+      const account = settlementAccount(h, stranger);
+
+      const instruction = buildSpend({
+        addresses: h.addresses,
+        request: {
+          mint: h.mint,
+          amount: SETTLEMENT_AMOUNT,
+          destination: authority,
+          destinationTokenAccount: account,
+        },
+        route: { kind: "spending-limit", policy: h.policy },
+        signers: [h.primary.publicKey],
+        decimals: TOKEN_DECIMALS,
+        tokenProgram: TOKEN_PROGRAM,
+      });
+
+      expect(failed(send(h.svm, h.primary, [instruction], [h.primary]))).toBe(
+        true,
+      );
+      expect(tokenBalance(h.svm, account)).toBe(0n);
+    });
+  },
+);

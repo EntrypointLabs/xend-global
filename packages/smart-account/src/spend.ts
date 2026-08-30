@@ -89,7 +89,24 @@ export interface SpendRequest {
   mint: PublicKey;
   /** In the mint's smallest units. */
   amount: bigint;
+  /**
+   * Who is being paid. The policy's destination allowlist is checked against
+   * this, and the program requires it to own {@link destinationTokenAccount}.
+   */
   destination: PublicKey;
+  /**
+   * The token account to credit, when it is not the destination's associated
+   * one.
+   *
+   * A Merchant settles into a token account Xend provisions for it, which is a
+   * bare account rather than anyone's ATA, so deriving one here would name an
+   * address that does not exist. The program checks ownership rather than
+   * derivation, so an account the destination owns is accepted; it is verified
+   * against the deployed bytecode in the integration suite.
+   *
+   * Ignored for native SOL, which has no token account.
+   */
+  destinationTokenAccount?: PublicKey;
 }
 
 /**
@@ -302,17 +319,13 @@ function aboveLimitTransfer({
     );
   }
 
-  // `destination` is the recipient's wallet; the transfer has to name their
-  // associated token account. The caller opens it beforehand, because a policy
-  // will not open one mid-Spend.
+  // `destination` is the recipient's wallet; the transfer has to name a token
+  // account they own. The caller opens it beforehand, because a policy will not
+  // open one mid-Spend.
   return transferChecked({
     source: associatedTokenAddress(addresses.vault, request.mint, tokenProgram),
     mint: request.mint,
-    destination: associatedTokenAddress(
-      request.destination,
-      request.mint,
-      tokenProgram,
-    ),
+    destination: destinationTokenAccount(request, tokenProgram),
     authority: addresses.vault,
     amount: request.amount,
     decimals,
@@ -419,15 +432,22 @@ function spendAccounts({
       isWritable: true,
     },
     {
-      pubkey: associatedTokenAddress(
-        request.destination,
-        request.mint,
-        tokenProgram,
-      ),
+      pubkey: destinationTokenAccount(request, tokenProgram),
       isSigner: false,
       isWritable: true,
     },
     { pubkey: request.mint, isSigner: false, isWritable: false },
     { pubkey: tokenProgram, isSigner: false, isWritable: false },
   ];
+}
+
+/** The account to credit: the caller's if it named one, otherwise the ATA. */
+function destinationTokenAccount(
+  request: SpendRequest,
+  tokenProgram: PublicKey,
+): PublicKey {
+  return (
+    request.destinationTokenAccount ??
+    associatedTokenAddress(request.destination, request.mint, tokenProgram)
+  );
 }
