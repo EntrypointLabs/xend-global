@@ -10,13 +10,16 @@ import {
   webhookEndpoints,
 } from '../db/schema';
 
+import { minorUnitDecimals } from '../fx/currency';
+
 const LIST_LIMIT = 100;
 
 export interface ConsolePaymentRow {
   id: string;
   merchantName: string | null;
   usdcAmount: string;
-  ngnAmount: string | null;
+  /** What the Merchant priced in, already formatted, e.g. "NGN 80,000.00". */
+  displayAmount: string;
   intentStatus: string | null;
   signature: string | null;
   settledAt: Date | null;
@@ -74,8 +77,11 @@ export function formatUsdc(amountRaw: string): string {
   return formatMinor(amountRaw, 6);
 }
 
-export function formatNgn(amountMinor: string): string {
-  return formatMinor(amountMinor, 2);
+export function formatDisplayAmount(
+  currency: string,
+  amountMinor: string,
+): string {
+  return `${currency} ${formatMinor(amountMinor, minorUnitDecimals(currency))}`;
 }
 
 /**
@@ -94,7 +100,8 @@ export class ConsoleService {
         id: payments.id,
         merchantName: merchants.displayName,
         usdcAmount: payments.usdcSettlementRaw,
-        ngnAmount: payments.ngnDisplayMinor,
+        displayCurrency: payments.displayCurrency,
+        displayAmountMinor: payments.displayAmountMinor,
         intentStatus: paymentIntents.status,
         signature: payments.txSignature,
         settledAt: payments.settledAt,
@@ -110,7 +117,10 @@ export class ConsoleService {
       id: r.id,
       merchantName: r.merchantName,
       usdcAmount: formatUsdc(r.usdcAmount),
-      ngnAmount: r.ngnAmount ? formatNgn(r.ngnAmount) : null,
+      displayAmount: formatDisplayAmount(
+        r.displayCurrency,
+        r.displayAmountMinor,
+      ),
       intentStatus: r.intentStatus,
       signature: truncateSignature(r.signature),
       settledAt: r.settledAt,

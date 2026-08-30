@@ -20,10 +20,14 @@ export interface IntentObject {
   id: string;
   object: 'payment_intent';
   status: string;
-  currency: 'NGN' | 'USDC';
+  /**
+   * What the Consumer is charged in: the Merchant's own currency. A Merchant
+   * pricing in the settlement asset is answered 'USD', because a shopper is
+   * shown dollars and never the token behind them.
+   */
+  currency: string;
   amount: string;
   usdc_settlement_raw: string;
-  ngn_display_minor: string | null;
   fx_rate: string | null;
   fx_source: string | null;
   fx_quoted_at: string | null;

@@ -119,7 +119,7 @@ export class ConsoleController {
       return '<p class="empty">No payments yet.</p>';
     }
     const head =
-      '<tr><th>Payment</th><th>Merchant</th><th>USDC</th><th>NGN</th>' +
+      '<tr><th>Payment</th><th>Merchant</th><th>USDC</th><th>Charged</th>' +
       '<th>Intent status</th><th>Signature</th><th>Settled</th><th>Refund of</th></tr>';
     const body = rows
       .map(
@@ -128,7 +128,7 @@ export class ConsoleController {
           cell(r.id, true) +
           cell(r.merchantName) +
           cell(r.usdcAmount) +
-          cell(r.ngnAmount) +
+          cell(r.displayAmount) +
           cell(r.intentStatus) +
           cell(r.signature, true) +
           cell(iso(r.settledAt)) +

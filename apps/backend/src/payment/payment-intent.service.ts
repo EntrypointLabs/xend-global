@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { and, eq, lt } from 'drizzle-orm';
+import { and, desc, eq, gt, isNotNull, lt } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { merchants, paymentIntents } from '../db/schema';
 import { EVENT_PUBLISHER } from '../events/event-publisher.interface';
@@ -26,7 +26,9 @@ function pgErrorCode(err: unknown): string | undefined {
 export interface CreateIntentParams {
   merchantId: string;
   usdcSettlementRaw: string;
-  ngnDisplayMinor?: string;
+  /** What the Merchant priced in, and the figure the Consumer is shown. */
+  displayCurrency: string;
+  displayAmountMinor: string;
   fxRate?: string;
   fxSource?: string;
   fxQuotedAt?: Date;
@@ -105,7 +107,8 @@ export class PaymentIntentService {
         .values({
           merchantId: params.merchantId,
           usdcSettlementRaw: params.usdcSettlementRaw,
-          ngnDisplayMinor: params.ngnDisplayMinor ?? null,
+          displayCurrency: params.displayCurrency,
+          displayAmountMinor: params.displayAmountMinor,
           fxRate: params.fxRate ?? null,
           fxSource: params.fxSource ?? null,
           fxQuotedAt: params.fxQuotedAt ?? null,
@@ -139,7 +142,8 @@ export class PaymentIntentService {
         intentId: intent.id,
         merchantId: intent.merchantId,
         usdcSettlementRaw: intent.usdcSettlementRaw,
-        ngnDisplayMinor: intent.ngnDisplayMinor,
+        displayCurrency: intent.displayCurrency,
+        displayAmountMinor: intent.displayAmountMinor,
         expiresAt: intent.expiresAt.toISOString(),
       },
       correlationId: intent.id,
@@ -202,6 +206,59 @@ export class PaymentIntentService {
     if (expired.length > 0) {
       this.logger.log(`payment.intent.expired count=${expired.length}`);
     }
+  }
+
+  /**
+   * Marks a Payment as one only the Consumer's phone can finish, and records
+   * who that Consumer is.
+   *
+   * The intent stays `created`: nothing has been authorized, no capacity is
+   * spent and it is still payable, which is the whole point. Writing the
+   * consumer here is what makes it findable from the app at all, since an
+   * intent otherwise only learns who is paying when it is authorized and this
+   * one never got that far.
+   */
+  async deferToApproval(
+    intentId: string,
+    consumerId: string,
+  ): Promise<IntentRow> {
+    const [updated] = await this.db.client
+      .update(paymentIntents)
+      .set({
+        consumerId,
+        approvalDeferredAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(paymentIntents.id, intentId),
+          eq(paymentIntents.status, 'created'),
+        ),
+      )
+      .returning();
+    if (updated) return updated;
+    return this.findById(intentId);
+  }
+
+  /**
+   * Payments waiting on this Consumer's phone: still payable, not yet expired,
+   * newest first. A Consumer standing at a checkout that just told them to open
+   * the app should find it at the top.
+   */
+  async listAwaitingApproval(consumerId: string): Promise<IntentRow[]> {
+    return this.db.client
+      .select()
+      .from(paymentIntents)
+      .where(
+        and(
+          eq(paymentIntents.consumerId, consumerId),
+          eq(paymentIntents.status, 'created'),
+          isNotNull(paymentIntents.approvalDeferredAt),
+          gt(paymentIntents.expiresAt, new Date()),
+        ),
+      )
+      .orderBy(desc(paymentIntents.approvalDeferredAt))
+      .limit(20);
   }
 
   async findById(intentId: string): Promise<IntentRow> {

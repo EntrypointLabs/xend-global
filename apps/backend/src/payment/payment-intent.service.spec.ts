@@ -35,7 +35,8 @@ function intentRow(over: Partial<IntentRow> = {}): IntentRow {
     consumerId: null,
     status: 'created',
     usdcSettlementRaw: '1000000',
-    ngnDisplayMinor: null,
+    displayCurrency: 'USD',
+    displayAmountMinor: '1000',
     fxRate: null,
     fxSource: null,
     fxQuotedAt: null,
@@ -46,6 +47,7 @@ function intentRow(over: Partial<IntentRow> = {}): IntentRow {
     cancelUrl: null,
     expiresAt: new Date(Date.now() + 3_600_000),
     authorizedAt: null,
+    approvalDeferredAt: null,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     ...over,
@@ -131,6 +133,8 @@ describe('PaymentIntentService.create', () => {
     const result = await service.create({
       merchantId: 'm1',
       usdcSettlementRaw: '1000000',
+      displayCurrency: 'USD',
+      displayAmountMinor: '1000',
     });
 
     expect(result.id).toBe('pi_abc');
@@ -153,6 +157,8 @@ describe('PaymentIntentService.create', () => {
     const result = await service.create({
       merchantId: 'm1',
       usdcSettlementRaw: '1000000',
+      displayCurrency: 'USD',
+      displayAmountMinor: '1000',
       idempotencyKey: 'idem-1',
     });
 
@@ -165,7 +171,12 @@ describe('PaymentIntentService.create', () => {
     const { publisher } = makePublisher();
     const service = new PaymentIntentService(db, config, publisher);
     await expect(
-      service.create({ merchantId: 'ghost', usdcSettlementRaw: '1000000' }),
+      service.create({
+        merchantId: 'ghost',
+        usdcSettlementRaw: '1000000',
+        displayCurrency: 'USD',
+        displayAmountMinor: '1000',
+      }),
     ).rejects.toMatchObject({ code: 'MERCHANT_NOT_FOUND' });
   });
 
@@ -176,7 +187,12 @@ describe('PaymentIntentService.create', () => {
     const { publisher } = makePublisher();
     const service = new PaymentIntentService(db, config, publisher);
     await expect(
-      service.create({ merchantId: 'm1', usdcSettlementRaw: '1000000' }),
+      service.create({
+        merchantId: 'm1',
+        usdcSettlementRaw: '1000000',
+        displayCurrency: 'USD',
+        displayAmountMinor: '1000',
+      }),
     ).rejects.toMatchObject({ code: 'MERCHANT_SUSPENDED' });
   });
 
@@ -185,7 +201,12 @@ describe('PaymentIntentService.create', () => {
     const { publisher } = makePublisher();
     const service = new PaymentIntentService(db, config, publisher);
     await expect(
-      service.create({ merchantId: 'm1', usdcSettlementRaw: '0' }),
+      service.create({
+        merchantId: 'm1',
+        usdcSettlementRaw: '0',
+        displayCurrency: 'USD',
+        displayAmountMinor: '1000',
+      }),
     ).rejects.toThrow(/positive integer/);
   });
 
@@ -204,6 +225,8 @@ describe('PaymentIntentService.create', () => {
     const result = await service.create({
       merchantId: 'm1',
       usdcSettlementRaw: '1000000',
+      displayCurrency: 'USD',
+      displayAmountMinor: '1000',
       idempotencyKey: 'idem-1',
     });
 

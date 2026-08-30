@@ -18,7 +18,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { assertPublicHttpsUrl, UnsafeUrlError } from '../common/url-safety';
 import { FX_QUOTE_PROVIDER } from '../fx/fx-quote-provider.interface';
 import type { FxQuoteProvider } from '../fx/fx-quote-provider.interface';
-import { ngnMinorToUsdcRaw } from '../fx/fx-math';
+import { localMinorToUsdcRaw, usdcRawToUsdMinor } from '../fx/fx-math';
 import { FxQuoteUnavailableError } from '../fx/fx.errors';
 import {
   PaymentIntentService,
@@ -110,6 +110,8 @@ export class MerchantController {
             merchantId,
             mode,
             usdcSettlementRaw: '',
+            displayCurrency: '',
+            displayAmountMinor: '',
             merchantReference: body.merchant_reference,
             returnUrl: body.return_url,
             cancelUrl: body.cancel_url,
@@ -120,17 +122,24 @@ export class MerchantController {
             const quote = await this.fx.getQuote();
             const rateDecimals =
               this.config.getOrThrow<number>('FX_RATE_DECIMALS');
-            params.usdcSettlementRaw = ngnMinorToUsdcRaw(
+            params.usdcSettlementRaw = localMinorToUsdcRaw(
               body.amount,
               quote.ngnPerUsdc,
               rateDecimals,
+              'NGN',
             );
-            params.ngnDisplayMinor = body.amount;
+            params.displayCurrency = 'NGN';
+            params.displayAmountMinor = body.amount;
             params.fxRate = quote.ngnPerUsdc;
             params.fxSource = quote.source;
             params.fxQuotedAt = quote.quotedAt;
           } else {
+            // Priced in the settlement asset. There is no rate to pin, and the
+            // Consumer is shown dollars: USDC is a chain detail and never
+            // reaches a surface a shopper reads.
             params.usdcSettlementRaw = body.amount;
+            params.displayCurrency = 'USD';
+            params.displayAmountMinor = usdcRawToUsdMinor(body.amount);
           }
 
           const intent = await this.intents.create(params);
@@ -165,19 +174,13 @@ export class MerchantController {
   }
 
   private toObject(intent: IntentRow): IntentObject {
-    const currency = intent.ngnDisplayMinor !== null ? 'NGN' : 'USDC';
-    const amount =
-      currency === 'NGN'
-        ? (intent.ngnDisplayMinor as string)
-        : intent.usdcSettlementRaw;
     return {
       id: intent.id,
       object: 'payment_intent',
       status: intent.status,
-      currency,
-      amount,
+      currency: intent.displayCurrency,
+      amount: intent.displayAmountMinor,
       usdc_settlement_raw: intent.usdcSettlementRaw,
-      ngn_display_minor: intent.ngnDisplayMinor,
       fx_rate: intent.fxRate,
       fx_source: intent.fxSource,
       fx_quoted_at: intent.fxQuotedAt ? intent.fxQuotedAt.toISOString() : null,
