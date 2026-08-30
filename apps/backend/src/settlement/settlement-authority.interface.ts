@@ -3,11 +3,19 @@
  * the direct-USDC pilot settlement token accounts (it provisions them and
  * authority-signs refunds out of them) and is the pilot attribution root.
  *
- * It is NEVER on the payment hot path: a payment settlement is Consumer-
- * signed and relayer-co-signed, never authority-signed. The authority signs
- * only the ops paths (provisioning a settlement token account, and
- * reverse()/refund transfers), and NEVER co-signs through the relayer (whose
- * allowlist deliberately excludes the System program, Phase 3).
+ * ## It is on the payment hot path, as the fee payer
+ *
+ * It did not used to be. A Payment was a plain SPL transfer the relayer
+ * co-signed, and the authority was kept to the ops paths on purpose. That
+ * stopped being possible when a Payment became a Spend out of the Consumer's
+ * Squads Account: the relayer's allowlist admits ComputeBudget, Token and ATA
+ * and nothing else, and widening it to carry a Squads instruction would give
+ * away the narrowness that makes the relayer safe to expose.
+ *
+ * So the authority pays the fee, exactly as it already does for a Send. It is
+ * still never an authority over anyone's money: it adds the fee payer's
+ * signature to a transaction the Consumer's own signer has already signed, and
+ * it only ever signs bytes that match the message pinned on the attempt.
  */
 
 export const SETTLEMENT_AUTHORITY_SIGNER = Symbol('SettlementAuthoritySigner');

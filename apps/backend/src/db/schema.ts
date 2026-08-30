@@ -760,7 +760,9 @@ export const paymentIntents = pgTable(
     consumerId: text('consumer_id').references(() => users.id),
     status: paymentIntentStatusEnum('status').notNull().default('created'),
     usdcSettlementRaw: text('usdc_settlement_raw').notNull(),
-    ngnDisplayMinor: text('ngn_display_minor'),
+    /** What the Merchant priced in, and the figure the Consumer is shown. */
+    displayCurrency: text('display_currency').notNull(),
+    displayAmountMinor: text('display_amount_minor').notNull(),
     fxRate: text('fx_rate'),
     fxSource: text('fx_source'),
     fxQuotedAt: timestamp('fx_quoted_at'),
@@ -775,10 +777,20 @@ export const paymentIntents = pgTable(
     cancelUrl: text('cancel_url'),
     expiresAt: timestamp('expires_at').notNull(),
     authorizedAt: timestamp('authorized_at'),
+    /**
+     * When Checkout handed this Payment to the Consumer's phone because it was
+     * above the band one signature carries. The intent stays payable; this is
+     * what lets the app find a Payment someone is waiting to finish.
+     */
+    approvalDeferredAt: timestamp('approval_deferred_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
+    deferredIdx: index('payment_intents_deferred_idx').on(
+      table.consumerId,
+      table.approvalDeferredAt,
+    ),
     // Replays of the same merchant write must return the same intent
     // (Postgres treats NULL idempotency keys as distinct, so intents
     // created without a key are unconstrained).
@@ -846,7 +858,8 @@ export const payments = pgTable(
       .notNull()
       .references(() => users.id),
     usdcSettlementRaw: text('usdc_settlement_raw').notNull(),
-    ngnDisplayMinor: text('ngn_display_minor'),
+    displayCurrency: text('display_currency').notNull(),
+    displayAmountMinor: text('display_amount_minor').notNull(),
     txSignature: text('tx_signature').unique(),
     settledAt: timestamp('settled_at'),
     refundOfPaymentId: text('refund_of_payment_id').references(

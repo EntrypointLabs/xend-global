@@ -18,6 +18,7 @@ import { EventsModule } from './events/events.module';
 import { CountersModule } from './counters/counters.module';
 import { CapabilityModule } from './capability/capability.module';
 import { PaymentModule } from './payment/payment.module';
+import { PendingPaymentModule } from './payment/pending-payment.module';
 import { SessionModule } from './session/session.module';
 import { SettlementModule } from './settlement/settlement.module';
 import { FxModule } from './fx/fx.module';
@@ -44,6 +45,7 @@ import { TestDashboardModule } from './test-dashboard/test-dashboard.module';
     CountersModule,
     CapabilityModule,
     PaymentModule,
+    PendingPaymentModule,
     SessionModule,
     SettlementModule,
     FxModule,

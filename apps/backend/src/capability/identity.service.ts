@@ -9,6 +9,7 @@ import type {
   WalletProviderUser,
 } from '../wallet/wallet-provider.interface';
 import { UnknownConsumerError } from './capability.errors';
+import { findVaultAddress } from './vault-address';
 
 export interface ConsumerProfile {
   consumerId: string;
@@ -35,6 +36,21 @@ export class IdentityService {
     private readonly config: ConfigService,
   ) {}
 
+  /**
+   * Whether the development stand-ins are in play.
+   *
+   * Tied to the settlement short-circuit rather than to NODE_ENV alone: they
+   * exist so local Checkout resolves with no Account and no funded authority,
+   * and the moment the real path is switched on they hide the failures that
+   * path is there to surface.
+   */
+  private devScaffoldEnabled(): boolean {
+    return (
+      this.config.get<string>('NODE_ENV') === 'development' &&
+      this.config.get<boolean>('CHECKOUT_DEV_FORCE_SETTLE') !== false
+    );
+  }
+
   async resolveByCredentialId(credentialId: string): Promise<ConsumerProfile> {
     const [cred] = await this.db.client
       .select()
@@ -57,11 +73,13 @@ export class IdentityService {
       .where(eq(smartAccounts.providerUserId, providerUser.providerUserId))
       .limit(1);
     if (!account) {
-      // TEST ONLY — never production. A brand-new passkey-only identity has no
-      // smart_accounts row yet; in development auto-provision one (mirroring
-      // the /auth/exchange insert shape) so local checkout can proceed.
-      // Production still rejects with UnknownConsumerError.
-      if (this.config.get<string>('NODE_ENV') === 'development') {
+      // TEST ONLY — never production, and off once development is walking the
+      // real Payment path. A passkey with no smart_accounts row is a person
+      // whose Account was never created here, and minting a throwaway identity
+      // for them is how the orphan rows in this table got made: no email, no
+      // Account, and a Payment that fails as though they were short of money.
+      // Refusing is the honest answer and matches production.
+      if (this.devScaffoldEnabled()) {
         const userId = await this.devProvisionConsumer(providerUser);
         return this.profileForUser(userId);
       }
@@ -135,18 +153,36 @@ export class IdentityService {
     if (!user) {
       throw new UnknownConsumerError(`no Consumer ${userId}`);
     }
-    const [account] = await this.db.client
-      .select()
-      .from(smartAccounts)
-      .where(eq(smartAccounts.userId, userId))
-      .limit(1);
-    if (!account) {
-      throw new UnknownConsumerError(`no Account for consumer ${userId}`);
-    }
     return {
       consumerId: user.id,
-      accountAddress: account.walletAddress,
+      accountAddress: await this.accountAddress(userId),
       email: user.email,
     };
+  }
+
+  /**
+   * The vault. A Consumer part-way through creating their Account has a Privy
+   * wallet and no vault, and cannot pay from it, so that is refused rather than
+   * answered with an address holding nothing.
+   */
+  private async accountAddress(userId: string): Promise<string> {
+    const vault = await findVaultAddress(this.db, userId);
+    if (vault) return vault;
+
+    // TEST ONLY — never production, and off once development is walking the
+    // real Payment path, where the vault is read for real. Standing the Privy
+    // wallet in past that point reports a Consumer with no Account as one with
+    // no money, which is the wrong problem and sends them to top up an Account
+    // that does not exist.
+    if (this.devScaffoldEnabled()) {
+      const [account] = await this.db.client
+        .select()
+        .from(smartAccounts)
+        .where(eq(smartAccounts.userId, userId))
+        .limit(1);
+      if (account) return account.walletAddress;
+    }
+
+    throw new UnknownConsumerError(`no Account for consumer ${userId}`);
   }
 }

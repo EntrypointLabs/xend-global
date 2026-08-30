@@ -5,24 +5,15 @@ import type {
   CounterSnapshot,
   RateCounter,
 } from '../counters/rate-counter.interface';
-import { smartAccounts } from '../db/schema';
 import { CapacityService } from './capacity.service';
 
-type SmartAccountsRow = typeof smartAccounts.$inferSelect;
-
 const USDC = 'UsdcMint111';
+const VAULT = 'Vault11111';
 
-const account: SmartAccountsRow = {
-  id: 'sa1',
-  userId: 'c1',
-  walletAddress: 'Wallet1111',
-  provider: 'privy',
-  providerUserId: 'p1',
-  createdAt: new Date('2026-01-01'),
-  updatedAt: new Date('2026-01-01'),
-};
+/** What findVaultAddress selects: the vault, and nothing else. */
+const account = { vaultAddress: VAULT };
 
-function makeFakeDb(accounts: SmartAccountsRow[]): DbService {
+function makeFakeDb(accounts: { vaultAddress: string }[]): DbService {
   const chain = {
     where: () => chain,
     limit: () => Promise.resolve(accounts),
@@ -75,7 +66,7 @@ function makeCounter(day: CounterSnapshot, month: CounterSnapshot) {
 
 function makeService(
   opts: {
-    accounts?: SmartAccountsRow[];
+    accounts?: { vaultAddress: string }[];
     balances?: TokenBalance[];
     day?: CounterSnapshot;
     month?: CounterSnapshot;

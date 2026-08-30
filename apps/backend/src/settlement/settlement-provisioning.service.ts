@@ -104,9 +104,21 @@ export class SettlementProvisioningService {
     };
   }
 
-  async getSettlementAddressForSettlement(
-    merchantId: string,
-  ): Promise<{ address: string; provider: SettlementProviderName }> {
+  /**
+   * Where a Payment lands, and who owns it.
+   *
+   * The owner matters because a Payment now leaves the Consumer's vault
+   * through the Account's own policy, and the program checks that the account
+   * being credited belongs to the destination the Spend names. The endpoint is
+   * a bare token account rather than anybody's associated one, so that owner
+   * cannot be derived and has to be read: the authority for an endpoint Xend
+   * provisioned, the Merchant itself for one it already had.
+   */
+  async getSettlementAddressForSettlement(merchantId: string): Promise<{
+    address: string;
+    owner: string;
+    provider: SettlementProviderName;
+  }> {
     const [row] = await this.db.client
       .select()
       .from(settlementAccounts)
@@ -117,7 +129,13 @@ export class SettlementProvisioningService {
         `merchant ${merchantId} has no provisioned settlement endpoint`,
       );
     }
-    return { address: row.address, provider: row.provider };
+    const owner = row.authorityAddress ?? row.providerReference;
+    if (!owner) {
+      throw new SettlementAccountNotProvisionedError(
+        `merchant ${merchantId} has a settlement endpoint with no recorded owner`,
+      );
+    }
+    return { address: row.address, owner, provider: row.provider };
   }
 
   // Refund orchestration (resolving an endpoint for a payment's reverse) is

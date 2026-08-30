@@ -107,6 +107,14 @@ export interface UnsignedSpend {
   messageBase64: string;
   /** The vault the Spend leaves from. */
   vaultAddress: string;
+  /**
+   * S1, the signer this Spend is compiled for.
+   *
+   * Named rather than left implicit because the signing surface has to pick a
+   * key deliberately. A Consumer may have more than one wallet connected, and
+   * signing with the wrong one produces a transaction the program refuses.
+   */
+  primarySigner: string;
   blockhash: string;
   lastValidBlockHeight: number;
   route: 'spending-limit' | 'two-signature';
