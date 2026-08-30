@@ -1,6 +1,6 @@
 import { useEffect, useState, type MouseEvent } from 'react';
 import type { IntentView } from '../lib/api';
-import { formatNairaFromMinor } from '../lib/naira';
+import { formatMoney } from '../lib/money';
 
 interface ConfirmSheetProps {
   intent: IntentView;
@@ -63,7 +63,7 @@ export function ConfirmSheet({
           Pay {intent.merchantDisplayName}
         </p>
         <p className="text-brand-ink mt-2 text-4xl font-semibold tabular-nums tracking-tight">
-          {formatNairaFromMinor(intent.ngnDisplayMinor)}
+          {formatMoney(intent.displayCurrency, intent.displayAmountMinor)}
         </p>
 
         <button

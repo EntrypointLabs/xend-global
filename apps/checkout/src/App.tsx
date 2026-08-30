@@ -2,11 +2,11 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { CheckoutStatus } from '@xend/checkout-protocol';
 import { parseLaunch, LaunchError, type Launch } from './lib/launch';
 import {
-  authorize,
   getIntent,
   isNonPayable,
   CheckoutApiError,
   type IntentView,
+  type TerminalResult,
 } from './lib/api';
 import {
   postResultToOpener,
@@ -14,29 +14,33 @@ import {
 } from './messaging/postMessage';
 import { completeByRedirect } from './messaging/redirect';
 import { LoadingShell } from './screens/LoadingShell';
-import { ConfirmSheet } from './screens/ConfirmSheet';
 import { InsufficientBalance } from './screens/InsufficientBalance';
 import { Result } from './screens/Result';
-import type { CeremonyResult } from './ceremony/passkey';
+import { ApprovalRequired } from './screens/ApprovalRequired';
 
-// The real Privy ceremony is enabled with VITE_ENABLE_PRIVY=true. By default the
-// build loads a Privy-free stub so the popup bundle carries no Privy web SDK
-// (its transitive @solana/kit browser build is currently incompatible with the
-// monorepo's Solana packages; tracked as a human integration item). Both screens
-// are prop-compatible; the real ceremony stays fully typechecked either way.
-const privyEnabled = import.meta.env.VITE_ENABLE_PRIVY === 'true';
-const Ceremony = lazy(() =>
+/*
+ * The real passkey flow ships by default; VITE_ENABLE_PRIVY=false loads a
+ * Privy-free stub instead, for local UI work without a Privy app to point at.
+ *
+ * It used to be the other way round, because the Privy web bundle would not
+ * build: its transitive @solana-program/token imported a symbol @solana/kit 7
+ * had dropped. That skew is gone, and what remained was an uninstalled optional
+ * peer (@solana-program/memo), now a real dependency. Opt-out rather than
+ * opt-in because the alternative is shipping a checkout that cannot take a
+ * payment and finding out in production.
+ */
+const privyEnabled = import.meta.env.VITE_ENABLE_PRIVY !== 'false';
+const PaymentFlow = lazy(() =>
   privyEnabled
-    ? import('./screens/Ceremony')
-    : import('./screens/CeremonyStub'),
+    ? import('./screens/PaymentFlow')
+    : import('./screens/PaymentFlowStub'),
 );
 
 type Phase =
   | { kind: 'loading' }
-  | { kind: 'ceremony'; intent: IntentView }
-  | { kind: 'confirm'; intent: IntentView }
-  | { kind: 'authorizing'; intent: IntentView }
+  | { kind: 'pay'; intent: IntentView }
   | { kind: 'insufficient'; intent: IntentView }
+  | { kind: 'approval'; intent: IntentView }
   | { kind: 'pending' }
   | { kind: 'result'; status: CheckoutStatus; severed?: boolean }
   | { kind: 'fatal' };
@@ -119,11 +123,7 @@ export function App() {
           deliverResult(intent, intent.status as CheckoutStatus);
           return;
         }
-        setPhase(
-          intent.sessionRecognized
-            ? { kind: 'confirm', intent }
-            : { kind: 'ceremony', intent },
-        );
+        setPhase({ kind: 'pay', intent });
       })
       .catch(() => {
         if (!stale) setPhase({ kind: 'fatal' });
@@ -134,42 +134,47 @@ export function App() {
     };
   }, [launch, deliverResult]);
 
-  const runAuthorize = useCallback(
-    async (intent: IntentView, providerToken?: string) => {
-      if (!launch) return;
-      setPhase({ kind: 'authorizing', intent });
-      try {
-        const result = await authorize({
-          reference: intent.reference,
-          providerToken,
-        });
-        deliverResult(intent, result.status, result.redirectUrl);
-      } catch (err) {
-        if (err instanceof CheckoutApiError) {
-          if (err.code === 'INSUFFICIENT_BALANCE') {
-            setPhase({ kind: 'insufficient', intent });
-            return;
-          }
-          if (err.code === 'INTENT_EXPIRED') {
-            deliverResult(intent, 'expired');
-            return;
-          }
-          if (err.code === 'PAYMENT_PROCESSING') {
-            setPhase({ kind: 'pending' });
-            return;
-          }
+  /**
+   * How a Payment ends. The flow itself lives inside the Privy tree, because
+   * signing the Spend needs the provider mounted; App only decides what the
+   * Consumer sees when it is over.
+   */
+  const handleError = useCallback(
+    (intent: IntentView, err: unknown) => {
+      if (err instanceof CheckoutApiError) {
+        if (err.code === 'INSUFFICIENT_BALANCE') {
+          setPhase({ kind: 'insufficient', intent });
+          return;
         }
-        deliverResult(intent, 'failed');
+        if (err.code === 'APPROVAL_REQUIRED') {
+          setPhase({ kind: 'approval', intent });
+          return;
+        }
+        if (err.code === 'INTENT_EXPIRED') {
+          deliverResult(intent, 'expired');
+          return;
+        }
+        if (err.code === 'PAYMENT_PROCESSING') {
+          setPhase({ kind: 'pending' });
+          return;
+        }
       }
+      deliverResult(intent, 'failed');
     },
-    [launch, deliverResult],
+    [deliverResult],
+  );
+
+  const handleTerminal = useCallback(
+    (intent: IntentView, result: TerminalResult) => {
+      deliverResult(intent, result.status, result.redirectUrl);
+    },
+    [deliverResult],
   );
 
   switch (phase.kind) {
     case 'fatal':
       return <Result status="failed" />;
     case 'loading':
-    case 'authorizing':
       return <LoadingShell />;
     case 'pending':
       return <Result status="succeeded" pending />;
@@ -179,22 +184,22 @@ export function App() {
       return (
         <InsufficientBalance onCancel={() => deliverCancel(phase.intent)} />
       );
-    case 'confirm':
+    case 'approval':
       return (
-        <ConfirmSheet
+        <ApprovalRequired
           intent={phase.intent}
-          onConfirm={() => runAuthorize(phase.intent)}
           onCancel={() => deliverCancel(phase.intent)}
         />
       );
-    case 'ceremony':
+    case 'pay':
       return (
         <Suspense fallback={<LoadingShell />}>
-          <Ceremony
+          <PaymentFlow
             intent={phase.intent}
-            onComplete={(result: CeremonyResult) =>
-              runAuthorize(phase.intent, result.providerToken)
+            onTerminal={(result: TerminalResult) =>
+              handleTerminal(phase.intent, result)
             }
+            onError={(err: unknown) => handleError(phase.intent, err)}
             onCancel={() => deliverCancel(phase.intent)}
           />
         </Suspense>
