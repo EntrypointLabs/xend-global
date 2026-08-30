@@ -63,9 +63,18 @@ export const recoveryChallengePurposeEnum = pgEnum(
 export const accountEventKindEnum = pgEnum('account_event_kind', [
   'recovery_key_added',
   'recovery_key_removed',
+  'recovery_key_rotated',
   'wallet_renamed',
   'device_rotated',
+  'contact_email_changed',
+  'settings_change_staged',
+  'settings_change_executed',
+  'settings_change_rejected',
+  'passkey_enrolled',
+  'spending_limit_changed',
 ]);
+
+export type AccountEventKind = (typeof accountEventKindEnum.enumValues)[number];
 
 export const transferDirectionEnum = pgEnum('transfer_direction', [
   'SEND',

@@ -5,6 +5,7 @@ import {
   type NewAccountEvent,
 } from './account-event.store';
 import { AccountEventsService } from './account-events.service';
+import { SecurityNoticeService } from '../notifications/security-notice.service';
 import { Test } from '@nestjs/testing';
 
 /** In-memory store. The dedupe rule is the database's, so this honours it. */
@@ -33,13 +34,24 @@ class FakeStore implements AccountEventStore {
 
   listByUser(
     userId: string,
-    { limit, before, after }: { limit: number; before?: Date; after?: Date },
+    {
+      limit,
+      before,
+      after,
+      kinds,
+    }: {
+      limit: number;
+      before?: Date;
+      after?: Date;
+      kinds?: readonly AccountEventRow['kind'][];
+    },
   ): Promise<AccountEventRow[]> {
     return Promise.resolve(
       this.rows
         .filter((r) => r.userId === userId)
         .filter((r) => (before ? r.occurredAt < before : true))
         .filter((r) => (after ? r.occurredAt > after : true))
+        .filter((r) => (kinds ? kinds.includes(r.kind) : true))
         .sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime())
         .slice(0, limit),
     );
@@ -49,16 +61,98 @@ class FakeStore implements AccountEventStore {
 describe('AccountEventsService', () => {
   let service: AccountEventsService;
   let store: FakeStore;
+  let deliver: jest.Mock;
 
   beforeEach(async () => {
     store = new FakeStore();
+    deliver = jest.fn().mockResolvedValue(undefined);
     const moduleRef = await Test.createTestingModule({
       providers: [
         AccountEventsService,
         { provide: ACCOUNT_EVENT_STORE, useValue: store },
+        { provide: SecurityNoticeService, useValue: { deliver } },
       ],
     }).compile();
     service = moduleRef.get(AccountEventsService);
+  });
+
+  it('sends the notice from the write that landed, and only that one', async () => {
+    await service.recordRecoveryKeyAdded('user-1', {
+      signerId: 'signer-1',
+      subject: 'a@example.com',
+    });
+    await service.recordRecoveryKeyAdded('user-1', {
+      signerId: 'signer-1',
+      subject: 'a@example.com',
+    });
+
+    // The dedupe index is the idempotency guarantee for the mail as much as
+    // for the row: a reconciler telling the same story twice mails once.
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(deliver).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        kind: 'recovery_key_added',
+        subject: 'a@example.com',
+      }),
+      {},
+    );
+  });
+
+  it('hands the notice what the recorder knew about a staged change', async () => {
+    await service.recordSettingsChangeStaged('user-1', {
+      changeIndex: 8n,
+      subject: 'Dev1ce111',
+      change: 'device',
+    });
+
+    expect(deliver).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'settings_change_staged' }),
+      { change: 'device' },
+    );
+  });
+
+  it('records one staging per change however many services see it', async () => {
+    // The service that staged it and the watcher that later finds it on chain
+    // both record the same fact; the first one wins and the second is silent.
+    await service.recordSettingsChangeStaged('user-1', {
+      changeIndex: 8n,
+      change: 'recovery_key',
+    });
+    const again = await service.recordSettingsChangeStaged('user-1', {
+      changeIndex: '8',
+    });
+    await service.recordSettingsChangeStaged('user-1', { changeIndex: 9n });
+
+    expect(again).toBeNull();
+    expect(store.rows).toHaveLength(2);
+    expect(deliver).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps both addresses on a contact rotation', async () => {
+    const event = await service.recordContactEmailChanged('user-1', {
+      changeIndex: 3n,
+      previousEmail: 'old@example.com',
+      nextEmail: 'new@example.com',
+    });
+
+    expect(event?.subject).toBe('new@example.com');
+    expect(event?.previousSubject).toBe('old@example.com');
+  });
+
+  it('keeps the kinds the feed has no sentence for out of it', async () => {
+    await service.recordSettingsChangeStaged('user-1', { changeIndex: 8n });
+    await service.recordPasskeyEnrolled('user-1', { credentialId: 'cred-1' });
+    await service.recordRecoveryKeyAdded('user-1', {
+      signerId: 'signer-1',
+      subject: 'a@example.com',
+    });
+
+    const feed = await service.list('user-1', { limit: 10 });
+
+    // The app parses the page strictly, so an unknown kind there would fail
+    // the whole page rather than one row.
+    expect(feed.map((event) => event.kind)).toEqual(['recovery_key_added']);
   });
 
   it('records a recovery key reaching the signer set', async () => {

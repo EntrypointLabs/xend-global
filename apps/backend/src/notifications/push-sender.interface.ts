@@ -13,6 +13,11 @@ export const NOTICE_KIND = {
   arrival: 'arrival',
   /** Something is changing on the Account. Lands home, where the notice is. */
   securityAlert: 'security_alert',
+  /**
+   * A settings change is waiting out its delay. Lands on the review of that
+   * change, which is the only screen that offers to reject it.
+   */
+  pendingChange: 'pending_change',
   /** A Merchant is waiting. Lands on the Payment they have to finish. */
   paymentApproval: 'payment_approval',
 } as const;

@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, gt, lt } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, lt } from 'drizzle-orm';
 
 import { DbService } from '../db/db.service';
-import { accountEvents } from '../db/schema';
+import { accountEvents, type AccountEventKind } from '../db/schema';
 
 export const ACCOUNT_EVENT_STORE = Symbol('ACCOUNT_EVENT_STORE');
 
@@ -30,10 +30,17 @@ export interface AccountEventStore {
    * on transfers, so events are asked for over exactly the span a page of
    * transfers covers; without the lower bound an event older than the page
    * would jump ahead of transfers that belong before it.
+   *
+   * `kinds` narrows to the events a caller can show; absent, every kind.
    */
   listByUser(
     userId: string,
-    params: { limit: number; before?: Date; after?: Date },
+    params: {
+      limit: number;
+      before?: Date;
+      after?: Date;
+      kinds?: readonly AccountEventKind[];
+    },
   ): Promise<AccountEventRow[]>;
 }
 
@@ -54,11 +61,22 @@ export class DrizzleAccountEventStore implements AccountEventStore {
 
   listByUser(
     userId: string,
-    { limit, before, after }: { limit: number; before?: Date; after?: Date },
+    {
+      limit,
+      before,
+      after,
+      kinds,
+    }: {
+      limit: number;
+      before?: Date;
+      after?: Date;
+      kinds?: readonly AccountEventKind[];
+    },
   ): Promise<AccountEventRow[]> {
     const bounds = [eq(accountEvents.userId, userId)];
     if (before) bounds.push(lt(accountEvents.occurredAt, before));
     if (after) bounds.push(gt(accountEvents.occurredAt, after));
+    if (kinds) bounds.push(inArray(accountEvents.kind, [...kinds]));
 
     return this.db.client
       .select()
