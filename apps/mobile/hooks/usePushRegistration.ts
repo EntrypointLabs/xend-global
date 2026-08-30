@@ -11,6 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useUserId } from "@/hooks/useUserId";
 import { getPushToken } from "@/utils/pushDevice";
 import { AWAITING_PAYMENTS_KEY } from "@/hooks/useAwaitingPayments";
+import { requestPendingChangeReview } from "@/hooks/usePendingChangeAcknowledgement";
 
 /**
  * What a notice is about, and where tapping it lands. Mirrors the server's
@@ -24,10 +25,12 @@ import { AWAITING_PAYMENTS_KEY } from "@/hooks/useAwaitingPayments";
 const DESTINATIONS: Record<string, string> = {
   arrival: "/(tabs)/history",
   security_alert: "/(tabs)",
+  pending_change: "/(tabs)",
   payment_approval: "/settings/finish-payment",
 };
 
 const PAYMENT_APPROVAL_KIND = "payment_approval";
+const PENDING_CHANGE_KIND = "pending_change";
 const HOME = "/(tabs)";
 
 function noticeKind(
@@ -80,6 +83,14 @@ export function useNotificationRouting() {
     // existed.
     if (kind === PAYMENT_APPROVAL_KIND) {
       void queryClient.invalidateQueries({ queryKey: AWAITING_PAYMENTS_KEY });
+    }
+
+    // The review lives on the home screen and is what a staged change is
+    // about. Asked for, so it opens even on the phone that staged the change
+    // and even after the alarm was swiped away: someone who tapped the notice
+    // wants to see the change, whichever phone they are holding.
+    if (kind === PENDING_CHANGE_KIND) {
+      void requestPendingChangeReview(queryClient);
     }
 
     router.push(((kind && DESTINATIONS[kind]) ?? HOME) as never);
