@@ -350,6 +350,63 @@ export function buildRemoveRecoverySigner({
   });
 }
 
+export interface RotateRecoverySignerParams {
+  addresses: AccountAddresses;
+  /** The recovery signer being retired. Its inbox may be exactly what was compromised. */
+  oldSigner: PublicKey;
+  /** The fresh recovery signer, sealed against the address that replaces it. */
+  newSigner: PublicKey;
+  /** Proposes the change. Must be a signer with `Initiate`, so S1. */
+  proposer: PublicKey;
+  /** Funds the rent. Defaults to `proposer`. */
+  rentPayer?: PublicKey;
+  /** The Settings account's current `transactionIndex`, plus one. */
+  transactionIndex: bigint;
+}
+
+/**
+ * Swaps one recovery signer for another in a single change.
+ *
+ * One change rather than an add followed by a remove, because each change
+ * waits out the full time lock and needs both on-device approvals, and a
+ * Consumer changing their address would otherwise spend two days and four
+ * fingerprints on one act. It also never passes through a state with one
+ * recovery signer fewer than it started with, which is what keeps the
+ * at-least-one rule intact for an Account whose only recovery signer is the
+ * one being rotated.
+ *
+ * No policy is rewritten. Recovery signers sit on the Settings alone and are
+ * deliberately absent from both spend policies, so unlike an approval signer
+ * rotation there is no inline signer set to keep in step. The LiteSVM suite
+ * pins that both policies come through a rotation unchanged.
+ *
+ * The new key is added before the old one is removed, for the same reason the
+ * approval rotation orders it that way: the vote-holding count never dips.
+ */
+export function buildRotateRecoverySigner({
+  addresses,
+  oldSigner,
+  newSigner,
+  proposer,
+  rentPayer,
+  transactionIndex,
+}: RotateRecoverySignerParams): TransactionInstruction[] {
+  if (oldSigner.equals(newSigner)) {
+    throw new Error("the new recovery signer must differ from the old one");
+  }
+
+  return proposeSettingsChange({
+    addresses,
+    transactionIndex,
+    proposer,
+    rentPayer,
+    actions: [
+      addSignerAction(newSigner, "recovery"),
+      removeSignerAction(oldSigner),
+    ],
+  });
+}
+
 export interface RotateApprovalSignerParams {
   addresses: AccountAddresses;
   /** The approval signer being retired, whose sub-organization went with the phone. */
