@@ -21,31 +21,11 @@ import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { ExchangeResponse, MirrorPasskeyCredentialRequest } from './dtos';
 
-/**
- * The contact address already anchors another Account's recovery signer. Kept
- * HTTP-framework-agnostic (plain Error subclass); the controller maps it to
- * 409 EMAIL_IN_USE.
- */
-export class EmailInUseError extends Error {
-  readonly code = 'EMAIL_IN_USE';
-  constructor(message: string) {
-    super(message);
-    this.name = 'EmailInUseError';
-  }
-}
+import { CredentialConflictError, EmailInUseError } from './auth.errors';
+import { SignupService } from './signup.service';
+import { SignupTokenInvalidError } from './signup.errors';
 
-/**
- * A passkey credential is already mirrored under a different account. Kept
- * HTTP-framework-agnostic (plain Error subclass); the controller maps it to
- * 409 CREDENTIAL_CONFLICT.
- */
-export class CredentialConflictError extends Error {
-  readonly code = 'CREDENTIAL_CONFLICT';
-  constructor(message: string) {
-    super(message);
-    this.name = 'CredentialConflictError';
-  }
-}
+export { CredentialConflictError, EmailInUseError };
 
 /** Postgres unique-violation SQLSTATE, surfaced by node-postgres. */
 function pgErrorCode(err: unknown): string | undefined {
@@ -63,9 +43,22 @@ export class AuthService {
     @Inject(WALLET_PROVIDER) private wallet: WalletProvider,
     @Inject(SOLANA_RPC) private solana: SolanaRpc,
     private recovery: RecoveryService,
+    private signup: SignupService,
   ) {}
 
-  async exchange(privyIdToken: string): Promise<ExchangeResponse> {
+  /**
+   * Turns a Privy identity into a Xend session.
+   *
+   * With a sign-up token, the Privy user is bound to the users row whose
+   * address the token was issued for. Without one, the only row this can
+   * reach is one the Privy user is already bound to, or a fresh one. A row
+   * waiting to be bound is never matched by anything else, which is what
+   * keeps one Consumer from landing on an address another Consumer proved.
+   */
+  async exchange(
+    privyIdToken: string,
+    signupToken?: string,
+  ): Promise<ExchangeResponse> {
     // Verify the Privy ID token. Typed errors from PrivyAdapter map to
     // HTTP responses:
     //   InvalidPrivyTokenError -> 401 INVALID_PRIVY_TOKEN
@@ -103,13 +96,11 @@ export class AuthService {
 
     const { providerUserId, email, walletAddress, passkeys } = privyUser;
 
-    // Keyed on the Privy DID, not the email.
-    //
-    // The passkey is the credential, so a sign-up arrives with no email at all
-    // and there is nothing to match on. Matching on email was also wrong even
-    // when there was one: a Consumer who changed their Privy address would be
-    // treated as a stranger and get a second, empty Account, and one who moved
-    // to an address another Consumer already had would have adopted theirs.
+    // Keyed on the Privy DID, never on the email. The passkey is the
+    // credential, so a sign-up arrives with no email at all, and an address
+    // is only ever on a row because somebody proved it there: adopting a row
+    // by address would hand that proof to whoever Privy says holds the same
+    // one.
     const [byProvider] = await this.db.client
       .select({ user: users })
       .from(smartAccounts)
@@ -117,37 +108,67 @@ export class AuthService {
       .where(eq(smartAccounts.providerUserId, providerUserId))
       .limit(1);
 
-    // Falls back to the email for Consumers who signed up before the DID was
-    // the key and have no smart_accounts row yet.
-    const [byEmail] = byProvider?.user
-      ? []
-      : email
-        ? await this.db.client
-            .select()
-            .from(users)
-            .where(eq(users.email, email))
-            .limit(1)
-        : [];
-
-    const existingUser = byProvider?.user ?? byEmail;
-
     let userRow: typeof users.$inferSelect;
     let isNewUser: boolean;
 
-    if (existingUser) {
+    if (signupToken) {
+      let pending: typeof users.$inferSelect;
+      try {
+        pending = await this.signup.claimSignupToken(signupToken);
+      } catch (err) {
+        if (err instanceof SignupTokenInvalidError) {
+          throw new HttpException(
+            { code: err.code, message: err.message },
+            HttpStatus.UNAUTHORIZED,
+          );
+        }
+        throw err;
+      }
+      // A Privy user already bound elsewhere cannot also be bound here: the
+      // two rows would share a DID, and the one holding the proved address
+      // would be reachable from a passkey that never proved it.
+      if (byProvider && byProvider.user.id !== pending.id) {
+        throw new HttpException(
+          {
+            code: 'SIGNUP_TOKEN_INVALID',
+            message: 'this passkey already belongs to an account',
+          },
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+      userRow = pending;
+      isNewUser = true;
+    } else if (byProvider) {
       const [touched] = await this.db.client
         .update(users)
         .set({ updatedAt: new Date() })
-        .where(eq(users.id, existingUser.id))
+        .where(eq(users.id, byProvider.user.id))
         .returning();
       userRow = touched;
       isNewUser = false;
     } else {
-      const [inserted] = await this.db.client
-        .insert(users)
-        .values({ email })
-        .returning();
-      userRow = inserted;
+      try {
+        const [inserted] = await this.db.client
+          .insert(users)
+          .values({ email })
+          .returning();
+        userRow = inserted;
+      } catch (err) {
+        // Privy vouches for this address, but a row already holds it, and
+        // the only rows this path may reach are the ones above. Somebody
+        // mid-sign-up with the same address finishes that instead.
+        if (pgErrorCode(err) === '23505') {
+          throw new HttpException(
+            {
+              code: 'EMAIL_IN_USE',
+              message:
+                'that email is already being used to sign up; finish that sign-up or sign in with your passkey',
+            },
+            HttpStatus.CONFLICT,
+          );
+        }
+        throw err;
+      }
       isNewUser = true;
     }
 

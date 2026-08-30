@@ -8,7 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { Request } from 'express';
+import type { Request } from 'express';
 import {
   AuthService,
   CredentialConflictError,
@@ -28,11 +28,17 @@ import {
   MirrorPasskeyCredentialSchema,
   RequestEmailCodeSchema,
   SetEmailSchema,
+  SignupEmailChallengeSchema,
+  SignupEmailSchema,
   type ExchangeRequest,
   type MirrorPasskeyCredentialRequest,
   type RequestEmailCodeRequest,
   type SetEmailRequest,
+  type SignupEmailChallengeRequest,
+  type SignupEmailRequest,
 } from './dtos';
+import { SignupService } from './signup.service';
+import { TooManySignupAttemptsError } from './signup.errors';
 
 interface AuthenticatedRequest extends Request {
   user: { userId: string; walletAddress: string };
@@ -43,13 +49,49 @@ export class AuthController {
   constructor(
     private auth: AuthService,
     private challenges: RecoveryChallengeService,
+    private signup: SignupService,
   ) {}
 
   @Post('auth/exchange')
   exchange(
     @Body(new ZodValidationPipe(ExchangeRequestSchema)) dto: ExchangeRequest,
   ) {
-    return this.auth.exchange(dto.privyIdToken);
+    return this.auth.exchange(dto.privyIdToken, dto.signupToken);
+  }
+
+  /**
+   * The first step of sign-up: a code to the address the Consumer will be
+   * reached at. No session yet, so the answer never says whether the address
+   * is already on an Account.
+   */
+  @Post('auth/signup/email/challenge')
+  async requestSignupCode(
+    @Req() req: Request,
+    @Body(new ZodValidationPipe(SignupEmailChallengeSchema))
+    dto: SignupEmailChallengeRequest,
+  ) {
+    try {
+      return await this.signup.startEmailSignup(dto.email, clientIp(req));
+    } catch (err) {
+      throw toEmailHttp(err);
+    }
+  }
+
+  /** Proves the address and hands back the token the passkey step carries. */
+  @Post('auth/signup/email')
+  async verifySignupCode(
+    @Req() req: Request,
+    @Body(new ZodValidationPipe(SignupEmailSchema)) dto: SignupEmailRequest,
+  ) {
+    try {
+      return await this.signup.verifyEmailSignup(
+        dto.email,
+        dto.code,
+        clientIp(req),
+      );
+    } catch (err) {
+      throw toEmailHttp(err);
+    }
   }
 
   /**
@@ -161,7 +203,10 @@ function toEmailHttp(err: unknown): HttpException {
       HttpStatus.UNAUTHORIZED,
     );
   }
-  if (err instanceof TooManyRecoveryCodesError) {
+  if (
+    err instanceof TooManyRecoveryCodesError ||
+    err instanceof TooManySignupAttemptsError
+  ) {
     return new HttpException(
       { code: err.code, message: err.message },
       HttpStatus.TOO_MANY_REQUESTS,
@@ -182,4 +227,13 @@ function toEmailHttp(err: unknown): HttpException {
         { code: 'EMAIL_UPDATE_FAILED', message: 'could not save that address' },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
+}
+
+/**
+ * Express fills `req.ip` from the socket, or from X-Forwarded-For when the
+ * app trusts its proxy. Behind one that is not trusted every caller shares
+ * the proxy's address and the per-IP cap becomes a global one.
+ */
+function clientIp(req: Request): string {
+  return req.ip ?? req.socket?.remoteAddress ?? 'unknown';
 }

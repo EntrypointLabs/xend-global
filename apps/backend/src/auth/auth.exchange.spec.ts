@@ -14,6 +14,8 @@ import {
   PrivyUserShapeError,
 } from '../wallet/privy.errors';
 import { users, smartAccounts, passkeyCredentials } from '../db/schema';
+import type { SignupService } from './signup.service';
+import { SignupTokenInvalidError } from './signup.errors';
 
 /**
  * Integration tests for AuthService.exchange().
@@ -151,6 +153,18 @@ function makeFakeDb(store: FakeStore): DbService {
           const rows = store[collection] as Record<string, unknown>[];
           const insertAll = () =>
             inputs.map((v) => {
+              // The one constraint the exchange path leans on: users.email is
+              // unique, and a fresh row may not take an address a row it
+              // cannot reach already holds.
+              if (
+                collection === 'users' &&
+                v.email &&
+                rows.some((r) => r.email === v.email)
+              ) {
+                throw Object.assign(new Error('duplicate key value'), {
+                  code: '23505',
+                });
+              }
               const row = build(v);
               rows.push(row);
               return row;
@@ -201,9 +215,25 @@ function makeFakeDb(store: FakeStore): DbService {
                   Promise.resolve(inserted).then(resolve),
               };
             },
-            returning: () => Promise.resolve(insertAll()),
-            then: (resolve: (val: unknown) => unknown) =>
-              Promise.resolve(insertAll()).then(resolve),
+            returning: () =>
+              new Promise((resolve, reject) => {
+                try {
+                  resolve(insertAll());
+                } catch (err) {
+                  reject(err as Error);
+                }
+              }),
+            then: (
+              resolve: (val: unknown) => unknown,
+              reject?: (err: unknown) => unknown,
+            ) =>
+              new Promise((res, rej) => {
+                try {
+                  res(insertAll());
+                } catch (err) {
+                  rej(err as Error);
+                }
+              }).then(resolve, reject),
           };
         },
       };
@@ -256,22 +286,71 @@ function makeFakeSolana(overrides: Partial<SolanaRpc> = {}): {
   return { rpc, registerWebhookAddress };
 }
 
+/**
+ * The sign-up token is spent by SignupService, which has its own spec. Here it
+ * is a map from token to the users row it binds, so the exchange's half of
+ * the contract can be exercised: which row it lands on, and what it refuses.
+ */
+function makeFakeSignup(store: FakeStore, tokens: Record<string, string>) {
+  const claimed: string[] = [];
+  const signup = {
+    claimSignupToken: (raw: string) => {
+      claimed.push(raw);
+      const userId = tokens[raw];
+      const user = userId && store.users.find((u) => u.id === userId);
+      if (!user) {
+        return Promise.reject(
+          new SignupTokenInvalidError('that sign-up token is not valid'),
+        );
+      }
+      return Promise.resolve(user);
+    },
+  } as unknown as SignupService;
+  return { signup, claimed };
+}
+
 function makeService(opts: {
   wallet: WalletProvider;
   store?: FakeStore;
   jwtSecret?: string;
   solana?: SolanaRpc;
-}): { service: AuthService; store: FakeStore; solana: SolanaRpc } {
+  tokens?: Record<string, string>;
+}): {
+  service: AuthService;
+  store: FakeStore;
+  solana: SolanaRpc;
+  claimed: string[];
+} {
   const store: FakeStore = opts.store ?? { users: [], smartAccounts: [] };
   const db = makeFakeDb(store);
   const jwt = new JwtService({
     secret: opts.jwtSecret ?? 'test-secret',
   });
   const solana = opts.solana ?? makeFakeSolana().rpc;
-  const service = new AuthService(jwt, db, opts.wallet, solana, {
-    reanchorEmailSigner: () => Promise.resolve(),
-  } as unknown as RecoveryService);
-  return { service, store, solana };
+  const { signup, claimed } = makeFakeSignup(store, opts.tokens ?? {});
+  const service = new AuthService(
+    jwt,
+    db,
+    opts.wallet,
+    solana,
+    {
+      reanchorEmailSigner: () => Promise.resolve(),
+    } as unknown as RecoveryService,
+    signup,
+  );
+  return { service, store, solana, claimed };
+}
+
+/** A row the email step left behind: proved address, nothing bound to it. */
+function pendingUser(id: string, email: string): UsersRow {
+  return {
+    id,
+    email,
+    notificationsEnabled: true,
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date('2026-01-01'),
+    deletedAt: null,
+  };
 }
 
 const validPrivyUser: WalletProviderUser = {
@@ -547,61 +626,155 @@ describe('AuthService.exchange', () => {
     expect(registerWebhookAddress).not.toHaveBeenCalled();
   });
 
-  it('existing user with a NEW Privy DID + wallet upserts in place (no lockout)', async () => {
-    const reAuthUser: WalletProviderUser = {
-      providerUserId: 'did:privy:NEWdid999',
-      email: validPrivyUser.email,
-      walletAddress: 'SoLAnAaNeWwAlLeT2222222222222222222222222222',
-      passkeys: [],
-    };
+  it('never adopts a users row by email when the Privy DID is unknown', async () => {
+    // The row is somebody else's sign-up, one code away from a passkey. A
+    // Privy user that Privy says holds the same address must not land on it:
+    // the address is only on the row because the code was proved there.
     const wallet = {
-      verifyIdToken: jest.fn().mockResolvedValue(reAuthUser),
+      verifyIdToken: jest.fn().mockResolvedValue(validPrivyUser),
       getUser: jest.fn(),
     } as unknown as WalletProvider;
     const seedStore: FakeStore = {
-      users: [
-        {
-          id: 'u_existing',
-          email: validPrivyUser.email,
-          notificationsEnabled: true,
-          createdAt: new Date('2026-01-01'),
-          updatedAt: new Date('2026-01-01'),
-          deletedAt: null,
-        },
-      ],
-      smartAccounts: [
-        {
-          id: 'sa_existing',
-          userId: 'u_existing',
-          walletAddress: validPrivyUser.walletAddress,
-          provider: 'privy',
-          providerUserId: validPrivyUser.providerUserId,
-          createdAt: new Date('2026-01-01'),
-          updatedAt: new Date('2026-01-01'),
-        },
-      ],
+      users: [pendingUser('u_pending', validPrivyUser.email as string)],
+      smartAccounts: [],
     };
-    const { rpc, registerWebhookAddress } = makeFakeSolana();
-    const { service, store } = makeService({
-      wallet,
-      store: seedStore,
-      solana: rpc,
+    const { service, store } = makeService({ wallet, store: seedStore });
+
+    await expect(service.exchange('valid.privy.token')).rejects.toMatchObject({
+      status: HttpStatus.CONFLICT,
+      response: { code: 'EMAIL_IN_USE' },
+    });
+    expect(store.smartAccounts).toHaveLength(0);
+    expect(store.users).toHaveLength(1);
+  });
+
+  describe('with a sign-up token', () => {
+    const passkeyOnly: WalletProviderUser = {
+      ...validPrivyUser,
+      email: null,
+    };
+
+    it('binds the Privy user to the row the token was issued for', async () => {
+      const wallet = {
+        verifyIdToken: jest.fn().mockResolvedValue(passkeyOnly),
+        getUser: jest.fn(),
+      } as unknown as WalletProvider;
+      const seedStore: FakeStore = {
+        users: [pendingUser('u_pending', 'proved@example.com')],
+        smartAccounts: [],
+      };
+      const { service, store, claimed } = makeService({
+        wallet,
+        store: seedStore,
+        tokens: { xsign_good: 'u_pending' },
+      });
+
+      const result = await service.exchange('valid.privy.token', 'xsign_good');
+
+      expect(claimed).toEqual(['xsign_good']);
+      expect(result.user.id).toBe('u_pending');
+      expect(result.user.isNewUser).toBe(true);
+      // The proved address, which Privy knows nothing about.
+      expect(result.user.email).toBe('proved@example.com');
+      expect(store.users).toHaveLength(1);
+      expect(store.smartAccounts).toHaveLength(1);
+      expect(store.smartAccounts[0]).toMatchObject({
+        userId: 'u_pending',
+        providerUserId: passkeyOnly.providerUserId,
+        walletAddress: passkeyOnly.walletAddress,
+      });
     });
 
-    const result = await service.exchange('valid.privy.token');
+    it('answers a token that cannot be spent with 401 and binds nothing', async () => {
+      // Wrong, expired, already spent, or issued for a row that has since
+      // been bound: SignupService refuses them all the same way, and the
+      // exchange must not fall through to the token-less path and mint a
+      // fresh row for the passkey.
+      const wallet = {
+        verifyIdToken: jest.fn().mockResolvedValue(passkeyOnly),
+        getUser: jest.fn(),
+      } as unknown as WalletProvider;
+      const seedStore: FakeStore = {
+        users: [pendingUser('u_pending', 'proved@example.com')],
+        smartAccounts: [],
+      };
+      const { service, store } = makeService({
+        wallet,
+        store: seedStore,
+        tokens: { xsign_good: 'u_pending' },
+      });
 
-    expect(result.user.id).toBe('u_existing');
-    expect(result.user.isNewUser).toBe(false);
-    // No duplicate smart_account row — the existing one was adopted.
-    expect(store.smartAccounts).toHaveLength(1);
-    expect(store.smartAccounts[0].providerUserId).toBe(
-      reAuthUser.providerUserId,
-    );
-    expect(store.smartAccounts[0].walletAddress).toBe(reAuthUser.walletAddress);
-    // The new wallet address gets its webhook registered.
-    expect(registerWebhookAddress).toHaveBeenCalledWith(
-      reAuthUser.walletAddress,
-    );
+      await expect(
+        service.exchange('valid.privy.token', 'xsign_wrong'),
+      ).rejects.toMatchObject({
+        status: HttpStatus.UNAUTHORIZED,
+        response: { code: 'SIGNUP_TOKEN_INVALID' },
+      });
+      expect(store.users).toHaveLength(1);
+      expect(store.smartAccounts).toHaveLength(0);
+    });
+
+    it('refuses to bind a Privy user that already belongs to another row', async () => {
+      const wallet = {
+        verifyIdToken: jest.fn().mockResolvedValue(passkeyOnly),
+        getUser: jest.fn(),
+      } as unknown as WalletProvider;
+      const seedStore: FakeStore = {
+        users: [
+          pendingUser('u_bound', 'bound@example.com'),
+          pendingUser('u_pending', 'proved@example.com'),
+        ],
+        smartAccounts: [
+          {
+            id: 'sa_bound',
+            userId: 'u_bound',
+            walletAddress: passkeyOnly.walletAddress,
+            provider: 'privy',
+            providerUserId: passkeyOnly.providerUserId,
+            createdAt: new Date('2026-01-01'),
+            updatedAt: new Date('2026-01-01'),
+          },
+        ],
+      };
+      const { service, store } = makeService({
+        wallet,
+        store: seedStore,
+        tokens: { xsign_good: 'u_pending' },
+      });
+
+      await expect(
+        service.exchange('valid.privy.token', 'xsign_good'),
+      ).rejects.toMatchObject({
+        status: HttpStatus.UNAUTHORIZED,
+        response: { code: 'SIGNUP_TOKEN_INVALID' },
+      });
+      // The existing binding is untouched and the pending row stays pending.
+      expect(store.smartAccounts).toHaveLength(1);
+      expect(store.smartAccounts[0].userId).toBe('u_bound');
+    });
+
+    it('registers the webhook for the wallet it just bound', async () => {
+      const wallet = {
+        verifyIdToken: jest.fn().mockResolvedValue(passkeyOnly),
+        getUser: jest.fn(),
+      } as unknown as WalletProvider;
+      const { rpc, registerWebhookAddress } = makeFakeSolana();
+      const { service } = makeService({
+        wallet,
+        store: {
+          users: [pendingUser('u_pending', 'proved@example.com')],
+          smartAccounts: [],
+        },
+        solana: rpc,
+        tokens: { xsign_good: 'u_pending' },
+      });
+
+      await service.exchange('valid.privy.token', 'xsign_good');
+
+      expect(registerWebhookAddress).toHaveBeenCalledWith(
+        passkeyOnly.walletAddress,
+      );
+    });
   });
 
   it('unknown adapter error maps to 502 PRIVY_UNAVAILABLE (defensive)', async () => {

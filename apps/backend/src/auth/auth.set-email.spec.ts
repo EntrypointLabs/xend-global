@@ -4,6 +4,7 @@ import { AuthService, EmailInUseError } from './auth.service';
 import type { DbService } from '../db/db.service';
 import type { WalletProvider } from '../wallet/wallet-provider.interface';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
+import type { SignupService } from './signup.service';
 import { users } from '../db/schema';
 
 /**
@@ -103,6 +104,7 @@ function makeService(rows: UsersRow[], updateError?: Error) {
         return Promise.resolve();
       },
     } as unknown as RecoveryService,
+    {} as SignupService,
   );
   return Object.assign(service, { reanchored });
 }
