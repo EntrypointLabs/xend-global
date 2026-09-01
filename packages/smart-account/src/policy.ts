@@ -487,6 +487,104 @@ export function buildRotateApprovalSigner({
   };
 }
 
+export interface RotatePrimarySignerParams {
+  addresses: AccountAddresses;
+  /** The primary signer being retired, whose passkey is gone. */
+  oldPrimary: PublicKey;
+  /** The fresh embedded wallet behind the passkey just created. */
+  newPrimary: PublicKey;
+  /** Stays in the above-limit policy's signer set beside the new primary. */
+  approval: PublicKey;
+  /** Identifies the spending-limit policy, whose only signer is the primary. */
+  spendingLimitSeed: bigint;
+  /** The limit as it stands, restated because `PolicyUpdate` replaces whole. */
+  terms: SpendingLimitTerms;
+  /** Identifies the above-limit policy naming primary and approval. */
+  aboveLimitSeed: bigint;
+  /** Proposes the change. Must hold `Initiate`, which is the approval signer. */
+  proposer: PublicKey;
+  /** Funds the rent. Defaults to `proposer`. */
+  rentPayer?: PublicKey;
+  /** The Settings account's current `transactionIndex`, plus one. */
+  transactionIndex: bigint;
+}
+
+export interface RotatePrimarySignerResult {
+  /** Both policies the change rewrites, in action order, for execute. */
+  policies: PublicKey[];
+  /** Propose the change. Signed by `proposer` alone. */
+  propose: TransactionInstruction[];
+}
+
+/**
+ * Moves the primary signer to a fresh passkey after the old one is gone: out
+ * of the Settings signer set and out of BOTH policies, the new key into all
+ * three, in one change.
+ *
+ * The primary sits on both spend paths, which is what makes this the rotation
+ * where a missed policy is worst. The spending-limit policy names the primary
+ * alone, so leaving it behind makes every one-signature Spend unsignable; the
+ * above-limit policy names primary and approval, so leaving that one strands
+ * everything above the limit. Both are rewritten beside the signer swap.
+ *
+ * The pair meeting the threshold is the approval signer on the phone and the
+ * recovery signer in the vault, which is why the proposer here is the approval
+ * signer: it is the only remaining holder of `Initiate`. An account whose
+ * approval signer predates that grant cannot run this at all.
+ */
+export function buildRotatePrimarySigner({
+  addresses,
+  oldPrimary,
+  newPrimary,
+  approval,
+  spendingLimitSeed,
+  terms,
+  aboveLimitSeed,
+  proposer,
+  rentPayer,
+  transactionIndex,
+}: RotatePrimarySignerParams): RotatePrimarySignerResult {
+  if (oldPrimary.equals(newPrimary)) {
+    throw new Error("the new primary signer must differ from the old one");
+  }
+  if (spendingLimitSeed === aboveLimitSeed) {
+    throw new Error("the two policies must take distinct seeds");
+  }
+
+  const spendingLimitPolicy = derivePolicyAddress(
+    addresses.settings,
+    spendingLimitSeed,
+  );
+  const aboveLimitPolicy = derivePolicyAddress(
+    addresses.settings,
+    aboveLimitSeed,
+  );
+
+  return {
+    policies: [spendingLimitPolicy, aboveLimitPolicy],
+    propose: proposeSettingsChange({
+      addresses,
+      transactionIndex,
+      proposer,
+      rentPayer,
+      actions: [
+        addSignerAction(newPrimary, "primary"),
+        removeSignerAction(oldPrimary),
+        spendingLimitPolicyUpdateAction({
+          policy: spendingLimitPolicy,
+          terms,
+          limitSigner: newPrimary,
+        }),
+        aboveLimitPolicyUpdateAction({
+          policy: aboveLimitPolicy,
+          primary: newPrimary,
+          approval,
+        }),
+      ],
+    }),
+  };
+}
+
 export interface ProvisionAccountParams {
   addresses: AccountAddresses;
   /** Distinguishes the spending-limit policy from others on the Account. */
@@ -596,32 +694,70 @@ function spendingLimitPolicyAction({
   return {
     __kind: "PolicyCreate",
     seed: policySeed,
-    policyCreationPayload: {
-      __kind: "SpendingLimit",
-      fields: [
-        {
-          mint: terms.mint,
-          sourceAccountIndex: PRIMARY_ACCOUNT_INDEX,
-          timeConstraints: {
-            start: 0,
-            expiration: null,
-            period: { __kind: terms.period },
-            accumulateUnused: false,
-          },
-          quantityConstraints: {
-            maxPerPeriod: terms.maxPerPeriod,
-            maxPerUse: terms.maxPerUse,
-            enforceExactQuantity: false,
-          },
-          usageState: null,
-          destinations: terms.destinations ?? [],
-        },
-      ],
-    },
-    signers: [{ key: limitSigner, permissions: Permissions.all() }],
+    policyCreationPayload: spendingLimitPayload(terms),
+    signers: spendingLimitSigners(limitSigner),
     threshold: 1,
     timeLock: 0,
     startTimestamp: null,
+    expirationArgs: null,
+  };
+}
+
+function spendingLimitPayload(
+  terms: SpendingLimitTerms,
+): generated.PolicyCreationPayload {
+  return {
+    __kind: "SpendingLimit",
+    fields: [
+      {
+        mint: terms.mint,
+        sourceAccountIndex: PRIMARY_ACCOUNT_INDEX,
+        timeConstraints: {
+          start: 0,
+          expiration: null,
+          period: { __kind: terms.period },
+          accumulateUnused: false,
+        },
+        quantityConstraints: {
+          maxPerPeriod: terms.maxPerPeriod,
+          maxPerUse: terms.maxPerUse,
+          enforceExactQuantity: false,
+        },
+        usageState: null,
+        destinations: terms.destinations ?? [],
+      },
+    ],
+  };
+}
+
+function spendingLimitSigners(limitSigner: PublicKey) {
+  return [{ key: limitSigner, permissions: Permissions.all() }];
+}
+
+/**
+ * Rewrites the spending-limit policy so its one signer is the new primary.
+ *
+ * `PolicyUpdate` replaces the whole policy, so the terms have to be restated
+ * exactly as they stand; they are built by the same helper the create path
+ * uses, which is what stops a rotation from quietly changing the limit it was
+ * only meant to re-address.
+ */
+function spendingLimitPolicyUpdateAction({
+  policy,
+  terms,
+  limitSigner,
+}: {
+  policy: PublicKey;
+  terms: SpendingLimitTerms;
+  limitSigner: PublicKey;
+}): generated.SettingsAction {
+  return {
+    __kind: "PolicyUpdate",
+    policy,
+    policyUpdatePayload: spendingLimitPayload(terms),
+    signers: spendingLimitSigners(limitSigner),
+    threshold: 1,
+    timeLock: 0,
     expirationArgs: null,
   };
 }

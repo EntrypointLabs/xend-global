@@ -24,6 +24,7 @@ export {
   buildRejectSettingsChange,
   buildRemoveRecoverySigner,
   buildRotateApprovalSigner,
+  buildRotatePrimarySigner,
   buildRotateRecoverySigner,
   buildSetTimeLock,
   type AddRecoverySignerParams,

@@ -23,8 +23,13 @@ const { Permission, Permissions } = types;
  */
 export const ROLE_PERMISSIONS: Record<SignerRole, number> = {
   primary: Permissions.all().mask,
-  approval: Permissions.fromPermissions([Permission.Vote, Permission.Execute])
-    .mask,
+  // Initiate as well as Vote and Execute, and the grant is load-bearing: a
+  // settings change can only be proposed by a signer holding Initiate, so an
+  // approval signer without it makes a lost primary signer unrecoverable, the
+  // signer set frozen around a key nobody can produce. One extra permission,
+  // still one vote against a threshold of two, and spending is governed by
+  // the policies' own signer sets either way.
+  approval: Permissions.all().mask,
   recovery: Permissions.fromPermissions([Permission.Vote]).mask,
 };
 

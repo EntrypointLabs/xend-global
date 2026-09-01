@@ -35,6 +35,7 @@ import {
   deriveProposalAddress,
   buildRemoveRecoverySigner,
   buildRotateApprovalSigner,
+  buildRotatePrimarySigner,
   buildRotateRecoverySigner,
   buildSetTimeLock,
   buildSpend,
@@ -1450,6 +1451,175 @@ describe.skipIf(!HAVE_FIXTURES)("approval signer rotation", () => {
     });
     expect(failed(send(h.svm, h.primary, [tx], [h.primary]))).toBe(false);
     expect(h.svm.getBalance(destination)).toBe(BigInt(LAMPORTS_PER_SOL));
+  });
+});
+
+describe.skipIf(!HAVE_FIXTURES)("primary signer rotation", () => {
+  const TERMS = {
+    mint: SOL,
+    maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
+    maxPerPeriod: BigInt(5 * LAMPORTS_PER_SOL),
+    period: "Daily" as const,
+    destinations: [],
+  };
+
+  /**
+   * The lost-passkey recovery: S1 is gone, so the pair meeting the threshold
+   * is the approval signer on the phone and the recovery signer in the vault.
+   * The approval signer proposes and executes, which is what its Initiate and
+   * Execute permissions exist for; the old primary never participates.
+   */
+  function rotatePrimary(
+    h: Harness,
+    newPrimary: Keypair,
+    transactionIndex: bigint,
+  ) {
+    const { propose, policies } = buildRotatePrimarySigner({
+      addresses: h.addresses,
+      oldPrimary: h.primary.publicKey,
+      newPrimary: newPrimary.publicKey,
+      approval: h.approval.publicKey,
+      spendingLimitSeed: LIMIT_POLICY_SEED,
+      terms: TERMS,
+      aboveLimitSeed: ABOVE_LIMIT_POLICY_SEED,
+      proposer: h.approval.publicKey,
+      transactionIndex,
+    });
+
+    expect(failed(send(h.svm, h.approval, propose, [h.approval]))).toBe(false);
+    for (const signer of [h.approval, h.recovery]) {
+      expect(
+        failed(
+          send(
+            h.svm,
+            signer,
+            [
+              buildApproveSettingsChange({
+                addresses: h.addresses,
+                transactionIndex,
+                signer: signer.publicKey,
+              }),
+            ],
+            [signer],
+          ),
+        ),
+      ).toBe(false);
+    }
+
+    const clock = h.svm.getClock();
+    clock.unixTimestamp = clock.unixTimestamp + BigInt(SETTINGS_TIME_LOCK + 10);
+    h.svm.setClock(clock);
+    h.svm.expireBlockhash();
+
+    return send(
+      h.svm,
+      h.approval,
+      [
+        buildExecuteSettingsChange({
+          addresses: h.addresses,
+          transactionIndex,
+          signer: h.approval.publicKey,
+          policies,
+        }),
+      ],
+      [h.approval],
+    );
+  }
+
+  it("swaps the signer set without the old primary ever signing", () => {
+    const h = provisioned();
+    const newPrimary = Keypair.generate();
+    h.svm.airdrop(newPrimary.publicKey, BigInt(5 * LAMPORTS_PER_SOL));
+
+    expect(failed(rotatePrimary(h, newPrimary, nextIndex(h)))).toBe(false);
+
+    const settings = decode<{ signers: { key: PublicKey }[] }>(
+      h.svm,
+      h.addresses.settings,
+      accounts.Settings,
+    );
+    const keys = settings.signers.map((s) => s.key.toBase58());
+    expect(keys).toContain(newPrimary.publicKey.toBase58());
+    expect(keys).not.toContain(h.primary.publicKey.toBase58());
+  });
+
+  it("moves the one-signature route to the new primary and closes it to the old", () => {
+    const h = provisioned();
+    const newPrimary = Keypair.generate();
+    h.svm.airdrop(newPrimary.publicKey, BigInt(5 * LAMPORTS_PER_SOL));
+    expect(failed(rotatePrimary(h, newPrimary, nextIndex(h)))).toBe(false);
+
+    const destination = Keypair.generate().publicKey;
+    const fresh = buildSpend({
+      addresses: h.addresses,
+      request: {
+        mint: SOL,
+        amount: BigInt(LAMPORTS_PER_SOL),
+        destination,
+      },
+      route: { kind: "spending-limit", policy: h.policy },
+      signers: [newPrimary.publicKey],
+      decimals: 9,
+    });
+    expect(failed(send(h.svm, newPrimary, [fresh], [newPrimary]))).toBe(false);
+    expect(h.svm.getBalance(destination)).toBe(BigInt(LAMPORTS_PER_SOL));
+
+    const stale = buildSpend({
+      addresses: h.addresses,
+      request: {
+        mint: SOL,
+        amount: BigInt(LAMPORTS_PER_SOL),
+        destination: Keypair.generate().publicKey,
+      },
+      route: { kind: "spending-limit", policy: h.policy },
+      signers: [h.primary.publicKey],
+      decimals: 9,
+    });
+    expect(failed(send(h.svm, h.primary, [stale], [h.primary]))).toBe(true);
+  });
+
+  it("keeps the above-limit route working for the new pair only", () => {
+    const h = provisioned();
+    const newPrimary = Keypair.generate();
+    h.svm.airdrop(newPrimary.publicKey, BigInt(5 * LAMPORTS_PER_SOL));
+    expect(failed(rotatePrimary(h, newPrimary, nextIndex(h)))).toBe(false);
+
+    const destination = Keypair.generate().publicKey;
+    const fresh = spend(
+      h,
+      [newPrimary.publicKey, h.approval.publicKey],
+      destination,
+      BigInt(3 * LAMPORTS_PER_SOL),
+    );
+    expect(
+      failed(send(h.svm, newPrimary, [fresh], [newPrimary, h.approval])),
+    ).toBe(false);
+    expect(h.svm.getBalance(destination)).toBe(BigInt(3 * LAMPORTS_PER_SOL));
+
+    const stale = spend(
+      h,
+      [h.primary.publicKey, h.approval.publicKey],
+      Keypair.generate().publicKey,
+      BigInt(3 * LAMPORTS_PER_SOL),
+    );
+    expect(
+      failed(send(h.svm, h.primary, [stale], [h.primary, h.approval])),
+    ).toBe(true);
+  });
+
+  it("leaves the recovery signer in place and able to vote on the next change", () => {
+    const h = provisioned();
+    const newPrimary = Keypair.generate();
+    h.svm.airdrop(newPrimary.publicKey, BigInt(5 * LAMPORTS_PER_SOL));
+    expect(failed(rotatePrimary(h, newPrimary, nextIndex(h)))).toBe(false);
+
+    const settings = decode<{ signers: { key: PublicKey }[] }>(
+      h.svm,
+      h.addresses.settings,
+      accounts.Settings,
+    );
+    const keys = settings.signers.map((s) => s.key.toBase58());
+    expect(keys).toContain(h.recovery.publicKey.toBase58());
   });
 });
 
