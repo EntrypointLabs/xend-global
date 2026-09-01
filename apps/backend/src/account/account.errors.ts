@@ -40,3 +40,15 @@ export class IncompleteSignerSetError extends Error {
     this.name = 'IncompleteSignerSetError';
   }
 }
+
+/**
+ * The fresh passkey offered as a replacement primary signer is already the
+ * credential of a different account. Mapped to 409 PASSKEY_IN_USE.
+ */
+export class PasskeyInUseError extends Error {
+  readonly code = 'PASSKEY_IN_USE';
+  constructor(message: string) {
+    super(message);
+    this.name = 'PasskeyInUseError';
+  }
+}

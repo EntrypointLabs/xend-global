@@ -23,6 +23,7 @@ import {
 } from '../attestation/attestation.errors';
 import { TurnkeyService } from '../turnkey/turnkey.service';
 import { AccountChangeService } from './account-change.service';
+import { PrimaryRotationService } from './primary-rotation.service';
 import { UnsafeSubOrganizationError } from '../turnkey/turnkey.errors';
 import {
   ChallengeAttemptsExhaustedError,
@@ -42,6 +43,7 @@ import {
 } from '../recovery/recovery.errors';
 import {
   AccountCreationError,
+  PasskeyInUseError,
   IncompleteSignerSetError,
 } from './account.errors';
 import { AccountService } from './account.service';
@@ -70,6 +72,8 @@ import {
   type SubmitRecoveryChangeDto,
   type SubmitRejectionDto,
   type VerifyRecoveryCodeDto,
+  StartPrimaryRotationSchema,
+  type StartPrimaryRotationDto,
 } from './dtos';
 import { ProvisioningService } from './provisioning.service';
 import { RecoveryService } from '../recovery/recovery.service';
@@ -99,6 +103,7 @@ export class AccountController {
     private readonly recoveryChanges: RecoveryChangeService,
     private readonly challenges: RecoveryChallengeService,
     private readonly rotations: DeviceRotationService,
+    private readonly primaryRotations: PrimaryRotationService,
   ) {}
 
   /**
@@ -646,6 +651,108 @@ export class AccountController {
     }
   }
 
+  /** Mails a code to the address on the Account, toward replacing its passkey. */
+  @Post('recovery/primary/challenge')
+  @AllowEntry()
+  async requestPrimaryRotationCode(@Req() req: AuthenticatedRequest) {
+    try {
+      const email = await this.accounts.contactEmail(req.user.userId);
+      if (!email) {
+        throw new IncompleteSignerSetError(
+          'this Account has no email on file to send a code to',
+        );
+      }
+      const { expiresAt } = await this.challenges.issue(
+        req.user.userId,
+        email,
+        'primary_rotation',
+      );
+      return { sent: true, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'primary_challenge', err);
+    }
+  }
+
+  @Post('recovery/primary/verify')
+  @AllowEntry()
+  async verifyPrimaryRotationCode(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(VerifyRecoveryCodeSchema))
+    body: VerifyRecoveryCodeDto,
+  ) {
+    try {
+      const { grantId, expiresAt } = await this.challenges.verify(
+        req.user.userId,
+        'primary_rotation',
+        body.code,
+      );
+      return { grantId, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'primary_verify', err);
+    }
+  }
+
+  /**
+   * Verifies the fresh passkey and stages the swap that puts its wallet in
+   * the signer set. See {@link PrimaryRotationService}.
+   */
+  @Post('recovery/primary/start')
+  @AllowEntry()
+  async startPrimaryRotation(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(StartPrimaryRotationSchema))
+    body: StartPrimaryRotationDto,
+  ) {
+    try {
+      return await this.primaryRotations.start(
+        req.user.userId,
+        body.grantId,
+        body.privyIdToken,
+      );
+    } catch (err) {
+      if (err instanceof PasskeyInUseError) {
+        throw new HttpException(
+          { code: err.code, message: err.message },
+          HttpStatus.CONFLICT,
+        );
+      }
+      throw this.recoveryFailure(req.user.userId, 'primary_start', err);
+    }
+  }
+
+  @Post('recovery/primary/next')
+  @AllowEntry()
+  async nextPrimaryRotationStep(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(NextDeviceRotationSchema))
+    body: NextDeviceRotationDto,
+  ) {
+    try {
+      return await this.primaryRotations.next(req.user.userId, body.grantId);
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'primary_next', err);
+    }
+  }
+
+  @Post('recovery/primary/submit')
+  @AllowEntry()
+  async submitPrimaryRotationStep(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(SubmitRecoveryChangeSchema))
+    body: SubmitRecoveryChangeDto,
+  ) {
+    try {
+      return {
+        signature: await this.primaryRotations.submit(
+          req.user.userId,
+          body.signedTxBase64,
+        ),
+      };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'primary_submit', err);
+    }
+  }
+
   /**
    * Logs why a recovery key operation failed, then maps it.
    *
@@ -756,6 +863,9 @@ export class AccountController {
       // Set while a device rotation is waiting out the time lock, so the app
       // knows to land it rather than asking the Consumer to start again.
       pendingApprovalSigner: account.pendingApprovalSigner ?? null,
+      // Set while a passkey replacement waits out the lock, so the app can
+      // land the execute step instead of asking the Consumer to start over.
+      pendingPrimarySigner: account.pendingPrimarySigner ?? null,
       // Lets the app tell whether the key on this phone is the Account's, not
       // merely that some key exists. A phone holding another account's key can
       // approve nothing here.

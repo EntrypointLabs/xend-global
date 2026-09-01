@@ -8,7 +8,11 @@ import { NOTICE_KIND, PUSH_SENDER } from './push-sender.interface';
 import type { NoticeKind, PushSender } from './push-sender.interface';
 
 /** What a staged settings change is, when the service that staged it knows. */
-export type StagedChangeKind = 'recovery_key' | 'device' | 'contact_email';
+export type StagedChangeKind =
+  | 'recovery_key'
+  | 'device'
+  | 'contact_email'
+  | 'passkey';
 
 export interface SecurityEvent {
   userId: string;
@@ -368,6 +372,12 @@ function staged(
           body: `It changes${subject ? ` to ${subject}` : ''} after a 24 hour delay. If this was not you, open Xend and reject it.`,
           kind,
         };
+      case 'passkey':
+        return {
+          title: 'Your sign-in passkey is being replaced',
+          body: 'The new one takes over after a 24 hour delay. If this was not you, open Xend and reject it.',
+          kind,
+        };
       default:
         return {
           title: 'Check your Xend account',
@@ -389,6 +399,8 @@ function staged(
         return subject
           ? `A change of your contact email to ${subject} was started`
           : 'A change of your contact email was started';
+      case 'passkey':
+        return 'A replacement of the passkey that signs you in was started';
       default:
         return 'Someone started a change to the security settings of your account';
     }

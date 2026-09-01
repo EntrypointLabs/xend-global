@@ -8,9 +8,11 @@ import { RecoveryModule } from '../recovery/recovery.module';
 import { SettlementModule } from '../settlement/settlement.module';
 import { SolanaModule } from '../solana/solana.module';
 import { TurnkeyModule } from '../turnkey/turnkey.module';
+import { WalletModule } from '../wallet/wallet.module';
 import { AccountController } from './account.controller';
 import { AccountChangeService } from './account-change.service';
 import { DeviceRotationService } from './device-rotation.service';
+import { PrimaryRotationService } from './primary-rotation.service';
 import { AccountChangeWatcher } from './account-change.watcher';
 import { Web3AccountChain } from './account-chain.web3';
 import { Web3ProvisioningChain } from './provisioning-chain.web3';
@@ -30,6 +32,7 @@ import { AccountService } from './account.service';
     AttestationModule,
     SolanaModule,
     RecoveryModule,
+    WalletModule,
     NotificationsModule,
     AccountEventsModule,
     SpendModule,
@@ -44,6 +47,7 @@ import { AccountService } from './account.service';
     AccountChangeWatcher,
     RecoveryChangeService,
     DeviceRotationService,
+    PrimaryRotationService,
     { provide: ACCOUNT_CHAIN, useClass: Web3AccountChain },
     { provide: PROVISIONING_CHAIN, useClass: Web3ProvisioningChain },
   ],
@@ -56,6 +60,7 @@ import { AccountService } from './account.service';
     AccountChangeService,
     RecoveryChangeService,
     DeviceRotationService,
+    PrimaryRotationService,
   ],
 })
 export class AccountModule {}

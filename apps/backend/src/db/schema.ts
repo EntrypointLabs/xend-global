@@ -58,6 +58,7 @@ export const recoveryChallengePurposeEnum = pgEnum(
     'recovery_key_email',
     'contact_rotation',
     'entry_session',
+    'primary_rotation',
   ],
 );
 
@@ -571,6 +572,14 @@ export const squadsAccounts = pgTable('squads_accounts', {
   pendingApprovalSigner: text('pending_approval_signer'),
   pendingApprovalSubOrgId: text('pending_approval_sub_org_id'),
   pendingApprovalChangeIndex: text('pending_approval_change_index'),
+  /**
+   * The primary signer a passkey replacement is moving to, and the Privy user
+   * behind it, while the settings change carrying them waits out the lock.
+   * The live columns and the smart_accounts binding move only on execution.
+   */
+  pendingPrimarySigner: text('pending_primary_signer'),
+  pendingPrimaryProviderId: text('pending_primary_provider_id'),
+  pendingPrimaryChangeIndex: text('pending_primary_change_index'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

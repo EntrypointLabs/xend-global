@@ -50,6 +50,10 @@ export interface SquadsAccountRow {
   pendingApprovalSigner?: string | null;
   pendingApprovalSubOrgId?: string | null;
   pendingApprovalChangeIndex?: string | null;
+  /** Set only while a passkey replacement is in flight. See PrimaryRotationService. */
+  pendingPrimarySigner?: string | null;
+  pendingPrimaryProviderId?: string | null;
+  pendingPrimaryChangeIndex?: string | null;
 }
 
 export interface SquadsAccountStore {
