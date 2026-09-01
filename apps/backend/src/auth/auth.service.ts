@@ -68,6 +68,7 @@ export class AuthService {
   async exchange(
     privyIdToken: string,
     signupToken?: string,
+    expectUserId?: string,
   ): Promise<ExchangeResponse> {
     // Verify the Privy ID token. Typed errors from PrivyAdapter map to
     // HTTP responses:
@@ -168,6 +169,28 @@ export class AuthService {
             'this passkey is not on a Xend account yet; continue with your email to create one',
         },
         HttpStatus.NOT_FOUND,
+      );
+    }
+
+    // The caller proved an inbox and named its account; a passkey that
+    // resolves anywhere else is refused before it can replace that session.
+    // The platform picker offers every credential for the relying party and
+    // labels them identically, so picking the wrong one is an ordinary
+    // mistake, and the answer is a refusal they can retry rather than a
+    // sign-in to an account they did not ask for.
+    if (expectUserId && userRow.id !== expectUserId) {
+      this.logger.log('auth.exchange.passkey_account_mismatch');
+      throw new HttpException(
+        {
+          code: 'PASSKEY_ACCOUNT_MISMATCH',
+          message: 'that passkey opens a different account',
+          // Masked, and only here: the caller physically holds this passkey
+          // and can read the full address by signing in with it, so naming
+          // which account they picked costs nothing and turns a guessing
+          // game into an answer.
+          maskedEmail: maskEmail(userRow.email),
+        },
+        HttpStatus.CONFLICT,
       );
     }
 
@@ -382,4 +405,11 @@ export class AuthService {
     });
     return { mirrored: true };
   }
+}
+
+function maskEmail(email: string | null): string | null {
+  if (!email) return null;
+  const at = email.indexOf('@');
+  if (at < 1) return null;
+  return `${email[0]}•••${email.slice(at)}`;
 }

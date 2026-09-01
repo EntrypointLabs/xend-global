@@ -14,6 +14,13 @@ export const ExchangeRequestSchema = z.object({
    * exchange can only reach a row this Privy user is already bound to.
    */
   signupToken: z.string().min(1).optional(),
+  /**
+   * Present when the sign-in follows a proved inbox, and it pins the result:
+   * the exchange must land on this user or refuse. Without it, a device
+   * holding passkeys for two accounts can answer a code for one with the
+   * credential of the other, and the session silently changes owner.
+   */
+  expectUserId: z.string().min(1).optional(),
 });
 export type ExchangeRequest = z.infer<typeof ExchangeRequestSchema>;
 

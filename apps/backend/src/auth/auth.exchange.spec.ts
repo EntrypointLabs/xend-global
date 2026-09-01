@@ -432,6 +432,53 @@ describe('AuthService.exchange', () => {
     );
   });
 
+  it('refuses a passkey that resolves to a different user than the proved inbox named', async () => {
+    const wallet = {
+      verifyIdToken: jest.fn().mockResolvedValue(validPrivyUser),
+      getUser: jest.fn(),
+    } as unknown as WalletProvider;
+    const seedStore: FakeStore = {
+      users: [
+        {
+          id: 'u_existing',
+          email: validPrivyUser.email,
+          notificationsEnabled: true,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-01'),
+          deletedAt: null,
+          recoveryReleaseFrozenAt: null,
+        },
+      ],
+      smartAccounts: [
+        {
+          id: 'sa_existing',
+          userId: 'u_existing',
+          walletAddress: validPrivyUser.walletAddress,
+          provider: 'privy',
+          providerUserId: validPrivyUser.providerUserId,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-01'),
+        },
+      ],
+    };
+
+    const { service } = makeService({ wallet, store: seedStore });
+
+    await expect(
+      service.exchange('valid.privy.token', undefined, 'u_someone_else'),
+    ).rejects.toMatchObject({
+      response: { code: 'PASSKEY_ACCOUNT_MISMATCH' },
+    });
+
+    // The same passkey with the right expectation still signs in.
+    const result = await service.exchange(
+      'valid.privy.token',
+      undefined,
+      'u_existing',
+    );
+    expect(result.user.id).toBe('u_existing');
+  });
+
   it('refuses an unknown passkey the same way whether or not Privy carries an email', async () => {
     const wallet = {
       verifyIdToken: jest.fn().mockResolvedValue({

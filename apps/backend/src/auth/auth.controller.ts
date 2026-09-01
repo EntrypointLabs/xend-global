@@ -61,7 +61,11 @@ export class AuthController {
   exchange(
     @Body(new ZodValidationPipe(ExchangeRequestSchema)) dto: ExchangeRequest,
   ) {
-    return this.auth.exchange(dto.privyIdToken, dto.signupToken);
+    return this.auth.exchange(
+      dto.privyIdToken,
+      dto.signupToken,
+      dto.expectUserId,
+    );
   }
 
   /**
