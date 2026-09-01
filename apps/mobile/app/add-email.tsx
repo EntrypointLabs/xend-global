@@ -39,7 +39,7 @@ import { cn } from "@/utils/cn";
  * A signed-in Consumer with no address on file lands here as well, and leaves
  * through the same Account setup once one is proved.
  */
-type Step = "address" | "code" | "passkey";
+type Step = "address" | "code" | "passkey" | "unlock";
 
 function AddEmailScreen() {
   const {
@@ -55,6 +55,7 @@ function AddEmailScreen() {
     busy: creatingPasskey,
     error: passkeyError,
     clearError: clearPasskeyError,
+    wrongAccountEmail,
   } = usePasskeyLogin();
   const { intent } = useLocalSearchParams<{ intent?: string }>();
   const [step, setStep] = useState<Step>("address");
@@ -71,6 +72,8 @@ function AddEmailScreen() {
    * and a fresh code replaces it.
    */
   const [signupToken, setSignupToken] = useState<string | null>(null);
+  /** The account the proved inbox named, which the passkey must match. */
+  const [entryUserId, setEntryUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [settingUpAccount, setSettingUpAccount] = useState(false);
@@ -83,6 +86,47 @@ function AddEmailScreen() {
 
   const signedIn = isAuthenticated === true;
   const done = () => router.replace("/(tabs)");
+  const finishEntry = () => {
+    if (intent === "recover") {
+      router.replace("/(tabs)/settings/restore-device");
+    } else {
+      done();
+    }
+  };
+
+  /**
+   * The passkey attempt for an existing account, kept on this screen so a
+   * refusal is a retry rather than a mystery. The pin makes a wrong pick in
+   * the platform's picker a named error instead of a session for the wrong
+   * account; the picker labels every credential identically, so that pick is
+   * an easy mistake to make.
+   */
+  const unlock = async (userId: string) => {
+    setError(null);
+    const outcome = await signIn(userId);
+    if (outcome === "signed-in") {
+      finishEntry();
+      return;
+    }
+    setStep("unlock");
+    if (outcome === "wrong-account") {
+      const opened = wrongAccountEmail();
+      setError(
+        `That passkey opens ${opened ?? "a different account"}. Pick the one for ${claimed ?? "this address"}.`
+      );
+    } else if (outcome === "no-account") {
+      // A credential the platform still offers and no account stands behind,
+      // which a failed or abandoned sign-up leaves behind. Named, because the
+      // picker shows it beside the real one and calls both the same thing.
+      setError(
+        "That passkey is not on any Xend account. It is left over from an earlier sign-up. Try again and pick another."
+      );
+    } else if (outcome === "no-passkey") {
+      setError(
+        `No passkey on this phone opens ${claimed ?? "this account"}. Replace it below, or use the phone that has it.`
+      );
+    }
+  };
 
   const requestCode = async () => {
     const parsed = Email.safeParse(value.trim());
@@ -136,16 +180,11 @@ function AddEmailScreen() {
         if (proof.kind === "entry") {
           // An address already on an account, so there is nothing to create.
           // The session the code opens can only look, which is why the
-          // passkey is offered right away: taking it lands them signed in
-          // fully, declining just means looking for now, and the home banner
-          // repeats the offer.
+          // passkey runs right here: succeeding lands them signed in fully,
+          // and anything else stays on this screen as a retry.
           await enterWithEmail(proof);
-          await signIn();
-          if (intent === "recover") {
-            router.replace("/(tabs)/settings/restore-device");
-          } else {
-            done();
-          }
+          setEntryUserId(proof.user.id);
+          await unlock(proof.user.id);
           return;
         }
         setSignupToken(proof.signupToken);
@@ -224,7 +263,9 @@ function AddEmailScreen() {
                     : "What's your email?"
                   : step === "code"
                     ? "Check your email"
-                    : "Create your passkey"}
+                    : step === "unlock"
+                      ? "Use your passkey"
+                      : "Create your passkey"}
               </Typography>
               <Typography
                 weight="400"
@@ -234,7 +275,9 @@ function AddEmailScreen() {
                   ? "For receipts and security alerts, and how your account comes back if you lose this phone. It is not how you sign in: that is your passkey."
                   : step === "code"
                     ? `We sent a six-digit code to ${claimed}. Enter it to prove this inbox is yours.`
-                    : "Your passkey is what signs you in. It lives in your phone's password manager, so there is nothing to remember."}
+                    : step === "unlock"
+                      ? `${claimed} is open to look at. Your passkey is what unlocks sending and key changes.`
+                      : "Your passkey is what signs you in. It lives in your phone's password manager, so there is nothing to remember."}
               </Typography>
 
               {step === "code" ? (
@@ -269,7 +312,7 @@ function AddEmailScreen() {
                   {error}
                 </Typography>
               )}
-              {step === "passkey" && passkeyError && (
+              {(step === "passkey" || step === "unlock") && passkeyError && (
                 <Typography weight="400" className="mb-2 text-sm text-red-400">
                   {passkeyError}
                 </Typography>
@@ -300,6 +343,51 @@ function AddEmailScreen() {
                 </View>
               )}
 
+              {step === "unlock" && (
+                <>
+                  <HapticPressable
+                    onPress={() => entryUserId && unlock(entryUserId)}
+                    disabled={creatingPasskey}
+                    className={cn(
+                      "w-full flex-row items-center justify-center gap-4 rounded-full bg-white p-4",
+                      creatingPasskey && "opacity-50"
+                    )}
+                  >
+                    <Ionicons
+                      name="finger-print-outline"
+                      size={22}
+                      color="#000000"
+                    />
+                    <Typography weight="600" className="text-lg text-black">
+                      {creatingPasskey ? "Waiting…" : "Use passkey"}
+                    </Typography>
+                  </HapticPressable>
+                  <HapticPressable
+                    onPress={() =>
+                      router.replace("/(tabs)/settings/replace-passkey")
+                    }
+                    disabled={creatingPasskey}
+                    className="mt-4 items-center p-2"
+                  >
+                    <Typography weight="500" className="text-base text-white">
+                      {"I don't have a passkey for this account"}
+                    </Typography>
+                  </HapticPressable>
+                  <HapticPressable
+                    onPress={finishEntry}
+                    disabled={creatingPasskey}
+                    className="mt-1 items-center p-2"
+                  >
+                    <Typography
+                      weight="500"
+                      className="text-base text-white/70"
+                    >
+                      Just look around for now
+                    </Typography>
+                  </HapticPressable>
+                </>
+              )}
+
               {step === "passkey" && (
                 <HapticPressable
                   onPress={createPasskey}
@@ -324,7 +412,8 @@ function AddEmailScreen() {
                 </HapticPressable>
               )}
 
-              {step !== "address" ? (
+              {step === "unlock" ? null : step === "code" ||
+                step === "passkey" ? (
                 <HapticPressable
                   onPress={editAddress}
                   disabled={saving || creatingPasskey}

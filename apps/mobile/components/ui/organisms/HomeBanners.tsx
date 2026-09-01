@@ -47,7 +47,7 @@ interface Banner {
  * either.
  */
 export function HomeBanners() {
-  const { sessionTier } = useAuth();
+  const { sessionTier, user } = useAuth();
   const { data: account } = useAccount();
   const { data: change } = usePendingAccountChange();
   const { data: restore } = useDeviceNeedsRestore();
@@ -71,8 +71,17 @@ export function HomeBanners() {
     const upgrade = async () => {
       if (passkey.busy) return;
       setPasskeyHint(null);
-      const outcome = await passkey.signIn();
-      if (outcome === "no-passkey") {
+      const outcome = await passkey.signIn(user?.id);
+      if (outcome === "wrong-account") {
+        const opened = passkey.wrongAccountEmail();
+        setPasskeyHint(
+          `That passkey opens ${opened ?? "a different account"}. Try again and pick the one for this account.`
+        );
+      } else if (outcome === "no-account") {
+        setPasskeyHint(
+          "That passkey is not on any Xend account. Try again and pick another."
+        );
+      } else if (outcome === "no-passkey") {
         setPasskeyHint("No passkey on this phone. Use the phone that has it.");
       } else if (outcome === "failed") {
         setPasskeyHint(passkey.error ?? "That did not work. Tap to try again.");

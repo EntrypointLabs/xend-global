@@ -26,6 +26,12 @@ export const ExchangeRequestSchema = z.object({
    * backend would have nothing to attach the new Privy user to.
    */
   signupToken: z.string().min(1).optional(),
+  /**
+   * Present when the sign-in follows a proved inbox: the exchange must land
+   * on this user or refuse, so a passkey for another account cannot quietly
+   * replace the session the code opened.
+   */
+  expectUserId: z.string().min(1).optional(),
 });
 export type ExchangeRequest = z.infer<typeof ExchangeRequestSchema>;
 
@@ -132,6 +138,8 @@ export const AccountResponseSchema = z.object({
    * older backend that does not report it is absent rather than "none".
    */
   pendingApprovalSigner: z.string().nullable().optional(),
+  /** Set while a passkey replacement is waiting out the time lock. */
+  pendingPrimarySigner: z.string().nullable().optional(),
   /**
    * The hardware key this Account enrolled with. Compared against the one on
    * this phone: a phone holding a different account's key is as unable to
@@ -283,6 +291,25 @@ export const DeviceRotationStepSchema = z.object({
   newApprovalSigner: z.string().optional(),
 });
 export type DeviceRotationStep = z.infer<typeof DeviceRotationStepSchema>;
+
+export const PrimaryRotationStepSchema = z.object({
+  done: z.boolean(),
+  step: z
+    .enum([
+      "propose",
+      "approve-approval",
+      "approve-recovery",
+      "waiting",
+      "execute",
+    ])
+    .optional(),
+  unsignedTxBase64: z.string().optional(),
+  changeIndex: z.string().optional(),
+  needsApprovalSignature: z.boolean().optional(),
+  executableAt: z.string().optional(),
+  newPrimarySigner: z.string().optional(),
+});
+export type PrimaryRotationStep = z.infer<typeof PrimaryRotationStepSchema>;
 
 export const AddRecoveryKeyResponseSchema = z.object({
   key: RecoveryKeySchema,
@@ -550,6 +577,12 @@ export function apiErrorStatus(err: unknown): number | null {
 export function apiErrorCode(err: unknown): string | null {
   const code = err instanceof ApiError ? err.data?.code : null;
   return typeof code === "string" ? code : null;
+}
+
+/** The masked address a mismatched passkey actually opens, when named. */
+export function apiErrorMaskedEmail(err: unknown): string | null {
+  const masked = err instanceof ApiError ? err.data?.maskedEmail : null;
+  return typeof masked === "string" ? masked : null;
 }
 
 class BackendClient {
@@ -998,6 +1031,54 @@ class BackendClient {
       body: JSON.stringify(body),
       auth: true,
     });
+    return RecoveryChangeSubmitSchema.parse(raw);
+  }
+
+  /** POST /account/recovery/primary/challenge: mails a code to the address on file. */
+  async requestPasskeyRotationCode(): Promise<{ expiresAt: string }> {
+    return this.request<{ expiresAt: string }>(
+      "/account/recovery/primary/challenge",
+      { method: "POST", auth: true }
+    );
+  }
+
+  /** POST /account/recovery/primary/verify: turns the code into a grant. */
+  async verifyPasskeyRotationCode(code: string): Promise<{ grantId: string }> {
+    return this.request<{ grantId: string }>(
+      "/account/recovery/primary/verify",
+      { method: "POST", body: JSON.stringify({ code }), auth: true }
+    );
+  }
+
+  /**
+   * POST /account/recovery/primary/start: verifies the fresh passkey's
+   * identity token and stages the swap that puts its wallet in the signer set.
+   */
+  async startPrimaryRotation(body: { grantId: string; privyIdToken: string }) {
+    const raw = await this.request<unknown>("/account/recovery/primary/start", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return PrimaryRotationStepSchema.parse(raw);
+  }
+
+  /** POST /account/recovery/primary/next: the next step, re-read from chain. */
+  async nextPrimaryRotationStep(grantId?: string) {
+    const raw = await this.request<unknown>("/account/recovery/primary/next", {
+      method: "POST",
+      body: JSON.stringify(grantId ? { grantId } : {}),
+      auth: true,
+    });
+    return PrimaryRotationStepSchema.parse(raw);
+  }
+
+  /** POST /account/recovery/primary/submit: hands back a signed step. */
+  async submitPrimaryRotationStep(body: { signedTxBase64: string }) {
+    const raw = await this.request<unknown>(
+      "/account/recovery/primary/submit",
+      { method: "POST", body: JSON.stringify(body), auth: true }
+    );
     return RecoveryChangeSubmitSchema.parse(raw);
   }
 

@@ -56,11 +56,14 @@ export interface AuthContextType {
    *
    * With a sign-up token, the exchange binds the new passkey to the address
    * the token was issued for instead of starting an empty account. Throws
-   * `PasskeyHasNoAccountError` when the passkey belongs to no account at all.
+   * `PasskeyHasNoAccountError` when the passkey belongs to no account at all,
+   * and `PasskeyWrongAccountError` when `expectUserId` names one account and
+   * the credential resolves to another.
    */
   completePasskeySession: (
     privyUser: unknown,
-    signupToken?: string
+    signupToken?: string,
+    expectUserId?: string
   ) => Promise<boolean>;
   /**
    * Opens the limited session an email code earned on an existing account.

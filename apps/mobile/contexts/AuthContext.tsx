@@ -16,9 +16,17 @@ import {
 
 import { AccountInfo, AuthContextType, SessionTier } from "@/types/Auth";
 import { AuthStorage } from "@/utils/storage/authStorage";
-import { apiClient, apiErrorCode, type EntryProof } from "@/utils/apiClient";
+import {
+  apiClient,
+  apiErrorCode,
+  apiErrorMaskedEmail,
+  type EntryProof,
+} from "@/utils/apiClient";
 import { isJwtExpired } from "@/utils/jwt";
-import { PasskeyHasNoAccountError } from "@/utils/passkeyOutcome";
+import {
+  PasskeyHasNoAccountError,
+  PasskeyWrongAccountError,
+} from "@/utils/passkeyOutcome";
 import { useEnsureSolanaWallet } from "@/hooks/useEnsureSolanaWallet";
 import { SEED_DEMO, SEED_TIER, SEED_USER } from "@/utils/devSeed";
 import { forgetThisDevice } from "@/utils/pushDevice";
@@ -228,7 +236,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    */
   const finalizeSession = async (
     fallbackEmail: string | null,
-    signupToken?: string
+    signupToken?: string,
+    expectUserId?: string
   ): Promise<boolean> => {
     try {
       // Wait for the embedded Solana wallet to finish provisioning before the
@@ -246,6 +255,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         exchange = await apiClient.exchange({
           privyIdToken: idToken,
           signupToken,
+          expectUserId,
         });
       } catch (exchangeError) {
         // A passkey no account knows. The credential worked and there is
@@ -253,6 +263,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // it must not be papered over with a degraded session.
         if (apiErrorCode(exchangeError) === "NO_ACCOUNT_FOR_PASSKEY") {
           throw new PasskeyHasNoAccountError();
+        }
+        // Refused before the session changed owner, so the entry session for
+        // the account the Consumer actually asked for is still live.
+        if (apiErrorCode(exchangeError) === "PASSKEY_ACCOUNT_MISMATCH") {
+          throw new PasskeyWrongAccountError(
+            apiErrorMaskedEmail(exchangeError)
+          );
         }
 
         // Privy has already authenticated the Consumer and provisioned their
@@ -329,6 +346,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return true;
     } catch (error) {
       if (error instanceof PasskeyHasNoAccountError) throw error;
+      if (error instanceof PasskeyWrongAccountError) throw error;
       Sentry.captureException(
         new Error(
           `Privy session finalize failed: ${error}. (contexts)/AuthContext.tsx`
@@ -350,8 +368,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    */
   const completePasskeySession = async (
     privyUser: unknown,
-    signupToken?: string
-  ): Promise<boolean> => finalizeSession(emailArgFor(privyUser), signupToken);
+    signupToken?: string,
+    expectUserId?: string
+  ): Promise<boolean> =>
+    finalizeSession(emailArgFor(privyUser), signupToken, expectUserId);
 
   /**
    * Persisted before any of it reaches React state, and in that order for a

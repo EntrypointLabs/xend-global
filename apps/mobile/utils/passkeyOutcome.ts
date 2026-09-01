@@ -11,6 +11,7 @@ export type PasskeySignInOutcome =
   | "signed-in"
   | "no-passkey"
   | "no-account"
+  | "wrong-account"
   | "cancelled"
   | "failed";
 
@@ -53,4 +54,20 @@ export function classifyPasskeyError(
     return platform === "ios" ? "no-passkey" : "cancelled";
   }
   return "failed";
+}
+
+/**
+ * The passkey worked and belongs to a different account than the one the
+ * proved inbox named. The platform picker labels every credential the same,
+ * so this is an ordinary mistake; the backend refused before the session
+ * changed owner, and the answer is to try again with the other credential.
+ */
+export class PasskeyWrongAccountError extends Error {
+  constructor(
+    /** Masked address of the account the picked passkey opens, when known. */
+    readonly maskedEmail: string | null = null
+  ) {
+    super("That passkey opens a different account");
+    this.name = "PasskeyWrongAccountError";
+  }
 }

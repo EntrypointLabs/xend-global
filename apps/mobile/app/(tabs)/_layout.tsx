@@ -3,6 +3,7 @@ import React from "react";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { AccountSetupReminder } from "@/components/AccountSetupReminder";
 import { DeviceRotationRunner } from "@/components/DeviceRotationRunner";
+import { PrimaryRotationRunner } from "@/components/PrimaryRotationRunner";
 import { PendingChangeNotice } from "@/components/PendingChangeNotice";
 import { RecoveryChangeRunner } from "@/components/RecoveryChangeRunner";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -40,6 +41,7 @@ export default function TabLayout() {
       </Tabs>
       <AccountSetupReminder />
       <DeviceRotationRunner />
+      <PrimaryRotationRunner />
       <PendingChangeNotice />
       <RecoveryChangeRunner />
     </ProtectedRoute>

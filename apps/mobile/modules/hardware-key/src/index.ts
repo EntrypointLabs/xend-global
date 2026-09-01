@@ -116,6 +116,10 @@ export const SIGN_PROMPT = {
     title: "Stop this change",
     reason: "Confirm it is you before Xend refuses it",
   },
+  replacePasskey: {
+    title: "Approve your new passkey",
+    reason: "Confirm it is you replacing the passkey on your account",
+  },
 } as const;
 
 export type SignPrompt = (typeof SIGN_PROMPT)[keyof typeof SIGN_PROMPT];
