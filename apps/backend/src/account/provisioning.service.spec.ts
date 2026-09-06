@@ -133,13 +133,13 @@ describe('ProvisioningService.prepareNext', () => {
     expect(plan).toMatchObject({
       done: false,
       change: 'provision',
-      step: 'propose',
-      needsApprovalSignature: false,
+      step: 'provision',
+      needsApprovalSignature: true,
     });
     // Create the settings transaction, then the proposal. Both policies and
-    // the lock ride inside the first, which is what keeps this to one change
-    // and so to one prompt from the approval signer.
-    expect(compiled[0].instructions).toHaveLength(2);
+    // the lock ride inside the first, and the approvals and execution ride
+    // beside them: one transaction, one prompt from the approval signer.
+    expect(compiled[0].instructions).toHaveLength(5);
   });
 
   it('keeps working while the lock is still open, even with both policies', async () => {
@@ -269,7 +269,7 @@ describe('ProvisioningService.prepareNext', () => {
 
     const plan = await service(chain).prepareNext(USER);
 
-    expect(plan.step).toBe('propose');
+    expect(plan.step).toBe('provision');
     expect(compiled).toHaveLength(1);
   });
 

@@ -1454,6 +1454,86 @@ describe.skipIf(!HAVE_FIXTURES)("approval signer rotation", () => {
   });
 });
 
+describe.skipIf(!HAVE_FIXTURES)("single-transaction provisioning", () => {
+  /**
+   * The whole provisioning change in one transaction: propose, both
+   * approvals, execute. Legal precisely here because the Settings time lock
+   * is still zero until this very change sets it, so there is nothing to
+   * wait out between approval and execution.
+   */
+  it("proposes, approves twice and executes in one transaction", () => {
+    const h = setUp({ timeLockSeconds: 0 });
+    const index = nextIndex(h);
+
+    const { propose, policies } = buildProvisionAccount({
+      addresses: h.addresses,
+      spendingLimitSeed: LIMIT_POLICY_SEED,
+      aboveLimitSeed: ABOVE_LIMIT_POLICY_SEED,
+      terms: {
+        mint: SOL,
+        maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
+        maxPerPeriod: BigInt(5 * LAMPORTS_PER_SOL),
+        period: "Daily",
+        destinations: [],
+      },
+      primary: h.primary.publicKey,
+      approval: h.approval.publicKey,
+      proposer: h.primary.publicKey,
+      transactionIndex: index,
+      timeLockSeconds: SETTINGS_TIME_LOCK,
+    });
+
+    const result = send(
+      h.svm,
+      h.primary,
+      [
+        ...propose,
+        buildApproveSettingsChange({
+          addresses: h.addresses,
+          transactionIndex: index,
+          signer: h.primary.publicKey,
+        }),
+        buildApproveSettingsChange({
+          addresses: h.addresses,
+          transactionIndex: index,
+          signer: h.approval.publicKey,
+        }),
+        buildExecuteSettingsChange({
+          addresses: h.addresses,
+          transactionIndex: index,
+          signer: h.primary.publicKey,
+          policies,
+        }),
+      ],
+      [h.primary, h.approval],
+    );
+    expect(failed(result)).toBe(false);
+
+    const settings = decode<{ timeLock: number }>(
+      h.svm,
+      h.addresses.settings,
+      accounts.Settings,
+    );
+    expect(settings.timeLock).toBe(SETTINGS_TIME_LOCK);
+
+    // Both policies exist and the everyday route works immediately.
+    const destination = Keypair.generate().publicKey;
+    const tx = buildSpend({
+      addresses: h.addresses,
+      request: {
+        mint: SOL,
+        amount: BigInt(LAMPORTS_PER_SOL),
+        destination,
+      },
+      route: { kind: "spending-limit", policy: h.policy },
+      signers: [h.primary.publicKey],
+      decimals: 9,
+    });
+    expect(failed(send(h.svm, h.primary, [tx], [h.primary]))).toBe(false);
+    expect(h.svm.getBalance(destination)).toBe(BigInt(LAMPORTS_PER_SOL));
+  });
+});
+
 describe.skipIf(!HAVE_FIXTURES)("primary signer rotation", () => {
   const TERMS = {
     mint: SOL,

@@ -150,10 +150,12 @@ export type ProvisioningChange = 'provision';
  * deliberately not in the spend path, so the two approvals are S1 and S2.
  */
 export type ProvisioningStep =
-  | 'propose'
-  | 'approve-primary'
-  | 'approve-approval'
-  | 'execute';
+  /**
+   * The whole change in one transaction: propose, both approvals, execute.
+   * Legal only while the Settings time lock is still zero, which is exactly
+   * the state provisioning runs in, since this change is what sets it.
+   */
+  'provision' | 'propose' | 'approve-primary' | 'approve-approval' | 'execute';
 
 export interface SettingsState {
   timeLockSeconds: number;
