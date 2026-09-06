@@ -127,7 +127,11 @@ function fixtureIntent(reference: string): IntentView {
     displayCurrency: 'NGN',
     displayAmountMinor: '4500000',
     merchantOrigin: window.location.origin,
-    sessionRecognized: false,
+    // Both fixture states stay reachable: `?recognized=1` demos the one-tap
+    // return visit, without it the full passkey ceremony shows.
+    sessionRecognized: new URLSearchParams(window.location.search).has(
+      'recognized',
+    ),
     expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     livemode: false,
   };
