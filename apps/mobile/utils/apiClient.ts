@@ -4,6 +4,8 @@ import { handleError, ErrorCode } from "@/utils/errors";
 import { AuthStorage } from "@/utils/storage/authStorage";
 import {
   SEED_DEMO,
+  seedAccount,
+  seedProvisioningStep,
   seedRecoveryKeys,
   seedPendingChange,
   seedBalances,
@@ -845,6 +847,7 @@ class BackendClient {
    * so it is mapped to null instead of thrown.
    */
   async getAccount(): Promise<AccountResponse | null> {
+    if (SEED_DEMO) return seedAccount();
     try {
       const raw = await this.request<unknown>("/account/me", {
         method: "GET",
@@ -902,6 +905,7 @@ class BackendClient {
    * to call again after an interruption and there is no cursor to carry.
    */
   async nextProvisioningStep(): Promise<ProvisioningStep> {
+    if (SEED_DEMO) return seedProvisioningStep();
     const raw = await this.request<unknown>("/account/provisioning/next", {
       method: "POST",
       auth: true,

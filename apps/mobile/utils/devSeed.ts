@@ -1,4 +1,6 @@
 import type {
+  AccountResponse,
+  ProvisioningStep,
   BalancesResponse,
   StagedChange,
   ListSessionsResponse,
@@ -352,4 +354,39 @@ export function seedPendingChange(): StagedChange | null {
     executableAt: new Date(Date.now() + 23.5 * 3600 * 1000).toISOString(),
     selfInitiated: state === "self",
   };
+}
+
+/**
+ * The Account behind the seeded session. Without it `/account/me` is the one
+ * read that still leaves the device on a fresh simulator, and a dead backend
+ * answers 404, which the error banner shows over every seeded screen.
+ */
+export function seedAccount(): AccountResponse {
+  return {
+    address: WALLET,
+    signers: {
+      primary: "5qT2wR7tY9uP1sX4vB6mH8jC3dF5aZ1yU2eW4rK6tN9p",
+      approval: "7uP1sX4vB6mH8jC3dF5aZ1yU2eW4rK6tN9pM5qT2wR7t",
+    },
+    approvalSubOrgId: "suborg-demo-0001",
+    pendingApprovalSigner: null,
+    pendingPrimarySigner: null,
+    deviceKey: "9jC3dF5aZ1yU2eW4rK6tN9pM5qT2wR7tY9uP1sX4vB6m",
+    spendingLimit: {
+      mint: usdcMint(),
+      maxPerUse: "500000000",
+      maxPerPeriod: "1000000000",
+      remainingInPeriod: "742500000",
+      period: "Daily",
+    },
+  };
+}
+
+/**
+ * The seeded Account is already provisioned, so provisioning has nothing left
+ * to hand back. Without this the setup poll is the last read that still leaves
+ * the device.
+ */
+export function seedProvisioningStep(): ProvisioningStep {
+  return { done: true, needsApprovalSignature: false };
 }
