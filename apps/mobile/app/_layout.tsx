@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Redirect, Slot, useSegments } from "expo-router";
 import {
   AppState,
@@ -123,6 +123,27 @@ function AuthLayout() {
   const { isLocked, isObscured } = useAppLock();
   const colorScheme = useColorScheme();
 
+  // The screens are held apart from this component's own renders on purpose.
+  // `useSegments()` above changes on every navigation, and without this the
+  // whole app below re-rendered each time a tab was tapped: every provider,
+  // every mounted screen, the lot. Memoising the element means a navigation
+  // re-renders the navigator and the screen it is going to, and nothing else.
+  const screens = useMemo(
+    () => (
+      <ScreenThemeProvider>
+        <ModalFlowProvider>
+          <ToastProvider>
+            <BlurTargetHost>
+              <Slot />
+            </BlurTargetHost>
+            <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+          </ToastProvider>
+        </ModalFlowProvider>
+      </ScreenThemeProvider>
+    ),
+    [colorScheme]
+  );
+
   if (isAuthenticated === null) {
     return <LoadingScreen />;
   }
@@ -164,15 +185,8 @@ function AuthLayout() {
   // Theming is driven by NativeWind (ThemedRoot's `dark` class) and
   // ScreenThemeProvider; the navigator inherits light/dark from the OS.
   return (
-    <ScreenThemeProvider>
-      <ModalFlowProvider>
-        <ToastProvider>
-          <BlurTargetHost>
-            <Slot />
-          </BlurTargetHost>
-          <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-        </ToastProvider>
-      </ModalFlowProvider>
+    <>
+      {screens}
       {showObscure && (
         <View style={StyleSheet.absoluteFill}>
           <LoadingScreen />
@@ -183,7 +197,7 @@ function AuthLayout() {
           <LockScreen />
         </View>
       )}
-    </ScreenThemeProvider>
+    </>
   );
 }
 

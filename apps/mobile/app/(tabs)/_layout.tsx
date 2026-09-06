@@ -18,6 +18,11 @@ export default function TabLayout() {
         )}
         screenOptions={{
           headerShown: false,
+          // A tab nobody is looking at should cost nothing. Without this every
+          // mounted tab re-renders alongside the one being navigated to, which
+          // is most of what made a tab change take the better part of a second
+          // on Android.
+          freezeOnBlur: true,
         }}
       >
         <Tabs.Screen
