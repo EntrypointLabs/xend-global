@@ -12,12 +12,17 @@ function makeConfig(): ConfigService {
   } as unknown as ConfigService;
 }
 
-function makeDb(row: Pick<UsersRow, 'deletedAt'> | null): DbService {
+function makeDb(
+  row: (Pick<UsersRow, 'deletedAt'> & { walletAddress?: string | null }) | null,
+): DbService {
   const client = {
     select: () => ({
       from: () => ({
-        where: () => ({
-          limit: () => Promise.resolve(row ? [row] : []),
+        leftJoin: () => ({
+          where: () => ({
+            limit: () =>
+              Promise.resolve(row ? [{ walletAddress: null, ...row }] : []),
+          }),
         }),
       }),
     }),
@@ -48,6 +53,32 @@ describe('JwtStrategy.validate', () => {
     const strategy = new JwtStrategy(
       makeConfig(),
       makeDb({ deletedAt: new Date() }),
+    );
+    await expect(strategy.validate(payload)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it('accepts a token that names the wallet currently on the account', async () => {
+    const strategy = new JwtStrategy(
+      makeConfig(),
+      makeDb({
+        deletedAt: null,
+        walletAddress: 'Wallet1',
+      }),
+    );
+    await expect(strategy.validate(payload)).resolves.toMatchObject({
+      userId: 'u_1',
+    });
+  });
+
+  it('rejects a token minted for a wallet a rotation has since retired', async () => {
+    const strategy = new JwtStrategy(
+      makeConfig(),
+      makeDb({
+        deletedAt: null,
+        walletAddress: 'WalletRotatedIn',
+      }),
     );
     await expect(strategy.validate(payload)).rejects.toBeInstanceOf(
       UnauthorizedException,

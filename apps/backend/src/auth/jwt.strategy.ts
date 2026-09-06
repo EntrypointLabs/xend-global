@@ -4,7 +4,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
-import { users } from '../db/schema';
+import { smartAccounts, users } from '../db/schema';
 import type { Principal } from './principal';
 
 /**
@@ -40,12 +40,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    */
   async validate(payload: JwtPayload): Promise<Principal> {
     const [user] = await this.db.client
-      .select({ deletedAt: users.deletedAt })
+      .select({
+        deletedAt: users.deletedAt,
+        walletAddress: smartAccounts.walletAddress,
+      })
       .from(users)
+      .leftJoin(smartAccounts, eq(smartAccounts.userId, users.id))
       .where(eq(users.id, payload.sub))
       .limit(1);
 
     if (!user || user.deletedAt) {
+      throw new UnauthorizedException();
+    }
+
+    // A passkey replacement retires the old wallet, and every token minted
+    // behind the old passkey names it. Rejecting the mismatch is what ends a
+    // stale or stolen session at the rotation instead of at the token expiry.
+    if (user.walletAddress && user.walletAddress !== payload.walletAddress) {
       throw new UnauthorizedException();
     }
 
