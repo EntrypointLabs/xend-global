@@ -62,7 +62,18 @@ export function usePasskeyLogin() {
       // exchange leaves Privy logged in and Xend logged out.
       if (privyUser) await privyLogout();
 
-      const user = await authenticate();
+      // The provider intermittently answers its first ceremony call with an
+      // empty body, which surfaces as a JSON parse error before any
+      // credential exists. One clean retry absorbs it; a second failure is
+      // reported rather than looped.
+      let user: Awaited<ReturnType<typeof authenticate>>;
+      try {
+        user = await authenticate();
+      } catch (err) {
+        if (!(err instanceof SyntaxError)) throw err;
+        console.log("[passkey] empty ceremony response; retrying once");
+        user = await authenticate();
+      }
       if (!user) {
         setError(noUser);
         return "failed";
