@@ -10,7 +10,7 @@ export const MODAL_BLUR_INTENSITY = 44.2;
 
 type FrostBlurViewProps = Omit<
   BlurViewProps,
-  "experimentalBlurMethod" | "blurTarget"
+  "blurMethod" | "experimentalBlurMethod" | "blurTarget"
 >;
 
 /**
@@ -29,7 +29,7 @@ export const FrostBlurView = forwardRef<
       ref={ref}
       intensity={intensity}
       tint={tint}
-      experimentalBlurMethod="dimezisBlurView"
+      blurMethod="dimezisBlurView"
       blurTarget={blurTargetRef ?? undefined}
       {...props}
     />

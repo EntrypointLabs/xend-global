@@ -201,6 +201,9 @@ const ContainerWrapper = ({
       </View>
     );
   }
+  // No `blurMethod` here on purpose: this BlurView has no blurTarget, so
+  // Android has always fallen back to no blur, and naming the method only
+  // earned a warning on every mount. iOS blurs natively either way.
   return (
     <BlurView
       intensity={10}
@@ -208,7 +211,6 @@ const ContainerWrapper = ({
       className="absolute left-0 right-0 z-[1] flex-row items-center justify-between px-4 pt-2.5"
       // MEASURED-LAYOUT (safe-area inset)
       style={{ bottom }}
-      experimentalBlurMethod="dimezisBlurView"
     >
       {children}
     </BlurView>
