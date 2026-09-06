@@ -278,6 +278,9 @@ describe('AccountController recovery key changes', () => {
     isContactEmailTaken(): Promise<boolean> {
       return Promise.resolve(false);
     }
+    isEmailClaimStaged(): Promise<boolean> {
+      return Promise.resolve(false);
+    }
 
     findReleaseFreeze(): Promise<Date | null> {
       return Promise.resolve(null);

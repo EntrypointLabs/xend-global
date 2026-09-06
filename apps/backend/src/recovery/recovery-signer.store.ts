@@ -56,6 +56,8 @@ export interface RecoverySignerStore {
   updateContactEmail(userId: string, email: string): Promise<void>;
   /** Whether a different Consumer already holds this address on file. */
   isContactEmailTaken(userId: string, email: string): Promise<boolean>;
+  /** Another account holds a not-yet-settled email signer for this address. */
+  isEmailClaimStaged(userId: string, email: string): Promise<boolean>;
 
   findReleaseFreeze(userId: string): Promise<Date | null>;
   setReleaseFreeze(userId: string, frozenAt: Date | null): Promise<void>;
@@ -134,6 +136,22 @@ export class DrizzleRecoverySignerStore implements RecoverySignerStore {
       .where(and(eq(users.email, email), ne(users.id, userId)))
       .limit(1);
     return clash !== undefined;
+  }
+
+  async isEmailClaimStaged(userId: string, email: string): Promise<boolean> {
+    const [claim] = await this.db.client
+      .select({ id: recoverySigners.id })
+      .from(recoverySigners)
+      .where(
+        and(
+          eq(recoverySigners.channel, 'email'),
+          eq(recoverySigners.channelValue, email),
+          eq(recoverySigners.status, 'pending_add'),
+          ne(recoverySigners.userId, userId),
+        ),
+      )
+      .limit(1);
+    return claim !== undefined;
   }
 
   async findReleaseFreeze(userId: string): Promise<Date | null> {

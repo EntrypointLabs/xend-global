@@ -230,6 +230,14 @@ export class RecoveryService {
         'that email is already on another account',
       );
     }
+    // Two rotations racing to the same free address would both stage, both
+    // execute on chain, and the second would hit the unique index at settle
+    // with its change already final. Refused while the first is in flight.
+    if (await this.store.isEmailClaimStaged(userId, next)) {
+      throw new ContactEmailTakenError(
+        'that email is being claimed by another account',
+      );
+    }
   }
 
   /**
@@ -276,6 +284,14 @@ export class RecoveryService {
     if (await this.store.isContactEmailTaken(userId, next)) {
       throw new ContactEmailTakenError(
         'that email is already on another account',
+      );
+    }
+    // Two rotations racing to the same free address would both stage, both
+    // execute on chain, and the second would hit the unique index at settle
+    // with its change already final. Refused while the first is in flight.
+    if (await this.store.isEmailClaimStaged(userId, next)) {
+      throw new ContactEmailTakenError(
+        'that email is being claimed by another account',
       );
     }
 
@@ -628,7 +644,20 @@ export class RecoveryService {
     );
     if (!retiring || !replacement) return null;
 
-    await this.store.updateContactEmail(userId, replacement.channelValue);
+    try {
+      await this.store.updateContactEmail(userId, replacement.channelValue);
+    } catch (err) {
+      // The race the staging check narrows but cannot close: another account
+      // claimed the address after this change was staged. The chain has
+      // already moved, so this keeps failing on every poll; named here so the
+      // stuck rotation is diagnosable rather than a bare constraint error.
+      if ((err as { cause?: { code?: string } })?.cause?.code === '23505') {
+        this.logger.error(
+          `recovery.contact.conflict user=${userId} target=${replacement.channelValue}`,
+        );
+      }
+      throw err;
+    }
     this.logger.log(`recovery.contact.moved user=${userId}`);
     return { retiring, replacement };
   }

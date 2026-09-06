@@ -101,6 +101,10 @@ class FakeStore implements RecoverySignerStore {
       [...this.contacts].some(([id, held]) => id !== userId && held === email),
     );
   }
+  stagedClaims = new Set<string>();
+  isEmailClaimStaged(_userId: string, email: string): Promise<boolean> {
+    return Promise.resolve(this.stagedClaims.has(email));
+  }
 
   findReleaseFreeze(userId: string): Promise<Date | null> {
     return Promise.resolve(this.freezes.get(userId) ?? null);
@@ -461,6 +465,15 @@ describe('RecoveryService', () => {
 
     expect(retiring.id).toBe(second.id);
     expect(store.rows.find((r) => r.id === first.id)?.status).toBe('active');
+  });
+
+  it('refuses a rotation to an address another account is mid-claiming', async () => {
+    store.contacts.set('user-1', 'old@example.com');
+    await service.provisionEmailSigner('user-1', 'old@example.com');
+    store.stagedClaims.add('contested@example.com');
+    await expect(
+      service.stageContactRotation('user-1', 'contested@example.com'),
+    ).rejects.toThrow('being claimed by another account');
   });
 
   it('moves the address on file only when the rotation executes', async () => {
