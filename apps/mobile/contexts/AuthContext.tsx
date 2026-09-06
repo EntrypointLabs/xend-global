@@ -3,8 +3,10 @@ import React, {
   useContext,
   useEffect,
   useCallback,
+  useRef,
   useState,
 } from "react";
+import { ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Sentry from "@sentry/react-native";
@@ -30,6 +32,7 @@ import {
 import { useEnsureSolanaWallet } from "@/hooks/useEnsureSolanaWallet";
 import { SEED_DEMO, SEED_TIER, SEED_USER } from "@/utils/devSeed";
 import { forgetThisDevice } from "@/utils/pushDevice";
+import { showToast } from "@/utils/toast";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -64,6 +67,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
   const [user, setUser] = useState<any | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  // The state above drives render; this guards re-entry, which a second tap
+  // can win before React has re-rendered with the new value.
+  const loggingOutRef = useRef(false);
   const [needsTokenRefresh, setNeedsTokenRefresh] = useState(false);
   const [sessionTier, setSessionTier] = useState<SessionTier | null>(null);
 
@@ -402,6 +408,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    // Signing out revokes a token, deregisters the device and closes the
+    // Privy session before anything on screen changes, so without this the
+    // row reads as dead for the length of two network calls. The toast is
+    // also what tells a second tap it has already been heard.
+    if (loggingOutRef.current) return;
+    loggingOutRef.current = true;
+    showToast(
+      "Signing out…",
+      <ActivityIndicator size="small" color="#000000" />
+    );
     setIsLoggingOut(true);
     try {
       if (sessionTier === "entry") {
@@ -446,6 +462,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthError(errorMessage);
       throw error;
     } finally {
+      loggingOutRef.current = false;
       setIsLoggingOut(false);
     }
   };
