@@ -92,7 +92,9 @@ export const ActivityList = memo(
         maxToRenderPerBatch={10}
         updateCellsBatchingPeriod={16}
         removeClippedSubviews
-        initialNumToRender={20}
+        // A phone shows about nine of these; rendering twenty up front just
+        // made the Activity tab wait on eleven rows nobody had scrolled to.
+        initialNumToRender={10}
       />
     );
   }
