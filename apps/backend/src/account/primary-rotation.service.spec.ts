@@ -215,6 +215,20 @@ describe('PrimaryRotationService.start', () => {
     expect(recorded).toContain('staged');
   });
 
+  it('refuses a second replacement while one is already in flight', async () => {
+    const { service, read } = setUp({
+      row: account({
+        pendingPrimarySigner: Keypair.generate().publicKey.toBase58(),
+        pendingPrimaryProviderId: 'did:privy:earlier',
+        pendingPrimaryChangeIndex: '8',
+      }),
+    });
+    await expect(service.start(USER, 'grant-1', 'token')).rejects.toThrow(
+      'already in flight',
+    );
+    expect(read().pendingPrimaryProviderId).toBe('did:privy:earlier');
+  });
+
   it('refuses to race a device rotation already in flight', async () => {
     const { service } = setUp({
       row: account({ pendingApprovalChangeIndex: '5' }),

@@ -169,6 +169,16 @@ export class PrimaryRotationService {
       return this.planFrom(userId, grantId, true);
     }
 
+    if (account.pendingPrimaryChangeIndex) {
+      // The proposal on chain still carries the earlier passkey. Overwriting
+      // the staged columns here would let that proposal execute and then be
+      // recorded as if it had installed this one, binding a credential the
+      // signer set never accepted.
+      throw new AccountCreationError(
+        'a passkey replacement is already in flight; finish or reject it first',
+      );
+    }
+
     const settings = await this.chain.readSettings(account.settingsAddress);
     const changeIndex = settings.transactionIndex + 1n;
 
