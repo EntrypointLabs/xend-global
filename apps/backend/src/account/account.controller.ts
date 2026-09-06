@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -44,6 +43,7 @@ import {
 import {
   AccountCreationError,
   PasskeyInUseError,
+  DeviceNotAttestedError,
   IncompleteSignerSetError,
 } from './account.errors';
 import { AccountService } from './account.service';
@@ -164,6 +164,18 @@ export class AccountController {
         security: verified.security,
       };
     } catch (err) {
+      // The ordinary first call from a phone holding another account's stale
+      // key. Not an error: the client falls through to a fresh attestation,
+      // and logging it as one buries the failures that are.
+      if (err instanceof DeviceNotAttestedError) {
+        this.logger.log(
+          `account.enrolment_resume_unattested userId=${req.user.userId}`,
+        );
+        throw new HttpException(
+          { code: err.code, message: err.message },
+          HttpStatus.CONFLICT,
+        );
+      }
       // toHttp deliberately flattens everything into "could not create the
       // Account", which is right for the caller and useless for us. By the
       // time enrolment fails here a Turnkey sub-organization already exists,
@@ -794,8 +806,8 @@ export class AccountController {
       hardwarePublicKey,
     );
     if (!enrolled) {
-      throw new BadRequestException(
-        'This device has not been attested; enrol with an attestation first',
+      throw new DeviceNotAttestedError(
+        'this device has no attested key for this account; enrol with an attestation',
       );
     }
     return { hardwarePublicKey, security: enrolled.security };

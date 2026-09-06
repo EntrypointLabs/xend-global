@@ -52,3 +52,16 @@ export class PasskeyInUseError extends Error {
     this.name = 'PasskeyInUseError';
   }
 }
+
+/**
+ * A resume-style enrolment named a hardware key this account never attested.
+ * The ordinary answer on a phone that held a different account; the caller
+ * falls through to a fresh attestation. Mapped to 409 DEVICE_NOT_ATTESTED.
+ */
+export class DeviceNotAttestedError extends Error {
+  readonly code = 'DEVICE_NOT_ATTESTED';
+  constructor(message: string) {
+    super(message);
+    this.name = 'DeviceNotAttestedError';
+  }
+}
