@@ -3,7 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { and, eq, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
-import { paymentAttempts, payments, transfers } from '../db/schema';
+import {
+  paymentAttempts,
+  paymentIntents,
+  payments,
+  transfers,
+} from '../db/schema';
+import { LiveIntentOnSimulatedPathError } from '../capability/capability.errors';
 import { SOLANA_RPC, type SolanaRpc } from '../solana/solana-rpc.interface';
 import { PaymentIntentService } from '../payment/payment-intent.service';
 import { IntentStateConflictError } from '../payment/payment.errors';
@@ -11,16 +17,24 @@ import {
   EVENT_PUBLISHER,
   type EventPublisher,
 } from '../events/event-publisher.interface';
+import { settlementConfirmations } from '../metrics/metrics';
 import { SettlementProvisioningService } from './settlement-provisioning.service';
 import { SettlementRouter } from './settlement-router';
 import type { SettlementCompletion } from './settlement-provider.interface';
 
 type FailureReason = string | { code: string; [key: string]: unknown };
+type IntentRow = typeof paymentIntents.$inferSelect;
+
+/** Every simulated settlement signature starts with this; none can be looked up on any cluster. */
+export const TEST_SIGNATURE_PREFIX = 'test_';
 
 /** The blockhash-expiry window: an attempt older than this is definitively
  *  dead (its pinned blockhash can no longer land), mirroring the activity
  *  reconciler's PENDING_EXPIRY_MS. */
 const BLOCKHASH_EXPIRY_SECONDS = 120;
+/** How long a claimed attempt may sit without a payments row before the
+ *  sweep assumes the claiming process died and finishes the job. */
+const CLAIM_RESUME_AFTER_SECONDS = 60;
 const REAP_BATCH = 256;
 
 const sleep = (ms: number): Promise<void> =>
@@ -73,18 +87,20 @@ export class SettlementConfirmationService implements OnModuleInit {
     const deadline = Date.now() + this.budgetMs;
     while (Date.now() < deadline) {
       const [status] = await this.solana.getSignatureStatuses([signature]);
-      if (
-        status?.confirmationStatus === 'confirmed' ||
-        status?.confirmationStatus === 'finalized'
-      ) {
-        await this.finalizeSucceeded(intentId, signature);
-        return;
-      }
+      // A transaction that landed with an error is confirmed too, so the
+      // error is the verdict and must be read before the confirmation level.
       if (status?.err) {
         await this.finalizeFailed(intentId, signature, {
           code: 'CHAIN_ERROR',
           err: status.err,
         });
+        return;
+      }
+      if (
+        status?.confirmationStatus === 'confirmed' ||
+        status?.confirmationStatus === 'finalized'
+      ) {
+        await this.finalizeSucceeded(intentId, signature);
         return;
       }
       await sleep(this.pollIntervalMs);
@@ -112,7 +128,19 @@ export class SettlementConfirmationService implements OnModuleInit {
     if (claimed.length === 0) {
       return;
     }
+    await this.completeClaimedSettlement(intentId, signature);
+  }
 
+  /**
+   * Everything after the claim: provider completion, the payments row, the
+   * Activity linkage, and the intent transition. Separated from the claim so
+   * the sweep can rerun it for an attempt that was claimed and then lost its
+   * process before the payments row was written.
+   */
+  private async completeClaimedSettlement(
+    intentId: string,
+    signature: string,
+  ): Promise<void> {
     // (b) resolve the intent + its endpoint provider/address.
     const intent = await this.intents.findById(intentId);
     const consumerId = intent.consumerId;
@@ -204,32 +232,63 @@ export class SettlementConfirmationService implements OnModuleInit {
   }
 
   /**
-   * TEST ONLY — never production. Dev short-circuit for local checkout: with no
-   * funded relayer/settlement authority on devnet, a real settlement tx never
-   * confirms and /checkout/authorize would time out (PAYMENT_PROCESSING). This
-   * drives the authorized intent straight to a terminal SUCCEEDED with a fake
-   * signature and no on-chain activity, retiring the live attempt, writing the
-   * payments row, and publishing the SAME payment.succeeded event a real
-   * confirmation would (via the single finalizeIntentSucceeded publish site).
-   * Hard-gated on NODE_ENV==='development'.
+   * Sandbox settlement for a test-mode intent, in every environment. Nothing
+   * is built, signed, broadcast or confirmed and no provider is called; the
+   * authorized attempt is retired under a `test_` signature, the payments row
+   * is written and the same payment.succeeded event a real confirmation
+   * publishes goes out, so webhooks and reads behave as they will live. A
+   * live intent is refused before anything is written.
+   */
+  async settleTestMode(intentId: string): Promise<void> {
+    const intent = await this.intents.findById(intentId);
+    if (intent.mode !== 'test') {
+      throw new LiveIntentOnSimulatedPathError(
+        `intent ${intentId} is live and cannot settle through the simulated path`,
+      );
+    }
+    await this.simulateSettlement(
+      intent,
+      `${TEST_SIGNATURE_PREFIX}${intentId}`,
+    );
+    this.logger.log(
+      `settlement.confirm intent_id=${intentId} outcome=succeeded simulated=true`,
+    );
+  }
+
+  /**
+   * TEST ONLY, never production. Dev short-circuit for a LIVE-mode intent in
+   * local checkout: with no funded settlement authority on devnet, a real
+   * settlement tx never confirms and /checkout/authorize would time out
+   * (PAYMENT_PROCESSING). Test-mode intents never need this; they take
+   * {@link settleTestMode}. Hard-gated on NODE_ENV==='development'.
    */
   async devForceSettleSucceeded(intentId: string): Promise<void> {
     if (this.config.get<string>('NODE_ENV') !== 'development') {
       throw new Error('devForceSettleSucceeded is dev-only');
     }
     const intent = await this.intents.findById(intentId);
+    await this.simulateSettlement(intent, `devtest_sig_${intentId}`);
+    this.logger.log(
+      `settlement.confirm intent_id=${intentId} outcome=succeeded (DEV force short-circuit)`,
+    );
+  }
+
+  private async simulateSettlement(
+    intent: IntentRow,
+    signature: string,
+  ): Promise<void> {
+    const intentId = intent.id;
     const consumerId = intent.consumerId;
     if (!consumerId) {
       throw new Error(`intent ${intentId} has no consumer`);
     }
-    const fakeSignature = `devtest_sig_${intentId}`;
 
-    // Retire the live authorized attempt with the fake signature so the
+    // Retire the live authorized attempt under the synthetic signature so the
     // settlement reaper never touches it (there is no on-chain tx to confirm).
     await this.db.client
       .update(paymentAttempts)
       .set({
-        txSignature: fakeSignature,
+        txSignature: signature,
         status: 'succeeded',
         updatedAt: new Date(),
       })
@@ -254,7 +313,7 @@ export class SettlementConfirmationService implements OnModuleInit {
         usdcSettlementRaw: intent.usdcSettlementRaw,
         displayCurrency: intent.displayCurrency,
         displayAmountMinor: intent.displayAmountMinor,
-        txSignature: fakeSignature,
+        txSignature: signature,
         settledAt: new Date(),
       })
       .onConflictDoNothing({ target: payments.intentId });
@@ -273,11 +332,8 @@ export class SettlementConfirmationService implements OnModuleInit {
         intent.displayCurrency === 'NGN'
           ? intent.displayAmountMinor
           : undefined,
-      providerTxRef: fakeSignature,
+      providerTxRef: signature,
     });
-    this.logger.log(
-      `settlement.confirm intent_id=${intentId} outcome=succeeded (DEV force short-circuit)`,
-    );
   }
 
   /** Idempotent failure finalize (rowCount-guarded, publishes payment.failed). */
@@ -311,6 +367,12 @@ export class SettlementConfirmationService implements OnModuleInit {
       if (err instanceof IntentStateConflictError) return;
       throw err;
     }
+    settlementConfirmations.inc({
+      outcome:
+        typeof reason !== 'string' && reason.code === 'BLOCKHASH_EXPIRED'
+          ? 'timed_out'
+          : 'failed',
+    });
     await this.events.publish({
       topic: 'payment.failed',
       key: intentId,
@@ -346,7 +408,46 @@ export class SettlementConfirmationService implements OnModuleInit {
   @Cron(CronExpression.EVERY_30_SECONDS)
   async reconcileSettling(): Promise<void> {
     await this.sweepSettlingLeg();
+    await this.resumeClaimedSettlements();
     await this.reapAuthorized();
+  }
+
+  /**
+   * Claim-first finalize means a crash between the attempt claim and the
+   * payments insert leaves the attempt succeeded, the intent settling, and no
+   * payments row: nothing else would ever touch it again. Rerun the
+   * post-claim steps for those. A deferred naira Payment has its payments row
+   * and is deliberately left in settling for the off-ramp signal.
+   */
+  private async resumeClaimedSettlements(): Promise<void> {
+    const rows = (await this.db.client.execute(sql`
+      SELECT pa.tx_signature AS "txSignature", pa.intent_id AS "intentId"
+      FROM payment_attempts pa
+      JOIN payment_intents pi ON pi.id = pa.intent_id
+      LEFT JOIN payments p ON p.intent_id = pa.intent_id
+      WHERE pa.status = 'succeeded'
+        AND pi.status IN ('settling')
+        AND p.id IS NULL
+        AND pa.tx_signature IS NOT NULL
+        AND pa.updated_at < (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${CLAIM_RESUME_AFTER_SECONDS}`)} seconds'
+      ORDER BY pa.updated_at ASC
+      LIMIT ${sql.raw(`${REAP_BATCH}`)}
+    `)) as unknown as {
+      rows: { txSignature: string; intentId: string }[];
+    };
+    for (const row of rows.rows) {
+      this.logger.warn(
+        `settlement.confirm.resume intent_id=${row.intentId} signature=${row.txSignature}`,
+      );
+      try {
+        await this.completeClaimedSettlement(row.intentId, row.txSignature);
+      } catch (err) {
+        this.logger.error(
+          `settlement.confirm.resume_failed intent_id=${row.intentId}`,
+          err,
+        );
+      }
+    }
   }
 
   private async sweepSettlingLeg(): Promise<void> {
@@ -367,16 +468,16 @@ export class SettlementConfirmationService implements OnModuleInit {
       const [status] = await this.solana.getSignatureStatuses([
         row.txSignature,
       ]);
-      if (
-        status?.confirmationStatus === 'confirmed' ||
-        status?.confirmationStatus === 'finalized'
-      ) {
-        await this.finalizeSucceeded(row.intentId, row.txSignature);
-      } else if (status?.err) {
+      if (status?.err) {
         await this.finalizeFailed(row.intentId, row.txSignature, {
           code: 'CHAIN_ERROR',
           err: status.err,
         });
+      } else if (
+        status?.confirmationStatus === 'confirmed' ||
+        status?.confirmationStatus === 'finalized'
+      ) {
+        await this.finalizeSucceeded(row.intentId, row.txSignature);
       } else if (row.expired) {
         await this.finalizeFailed(row.intentId, row.txSignature, {
           code: 'BLOCKHASH_EXPIRED',
@@ -454,6 +555,7 @@ export class SettlementConfirmationService implements OnModuleInit {
             'failed',
             {},
           );
+          settlementConfirmations.inc({ outcome: 'timed_out' });
           await this.events.publish({
             topic: 'payment.failed',
             key: row.intentId,
@@ -518,6 +620,7 @@ export class SettlementConfirmationService implements OnModuleInit {
       if (err instanceof IntentStateConflictError) return;
       throw err;
     }
+    settlementConfirmations.inc({ outcome: 'succeeded' });
     await this.events.publish({
       topic: 'payment.succeeded',
       key: intentId,

@@ -79,6 +79,7 @@ function makeDb(cfg: {
 
 function makeExecDb(cfg: {
   settling?: unknown[];
+  claimedWithoutPayment?: unknown[];
   authorized?: unknown[];
   orphanHit?: boolean;
   reapRowCount?: number;
@@ -92,6 +93,9 @@ function makeExecDb(cfg: {
     }
     if (str.includes('FROM transfers')) {
       return Promise.resolve({ rows: cfg.orphanHit ? [{ n: 1 }] : [] });
+    }
+    if (str.includes("pa.status = 'succeeded'")) {
+      return Promise.resolve({ rows: cfg.claimedWithoutPayment ?? [] });
     }
     if (str.includes("status = 'settling'")) {
       return Promise.resolve({ rows: cfg.settling ?? [] });
@@ -219,6 +223,41 @@ describe('SettlementConfirmationService', () => {
 
       await service.awaitConfirmation('pi_1', 'sig-1');
       expect(spy).toHaveBeenCalledWith('pi_1', 'sig-1');
+    });
+
+    it('finalizes as failed when a confirmed status carries a transaction error', async () => {
+      const { provider } = makeProvider({ status: 'complete' });
+      const { intents } = makeIntents();
+      const { publisher } = makePublisher();
+      const service = makeService({
+        db: makeDb({}),
+        solana: makeSolana([
+          {
+            signature: 'sig-1',
+            slot: 1n,
+            confirmationStatus: 'confirmed',
+            err: { InstructionError: [0, 'Custom'] },
+          },
+        ]),
+        intents,
+        provider,
+        publisher,
+        budgetMs: 5000,
+      });
+      const succeeded = jest
+        .spyOn(service, 'finalizeSucceeded')
+        .mockResolvedValue(undefined);
+      const failed = jest
+        .spyOn(service, 'finalizeFailed')
+        .mockResolvedValue(undefined);
+
+      await service.awaitConfirmation('pi_1', 'sig-1');
+
+      expect(succeeded).not.toHaveBeenCalled();
+      expect(failed).toHaveBeenCalledWith('pi_1', 'sig-1', {
+        code: 'CHAIN_ERROR',
+        err: { InstructionError: [0, 'Custom'] },
+      });
     });
 
     it('does not force-fail on budget exhaustion (statuses stay null)', async () => {
@@ -410,6 +449,82 @@ describe('SettlementConfirmationService', () => {
       });
     });
 
+    it('settling leg fails a confirmed attempt whose transaction errored instead of succeeding it', async () => {
+      const { provider } = makeProvider({ status: 'complete' });
+      const { intents } = makeIntents();
+      const { publisher } = makePublisher();
+      const service = makeService({
+        db: makeExecDb({
+          settling: [
+            { txSignature: 'sig-x', intentId: 'pi_1', expired: false },
+          ],
+        }),
+        solana: makeSolana([
+          {
+            signature: 'sig-x',
+            slot: 5n,
+            confirmationStatus: 'finalized',
+            err: { InsufficientFundsForFee: {} },
+          },
+        ]),
+        intents,
+        provider,
+        publisher,
+      });
+      const succeeded = jest
+        .spyOn(service, 'finalizeSucceeded')
+        .mockResolvedValue(undefined);
+      const failed = jest
+        .spyOn(service, 'finalizeFailed')
+        .mockResolvedValue(undefined);
+
+      await service.reconcileSettling();
+
+      expect(succeeded).not.toHaveBeenCalled();
+      expect(failed).toHaveBeenCalledWith('pi_1', 'sig-x', {
+        code: 'CHAIN_ERROR',
+        err: { InsufficientFundsForFee: {} },
+      });
+    });
+
+    it('finishes a claimed attempt that lost its process before the payments row was written', async () => {
+      const { provider, handleIncomingSettlement } = makeProvider({
+        status: 'complete',
+      });
+      const { intents, transition } = makeIntents();
+      const { publisher, events } = makePublisher();
+      const execDb = makeExecDb({
+        claimedWithoutPayment: [{ txSignature: 'sig-c', intentId: 'pi_1' }],
+      });
+      // The resume path writes through the query builder, so graft the
+      // builder fake onto the execute fake.
+      const builderDb = makeDb({ payment: PAYMENT_ROW });
+      const db = {
+        client: {
+          ...builderDb.client,
+          execute: (...args: unknown[]) =>
+            (execDb.client.execute as (...a: unknown[]) => unknown)(...args),
+        },
+      } as unknown as DbService;
+      const service = makeService({
+        db,
+        intents,
+        provider,
+        publisher,
+      });
+
+      await service.reconcileSettling();
+
+      expect(handleIncomingSettlement).toHaveBeenCalledTimes(1);
+      expect(transition).toHaveBeenCalledWith(
+        'pi_1',
+        'settling',
+        'succeeded',
+        {},
+      );
+      expect(events.map((e) => e.topic)).toEqual(['payment.succeeded']);
+    });
+
     it('reaper fails an aged authorized attempt (ATTEMPT_ABANDONED) and frees + notifies the parent intent', async () => {
       const { provider } = makeProvider({ status: 'complete' });
       const { intents, transition } = makeIntents();
@@ -508,5 +623,128 @@ describe('SettlementConfirmationService', () => {
       expect(transition).not.toHaveBeenCalled();
       expect(publish).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('SettlementConfirmationService.settleTestMode', () => {
+  function intent(mode: 'test' | 'live') {
+    return {
+      id: 'pi_t',
+      mode,
+      merchantId: 'm_1',
+      consumerId: 'u_1',
+      usdcSettlementRaw: '1000000',
+      displayCurrency: 'NGN',
+      displayAmountMinor: '1600000',
+    };
+  }
+
+  function makeSandboxDb() {
+    const attemptUpdates: Record<string, unknown>[] = [];
+    const paymentInserts: Record<string, unknown>[] = [];
+    const client = {
+      update: (tbl: unknown) => ({
+        set: (v: Record<string, unknown>) => ({
+          where: () => {
+            if (tbl === paymentAttempts) attemptUpdates.push(v);
+            return Promise.resolve([]);
+          },
+        }),
+      }),
+      insert: () => ({
+        values: (v: Record<string, unknown>) => {
+          paymentInserts.push(v);
+          return { onConflictDoNothing: () => Promise.resolve(undefined) };
+        },
+      }),
+      select: () => ({
+        from: (tbl: unknown) => ({
+          where: () => ({
+            limit: () =>
+              Promise.resolve(
+                tbl === payments && paymentInserts.length > 0
+                  ? [{ ...PAYMENT_ROW, ...paymentInserts[0], id: 'pay_t' }]
+                  : [],
+              ),
+          }),
+        }),
+      }),
+    };
+    return {
+      db: { client } as unknown as DbService,
+      attemptUpdates,
+      paymentInserts,
+    };
+  }
+
+  it('settles a test-mode intent with a test_ signature, no chain and no provider, and publishes payment.succeeded', async () => {
+    const { provider, handleIncomingSettlement } = makeProvider({
+      status: 'complete',
+    });
+    const findById = jest.fn().mockResolvedValue(intent('test'));
+    const transition = jest.fn().mockResolvedValue({});
+    const { publisher, events } = makePublisher();
+    const { db, attemptUpdates, paymentInserts } = makeSandboxDb();
+    // Held as the mock rather than read back off the typed client, so the
+    // assertion below names a function instead of an unbound method.
+    const statusReads = jest.fn().mockResolvedValue([]);
+    const solana = {
+      getSignatureStatuses: statusReads,
+    } as unknown as SolanaRpc;
+    const service = makeService({
+      db,
+      solana,
+      intents: { findById, transition } as unknown as PaymentIntentService,
+      provider,
+      publisher,
+    });
+
+    await service.settleTestMode('pi_t');
+
+    expect(attemptUpdates[0]).toMatchObject({
+      status: 'succeeded',
+      txSignature: 'test_pi_t',
+    });
+    expect(paymentInserts[0]).toMatchObject({
+      intentId: 'pi_t',
+      txSignature: 'test_pi_t',
+    });
+    expect(
+      (transition.mock.calls as unknown[][]).map((c) => [c[1], c[2]]),
+    ).toEqual([
+      ['authorized', 'settling'],
+      ['settling', 'succeeded'],
+    ]);
+    expect(handleIncomingSettlement).not.toHaveBeenCalled();
+    expect(statusReads).not.toHaveBeenCalled();
+    expect(events).toHaveLength(1);
+    expect(events[0].topic).toBe('payment.succeeded');
+    expect(events[0].payload).toMatchObject({
+      intentId: 'pi_t',
+      ngnSettledMinor: '1600000',
+      providerTxRef: 'test_pi_t',
+    });
+  });
+
+  it('refuses a live intent without writing anything', async () => {
+    const { provider } = makeProvider({ status: 'complete' });
+    const findById = jest.fn().mockResolvedValue(intent('live'));
+    const transition = jest.fn();
+    const { publisher, events } = makePublisher();
+    const { db, attemptUpdates, paymentInserts } = makeSandboxDb();
+    const service = makeService({
+      db,
+      intents: { findById, transition } as unknown as PaymentIntentService,
+      provider,
+      publisher,
+    });
+
+    await expect(service.settleTestMode('pi_t')).rejects.toMatchObject({
+      code: 'LIVE_INTENT_ON_SIMULATED_PATH',
+    });
+    expect(attemptUpdates).toEqual([]);
+    expect(paymentInserts).toEqual([]);
+    expect(transition).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
   });
 });
