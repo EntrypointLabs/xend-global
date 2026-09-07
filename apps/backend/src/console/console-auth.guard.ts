@@ -2,11 +2,21 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
+  Logger,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { AdminAuditService } from './admin-audit.service';
+
+/** Request augmented with the authenticated console operator. */
+export type ConsoleRequest = Request & { consoleUser?: string };
+
+export function consoleActor(req: Request): string {
+  return (req as ConsoleRequest).consoleUser ?? 'unknown';
+}
 
 /**
  * HTTP Basic Auth for the internal ops console (ADR 0022) — the backend's
@@ -23,7 +33,12 @@ import { createHash, timingSafeEqual } from 'node:crypto';
  */
 @Injectable()
 export class ConsoleAuthGuard implements CanActivate {
-  constructor(private readonly config: ConfigService) {}
+  private readonly logger = new Logger(ConsoleAuthGuard.name);
+
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly audit?: AdminAuditService,
+  ) {}
 
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<Request>();
@@ -53,9 +68,24 @@ export class ConsoleAuthGuard implements CanActivate {
       this.matches(suppliedUser, expectedUser) &&
       this.matches(suppliedPassword, expectedPassword)
     ) {
+      (req as ConsoleRequest).consoleUser = suppliedUser;
       return true;
     }
+    this.recordFailure(req);
     throw this.challenge(res);
+  }
+
+  /**
+   * A wrong password is the event worth keeping, not a missing header: the
+   * browser's first unauthenticated request precedes every prompt. Recorded
+   * off the request path so a slow audit write never delays the challenge.
+   */
+  private recordFailure(req: Request): void {
+    void this.audit
+      ?.authFailed('console', req.ip ?? 'unknown')
+      .catch((err: Error) => {
+        this.logger.error(`console.auth.audit_failed message=${err.message}`);
+      });
   }
 
   /** Constant-time compare over equal-length SHA-256 digests. */

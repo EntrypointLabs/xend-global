@@ -17,6 +17,40 @@ jobs:
       - run: npm ci
       - run: npx turbo run lint check-types test
 
+  migrate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: xend_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d xend_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply every migration to a fresh database
+        working-directory: apps/backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/xend_ci
+        run: npx drizzle-kit migrate
+      - name: Migrations are idempotent on a second run
+        working-directory: apps/backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/xend_ci
+        run: npx drizzle-kit migrate
+
   sdk:
     runs-on: ubuntu-latest
     steps:

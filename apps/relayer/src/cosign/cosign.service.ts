@@ -54,11 +54,16 @@ export class CosignService {
       return { signature: replayed, status: "BROADCAST", correlationId };
     }
 
+    // The slot is held from the cap check until the relayer signs. A failure
+    // before that point produced nothing on chain, so the slot goes back;
+    // after it the transaction may already be out, and the slot stays taken.
+    let holdingSlot = false;
     try {
       this.caps.checkAndReserve({
         consumerId: req.consumerId,
         merchantId: req.merchantId,
       });
+      holdingSlot = true;
 
       const validated = validateSettlementTransaction(
         req.transactionBase64,
@@ -86,6 +91,7 @@ export class CosignService {
       }
 
       // Fee payer partial-signs LAST, then broadcast.
+      holdingSlot = false;
       const signed = await this.signer.signTransaction(req.transactionBase64);
       let signature: string;
       try {
@@ -107,6 +113,12 @@ export class CosignService {
       });
       return { signature, status: "BROADCAST", correlationId };
     } catch (err) {
+      if (holdingSlot) {
+        this.caps.release({
+          consumerId: req.consumerId,
+          merchantId: req.merchantId,
+        });
+      }
       const code =
         err && typeof err === "object" && "code" in err
           ? String((err as { code: unknown }).code)
@@ -121,7 +133,7 @@ export class CosignService {
 
   private remember(intentId: string, signature: string): void {
     if (this.replayGuard.size >= REPLAY_GUARD_MAX) {
-      const oldest = this.replayGuard.keys().next().value;
+      const [oldest] = this.replayGuard.keys();
       if (oldest !== undefined) this.replayGuard.delete(oldest);
     }
     this.replayGuard.set(intentId, signature);
