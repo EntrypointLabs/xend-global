@@ -1,52 +1,30 @@
 import { renderButton, type ButtonHandle } from "./button";
 import { detectEnvironment } from "./environment";
 import { listenForResult, type ListenHandle } from "./message-listener";
-import { openModal, type CheckoutSummary } from "./modal";
+import { openModal, type CheckoutSummary, type ModalHandle } from "./modal";
 import {
   buildCheckoutUrl,
   generateNonce,
   navigatePopup,
   openCheckoutWindow,
+  openerOrigin,
   redirectTo,
 } from "./popup";
 import type {
+  ButtonTheme,
+  CheckoutPresentation,
   CheckoutResult,
   CheckoutStatus,
   CheckoutUnresolved,
   XendButtonConfig,
 } from "./types";
 
-async function fetchSummary(
-  apiBase: string,
-  reference: string,
-): Promise<CheckoutSummary> {
-  const res = await fetch(
-    `${apiBase}/checkout/intents/${encodeURIComponent(reference)}`,
-    { credentials: "include" },
-  );
-  if (!res.ok) throw new Error(`summary ${res.status}`);
-  return (await res.json()) as CheckoutSummary;
-}
-
-async function authorizeIntent(
-  apiBase: string,
-  reference: string,
-): Promise<{ status: CheckoutStatus }> {
-  const res = await fetch(`${apiBase}/checkout/authorize`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ reference }),
-  });
-  const body = (await res.json().catch(() => ({}))) as {
-    status?: CheckoutStatus;
-  };
-  return { status: body.status === "succeeded" ? "succeeded" : "failed" };
-}
-
 export type {
+  ButtonTheme,
+  CheckoutPresentation,
   CheckoutResult,
   CheckoutStatus,
+  CheckoutSummary,
   CheckoutUnresolved,
   XendButtonConfig,
 };
@@ -86,12 +64,46 @@ function assertHttpsOrigin(origin: string): void {
   }
 }
 
+/** Script-tag callers are untyped, so an unrecognised value opens the popup. */
+function resolvePresentation(value: unknown): CheckoutPresentation {
+  if (value === undefined || value === null) return "modal";
+  if (value === "modal" || value === "popup" || value === "redirect") {
+    return value;
+  }
+  return "popup";
+}
+
 /**
- * Mount the Pay with Xend button. The click handler generates a nonce and
- * opens the popup SYNCHRONOUSLY (intent-less URL) before any awaited work,
- * so iOS Safari does not block it; the intent is created afterward and the
- * popup is navigated to the full URL. In a webview / Opera Mini / when the
- * popup is blocked, the flow falls back to a full-page redirect.
+ * The sheet reads the intent summary anonymously. The checkout session cookie
+ * is host-only on the API origin and never travels from a merchant page, so
+ * asking for credentials would buy nothing and fail every preflight.
+ */
+async function fetchSummary(
+  apiBase: string,
+  reference: string,
+  opener?: string,
+): Promise<CheckoutSummary> {
+  const url = new URL(
+    `checkout/intents/${encodeURIComponent(reference)}`,
+    apiBase.endsWith("/") ? apiBase : `${apiBase}/`,
+  );
+  if (opener) url.searchParams.set("opener", opener);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`summary ${res.status}`);
+  return (await res.json()) as CheckoutSummary;
+}
+
+/**
+ * Mount the Pay with Xend button.
+ *
+ * The default "modal" presentation draws the glass sheet on the merchant page
+ * and opens the hosted checkout underneath it when the shopper taps Pay: the
+ * sheet is the interface, the window is the ceremony, and the passkey never
+ * leaves Xend's origin. "popup" skips the sheet and opens that window straight
+ * from the button. Either way the window is opened SYNCHRONOUSLY in the click
+ * handler with the intent-less URL, before any awaited work, so iOS Safari does
+ * not block it. In a webview / Opera Mini / when the popup is blocked, the flow
+ * falls back to a full-page redirect.
  */
 export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
   const {
@@ -101,33 +113,58 @@ export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
     onResult,
     onUnresolved,
     onReady,
-    presentation = "modal",
     apiBase,
     theme = "auto",
-    devSimulateAuthorize = false,
   } = config;
   assertHttpsOrigin(checkoutOrigin);
-
-  // Modal (in-page glass sheet) is the default, but it needs an apiBase to
-  // fetch the summary and a browser where the ceremony can run. Webviews /
-  // Opera Mini / no-WebAuthn fall back to the redirect flow.
-  const useModal =
+  const presentation = resolvePresentation(config.presentation);
+  if (config.presentation === "modal" && !apiBase) {
+    console.warn(
+      '[xend-checkout] presentation "modal" needs an apiBase to read the intent summary; opening the popup instead.',
+    );
+  }
+  const useSheet =
     presentation === "modal" && !!apiBase && detectEnvironment().canPopup;
 
   const doc = mount.ownerDocument;
+  const view = doc.defaultView;
   const preconnect = doc.createElement("link");
   preconnect.rel = "preconnect";
   preconnect.href = checkoutOrigin;
   doc.head.appendChild(preconnect);
 
   let listener: ListenHandle | undefined;
+  let sheet: ModalHandle | undefined;
+
+  const goRedirect = (
+    reference: string,
+    nonce: string,
+    opener: string | undefined,
+    reason: CheckoutUnresolved["reason"],
+  ): void => {
+    onUnresolved?.({ reference, status: "unresolved", reason });
+    redirectTo(
+      buildCheckoutUrl(checkoutOrigin, {
+        reference,
+        nonce,
+        mode: "redirect",
+        opener,
+      }),
+    );
+  };
 
   const handleClick = (): void => {
     // Synchronous, in exact order: nonce, then window.open, BEFORE any await.
     const nonce = generateNonce();
-    const env = detectEnvironment();
-    const win = env.canPopup ? openCheckoutWindow(checkoutOrigin, nonce) : null;
-    const usePopup = env.canPopup && win !== null;
+    const opener = openerOrigin();
+    // "modal" lands here when the sheet could not be used (no apiBase, or a
+    // webview); only an explicit "redirect" skips the popup outright.
+    const wantPopup =
+      presentation !== "redirect" && detectEnvironment().canPopup;
+    const win = wantPopup
+      ? openCheckoutWindow(checkoutOrigin, nonce, opener)
+      : null;
+    const usePopup = wantPopup && win !== null;
 
     button.setState("processing");
 
@@ -140,6 +177,7 @@ export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
               reference,
               nonce,
               mode: "popup",
+              opener,
             }),
           );
           listener = listenForResult({
@@ -159,18 +197,14 @@ export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
           return;
         }
 
-        // Redirect fallback: blocked popup or an environment where a popup
-        // is unsafe (webview / Opera Mini). The signed return URL rides on
-        // the intent (Phase 6); the SDK only navigates.
-        const reason: CheckoutUnresolved["reason"] =
-          env.canPopup && win === null ? "popup_blocked" : "redirected";
-        onUnresolved?.({ reference, status: "unresolved", reason });
-        redirectTo(
-          buildCheckoutUrl(checkoutOrigin, {
-            reference,
-            nonce,
-            mode: "redirect",
-          }),
+        // Redirect: asked for, or forced by a blocked popup or an environment
+        // where a popup is unsafe (webview / Opera Mini). The signed return
+        // URL rides on the intent (Phase 6); the SDK only navigates.
+        goRedirect(
+          reference,
+          nonce,
+          opener,
+          wantPopup && win === null ? "popup_blocked" : "redirected",
         );
       })
       .catch(() => {
@@ -179,61 +213,119 @@ export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
       });
   };
 
-  const handleModalClick = (): void => {
+  const handleSheetClick = (): void => {
     let reference = "";
-    let resolved = false;
-    const modal = openModal({
-      doc: mount.ownerDocument,
-      theme,
-      onConfirm: () => doConfirm(),
-      onCancel: () => doCancel(),
-    });
-    const finish = (status: CheckoutStatus): void => {
-      resolved = true;
-      modal.showResult(status);
+    let settled = false;
+    let popup: Window | null = null;
+
+    function dropListener(): void {
+      listener?.teardown();
+      listener = undefined;
+    }
+
+    function finish(status: CheckoutStatus): void {
+      settled = true;
+      dropListener();
+      button.setState("ready");
+      sheet?.showResult(status);
       onResult({ reference, status });
-      if (status === "succeeded") {
-        mount.ownerDocument.defaultView?.setTimeout(() => modal.close(), 1600);
+      if (status === "succeeded") view?.setTimeout(() => sheet?.close(), 1600);
+    }
+
+    function handleCancel(): void {
+      dropListener();
+      sheet?.close();
+      button.setState("ready");
+      if (popup && !popup.closed) popup.close();
+      // A terminal result was already reported; dismissing the sheet afterwards
+      // must not report a second, contradictory onResult.
+      if (settled) return;
+      settled = true;
+      onResult({ reference, status: "canceled" });
+    }
+
+    function handleConfirm(): void {
+      // Still inside the shopper's click: nonce, then window.open, no await.
+      const nonce = generateNonce();
+      const opener = openerOrigin();
+      const canPopup = detectEnvironment().canPopup;
+      popup = canPopup
+        ? openCheckoutWindow(checkoutOrigin, nonce, opener)
+        : null;
+      if (!popup) {
+        settled = true;
+        sheet?.close();
+        goRedirect(
+          reference,
+          nonce,
+          opener,
+          canPopup ? "popup_blocked" : "redirected",
+        );
+        return;
       }
-    };
-    const doConfirm = (): void => {
-      modal.showAuthorizing();
-      (devSimulateAuthorize
-        ? Promise.resolve({ status: "succeeded" as CheckoutStatus })
-        : authorizeIntent(apiBase as string, reference)
-      )
-        .then(({ status }) => finish(status))
-        .catch(() => modal.showError("We couldn't complete the payment."));
-    };
-    const doCancel = (): void => {
-      modal.close();
-      // A terminal result (succeeded/failed/expired) was already reported via
-      // finish(); dismissing afterwards (scrim click, "Close" button) must not
-      // report a second, contradictory onResult.
-      if (!resolved) onResult({ reference, status: "canceled" });
-    };
-    modal.showLoading();
+      navigatePopup(
+        popup,
+        buildCheckoutUrl(checkoutOrigin, {
+          reference,
+          nonce,
+          mode: "popup",
+          opener,
+        }),
+      );
+      sheet?.showWaiting();
+      listener = listenForResult({
+        checkoutOrigin,
+        reference,
+        nonce,
+        popup,
+        onResult: (result) => finish(result.status),
+        onUnresolved: (u) => {
+          settled = true;
+          dropListener();
+          sheet?.close();
+          button.setState("ready");
+          onUnresolved?.(u);
+        },
+      });
+    }
+
+    sheet = openModal({
+      doc,
+      theme,
+      onConfirm: handleConfirm,
+      onCancel: handleCancel,
+    });
+    sheet.showLoading();
     button.setState("processing");
+
+    const opener = openerOrigin();
     createIntent()
       .then(async ({ reference: r }) => {
         reference = r;
-        modal.showConfirm(await fetchSummary(apiBase as string, reference));
+        const summary = await fetchSummary(apiBase as string, r, opener);
+        if (summary.expiresAt && Date.parse(summary.expiresAt) <= Date.now()) {
+          finish("expired");
+          return;
+        }
+        sheet?.showConfirm(summary);
         button.setState("ready");
       })
       .catch(() => {
-        modal.showError("We couldn't start the payment.");
+        sheet?.showError("We couldn't start the payment.");
         button.setState("ready");
       });
   };
 
   const button: ButtonHandle = renderButton(mount, {
-    onClick: useModal ? handleModalClick : handleClick,
+    onClick: useSheet ? handleSheetClick : handleClick,
     onReady,
+    theme,
   });
 
   return {
     unmount: () => {
       listener?.teardown();
+      sheet?.close();
       button.destroy();
       preconnect.remove();
     },

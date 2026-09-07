@@ -1,4 +1,7 @@
+import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 import type { DbService } from '../db/db.service';
 import {
   paymentIntents,
@@ -37,6 +40,8 @@ function intentRow(over: Partial<IntentRow> = {}): IntentRow {
     expiresAt: new Date('2026-01-01'),
     authorizedAt: null,
     approvalDeferredAt: null,
+    metadata: null,
+    openerOrigin: null,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     ...over,
@@ -82,6 +87,7 @@ function endpointRow(over: Partial<EndpointRow> = {}): EndpointRow {
     url: 'https://merchant.example.com/hook',
     secretPrimary: 'whsec_p',
     secretSecondary: null,
+    secondaryExpiresAt: null,
     enabled: true,
     eventTypes: null,
     mode: 'test',
@@ -215,7 +221,7 @@ describe('WebhookDispatcherService.handle', () => {
     expect(delivery.createDelivery).not.toHaveBeenCalled();
   });
 
-  it('throws when a succeeded event has no committed payments row (Kafka redelivers)', async () => {
+  it('logs and skips a succeeded event with no payments row instead of stalling the partition', async () => {
     const db = makeDb({
       intent: intentRow(),
       payment: null,
@@ -224,7 +230,15 @@ describe('WebhookDispatcherService.handle', () => {
     });
     const delivery = makeDelivery({ id: 'wd1' });
     const svc = new WebhookDispatcherService(consumer, db, delivery, config);
-    await expect(svc.handle(event())).rejects.toThrow(/not yet committed/);
+    const errorSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    await expect(svc.handle(event())).resolves.toBeUndefined();
+    expect(delivery.createDelivery).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('payment_absent'),
+    );
+    errorSpy.mockRestore();
   });
 
   it('materializes a failed event without a payments row (failure writes none)', async () => {
@@ -253,5 +267,62 @@ describe('WebhookDispatcherService.handle', () => {
     await svc.handle(event({ topic: 'payment.expired' }));
     expect(delivery.createDelivery).toHaveBeenCalledTimes(1);
     expect(delivery.attempt).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('WebhookDispatcherService.handle (test mode)', () => {
+  /** Captures the endpoint query's WHERE so the mode scoping is asserted on the SQL, not on the fake. */
+  function makeCapturingDb(intent: IntentRow, endpoints: EndpointRow[]) {
+    const captured: { where?: SQL } = {};
+    const client = {
+      select: () => ({
+        from: (tbl: unknown) => ({
+          where: (cond: SQL) => {
+            let rows: unknown[] = [];
+            if (tbl === paymentIntents) rows = [intent];
+            else if (tbl === payments) rows = [paymentRow()];
+            else if (tbl === settlementAccounts) rows = [accountRow()];
+            else if (tbl === webhookEndpoints) {
+              captured.where = cond;
+              rows = endpoints;
+            }
+            return whereResult(rows);
+          },
+        }),
+      }),
+    };
+    return { db: { client } as unknown as DbService, captured };
+  }
+
+  it('selects only endpoints registered under the intent mode and marks the event livemode=false', async () => {
+    const { db, captured } = makeCapturingDb(intentRow({ mode: 'test' }), [
+      endpointRow({ mode: 'test' }),
+    ]);
+    const delivery = makeDelivery({ id: 'wd1' });
+    const svc = new WebhookDispatcherService(consumer, db, delivery, config);
+
+    await svc.handle(event());
+
+    const query = new PgDialect().sqlToQuery(captured.where as SQL);
+    expect(query.sql).toContain('"mode"');
+    expect(query.params).toContain('test');
+    expect(query.params).not.toContain('live');
+    const calls = delivery.createDelivery.mock.calls as Array<
+      [{ payload: string }]
+    >;
+    expect(JSON.parse(calls[0][0].payload)).toMatchObject({ livemode: false });
+  });
+
+  it('asks for live endpoints, and only live endpoints, for a live intent', async () => {
+    const { db, captured } = makeCapturingDb(intentRow({ mode: 'live' }), []);
+    const delivery = makeDelivery({ id: 'wd1' });
+    const svc = new WebhookDispatcherService(consumer, db, delivery, config);
+
+    await svc.handle(event());
+
+    const query = new PgDialect().sqlToQuery(captured.where as SQL);
+    expect(query.params).toContain('live');
+    expect(query.params).not.toContain('test');
+    expect(delivery.createDelivery).not.toHaveBeenCalled();
   });
 });

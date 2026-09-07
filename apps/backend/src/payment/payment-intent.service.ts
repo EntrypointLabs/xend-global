@@ -5,6 +5,7 @@ import { and, desc, eq, gt, isNotNull, lt } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { merchants, paymentIntents } from '../db/schema';
 import { EVENT_PUBLISHER } from '../events/event-publisher.interface';
+import { paymentIntentTransitions } from '../metrics/metrics';
 import type { EventPublisher } from '../events/event-publisher.interface';
 import {
   IntentNotFoundError,
@@ -133,6 +134,7 @@ export class PaymentIntentService {
       throw err;
     }
 
+    paymentIntentTransitions.inc({ from: 'none', to: 'created' });
     // The intent id IS the correlation id: one id traces the Payment across
     // every service (ADR 0012).
     await this.events.publish({
@@ -170,7 +172,10 @@ export class PaymentIntentService {
         and(eq(paymentIntents.id, intentId), eq(paymentIntents.status, from)),
       )
       .returning();
-    if (updated) return updated;
+    if (updated) {
+      paymentIntentTransitions.inc({ from, to });
+      return updated;
+    }
 
     const existing = await this.findByIdOrNull(intentId);
     if (!existing) {
@@ -204,6 +209,10 @@ export class PaymentIntentService {
       });
     }
     if (expired.length > 0) {
+      paymentIntentTransitions.inc(
+        { from: 'created', to: 'expired' },
+        expired.length,
+      );
       this.logger.log(`payment.intent.expired count=${expired.length}`);
     }
   }

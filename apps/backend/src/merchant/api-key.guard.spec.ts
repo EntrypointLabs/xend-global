@@ -115,7 +115,7 @@ describe('ApiKeyGuard', () => {
     const key = generateApiKey('live');
     const { db } = makeFakeDb({
       apiKeyRows: [apiKeyRow({ keyHash: key.keyHash, mode: 'live' })],
-      merchantRows: [merchantRow()],
+      merchantRows: [merchantRow({ kybStatus: 'verified' })],
     });
     const guard = new ApiKeyGuard(db);
     const { context, request } = ctx({ 'x-api-key': key.raw });
@@ -178,6 +178,32 @@ describe('ApiKeyGuard', () => {
       401,
       'INVALID_API_KEY',
     );
+  });
+
+  it('refuses a live key once the merchant KYB is no longer verified', async () => {
+    const key = generateApiKey('live');
+    const { db } = makeFakeDb({
+      apiKeyRows: [apiKeyRow({ keyHash: key.keyHash, mode: 'live' })],
+      merchantRows: [merchantRow({ kybStatus: 'rejected' })],
+    });
+    const guard = new ApiKeyGuard(db);
+    await expectRejectHttp(
+      guard.canActivate(ctx({ authorization: `Bearer ${key.raw}` }).context),
+      403,
+      'KYB_NOT_VERIFIED',
+    );
+  });
+
+  it('keeps test keys ungated by KYB', async () => {
+    const key = generateApiKey('test');
+    const { db } = makeFakeDb({
+      apiKeyRows: [apiKeyRow({ keyHash: key.keyHash })],
+      merchantRows: [merchantRow({ kybStatus: 'rejected' })],
+    });
+    const guard = new ApiKeyGuard(db);
+    await expect(
+      guard.canActivate(ctx({ authorization: `Bearer ${key.raw}` }).context),
+    ).resolves.toBe(true);
   });
 
   it('rejects a suspended merchant with 403 MERCHANT_SUSPENDED', async () => {

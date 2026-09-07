@@ -48,6 +48,8 @@ function intentRow(over: Partial<IntentRow> = {}): IntentRow {
     expiresAt: new Date(Date.now() + 3_600_000),
     authorizedAt: null,
     approvalDeferredAt: null,
+    metadata: null,
+    openerOrigin: null,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     ...over,

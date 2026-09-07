@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { webhookDeliveries, webhookEndpoints } from '../db/schema';
 import { assertPublicHttpsUrl } from '../common/url-safety';
+import { webhookDeliveries as webhookDeliveryOutcomes } from '../metrics/metrics';
 import { signWebhook } from './webhook-signer';
 
 type DeliveryRow = typeof webhookDeliveries.$inferSelect;
@@ -74,9 +75,13 @@ export class WebhookDeliveryService {
     );
     const bodyMax = this.config.getOrThrow<number>('WEBHOOK_RESPONSE_BODY_MAX');
 
+    const secondaryActive =
+      Boolean(endpoint.secretSecondary) &&
+      (endpoint.secondaryExpiresAt === null ||
+        endpoint.secondaryExpiresAt.getTime() > Date.now());
     const header = signWebhook(delivery.payload, [
       endpoint.secretPrimary,
-      ...(endpoint.secretSecondary ? [endpoint.secretSecondary] : []),
+      ...(secondaryActive ? [endpoint.secretSecondary as string] : []),
     ]);
 
     const t0 = Date.now();
@@ -182,9 +187,10 @@ export class WebhookDeliveryService {
   private log(
     delivery: DeliveryRow,
     statusCode: number | null,
-    outcome: string,
+    outcome: 'succeeded' | 'failed' | 'exhausted',
     durationMs: number,
   ): void {
+    webhookDeliveryOutcomes.inc({ outcome });
     this.logger.log(
       `webhook.deliver event_id=${delivery.eventId} endpoint_id=${delivery.endpointId} attempt=${delivery.attemptNo} status_code=${statusCode ?? '-'} outcome=${outcome} duration_ms=${durationMs}`,
     );

@@ -1,18 +1,26 @@
-import type { CheckoutStatus } from "./types";
+import type { ButtonTheme, CheckoutStatus } from "./types";
 
-/** Fields the modal renders. Sourced from the checkout summary; never the amount that settles. */
+/**
+ * The fields GET /checkout/intents/:reference returns that the sheet renders.
+ * Never a balance, and never the amount that settles: this is the merchant's
+ * own display price, pinned when the intent was created.
+ */
 export interface CheckoutSummary {
   merchantDisplayName: string;
-  ngnDisplayMinor: string | null;
+  displayCurrency: string;
+  displayAmountMinor: string;
+  sessionRecognized?: boolean;
+  expiresAt?: string;
+  cancelUrl?: string;
   itemLabel?: string | null;
 }
 
-export type ModalTheme = "auto" | "light" | "dark";
+export type ModalTheme = ButtonTheme;
 
 export interface ModalHandle {
   showLoading: () => void;
   showConfirm: (summary: CheckoutSummary) => void;
-  showAuthorizing: () => void;
+  showWaiting: () => void;
   showResult: (status: CheckoutStatus) => void;
   showError: (message: string) => void;
   close: () => void;
@@ -83,10 +91,36 @@ const CSS = `
 
 const FACE_ID = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--pink)" stroke-width="1.7" stroke-linecap="round" style="flex:0 0 auto"><path d="M4 8V6.5A2.5 2.5 0 016.5 4H8"/><path d="M16 4h1.5A2.5 2.5 0 0120 6.5V8"/><path d="M20 16v1.5a2.5 2.5 0 01-2.5 2.5H16"/><path d="M8 20H6.5A2.5 2.5 0 014 17.5V16"/><path d="M9 10v1M15 10v1M12 9v4l-1 1M9.5 15.5a3.5 3.5 0 005 0"/></svg>`;
 
-function formatNaira(minor: string | null): string {
-  if (!minor) return "";
-  const n = Number(minor) / 100;
-  return "₦" + n.toLocaleString("en-NG", { maximumFractionDigits: 0 });
+// Decimals are carried per currency rather than assumed to be two: NGN and USD
+// use two, the settlement asset uses six, and a formatter that hardcodes
+// hundredths misstates a dollar-priced order by a factor of ten thousand.
+const CURRENCIES: Record<string, { symbol: string; decimals: number }> = {
+  NGN: { symbol: "₦", decimals: 2 },
+  USD: { symbol: "$", decimals: 2 },
+  USDC: { symbol: "$", decimals: 6 },
+};
+
+function formatAmount(currency: string, minorRaw: string): string {
+  const { symbol, decimals } = CURRENCIES[currency] ?? {
+    symbol: `${currency} `,
+    decimals: 2,
+  };
+  let minor: bigint;
+  try {
+    minor = BigInt(minorRaw);
+  } catch {
+    return "";
+  }
+  const negative = minor < 0n;
+  const abs = negative ? -minor : minor;
+  const scale = 10n ** BigInt(decimals);
+  const grouped = (abs / scale)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const fraction = abs % scale;
+  const fractionPart =
+    fraction > 0n ? "." + fraction.toString().padStart(decimals, "0") : "";
+  return `${negative ? "-" : ""}${symbol}${grouped}${fractionPart}`;
 }
 
 function resolveTheme(theme: ModalTheme, doc: Document): "light" | "dark" {
@@ -136,6 +170,11 @@ export function openModal(opts: ModalOptions): ModalHandle {
     body.innerHTML = html;
   };
 
+  const setText = (selector: string, value: string) => {
+    const el = body.querySelector(selector);
+    if (el) el.textContent = value;
+  };
+
   return {
     showLoading() {
       render(
@@ -143,13 +182,25 @@ export function openModal(opts: ModalOptions): ModalHandle {
       );
     },
     showConfirm(summary) {
+      // A Session the shopper already granted this Merchant turns the second
+      // purchase into a one-tap confirm; without one the passkey ceremony runs.
+      const ctaLabel = summary.sessionRecognized
+        ? "Confirm and pay"
+        : "Confirm with Face ID";
       render(`
-        <div class="head"><span class="mfav"></span><div><div class="mname">${summary.merchantDisplayName}</div><div class="msub">Pay with Xend</div></div><button class="x" data-cancel aria-label="Close">✕</button></div>
-        <div class="amt"><div class="k">You're paying</div><div class="v">${formatNaira(summary.ngnDisplayMinor)}</div>${summary.itemLabel ? `<div class="s">${summary.itemLabel}</div>` : ""}</div>
+        <div class="head"><span class="mfav"></span><div><div class="mname"></div><div class="msub">Pay with Xend</div></div><button class="x" data-cancel aria-label="Close">✕</button></div>
+        <div class="amt"><div class="k">You're paying</div><div class="v"></div>${summary.itemLabel ? `<div class="s"></div>` : ""}</div>
         <div class="src"><span class="dot"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="13" rx="2.5" stroke="var(--glyph)" stroke-width="1.7"/><path d="M3 10h18" stroke="var(--glyph)" stroke-width="1.7"/></svg></span><div><div class="t1">Xend Cash</div><div class="t2">Pay with your Xend balance</div></div></div>
-        <button class="cta" data-confirm disabled>${FACE_ID}Confirm with Face ID</button>
+        <button class="cta" data-confirm disabled>${FACE_ID}${ctaLabel}</button>
         <button class="cancel" data-cancel>Cancel</button>
         <div class="foot"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="var(--muted2)" stroke-width="1.7"/><path d="M8 11V8a4 4 0 018 0v3" stroke="var(--muted2)" stroke-width="1.7"/></svg>Payments secured by Xend</div>`);
+      // Merchant-controlled strings are written as text, never parsed as markup.
+      setText(".mname", summary.merchantDisplayName);
+      setText(
+        ".v",
+        formatAmount(summary.displayCurrency, summary.displayAmountMinor),
+      );
+      if (summary.itemLabel) setText(".s", summary.itemLabel);
       const cta = body.querySelector("[data-confirm]") as HTMLButtonElement;
       body
         .querySelectorAll("[data-cancel]")
@@ -173,9 +224,9 @@ export function openModal(opts: ModalOptions): ModalHandle {
         root.addEventListener(e, onInteract, { once: true }),
       );
     },
-    showAuthorizing() {
+    showWaiting() {
       render(
-        `<div class="center"><div class="facebig scan"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--glyph)" stroke-width="1.5" stroke-linecap="round"><path d="M4 8V6.5A2.5 2.5 0 016.5 4H8"/><path d="M16 4h1.5A2.5 2.5 0 0120 6.5V8"/><path d="M20 16v1.5a2.5 2.5 0 01-2.5 2.5H16"/><path d="M8 20H6.5A2.5 2.5 0 014 17.5V16"/><path d="M9 10v1.5M15 10v1.5M12 9v4l-1.2 1M9 15a4 4 0 006 0"/></svg></div><div class="title">Confirming with Face ID</div></div>`,
+        `<div class="center"><div class="facebig scan"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--glyph)" stroke-width="1.5" stroke-linecap="round"><path d="M4 8V6.5A2.5 2.5 0 016.5 4H8"/><path d="M16 4h1.5A2.5 2.5 0 0120 6.5V8"/><path d="M20 16v1.5a2.5 2.5 0 01-2.5 2.5H16"/><path d="M8 20H6.5A2.5 2.5 0 014 17.5V16"/><path d="M9 10v1.5M15 10v1.5M12 9v4l-1.2 1M9 15a4 4 0 006 0"/></svg></div><div class="title">Confirming with Face ID</div><div class="sub">Finish in the Xend window.</div></div>`,
       );
     },
     showResult(status) {
@@ -200,8 +251,9 @@ export function openModal(opts: ModalOptions): ModalHandle {
     },
     showError(message) {
       render(
-        `<div class="center"><div class="title">Something went wrong</div><div class="sub">${message}</div><button class="cancel" data-cancel style="margin-top:14px">Close</button></div>`,
+        `<div class="center"><div class="title">Something went wrong</div><div class="sub"></div><button class="cancel" data-cancel style="margin-top:14px">Close</button></div>`,
       );
+      setText(".sub", message);
       body
         .querySelectorAll("[data-cancel]")
         .forEach((el) => el.addEventListener("click", onCancel));

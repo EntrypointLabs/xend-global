@@ -17,6 +17,7 @@ import {
   type RefundObject,
 } from './refund.dtos';
 import {
+  IdempotencyKeyRequiredError,
   IdempotencyKeyReuseError,
   PaymentNotRefundableError,
   RefundAmountExceedsRefundableError,
@@ -27,7 +28,8 @@ import {
 /**
  * Ops-initiated refund surface (InternalGuard). The merchants.xend.global
  * portal's refund-approval screen is the fast-follow that calls the same
- * service. Not a merchant key, not the consumer JWT.
+ * service. Not a merchant key, not the consumer JWT. Every request carries an
+ * Idempotency-Key; without one it is refused before anything is read.
  */
 @Controller('internal')
 @UseGuards(InternalGuard)
@@ -44,7 +46,7 @@ export class RefundController {
         paymentId: body.payment_id,
         amountUsdcRaw: body.amount_usdc_raw,
         reason: body.reason,
-        idempotencyKey,
+        idempotencyKey: idempotencyKey?.trim() ?? '',
       });
     } catch (err) {
       this.mapServiceError(err);
@@ -52,6 +54,12 @@ export class RefundController {
   }
 
   private mapServiceError(err: unknown): never {
+    if (err instanceof IdempotencyKeyRequiredError) {
+      throw new HttpException(
+        { code: err.code, message: err.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     if (err instanceof RefundNotFoundError) {
       throw new HttpException(
         { code: err.code, message: err.message },

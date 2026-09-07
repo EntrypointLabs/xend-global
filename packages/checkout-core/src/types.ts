@@ -6,7 +6,7 @@ export type CheckoutStatus = "succeeded" | "failed" | "canceled" | "expired";
  * fulfillment-hostile: reference + status only, no amount and no
  * "verified" flag, so a tampered browser message cannot be mistaken for
  * settlement truth. Fulfillment happens off the webhook or
- * GET /payments/:id, never off this object.
+ * GET /v1/payment_intents/:id, never off this object.
  */
 export interface CheckoutResult {
   reference: string;
@@ -20,6 +20,23 @@ export interface CheckoutUnresolved {
   reason: "popup_closed" | "popup_blocked" | "redirected" | "channel_lost";
 }
 
+/**
+ * "modal" (default) draws the glass sheet in the merchant page and opens the
+ * hosted checkout in a window underneath it once the shopper taps Pay, so the
+ * ceremony still runs on Xend's own origin. "popup" opens that window straight
+ * from the button with no sheet. "redirect" navigates the whole page to the
+ * hosted checkout and returns the shopper to the intent's return URL.
+ * Webviews, Opera Mini and blocked popups fall back to redirect on their own.
+ */
+export type CheckoutPresentation = "modal" | "popup" | "redirect";
+
+/**
+ * The button's and the sheet's material. "auto" (default) follows the viewer's
+ * colour-scheme preference; "light" is the dark button for a light page,
+ * "dark" the light button for a dark page.
+ */
+export type ButtonTheme = "auto" | "light" | "dark";
+
 export interface XendButtonConfig {
   /** Exact checkout origin, e.g. "https://pay.xend.global". Compared by strict equality. */
   checkoutOrigin: string;
@@ -29,16 +46,11 @@ export interface XendButtonConfig {
   onResult: (result: CheckoutResult) => void;
   onUnresolved?: (u: CheckoutUnresolved) => void;
   onReady?: () => void;
+  presentation?: CheckoutPresentation;
+  theme?: ButtonTheme;
   /**
-   * How the checkout is presented. "modal" (default) draws the frosted glass
-   * sheet in the merchant page. "popup" opens a separate window; "redirect"
-   * navigates the full page. Webviews / blocked popups fall back automatically.
+   * Origin of the Xend API, e.g. "https://api.xend.global". The sheet reads the
+   * merchant name and amount from it; without one, "modal" degrades to "popup".
    */
-  presentation?: "modal" | "popup" | "redirect";
-  /** Backend base URL for the checkout summary + authorize (required for "modal"). */
   apiBase?: string;
-  /** Sheet material. "auto" (default) follows the viewer's light/dark preference. */
-  theme?: "auto" | "light" | "dark";
-  /** DEV/demo only: resolve confirm to success without a real passkey ceremony. */
-  devSimulateAuthorize?: boolean;
 }

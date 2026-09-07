@@ -1,3 +1,4 @@
+import type { ConfigService } from '@nestjs/config';
 import type { DbService } from '../db/db.service';
 import { webhookDeliveries } from '../db/schema';
 import type { WebhookDeliveryService } from './webhook-delivery.service';
@@ -54,6 +55,10 @@ function makeDb(cfg: {
   return { db: { client } as unknown as DbService, setCaptures };
 }
 
+const config = {
+  get: (k: string) => (k === 'WEBHOOK_PENDING_STALE_MINUTES' ? 10 : undefined),
+} as unknown as ConfigService;
+
 function makeDelivery() {
   return {
     attempt: jest.fn().mockResolvedValue(undefined),
@@ -73,7 +78,7 @@ describe('WebhookRetryService.tick', () => {
       ],
     });
     const delivery = makeDelivery();
-    const svc = new WebhookRetryService(db, delivery);
+    const svc = new WebhookRetryService(db, delivery, config);
 
     await svc.tick();
 
@@ -81,6 +86,31 @@ describe('WebhookRetryService.tick', () => {
     // The claim sets status back to pending under the guard.
     expect(setCaptures[0]).toMatchObject({ status: 'pending' });
     expect(setCaptures[0].attemptNo).toBeDefined();
+  });
+
+  it('picks up a pending row older than the stale window and claims it without bumping the attempt', async () => {
+    const stale = deliveryRow({
+      id: 'p1',
+      status: 'pending',
+      nextRetryAt: null,
+      createdAt: new Date(Date.now() - 30 * 60_000),
+    });
+    const { db, setCaptures } = makeDb({
+      due: [stale],
+      claims: [[{ id: 'p1' }]],
+      reloads: [[stale]],
+    });
+    const delivery = makeDelivery();
+    const svc = new WebhookRetryService(db, delivery, config);
+
+    await svc.tick();
+
+    expect(delivery.attempt).toHaveBeenCalledTimes(1);
+    expect(setCaptures[0].attemptNo).toBeUndefined();
+    expect(setCaptures[0].status).toBeUndefined();
+    expect((setCaptures[0].nextRetryAt as Date).getTime()).toBeGreaterThan(
+      Date.now(),
+    );
   });
 
   it('does not attempt a row it fails to claim (lost the status-guarded race)', async () => {
@@ -91,7 +121,7 @@ describe('WebhookRetryService.tick', () => {
       reloads: [],
     });
     const delivery = makeDelivery();
-    const svc = new WebhookRetryService(db, delivery);
+    const svc = new WebhookRetryService(db, delivery, config);
 
     await svc.tick();
 
