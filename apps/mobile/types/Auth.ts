@@ -1,5 +1,7 @@
 import { z } from "zod/v4";
 
+import type { EntryProof } from "@/utils/apiClient";
+
 export const Email = z.email();
 
 export interface AccountInfo {
@@ -9,6 +11,16 @@ export interface AccountInfo {
   smart_account_address: string;
   grid_user_id: string;
 }
+
+/**
+ * How much the current session may do.
+ *
+ * `full` is a passkey-backed session. `entry` is what an email code opens on
+ * an existing account: it can look and can start a recovery, and the server
+ * refuses everything else. The app reads this to explain rather than to
+ * enforce; enforcement is the server's.
+ */
+export type SessionTier = "full" | "entry";
 
 export interface AuthContextType {
   isAuthenticated: boolean | null;
@@ -24,15 +36,12 @@ export interface AuthContextType {
   setEmail: (email: string | null) => void;
   setAccountInfo: React.Dispatch<React.SetStateAction<AccountInfo | null>>;
   authError: string | null;
-  authenticate: (email: string) => Promise<void>;
-  register: (email: string) => Promise<void>;
-  verifyCode: (code: string) => Promise<boolean>;
-  verifyCodeAndCreateAccount: (code: string) => Promise<boolean>;
-  completeLogin: (userData: any, email: string, token: string) => Promise<void>;
   logout: () => Promise<void>;
   wallet: string | null;
   isLoading: boolean;
   isLoggingOut: boolean;
+  /** Null while signed out or still loading. */
+  sessionTier: SessionTier | null;
   /**
    * Whether the shell should still be asking for a contact address.
    *
@@ -42,14 +51,23 @@ export interface AuthContextType {
    */
   needsContactEmail: boolean;
   /**
-   * True while a screen in the auth stack is finishing something after the
-   * session already exists, so the shell must not redirect out from under it.
-   */
-  holdAuthStack: boolean;
-  releaseAuthStack: () => void;
-  /**
    * Finishes a sign-in that Privy has already authenticated with a passkey.
    * Everything after the credential is identical to any other sign-in.
+   *
+   * With a sign-up token, the exchange binds the new passkey to the address
+   * the token was issued for instead of starting an empty account. Throws
+   * `PasskeyHasNoAccountError` when the passkey belongs to no account at all,
+   * and `PasskeyWrongAccountError` when `expectUserId` names one account and
+   * the credential resolves to another.
    */
-  completePasskeySession: (privyUser: unknown) => Promise<boolean>;
+  completePasskeySession: (
+    privyUser: unknown,
+    signupToken?: string,
+    expectUserId?: string
+  ) => Promise<boolean>;
+  /**
+   * Opens the limited session an email code earned on an existing account.
+   * No Privy session stands behind it; the passkey is what upgrades it.
+   */
+  enterWithEmail: (proof: EntryProof) => Promise<void>;
 }

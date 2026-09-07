@@ -13,6 +13,7 @@ import {
   InsufficientBalanceError,
   UnknownConsumerError,
 } from './capability.errors';
+import { findVaultAddress } from './vault-address';
 
 /** Day counters outlive their UTC day by a couple of hours for clock skew. */
 const DAY_COUNTER_TTL_SECONDS = 26 * 60 * 60;
@@ -84,16 +85,9 @@ export class CapacityService implements OnModuleInit {
   }
 
   async getCapability(consumerId: string): Promise<CapabilitySnapshot> {
-    const [account] = await this.db.client
-      .select()
-      .from(smartAccounts)
-      .where(eq(smartAccounts.userId, consumerId))
-      .limit(1);
-    if (!account) {
-      throw new UnknownConsumerError(`no Account for consumer ${consumerId}`);
-    }
+    const accountAddress = await this.accountAddress(consumerId);
 
-    const balances = await this.solana.getTokenBalances(account.walletAddress);
+    const balances = await this.solana.getTokenBalances(accountAddress);
     let balance = 0n;
     for (const b of balances) {
       if (b.mint === this.usdcMint) balance += b.amountRaw;
@@ -111,7 +105,7 @@ export class CapacityService implements OnModuleInit {
 
     return {
       consumerId,
-      accountAddress: account.walletAddress,
+      accountAddress,
       balanceRaw: balance.toString(),
       tier,
       limits,
@@ -160,13 +154,15 @@ export class CapacityService implements OnModuleInit {
         `amount ${amountRaw} would exceed monthly cap ${limits.monthlyCapRaw}`,
       );
     }
-    // TEST ONLY — never production. The dev placeholder wallet holds no real
-    // devnet USDC, so the live-balance gate would reject every local-test
-    // payment. Skip ONLY the balance check under NODE_ENV==='development'; the
-    // tier/velocity caps above still apply. Every other environment enforces
-    // the real balance gate.
+    // TEST ONLY — never production. Skipped only while development is also
+    // short-circuiting settlement, where the Consumer has no Account on any
+    // cluster and every Balance reads zero. Turning the real Payment path on
+    // turns this back on with it: at that point the vault is real and holds
+    // real money, and skipping the gate would hide the one refusal a Consumer
+    // is most likely to meet. The tier caps above apply either way.
     const devSkipBalance =
-      this.config.get<string>('NODE_ENV') === 'development';
+      this.config.get<string>('NODE_ENV') === 'development' &&
+      this.config.get<boolean>('CHECKOUT_DEV_FORCE_SETTLE') !== false;
     if (!devSkipBalance && amount > BigInt(capability.balanceRaw)) {
       log(false);
       throw new InsufficientBalanceError(
@@ -176,6 +172,30 @@ export class CapacityService implements OnModuleInit {
 
     log(true);
     return capability;
+  }
+
+  /**
+   * The vault the Balance is read from. Not the Privy wallet: a limit checked
+   * against a signer's address rather than the Account's would let every
+   * Payment through on an empty read.
+   */
+  private async accountAddress(consumerId: string): Promise<string> {
+    const vault = await findVaultAddress(this.db, consumerId);
+    if (vault) return vault;
+
+    // TEST ONLY — never production. A dev-provisioned Consumer has no Account
+    // on any cluster; the balance gate below is already skipped in development,
+    // so the Privy wallet stands in only to keep the snapshot shape whole.
+    if (this.config.get<string>('NODE_ENV') === 'development') {
+      const [account] = await this.db.client
+        .select()
+        .from(smartAccounts)
+        .where(eq(smartAccounts.userId, consumerId))
+        .limit(1);
+      if (account) return account.walletAddress;
+    }
+
+    throw new UnknownConsumerError(`no Account for consumer ${consumerId}`);
   }
 
   async recordAuthorizedPayment(

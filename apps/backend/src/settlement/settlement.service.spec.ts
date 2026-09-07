@@ -15,11 +15,11 @@ import {
 } from '@solana/kit';
 import { getSetComputeUnitLimitInstruction } from '@solana-program/compute-budget';
 import type { DbService } from '../db/db.service';
-import { paymentAttempts, smartAccounts } from '../db/schema';
+import { paymentAttempts } from '../db/schema';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { PaymentIntentService } from '../payment/payment-intent.service';
+import type { SpendService } from '../account/spend.service';
 import type { SettlementProvisioningService } from './settlement-provisioning.service';
-import type { CosignRequest, RelayerClient } from './relayer.client';
 import type { SettlementConfirmationService } from './settlement-confirmation.service';
 import { SettlementService } from './settlement.service';
 import {
@@ -30,8 +30,10 @@ import {
 
 const USDC = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const FEE_PAYER = Keypair.generate().publicKey.toBase58();
-const WALLET = Keypair.generate().publicKey.toBase58();
+const VAULT = Keypair.generate().publicKey.toBase58();
 const ENDPOINT = Keypair.generate().publicKey.toBase58();
+const ENDPOINT_OWNER = Keypair.generate().publicKey.toBase58();
+const PRIMARY_SIGNER = Keypair.generate().publicKey.toBase58();
 const BLOCKHASH = Keypair.generate().publicKey.toBase58();
 
 function buildWireAndMessage(): { wire: string; messageBase64: string } {
@@ -67,7 +69,6 @@ function makeConfig(): ConfigService {
   return {
     getOrThrow: (key: string): string => {
       if (key === 'EXPO_PUBLIC_USDC_MINT_ADDRESS') return USDC;
-      if (key === 'RELAYER_FEE_PAYER_ADDRESS') return FEE_PAYER;
       throw new Error(`missing config ${key}`);
     },
   } as unknown as ConfigService;
@@ -75,7 +76,6 @@ function makeConfig(): ConfigService {
 
 function makeDb(cfg: {
   attempt?: AttemptRow;
-  wallet?: string;
   updateReturning?: { id: string }[][];
 }): DbService {
   const updates = [...(cfg.updateReturning ?? [])];
@@ -86,10 +86,6 @@ function makeDb(cfg: {
           limit: () => {
             if (tbl === paymentAttempts)
               return Promise.resolve(cfg.attempt ? [cfg.attempt] : []);
-            if (tbl === smartAccounts)
-              return Promise.resolve(
-                cfg.wallet ? [{ walletAddress: cfg.wallet }] : [],
-              );
             return Promise.resolve([]);
           },
         }),
@@ -119,7 +115,11 @@ function makeIntents(intent: Record<string, unknown>) {
 function makeProvisioning(address: string, error?: Error) {
   const getSettlementAddressForSettlement = error
     ? jest.fn().mockRejectedValue(error)
-    : jest.fn().mockResolvedValue({ address, provider: 'direct_usdc' });
+    : jest.fn().mockResolvedValue({
+        address,
+        owner: ENDPOINT_OWNER,
+        provider: 'direct_usdc',
+      });
   return {
     provisioning: {
       getSettlementAddressForSettlement,
@@ -128,18 +128,31 @@ function makeProvisioning(address: string, error?: Error) {
   };
 }
 
-function makeRelayer(signature = 'sig-1') {
-  const getPriorityFee = jest
-    .fn()
-    .mockResolvedValue({ computeUnitPrice: 1_000n });
-  const cosign = jest.fn<
-    Promise<{ signature: string }>,
-    [CosignRequest, string]
-  >(() => Promise.resolve({ signature }));
+function makeSpends(
+  signature = 'sig-1',
+  prepared: Partial<{
+    messageBase64: string;
+    route: 'spending-limit' | 'two-signature';
+    needsApprovalSignature: boolean;
+  }> = {},
+) {
+  const prepare = jest.fn().mockResolvedValue({
+    unsignedTxBase64: 'UNSIGNED',
+    messageBase64: prepared.messageBase64 ?? 'PINNED_MESSAGE',
+    vaultAddress: VAULT,
+    primarySigner: PRIMARY_SIGNER,
+    blockhash: BLOCKHASH,
+    lastValidBlockHeight: 1_000,
+    route: prepared.route ?? 'spending-limit',
+    needsApprovalSignature: prepared.needsApprovalSignature ?? false,
+  });
+  const submit = jest.fn<Promise<string>, [string]>(() =>
+    Promise.resolve(signature),
+  );
   return {
-    relayer: { getPriorityFee, cosign } as unknown as RelayerClient,
-    getPriorityFee,
-    cosign,
+    spends: { prepare, submit } as unknown as SpendService,
+    prepare,
+    submit,
   };
 }
 
@@ -169,7 +182,7 @@ function makeService(deps: {
   solana: SolanaRpc;
   intents: PaymentIntentService;
   provisioning: SettlementProvisioningService;
-  relayer: RelayerClient;
+  spends: SpendService;
   confirmation?: SettlementConfirmationService;
 }): SettlementService {
   const service = new SettlementService(
@@ -178,7 +191,7 @@ function makeService(deps: {
     deps.solana,
     deps.intents,
     deps.provisioning,
-    deps.relayer,
+    deps.spends,
     deps.confirmation ?? makeConfirmation(),
   );
   service.onModuleInit();
@@ -191,17 +204,17 @@ describe('SettlementService', () => {
   });
 
   describe('buildSettlement', () => {
-    it('pins the message on the authorized attempt, reads the destination from provisioning, and does not transition to settling', async () => {
+    it('builds the Spend out of the vault into the Merchant endpoint and writes nothing', async () => {
       const { intents, transition } = makeIntents({
         id: 'pi_1',
-        status: 'authorized',
+        status: 'created',
         consumerId: 'u_1',
         merchantId: 'm_1',
         usdcSettlementRaw: '1000000',
       });
       const { provisioning, getSettlementAddressForSettlement } =
         makeProvisioning(ENDPOINT);
-      const { relayer } = makeRelayer();
+      const { spends, prepare } = makeSpends();
       const service = makeService({
         db: makeDb({
           attempt: {
@@ -210,27 +223,63 @@ describe('SettlementService', () => {
             messageBase64: null,
             txSignature: null,
           },
-          wallet: WALLET,
           updateReturning: [[{ id: 'att_1' }]],
         }),
         solana: makeSolana(),
         intents,
         provisioning,
-        relayer,
+        spends,
       });
 
-      const out = await service.buildSettlement('pi_1');
+      const out = await service.buildSettlement('pi_1', 'u_1');
 
-      expect(out.attemptId).toBe('att_1');
       expect(out.expectedSettlementAccount).toBe(ENDPOINT);
       expect(out.unsignedTxBase64).toBeTruthy();
       expect(out.messageBase64).toBeTruthy();
+      expect(out.needsApprovalSignature).toBe(false);
       expect(getSettlementAddressForSettlement).toHaveBeenCalledWith('m_1');
-      // No transition to settling at build time.
+      // The money leaves the Consumer's vault and lands in the Merchant's own
+      // settlement account, which the endpoint's owner has to be named for.
+      expect(prepare).toHaveBeenCalledWith({
+        userId: 'u_1',
+        destination: ENDPOINT_OWNER,
+        destinationTokenAccount: ENDPOINT,
+        mint: USDC,
+        amountRaw: '1000000',
+        decimals: 6,
+      });
+      // Nothing has moved: the caller has to be able to refuse a Payment the
+      // Account cannot carry while the intent is still untouched.
       expect(transition).not.toHaveBeenCalled();
     });
 
-    it('rejects a non-authorized intent with INTENT_NOT_SETTLEABLE', async () => {
+    it('reports when the Spend also needs the approval signer', async () => {
+      const { intents } = makeIntents({
+        id: 'pi_1',
+        status: 'created',
+        consumerId: 'u_1',
+        merchantId: 'm_1',
+        usdcSettlementRaw: '1000000',
+      });
+      const { provisioning } = makeProvisioning(ENDPOINT);
+      const { spends } = makeSpends('sig-1', {
+        route: 'two-signature',
+        needsApprovalSignature: true,
+      });
+      const service = makeService({
+        db: makeDb({}),
+        solana: makeSolana(),
+        intents,
+        provisioning,
+        spends,
+      });
+
+      const out = await service.buildSettlement('pi_1', 'u_1');
+
+      expect(out.needsApprovalSignature).toBe(true);
+    });
+
+    it('rejects an intent past the payable states with INTENT_NOT_SETTLEABLE', async () => {
       const { intents } = makeIntents({
         id: 'pi_1',
         status: 'settling',
@@ -239,16 +288,16 @@ describe('SettlementService', () => {
         usdcSettlementRaw: '1000000',
       });
       const { provisioning } = makeProvisioning(ENDPOINT);
-      const { relayer } = makeRelayer();
+      const { spends } = makeSpends();
       const service = makeService({
         db: makeDb({}),
         solana: makeSolana(),
         intents,
         provisioning,
-        relayer,
+        spends,
       });
 
-      await expect(service.buildSettlement('pi_1')).rejects.toThrow(
+      await expect(service.buildSettlement('pi_1', 'u_1')).rejects.toThrow(
         IntentNotSettleableError,
       );
     });
@@ -265,7 +314,7 @@ describe('SettlementService', () => {
         ENDPOINT,
         new SettlementAccountNotProvisionedError('nope'),
       );
-      const { relayer } = makeRelayer();
+      const { spends } = makeSpends();
       const service = makeService({
         db: makeDb({
           attempt: {
@@ -274,22 +323,74 @@ describe('SettlementService', () => {
             messageBase64: null,
             txSignature: null,
           },
-          wallet: WALLET,
         }),
         solana: makeSolana(),
         intents,
         provisioning,
-        relayer,
+        spends,
       });
 
-      await expect(service.buildSettlement('pi_1')).rejects.toThrow(
+      await expect(service.buildSettlement('pi_1', 'u_1')).rejects.toThrow(
         SettlementAccountNotProvisionedError,
       );
     });
   });
 
+  describe('pinSettlement', () => {
+    const built = {
+      unsignedTxBase64: 'UNSIGNED',
+      messageBase64: 'PINNED_MESSAGE',
+      blockhash: BLOCKHASH,
+      expectedSettlementAccount: ENDPOINT,
+      signerAddress: PRIMARY_SIGNER,
+      needsApprovalSignature: false,
+    };
+
+    it('records the built message on the live authorized attempt', async () => {
+      const { intents } = makeIntents({ id: 'pi_1', status: 'authorized' });
+      const { provisioning } = makeProvisioning(ENDPOINT);
+      const { spends } = makeSpends();
+      const service = makeService({
+        db: makeDb({
+          attempt: {
+            id: 'att_1',
+            status: 'authorized',
+            messageBase64: null,
+            txSignature: null,
+          },
+          updateReturning: [[{ id: 'att_1' }]],
+        }),
+        solana: makeSolana(),
+        intents,
+        provisioning,
+        spends,
+      });
+
+      await expect(service.pinSettlement('pi_1', built)).resolves.toEqual({
+        attemptId: 'att_1',
+      });
+    });
+
+    it('refuses an intent with no live authorized attempt', async () => {
+      const { intents } = makeIntents({ id: 'pi_1', status: 'authorized' });
+      const { provisioning } = makeProvisioning(ENDPOINT);
+      const { spends } = makeSpends();
+      const service = makeService({
+        db: makeDb({}),
+        solana: makeSolana(),
+        intents,
+        provisioning,
+        spends,
+      });
+
+      await expect(service.pinSettlement('pi_1', built)).rejects.toThrow(
+        IntentNotSettleableError,
+      );
+    });
+  });
+
   describe('submitSettlement', () => {
-    it('rejects a signed tx whose message diverges from the pinned message and never calls the relayer', async () => {
+    it('rejects a signed tx whose message diverges from the pinned message and never reaches the authority', async () => {
       const { wire } = buildWireAndMessage();
       const { intents } = makeIntents({
         id: 'pi_1',
@@ -299,7 +400,7 @@ describe('SettlementService', () => {
         usdcSettlementRaw: '1000000',
       });
       const { provisioning } = makeProvisioning(ENDPOINT);
-      const { relayer, cosign } = makeRelayer();
+      const { spends, submit } = makeSpends();
       const service = makeService({
         db: makeDb({
           attempt: {
@@ -312,16 +413,16 @@ describe('SettlementService', () => {
         solana: makeSolana(),
         intents,
         provisioning,
-        relayer,
+        spends,
       });
 
       await expect(service.submitSettlement('pi_1', wire)).rejects.toThrow(
         SettlementMessageMismatchError,
       );
-      expect(cosign).not.toHaveBeenCalled();
+      expect(submit).not.toHaveBeenCalled();
     });
 
-    it('co-signs, records the signature, and transitions the attempt and intent to settling', async () => {
+    it('adds the fee payer signature, records it, and transitions the attempt and intent to settling', async () => {
       const { wire, messageBase64 } = buildWireAndMessage();
       const { intents, transition } = makeIntents({
         id: 'pi_1',
@@ -331,7 +432,7 @@ describe('SettlementService', () => {
         usdcSettlementRaw: '1000000',
       });
       const { provisioning } = makeProvisioning(ENDPOINT);
-      const { relayer, cosign } = makeRelayer('sig-happy');
+      const { spends, submit } = makeSpends('sig-happy');
       const service = makeService({
         db: makeDb({
           attempt: {
@@ -345,7 +446,7 @@ describe('SettlementService', () => {
         solana: makeSolana(),
         intents,
         provisioning,
-        relayer,
+        spends,
       });
 
       const out = await service.submitSettlement('pi_1', wire);
@@ -355,10 +456,9 @@ describe('SettlementService', () => {
         signature: 'sig-happy',
         status: 'settling',
       });
-      expect(cosign).toHaveBeenCalledTimes(1);
-      const cosignArg = cosign.mock.calls[0][0];
-      expect(cosignArg.expectedSettlementAccount).toBe(ENDPOINT);
-      expect(cosignArg.expectedMessageBase64).toBe(messageBase64);
+      // The authority signs the Consumer's bytes, unchanged.
+      expect(submit).toHaveBeenCalledTimes(1);
+      expect(submit.mock.calls[0][0]).toBe(wire);
       expect(transition).toHaveBeenCalledWith(
         'pi_1',
         'authorized',
@@ -367,7 +467,7 @@ describe('SettlementService', () => {
       );
     });
 
-    it('a second submit for an already-settling attempt resolves in-flight without a second cosign', async () => {
+    it('a second submit for an already-settling attempt resolves in-flight without signing again', async () => {
       const { wire } = buildWireAndMessage();
       const { intents } = makeIntents({
         id: 'pi_1',
@@ -377,7 +477,7 @@ describe('SettlementService', () => {
         usdcSettlementRaw: '1000000',
       });
       const { provisioning } = makeProvisioning(ENDPOINT);
-      const { relayer, cosign } = makeRelayer();
+      const { spends, submit } = makeSpends();
       const service = makeService({
         db: makeDb({
           attempt: {
@@ -390,14 +490,14 @@ describe('SettlementService', () => {
         solana: makeSolana(),
         intents,
         provisioning,
-        relayer,
+        spends,
       });
 
       const out = await service.submitSettlement('pi_1', wire);
 
       expect(out.status).toBe('settling');
       expect(out.signature).toBe('sig-live');
-      expect(cosign).not.toHaveBeenCalled();
+      expect(submit).not.toHaveBeenCalled();
     });
   });
 
@@ -405,7 +505,7 @@ describe('SettlementService', () => {
     it('returns still_settling for a not-yet-confirmed null status and never rebuilds', async () => {
       const { intents } = makeIntents({ id: 'pi_1', status: 'settling' });
       const { provisioning } = makeProvisioning(ENDPOINT);
-      const { relayer } = makeRelayer();
+      const { spends } = makeSpends();
       const service = makeService({
         db: makeDb({
           attempt: {
@@ -427,7 +527,7 @@ describe('SettlementService', () => {
         }),
         intents,
         provisioning,
-        relayer,
+        spends,
       });
 
       await expect(service.resolveInFlight('pi_1')).resolves.toBe(

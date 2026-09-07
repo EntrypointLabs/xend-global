@@ -8,9 +8,12 @@ import {
   type RecoverySignerStore,
 } from './recovery-signer.store';
 import {
+  ContactEmailTakenError,
+  ContactRecoverySignerError,
   DuplicateRecoveryChannelError,
   LastRecoverySignerError,
   RecoveryChangeInFlightError,
+  RecoveryReleaseFrozenError,
   RecoverySignerLimitError,
   UnknownRecoverySignerError,
 } from './recovery.errors';
@@ -38,10 +41,22 @@ export interface RecoverySignerSummary {
   createdAt: Date;
   status: RecoverySignerStatus;
   /**
-   * False when removing this signer would leave the Account with none, and
-   * while any change to it is still in flight.
+   * False when removing this signer would leave the Account with none, while
+   * any change to it is still in flight, and always for the signer anchored
+   * on the contact address, which is rotated rather than removed.
    */
   removable: boolean;
+  /**
+   * True for the signer anchored on the address on file. It is the one a lost
+   * phone is recovered through, and rotating it is how the address moves.
+   */
+  isContactAddress: boolean;
+}
+
+/** What staging a contact address change produced: the new key and the one it retires. */
+export interface ContactRotation {
+  key: RecoverySignerSummary;
+  retiring: RecoverySignerSummary;
 }
 
 /**
@@ -57,6 +72,10 @@ export interface RecoverySignerSummary {
  * Adding a second is what unlocks removing the first. Same shape Fuse uses, and
  * enforced here rather than in the database because the rule is about intent
  * rather than referential integrity.
+ *
+ * The contact address is not edited anywhere. It is whatever address anchors
+ * S3, so it moves by rotating that signer: a settings change, two approvals,
+ * the time lock, and only on execution does the address on file follow.
  */
 @Injectable()
 export class RecoveryService {
@@ -85,7 +104,7 @@ export class RecoveryService {
 
     // Log that it happened. NEVER log the sealed key or the email.
     this.logger.log(`recovery.signer.provisioned user=${userId}`);
-    return this.summarise(row, await this.store.findByUser(userId));
+    return this.summariseOne(userId, row);
   }
 
   /**
@@ -113,7 +132,7 @@ export class RecoveryService {
 
     if (existing) {
       this.logger.log(`recovery.signer.reused user=${userId}`);
-      return this.summarise(existing, rows);
+      return this.summariseOne(userId, existing, rows);
     }
 
     return this.provisionEmailSigner(userId, email);
@@ -132,8 +151,8 @@ export class RecoveryService {
   }
 
   async list(userId: string): Promise<RecoverySignerSummary[]> {
-    const rows = await this.store.findByUser(userId);
-    return rows.map((row) => this.summarise(row, rows));
+    const { rows, contact } = await this.load(userId);
+    return rows.map((row) => this.summarise(row, rows, contact));
   }
 
   /**
@@ -164,7 +183,7 @@ export class RecoveryService {
     });
 
     this.logger.log(`recovery.signer.staged user=${userId} channel=wallet`);
-    return this.summarise(row, [...rows, row]);
+    return this.summariseOne(userId, row, [...rows, row]);
   }
 
   /**
@@ -187,11 +206,121 @@ export class RecoveryService {
 
     const row = await this.insertEmailSigner(userId, email, 'pending_add');
     this.logger.log(`recovery.signer.staged user=${userId} channel=email`);
-    return this.summarise(row, [...rows, row]);
+    return this.summariseOne(userId, row, [...rows, row]);
   }
 
   /**
-   * Stages the removal of a recovery signer, refusing when it is the last one.
+   * Whether an address may replace the one on file. Checked before the code
+   * goes out, for the same reason `assertEmailUnused` is.
+   *
+   * Two things can stop it: it is already a recovery channel on this Account,
+   * or it is another Consumer's contact address. The second is refused here
+   * rather than a day later at execution, when the change has already been
+   * approved twice and the signer set is mid-flight.
+   */
+  async assertContactEmailAvailable(
+    userId: string,
+    email: string,
+  ): Promise<void> {
+    const next = email.toLowerCase();
+    const rows = await this.store.findByUser(userId);
+    this.assertChannelUnused(rows, 'email', next);
+    if (await this.store.isContactEmailTaken(userId, next)) {
+      throw new ContactEmailTakenError(
+        'that email is already on another account',
+      );
+    }
+    // Two rotations racing to the same free address would both stage, both
+    // execute on chain, and the second would hit the unique index at settle
+    // with its change already final. Refused while the first is in flight.
+    if (await this.store.isEmailClaimStaged(userId, next)) {
+      throw new ContactEmailTakenError(
+        'that email is being claimed by another account',
+      );
+    }
+  }
+
+  /**
+   * Stages the change that moves the contact address.
+   *
+   * A fresh keypair sealed against the new address is staged for addition and
+   * the signer anchored on the current address is staged for removal, in one
+   * settings change. Fresh rather than the old secret re-addressed: the usual
+   * reason to change the address is that the old inbox was compromised, and
+   * an inbox that could ask us to sign with a key is an inbox that key has to
+   * outlive.
+   *
+   * Nothing about the address on file moves here. It follows the signer when
+   * the change executes, in `settle`, because staging is what an attacker
+   * holding one stolen signer can do and executing is what they cannot.
+   */
+  async stageContactRotation(
+    userId: string,
+    email: string,
+  ): Promise<ContactRotation> {
+    const next = email.toLowerCase();
+    const { rows, contact } = await this.load(userId);
+    this.assertNoChangeInFlight(rows);
+
+    const current = contact
+      ? rows.find(
+          (row) =>
+            row.channel === 'email' &&
+            row.channelValue === contact &&
+            row.status === 'active',
+        )
+      : undefined;
+    if (!current) {
+      throw new UnknownRecoverySignerError(
+        'this Account has no active recovery signer anchored on the address on file',
+      );
+    }
+    if (current.channelValue === next) {
+      throw new DuplicateRecoveryChannelError(
+        'that is already the address on file',
+      );
+    }
+    this.assertChannelUnused(rows, 'email', next);
+    if (await this.store.isContactEmailTaken(userId, next)) {
+      throw new ContactEmailTakenError(
+        'that email is already on another account',
+      );
+    }
+    // Two rotations racing to the same free address would both stage, both
+    // execute on chain, and the second would hit the unique index at settle
+    // with its change already final. Refused while the first is in flight.
+    if (await this.store.isEmailClaimStaged(userId, next)) {
+      throw new ContactEmailTakenError(
+        'that email is being claimed by another account',
+      );
+    }
+
+    // Not counted against the cap: the change adds one signer and removes
+    // one, so the on-chain set is the same size after it as before.
+    const replacement = await this.insertEmailSigner(
+      userId,
+      next,
+      'pending_add',
+    );
+    const retiring = await this.store.updateById(current.id, {
+      status: 'pending_remove',
+    });
+
+    this.logger.log(`recovery.contact.rotation_staged user=${userId}`);
+    const all = [
+      ...rows.filter((row) => row.id !== current.id),
+      retiring,
+      replacement,
+    ];
+    return {
+      key: this.summarise(replacement, all, contact),
+      retiring: this.summarise(retiring, all, contact),
+    };
+  }
+
+  /**
+   * Stages the removal of a recovery signer, refusing when it is the last one
+   * or the one that anchors the contact address.
    *
    * The row is marked rather than deleted, and returns the address so the
    * caller can drive the settings change that takes it out of the on-chain
@@ -200,7 +329,7 @@ export class RecoveryService {
    * surface when somebody tried to recover.
    */
   async remove(userId: string, signerId: string): Promise<{ address: string }> {
-    const rows = await this.store.findByUser(userId);
+    const { rows, contact } = await this.load(userId);
     this.assertNoChangeInFlight(rows);
 
     const target = rows.find((row) => row.id === signerId);
@@ -212,6 +341,11 @@ export class RecoveryService {
     if (target.status !== 'active') {
       throw new UnknownRecoverySignerError(
         `recovery signer ${signerId} is not active`,
+      );
+    }
+    if (anchorsContact(target, contact)) {
+      throw new ContactRecoverySignerError(
+        'this key anchors the address on file; change the address rather than removing the key',
       );
     }
     // Counts what actually backs the Account on chain. A pending_add row is
@@ -265,11 +399,47 @@ export class RecoveryService {
   }
 
   /**
+   * Every signer a staged change carries: one for an add or a remove, two for
+   * a rotation. What the change proposes is read off their statuses.
+   */
+  async stagedSigners(
+    userId: string,
+    changeIndex: bigint,
+  ): Promise<RecoverySignerSummary[]> {
+    const { rows, contact } = await this.load(userId);
+    const index = changeIndex.toString();
+    return rows
+      .filter((row) => row.changeIndex === index)
+      .map((row) => this.summarise(row, rows, contact));
+  }
+
+  /**
    * Applies a settings change that executed: staged additions become real, and
    * staged removals drop out. Idempotent, because the caller polls.
    */
   async settle(userId: string, changeIndex: bigint): Promise<void> {
-    for (const row of await this.rowsInChange(userId, changeIndex)) {
+    const rows = await this.rowsInChange(userId, changeIndex);
+    if (rows.length === 0) return;
+
+    // Before the rows, not after. A failure between the two then leaves the
+    // rows still staged, and the next poll comes back through here.
+    const rotation = await this.followContactRotation(userId, rows);
+    if (rotation) {
+      await this.events.recordContactEmailChanged(userId, {
+        changeIndex,
+        previousEmail: rotation.retiring.channelValue,
+        nextEmail: rotation.replacement.channelValue,
+        signature: rotation.replacement.changeSignature,
+      });
+    }
+    // The two rows a rotation carries are one fact to the Consumer, told
+    // above; announcing them as a key added and a key removed as well would
+    // say the same thing three times.
+    const rotated = new Set(
+      rotation ? [rotation.retiring.id, rotation.replacement.id] : [],
+    );
+
+    for (const row of rows) {
       if (row.status === 'pending_add') {
         await this.store.updateById(row.id, {
           status: 'active',
@@ -279,17 +449,21 @@ export class RecoveryService {
         // Recorded here rather than when the Consumer asked for it, because
         // this is the moment it became true: until the change executed the key
         // protected nothing.
-        await this.events.recordRecoveryKeyAdded(userId, {
-          signerId: row.id,
-          subject: row.channelValue,
-          signature: row.changeSignature,
-        });
+        if (!rotated.has(row.id)) {
+          await this.events.recordRecoveryKeyAdded(userId, {
+            signerId: row.id,
+            subject: row.channelValue,
+            signature: row.changeSignature,
+          });
+        }
       } else if (row.status === 'pending_remove') {
-        await this.events.recordRecoveryKeyRemoved(userId, {
-          signerId: row.id,
-          subject: row.channelValue,
-          signature: row.changeSignature,
-        });
+        if (!rotated.has(row.id)) {
+          await this.events.recordRecoveryKeyRemoved(userId, {
+            signerId: row.id,
+            subject: row.channelValue,
+            signature: row.changeSignature,
+          });
+        }
         // After the event, because the row is the only place the subject
         // lives and deleting first would leave nothing to record.
         await this.store.deleteById(row.id);
@@ -301,6 +475,9 @@ export class RecoveryService {
   /**
    * Applies a settings change that was rejected or never executed: staged
    * additions disappear, staged removals return to service. Idempotent.
+   *
+   * The address on file is untouched by construction: it only ever moves in
+   * `settle`, so a rejected rotation leaves the entry point where it was.
    */
   async abandon(userId: string, changeIndex: bigint): Promise<void> {
     for (const row of await this.rowsInChange(userId, changeIndex)) {
@@ -318,96 +495,35 @@ export class RecoveryService {
   }
 
   /**
-   * Moves the recovery anchor when the Consumer changes their contact address.
+   * The signer in the on-chain set that a proved inbox may release.
    *
-   * The signer keeps its key and its on-chain address. Only the inbox that may
-   * ask for its release moves, which is why this needs no settings change and
-   * no time lock.
-   *
-   * That is a deliberate departure from `changeEmail` below, which mints a
-   * fresh keypair on the reasoning that a changed email may itself have been
-   * compromised. The distinction is what the old inbox actually held: never
-   * the key, which has not left the vault, only the ability to prove that
-   * address and so ask us to sign with it. Moving the anchor ends that
-   * ability, and re-keying would buy nothing while costing a settings change,
-   * a 24 hour lock and a window where the signer set is mid-flight.
-   *
-   * Silent when there is nothing anchored on the old address: an Account whose
-   * recovery signer was already pointed elsewhere is not one this should
-   * quietly redirect.
+   * Looked up by the address the code went to rather than "the first sealed
+   * signer", so the row that was proved and the key that signs are the same
+   * row. An Account with two email recovery keys has two sealed keys, and a
+   * code sent to one inbox must not open the other.
    */
-  async reanchorEmailSigner(
+  async signerAnchoredOn(
     userId: string,
-    previous: string | null,
-    next: string,
-  ): Promise<void> {
-    if (!previous || previous.toLowerCase() === next.toLowerCase()) return;
-
-    const rows = await this.store.findByUser(userId);
-    const anchored = rows.find(
-      (row) =>
-        row.channel === 'email' &&
-        row.channelValue === previous.toLowerCase() &&
-        row.status === 'active',
-    );
-    if (!anchored) return;
-
-    if (anchored.changeIndex) {
-      throw new RecoveryChangeInFlightError(
-        'this recovery key is already being changed',
-      );
-    }
-    this.assertChannelUnused(rows, 'email', next.toLowerCase());
-
-    await this.store.updateById(anchored.id, {
-      channelValue: next.toLowerCase(),
-    });
-    this.logger.log(`recovery.signer.reanchored user=${userId}`);
-  }
-
-  /**
-   * Rotates an email recovery signer to a new address.
-   *
-   * This is the escape hatch that makes the at-least-one rule liveable: a
-   * Consumer who mistyped their email, or lost access to it, can change it
-   * without ever passing through a state with no recovery signer.
-   */
-  async changeEmail(
-    userId: string,
-    signerId: string,
     email: string,
   ): Promise<RecoverySignerSummary> {
-    const rows = await this.store.findByUser(userId);
-    const existing = rows.find((row) => row.id === signerId);
-
-    if (!existing) {
+    const { rows, contact } = await this.load(userId);
+    const channelValue = email.toLowerCase();
+    const row = rows.find(
+      (candidate) =>
+        candidate.channel === 'email' &&
+        candidate.channelValue === channelValue &&
+        inSignerSet(candidate),
+    );
+    if (!row) {
       throw new UnknownRecoverySignerError(
-        `no recovery signer ${signerId} for this Account`,
+        'no recovery signer on this Account is anchored on that address',
       );
     }
-    if (existing.channel !== 'email') {
-      throw new UnknownRecoverySignerError(
-        `recovery signer ${signerId} is not an email signer`,
-      );
-    }
-
-    // A fresh keypair, not the old secret re-addressed: the old email may be
-    // exactly what was compromised.
-    const { address, sealed } = await this.mintSealedSigner();
-
-    const row = await this.store.updateById(signerId, {
-      address,
-      channelValue: email.toLowerCase(),
-      sealedKey: sealed.ciphertext,
-      sealedKeyId: sealed.keyId,
-    });
-
-    this.logger.log(`recovery.signer.rotated user=${userId}`);
-    return this.summarise(row, rows);
+    return this.summarise(row, rows, contact);
   }
 
   /**
-   * Adds the recovery signer's approval to a transaction the caller built.
+   * Adds a recovery signer's approval to a transaction the caller built.
    *
    * The only place `RecoveryVault.open` is ever called, and the reason the
    * whole email-challenge apparatus exists. The opened key lives for the
@@ -415,21 +531,31 @@ export class RecoveryService {
    * returned, so no caller can hold S3 or use it for anything but the
    * transaction it passed in.
    *
-   * The caller is responsible for having proved the inbox first, and for
+   * Takes the signer by id so the row the inbox proved is the row that signs.
+   * The caller is responsible for having proved that inbox first, and for
    * having built the transaction itself. Neither check belongs here: this
-   * knows how to produce a signature, not when one is deserved.
+   * knows how to produce a signature, not when one is deserved. The one
+   * refusal it does own is the release freeze, because that is about whether
+   * we sign at all, not about who asked.
    */
   async approveWithRecoverySigner(
     userId: string,
     transaction: VersionedTransaction,
+    signerId: string,
   ): Promise<VersionedTransaction> {
-    const rows = await this.store.findByUser(userId);
-    const signer = rows.find(
-      (row) => row.status === 'active' && row.sealedKey && row.sealedKeyId,
+    await this.assertReleaseAllowed(userId);
+
+    const signer = (await this.store.findByUser(userId)).find(
+      (row) => row.id === signerId,
     );
-    if (!signer?.sealedKey || !signer.sealedKeyId) {
+    if (!signer || !inSignerSet(signer)) {
       throw new UnknownRecoverySignerError(
-        'this Account has no recovery signer whose key we hold',
+        `recovery signer ${signerId} is not in this Account's signer set`,
+      );
+    }
+    if (!signer.sealedKey || !signer.sealedKeyId) {
+      throw new UnknownRecoverySignerError(
+        'we hold no key for that recovery signer',
       );
     }
 
@@ -454,6 +580,86 @@ export class RecoveryService {
 
     this.logger.log(`recovery.signer.approved user=${userId}`);
     return transaction;
+  }
+
+  /**
+   * Refuses while support has the release frozen.
+   *
+   * Run wherever a sealed key is about to be asked for, and also before a
+   * rotation that would need one is staged, so a Consumer is told at the
+   * start rather than after an index has been burned.
+   */
+  async assertReleaseAllowed(userId: string): Promise<void> {
+    if (await this.store.findReleaseFreeze(userId)) {
+      throw new RecoveryReleaseFrozenError(
+        'recovery through email is paused on this Account while a report is open; contact support',
+      );
+    }
+  }
+
+  releaseFreeze(userId: string): Promise<Date | null> {
+    return this.store.findReleaseFreeze(userId);
+  }
+
+  /**
+   * Stops every sealed recovery key we hold for this Consumer from signing.
+   *
+   * Refusal, not override. Nothing here can move an anchor or cancel a
+   * change; it only withholds the one vote we hold. A Consumer with their
+   * passkey and phone still has threshold and is unaffected.
+   */
+  async freezeRelease(userId: string, now = new Date()): Promise<void> {
+    await this.store.setReleaseFreeze(userId, now);
+    this.logger.warn(`recovery.release.frozen user=${userId}`);
+  }
+
+  async unfreezeRelease(userId: string): Promise<void> {
+    await this.store.setReleaseFreeze(userId, null);
+    this.logger.warn(`recovery.release.unfrozen user=${userId}`);
+  }
+
+  /**
+   * Moves the address on file when the change that executed swapped the
+   * signer anchored on it.
+   *
+   * Detected from the rows rather than flagged at staging: a change that
+   * retires the contact signer and installs another email signer is a
+   * contact rotation whatever it was called, and the entry point has to
+   * follow the key or a lost phone would be recovered against an inbox
+   * whose key is no longer in the signer set.
+   */
+  private async followContactRotation(
+    userId: string,
+    rows: RecoverySignerRow[],
+  ): Promise<{
+    retiring: RecoverySignerRow;
+    replacement: RecoverySignerRow;
+  } | null> {
+    const contact = await this.store.findContactEmail(userId);
+    const retiring = rows.find(
+      (row) => row.status === 'pending_remove' && anchorsContact(row, contact),
+    );
+    const replacement = rows.find(
+      (row) => row.status === 'pending_add' && row.channel === 'email',
+    );
+    if (!retiring || !replacement) return null;
+
+    try {
+      await this.store.updateContactEmail(userId, replacement.channelValue);
+    } catch (err) {
+      // The race the staging check narrows but cannot close: another account
+      // claimed the address after this change was staged. The chain has
+      // already moved, so this keeps failing on every poll; named here so the
+      // stuck rotation is diagnosable rather than a bare constraint error.
+      if ((err as { cause?: { code?: string } })?.cause?.code === '23505') {
+        this.logger.error(
+          `recovery.contact.conflict user=${userId} target=${replacement.channelValue}`,
+        );
+      }
+      throw err;
+    }
+    this.logger.log(`recovery.contact.moved user=${userId}`);
+    return { retiring, replacement };
   }
 
   /**
@@ -545,10 +751,33 @@ export class RecoveryService {
     }
   }
 
+  private async load(userId: string) {
+    const [rows, contact] = await Promise.all([
+      this.store.findByUser(userId),
+      this.store.findContactEmail(userId),
+    ]);
+    return { rows, contact };
+  }
+
+  private async summariseOne(
+    userId: string,
+    row: RecoverySignerRow,
+    rows?: RecoverySignerRow[],
+  ): Promise<RecoverySignerSummary> {
+    const contact = await this.store.findContactEmail(userId);
+    return this.summarise(
+      row,
+      rows ?? (await this.store.findByUser(userId)),
+      contact,
+    );
+  }
+
   private summarise(
     row: RecoverySignerRow,
     rows: RecoverySignerRow[],
+    contact: string | null,
   ): RecoverySignerSummary {
+    const isContactAddress = anchorsContact(row, contact);
     return {
       id: row.id,
       address: row.address,
@@ -556,14 +785,29 @@ export class RecoveryService {
       channelValue: row.channelValue,
       createdAt: row.createdAt,
       status: row.status,
-      removable: row.status === 'active' && backing(rows).length > 1,
+      removable:
+        row.status === 'active' &&
+        !isContactAddress &&
+        backing(rows).length > 1,
+      isContactAddress,
     };
   }
 }
 
 /** The signers that are in the on-chain signer set right now. */
 function backing(rows: RecoverySignerRow[]): RecoverySignerRow[] {
-  return rows.filter(
-    (row) => row.status === 'active' || row.status === 'pending_remove',
+  return rows.filter(inSignerSet);
+}
+
+function inSignerSet(row: RecoverySignerRow): boolean {
+  return row.status === 'active' || row.status === 'pending_remove';
+}
+
+function anchorsContact(
+  row: RecoverySignerRow,
+  contact: string | null,
+): boolean {
+  return (
+    contact !== null && row.channel === 'email' && row.channelValue === contact
   );
 }

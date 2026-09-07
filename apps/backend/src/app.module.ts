@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { ConfigModule } from './config/config.module';
 import { DbModule } from './db/db.module';
 import { AuthModule } from './auth/auth.module';
+import { EntrySessionModule } from './auth/entry-session.module';
 import { WalletsModule } from './wallets/wallets.module';
 import { WalletModule } from './wallet/wallet.module';
 import { SolanaModule } from './solana/solana.module';
@@ -18,6 +19,7 @@ import { EventsModule } from './events/events.module';
 import { CountersModule } from './counters/counters.module';
 import { CapabilityModule } from './capability/capability.module';
 import { PaymentModule } from './payment/payment.module';
+import { PendingPaymentModule } from './payment/pending-payment.module';
 import { SessionModule } from './session/session.module';
 import { SettlementModule } from './settlement/settlement.module';
 import { FxModule } from './fx/fx.module';
@@ -32,6 +34,7 @@ import { TestDashboardModule } from './test-dashboard/test-dashboard.module';
     NotificationsModule,
     ConfigModule,
     DbModule,
+    EntrySessionModule,
     AuthModule,
     WalletsModule,
     WalletModule,
@@ -44,6 +47,7 @@ import { TestDashboardModule } from './test-dashboard/test-dashboard.module';
     CountersModule,
     CapabilityModule,
     PaymentModule,
+    PendingPaymentModule,
     SessionModule,
     SettlementModule,
     FxModule,

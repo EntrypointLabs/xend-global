@@ -114,7 +114,8 @@ export class ProvisioningService {
       change: 'provision',
       step,
       ...unsigned,
-      needsApprovalSignature: step === 'approve-approval',
+      needsApprovalSignature:
+        step === 'approve-approval' || step === 'provision',
     };
   }
 
@@ -219,8 +220,8 @@ export class ProvisioningService {
     // anything.
     const rentPayer = new PublicKey(this.chain.rentPayer);
 
-    if (step === 'propose') {
-      return buildProvisionAccount({
+    if (step === 'provision' || step === 'propose') {
+      const { propose, policies } = buildProvisionAccount({
         addresses,
         spendingLimitSeed: SPENDING_LIMIT_POLICY_SEED,
         aboveLimitSeed: ABOVE_LIMIT_POLICY_SEED,
@@ -238,7 +239,28 @@ export class ProvisioningService {
             this.config.getOrThrow<string>('EXPO_PUBLIC_USDC_MINT_ADDRESS'),
           ),
         ),
-      }).propose;
+      });
+      if (step === 'propose') return propose;
+      return [
+        ...propose,
+        buildApproveSettingsChange({
+          addresses,
+          transactionIndex,
+          signer: primary,
+        }),
+        buildApproveSettingsChange({
+          addresses,
+          transactionIndex,
+          signer: approval,
+        }),
+        buildExecuteSettingsChange({
+          addresses,
+          transactionIndex,
+          signer: primary,
+          rentPayer,
+          policies,
+        }),
+      ];
     }
 
     if (step === 'execute') {
@@ -278,7 +300,11 @@ function nextStep(
   approved: string[] | null,
   account: SquadsAccountRow,
 ): ProvisioningStep {
-  if (approved === null) return 'propose';
+  // Nothing proposed at this index, so the whole change fits in one
+  // transaction. The granular steps below only run when resuming a change an
+  // interrupted older run left partway, which a single atomic transaction
+  // can no longer produce.
+  if (approved === null) return 'provision';
   if (!approved.includes(account.primarySigner)) return 'approve-primary';
   if (!approved.includes(account.approvalSigner)) return 'approve-approval';
   return 'execute';

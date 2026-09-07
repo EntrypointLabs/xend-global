@@ -84,6 +84,7 @@ function makeService(opts: {
         createdAt: new Date('2026-01-01'),
         updatedAt: new Date('2026-01-01'),
         deletedAt: null,
+        recoveryReleaseFrozenAt: null,
       },
     ],
   };

@@ -6,9 +6,13 @@ import {
   Inject,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { RecoveryService } from '../recovery/recovery.service';
 import { DbService } from '../db/db.service';
-import { users, smartAccounts, passkeyCredentials } from '../db/schema';
+import {
+  users,
+  smartAccounts,
+  passkeyCredentials,
+  squadsAccounts,
+} from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { WALLET_PROVIDER } from '../wallet/wallet-provider.interface';
 import type { WalletProvider } from '../wallet/wallet-provider.interface';
@@ -21,31 +25,16 @@ import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { ExchangeResponse, MirrorPasskeyCredentialRequest } from './dtos';
 
-/**
- * The contact address already anchors another Account's recovery signer. Kept
- * HTTP-framework-agnostic (plain Error subclass); the controller maps it to
- * 409 EMAIL_IN_USE.
- */
-export class EmailInUseError extends Error {
-  readonly code = 'EMAIL_IN_USE';
-  constructor(message: string) {
-    super(message);
-    this.name = 'EmailInUseError';
-  }
-}
+import {
+  CredentialConflictError,
+  EmailInUseError,
+  EmailRotationRequiredError,
+} from './auth.errors';
+import { SignupService } from './signup.service';
+import { AccountEventsService } from '../activity/account-events.service';
+import { SignupTokenInvalidError } from './signup.errors';
 
-/**
- * A passkey credential is already mirrored under a different account. Kept
- * HTTP-framework-agnostic (plain Error subclass); the controller maps it to
- * 409 CREDENTIAL_CONFLICT.
- */
-export class CredentialConflictError extends Error {
-  readonly code = 'CREDENTIAL_CONFLICT';
-  constructor(message: string) {
-    super(message);
-    this.name = 'CredentialConflictError';
-  }
-}
+export { CredentialConflictError, EmailInUseError, EmailRotationRequiredError };
 
 /** Postgres unique-violation SQLSTATE, surfaced by node-postgres. */
 function pgErrorCode(err: unknown): string | undefined {
@@ -62,10 +51,25 @@ export class AuthService {
     private db: DbService,
     @Inject(WALLET_PROVIDER) private wallet: WalletProvider,
     @Inject(SOLANA_RPC) private solana: SolanaRpc,
-    private recovery: RecoveryService,
+    private signup: SignupService,
+    private events: AccountEventsService,
   ) {}
 
-  async exchange(privyIdToken: string): Promise<ExchangeResponse> {
+  /**
+   * Turns a Privy identity into a Xend session.
+   *
+   * With a sign-up token, the Privy user is bound to the users row whose
+   * address the token was issued for. Without one, the only row this can
+   * reach is one the Privy user is already bound to; a passkey nothing knows
+   * is refused rather than given a row. A row waiting to be bound is never
+   * matched by anything else, which is what keeps one Consumer from landing
+   * on an address another Consumer proved.
+   */
+  async exchange(
+    privyIdToken: string,
+    signupToken?: string,
+    expectUserId?: string,
+  ): Promise<ExchangeResponse> {
     // Verify the Privy ID token. Typed errors from PrivyAdapter map to
     // HTTP responses:
     //   InvalidPrivyTokenError -> 401 INVALID_PRIVY_TOKEN
@@ -101,15 +105,12 @@ export class AuthService {
       );
     }
 
-    const { providerUserId, email, walletAddress, passkeys } = privyUser;
+    const { providerUserId, walletAddress, passkeys } = privyUser;
 
-    // Keyed on the Privy DID, not the email.
-    //
-    // The passkey is the credential, so a sign-up arrives with no email at all
-    // and there is nothing to match on. Matching on email was also wrong even
-    // when there was one: a Consumer who changed their Privy address would be
-    // treated as a stranger and get a second, empty Account, and one who moved
-    // to an address another Consumer already had would have adopted theirs.
+    // Keyed on the Privy DID, never on the email Privy may carry. An address
+    // is only ever on a row because somebody proved it there: adopting a row
+    // by address would hand that proof to whoever Privy says holds the same
+    // one.
     const [byProvider] = await this.db.client
       .select({ user: users })
       .from(smartAccounts)
@@ -117,38 +118,80 @@ export class AuthService {
       .where(eq(smartAccounts.providerUserId, providerUserId))
       .limit(1);
 
-    // Falls back to the email for Consumers who signed up before the DID was
-    // the key and have no smart_accounts row yet.
-    const [byEmail] = byProvider?.user
-      ? []
-      : email
-        ? await this.db.client
-            .select()
-            .from(users)
-            .where(eq(users.email, email))
-            .limit(1)
-        : [];
-
-    const existingUser = byProvider?.user ?? byEmail;
-
     let userRow: typeof users.$inferSelect;
     let isNewUser: boolean;
 
-    if (existingUser) {
+    if (signupToken) {
+      let pending: typeof users.$inferSelect;
+      try {
+        pending = await this.signup.claimSignupToken(signupToken);
+      } catch (err) {
+        if (err instanceof SignupTokenInvalidError) {
+          throw new HttpException(
+            { code: err.code, message: err.message },
+            HttpStatus.UNAUTHORIZED,
+          );
+        }
+        throw err;
+      }
+      // A Privy user already bound elsewhere cannot also be bound here: the
+      // two rows would share a DID, and the one holding the proved address
+      // would be reachable from a passkey that never proved it.
+      if (byProvider && byProvider.user.id !== pending.id) {
+        throw new HttpException(
+          {
+            code: 'SIGNUP_TOKEN_INVALID',
+            message: 'this passkey already belongs to an account',
+          },
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+      userRow = pending;
+      isNewUser = true;
+    } else if (byProvider) {
       const [touched] = await this.db.client
         .update(users)
         .set({ updatedAt: new Date() })
-        .where(eq(users.id, existingUser.id))
+        .where(eq(users.id, byProvider.user.id))
         .returning();
       userRow = touched;
       isNewUser = false;
     } else {
-      const [inserted] = await this.db.client
-        .insert(users)
-        .values({ email })
-        .returning();
-      userRow = inserted;
-      isNewUser = true;
+      // A passkey no Account knows creates nothing. Every Account starts from
+      // a proved address, and the sign-up token is the only thing that may
+      // attach a passkey to one; a fresh row minted here would be an Account
+      // with no contact address and no recovery signer behind it.
+      this.logger.log('auth.exchange.unknown_passkey');
+      throw new HttpException(
+        {
+          code: 'NO_ACCOUNT_FOR_PASSKEY',
+          message:
+            'this passkey is not on a Xend account yet; continue with your email to create one',
+        },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    // The caller proved an inbox and named its account; a passkey that
+    // resolves anywhere else is refused before it can replace that session.
+    // The platform picker offers every credential for the relying party and
+    // labels them identically, so picking the wrong one is an ordinary
+    // mistake, and the answer is a refusal they can retry rather than a
+    // sign-in to an account they did not ask for.
+    if (expectUserId && userRow.id !== expectUserId) {
+      this.logger.log('auth.exchange.passkey_account_mismatch');
+      throw new HttpException(
+        {
+          code: 'PASSKEY_ACCOUNT_MISMATCH',
+          message: 'that passkey opens a different account',
+          // Masked, and only here: the caller physically holds this passkey
+          // and can read the full address by signing in with it, so naming
+          // which account they picked costs nothing and turns a guessing
+          // game into an answer.
+          maskedEmail: maskEmail(userRow.email),
+        },
+        HttpStatus.CONFLICT,
+      );
     }
 
     // Upsert smart_accounts keyed by user_id (UNIQUE). Matching on
@@ -244,20 +287,29 @@ export class AuthService {
   }
 
   /**
-   * Records the Consumer's contact address.
-   *
-   * Refused when it already belongs to someone else rather than adopted: the
-   * address anchors a recovery signer, and two Accounts claiming one inbox
-   * would mean either could be restored through it.
-   */
-  /**
    * Whether this Consumer may claim an address, checked before a code is sent.
    *
    * Sending first and refusing afterwards would mail a code to somebody else's
    * inbox to tell the wrong person that an address they own was typed into an
    * account they do not have.
+   *
+   * Refused outright once an Account exists. From then on the address anchors
+   * a signer in the Account's set, and it moves by rotating that signer, not
+   * by writing here. Gated on the Account rather than on which route called,
+   * so the sign-up write stays open however sign-up is sequenced.
    */
   async assertEmailClaimable(userId: string, email: string): Promise<void> {
+    const [account] = await this.db.client
+      .select({ userId: squadsAccounts.userId })
+      .from(squadsAccounts)
+      .where(eq(squadsAccounts.userId, userId))
+      .limit(1);
+    if (account) {
+      throw new EmailRotationRequiredError(
+        'this Account already has an address on file; change it from Keys & Recovery',
+      );
+    }
+
     const [clash] = await this.db.client
       .select({ id: users.id })
       .from(users)
@@ -270,12 +322,11 @@ export class AuthService {
   }
 
   /**
-   * Records the contact address, and moves the recovery anchor with it.
+   * Records the contact address during sign-up.
    *
-   * The two have to change together. S3 is released against whatever address
-   * is on file, so a user row that has moved on while the signer still records
-   * the old inbox means recovery is judged against one address and remembered
-   * against another.
+   * The initial write only. Once an Account exists the address anchors S3 and
+   * is changed by rotating that signer, which is a settings change with two
+   * approvals and a time lock, never a write here.
    */
   async setEmail(userId: string, email: string): Promise<{ email: string }> {
     return this.db.withAdvisoryLock(`auth:email:${userId}`, () =>
@@ -283,32 +334,11 @@ export class AuthService {
     );
   }
 
-  /**
-   * The address and the anchor move together, or neither does.
-   *
-   * S3 is released against whatever address is on file, so a user row that has
-   * moved on while the signer still records the old inbox is a permanent
-   * mismatch: the retry reads the new address as the previous one and does
-   * nothing. The anchor moves first because a refusal there leaves both
-   * records untouched, and the row write is undone if it fails after it.
-   */
   private async writeEmail(
     userId: string,
     email: string,
   ): Promise<{ email: string }> {
     await this.assertEmailClaimable(userId, email);
-
-    const [current] = await this.db.client
-      .select({ email: users.email })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    // Read off the row now rather than after the update. Holding the row and
-    // reading it later makes the answer depend on whether the driver handed
-    // back a copy or a live reference.
-    const previousEmail = current?.email ?? null;
-
-    await this.recovery.reanchorEmailSigner(userId, previousEmail, email);
 
     try {
       await this.db.client
@@ -320,16 +350,6 @@ export class AuthService {
       // unique index is what actually settles it, and the one it turns away
       // has to hear the same refusal as the one who read the clash, not a
       // 500 that reads like an outage.
-      // The anchor already moved, so put it back rather than leave the two
-      // records describing different inboxes.
-      await this.recovery
-        .reanchorEmailSigner(userId, email, previousEmail ?? email)
-        .catch((undoError) =>
-          this.logger.error(
-            `auth.email_rollback_failed userId=${userId}`,
-            undoError,
-          ),
-        );
       if (pgErrorCode(err) === '23505') {
         throw new EmailInUseError('that email is already on another account');
       }
@@ -380,6 +400,16 @@ export class AuthService {
       credentialId: dto.credentialId,
       publicKey: dto.publicKey,
     });
+    await this.events.recordPasskeyEnrolled(userId, {
+      credentialId: dto.credentialId,
+    });
     return { mirrored: true };
   }
+}
+
+function maskEmail(email: string | null): string | null {
+  if (!email) return null;
+  const at = email.indexOf('@');
+  if (at < 1) return null;
+  return `${email[0]}•••${email.slice(at)}`;
 }

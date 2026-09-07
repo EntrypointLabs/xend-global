@@ -72,5 +72,8 @@ function toRow(row: typeof squadsAccounts.$inferSelect): SquadsAccountRow {
     pendingApprovalSigner: row.pendingApprovalSigner,
     pendingApprovalSubOrgId: row.pendingApprovalSubOrgId,
     pendingApprovalChangeIndex: row.pendingApprovalChangeIndex,
+    pendingPrimarySigner: row.pendingPrimarySigner,
+    pendingPrimaryProviderId: row.pendingPrimaryProviderId,
+    pendingPrimaryChangeIndex: row.pendingPrimaryChangeIndex,
   };
 }

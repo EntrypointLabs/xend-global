@@ -80,6 +80,7 @@ export const AccountResponseSchema = z.object({
   approvalSubOrgId: z.string(),
   /** The approval signer a device rotation is moving to, while one is in flight. */
   pendingApprovalSigner: z.string().nullable(),
+  pendingPrimarySigner: z.string().nullable(),
   /** The hardware key this Account's approval signer was enrolled with. */
   deviceKey: z.string().nullable(),
   /**
@@ -177,6 +178,19 @@ export const StartDeviceRotationSchema = z.union([
 ]);
 
 export type StartDeviceRotationDto = z.infer<typeof StartDeviceRotationSchema>;
+
+/**
+ * Starts a passkey replacement. The identity token, not an address, names the
+ * incoming signer: it proves the caller holds a session for that credential.
+ */
+export const StartPrimaryRotationSchema = z.object({
+  grantId: z.string().min(1),
+  privyIdToken: z.string().min(1),
+});
+
+export type StartPrimaryRotationDto = z.infer<
+  typeof StartPrimaryRotationSchema
+>;
 
 /** Asks for a code at an address being offered as a recovery key. */
 export const RequestRecoveryEmailCodeSchema = z.object({

@@ -4,7 +4,12 @@ import type {
   WalletProvider,
   WalletProviderUser,
 } from '../wallet/wallet-provider.interface';
-import { passkeyCredentials, smartAccounts, users } from '../db/schema';
+import {
+  passkeyCredentials,
+  smartAccounts,
+  squadsAccounts,
+  users,
+} from '../db/schema';
 import { IdentityService } from './identity.service';
 
 /** NODE_ENV stub; defaults to a non-development value (production path). */
@@ -26,6 +31,7 @@ function userRow(over: Partial<UsersRow> = {}): UsersRow {
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     deletedAt: null,
+    recoveryReleaseFrozenAt: null,
     ...over,
   };
 }
@@ -59,11 +65,13 @@ function makeFakeDb(store: {
   passkeyCredentials?: PasskeyRow[];
   users?: UsersRow[];
   smartAccounts?: SmartAccountsRow[];
+  squadsAccounts?: { vaultAddress: string }[];
 }): DbService {
   const dispatch = (tbl: unknown): unknown[] => {
     if (tbl === passkeyCredentials) return store.passkeyCredentials ?? [];
     if (tbl === users) return store.users ?? [];
     if (tbl === smartAccounts) return store.smartAccounts ?? [];
+    if (tbl === squadsAccounts) return store.squadsAccounts ?? [];
     throw new Error('unknown table in fake select');
   };
   const client = {
@@ -80,6 +88,8 @@ function makeFakeDb(store: {
   };
   return { client } as unknown as DbService;
 }
+
+const VAULT = 'Vault1';
 
 const providerUser: WalletProviderUser = {
   providerUserId: 'p1',
@@ -99,6 +109,7 @@ describe('IdentityService.resolveByCredentialId', () => {
       passkeyCredentials: [credRow()],
       users: [userRow()],
       smartAccounts: [accountRow()],
+      squadsAccounts: [{ vaultAddress: VAULT }],
     });
     const service = new IdentityService(db, wallet, makeConfig());
 
@@ -106,7 +117,7 @@ describe('IdentityService.resolveByCredentialId', () => {
 
     expect(profile).toEqual({
       consumerId: 'u1',
-      accountAddress: 'Wallet1',
+      accountAddress: VAULT,
       email: 'a@b.com',
     });
     expect(verifyIdToken).not.toHaveBeenCalled();
@@ -135,6 +146,7 @@ describe('IdentityService.resolveByProviderToken', () => {
     const db = makeFakeDb({
       users: [userRow()],
       smartAccounts: [accountRow()],
+      squadsAccounts: [{ vaultAddress: VAULT }],
     });
     const service = new IdentityService(db, wallet, makeConfig());
 
@@ -142,7 +154,8 @@ describe('IdentityService.resolveByProviderToken', () => {
 
     expect(verifyIdToken).toHaveBeenCalledWith('token');
     expect(profile.consumerId).toBe('u1');
-    expect(profile.accountAddress).toBe('Wallet1');
+    // The vault, not the Privy wallet: that is where a Payment is drawn from.
+    expect(profile.accountAddress).toBe(VAULT);
   });
 
   it('rejects a provider user with no Account with UNKNOWN_CONSUMER', async () => {
@@ -174,6 +187,8 @@ describe('IdentityService.resolveByProviderToken', () => {
     expect(store.users[0].email).toBe('a@b.com');
     expect(store.smartAccounts[0].providerUserId).toBe('p1');
     expect(store.smartAccounts[0].walletAddress).toBe('Wallet1');
+    // No Account exists on any cluster for a dev-provisioned Consumer, so the
+    // Privy wallet stands in for the vault. Development only.
     expect(profile).toEqual({
       consumerId: store.users[0].id,
       accountAddress: 'Wallet1',
@@ -202,9 +217,11 @@ function makeStatefulDb(): {
         const rows =
           tbl === users
             ? store.users
-            : tbl === smartAccounts
-              ? store.smartAccounts
-              : [];
+            : tbl === squadsAccounts
+              ? []
+              : tbl === smartAccounts
+                ? store.smartAccounts
+                : [];
         const chain = {
           where: () => chain,
           limit: () => Promise.resolve(rows),

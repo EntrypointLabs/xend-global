@@ -1,4 +1,6 @@
 import type {
+  AccountResponse,
+  ProvisioningStep,
   BalancesResponse,
   StagedChange,
   ListSessionsResponse,
@@ -19,6 +21,14 @@ import { getUsdcMint } from "@/utils/cluster";
  */
 export const SEED_DEMO =
   __DEV__ && process.env.EXPO_PUBLIC_SEED_DEMO === "true";
+
+/**
+ * Which session tier the seeded session pretends to hold. `entry` renders the
+ * looking-not-spending state, which is otherwise unreachable on a simulator
+ * because opening a real entry session needs a mailed code.
+ */
+export const SEED_TIER: "full" | "entry" =
+  process.env.EXPO_PUBLIC_SEED_TIER === "entry" ? "entry" : "full";
 
 const WALLET = "GkP9xL7mQwR2sT4vB6nH8jC3dF5aZ1yU2eW4rK6tN9pM";
 
@@ -257,6 +267,7 @@ export function seedPrepareTransfer(): PrepareTransferResponse {
  * - `one`       a single email key, which is every real Account today
  * - `pending`   a second key staged and still waiting on the chain
  * - `removing`  a key on its way out
+ * - `rotating`  the contact address being changed: old key out, new key in
  * - `full`      three keys, so the add button is at capacity
  * - `empty`     no keys, which the backend forbids but the screen must survive
  */
@@ -271,6 +282,7 @@ export function seedRecoveryKeys(): RecoveryKey[] {
     createdAt: new Date(Date.now() - 86_400_000 * 30).toISOString(),
     status: "active",
     removable: false,
+    isContactAddress: true,
   };
   const wallet = (
     id: string,
@@ -284,9 +296,23 @@ export function seedRecoveryKeys(): RecoveryKey[] {
     createdAt: new Date(Date.now() - 86_400_000).toISOString(),
     status,
     removable,
+    isContactAddress: false,
   });
 
   if (state === "empty") return [];
+  if (state === "rotating") {
+    return [
+      { ...email, status: "pending_remove" },
+      {
+        ...email,
+        id: "rk-02",
+        channelValue: "amara@proton.me",
+        createdAt: new Date().toISOString(),
+        status: "pending_add",
+        isContactAddress: false,
+      },
+    ];
+  }
   if (state === "pending") {
     return [
       { ...email, removable: false },
@@ -328,4 +354,39 @@ export function seedPendingChange(): StagedChange | null {
     executableAt: new Date(Date.now() + 23.5 * 3600 * 1000).toISOString(),
     selfInitiated: state === "self",
   };
+}
+
+/**
+ * The Account behind the seeded session. Without it `/account/me` is the one
+ * read that still leaves the device on a fresh simulator, and a dead backend
+ * answers 404, which the error banner shows over every seeded screen.
+ */
+export function seedAccount(): AccountResponse {
+  return {
+    address: WALLET,
+    signers: {
+      primary: "5qT2wR7tY9uP1sX4vB6mH8jC3dF5aZ1yU2eW4rK6tN9p",
+      approval: "7uP1sX4vB6mH8jC3dF5aZ1yU2eW4rK6tN9pM5qT2wR7t",
+    },
+    approvalSubOrgId: "suborg-demo-0001",
+    pendingApprovalSigner: null,
+    pendingPrimarySigner: null,
+    deviceKey: "9jC3dF5aZ1yU2eW4rK6tN9pM5qT2wR7tY9uP1sX4vB6m",
+    spendingLimit: {
+      mint: usdcMint(),
+      maxPerUse: "500000000",
+      maxPerPeriod: "1000000000",
+      remainingInPeriod: "742500000",
+      period: "Daily",
+    },
+  };
+}
+
+/**
+ * The seeded Account is already provisioned, so provisioning has nothing left
+ * to hand back. Without this the setup poll is the last read that still leaves
+ * the device.
+ */
+export function seedProvisioningStep(): ProvisioningStep {
+  return { done: true, needsApprovalSignature: false };
 }

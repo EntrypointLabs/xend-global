@@ -211,6 +211,17 @@ import * as Joi from 'joi';
         // private-range guard.
         WEBHOOK_ALLOW_PRIVATE_URLS: Joi.boolean().default(false),
 
+        // Development-only: resolve a Payment to succeeded without building or
+        // broadcasting a Spend, so local Checkout works with no Account on any
+        // cluster and no funded authority.
+        //
+        // Turn it OFF to walk the real path locally once those exist: it is
+        // what decides whether a Payment is routed through the Consumer's
+        // Account at all, and with it on, an above-limit Payment is never
+        // detected and Checkout never hands one to the app. Ignored outside
+        // development, where the real path is the only path.
+        CHECKOUT_DEV_FORCE_SETTLE: Joi.boolean().default(true),
+
         // Internal ops console (read-only, pilot). Unset = console disabled:
         // the guard denies every request when either value is missing.
         CONSOLE_USER: Joi.string().optional().allow(''),

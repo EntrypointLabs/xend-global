@@ -8,7 +8,8 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { AllowEntry } from '../auth/allow-entry.decorator';
+import { ConsumerAuthGuard } from '../auth/consumer-auth.guard';
 import { Request } from 'express';
 import { SessionService } from './session.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -31,7 +32,8 @@ interface AuthenticatedRequest extends Request {
  *   SessionNotFoundError -> 404 SESSION_NOT_FOUND
  */
 @Controller('consumers/me/sessions')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ConsumerAuthGuard)
+@AllowEntry()
 export class SessionController {
   constructor(private readonly sessions: SessionService) {}
 

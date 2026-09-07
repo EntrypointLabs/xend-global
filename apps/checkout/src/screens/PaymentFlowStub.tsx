@@ -1,21 +1,17 @@
-import { formatNairaFromMinor } from '../lib/naira';
-import type { IntentView } from '../lib/api';
-import type { CeremonyResult } from '../ceremony/passkey';
-
-interface CeremonyProps {
-  intent: IntentView;
-  onComplete: (result: CeremonyResult) => void;
-  onCancel: () => void;
-}
+import { formatMoney } from '../lib/money';
+import type { PaymentFlowProps } from './PaymentFlow';
 
 /**
- * Privy-free stand-in for the passkey ceremony, used when the build is compiled
- * without VITE_ENABLE_PRIVY. Prop-compatible with the real ceremony
- * (screens/Ceremony) so App wires either interchangeably. Production builds set
- * VITE_ENABLE_PRIVY=true to load the real Privy ceremony once the Privy web
+ * Privy-free stand-in for the payment flow, used when the build is compiled
+ * without VITE_ENABLE_PRIVY. Prop-compatible with the real one
+ * (screens/PaymentFlow) so App wires either interchangeably. Production builds
+ * set VITE_ENABLE_PRIVY=true to load the real Privy flow once the Privy web
  * bundle is integrated.
  */
-export default function CeremonyStub({ intent, onCancel }: CeremonyProps) {
+export default function PaymentFlowStub({
+  intent,
+  onCancel,
+}: PaymentFlowProps) {
   return (
     <div className="bg-brand-black flex h-full flex-col justify-end">
       <div className="border-brand-line bg-brand-surface rounded-t-3xl border-t px-6 pb-8 pt-7">
@@ -23,7 +19,7 @@ export default function CeremonyStub({ intent, onCancel }: CeremonyProps) {
           Pay {intent.merchantDisplayName}
         </p>
         <p className="text-brand-ink mt-2 text-4xl font-semibold tabular-nums tracking-tight">
-          {formatNairaFromMinor(intent.ngnDisplayMinor)}
+          {formatMoney(intent.displayCurrency, intent.displayAmountMinor)}
         </p>
         <p className="text-brand-muted mt-6 text-sm leading-relaxed">
           Passkey sign-in is being set up for this build. Please open the Xend

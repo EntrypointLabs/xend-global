@@ -1,13 +1,15 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { NotificationsService } from './notifications.service';
 import type { DbService } from '../db/db.service';
-import type { PushSender } from './push-sender.interface';
+import type { PushMessage, PushSender } from './push-sender.interface';
 
 interface FakeDbOptions {
   /** Tokens the arrival query returns, i.e. enabled devices of the owner. */
   tokens?: string[];
   /** What the user's stored preference reads as. */
   userEnabled?: boolean;
+  /** Tokens the by-user device lookup returns, whatever the preference says. */
+  deviceTokens?: string[];
 }
 
 function makeFakeDb(opts: FakeDbOptions = {}) {
@@ -20,14 +22,22 @@ function makeFakeDb(opts: FakeDbOptions = {}) {
     execute,
     select: () => ({
       from: () => ({
-        where: () => ({
-          limit: () =>
+        // Awaited directly by the by-user device lookup, and finished with
+        // .limit() by the preference read. One object answers both.
+        where: () =>
+          Object.assign(
             Promise.resolve(
-              opts.userEnabled === undefined
-                ? []
-                : [{ enabled: opts.userEnabled }],
+              (opts.deviceTokens ?? []).map((token) => ({ token })),
             ),
-        }),
+            {
+              limit: () =>
+                Promise.resolve(
+                  opts.userEnabled === undefined
+                    ? []
+                    : [{ enabled: opts.userEnabled }],
+                ),
+            },
+          ),
       }),
     }),
     insert: () => ({
@@ -71,6 +81,18 @@ function makeSender(invalidTokens: string[] = []) {
   } as unknown as PushSender;
 }
 
+/** A sender that keeps what it was handed, so a test can read the notice. */
+function makeRecordingSender(invalidTokens: string[] = []) {
+  const sent: PushMessage[][] = [];
+  const sender: PushSender = {
+    send: (messages: PushMessage[]) => {
+      sent.push(messages);
+      return Promise.resolve({ invalidTokens });
+    },
+  };
+  return { sender, sent };
+}
+
 describe('NotificationsService', () => {
   describe('notifyArrival', () => {
     it('tells every device the account owner has enabled', async () => {
@@ -80,9 +102,21 @@ describe('NotificationsService', () => {
 
       await service.notifyArrival({ smartAccountId: 'sa_1', amount: '5 SOL' });
 
+      // Carries where it leads, like every notice: tapping it opens Activity
+      // rather than dropping the Consumer wherever the app happened to be.
       expect(sender.send).toHaveBeenCalledWith([
-        { token: 'tok-phone', title: 'Money in', body: 'You received 5 SOL' },
-        { token: 'tok-tablet', title: 'Money in', body: 'You received 5 SOL' },
+        {
+          token: 'tok-phone',
+          title: 'Money in',
+          body: 'You received 5 SOL',
+          data: { kind: 'arrival' },
+        },
+        {
+          token: 'tok-tablet',
+          title: 'Money in',
+          body: 'You received 5 SOL',
+          data: { kind: 'arrival' },
+        },
       ]);
     });
 
@@ -160,6 +194,91 @@ describe('NotificationsService', () => {
       const service = new NotificationsService(db, makeSender());
 
       await expect(service.isEnabled('u_1')).resolves.toBe(true);
+    });
+  });
+
+  describe('notifyPaymentNeedsApproval', () => {
+    it('names the Merchant and the amount on the notice itself', async () => {
+      // A notice that says only "a payment needs you" makes the Consumer open
+      // the app to find out whether it is even theirs.
+      const { db } = makeFakeDb({ deviceTokens: ['tok-1', 'tok-2'] });
+      const { sender, sent } = makeRecordingSender();
+      const service = new NotificationsService(db, sender);
+
+      await service.notifyPaymentNeedsApproval('u_1', {
+        merchantName: 'Sabi Market',
+        amount: '₦200,000',
+      });
+
+      expect(sent).toHaveLength(1);
+      // One notice per device the Consumer has.
+      expect(sent[0]).toHaveLength(2);
+      expect(sent[0][0].title).toBe('Finish your payment');
+      expect(sent[0][0].body).toContain('Sabi Market');
+      expect(sent[0][0].body).toContain('₦200,000');
+      // Carried so the app opens the Payment rather than the home screen.
+      expect(sent[0][0].data).toEqual({ kind: 'payment_approval' });
+    });
+
+    it('reaches a Consumer who has turned arrival notices off', async () => {
+      // The preference is about being told money arrived. This is a thing they
+      // asked to do and cannot finish anywhere else.
+      const { db } = makeFakeDb({
+        deviceTokens: ['tok-1'],
+        userEnabled: false,
+      });
+      const sender = makeSender();
+      const service = new NotificationsService(db, sender);
+
+      await service.notifyPaymentNeedsApproval('u_1', {
+        merchantName: 'Sabi Market',
+        amount: '₦200,000',
+      });
+
+      expect(sender.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('says so loudly when there is no device to reach', async () => {
+      const { db } = makeFakeDb({ deviceTokens: [] });
+      const sender = makeSender();
+      const service = new NotificationsService(db, sender);
+
+      await service.notifyPaymentNeedsApproval('u_1', {
+        merchantName: 'Sabi Market',
+        amount: '₦200,000',
+      });
+
+      expect(sender.send).not.toHaveBeenCalled();
+    });
+
+    it('never throws when the push provider is down', async () => {
+      // A Payment is correctly refused whether or not a notice gets out.
+      const { db } = makeFakeDb({ deviceTokens: ['tok-1'] });
+      const sender = {
+        send: jest.fn().mockRejectedValue(new Error('provider down')),
+      } as unknown as PushSender;
+      const service = new NotificationsService(db, sender);
+
+      await expect(
+        service.notifyPaymentNeedsApproval('u_1', {
+          merchantName: 'Sabi Market',
+          amount: '₦200,000',
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('forgets a token the provider rejects as dead', async () => {
+      // A reinstalled phone keeps its old token alive in the table forever
+      // otherwise, and every later notice pays to deliver to nobody.
+      const { db, deleted } = makeFakeDb({ deviceTokens: ['tok-1', 'tok-2'] });
+      const service = new NotificationsService(db, makeSender(['tok-2']));
+
+      await service.notifyPaymentNeedsApproval('u_1', {
+        merchantName: 'Sabi Market',
+        amount: '₦200,000',
+      });
+
+      expect(deleted).toHaveLength(1);
     });
   });
 });

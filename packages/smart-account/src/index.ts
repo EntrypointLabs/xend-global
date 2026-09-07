@@ -24,6 +24,8 @@ export {
   buildRejectSettingsChange,
   buildRemoveRecoverySigner,
   buildRotateApprovalSigner,
+  buildRotatePrimarySigner,
+  buildRotateRecoverySigner,
   buildSetTimeLock,
   type AddRecoverySignerParams,
   type CreateAboveLimitPolicyParams,
@@ -35,6 +37,7 @@ export {
   type RemoveRecoverySignerParams,
   type RotateApprovalSignerParams,
   type RotateApprovalSignerResult,
+  type RotateRecoverySignerParams,
   type SetTimeLockParams,
   type SpendingLimitTerms,
 } from "./policy.js";

@@ -10,6 +10,7 @@ import { cn } from "@/utils/cn";
 import { describeToken } from "@/utils/tokens";
 import { formatUsdFromString } from "@/utils/balances";
 import { TokenMark } from "@/components/ui/atoms/TokenMark";
+import { formatMoney } from "@/utils/money";
 
 export type ActivityItemProps = ActivityEntry & {
   onPress?: () => void;
@@ -21,6 +22,13 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
   // broken transfer rather than the security notice it is.
   if (entry.kind === "security") {
     return <AccountEventItem entry={entry} onPress={onPress} />;
+  }
+
+  // A Payment waiting on this phone has no token and no amount that has moved.
+  // Falling through would render the Merchant's price as a token figure and a
+  // "-0", which reads as a Payment that already went out.
+  if (entry.kind === "awaiting") {
+    return <AwaitingPaymentItem entry={entry} onPress={onPress} />;
   }
 
   const isSend = entry.direction === "send";
@@ -93,6 +101,54 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
               {formatUsdFromString(usd)}
             </Typography>
           )}
+        </View>
+      </View>
+    </HapticPressable>
+  );
+}
+
+/**
+ * A Payment a checkout could not finish, in the feed as the thing it is: not
+ * money that moved, but money that will not move until the Consumer says so.
+ *
+ * Carries the Merchant's name and their price, and says what is being asked.
+ * It is the one row here that is an instruction rather than a record, so it
+ * keeps the chevron: everything else in this feed opens a receipt.
+ */
+function AwaitingPaymentItem({
+  entry,
+  onPress,
+}: {
+  entry: ActivityEntry;
+  onPress?: () => void;
+}) {
+  return (
+    <HapticPressable
+      className="flex-row items-center gap-3.5 py-3"
+      onPress={onPress}
+    >
+      <View className="size-10 items-center justify-center rounded-full border border-black/[0.08]">
+        <Ionicons name="storefront-outline" size={18} color="#00000059" />
+      </View>
+      <View className="flex-1 flex-row items-center justify-between">
+        <View className="flex-col">
+          <Typography weight="600" className="mb-0.5">
+            {statusLabel(entry)}
+          </Typography>
+          <Typography weight="500" className="text-sm text-black/30">
+            {entry.merchantName ?? "Merchant"}
+          </Typography>
+        </View>
+        <View className="flex-row items-center gap-1">
+          <Typography
+            weight="600"
+            className="text-sm tracking-[0.5px] text-black/30"
+          >
+            {entry.displayCurrency && entry.displayAmountMinor
+              ? formatMoney(entry.displayCurrency, entry.displayAmountMinor)
+              : ""}
+          </Typography>
+          <Ionicons name="chevron-forward" size={14} color="#00000040" />
         </View>
       </View>
     </HapticPressable>

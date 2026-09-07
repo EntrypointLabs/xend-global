@@ -90,9 +90,10 @@ export class AccountService {
       security: params.security,
     });
 
-    // Minted here rather than accepted from the caller. D10b makes S3
+    // Read from the row rather than accepted from the caller. S3 is
     // mandatory at creation, and a client-nominated address would hand one
-    // caller two of the three signers.
+    // caller two of the three signers. The signer itself was minted when the
+    // address was proved, so this normally finds it rather than mints it.
     const email = await this.store.findUserEmail(params.userId);
     if (!email) {
       throw new IncompleteSignerSetError(

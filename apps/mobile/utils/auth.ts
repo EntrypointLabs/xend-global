@@ -16,6 +16,10 @@ export const AUTH_STORAGE_KEYS = {
   USER: "auth_user",
   EMAIL: "auth_email",
   TOKEN: "auth_token",
+  // What the stored token can do, and when an entry token stops working.
+  // An entry session carries no expiry of its own the way a JWT does.
+  SESSION_TIER: "auth_session_tier",
+  SESSION_EXPIRES_AT: "auth_session_expires_at",
   IS_AUTHENTICATED: "auth_is_authenticated",
   KYC_STATUS: "auth_kyc_status",
   KYC_LINK: "auth_kyc_link",

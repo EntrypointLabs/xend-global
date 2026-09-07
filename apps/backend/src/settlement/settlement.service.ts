@@ -2,34 +2,16 @@ import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
-  address,
-  appendTransactionMessageInstructions,
-  type Blockhash,
-  compileTransaction,
-  createTransactionMessage,
   getBase64Decoder,
   getBase64Encoder,
-  getBase64EncodedWireTransaction,
   getTransactionDecoder,
-  pipe,
-  setTransactionMessageFeePayer,
-  setTransactionMessageLifetimeUsingBlockhash,
 } from '@solana/kit';
-import {
-  getSetComputeUnitLimitInstruction,
-  getSetComputeUnitPriceInstruction,
-} from '@solana-program/compute-budget';
-import {
-  findAssociatedTokenPda,
-  getTransferCheckedInstruction,
-  TOKEN_PROGRAM_ADDRESS,
-} from '@solana-program/token';
 import { DbService } from '../db/db.service';
-import { paymentAttempts, smartAccounts } from '../db/schema';
+import { paymentAttempts } from '../db/schema';
 import { SOLANA_RPC, type SolanaRpc } from '../solana/solana-rpc.interface';
 import { PaymentIntentService } from '../payment/payment-intent.service';
+import { SpendService } from '../account/spend.service';
 import { SettlementProvisioningService } from './settlement-provisioning.service';
-import { RelayerClient } from './relayer.client';
 import { SettlementConfirmationService } from './settlement-confirmation.service';
 import {
   AttemptAlreadyLiveError,
@@ -37,26 +19,53 @@ import {
   SettlementMessageMismatchError,
 } from './settlement.errors';
 
-/** A conservative compute-unit limit, comfortably under the relayer ceiling. */
-const SETTLEMENT_CU_LIMIT = 60_000;
 const USDC_DECIMALS = 6;
 
+/** A settlement Spend that has been built but not yet recorded anywhere. */
+export interface BuiltSettlement {
+  unsignedTxBase64: string;
+  messageBase64: string;
+  blockhash: string;
+  expectedSettlementAccount: string;
+  /** The Account signer the popup has to sign with. */
+  signerAddress: string;
+  /**
+   * True when the Spend is above the band one signature carries, so it also
+   * needs the approval signer. Checkout cannot reach that signer, and has to
+   * say so rather than hand back a transaction the cluster will reject.
+   */
+  needsApprovalSignature: boolean;
+}
+
 /**
- * Builds and submits the settlement transaction. The build compiles a v0
- * transaction (fee payer = the relayer, ComputeBudget + a single plain SPL
- * USDC TransferChecked into the endpoint token account read from the
- * provisioned row, fresh blockhash at approval time) and pins its compiled
- * message on the authorized attempt. The Consumer signs off-band. The submit
- * byte-checks the signed message against the pinned message and relays the
- * bytes to the Phase 3 /internal/cosign seam, which validates + co-signs +
- * broadcasts. The one-live-attempt index (Phase 2) plus signature-first
- * retry is the durable double-settlement guard the relayer does not provide.
+ * Builds and submits the settlement transaction.
+ *
+ * ## Where the money comes from
+ *
+ * The Consumer's vault, through the Account's own policies, which is the same
+ * path a Send takes. It used to be a plain SPL transfer out of the Privy
+ * wallet, and that stopped being where anybody's money was the moment the
+ * Account became a Squads smart account. A Payment is a Spend, so it resolves
+ * its route through {@link SpendService} rather than building its own transfer.
+ *
+ * ## Why the relayer is no longer the fee payer
+ *
+ * Its co-sign allowlist admits ComputeBudget, Token and ATA and nothing else,
+ * which is deliberate and is what makes it safe to expose. A Spend carries a
+ * Squads instruction, so the relayer cannot co-sign one without widening the
+ * surface that narrowness buys. The settlement authority pays instead, as it
+ * already does for a Send.
+ *
+ * What replaces the relayer's validation is the pinned message: the build
+ * records the compiled message on the attempt, and submit refuses anything
+ * whose bytes differ. The authority therefore only ever signs a transaction
+ * this service built. The one-live-attempt index plus signature-first retry
+ * remains the durable double-settlement guard.
  */
 @Injectable()
 export class SettlementService implements OnModuleInit {
   private readonly logger = new Logger(SettlementService.name);
   private usdcMint!: string;
-  private relayerFeePayer!: string;
 
   constructor(
     private readonly db: DbService,
@@ -64,7 +73,7 @@ export class SettlementService implements OnModuleInit {
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
     private readonly intents: PaymentIntentService,
     private readonly provisioning: SettlementProvisioningService,
-    private readonly relayer: RelayerClient,
+    private readonly spends: SpendService,
     private readonly confirmation: SettlementConfirmationService,
   ) {}
 
@@ -72,93 +81,81 @@ export class SettlementService implements OnModuleInit {
     this.usdcMint = this.config.getOrThrow<string>(
       'EXPO_PUBLIC_USDC_MINT_ADDRESS',
     );
-    this.relayerFeePayer = this.config.getOrThrow<string>(
-      'RELAYER_FEE_PAYER_ADDRESS',
-    );
   }
 
-  async buildSettlement(intentId: string): Promise<{
-    attemptId: string;
-    unsignedTxBase64: string;
-    messageBase64: string;
-    expectedSettlementAccount: string;
-  }> {
+  /**
+   * Builds the Spend that settles a Payment, and changes nothing.
+   *
+   * Deliberately side-effect free and deliberately not gated on the intent
+   * already being authorized: the caller has to know whether the Account can
+   * carry this Payment on one signature *before* it spends capacity or issues a
+   * Session on it. A Payment that needs the phone is refused with the intent
+   * still untouched, so the Consumer can finish it from the app.
+   *
+   * {@link pinSettlement} records the result once an attempt exists.
+   */
+  async buildSettlement(
+    intentId: string,
+    consumerId: string,
+  ): Promise<BuiltSettlement> {
     const intent = await this.intents.findById(intentId);
-    if (intent.status !== 'authorized') {
+    if (intent.status !== 'created' && intent.status !== 'authorized') {
       throw new IntentNotSettleableError(
-        `intent ${intentId} is ${intent.status}, not authorized`,
+        `intent ${intentId} is ${intent.status}, not settleable`,
       );
     }
+
+    const endpoint = await this.provisioning.getSettlementAddressForSettlement(
+      intent.merchantId,
+    );
+
+    const spend = await this.spends.prepare({
+      userId: consumerId,
+      destination: endpoint.owner,
+      destinationTokenAccount: endpoint.address,
+      mint: this.usdcMint,
+      amountRaw: intent.usdcSettlementRaw,
+      decimals: USDC_DECIMALS,
+    });
+
+    this.logger.log(
+      `settlement.build intent_id=${intentId} route=${spend.route}` +
+        ` vault=${spend.vaultAddress}`,
+    );
+
+    return {
+      unsignedTxBase64: spend.unsignedTxBase64,
+      messageBase64: spend.messageBase64,
+      blockhash: spend.blockhash,
+      expectedSettlementAccount: endpoint.address,
+      signerAddress: spend.primarySigner,
+      needsApprovalSignature: spend.needsApprovalSignature,
+    };
+  }
+
+  /**
+   * Pins the built message on the live authorized attempt, which is what makes
+   * it safe for the authority to complete later: submit refuses any bytes that
+   * do not match, so the authority only ever signs what this service built.
+   */
+  async pinSettlement(
+    intentId: string,
+    built: BuiltSettlement,
+  ): Promise<{ attemptId: string }> {
     const attempt = await this.loadLiveAttempt(intentId, ['authorized']);
     if (!attempt) {
       throw new IntentNotSettleableError(
         `intent ${intentId} has no live authorized attempt`,
       );
     }
-    if (!intent.consumerId) {
-      throw new IntentNotSettleableError(`intent ${intentId} has no consumer`);
-    }
 
-    const { address: expectedSettlementAccount } =
-      await this.provisioning.getSettlementAddressForSettlement(
-        intent.merchantId,
-      );
-    const consumerWallet = await this.consumerWallet(intent.consumerId);
-
-    const usdcMint = address(this.usdcMint);
-    const [consumerAta] = await findAssociatedTokenPda({
-      owner: address(consumerWallet),
-      tokenProgram: TOKEN_PROGRAM_ADDRESS,
-      mint: usdcMint,
-    });
-
-    // Fresh blockhash at approval time (never reuse an earlier one).
-    const { blockhash, lastValidBlockHeight } =
-      await this.solana.getRecentBlockhash();
-    const { computeUnitPrice } = await this.relayer.getPriorityFee(intentId);
-
-    const message = pipe(
-      createTransactionMessage({ version: 0 }),
-      (m) => setTransactionMessageFeePayer(address(this.relayerFeePayer), m),
-      (m) =>
-        setTransactionMessageLifetimeUsingBlockhash(
-          {
-            blockhash: blockhash as Blockhash,
-            lastValidBlockHeight: BigInt(lastValidBlockHeight),
-          },
-          m,
-        ),
-      (m) =>
-        appendTransactionMessageInstructions(
-          [
-            getSetComputeUnitLimitInstruction({ units: SETTLEMENT_CU_LIMIT }),
-            getSetComputeUnitPriceInstruction({
-              microLamports: computeUnitPrice,
-            }),
-            // A plain SPL TransferChecked into a classic-SPL token account
-            // (REQ-PLAIN-SPL): no provider-program instruction on the hot
-            // path, so the Phase 3 relayer allowlist stays valid.
-            getTransferCheckedInstruction({
-              source: consumerAta,
-              mint: usdcMint,
-              destination: address(expectedSettlementAccount),
-              authority: address(consumerWallet),
-              amount: BigInt(intent.usdcSettlementRaw),
-              decimals: USDC_DECIMALS,
-            }),
-          ],
-          m,
-        ),
-    );
-    const compiled = compileTransaction(message);
-    const unsignedTxBase64 = getBase64EncodedWireTransaction(compiled);
-    const messageBase64 = getBase64Decoder().decode(compiled.messageBytes);
-
-    // Pin the compiled message + blockhash on the authorized attempt. No
-    // broadcast, no transition to settling yet.
     const pinned = await this.db.client
       .update(paymentAttempts)
-      .set({ messageBase64, blockhash, updatedAt: new Date() })
+      .set({
+        messageBase64: built.messageBase64,
+        blockhash: built.blockhash,
+        updatedAt: new Date(),
+      })
       .where(
         and(
           eq(paymentAttempts.id, attempt.id),
@@ -172,12 +169,7 @@ export class SettlementService implements OnModuleInit {
       );
     }
 
-    return {
-      attemptId: attempt.id,
-      unsignedTxBase64,
-      messageBase64,
-      expectedSettlementAccount,
-    };
+    return { attemptId: attempt.id };
   }
 
   async submitSettlement(
@@ -223,22 +215,12 @@ export class SettlementService implements OnModuleInit {
     if (!intent.consumerId) {
       throw new IntentNotSettleableError(`intent ${intentId} has no consumer`);
     }
-    const { address: expectedSettlementAccount } =
-      await this.provisioning.getSettlementAddressForSettlement(
-        intent.merchantId,
-      );
 
-    const { signature } = await this.relayer.cosign(
-      {
-        intentId,
-        consumerId: intent.consumerId,
-        merchantId: intent.merchantId,
-        transactionBase64: consumerSignedTxBase64,
-        expectedSettlementAccount,
-        expectedMessageBase64: attempt.messageBase64 ?? undefined,
-      },
-      intentId,
-    );
+    // The fee payer's signature, added last. What the Consumer signed is a
+    // Spend one signature short, and the byte check above is what makes it safe
+    // for the authority to complete: it only ever signs the message this
+    // service built and pinned.
+    const signature = await this.spends.submit(consumerSignedTxBase64);
 
     // Record the signature and move the attempt live, then transition the
     // intent. Keep these two writes adjacent with nothing awaited between
@@ -329,19 +311,5 @@ export class SettlementService implements OnModuleInit {
       )
       .limit(1);
     return attempt;
-  }
-
-  private async consumerWallet(consumerId: string): Promise<string> {
-    const [acct] = await this.db.client
-      .select({ walletAddress: smartAccounts.walletAddress })
-      .from(smartAccounts)
-      .where(eq(smartAccounts.userId, consumerId))
-      .limit(1);
-    if (!acct?.walletAddress) {
-      throw new IntentNotSettleableError(
-        `consumer ${consumerId} has no smart account wallet`,
-      );
-    }
-    return acct.walletAddress;
   }
 }

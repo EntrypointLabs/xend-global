@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@privy-io/react-auth": "^3.34.0",
+    "@solana-program/memo": "^0.9.0",
     "@xend/checkout-protocol": "*",
     "react": "19.2.0",
     "react-dom": "19.2.0",
@@ -38,7 +39,7 @@
   },
   "size-limit": [
     {
-      "path": "dist/assets/index-*.js",
+      "path": "dist/assets/popup-*.js",
       "limit": "75 KB",
       "gzip": true
     }

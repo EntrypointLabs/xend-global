@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
-import { recoverySigners } from '../db/schema';
+import { recoverySigners, users } from '../db/schema';
 
 export const RECOVERY_SIGNER_STORE = Symbol('RECOVERY_SIGNER_STORE');
 
@@ -14,6 +14,11 @@ export type NewRecoverySigner = typeof recoverySigners.$inferInsert;
  * RecoveryService owns the rules (at least one signer, no duplicate channels)
  * and this owns the storage, so the rules can be tested without standing up a
  * database or faking a query builder.
+ *
+ * It also reaches the two facts about the Consumer that the rules depend on:
+ * the address on file, which says which signer is S3 and moves when that
+ * signer is rotated, and the release freeze, which says whether any sealed key
+ * may sign at all.
  */
 export interface RecoverySignerStore {
   findByUser(userId: string): Promise<RecoverySignerRow[]>;
@@ -41,6 +46,21 @@ export interface RecoverySignerStore {
     id: string,
     patch: Partial<NewRecoverySigner>,
   ): Promise<RecoverySignerRow>;
+
+  /** The Consumer's contact address: the one that anchors S3. */
+  findContactEmail(userId: string): Promise<string | null>;
+  /**
+   * Moves the contact address. Called only once the chain has executed the
+   * change that swapped the signer anchored on it.
+   */
+  updateContactEmail(userId: string, email: string): Promise<void>;
+  /** Whether a different Consumer already holds this address on file. */
+  isContactEmailTaken(userId: string, email: string): Promise<boolean>;
+  /** Another account holds a not-yet-settled email signer for this address. */
+  isEmailClaimStaged(userId: string, email: string): Promise<boolean>;
+
+  findReleaseFreeze(userId: string): Promise<Date | null>;
+  setReleaseFreeze(userId: string, frozenAt: Date | null): Promise<void>;
 }
 
 @Injectable()
@@ -91,5 +111,62 @@ export class DrizzleRecoverySignerStore implements RecoverySignerStore {
       .where(eq(recoverySigners.id, id))
       .returning();
     return updated;
+  }
+
+  async findContactEmail(userId: string): Promise<string | null> {
+    const [row] = await this.db.client
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return row?.email ?? null;
+  }
+
+  async updateContactEmail(userId: string, email: string): Promise<void> {
+    await this.db.client
+      .update(users)
+      .set({ email, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+  }
+
+  async isContactEmailTaken(userId: string, email: string): Promise<boolean> {
+    const [clash] = await this.db.client
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.email, email), ne(users.id, userId)))
+      .limit(1);
+    return clash !== undefined;
+  }
+
+  async isEmailClaimStaged(userId: string, email: string): Promise<boolean> {
+    const [claim] = await this.db.client
+      .select({ id: recoverySigners.id })
+      .from(recoverySigners)
+      .where(
+        and(
+          eq(recoverySigners.channel, 'email'),
+          eq(recoverySigners.channelValue, email),
+          eq(recoverySigners.status, 'pending_add'),
+          ne(recoverySigners.userId, userId),
+        ),
+      )
+      .limit(1);
+    return claim !== undefined;
+  }
+
+  async findReleaseFreeze(userId: string): Promise<Date | null> {
+    const [row] = await this.db.client
+      .select({ frozenAt: users.recoveryReleaseFrozenAt })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return row?.frozenAt ?? null;
+  }
+
+  async setReleaseFreeze(userId: string, frozenAt: Date | null): Promise<void> {
+    await this.db.client
+      .update(users)
+      .set({ recoveryReleaseFrozenAt: frozenAt, updatedAt: new Date() })
+      .where(eq(users.id, userId));
   }
 }

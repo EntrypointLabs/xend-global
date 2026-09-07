@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Platform } from "react-native";
 import {
   useLoginWithPasskey,
   useSignupWithPasskey,
 } from "@privy-io/expo/passkey";
-import { usePrivy } from "@privy-io/expo";
+import { useIdentityToken, usePrivy } from "@privy-io/expo";
 
 import { useAuth } from "@/contexts/AuthContext";
 import {
   classifyPasskeyError,
+  PasskeyHasNoAccountError,
+  PasskeyWrongAccountError,
   type PasskeySignInOutcome,
 } from "@/utils/passkeyOutcome";
 
@@ -32,10 +34,13 @@ export function usePasskeyLogin() {
   const { completePasskeySession } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** A ref, because the caller reads it right after an await resolves. */
+  const wrongAccount = useRef<string | null>(null);
 
   const { loginWithPasskey } = useLoginWithPasskey();
   const { signupWithPasskey } = useSignupWithPasskey();
   const { user: privyUser, logout: privyLogout } = usePrivy();
+  const { getIdentityToken } = useIdentityToken();
 
   /**
    * Privy authenticating is only half of it. The app's own session comes from
@@ -45,7 +50,9 @@ export function usePasskeyLogin() {
    */
   const run = async (
     authenticate: () => Promise<{ id?: string } | undefined | null>,
-    noUser: string
+    noUser: string,
+    signupToken?: string,
+    expectUserId?: string
   ): Promise<PasskeySignInOutcome> => {
     setError(null);
     setBusy(true);
@@ -55,16 +62,46 @@ export function usePasskeyLogin() {
       // exchange leaves Privy logged in and Xend logged out.
       if (privyUser) await privyLogout();
 
-      const user = await authenticate();
+      // The provider intermittently answers its first ceremony call with an
+      // empty body, which surfaces as a JSON parse error before any
+      // credential exists. One clean retry absorbs it; a second failure is
+      // reported rather than looped.
+      let user: Awaited<ReturnType<typeof authenticate>>;
+      try {
+        user = await authenticate();
+      } catch (err) {
+        if (!(err instanceof SyntaxError)) throw err;
+        console.log("[passkey] empty ceremony response; retrying once");
+        user = await authenticate();
+      }
       if (!user) {
         setError(noUser);
         return "failed";
       }
-      if (await completePasskeySession(user)) return "signed-in";
+      if (await completePasskeySession(user, signupToken, expectUserId)) {
+        return "signed-in";
+      }
 
       setError("Signed in, but Xend could not start your session.");
       return "failed";
     } catch (err) {
+      // The passkey is real and Xend has nothing behind it. Not a failure to
+      // show in red: the answer is the email door, and Privy's half-open
+      // session is closed so the next attempt starts clean.
+      if (err instanceof PasskeyHasNoAccountError) {
+        await privyLogout().catch(() => undefined);
+        console.log("[passkey] sign-in ended as no-account");
+        return "no-account";
+      }
+      // The wrong credential for the account the inbox named. Privy's
+      // half-open session is for the other account, so it is closed before
+      // the retry, and the refusal happened before the session changed owner.
+      if (err instanceof PasskeyWrongAccountError) {
+        wrongAccount.current = err.maskedEmail;
+        await privyLogout().catch(() => undefined);
+        console.log("[passkey] sign-in ended as wrong-account");
+        return "wrong-account";
+      }
       const outcome = classifyPasskeyError(err, Platform.OS);
       // Both of the other outcomes are answered with a screen rather than a
       // line of red text, and a dismissed sheet is not a failure at all.
@@ -83,26 +120,78 @@ export function usePasskeyLogin() {
     }
   };
 
-  const signIn = () =>
+  const signIn = (expectUserId?: string) =>
     run(
       () => loginWithPasskey({ relyingParty: RELYING_PARTY }),
-      "That passkey did not sign you in."
+      "That passkey did not sign you in.",
+      undefined,
+      expectUserId
     );
 
-  /** Creates a brand new account. Never signs in to an existing one. */
-  const signUp = async () =>
+  /**
+   * Creates a brand new account. Never signs in to an existing one.
+   *
+   * The token comes from the email step and is what the exchange uses to put
+   * this passkey on the row whose address was just proved.
+   */
+  const signUp = async (signupToken: string) =>
     (await run(
       async () =>
         (await signupWithPasskey({ relyingParty: RELYING_PARTY })).user,
-      "The passkey was not created."
+      "The passkey was not created.",
+      signupToken
     )) === "signed-in";
+
+  /**
+   * Creates a brand new credential and hands back its identity token, without
+   * an exchange: the token names the incoming signer for a passkey
+   * replacement, and the binding that makes it open the Account moves only
+   * when that change executes a day later.
+   */
+  const createReplacement = async (): Promise<string | null> => {
+    setError(null);
+    setBusy(true);
+    try {
+      if (privyUser) await privyLogout();
+      const created = (await signupWithPasskey({ relyingParty: RELYING_PARTY }))
+        .user;
+      if (!created) {
+        setError("The passkey was not created.");
+        return null;
+      }
+      const idToken = await getIdentityToken();
+      if (!idToken) {
+        setError("The new passkey could not be verified.");
+        return null;
+      }
+      return idToken;
+    } catch (err) {
+      const outcome = classifyPasskeyError(err, Platform.OS);
+      if (outcome === "failed") {
+        setError(describe(err));
+        console.error("[passkey] replacement failed", err);
+      } else {
+        console.log(`[passkey] replacement ended as ${outcome}`);
+      }
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Closes the fresh credential's session once its token has been handed over. */
+  const discardPrivySession = () => privyLogout().catch(() => undefined);
 
   return {
     signIn,
     signUp,
+    createReplacement,
+    discardPrivySession,
     busy,
     error,
     clearError: () => setError(null),
+    /** Masked address of the account the last wrong pick opened, when named. */
+    wrongAccountEmail: () => wrongAccount.current,
   };
 }
 

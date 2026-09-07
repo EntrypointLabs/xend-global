@@ -44,5 +44,14 @@ export default defineConfig({
     : undefined,
   build: {
     target: 'es2022',
+    rollupOptions: {
+      output: {
+        // A distinct name for the entry, so the size gate can measure what the
+        // popup actually parses before first paint. A plain `index-*` glob also
+        // catches the lazily loaded vendor chunks the moment one is named
+        // `index`, which turned a passing 61 kB budget into a failing 261 kB.
+        entryFileNames: 'assets/popup-[hash].js',
+      },
+    },
   },
 });

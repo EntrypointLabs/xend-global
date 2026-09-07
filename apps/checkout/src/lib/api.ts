@@ -16,14 +16,17 @@ export type IntentStatus =
 
 /**
  * The checkout intent summary. camelCase per the Phase 6 wire contract
- * (GET /checkout/intents/:reference). Carries no fx rate and no usd figure:
- * naira is displayed from the pinned quote only.
+ * (GET /checkout/intents/:reference). Carries the Merchant's own currency and
+ * the figure they quoted, and deliberately no rate: a converted price is shown
+ * from the quote pinned at creation, never recomputed here.
  */
 export interface IntentView {
   reference: string;
   status: IntentStatus;
   merchantDisplayName: string;
-  ngnDisplayMinor: string;
+  /** ISO 4217, whatever the Merchant priced in. */
+  displayCurrency: string;
+  displayAmountMinor: string;
   merchantOrigin: string;
   sessionRecognized: boolean;
   expiresAt: string;
@@ -45,10 +48,32 @@ export interface AuthorizeInput {
   providerToken?: string;
 }
 
-export interface AuthorizeResult {
+export interface TerminalResult {
   status: 'succeeded' | 'failed';
   redirectUrl?: string;
   cancelUrl?: string;
+}
+
+/**
+ * What authorize hands back.
+ *
+ * 'needs_signature' carries the Spend out of the Consumer's Account. The
+ * passkey proves who they are and the Account's own signer moves the money,
+ * which are two different things, so a Payment takes two calls: authorize to
+ * be recognised and get the Spend, settle to hand back the signed bytes.
+ */
+export type AuthorizeResult =
+  | {
+      status: 'needs_signature';
+      unsignedTxBase64: string;
+      /** Which of the Consumer's keys the Spend was compiled for. */
+      signerAddress: string;
+    }
+  | TerminalResult;
+
+export interface SettleInput {
+  reference: string;
+  signedTxBase64: string;
 }
 
 export const NON_PAYABLE_STATUSES: ReadonlySet<IntentStatus> = new Set([
@@ -65,7 +90,8 @@ export type CheckoutErrorCode =
   | 'INSUFFICIENT_BALANCE'
   | 'INTENT_EXPIRED'
   | 'PAYMENT_PROCESSING'
-  | 'UNSUPPORTED_CURRENCY'
+  /** Above the band one signature carries; only the Xend app can finish it. */
+  | 'APPROVAL_REQUIRED'
   | 'UNKNOWN';
 
 export class CheckoutApiError extends Error {
@@ -84,6 +110,7 @@ function toErrorCode(raw: unknown): CheckoutErrorCode {
     case 'INSUFFICIENT_BALANCE':
     case 'INTENT_EXPIRED':
     case 'PAYMENT_PROCESSING':
+    case 'APPROVAL_REQUIRED':
       return raw;
     default:
       return 'UNKNOWN';
@@ -97,9 +124,14 @@ function fixtureIntent(reference: string): IntentView {
     reference,
     status: 'requires_payment',
     merchantDisplayName: 'Sabi Market',
-    ngnDisplayMinor: '4500000',
+    displayCurrency: 'NGN',
+    displayAmountMinor: '4500000',
     merchantOrigin: window.location.origin,
-    sessionRecognized: false,
+    // Both fixture states stay reachable: `?recognized=1` demos the one-tap
+    // return visit, without it the full passkey ceremony shows.
+    sessionRecognized: new URLSearchParams(window.location.search).has(
+      'recognized',
+    ),
     expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     livemode: false,
   };
@@ -130,21 +162,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function getIntent(reference: string): Promise<IntentView> {
   if (useFixture) return fixtureIntent(reference);
-  const intent = await request<
-    Omit<IntentView, 'ngnDisplayMinor'> & { ngnDisplayMinor: string | null }
-  >(`/checkout/intents/${encodeURIComponent(reference)}`);
-  // This surface renders the naira amount only; USDC intents leave
-  // ngnDisplayMinor null, so fail loud here instead of crashing later on
-  // BigInt(null) inside formatNairaFromMinor.
-  const { ngnDisplayMinor } = intent;
-  if (ngnDisplayMinor === null) {
-    throw new CheckoutApiError(
-      'UNSUPPORTED_CURRENCY',
-      'this checkout supports NGN intents only',
-      400,
-    );
-  }
-  return { ...intent, ngnDisplayMinor };
+  return request<IntentView>(
+    `/checkout/intents/${encodeURIComponent(reference)}`,
+  );
 }
 
 export async function authorize(
@@ -152,6 +172,15 @@ export async function authorize(
 ): Promise<AuthorizeResult> {
   if (useFixture) return { status: 'succeeded' };
   return request<AuthorizeResult>('/checkout/authorize', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Hands the signed Spend back. This is where the money actually moves. */
+export async function settle(input: SettleInput): Promise<TerminalResult> {
+  if (useFixture) return { status: 'succeeded' };
+  return request<TerminalResult>('/checkout/settle', {
     method: 'POST',
     body: JSON.stringify(input),
   });

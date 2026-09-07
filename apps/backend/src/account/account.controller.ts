@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -11,7 +10,8 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { AllowEntry } from '../auth/allow-entry.decorator';
+import { ConsumerAuthGuard } from '../auth/consumer-auth.guard';
 import { Request } from 'express';
 
 import { AttestationService } from '../attestation/attestation.service';
@@ -22,9 +22,12 @@ import {
 } from '../attestation/attestation.errors';
 import { TurnkeyService } from '../turnkey/turnkey.service';
 import { AccountChangeService } from './account-change.service';
+import { PrimaryRotationService } from './primary-rotation.service';
 import { UnsafeSubOrganizationError } from '../turnkey/turnkey.errors';
 import {
   ChallengeAttemptsExhaustedError,
+  ContactEmailTakenError,
+  ContactRecoverySignerError,
   DuplicateRecoveryChannelError,
   InvalidRecoveryCodeError,
   LastRecoverySignerError,
@@ -32,12 +35,15 @@ import {
   NoRotationInFlightError,
   RecoveryChangeInFlightError,
   RecoveryGrantExpiredError,
+  RecoveryReleaseFrozenError,
   RecoverySignerLimitError,
   TooManyRecoveryCodesError,
   UnknownRecoverySignerError,
 } from '../recovery/recovery.errors';
 import {
   AccountCreationError,
+  PasskeyInUseError,
+  DeviceNotAttestedError,
   IncompleteSignerSetError,
 } from './account.errors';
 import { AccountService } from './account.service';
@@ -66,6 +72,8 @@ import {
   type SubmitRecoveryChangeDto,
   type SubmitRejectionDto,
   type VerifyRecoveryCodeDto,
+  StartPrimaryRotationSchema,
+  type StartPrimaryRotationDto,
 } from './dtos';
 import { ProvisioningService } from './provisioning.service';
 import { RecoveryService } from '../recovery/recovery.service';
@@ -79,7 +87,7 @@ interface AuthenticatedRequest extends Request {
 }
 
 @Controller('account')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ConsumerAuthGuard)
 export class AccountController {
   private readonly logger = new Logger(AccountController.name);
 
@@ -95,6 +103,7 @@ export class AccountController {
     private readonly recoveryChanges: RecoveryChangeService,
     private readonly challenges: RecoveryChallengeService,
     private readonly rotations: DeviceRotationService,
+    private readonly primaryRotations: PrimaryRotationService,
   ) {}
 
   /**
@@ -155,6 +164,18 @@ export class AccountController {
         security: verified.security,
       };
     } catch (err) {
+      // The ordinary first call from a phone holding another account's stale
+      // key. Not an error: the client falls through to a fresh attestation,
+      // and logging it as one buries the failures that are.
+      if (err instanceof DeviceNotAttestedError) {
+        this.logger.log(
+          `account.enrolment_resume_unattested userId=${req.user.userId}`,
+        );
+        throw new HttpException(
+          { code: err.code, message: err.message },
+          HttpStatus.CONFLICT,
+        );
+      }
       // toHttp deliberately flattens everything into "could not create the
       // Account", which is right for the caller and useless for us. By the
       // time enrolment fails here a Turnkey sub-organization already exists,
@@ -174,6 +195,7 @@ export class AccountController {
    * the change the next time they open Xend.
    */
   @Get('changes/pending')
+  @AllowEntry()
   pendingChange(@Req() req: AuthenticatedRequest) {
     return this.changes.pending(req.user.userId).then((change) => ({ change }));
   }
@@ -214,6 +236,7 @@ export class AccountController {
 
   /** The Consumer's recovery keys, including any change still in flight. */
   @Get('recovery')
+  @AllowEntry()
   async recoveryKeys(@Req() req: AuthenticatedRequest) {
     try {
       return { keys: await this.recovery.list(req.user.userId) };
@@ -349,6 +372,115 @@ export class AccountController {
     }
   }
 
+  /**
+   * Sends a code to the address that will replace the one on file.
+   *
+   * Refused before anything is mailed when the address is already a recovery
+   * channel here or another Consumer's contact address. The current address
+   * is not asked to prove anything: an attacker holding it could, and a
+   * Consumer who has lost it could not, so proving it protects the wrong
+   * party. The change is guarded by the two keys on the phone and the day it
+   * takes instead.
+   */
+  @Post('recovery/contact/challenge')
+  async requestContactRotationCode(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(RequestRecoveryEmailCodeSchema))
+    body: RequestRecoveryEmailCodeDto,
+  ) {
+    try {
+      await this.recovery.assertContactEmailAvailable(
+        req.user.userId,
+        body.email,
+      );
+      const { expiresAt } = await this.challenges.issue(
+        req.user.userId,
+        body.email,
+        'contact_rotation',
+      );
+      return { sent: true, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'contact_code', err);
+    }
+  }
+
+  @Post('recovery/contact/verify')
+  async verifyContactRotation(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(VerifyRecoveryEmailSchema))
+    body: VerifyRecoveryEmailDto,
+  ) {
+    try {
+      const { grantId, expiresAt } = await this.challenges.verify(
+        req.user.userId,
+        'contact_rotation',
+        body.code,
+      );
+      const grant = await this.challenges.assertGrant(
+        req.user.userId,
+        grantId,
+        'contact_rotation',
+      );
+      if (grant.target !== body.email) {
+        throw new RecoveryGrantExpiredError(
+          'that code was sent to a different address',
+        );
+      }
+      return { grantId, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'contact_verify', err);
+    }
+  }
+
+  /**
+   * Stages the change that moves the contact address, and starts it.
+   *
+   * A fresh recovery key sealed against the proved address goes in and the
+   * key anchored on the current address comes out, in one settings change
+   * that both Active Keys approve and that waits out the time lock. The
+   * address on file does not move here. It follows the key when the change
+   * executes, so a stolen session can stage this and still hand nothing over.
+   */
+  @Post('recovery/contact')
+  async rotateContactEmail(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(AddRecoveryEmailSchema))
+    body: AddRecoveryEmailDto,
+  ) {
+    try {
+      const grant = await this.challenges.assertGrant(
+        req.user.userId,
+        body.grantId,
+        'contact_rotation',
+      );
+      if (grant.target !== body.email) {
+        throw new RecoveryGrantExpiredError(
+          'that code proved a different address',
+        );
+      }
+
+      const result = await this.recovery.withChangeLock(
+        req.user.userId,
+        async () => {
+          const { key, retiring } = await this.recovery.stageContactRotation(
+            req.user.userId,
+            body.email,
+          );
+          const plan = await this.recoveryChanges.start(
+            req.user.userId,
+            key.id,
+            retiring.id,
+          );
+          return { key, retiring, plan };
+        },
+      );
+      await this.challenges.consume(body.grantId);
+      return result;
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'contact_rotate', err);
+    }
+  }
+
   @Post('recovery/:id/remove')
   async removeRecoveryKey(
     @Req() req: AuthenticatedRequest,
@@ -421,6 +553,7 @@ export class AccountController {
    * owner needs them to learn.
    */
   @Post('recovery/device/challenge')
+  @AllowEntry()
   async requestDeviceRotationCode(@Req() req: AuthenticatedRequest) {
     try {
       const email = await this.accounts.contactEmail(req.user.userId);
@@ -441,6 +574,7 @@ export class AccountController {
   }
 
   @Post('recovery/device/verify')
+  @AllowEntry()
   async verifyDeviceRotationCode(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(VerifyRecoveryCodeSchema))
@@ -463,6 +597,7 @@ export class AccountController {
    * signer set. See {@link DeviceRotationService}.
    */
   @Post('recovery/device/start')
+  @AllowEntry()
   async startDeviceRotation(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(StartDeviceRotationSchema))
@@ -496,6 +631,7 @@ export class AccountController {
    * has executed it. Called until it says done.
    */
   @Post('recovery/device/next')
+  @AllowEntry()
   async nextDeviceRotationStep(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(NextDeviceRotationSchema))
@@ -509,6 +645,7 @@ export class AccountController {
   }
 
   @Post('recovery/device/submit')
+  @AllowEntry()
   async submitDeviceRotationStep(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(SubmitRecoveryChangeSchema))
@@ -523,6 +660,108 @@ export class AccountController {
       };
     } catch (err) {
       throw this.recoveryFailure(req.user.userId, 'device_submit', err);
+    }
+  }
+
+  /** Mails a code to the address on the Account, toward replacing its passkey. */
+  @Post('recovery/primary/challenge')
+  @AllowEntry()
+  async requestPrimaryRotationCode(@Req() req: AuthenticatedRequest) {
+    try {
+      const email = await this.accounts.contactEmail(req.user.userId);
+      if (!email) {
+        throw new IncompleteSignerSetError(
+          'this Account has no email on file to send a code to',
+        );
+      }
+      const { expiresAt } = await this.challenges.issue(
+        req.user.userId,
+        email,
+        'primary_rotation',
+      );
+      return { sent: true, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'primary_challenge', err);
+    }
+  }
+
+  @Post('recovery/primary/verify')
+  @AllowEntry()
+  async verifyPrimaryRotationCode(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(VerifyRecoveryCodeSchema))
+    body: VerifyRecoveryCodeDto,
+  ) {
+    try {
+      const { grantId, expiresAt } = await this.challenges.verify(
+        req.user.userId,
+        'primary_rotation',
+        body.code,
+      );
+      return { grantId, expiresAt: expiresAt.toISOString() };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'primary_verify', err);
+    }
+  }
+
+  /**
+   * Verifies the fresh passkey and stages the swap that puts its wallet in
+   * the signer set. See {@link PrimaryRotationService}.
+   */
+  @Post('recovery/primary/start')
+  @AllowEntry()
+  async startPrimaryRotation(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(StartPrimaryRotationSchema))
+    body: StartPrimaryRotationDto,
+  ) {
+    try {
+      return await this.primaryRotations.start(
+        req.user.userId,
+        body.grantId,
+        body.privyIdToken,
+      );
+    } catch (err) {
+      if (err instanceof PasskeyInUseError) {
+        throw new HttpException(
+          { code: err.code, message: err.message },
+          HttpStatus.CONFLICT,
+        );
+      }
+      throw this.recoveryFailure(req.user.userId, 'primary_start', err);
+    }
+  }
+
+  @Post('recovery/primary/next')
+  @AllowEntry()
+  async nextPrimaryRotationStep(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(NextDeviceRotationSchema))
+    body: NextDeviceRotationDto,
+  ) {
+    try {
+      return await this.primaryRotations.next(req.user.userId, body.grantId);
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'primary_next', err);
+    }
+  }
+
+  @Post('recovery/primary/submit')
+  @AllowEntry()
+  async submitPrimaryRotationStep(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(SubmitRecoveryChangeSchema))
+    body: SubmitRecoveryChangeDto,
+  ) {
+    try {
+      return {
+        signature: await this.primaryRotations.submit(
+          req.user.userId,
+          body.signedTxBase64,
+        ),
+      };
+    } catch (err) {
+      throw this.recoveryFailure(req.user.userId, 'primary_submit', err);
     }
   }
 
@@ -567,8 +806,8 @@ export class AccountController {
       hardwarePublicKey,
     );
     if (!enrolled) {
-      throw new BadRequestException(
-        'This device has not been attested; enrol with an attestation first',
+      throw new DeviceNotAttestedError(
+        'this device has no attested key for this account; enrol with an attestation',
       );
     }
     return { hardwarePublicKey, security: enrolled.security };
@@ -614,6 +853,7 @@ export class AccountController {
   }
 
   @Get('me')
+  @AllowEntry()
   async getMe(@Req() req: AuthenticatedRequest) {
     const account = await this.accounts.findByUserId(req.user.userId);
     if (!account) {
@@ -635,6 +875,9 @@ export class AccountController {
       // Set while a device rotation is waiting out the time lock, so the app
       // knows to land it rather than asking the Consumer to start again.
       pendingApprovalSigner: account.pendingApprovalSigner ?? null,
+      // Set while a passkey replacement waits out the lock, so the app can
+      // land the execute step instead of asking the Consumer to start over.
+      pendingPrimarySigner: account.pendingPrimarySigner ?? null,
       // Lets the app tell whether the key on this phone is the Account's, not
       // merely that some key exists. A phone holding another account's key can
       // approve nothing here.
@@ -705,11 +948,21 @@ function toHttp(err: unknown): HttpException {
       HttpStatus.CONFLICT,
     );
   }
+  // Support's refusal, not the Consumer's mistake. Forbidden rather than a
+  // conflict: nothing they retry changes the answer, only a call to support.
+  if (err instanceof RecoveryReleaseFrozenError) {
+    return new HttpException(
+      { code: err.code, message: err.message },
+      HttpStatus.FORBIDDEN,
+    );
+  }
   if (
     err instanceof LastRecoverySignerError ||
     err instanceof RecoverySignerLimitError ||
     err instanceof DuplicateRecoveryChannelError ||
-    err instanceof RecoveryChangeInFlightError
+    err instanceof RecoveryChangeInFlightError ||
+    err instanceof ContactRecoverySignerError ||
+    err instanceof ContactEmailTakenError
   ) {
     return new HttpException(
       { code: err.code, message: err.message },

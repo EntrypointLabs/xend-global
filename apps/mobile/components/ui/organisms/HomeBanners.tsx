@@ -11,12 +11,15 @@ import { Ionicons } from "@expo/vector-icons";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
+import { useAuth } from "@/contexts/AuthContext";
 import { useAccount } from "@/hooks/useAccount";
+import { useAwaitingPayments } from "@/hooks/useAwaitingPayments";
 import { useCountdown } from "@/hooks/useCountdown";
 import { useDeviceNeedsRestore } from "@/hooks/useDeviceNeedsRestore";
 import { usePendingAccountChange } from "@/hooks/usePendingAccountChange";
 import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { usePendingChangeAcknowledgement } from "@/hooks/usePendingChangeAcknowledgement";
+import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { cn } from "@/utils/cn";
 
 /** The card is inset by the screen's own padding on both sides. */
@@ -44,16 +47,58 @@ interface Banner {
  * either.
  */
 export function HomeBanners() {
+  const { sessionTier, user } = useAuth();
   const { data: account } = useAccount();
   const { data: change } = usePendingAccountChange();
   const { data: restore } = useDeviceNeedsRestore();
+  const { data: awaiting } = useAwaitingPayments();
   const { reopen, requestReview } = usePendingChangeAcknowledgement();
   const { startedHere } = useInitiatedChanges();
+  const passkey = usePasskeyLogin();
+  const [passkeyHint, setPasskeyHint] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const width = useRef(Dimensions.get("window").width - SCREEN_PADDING * 2);
   const remaining = useCountdown(change?.executableAt ?? null);
 
   const banners: Banner[] = [];
+
+  // Before everything, including a waiting Payment: nothing else on the
+  // screen can be finished until this is. An email code opened this session,
+  // so it can look and nothing more, and the passkey is the one thing that
+  // changes that. Signing in with it replaces the session in place and this
+  // card goes with it.
+  if (sessionTier === "entry") {
+    const upgrade = async () => {
+      if (passkey.busy) return;
+      setPasskeyHint(null);
+      const outcome = await passkey.signIn(user?.id);
+      if (outcome === "wrong-account") {
+        const opened = passkey.wrongAccountEmail();
+        setPasskeyHint(
+          `That passkey opens ${opened ?? "a different account"}. Try again and pick the one for this account.`
+        );
+      } else if (outcome === "no-account") {
+        setPasskeyHint(
+          "That passkey is not on any Xend account. Try again and pick another."
+        );
+      } else if (outcome === "no-passkey") {
+        setPasskeyHint("No passkey on this phone. Use the phone that has it.");
+      } else if (outcome === "failed") {
+        setPasskeyHint(passkey.error ?? "That did not work. Tap to try again.");
+      }
+    };
+    banners.push({
+      key: "entry-session",
+      icon: "finger-print-outline",
+      tint: "#0A0A0A",
+      title: "Looking, not spending",
+      description: passkey.busy
+        ? "Waiting for your passkey."
+        : (passkeyHint ??
+          "Sending and key changes need your passkey. Tap to sign in."),
+      onPress: () => void upgrade(),
+    });
+  }
 
   // Whose change it is, decided by this device. A phone that did not start it
   // is either the Consumer's other phone or somebody else's, and both want the
@@ -62,6 +107,24 @@ export function HomeBanners() {
   // A rotation is a pending change like any other, so it gets one banner
   // rather than two: the wording is the only thing that differs.
   const restoring = !!account?.pendingApprovalSigner;
+
+  // First, and above everything else here. Somebody with a Payment waiting was
+  // told to open the app by a checkout they are still standing at, so it has to
+  // be the thing they see, not a card they have to swipe to.
+  const waiting = awaiting ?? [];
+  if (waiting.length > 0) {
+    banners.push({
+      key: "finish-payment",
+      icon: "storefront-outline",
+      tint: "#0A0A0A",
+      title:
+        waiting.length === 1
+          ? `Finish paying ${waiting[0].merchantDisplayName}`
+          : `${waiting.length} payments need you`,
+      description: "Checked twice at this size. Tap to finish.",
+      onPress: () => router.push("/settings/finish-payment" as never),
+    });
+  }
 
   if (change && restoring) {
     banners.push({
@@ -98,9 +161,9 @@ export function HomeBanners() {
         : reopen,
     });
   } else if (restore?.needsRestore) {
-    // First, and ahead of everything else here: until this is done the Account
-    // can be looked at and not spent from, and nothing else on the screen
-    // explains why.
+    // Ahead of everything except a Payment somebody is waiting to finish: until
+    // this is done the Account can be looked at and not spent from, and nothing
+    // else on the screen explains why.
     banners.push({
       key: "device-restore",
       icon: "phone-portrait-outline",

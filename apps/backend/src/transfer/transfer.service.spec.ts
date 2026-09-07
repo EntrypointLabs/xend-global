@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import {
   Keypair,
+  PublicKey,
   SystemProgram,
   TransactionMessage,
   VersionedTransaction,
@@ -12,6 +13,9 @@ import type { TokenMetadataProvider } from '../tokens/token-metadata.interface';
 import { TransferService } from './transfer.service';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
+import type { ApprovalSignerStore } from '../turnkey/approval-signer.store';
+import { generateKeyPairSync, sign } from 'node:crypto';
+import { presenceDigest } from './presence-proof';
 import {
   InvalidRecipientError,
   IntentExpiredError,
@@ -225,19 +229,60 @@ function makeSolana(opts: Partial<SolanaRpc>): SolanaRpc {
  * authority as fee payer, so the first signature slot stays empty until submit
  * fills it.
  */
-function makeVaultSpend() {
+/**
+ * Stands in for the enrolled device key: same curve, same compressed public
+ * key, and it signs a digest rather than hashing for itself.
+ */
+function makeDeviceKey() {
+  const { publicKey, privateKey } = generateKeyPairSync('ec', {
+    namedCurve: 'prime256v1',
+  });
+  const jwk = publicKey.export({ format: 'jwk' });
+  const x = Buffer.from(jwk.x!, 'base64url');
+  const y = Buffer.from(jwk.y!, 'base64url');
+  const compressed = Buffer.concat([
+    Buffer.from([(y[y.length - 1] & 1) === 0 ? 0x02 : 0x03]),
+    x,
+  ]);
+
+  return {
+    hardwarePublicKey: compressed.toString('hex'),
+    address: Keypair.generate().publicKey.toBase58(),
+    /** What the app does before submitting: sign the prepared message. */
+    proofFor: (unsignedTxBase64: string) => {
+      const message = VersionedTransaction.deserialize(
+        Buffer.from(unsignedTxBase64, 'base64'),
+      ).message.serialize();
+      return sign(
+        null,
+        presenceDigest(Buffer.from(message)),
+        privateKey,
+      ).toString('hex');
+    },
+  };
+}
+
+function makeVaultSpend(opts: { approvalSigner?: PublicKey } = {}) {
   const authority = Keypair.generate().publicKey;
   const vault = Keypair.generate().publicKey;
+  const transfer = SystemProgram.transfer({
+    fromPubkey: vault,
+    toPubkey: Keypair.generate().publicKey,
+    lamports: 1,
+  });
+  // Above the limit S2 is a required signer on the transaction itself, which is
+  // what gives it a signature slot for submit to look for.
+  if (opts.approvalSigner) {
+    transfer.keys.push({
+      pubkey: opts.approvalSigner,
+      isSigner: true,
+      isWritable: false,
+    });
+  }
   const message = new TransactionMessage({
     payerKey: authority,
     recentBlockhash: Keypair.generate().publicKey.toBase58(),
-    instructions: [
-      SystemProgram.transfer({
-        fromPubkey: vault,
-        toPubkey: Keypair.generate().publicKey,
-        lamports: 1,
-      }),
-    ],
+    instructions: [transfer],
   }).compileToV0Message();
 
   const submit = jest.fn().mockResolvedValue('sig-vault');
@@ -249,8 +294,8 @@ function makeVaultSpend() {
     vaultAddress: vault.toBase58(),
     blockhash: 'BlockHash11111111111111111111111111111111111',
     lastValidBlockHeight: 12345,
-    route: 'spending-limit',
-    needsApprovalSignature: false,
+    route: opts.approvalSigner ? 'two-signature' : 'spending-limit',
+    needsApprovalSignature: Boolean(opts.approvalSigner),
   });
   const spends = { prepare, submit } as unknown as SpendService;
 
@@ -266,6 +311,8 @@ function makeService(opts: {
   spends?: SpendService;
   /** Names and logos by mint, as the token index would return them. */
   events?: Pick<AccountEventsService, 'list'>;
+  /** Device keys enrolled for the Consumer, compressed P-256 hex. */
+  enrolledKeys?: { hardwarePublicKey: string; address: string }[];
   tokenMetadata?: Record<
     string,
     { name: string; symbol: string; iconUrl: string | null }
@@ -308,6 +355,9 @@ function makeService(opts: {
     (opts.events ?? {
       list: () => Promise.resolve([]),
     }) as unknown as AccountEventsService,
+    {
+      listByUser: () => Promise.resolve(opts.enrolledKeys ?? []),
+    } as unknown as ApprovalSignerStore,
   );
   return { service, store, account };
 }
@@ -523,11 +573,13 @@ describe('TransferService.submit', () => {
   it('completes a vault Spend through SpendService rather than broadcasting it raw', async () => {
     const sendRawTransaction = jest.fn().mockResolvedValue('sig-raw');
     const solana = makeSolana({ sendRawTransaction });
+    const device = makeDeviceKey();
     const { spends, submit, vaultAddress } = makeVaultSpend();
     const { service, store } = makeService({
       solana,
       squadsAccount: { settingsAddress: 'settings' },
       spends,
+      enrolledKeys: [device],
     });
 
     const prep = await service.prepare('u_test', {
@@ -549,6 +601,7 @@ describe('TransferService.submit', () => {
     const out = await service.submit('u_test', {
       intentId: prep.intentId,
       signedTxBase64,
+      presenceProof: device.proofFor(prep.unsignedTxBase64),
     });
 
     // Sent raw, this transaction reaches the cluster with an empty fee-payer
@@ -557,6 +610,145 @@ describe('TransferService.submit', () => {
     expect(sendRawTransaction).not.toHaveBeenCalled();
     expect(out.signature).toBe('sig-vault');
     expect(store.transfers[0].fromAddress).toBe(vaultAddress);
+  });
+
+  /**
+   * A Spend the chain settles on one signature is the whole reason this gate
+   * exists: the Privy signature comes from a session, so without a device
+   * signature nothing in the request says the Consumer was holding the phone.
+   */
+  describe('presence', () => {
+    const vaultSpend = async (opts: {
+      device?: ReturnType<typeof makeDeviceKey>;
+      enrolled?: ReturnType<typeof makeDeviceKey>[];
+      approvalSigner?: PublicKey;
+      signApproval?: boolean;
+    }) => {
+      const solana = makeSolana({});
+      const { spends, submit } = makeVaultSpend({
+        approvalSigner: opts.approvalSigner,
+      });
+      const { service } = makeService({
+        solana,
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+        enrolledKeys: opts.enrolled ?? (opts.device ? [opts.device] : []),
+      });
+
+      const prep = await service.prepare('u_test', {
+        toAddress: Keypair.generate().publicKey.toBase58(),
+        mint: usdcMint,
+        amountRaw: '1000000',
+      });
+
+      const tx = VersionedTransaction.deserialize(
+        Buffer.from(prep.unsignedTxBase64, 'base64'),
+      );
+      const approvalIndex = opts.approvalSigner
+        ? tx.message.staticAccountKeys.findIndex((key) =>
+            key.equals(opts.approvalSigner!),
+          )
+        : -1;
+      tx.signatures = tx.signatures.map((slot, i) => {
+        if (i === 0) return slot;
+        // The approval slot is filled only when the test says S2 signed.
+        if (i === approvalIndex && opts.signApproval === false) return slot;
+        return new Uint8Array(64).fill(7);
+      });
+
+      return {
+        prep,
+        submit,
+        signedTxBase64: Buffer.from(tx.serialize()).toString('base64'),
+        send: (presenceProof?: string) =>
+          service.submit('u_test', {
+            intentId: prep.intentId,
+            signedTxBase64: Buffer.from(tx.serialize()).toString('base64'),
+            presenceProof,
+          }),
+      };
+    };
+
+    it('refuses a one-signature Spend that carries no device signature', async () => {
+      const { send, submit } = await vaultSpend({ device: makeDeviceKey() });
+
+      await expect(send()).rejects.toMatchObject({
+        code: 'PRESENCE_REQUIRED',
+      });
+      // Refused before broadcast: nothing reached the cluster.
+      expect(submit).not.toHaveBeenCalled();
+    });
+
+    it('refuses a proof signed by a key the Consumer never enrolled', async () => {
+      const stranger = makeDeviceKey();
+      const { send, prep, submit } = await vaultSpend({
+        device: makeDeviceKey(),
+      });
+
+      await expect(
+        send(stranger.proofFor(prep.unsignedTxBase64)),
+      ).rejects.toMatchObject({ code: 'PRESENCE_INVALID' });
+      expect(submit).not.toHaveBeenCalled();
+    });
+
+    it('refuses a proof lifted from a different send', async () => {
+      const device = makeDeviceKey();
+      const other = await vaultSpend({ device });
+      const { send, submit } = await vaultSpend({ device });
+
+      // A real signature by the right key, over the wrong transfer. Replaying
+      // one is how a captured proof would be turned into a second payment.
+      await expect(
+        send(device.proofFor(other.prep.unsignedTxBase64)),
+      ).rejects.toMatchObject({ code: 'PRESENCE_INVALID' });
+      expect(submit).not.toHaveBeenCalled();
+    });
+
+    it('refuses a Consumer with no enrolled device rather than waving them through', async () => {
+      const { send, submit } = await vaultSpend({ enrolled: [] });
+
+      await expect(send()).rejects.toMatchObject({ code: 'PRESENCE_INVALID' });
+      expect(submit).not.toHaveBeenCalled();
+    });
+
+    it('accepts a proof from the second of two enrolled devices', async () => {
+      const holding = makeDeviceKey();
+      const { send, prep, submit } = await vaultSpend({
+        enrolled: [makeDeviceKey(), holding],
+      });
+
+      await expect(
+        send(holding.proofFor(prep.unsignedTxBase64)),
+      ).resolves.toMatchObject({ signature: 'sig-vault' });
+      expect(submit).toHaveBeenCalled();
+    });
+
+    it('asks no separate proof above the limit, where S2 already signed', async () => {
+      const device = makeDeviceKey();
+      const { send, submit } = await vaultSpend({
+        device,
+        approvalSigner: new PublicKey(device.address),
+      });
+
+      // The approval signature IS the biometric. Demanding a second one here
+      // would prompt the Consumer twice for one send.
+      await expect(send()).resolves.toMatchObject({ signature: 'sig-vault' });
+      expect(submit).toHaveBeenCalled();
+    });
+
+    it('refuses an above-limit Spend whose approval slot is still empty', async () => {
+      const device = makeDeviceKey();
+      const { send, submit } = await vaultSpend({
+        device,
+        approvalSigner: new PublicKey(device.address),
+        signApproval: false,
+      });
+
+      // On chain this is rejected anyway, but only after the Consumer has been
+      // told it was sent.
+      await expect(send()).rejects.toMatchObject({ code: 'PRESENCE_INVALID' });
+      expect(submit).not.toHaveBeenCalled();
+    });
   });
 
   it('duplicate intentId returns the existing row (idempotency)', async () => {

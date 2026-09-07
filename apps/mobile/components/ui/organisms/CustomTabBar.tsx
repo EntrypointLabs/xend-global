@@ -19,6 +19,8 @@ import { ActionMenu } from "./ActionMenu";
 
 import { BlurView } from "expo-blur";
 import { useSegments } from "expo-router";
+import { useAuth } from "@/contexts/AuthContext";
+import { cn } from "@/utils/cn";
 
 const iconMappings = {
   index: Home,
@@ -43,7 +45,12 @@ export function CustomTabBar({
   // `.expo/types`, absent in CI; treat segments as a plain string array so
   // depth checks type-check without the generated route types.
   const segments = useSegments() as string[];
+  const { sessionTier } = useAuth();
   const [isActionMenuVisible, setIsActionMenuVisible] = useState(false);
+  // Everything behind the button moves money, and an email-only session
+  // cannot. The home banner says why and offers the passkey; the button just
+  // stops pretending.
+  const readOnly = sessionTier === "entry";
 
   const fabScale = useSharedValue(1);
   const fabOpacity = useSharedValue(1);
@@ -148,10 +155,17 @@ export function CustomTabBar({
             style={fabStyle}
           >
             <HapticPressable
-              className="h-[50px] w-[50px] items-center justify-center rounded-[28px] bg-black"
+              className={cn(
+                "h-[50px] w-[50px] items-center justify-center rounded-[28px] bg-black",
+                readOnly && "opacity-30"
+              )}
               // PLATFORM-SHADOW
               style={fabShadow}
               onPress={handleFabPress}
+              disabled={readOnly}
+              accessibilityLabel={
+                readOnly ? "Sign in with your passkey to send" : "Actions"
+              }
             >
               <Ionicons name="add" size={28} color="white" />
             </HapticPressable>
@@ -187,6 +201,9 @@ const ContainerWrapper = ({
       </View>
     );
   }
+  // No `blurMethod` here on purpose: this BlurView has no blurTarget, so
+  // Android has always fallen back to no blur, and naming the method only
+  // earned a warning on every mount. iOS blurs natively either way.
   return (
     <BlurView
       intensity={10}
@@ -194,7 +211,6 @@ const ContainerWrapper = ({
       className="absolute left-0 right-0 z-[1] flex-row items-center justify-between px-4 pt-2.5"
       // MEASURED-LAYOUT (safe-area inset)
       style={{ bottom }}
-      experimentalBlurMethod="dimezisBlurView"
     >
       {children}
     </BlurView>

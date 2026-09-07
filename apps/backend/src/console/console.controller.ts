@@ -12,10 +12,12 @@ import type { Response } from 'express';
 import { eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { webhookDeliveries } from '../db/schema';
+import { RecoveryService } from '../recovery/recovery.service';
 import { WebhookDeliveryService } from '../webhook/webhook-delivery.service';
 import { ConsoleAuthGuard } from './console-auth.guard';
 import {
   ConsoleService,
+  type ConsoleAccountRow,
   type ConsoleDeliveryRow,
   type ConsoleKeyRow,
   type ConsolePaymentRow,
@@ -34,11 +36,12 @@ function iso(date: Date | null): string | null {
 }
 
 /**
- * Read-only ops console (ADR 0022, REQ-CONSOLE-READONLY). Renders three
- * server-side HTML tables behind Basic Auth: payments (with refund linkage
- * shown, never actionable), the webhook delivery log with a per-row manual
- * Redeliver button, and API key fingerprints. The single write path is the
- * redelivery POST, which calls Phase 6's WebhookDeliveryService in-process.
+ * Ops console (ADR 0022). Renders server-side HTML tables behind Basic Auth:
+ * payments (with refund linkage shown, never actionable), the webhook delivery
+ * log with a per-row manual Redeliver button, API key fingerprints, and
+ * Consumer Accounts. Two write paths: webhook redelivery, and freezing or
+ * releasing an Account's recovery signer. Neither reaches a Consumer-facing
+ * route, and the freeze is a refusal to sign rather than a power to sign.
  */
 @Controller('console')
 @UseGuards(ConsoleAuthGuard)
@@ -48,6 +51,7 @@ export class ConsoleController {
   constructor(
     private readonly console: ConsoleService,
     private readonly delivery: WebhookDeliveryService,
+    private readonly recovery: RecoveryService,
     private readonly db: DbService,
   ) {}
 
@@ -74,6 +78,42 @@ export class ConsoleController {
   async keys(@Res() res: Response): Promise<void> {
     const rows = await this.console.listKeyFingerprints();
     res.type('html').send(layout('API keys', this.renderKeys(rows)));
+  }
+
+  @Get('accounts')
+  async accounts(@Res() res: Response): Promise<void> {
+    const rows = await this.console.listAccounts();
+    res.type('html').send(layout('Accounts', this.renderAccounts(rows)));
+  }
+
+  /**
+   * Stops the recovery signer being released for this Account, for as long
+   * as a compromise report is open.
+   *
+   * A Consumer holding their passkey and phone is unaffected: those two are
+   * threshold on their own. What changes is that an inbox alone can no longer
+   * start moving the Account to another phone.
+   */
+  @Post('accounts/:userId/recovery/freeze')
+  async freezeRecovery(
+    @Param('userId') userId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.requireAccount(userId);
+    await this.recovery.freezeRelease(userId);
+    this.logger.warn(`console.recovery_freeze user=${userId}`);
+    res.redirect(303, '/console/accounts');
+  }
+
+  @Post('accounts/:userId/recovery/unfreeze')
+  async unfreezeRecovery(
+    @Param('userId') userId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.requireAccount(userId);
+    await this.recovery.unfreezeRelease(userId);
+    this.logger.warn(`console.recovery_unfreeze user=${userId}`);
+    res.redirect(303, '/console/accounts');
   }
 
   @Post('deliveries/:id/redeliver')
@@ -119,7 +159,7 @@ export class ConsoleController {
       return '<p class="empty">No payments yet.</p>';
     }
     const head =
-      '<tr><th>Payment</th><th>Merchant</th><th>USDC</th><th>NGN</th>' +
+      '<tr><th>Payment</th><th>Merchant</th><th>USDC</th><th>Charged</th>' +
       '<th>Intent status</th><th>Signature</th><th>Settled</th><th>Refund of</th></tr>';
     const body = rows
       .map(
@@ -128,7 +168,7 @@ export class ConsoleController {
           cell(r.id, true) +
           cell(r.merchantName) +
           cell(r.usdcAmount) +
-          cell(r.ngnAmount) +
+          cell(r.displayAmount) +
           cell(r.intentStatus) +
           cell(r.signature, true) +
           cell(iso(r.settledAt)) +
@@ -162,6 +202,43 @@ export class ConsoleController {
           cell(r.durationMs === null ? null : String(r.durationMs)) +
           cell(iso(r.nextRetryAt)) +
           cell(iso(r.createdAt)) +
+          `<td>${button}</td>` +
+          '</tr>'
+        );
+      })
+      .join('');
+    return `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  }
+
+  private async requireAccount(userId: string): Promise<void> {
+    if (!(await this.console.hasAccount(userId))) {
+      throw new NotFoundException(`no Account for user ${userId}`);
+    }
+  }
+
+  private renderAccounts(rows: ConsoleAccountRow[]): string {
+    if (rows.length === 0) {
+      return '<p class="empty">No Accounts yet.</p>';
+    }
+    const head =
+      '<tr><th>User</th><th>Email</th><th>Vault</th><th>Created</th>' +
+      '<th>Recovery release</th><th></th></tr>';
+    const body = rows
+      .map((r) => {
+        const frozen = r.recoveryReleaseFrozenAt !== null;
+        const action = `/console/accounts/${encodeURIComponent(r.userId)}/recovery/${frozen ? 'unfreeze' : 'freeze'}`;
+        const button = `<form method="post" action="${escapeHtml(action)}"><button type="submit">${frozen ? 'Release' : 'Freeze'}</button></form>`;
+        return (
+          '<tr>' +
+          cell(r.userId, true) +
+          cell(r.email) +
+          cell(r.vaultAddress, true) +
+          cell(iso(r.createdAt)) +
+          cell(
+            frozen
+              ? `Frozen since ${iso(r.recoveryReleaseFrozenAt) ?? ''}`
+              : 'Open',
+          ) +
           `<td>${button}</td>` +
           '</tr>'
         );

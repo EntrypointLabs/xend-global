@@ -60,11 +60,6 @@ export function buildEventPayload(params: BuildEventPayloadParams): {
 } {
   const { intent, payment, settlement } = params;
   const status = params.type.replace('payment.', '');
-  const currency = intent.ngnDisplayMinor !== null ? 'NGN' : 'USDC';
-  const amount =
-    currency === 'NGN'
-      ? (intent.ngnDisplayMinor as string)
-      : intent.usdcSettlementRaw;
 
   return {
     id: params.eventId,
@@ -78,10 +73,9 @@ export function buildEventPayload(params: BuildEventPayloadParams): {
         id: payment?.id ?? null,
         intent_id: intent.id,
         status,
-        currency,
-        amount,
+        currency: intent.displayCurrency,
+        amount: intent.displayAmountMinor,
         usdc_settlement_raw: intent.usdcSettlementRaw,
-        ngn_display_minor: intent.ngnDisplayMinor,
         merchant_reference: intent.merchantReference,
         tx_signature: payment?.txSignature ?? null,
         settled_at: payment?.settledAt ? payment.settledAt.toISOString() : null,

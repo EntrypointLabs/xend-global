@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useAccount } from "@/hooks/useAccount";
 import { hardwareKey } from "@/modules/hardware-key/src";
+import { SEED_DEMO } from "@/utils/devSeed";
 
 export const DEVICE_RESTORE_KEY = ["device", "needs-restore"] as const;
 
@@ -22,6 +23,9 @@ export function useDeviceNeedsRestore() {
   return useQuery({
     queryKey: [...DEVICE_RESTORE_KEY, account?.address ?? null],
     queryFn: async () => {
+      // A simulator holds no hardware key, so the seeded Account would always
+      // read as locked out and the demo would open on the restore banner.
+      if (SEED_DEMO) return { needsRestore: false };
       const key = await hardwareKey.getPublicKey();
       // Compared, not merely checked for absence. The native lookup falls back
       // to the pre-scoping alias when this account has no key of its own, so a

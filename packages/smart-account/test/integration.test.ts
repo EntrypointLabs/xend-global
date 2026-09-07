@@ -35,6 +35,8 @@ import {
   deriveProposalAddress,
   buildRemoveRecoverySigner,
   buildRotateApprovalSigner,
+  buildRotatePrimarySigner,
+  buildRotateRecoverySigner,
   buildSetTimeLock,
   buildSpend,
   derivePolicyAddress,
@@ -1225,6 +1227,89 @@ describe.skipIf(!HAVE_FIXTURES)("rejecting a settings change", () => {
   });
 });
 
+/** An Account provisioned the way signup leaves it: both policies, lock on. */
+function provisioned(): Harness {
+  const h = setUp({ timeLockSeconds: 0 });
+  const index =
+    BigInt(
+      decode<{ transactionIndex: { toString(): string } }>(
+        h.svm,
+        h.addresses.settings,
+        accounts.Settings,
+      ).transactionIndex.toString(),
+    ) + 1n;
+
+  const { propose } = buildProvisionAccount({
+    addresses: h.addresses,
+    spendingLimitSeed: LIMIT_POLICY_SEED,
+    aboveLimitSeed: ABOVE_LIMIT_POLICY_SEED,
+    terms: {
+      mint: SOL,
+      maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
+      maxPerPeriod: BigInt(5 * LAMPORTS_PER_SOL),
+      period: "Daily",
+      destinations: [],
+    },
+    primary: h.primary.publicKey,
+    approval: h.approval.publicKey,
+    proposer: h.primary.publicKey,
+    transactionIndex: index,
+    timeLockSeconds: SETTINGS_TIME_LOCK,
+  });
+
+  expect(failed(send(h.svm, h.primary, propose, [h.primary]))).toBe(false);
+  for (const signer of [h.primary, h.approval]) {
+    expect(
+      failed(
+        send(
+          h.svm,
+          signer,
+          [
+            buildApproveSettingsChange({
+              addresses: h.addresses,
+              transactionIndex: index,
+              signer: signer.publicKey,
+            }),
+          ],
+          [signer],
+        ),
+      ),
+    ).toBe(false);
+  }
+  h.svm.expireBlockhash();
+  expect(
+    failed(
+      send(
+        h.svm,
+        h.primary,
+        [
+          buildExecuteSettingsChange({
+            addresses: h.addresses,
+            transactionIndex: index,
+            signer: h.primary.publicKey,
+            policies: [h.policy, h.abovePolicy],
+          }),
+        ],
+        [h.primary],
+      ),
+    ),
+  ).toBe(false);
+
+  return h;
+}
+
+function nextIndex(h: Harness): bigint {
+  return (
+    BigInt(
+      decode<{ transactionIndex: { toString(): string } }>(
+        h.svm,
+        h.addresses.settings,
+        accounts.Settings,
+      ).transactionIndex.toString(),
+    ) + 1n
+  );
+}
+
 describe.skipIf(!HAVE_FIXTURES)("approval signer rotation", () => {
   /**
    * The lost-phone recovery: S2 is gone, so the two approvals are S1 and S3.
@@ -1282,89 +1367,6 @@ describe.skipIf(!HAVE_FIXTURES)("approval signer rotation", () => {
         }),
       ],
       [h.primary],
-    );
-  }
-
-  /** An Account provisioned the way signup leaves it: both policies, lock on. */
-  function provisioned(): Harness {
-    const h = setUp({ timeLockSeconds: 0 });
-    const index =
-      BigInt(
-        decode<{ transactionIndex: { toString(): string } }>(
-          h.svm,
-          h.addresses.settings,
-          accounts.Settings,
-        ).transactionIndex.toString(),
-      ) + 1n;
-
-    const { propose } = buildProvisionAccount({
-      addresses: h.addresses,
-      spendingLimitSeed: LIMIT_POLICY_SEED,
-      aboveLimitSeed: ABOVE_LIMIT_POLICY_SEED,
-      terms: {
-        mint: SOL,
-        maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
-        maxPerPeriod: BigInt(5 * LAMPORTS_PER_SOL),
-        period: "Daily",
-        destinations: [],
-      },
-      primary: h.primary.publicKey,
-      approval: h.approval.publicKey,
-      proposer: h.primary.publicKey,
-      transactionIndex: index,
-      timeLockSeconds: SETTINGS_TIME_LOCK,
-    });
-
-    expect(failed(send(h.svm, h.primary, propose, [h.primary]))).toBe(false);
-    for (const signer of [h.primary, h.approval]) {
-      expect(
-        failed(
-          send(
-            h.svm,
-            signer,
-            [
-              buildApproveSettingsChange({
-                addresses: h.addresses,
-                transactionIndex: index,
-                signer: signer.publicKey,
-              }),
-            ],
-            [signer],
-          ),
-        ),
-      ).toBe(false);
-    }
-    h.svm.expireBlockhash();
-    expect(
-      failed(
-        send(
-          h.svm,
-          h.primary,
-          [
-            buildExecuteSettingsChange({
-              addresses: h.addresses,
-              transactionIndex: index,
-              signer: h.primary.publicKey,
-              policies: [h.policy, h.abovePolicy],
-            }),
-          ],
-          [h.primary],
-        ),
-      ),
-    ).toBe(false);
-
-    return h;
-  }
-
-  function nextIndex(h: Harness): bigint {
-    return (
-      BigInt(
-        decode<{ transactionIndex: { toString(): string } }>(
-          h.svm,
-          h.addresses.settings,
-          accounts.Settings,
-        ).transactionIndex.toString(),
-      ) + 1n
     );
   }
 
@@ -1449,5 +1451,648 @@ describe.skipIf(!HAVE_FIXTURES)("approval signer rotation", () => {
     });
     expect(failed(send(h.svm, h.primary, [tx], [h.primary]))).toBe(false);
     expect(h.svm.getBalance(destination)).toBe(BigInt(LAMPORTS_PER_SOL));
+  });
+});
+
+describe.skipIf(!HAVE_FIXTURES)("single-transaction provisioning", () => {
+  /**
+   * The whole provisioning change in one transaction: propose, both
+   * approvals, execute. Legal precisely here because the Settings time lock
+   * is still zero until this very change sets it, so there is nothing to
+   * wait out between approval and execution.
+   */
+  it("proposes, approves twice and executes in one transaction", () => {
+    const h = setUp({ timeLockSeconds: 0 });
+    const index = nextIndex(h);
+
+    const { propose, policies } = buildProvisionAccount({
+      addresses: h.addresses,
+      spendingLimitSeed: LIMIT_POLICY_SEED,
+      aboveLimitSeed: ABOVE_LIMIT_POLICY_SEED,
+      terms: {
+        mint: SOL,
+        maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
+        maxPerPeriod: BigInt(5 * LAMPORTS_PER_SOL),
+        period: "Daily",
+        destinations: [],
+      },
+      primary: h.primary.publicKey,
+      approval: h.approval.publicKey,
+      proposer: h.primary.publicKey,
+      transactionIndex: index,
+      timeLockSeconds: SETTINGS_TIME_LOCK,
+    });
+
+    const result = send(
+      h.svm,
+      h.primary,
+      [
+        ...propose,
+        buildApproveSettingsChange({
+          addresses: h.addresses,
+          transactionIndex: index,
+          signer: h.primary.publicKey,
+        }),
+        buildApproveSettingsChange({
+          addresses: h.addresses,
+          transactionIndex: index,
+          signer: h.approval.publicKey,
+        }),
+        buildExecuteSettingsChange({
+          addresses: h.addresses,
+          transactionIndex: index,
+          signer: h.primary.publicKey,
+          policies,
+        }),
+      ],
+      [h.primary, h.approval],
+    );
+    expect(failed(result)).toBe(false);
+
+    const settings = decode<{ timeLock: number }>(
+      h.svm,
+      h.addresses.settings,
+      accounts.Settings,
+    );
+    expect(settings.timeLock).toBe(SETTINGS_TIME_LOCK);
+
+    // Both policies exist and the everyday route works immediately.
+    const destination = Keypair.generate().publicKey;
+    const tx = buildSpend({
+      addresses: h.addresses,
+      request: {
+        mint: SOL,
+        amount: BigInt(LAMPORTS_PER_SOL),
+        destination,
+      },
+      route: { kind: "spending-limit", policy: h.policy },
+      signers: [h.primary.publicKey],
+      decimals: 9,
+    });
+    expect(failed(send(h.svm, h.primary, [tx], [h.primary]))).toBe(false);
+    expect(h.svm.getBalance(destination)).toBe(BigInt(LAMPORTS_PER_SOL));
+  });
+});
+
+describe.skipIf(!HAVE_FIXTURES)("primary signer rotation", () => {
+  const TERMS = {
+    mint: SOL,
+    maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
+    maxPerPeriod: BigInt(5 * LAMPORTS_PER_SOL),
+    period: "Daily" as const,
+    destinations: [],
+  };
+
+  /**
+   * The lost-passkey recovery: S1 is gone, so the pair meeting the threshold
+   * is the approval signer on the phone and the recovery signer in the vault.
+   * The approval signer proposes and executes, which is what its Initiate and
+   * Execute permissions exist for; the old primary never participates.
+   */
+  function rotatePrimary(
+    h: Harness,
+    newPrimary: Keypair,
+    transactionIndex: bigint,
+  ) {
+    const { propose, policies } = buildRotatePrimarySigner({
+      addresses: h.addresses,
+      oldPrimary: h.primary.publicKey,
+      newPrimary: newPrimary.publicKey,
+      approval: h.approval.publicKey,
+      spendingLimitSeed: LIMIT_POLICY_SEED,
+      terms: TERMS,
+      aboveLimitSeed: ABOVE_LIMIT_POLICY_SEED,
+      proposer: h.approval.publicKey,
+      transactionIndex,
+    });
+
+    expect(failed(send(h.svm, h.approval, propose, [h.approval]))).toBe(false);
+    for (const signer of [h.approval, h.recovery]) {
+      expect(
+        failed(
+          send(
+            h.svm,
+            signer,
+            [
+              buildApproveSettingsChange({
+                addresses: h.addresses,
+                transactionIndex,
+                signer: signer.publicKey,
+              }),
+            ],
+            [signer],
+          ),
+        ),
+      ).toBe(false);
+    }
+
+    const clock = h.svm.getClock();
+    clock.unixTimestamp = clock.unixTimestamp + BigInt(SETTINGS_TIME_LOCK + 10);
+    h.svm.setClock(clock);
+    h.svm.expireBlockhash();
+
+    return send(
+      h.svm,
+      h.approval,
+      [
+        buildExecuteSettingsChange({
+          addresses: h.addresses,
+          transactionIndex,
+          signer: h.approval.publicKey,
+          policies,
+        }),
+      ],
+      [h.approval],
+    );
+  }
+
+  it("swaps the signer set without the old primary ever signing", () => {
+    const h = provisioned();
+    const newPrimary = Keypair.generate();
+    h.svm.airdrop(newPrimary.publicKey, BigInt(5 * LAMPORTS_PER_SOL));
+
+    expect(failed(rotatePrimary(h, newPrimary, nextIndex(h)))).toBe(false);
+
+    const settings = decode<{ signers: { key: PublicKey }[] }>(
+      h.svm,
+      h.addresses.settings,
+      accounts.Settings,
+    );
+    const keys = settings.signers.map((s) => s.key.toBase58());
+    expect(keys).toContain(newPrimary.publicKey.toBase58());
+    expect(keys).not.toContain(h.primary.publicKey.toBase58());
+  });
+
+  it("moves the one-signature route to the new primary and closes it to the old", () => {
+    const h = provisioned();
+    const newPrimary = Keypair.generate();
+    h.svm.airdrop(newPrimary.publicKey, BigInt(5 * LAMPORTS_PER_SOL));
+    expect(failed(rotatePrimary(h, newPrimary, nextIndex(h)))).toBe(false);
+
+    const destination = Keypair.generate().publicKey;
+    const fresh = buildSpend({
+      addresses: h.addresses,
+      request: {
+        mint: SOL,
+        amount: BigInt(LAMPORTS_PER_SOL),
+        destination,
+      },
+      route: { kind: "spending-limit", policy: h.policy },
+      signers: [newPrimary.publicKey],
+      decimals: 9,
+    });
+    expect(failed(send(h.svm, newPrimary, [fresh], [newPrimary]))).toBe(false);
+    expect(h.svm.getBalance(destination)).toBe(BigInt(LAMPORTS_PER_SOL));
+
+    const stale = buildSpend({
+      addresses: h.addresses,
+      request: {
+        mint: SOL,
+        amount: BigInt(LAMPORTS_PER_SOL),
+        destination: Keypair.generate().publicKey,
+      },
+      route: { kind: "spending-limit", policy: h.policy },
+      signers: [h.primary.publicKey],
+      decimals: 9,
+    });
+    expect(failed(send(h.svm, h.primary, [stale], [h.primary]))).toBe(true);
+  });
+
+  it("keeps the above-limit route working for the new pair only", () => {
+    const h = provisioned();
+    const newPrimary = Keypair.generate();
+    h.svm.airdrop(newPrimary.publicKey, BigInt(5 * LAMPORTS_PER_SOL));
+    expect(failed(rotatePrimary(h, newPrimary, nextIndex(h)))).toBe(false);
+
+    const destination = Keypair.generate().publicKey;
+    const fresh = spend(
+      h,
+      [newPrimary.publicKey, h.approval.publicKey],
+      destination,
+      BigInt(3 * LAMPORTS_PER_SOL),
+    );
+    expect(
+      failed(send(h.svm, newPrimary, [fresh], [newPrimary, h.approval])),
+    ).toBe(false);
+    expect(h.svm.getBalance(destination)).toBe(BigInt(3 * LAMPORTS_PER_SOL));
+
+    const stale = spend(
+      h,
+      [h.primary.publicKey, h.approval.publicKey],
+      Keypair.generate().publicKey,
+      BigInt(3 * LAMPORTS_PER_SOL),
+    );
+    expect(
+      failed(send(h.svm, h.primary, [stale], [h.primary, h.approval])),
+    ).toBe(true);
+  });
+
+  it("leaves the recovery signer in place and able to vote on the next change", () => {
+    const h = provisioned();
+    const newPrimary = Keypair.generate();
+    h.svm.airdrop(newPrimary.publicKey, BigInt(5 * LAMPORTS_PER_SOL));
+    expect(failed(rotatePrimary(h, newPrimary, nextIndex(h)))).toBe(false);
+
+    const settings = decode<{ signers: { key: PublicKey }[] }>(
+      h.svm,
+      h.addresses.settings,
+      accounts.Settings,
+    );
+    const keys = settings.signers.map((s) => s.key.toBase58());
+    expect(keys).toContain(h.recovery.publicKey.toBase58());
+  });
+});
+
+/*
+ * A Merchant is paid into a token account Xend provisions for it, which is a
+ * bare account rather than anybody's ATA. These pin the two facts Checkout
+ * settlement rests on: the program accepts such an account, and it accepts it
+ * on the route an everyday Payment actually takes.
+ */
+describe.skipIf(!HAVE_FIXTURES)(
+  "paying a Merchant's settlement account",
+  () => {
+    const SETTLEMENT_AMOUNT = 1_000_000n;
+
+    /** An Account whose spending limit is denominated in the token, not in SOL. */
+    function withTokenLimit(): Harness & { mint: PublicKey } {
+      const h = setUp({ timeLockSeconds: 0 });
+      const mint = Keypair.generate().publicKey;
+      writeMint(h.svm, mint, TOKEN_DECIMALS);
+
+      // Both policies, the way a real Account is provisioned: the above-limit
+      // route has no policy to execute under otherwise.
+      const index = BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
+      const { propose } = buildProvisionAccount({
+        addresses: h.addresses,
+        spendingLimitSeed: LIMIT_POLICY_SEED,
+        aboveLimitSeed: ABOVE_LIMIT_POLICY_SEED,
+        terms: {
+          mint,
+          maxPerUse: 100_000_000n,
+          maxPerPeriod: 100_000_000n,
+          period: "Daily",
+          destinations: [],
+        },
+        primary: h.primary.publicKey,
+        approval: h.approval.publicKey,
+        proposer: h.primary.publicKey,
+        transactionIndex: index,
+        timeLockSeconds: SETTINGS_TIME_LOCK,
+      });
+
+      expect(failed(send(h.svm, h.primary, propose, [h.primary]))).toBe(false);
+      for (const signer of [h.primary, h.approval]) {
+        expect(
+          failed(
+            send(
+              h.svm,
+              signer,
+              [
+                buildApproveSettingsChange({
+                  addresses: h.addresses,
+                  transactionIndex: index,
+                  signer: signer.publicKey,
+                }),
+              ],
+              [signer],
+            ),
+          ),
+        ).toBe(false);
+      }
+      h.svm.expireBlockhash();
+      expect(
+        failed(
+          send(
+            h.svm,
+            h.primary,
+            [
+              buildExecuteSettingsChange({
+                addresses: h.addresses,
+                transactionIndex: index,
+                signer: h.primary.publicKey,
+                policies: [h.policy, h.abovePolicy],
+              }),
+            ],
+            [h.primary],
+          ),
+        ),
+      ).toBe(false);
+
+      writeTokenAccount(
+        h.svm,
+        associatedTokenAddress(h.addresses.vault, mint, TOKEN_PROGRAM),
+        { mint, owner: h.addresses.vault, amount: 20_000_000n },
+      );
+      return { ...h, mint };
+    }
+
+    /** The settlement account: owned by the authority, derived from nothing. */
+    function settlementAccount(
+      h: Harness & { mint: PublicKey },
+      owner: PublicKey,
+    ): PublicKey {
+      const account = Keypair.generate().publicKey;
+      writeTokenAccount(h.svm, account, {
+        mint: h.mint,
+        owner,
+        amount: 0n,
+      });
+      return account;
+    }
+
+    it("settles under the limit on one signature", () => {
+      const h = withTokenLimit();
+      const authority = Keypair.generate().publicKey;
+      const account = settlementAccount(h, authority);
+
+      const instruction = buildSpend({
+        addresses: h.addresses,
+        request: {
+          mint: h.mint,
+          amount: SETTLEMENT_AMOUNT,
+          destination: authority,
+          destinationTokenAccount: account,
+        },
+        route: { kind: "spending-limit", policy: h.policy },
+        signers: [h.primary.publicKey],
+        decimals: TOKEN_DECIMALS,
+        tokenProgram: TOKEN_PROGRAM,
+      });
+
+      expect(failed(send(h.svm, h.primary, [instruction], [h.primary]))).toBe(
+        false,
+      );
+      expect(tokenBalance(h.svm, account)).toBe(SETTLEMENT_AMOUNT);
+    });
+
+    it("settles above the limit on two signatures", () => {
+      const h = withTokenLimit();
+      const authority = Keypair.generate().publicKey;
+      const account = settlementAccount(h, authority);
+
+      const instruction = buildSpend({
+        addresses: h.addresses,
+        request: {
+          mint: h.mint,
+          amount: SETTLEMENT_AMOUNT,
+          destination: authority,
+          destinationTokenAccount: account,
+        },
+        route: {
+          kind: "two-signature",
+          reason: "exceeds-per-use",
+          policy: h.abovePolicy,
+        },
+        signers: [h.primary.publicKey, h.approval.publicKey],
+        decimals: TOKEN_DECIMALS,
+        tokenProgram: TOKEN_PROGRAM,
+      });
+
+      expect(
+        failed(send(h.svm, h.primary, [instruction], [h.primary, h.approval])),
+      ).toBe(false);
+      expect(tokenBalance(h.svm, account)).toBe(SETTLEMENT_AMOUNT);
+    });
+
+    it("refuses an account the named destination does not own", () => {
+      // The destination is what a policy allowlist would be checked against, so
+      // a token account belonging to someone else must not be reachable by
+      // naming an allowed destination beside it.
+      const h = withTokenLimit();
+      const authority = Keypair.generate().publicKey;
+      const stranger = Keypair.generate().publicKey;
+      const account = settlementAccount(h, stranger);
+
+      const instruction = buildSpend({
+        addresses: h.addresses,
+        request: {
+          mint: h.mint,
+          amount: SETTLEMENT_AMOUNT,
+          destination: authority,
+          destinationTokenAccount: account,
+        },
+        route: { kind: "spending-limit", policy: h.policy },
+        signers: [h.primary.publicKey],
+        decimals: TOKEN_DECIMALS,
+        tokenProgram: TOKEN_PROGRAM,
+      });
+
+      expect(failed(send(h.svm, h.primary, [instruction], [h.primary]))).toBe(
+        true,
+      );
+      expect(tokenBalance(h.svm, account)).toBe(0n);
+    });
+  },
+);
+
+describe.skipIf(!HAVE_FIXTURES)("recovery signer rotation", () => {
+  /**
+   * Changing the contact address. The Consumer holds both Active Keys, so the
+   * two approvals are S1 and S2, and the recovery signer being retired never
+   * votes: an attacker holding that inbox has nothing to add here.
+   */
+  function rotateRecovery(
+    h: Harness,
+    newRecovery: Keypair,
+    transactionIndex: bigint,
+  ) {
+    const propose = buildRotateRecoverySigner({
+      addresses: h.addresses,
+      oldSigner: h.recovery.publicKey,
+      newSigner: newRecovery.publicKey,
+      proposer: h.primary.publicKey,
+      transactionIndex,
+    });
+
+    expect(failed(send(h.svm, h.primary, propose, [h.primary]))).toBe(false);
+    for (const signer of [h.primary, h.approval]) {
+      expect(
+        failed(
+          send(
+            h.svm,
+            signer,
+            [
+              buildApproveSettingsChange({
+                addresses: h.addresses,
+                transactionIndex,
+                signer: signer.publicKey,
+              }),
+            ],
+            [signer],
+          ),
+        ),
+      ).toBe(false);
+    }
+
+    const clock = h.svm.getClock();
+    clock.unixTimestamp = clock.unixTimestamp + BigInt(SETTINGS_TIME_LOCK + 10);
+    h.svm.setClock(clock);
+    h.svm.expireBlockhash();
+
+    return send(
+      h.svm,
+      h.primary,
+      [
+        buildExecuteSettingsChange({
+          addresses: h.addresses,
+          transactionIndex,
+          signer: h.primary.publicKey,
+        }),
+      ],
+      [h.primary],
+    );
+  }
+
+  const settingsSigners = (h: Harness) =>
+    decode<{ signers: { key: PublicKey; permissions: { mask: number } }[] }>(
+      h.svm,
+      h.addresses.settings,
+      accounts.Settings,
+    ).signers;
+
+  const policySigners = (h: Harness, policy: PublicKey): string[] =>
+    decode<{ signers: { key: PublicKey }[] }>(
+      h.svm,
+      policy,
+      accounts.Policy,
+    ).signers.map((signer) => signer.key.toBase58());
+
+  /** Proposes a harmless signer addition and returns its index, unapproved. */
+  function openChange(h: Harness): bigint {
+    const index = nextIndex(h);
+    const ixs = buildAddRecoverySigner({
+      addresses: h.addresses,
+      newSigner: Keypair.generate().publicKey,
+      proposer: h.primary.publicKey,
+      transactionIndex: index,
+    });
+    expect(failed(send(h.svm, h.primary, ixs, [h.primary]))).toBe(false);
+    return index;
+  }
+
+  function approve(h: Harness, signer: Keypair, transactionIndex: bigint) {
+    return send(
+      h.svm,
+      signer,
+      [
+        buildApproveSettingsChange({
+          addresses: h.addresses,
+          transactionIndex,
+          signer: signer.publicKey,
+        }),
+      ],
+      [signer],
+    );
+  }
+
+  it("swaps one recovery signer for another without the set ever shrinking", () => {
+    const h = provisioned();
+    const fresh = Keypair.generate();
+    const maskBefore = settingsSigners(h).find((signer) =>
+      signer.key.equals(h.recovery.publicKey),
+    )?.permissions.mask;
+
+    expect(failed(rotateRecovery(h, fresh, nextIndex(h)))).toBe(false);
+
+    const signers = settingsSigners(h);
+    const keys = signers.map((signer) => signer.key.toBase58());
+    expect(keys).toContain(fresh.publicKey.toBase58());
+    expect(keys).not.toContain(h.recovery.publicKey.toBase58());
+    expect(keys).toHaveLength(3);
+    // The replacement is exactly as powerful as what it replaced: a vote and
+    // nothing more.
+    const installed = signers.find((signer) =>
+      signer.key.equals(fresh.publicKey),
+    );
+    expect(installed?.permissions.mask).toBe(maskBefore);
+  });
+
+  it("leaves the old recovery key unable to approve a change, and the new one able", () => {
+    const h = provisioned();
+    const fresh = Keypair.generate();
+    h.svm.airdrop(fresh.publicKey, BigInt(LAMPORTS_PER_SOL));
+    expect(failed(rotateRecovery(h, fresh, nextIndex(h)))).toBe(false);
+
+    const index = openChange(h);
+
+    // The compromised inbox's key is out: it can no longer contribute a vote
+    // toward any change on this Account.
+    expect(failed(approve(h, h.recovery, index))).toBe(true);
+    expect(failed(approve(h, fresh, index))).toBe(false);
+
+    const proposal = decode<{ approved: PublicKey[] }>(
+      h.svm,
+      deriveProposalAddress(h.addresses.settings, index),
+      accounts.Proposal,
+    );
+    expect(proposal.approved.map((key) => key.toBase58())).toEqual([
+      fresh.publicKey.toBase58(),
+    ]);
+  });
+
+  it("leaves both policies carrying the signer sets they were created with", () => {
+    const h = provisioned();
+    const fresh = Keypair.generate();
+    const limitBefore = policySigners(h, h.policy);
+    const aboveBefore = policySigners(h, h.abovePolicy);
+
+    expect(failed(rotateRecovery(h, fresh, nextIndex(h)))).toBe(false);
+
+    // Neither policy names a recovery key before or after, which is why the
+    // rotation carries no PolicyUpdate and still leaves every spend route
+    // exactly as it was.
+    expect(policySigners(h, h.policy)).toEqual(limitBefore);
+    expect(policySigners(h, h.abovePolicy)).toEqual(aboveBefore);
+    for (const key of [h.recovery.publicKey, fresh.publicKey]) {
+      expect(limitBefore).not.toContain(key.toBase58());
+      expect(aboveBefore).not.toContain(key.toBase58());
+    }
+  });
+
+  it("still spends on both routes after the rotation", () => {
+    const h = provisioned();
+    const fresh = Keypair.generate();
+    expect(failed(rotateRecovery(h, fresh, nextIndex(h)))).toBe(false);
+
+    const under = Keypair.generate().publicKey;
+    const one = buildSpend({
+      addresses: h.addresses,
+      request: {
+        mint: SOL,
+        amount: BigInt(LAMPORTS_PER_SOL),
+        destination: under,
+      },
+      route: { kind: "spending-limit", policy: h.policy },
+      signers: [h.primary.publicKey],
+      decimals: 9,
+    });
+    expect(failed(send(h.svm, h.primary, [one], [h.primary]))).toBe(false);
+    expect(h.svm.getBalance(under)).toBe(BigInt(LAMPORTS_PER_SOL));
+
+    const over = Keypair.generate().publicKey;
+    const two = spend(
+      h,
+      [h.primary.publicKey, h.approval.publicKey],
+      over,
+      BigInt(3 * LAMPORTS_PER_SOL),
+    );
+    expect(failed(send(h.svm, h.primary, [two], [h.primary, h.approval]))).toBe(
+      false,
+    );
+    expect(h.svm.getBalance(over)).toBe(BigInt(3 * LAMPORTS_PER_SOL));
+  });
+
+  it("refuses to build a rotation of a key onto itself", () => {
+    const h = provisioned();
+    expect(() =>
+      buildRotateRecoverySigner({
+        addresses: h.addresses,
+        oldSigner: h.recovery.publicKey,
+        newSigner: h.recovery.publicKey,
+        proposer: h.primary.publicKey,
+        transactionIndex: nextIndex(h),
+      }),
+    ).toThrow();
   });
 });

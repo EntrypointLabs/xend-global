@@ -50,6 +50,10 @@ export interface SquadsAccountRow {
   pendingApprovalSigner?: string | null;
   pendingApprovalSubOrgId?: string | null;
   pendingApprovalChangeIndex?: string | null;
+  /** Set only while a passkey replacement is in flight. See PrimaryRotationService. */
+  pendingPrimarySigner?: string | null;
+  pendingPrimaryProviderId?: string | null;
+  pendingPrimaryChangeIndex?: string | null;
 }
 
 export interface SquadsAccountStore {
@@ -107,6 +111,14 @@ export interface UnsignedSpend {
   messageBase64: string;
   /** The vault the Spend leaves from. */
   vaultAddress: string;
+  /**
+   * S1, the signer this Spend is compiled for.
+   *
+   * Named rather than left implicit because the signing surface has to pick a
+   * key deliberately. A Consumer may have more than one wallet connected, and
+   * signing with the wrong one produces a transaction the program refuses.
+   */
+  primarySigner: string;
   blockhash: string;
   lastValidBlockHeight: number;
   route: 'spending-limit' | 'two-signature';
@@ -138,10 +150,12 @@ export type ProvisioningChange = 'provision';
  * deliberately not in the spend path, so the two approvals are S1 and S2.
  */
 export type ProvisioningStep =
-  | 'propose'
-  | 'approve-primary'
-  | 'approve-approval'
-  | 'execute';
+  /**
+   * The whole change in one transaction: propose, both approvals, execute.
+   * Legal only while the Settings time lock is still zero, which is exactly
+   * the state provisioning runs in, since this change is what sets it.
+   */
+  'provision' | 'propose' | 'approve-primary' | 'approve-approval' | 'execute';
 
 export interface SettingsState {
   timeLockSeconds: number;

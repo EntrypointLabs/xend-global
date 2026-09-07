@@ -2,8 +2,8 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { pushDevices, users } from '../db/schema';
-import { PUSH_SENDER } from './push-sender.interface';
-import type { PushSender } from './push-sender.interface';
+import { NOTICE_KIND, PUSH_SENDER } from './push-sender.interface';
+import type { NoticeKind, PushSender } from './push-sender.interface';
 
 export interface ArrivalNotice {
   smartAccountId: string;
@@ -104,13 +104,63 @@ export class NotificationsService {
     userId: string,
     alert: { title: string; body: string },
   ): Promise<void> {
+    await this.notifyUser(
+      userId,
+      { ...alert, data: { kind: NOTICE_KIND.securityAlert } },
+      NOTICE_KIND.securityAlert,
+    );
+  }
+
+  /**
+   * Tells a Consumer a Merchant is waiting on them to finish a Payment.
+   *
+   * The one notice where being late is the whole failure: somebody who tapped
+   * Pay with Xend and was told to open the app is standing at a checkout with
+   * a card reader in front of them, and a Payment they cannot see is a Payment
+   * they abandon.
+   *
+   * Not gated on `users.notifications_enabled`, for the same reason a security
+   * alert is not. That toggle is about being told money arrived. This is not
+   * news about something that happened; it is a thing they have asked to do
+   * and cannot complete anywhere else.
+   */
+  async notifyPaymentNeedsApproval(
+    userId: string,
+    payment: { merchantName: string; amount: string },
+  ): Promise<void> {
+    await this.notifyUser(
+      userId,
+      {
+        title: 'Finish your payment',
+        // Named and priced: a Consumer with a notice that says only "a payment
+        // needs you" has to open the app to find out whether it is theirs.
+        body: `${payment.merchantName} is waiting on ${payment.amount}. Tap to confirm on this phone.`,
+        data: { kind: NOTICE_KIND.paymentApproval },
+      },
+      NOTICE_KIND.paymentApproval,
+    );
+  }
+
+  /**
+   * Delivery for everything a Consumer must be told regardless of preference.
+   *
+   * Never throws: a notification is not worth failing the thing that triggered
+   * it, and the thing that triggered this one is a Payment that is otherwise
+   * fine. An undeliverable notice is logged loudly instead, because a Consumer
+   * with no reachable device is one who will never learn a Merchant is waiting.
+   */
+  private async notifyUser(
+    userId: string,
+    alert: { title: string; body: string; data?: { kind: NoticeKind } },
+    kind: string,
+  ): Promise<void> {
     try {
       const devices = await this.db.client
         .select({ token: pushDevices.token })
         .from(pushDevices)
         .where(eq(pushDevices.userId, userId));
       if (devices.length === 0) {
-        this.logger.warn(`push.security_alert_undeliverable userId=${userId}`);
+        this.logger.warn(`push.${kind}_undeliverable userId=${userId}`);
         return;
       }
 
@@ -119,10 +169,11 @@ export class NotificationsService {
           token: d.token,
           title: alert.title,
           body: alert.body,
+          ...(alert.data ? { data: alert.data } : {}),
         })),
       );
       this.logger.log(
-        `push.security_alert_sent userId=${userId} devices=${devices.length}`,
+        `push.${kind}_sent userId=${userId} devices=${devices.length}`,
       );
 
       if (invalidTokens.length > 0) {
@@ -131,7 +182,7 @@ export class NotificationsService {
           .where(inArray(pushDevices.token, invalidTokens));
       }
     } catch (err) {
-      this.logger.warn('push.security_alert_failed', err);
+      this.logger.warn(`push.${kind}_failed`, err);
     }
   }
 
@@ -155,6 +206,7 @@ export class NotificationsService {
           token: d.token,
           title: 'Money in',
           body: `You received ${notice.amount}`,
+          data: { kind: NOTICE_KIND.arrival },
         })),
       );
 

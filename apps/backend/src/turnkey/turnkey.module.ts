@@ -34,6 +34,9 @@ import { TurnkeyService } from './turnkey.service';
         ),
     },
   ],
-  exports: [TurnkeyService],
+  // The store is exported as well as the service: TransferModule reads the
+  // enrolled device keys to check presence proofs, and has no business going
+  // through TurnkeyService to do it.
+  exports: [TurnkeyService, APPROVAL_SIGNER_STORE],
 })
 export class TurnkeyModule {}

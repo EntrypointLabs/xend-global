@@ -1,6 +1,6 @@
 # 0024: Privy adopted as the consumer-side signing vendor
 
-**Status:** Accepted
+**Status:** Accepted, extended by [0025](0025-account-multisig-signer-set.md)
 **Date:** 2026-07-12
 **Deciders:** Pay with Xend planning
 **Tags:** backend, wallet, vendor, pay
@@ -29,6 +29,15 @@ We need to record that Privy is adopted, that it is reached only through the own
 Chosen option: **"Privy adopted behind the WALLET_PROVIDER adapter"**, because the race is closed, Grid is ported, and Privy incumbency (enrolled passkeys in its credential store) makes it the low-risk choice, while the owned adapter keeps a future switch bounded to one module.
 
 - Privy is adopted as the consumer-side passkey-credential-custody and Ed25519 signing vendor. It is reached only through the `WALLET_PROVIDER` adapter (`apps/backend/src/wallet/wallet-provider.interface.ts`). No Privy SDK import lives outside that adapter on the backend, and on the checkout surface the Privy web SDK is confined to a single code-split ceremony module.
+
+  > **Read with [0025](0025-account-multisig-signer-set.md).** The sentence below
+  > about Turnkey being an "illustrative future-adapter reference, not an active
+  > plan" was true when this was written and is not true now. 0025 makes Turnkey a
+  > second, simultaneous signer on every Account. That is not a reopened vendor
+  > race and not a fallback: both vendors are load-bearing at once, precisely so
+  > that neither is sufficient alone. Everything else here still holds, including
+  > the review-blocking rule that a vendor SDK lives only in its own adapter.
+
 - Privy is consumer-side only. Merchants have no Privy wallet; a Merchant has a canonical internal account referencing an external settlement endpoint (see ADR 0015).
 - The adapter seam bounds a future vendor switch to one module. That is its purpose, not to defer an open choice. There is no Turnkey or Crossmint fallback plan and no re-enrollment contingency in scope. The Turnkey and Crossmint names that remain in the adapter interface comments are illustrative future-adapter references, not an active plan.
 

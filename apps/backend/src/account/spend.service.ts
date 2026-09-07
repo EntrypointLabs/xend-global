@@ -35,6 +35,13 @@ export interface PrepareSpendParams {
   /** Integer string at the mint's native decimals. */
   amountRaw: string;
   decimals: number;
+  /**
+   * The token account to credit, when the destination does not hold the money
+   * in its associated one. A Merchant's settlement endpoint is such an account.
+   * Naming it also means there is nothing to open, so the Spend carries no
+   * account-creation instruction.
+   */
+  destinationTokenAccount?: string;
 }
 
 /**
@@ -82,6 +89,13 @@ export class SpendService {
       mint: new PublicKey(params.mint),
       amount: BigInt(params.amountRaw),
       destination: new PublicKey(params.destination),
+      ...(params.destinationTokenAccount
+        ? {
+            destinationTokenAccount: new PublicKey(
+              params.destinationTokenAccount,
+            ),
+          }
+        : {}),
     };
 
     // Native SOL has no token program; anything else needs its mint's own.
@@ -117,14 +131,17 @@ export class SpendService {
 
     // A recipient who has never held this token has no account to receive it
     // into, and the policy refuses the Spend rather than opening one. Rent
-    // falls to the fee payer for the same reason fees do.
-    const openDestination = tokenProgram
-      ? await this.chain.createDestinationTokenAccount({
-          mint: params.mint,
-          destination: params.destination,
-          tokenProgram,
-        })
-      : null;
+    // falls to the fee payer for the same reason fees do. A caller that named
+    // the account is pointing at one that already exists, so there is nothing
+    // to open.
+    const openDestination =
+      tokenProgram && !params.destinationTokenAccount
+        ? await this.chain.createDestinationTokenAccount({
+            mint: params.mint,
+            destination: params.destination,
+            tokenProgram,
+          })
+        : null;
 
     const unsigned = await this.chain.compile({
       instructions: openDestination
@@ -141,6 +158,7 @@ export class SpendService {
     return {
       ...unsigned,
       vaultAddress: addresses.vault.toBase58(),
+      primarySigner: account.primarySigner,
       route: route.kind,
       /** Mobile needs this to know whether to ask Turnkey for a signature. */
       needsApprovalSignature: route.kind === 'two-signature',

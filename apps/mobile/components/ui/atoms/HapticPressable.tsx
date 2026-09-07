@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useRef } from "react";
 import {
   Animated,
+  Easing,
   Pressable,
   PressableProps,
   StyleProp,
@@ -21,16 +22,26 @@ import * as Haptics from "expo-haptics";
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 /**
- * Critically damped (damping = 2√(stiffness × mass)), so a control returning to
- * rest settles instead of bouncing: bounce belongs to motion the Consumer
- * themselves threw.
+ * The press is acknowledgement, not choreography, so it does not animate: the
+ * control is at its pressed size on the very next frame the display draws.
+ *
+ * This was a critically damped spring (stiffness 200, damping 28.3). Even
+ * settling without a bounce, a spring spends most of its life covering the last
+ * few percent of the travel — here a few thousandths of a scale unit, on an
+ * icon a finger is covering. Nobody can see that part, and waiting for it is
+ * what a press must never do.
+ *
+ * Ten milliseconds is under one frame at 120Hz and under one at 60Hz, so both
+ * ends of the press round to "the next frame". It is written as a duration
+ * rather than 0 because that is the intent: as fast as a display can answer.
  */
-const SPRING = {
-  stiffness: 200,
-  damping: 28.3,
-  mass: 1,
-  useNativeDriver: true,
-};
+const PRESS_IN_MS = 10;
+/**
+ * The release is allowed to be seen. It is the half nobody is waiting on — the
+ * finger has already left and the action has already fired — and snapping it
+ * back makes a deliberate press read as a twitch.
+ */
+const PRESS_OUT_MS = 120;
 
 const PRESSED_SCALE = 0.97;
 
@@ -74,9 +85,14 @@ const HapticPressable = ({
   const scale = useRef(new Animated.Value(1)).current;
   const reduceMotion = useReducedMotion();
 
-  const springTo = useCallback(
-    (toValue: number) => {
-      Animated.spring(scale, { ...SPRING, toValue }).start();
+  const scaleTo = useCallback(
+    (toValue: number, duration: number) => {
+      Animated.timing(scale, {
+        toValue,
+        duration,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
     },
     [scale]
   );
@@ -85,7 +101,7 @@ const HapticPressable = ({
     (event) => {
       if (!disabled) {
         if (scaleOnPress && !reduceMotion) {
-          springTo(PRESSED_SCALE);
+          scaleTo(PRESSED_SCALE, PRESS_IN_MS);
         }
         if (feedback === "impact") {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -95,15 +111,15 @@ const HapticPressable = ({
       }
       onPressIn?.(event);
     },
-    [disabled, feedback, onPressIn, reduceMotion, scaleOnPress, springTo]
+    [disabled, feedback, onPressIn, reduceMotion, scaleOnPress, scaleTo]
   );
 
   const handlePressOut = useCallback<NonNullable<PressableProps["onPressOut"]>>(
     (event) => {
-      springTo(1);
+      scaleTo(1, PRESS_OUT_MS);
       onPressOut?.(event);
     },
-    [onPressOut, springTo]
+    [onPressOut, scaleTo]
   );
 
   const scaleStyle = useMemo(() => ({ transform: [{ scale }] }), [scale]);

@@ -146,6 +146,8 @@ export class SettlementConfirmationService implements OnModuleInit {
         merchantId: intent.merchantId,
         consumerId,
         usdcSettlementRaw: intent.usdcSettlementRaw,
+        displayCurrency: intent.displayCurrency,
+        displayAmountMinor: intent.displayAmountMinor,
         txSignature: signature,
         settledAt: new Date(),
       })
@@ -250,6 +252,8 @@ export class SettlementConfirmationService implements OnModuleInit {
         merchantId: intent.merchantId,
         consumerId,
         usdcSettlementRaw: intent.usdcSettlementRaw,
+        displayCurrency: intent.displayCurrency,
+        displayAmountMinor: intent.displayAmountMinor,
         txSignature: fakeSignature,
         settledAt: new Date(),
       })
@@ -265,7 +269,10 @@ export class SettlementConfirmationService implements OnModuleInit {
 
     await this.finalizeIntentSucceeded(intentId, payment.id, {
       status: 'complete',
-      ngnSettledMinor: intent.ngnDisplayMinor ?? undefined,
+      ngnSettledMinor:
+        intent.displayCurrency === 'NGN'
+          ? intent.displayAmountMinor
+          : undefined,
       providerTxRef: fakeSignature,
     });
     this.logger.log(

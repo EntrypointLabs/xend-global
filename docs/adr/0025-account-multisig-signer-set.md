@@ -1,6 +1,6 @@
 # 0025: The Account becomes a Squads smart account with a 2-of-3 signer set
 
-**Status:** Accepted
+**Status:** Accepted, extended by [0027](0027-email-is-an-entry-point-not-a-login-method.md)
 **Date:** 2026-08-02
 **Accepted:** 2026-08-09
 **Deciders:** Xend founding team
@@ -228,3 +228,16 @@ as its own task rather than assumed away.
   `docs/design/references/fuse/`
 - Current single-signer path: `apps/mobile/app/(send)/confirm.tsx:83`,
   `apps/mobile/hooks/useWalletAddress.ts`, `apps/mobile/hooks/usePasskey.ts`
+
+## Update 2026-08-30
+
+[0027](0027-email-is-an-entry-point-not-a-login-method.md) changes the sign-up
+**ordering** recorded above. "Signup is passkey-first (`signupWithPasskey`), with the
+email collected on a later onboarding screen" is superseded: the address is now proved
+first and S3 is minted against it before the passkey creates S1.
+
+Nothing else here moves. The signer set, the anchors, the thresholds, the policies and
+the invariant are unchanged, and checkout is still passkey-only. The ordering was never
+what held the invariant up; the anchors were. 0027 states the rule the ordering has to
+respect: **email proves the inbox and unlocks S3, it never returns S1 and never enrols
+a signer.**

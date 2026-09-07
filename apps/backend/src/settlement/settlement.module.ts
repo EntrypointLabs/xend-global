@@ -2,8 +2,8 @@ import { Module } from '@nestjs/common';
 import { SolanaModule } from '../solana/solana.module';
 import { PaymentModule } from '../payment/payment.module';
 import { EventsModule } from '../events/events.module';
-import { SETTLEMENT_AUTHORITY_SIGNER } from './settlement-authority.interface';
-import { SettlementAuthorityEnvSigner } from './settlement-authority.env-signer';
+import { SpendModule } from '../account/spend.module';
+import { SettlementAuthorityModule } from './settlement-authority.module';
 import { DirectUsdcProvider } from './providers/direct-usdc.provider';
 import { BlockradarSettlementModule } from './providers/blockradar/blockradar-settlement.module';
 import { BlockradarSettlementProvider } from './providers/blockradar/blockradar-settlement.provider';
@@ -29,14 +29,11 @@ import { SettlementConfirmationService } from './settlement-confirmation.service
     PaymentModule,
     EventsModule,
     BlockradarSettlementModule,
+    SettlementAuthorityModule,
+    SpendModule,
   ],
   controllers: [BlockradarWebhookController],
   providers: [
-    SettlementAuthorityEnvSigner,
-    {
-      provide: SETTLEMENT_AUTHORITY_SIGNER,
-      useExisting: SettlementAuthorityEnvSigner,
-    },
     DirectUsdcProvider,
     {
       provide: SETTLEMENT_PROVIDERS,
@@ -59,7 +56,7 @@ import { SettlementConfirmationService } from './settlement-confirmation.service
     SettlementConfirmationService,
     // Account creation pays its rent with the authority rather than the
     // relayer, whose allowlist excludes the System program by design.
-    SETTLEMENT_AUTHORITY_SIGNER,
+    SettlementAuthorityModule,
   ],
 })
 export class SettlementModule {}

@@ -21,15 +21,19 @@ The **Consumer**'s Squads smart account on Solana. Holds their **Cash**. Exactly
 _Avoid_: wallet, smart wallet, smart account (in user-facing copy — "**Account**" is the term), profile
 
 **Passkey**:
-The platform-keychain-stored auth primitive paired with the **Consumer**'s email. Together they unlock the **Account**. Not device-bound — synced across devices on the same Apple ID / Google account via iCloud Keychain / Google Password Manager. An iPhone and iPad on the same Apple ID share the same **Passkey**.
+The platform-keychain-stored credential that unlocks the **Consumer**'s primary signer on its own. Approving a **Payment** in **Checkout** prompts it and nothing else: no app, no login, no code. Not device-bound: synced across devices on the same Apple ID / Google account via iCloud Keychain / Google Password Manager, so an iPhone and iPad on the same Apple ID share one **Passkey**. It does not cross ecosystems, which is what **Recover** is for.
 _Avoid_: key, credential, login, device key
 
+**Contact Email**:
+The one address a **Consumer** gives, proved by a code at the start of signing up. It anchors a recovery signer, so there is no **Account** without it. It is how Xend reaches a **Consumer** and how they start **Recover**, and it is never a way to **Spend**: proving it unlocks one signer, which is one vote short of the threshold.
+_Avoid_: sign-in email, login email, primary email
+
 **Recovery Email**:
-An additional email attached to the **Account** for use during **Recover**. A **Consumer** can have several. It must differ from the sign-in email: the sign-in email already unlocks a signer, so reusing it would collapse two independent factors into one.
+An additional email attached to the **Account** for use during **Recover**. A **Consumer** can have several. Each must differ from the **Contact Email** and from each other: the **Contact Email** already anchors a signer, so reusing it would collapse two independent factors into one.
 _Avoid_: backup email, secondary email, alt email
 
 **Recover**:
-The action a **Consumer** takes to regain access to their **Account** on a new device (e.g. switched to an Android phone, lost access to their Apple ID). Driven by the **Account**'s signers, not by email: any two of them together restore access and enroll a replacement for the lost one. The sign-in email alone is never sufficient. See `docs/specs/account-security-model-decisions.md`.
+The action a **Consumer** takes to regain access to their **Account** on a new device (e.g. switched to an Android phone, lost access to their Apple ID). Driven by the **Account**'s signers, not by email: any two of them together restore access and enroll a replacement for the lost one. No email alone is ever sufficient. See `docs/specs/account-security-model-decisions.md`.
 _Avoid_: restore, reset, sign back in
 
 ### Money
@@ -123,7 +127,7 @@ _Avoid_: withdrawal, off-ramp (in user-facing copy), settlement (as a synonym fo
 ## Relationships
 
 - A **Consumer** has exactly one **Account**
-- A **Consumer** authenticates with an email + **Passkey** to unlock their **Account**
+- A **Consumer** signs up with a proved **Contact Email** and then a **Passkey**; afterwards the **Passkey** alone unlocks their **Account**
 - A **Consumer** may attach one or more **Recovery Emails** to their **Account**; each backs a recovery signer, and none of them alone can drive **Recover**
 - An **Account** holds **Cash**, whose value is shown as a **Balance**
 - A **Spend** is an outflow from the **Account**; **Send** is the in-app action for executing one

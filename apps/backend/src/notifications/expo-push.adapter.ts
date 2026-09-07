@@ -42,6 +42,7 @@ export class ExpoPushAdapter implements PushSender {
               to: m.token,
               title: m.title,
               body: m.body,
+              ...(m.data ? { data: m.data } : {}),
               sound: 'default',
             })),
           ),

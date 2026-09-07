@@ -3,7 +3,39 @@
 Status: Living log
 Scope: Everything we hit while running the checkout locally and driving a **real** Privy passkey on devnet. Each item records what happened, the current state (fixed / worked-around / open), and the production fix owed. Complements the `PROGRESS.md` "Flags for human decision" (#1-#16); this is the hands-on-testing companion.
 
-> TL;DR: the payment tech is proven end-to-end; the open items are (1) an app-owned identity/onboarding model, (2) deploying the checkout at a Privy-registered domain, (3) a few fragile SDK build patches, and (4) funded settlement + consumer provisioning on the backend.
+> TL;DR: the open items are (1) an app-owned identity/onboarding model, (2) deploying the checkout at a Privy-registered domain, and (3) funded settlement on the backend. The money path, the currency handling, the above-limit handoff and the Privy web bundle are done.
+
+---
+
+## 0. Read this first: the money path moved (2026-08-29)
+
+**Everything below that describes settlement as a plain SPL transfer out of the Privy wallet is out of date.** It was written when the Account _was_ that wallet. [ADR 0025](../adr/0025-account-multisig-signer-set.md) made the Account a Squads smart account, and [ADR 0026](../adr/0026-checkout-settles-from-the-account.md) moved Checkout onto it.
+
+What changed:
+
+- Balance, tier caps and the Identity API's `accountAddress` all read the **vault**. They previously read the Privy wallet, which is S1 and holds nothing, so every Checkout balance check was measured against an empty address.
+- Settlement builds through `SpendService`, so a Payment resolves the same route a Send does and executes under the Account's own policies.
+- The **settlement authority** is the fee payer, not the relayer. The relayer's allowlist admits ComputeBudget, Token and ATA and cannot carry a Squads instruction without giving up the narrowness that makes it safe to expose.
+- A Payment is now two calls: `POST /checkout/authorize` returns the built Spend, the popup signs it, `POST /checkout/settle` hands the bytes back.
+- Above the one-signature band, `authorize` refuses with `APPROVAL_REQUIRED` before anything is consumed.
+
+**Consequences worth knowing before testing:**
+
+- A recognised Session no longer guarantees a promptless repeat Payment. A Session proves recognition, not a signature; if the Privy session behind the signer has lapsed, the passkey is presented again.
+- A Consumer with no Squads Account cannot pay at all. In development the Privy wallet stands in, because the balance gate and settlement are both short-circuited there anyway.
+- Above the one-signature band the Payment is finished in the app, not at the checkout. Both Spend routes are synchronous, one transaction on one blockhash, so Checkout cannot collect S1 and let the phone add S2 later; the phone produces both signatures itself. See below.
+
+### Also done in the same pass
+
+- **The currency is the Merchant's own.** `ngn_display_minor` made the naira the only thing anyone could price in, and the currency was inferred from whether that column happened to be null. It is now `display_currency` + `display_amount_minor` on both `payment_intents` and `payments` (migration 0029), NGN and USD today and generalising to the next market by adding a row to `fx/currency.ts`. The FX converter takes the minor-unit exponent from the currency rather than assuming hundredths. The popup formats from the currency code and no longer refuses a dollar-priced intent.
+- **An above-limit Payment can be finished from the app.** Checkout stamps the intent with the Consumer and refuses (migration 0030); `GET /payments/pending` lists what is waiting, and prepare/submit authorize and settle it. On the phone it is a home banner ahead of every other notice, and a screen that produces both signatures in one transaction. The `AboveLimitSendModal` became `TwoCheckModal`, shared with the Send.
+- **The real passkey ceremony bundles.** The `@solana/kit` skew that the deleted patch worked around is gone: `@solana-program/token` moved to 0.15 and no longer imports the missing symbol. What remained was an uninstalled optional peer, `@solana-program/memo`, now a real dependency of the checkout. `VITE_ENABLE_PRIVY` is opt-out rather than opt-in, so the default build carries the real flow instead of the stub.
+
+### Still open
+
+- **Activity for a Payment is unverified.** The row is created by the reconciler watching the vault and then relabelled `kind: 'payment'` by settlement. While Payments left the Privy wallet the reconciler never saw them, so no row existed to relabel. They now leave the vault, so it should follow; nobody has watched one land.
+- **The lazy Privy chunk is heavy.** The popup entry is 60.8 kB gzipped against a 75 kB budget and passes, but the Privy chunk behind it is far larger and loads as soon as the payment screen mounts, which is immediately. The "popup interactive under 1 second at p95 on a mid-range Android on 4G" budget has not been measured since the real flow started shipping, and it is the number most likely to have moved.
+- **The size gate was measuring the wrong file.** `dist/assets/index-*.js` also matched Privy's vendor chunks once one of them was named `index`, reading 261 kB for a 61 kB entry. The entry is now emitted as `assets/popup-[hash].js` and the gate points at that.
 
 ---
 
@@ -59,11 +91,11 @@ Scope: Everything we hit while running the checkout locally and driving a **real
 The passkey ceremony now issues a real token that reaches `/checkout/authorize`. From there, `resolveByProviderToken` (identity.service) runs this chain, and each link is a gap for a fresh consumer:
 
 - **Token type mismatch (FIXED in checkout).** The backend verifies the Privy **identity** token (`client.getUser({ idToken })`), but the checkout was sending `getAccessToken()` (the _access_ token) -> `INVALID_PRIVY_TOKEN` / 500. Fixed: `apps/checkout/src/ceremony/passkey.ts` now sends `useIdentityToken().identityToken`. **Requires "identity tokens" enabled on the Privy app** (dashboard) or the token is null.
-- **No embedded wallet.** The checkout's `PrivyProvider` gets only `appId`, so a passkey signup creates a user with **no Solana wallet / address**. Consumers need a wallet for a settlement destination. **Open** — configure Privy embedded-wallet creation (`embeddedWallets`), or rely on the app to create it.
+- **No embedded wallet.** The checkout's `PrivyProvider` gets only `appId`, so a passkey signup creates a user with **no Solana wallet / address**. **Open, and now load-bearing for a different reason than when this was written:** the embedded wallet is S1, and the popup has to sign the Spend with it, so a Consumer whose provider session carries no Solana wallet cannot complete a Payment. The address is no longer a settlement _destination_ (the money leaves the vault), it is the _signer_. `authorize` names the exact key it compiled the Spend for and the popup picks that wallet by address.
 - **Consumer must have a linked email (CONFIRMED by the live test).** After the token verifies, `userToProviderUser` throws `PrivyUserShapeError: ... has no linked email; email login required` (`PRIVY_USER_SHAPE_INVALID`). A **passkey-only** identity (what the checkout `signupWithPasskey` mints) is **not a valid consumer** — the Xend model is email + passkey. This is the backend enforcing §1: **onboarding (email + passkey + wallet) is app-owned; the checkout only authenticates a fully-onboarded consumer.** The live devnet test walked straight into this, which validates the decision.
 - **No consumer account (`smart_accounts`).** Even with an email, `resolveByProviderToken` requires a `smart_accounts` row linking the Privy `providerUserId` -> a `users` row + address, created by the app's **`/auth/exchange`** onboarding, not the checkout. A checkout-only person has none -> `UnknownConsumerError: no Account for provider user`. **Open** — for tests, run `/auth/exchange` (or seed the account) for the identity first; in production the app owns this.
 - **Capacity / tier.** After the account resolves, the payment is checked against the consumer's tier caps. A fresh consumer needs a tier assigned.
-- **Settlement is not funded (`PROGRESS.md` Flag #11).** Even past all the above, the real `authorize` waits for on-chain settlement; with no funded `SETTLEMENT_AUTHORITY` + relayer fee-payer it times out to `PAYMENT_PROCESSING`. **Open** — fund devnet keys (Circle faucet) for a true settle, or add a test-mode short-circuit so authorize resolves `succeeded` after the passkey without real settlement.
+- **Settlement is not funded (`PROGRESS.md` Flag #11).** `POST /checkout/settle` waits for on-chain settlement; with no funded `SETTLEMENT_AUTHORITY` it times out to `PAYMENT_PROCESSING`. **Open** — fund devnet keys (Circle faucet) for a true settle. Note the authority now pays the Payment's fee as well as the ops paths, so it is the only key that has to be funded for a Payment; the relayer fee payer is no longer on this path. The development short-circuit still resolves local Checkout without any of it.
 - **`return_url` must be https** (SSRF guard) — http localhost return URLs are rejected. Fine, just a testing gotcha.
 
 ---

@@ -19,6 +19,14 @@ import { hasLinkedPasskey } from "@/utils/auth";
 const APP_LOCK_DISABLED =
   __DEV__ && process.env.EXPO_PUBLIC_DISABLE_APP_LOCK === "true";
 
+// Left set after a scripted run, the flag makes the lock look broken rather
+// than switched off. Say so once at startup instead.
+if (APP_LOCK_DISABLED) {
+  console.warn(
+    "[app-lock] disabled by EXPO_PUBLIC_DISABLE_APP_LOCK — the app will not lock in this dev build"
+  );
+}
+
 // How long the app can sit backgrounded before it re-locks on return — long
 // enough that opening a link (e.g. the Privacy Policy / Terms & Conditions)
 // or a quick app switch doesn't force a fresh Face ID prompt every time.

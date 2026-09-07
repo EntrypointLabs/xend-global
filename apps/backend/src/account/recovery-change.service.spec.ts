@@ -10,6 +10,7 @@ import type {
   RecoverySignerStatus,
   RecoverySignerSummary,
 } from '../recovery/recovery.service';
+import type { AccountEventsService } from '../activity/account-events.service';
 import { RecoveryService } from '../recovery/recovery.service';
 import type {
   ProposalState,
@@ -99,21 +100,36 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
   return { chain, compiled, submitted };
 }
 
-/** Only the parts of RecoveryService this service actually reaches. */
-function fakeRecovery({
-  status = 'pending_add',
-  changeIndex = null,
-}: { status?: RecoverySignerStatus; changeIndex?: bigint | null } = {}) {
-  const calls: string[] = [];
-  const summary: RecoverySignerSummary = {
+function signerSummary(
+  patch: Partial<RecoverySignerSummary> = {},
+): RecoverySignerSummary {
+  return {
     id: 'signer-1',
     address: SIGNER_ADDRESS,
     channel: 'external_wallet',
     channelValue: SIGNER_ADDRESS,
     createdAt: new Date(0),
-    status,
+    status: 'pending_add',
     removable: false,
+    isContactAddress: false,
+    ...patch,
   };
+}
+
+/** Only the parts of RecoveryService this service actually reaches. */
+function fakeRecovery({
+  status = 'pending_add',
+  changeIndex = null,
+  staged,
+}: {
+  status?: RecoverySignerStatus;
+  changeIndex?: bigint | null;
+  /** The rows the staged change carries. One by default; two for a rotation. */
+  staged?: RecoverySignerSummary[];
+} = {}) {
+  const calls: string[] = [];
+  const summary = signerSummary({ status });
+  const carried = staged ?? [summary];
   let index = changeIndex;
 
   const recovery = {
@@ -121,11 +137,13 @@ function fakeRecovery({
       Promise.resolve(
         index === null ? null : { signerId: summary.id, changeIndex: index },
       ),
-    list: () => Promise.resolve([summary]),
+    list: () => Promise.resolve(carried),
+    stagedSigners: (_userId: string, at: bigint) =>
+      Promise.resolve(index === at ? carried : []),
     markSignature: () => Promise.resolve(),
-    markChange: (_id: string, at: bigint) => {
+    markChange: (id: string, at: bigint) => {
       index = at;
-      calls.push(`markChange:${at}`);
+      calls.push(`markChange:${id}:${at}`);
       return Promise.resolve();
     },
     settle: (_userId: string, at: bigint) => {
@@ -139,6 +157,33 @@ function fakeRecovery({
   } as unknown as RecoveryService;
 
   return { recovery, calls };
+}
+
+/** Only what RecoveryChangeService records. */
+function fakeEvents() {
+  const recorded: string[] = [];
+  const stamp = (
+    stage: string,
+    params: { changeIndex: bigint | string; subject?: string | null },
+  ) => {
+    recorded.push(`${stage}:${params.changeIndex}:${params.subject ?? ''}`);
+    return Promise.resolve(null);
+  };
+  const events = {
+    recordSettingsChangeStaged: (
+      _userId: string,
+      params: { changeIndex: bigint; subject?: string | null; change?: string },
+    ) => stamp(`staged:${params.change}`, params),
+    recordSettingsChangeExecuted: (
+      _userId: string,
+      params: { changeIndex: bigint; subject?: string | null },
+    ) => stamp('executed', params),
+    recordSettingsChangeRejected: (
+      _userId: string,
+      params: { changeIndex: bigint; subject?: string | null },
+    ) => stamp('rejected', params),
+  } as unknown as AccountEventsService;
+  return { events, recorded };
 }
 
 /** A transaction whose compiled message is `messageBase64`. */
@@ -164,29 +209,98 @@ describe('RecoveryChangeService.start', () => {
   it('stages the change at the index after the current one', async () => {
     const { chain, compiled } = fakeChain({ transactionIndex: 7n });
     const { recovery, calls } = fakeRecovery();
+    const { events, recorded } = fakeEvents();
 
     const plan = await new RecoveryChangeService(
       store(),
       chain,
       recovery,
+      events,
     ).start(USER, 'signer-1');
 
     expect(plan.step).toBe('propose');
     expect(plan.changeIndex).toBe('8');
     // Recorded before the chain is touched, so an interrupted change is found
     // and re-proposed rather than lost.
-    expect(calls).toContain('markChange:8');
+    expect(calls).toContain('markChange:signer-1:8');
     expect(compiled).toHaveLength(1);
+    // Announced at the moment of staging, naming the key, so the Consumer's
+    // warning does not wait on a poll or on the app being open.
+    expect(recorded).toEqual([`staged:recovery_key:8:${SIGNER_ADDRESS}`]);
+  });
+
+  it('stages a rotation with both rows on the same index', async () => {
+    const { chain } = fakeChain({ transactionIndex: 7n });
+    const { recovery, calls } = fakeRecovery();
+
+    const plan = await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).start(USER, 'signer-new', 'signer-old');
+
+    expect(plan.changeIndex).toBe('8');
+    // One change, not two: the key coming in and the key going out are the
+    // same act, and the same day of waiting.
+    expect(calls).toEqual([
+      'markChange:signer-new:8',
+      'markChange:signer-old:8',
+    ]);
+  });
+
+  it('proposes a rotation naming both the incoming and the outgoing key', async () => {
+    const incoming = Keypair.generate().publicKey;
+    const outgoing = Keypair.generate().publicKey;
+    const { chain, compiled } = fakeChain({ transactionIndex: 7n });
+    const { recovery } = fakeRecovery({
+      staged: [
+        signerSummary({
+          id: 'signer-new',
+          address: incoming.toBase58(),
+          channel: 'email',
+          channelValue: 'new@example.com',
+          status: 'pending_add',
+        }),
+        signerSummary({
+          id: 'signer-old',
+          address: outgoing.toBase58(),
+          channel: 'email',
+          channelValue: 'old@example.com',
+          status: 'pending_remove',
+          isContactAddress: true,
+        }),
+      ],
+    });
+
+    await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).start(USER, 'signer-new', 'signer-old');
+
+    // A single settings transaction whose action list carries both keys,
+    // rather than an add at one index and a remove at the next.
+    const [proposal] = compiled;
+    expect(proposal.instructions).toHaveLength(2);
+    const data = Buffer.from(
+      (proposal.instructions[0] as { data: Uint8Array }).data,
+    );
+    expect(data.includes(incoming.toBuffer())).toBe(true);
+    expect(data.includes(outgoing.toBuffer())).toBe(true);
   });
 
   it('proposes an addition that names the staged signer', async () => {
     const { chain, compiled } = fakeChain();
     const { recovery } = fakeRecovery({ status: 'pending_add' });
 
-    await new RecoveryChangeService(store(), chain, recovery).start(
-      USER,
-      'signer-1',
-    );
+    await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).start(USER, 'signer-1');
 
     expect(keysOf(compiled[0])).toContain(ADDRESSES.settings.toBase58());
     // The Consumer's S1 proposes; the authority only funds it.
@@ -199,10 +313,12 @@ describe('RecoveryChangeService.start', () => {
     const { recovery } = fakeRecovery();
 
     await expect(
-      new RecoveryChangeService(store(null), chain, recovery).start(
-        USER,
-        'signer-1',
-      ),
+      new RecoveryChangeService(
+        store(null),
+        chain,
+        recovery,
+        fakeEvents().events,
+      ).start(USER, 'signer-1'),
     ).rejects.toThrow();
   });
 });
@@ -212,9 +328,12 @@ describe('RecoveryChangeService.next', () => {
     const { chain } = fakeChain();
     const { recovery } = fakeRecovery({ changeIndex: null });
 
-    const plan = await new RecoveryChangeService(store(), chain, recovery).next(
-      USER,
-    );
+    const plan = await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).next(USER);
 
     expect(plan.done).toBe(true);
   });
@@ -223,9 +342,12 @@ describe('RecoveryChangeService.next', () => {
     const { chain } = fakeChain({ proposal: null });
     const { recovery } = fakeRecovery({ changeIndex: 8n });
 
-    const plan = await new RecoveryChangeService(store(), chain, recovery).next(
-      USER,
-    );
+    const plan = await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).next(USER);
 
     expect(plan.step).toBe('propose');
     expect(plan.changeIndex).toBe('8');
@@ -241,6 +363,7 @@ describe('RecoveryChangeService.next', () => {
           store(),
           first.chain,
           fakeRecovery({ changeIndex: 8n }).recovery,
+          fakeEvents().events,
         ).next(USER)
       ).step,
     ).toBe('approve-primary');
@@ -249,6 +372,7 @@ describe('RecoveryChangeService.next', () => {
       store(),
       second.chain,
       fakeRecovery({ changeIndex: 8n }).recovery,
+      fakeEvents().events,
     ).next(USER);
     expect(plan.step).toBe('approve-approval');
     expect(plan.needsApprovalSignature).toBe(true);
@@ -265,9 +389,12 @@ describe('RecoveryChangeService.next', () => {
     });
     const { recovery } = fakeRecovery({ changeIndex: 8n });
 
-    const plan = await new RecoveryChangeService(store(), chain, recovery).next(
-      USER,
-    );
+    const plan = await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).next(USER);
 
     expect(plan.step).toBe('waiting');
     // The deadline for rejecting it, and the moment it can be finished.
@@ -286,9 +413,12 @@ describe('RecoveryChangeService.next', () => {
     });
     const { recovery } = fakeRecovery({ changeIndex: 8n });
 
-    const plan = await new RecoveryChangeService(store(), chain, recovery).next(
-      USER,
-    );
+    const plan = await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).next(USER);
 
     expect(plan.step).toBe('execute');
   });
@@ -298,13 +428,18 @@ describe('RecoveryChangeService.next', () => {
       proposal: { settled: true, status: 'Executed', approved: [PRIMARY] },
     });
     const { recovery, calls } = fakeRecovery({ changeIndex: 8n });
+    const { events, recorded } = fakeEvents();
 
-    const plan = await new RecoveryChangeService(store(), chain, recovery).next(
-      USER,
-    );
+    const plan = await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      events,
+    ).next(USER);
 
     expect(plan.done).toBe(true);
     expect(calls).toContain('settle:8');
+    expect(recorded).toEqual([`executed:8:${SIGNER_ADDRESS}`]);
   });
 
   it('abandons the staged rows when a fully approved change was rejected', async () => {
@@ -319,14 +454,19 @@ describe('RecoveryChangeService.next', () => {
       },
     });
     const { recovery, calls } = fakeRecovery({ changeIndex: 8n });
+    const { events, recorded } = fakeEvents();
 
-    const plan = await new RecoveryChangeService(store(), chain, recovery).next(
-      USER,
-    );
+    const plan = await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      events,
+    ).next(USER);
 
     expect(plan.done).toBe(true);
     expect(calls).toContain('abandon:8');
     expect(calls).not.toContain('settle:8');
+    expect(recorded).toEqual([`rejected:8:${SIGNER_ADDRESS}`]);
   });
 
   it('abandons the staged rows when the change was cancelled', async () => {
@@ -335,7 +475,12 @@ describe('RecoveryChangeService.next', () => {
     });
     const { recovery, calls } = fakeRecovery({ changeIndex: 8n });
 
-    await new RecoveryChangeService(store(), chain, recovery).next(USER);
+    await new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    ).next(USER);
 
     expect(calls).toContain('abandon:8');
   });
@@ -345,7 +490,12 @@ describe('RecoveryChangeService.submit', () => {
   it('refuses a transaction that is not the step it prepared', async () => {
     const { chain } = fakeChain({ transactionIndex: 7n }, 'prepared-message');
     const { recovery } = fakeRecovery();
-    const service = new RecoveryChangeService(store(), chain, recovery);
+    const service = new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    );
     await service.start(USER, 'signer-1');
 
     // The authority partially signs whatever arrives, so anything but the
@@ -360,17 +510,24 @@ describe('RecoveryChangeService.submit', () => {
     const { recovery } = fakeRecovery();
 
     await expect(
-      new RecoveryChangeService(store(), chain, recovery).submit(
-        USER,
-        signedFor('anything'),
-      ),
+      new RecoveryChangeService(
+        store(),
+        chain,
+        recovery,
+        fakeEvents().events,
+      ).submit(USER, signedFor('anything')),
     ).rejects.toThrow('No recovery key step is awaiting a signature');
   });
 
   it('refuses bytes that are not a transaction at all', async () => {
     const { chain } = fakeChain({ transactionIndex: 7n });
     const { recovery } = fakeRecovery();
-    const service = new RecoveryChangeService(store(), chain, recovery);
+    const service = new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    );
     await service.start(USER, 'signer-1');
 
     await expect(service.submit(USER, 'bm90LWEtdHg=')).rejects.toThrow(
@@ -381,7 +538,12 @@ describe('RecoveryChangeService.submit', () => {
   it('spends the prepared step so it cannot be replayed', async () => {
     const { chain, submitted } = fakeChain({ transactionIndex: 7n });
     const { recovery } = fakeRecovery();
-    const service = new RecoveryChangeService(store(), chain, recovery);
+    const service = new RecoveryChangeService(
+      store(),
+      chain,
+      recovery,
+      fakeEvents().events,
+    );
     const plan = await service.start(USER, 'signer-1');
 
     // Sign exactly what was prepared, by reusing the fake's message.
@@ -398,6 +560,7 @@ describe('RecoveryChangeService.submit', () => {
       store(),
       replayable.chain,
       fakeRecovery().recovery,
+      fakeEvents().events,
     );
     await pinned.start(USER, 'signer-1');
 

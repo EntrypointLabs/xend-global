@@ -31,9 +31,16 @@ import {
   InvalidRecipientError,
   IntentExpiredError,
   IntentMismatchError,
+  PresenceProofInvalidError,
+  PresenceProofRequiredError,
   RpcUnavailableError,
   UnsupportedMintError,
 } from './transfer.errors';
+import { verifyPresenceProof } from './presence-proof';
+import {
+  APPROVAL_SIGNER_STORE,
+  type ApprovalSignerStore,
+} from '../turnkey/approval-signer.store';
 import type {
   ListTransfersResponse,
   PrepareResponse,
@@ -82,10 +89,34 @@ interface IntentRecord {
    * the device a signature short and has to be completed before broadcast.
    */
   vaultSpend: boolean;
+  /**
+   * True when the route needs S2 on the transaction. Recorded at prepare so
+   * submit can tell which proof of presence to insist on without trusting the
+   * client's account of the route it was given.
+   */
+  needsApprovalSignature: boolean;
   /** Unix millis */
   createdAt: number;
   /** Unix millis */
   expiresAt: number;
+}
+
+/**
+ * Whether `address` occupies a filled signature slot on this transaction.
+ *
+ * Signature slots are positional: slot i belongs to static account key i, for
+ * the first `numRequiredSignatures` keys. An all-zero slot is the placeholder
+ * a serialized-but-unsigned transaction carries.
+ */
+function hasSignatureFrom(tx: VersionedTransaction, address: string): boolean {
+  const index = tx.message.staticAccountKeys.findIndex(
+    (key) => key.toBase58() === address,
+  );
+  if (index < 0 || index >= tx.message.header.numRequiredSignatures) {
+    return false;
+  }
+  const slot = tx.signatures[index];
+  return slot !== undefined && slot.some((byte) => byte !== 0);
 }
 
 const INTENT_TTL_MS = 5 * 60 * 1000;
@@ -109,6 +140,8 @@ export class TransferService {
     @Inject(TOKEN_METADATA_PROVIDER)
     private readonly tokens: TokenMetadataProvider,
     private readonly events: AccountEventsService,
+    @Inject(APPROVAL_SIGNER_STORE)
+    private readonly approvalSigners: ApprovalSignerStore,
   ) {
     // Pull the stablecoin mint allowlist from env so devnet vs mainnet
     // mints can swap without code changes.
@@ -295,6 +328,7 @@ export class TransferService {
       lastValidBlockHeight: blockhashInfo.lastValidBlockHeight,
       messageBase64,
       vaultSpend: false,
+      needsApprovalSignature: false,
       createdAt: now,
       expiresAt,
     });
@@ -368,6 +402,7 @@ export class TransferService {
       lastValidBlockHeight: spend.lastValidBlockHeight,
       messageBase64: spend.messageBase64,
       vaultSpend: true,
+      needsApprovalSignature: spend.needsApprovalSignature,
       createdAt: now,
       expiresAt,
     });
@@ -390,7 +425,7 @@ export class TransferService {
 
   async submit(
     userId: string,
-    req: { intentId: string; signedTxBase64: string },
+    req: { intentId: string; signedTxBase64: string; presenceProof?: string },
   ): Promise<SubmitResponse> {
     // 1. Idempotency: if a transfer row already exists for this
     //    intentId, return it directly. transfers.intent_id is UNIQUE
@@ -465,6 +500,15 @@ export class TransferService {
       throw new IntentMismatchError(
         'signed transaction is missing a signature',
       );
+    }
+
+    // 3b. Establish that the Consumer was actually there.
+    //
+    //     Only for a vault Spend: the pre-multisig path has no device key
+    //     enrolled to prove anything with, and the sweep it also covers moves
+    //     the Consumer's own balance into their own vault.
+    if (intent.vaultSpend) {
+      await this.requirePresence(userId, intent, signedTx, req.presenceProof);
     }
 
     // 4. Broadcast. RPC failure -> RPC_UNAVAILABLE (502) with NO DB write, so
@@ -551,6 +595,77 @@ export class TransferService {
       signature,
       status: 'PENDING',
     };
+  }
+
+  /**
+   * Refuses to broadcast a Spend nobody proved they were present for.
+   *
+   * Which proof depends on the route, and the route is read from the intent
+   * this backend prepared rather than from anything the client says about it:
+   *
+   *  - Two signatures. S2 is on the transaction, and S2 cannot be produced
+   *    without the device biometric, so the transaction is its own proof. Only
+   *    its presence is checked, which also catches a client that would
+   *    otherwise have the transaction rejected on chain after the Consumer had
+   *    already confirmed it.
+   *  - One signature. Nothing on the transaction says the Consumer was there,
+   *    because the Privy signature comes from a session. The device key signs
+   *    the message separately and that signature is verified here.
+   *
+   * A Consumer with no enrolled device is refused rather than waved through.
+   * Enrolment happens during Account setup, so an Account with a vault and no
+   * device key is a broken state, and the safe reading of it is that the phone
+   * asking is not one that ever proved it holds S2.
+   */
+  private async requirePresence(
+    userId: string,
+    intent: IntentRecord,
+    signedTx: VersionedTransaction,
+    presenceProof: string | undefined,
+  ): Promise<void> {
+    const enrolled = await this.approvalSigners.listByUser(userId);
+    if (enrolled.length === 0) {
+      this.logger.error(
+        `transfer.presence.not_enrolled user_id=${userId} intent_id=${intent.intentId}`,
+      );
+      throw new PresenceProofInvalidError(
+        'no device key is enrolled for this Consumer',
+      );
+    }
+
+    if (intent.needsApprovalSignature) {
+      const signed = enrolled.some((row) =>
+        hasSignatureFrom(signedTx, row.address),
+      );
+      if (!signed) {
+        throw new PresenceProofInvalidError(
+          'transaction is missing the approval signature this route requires',
+        );
+      }
+      return;
+    }
+
+    if (!presenceProof) {
+      throw new PresenceProofRequiredError(
+        'this send needs a signature from the device key',
+      );
+    }
+    const verified = verifyPresenceProof({
+      messageBase64: intent.messageBase64,
+      signatureHex: presenceProof,
+      enrolledKeys: enrolled.map((row) => row.hardwarePublicKey),
+    });
+    if (!verified) {
+      // Worth a log line: a proof that does not verify is either an attacker or
+      // a device whose key has drifted from what was enrolled, and the second
+      // one is indistinguishable from the first without this.
+      this.logger.warn(
+        `transfer.presence.rejected user_id=${userId} intent_id=${intent.intentId} keys=${enrolled.length}`,
+      );
+      throw new PresenceProofInvalidError(
+        'device signature does not match any enrolled key',
+      );
+    }
   }
 
   // ── list ───────────────────────────────────────────────────────────

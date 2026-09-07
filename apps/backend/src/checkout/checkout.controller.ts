@@ -23,6 +23,7 @@ import {
   IntentStateConflictError,
 } from '../payment/payment.errors';
 import { PaymentAuthorizationService } from '../capability/payment-authorization.service';
+import { CapacityService } from '../capability/capacity.service';
 import { IdentityService } from '../capability/identity.service';
 import {
   CapacityExceededError,
@@ -35,13 +36,23 @@ import {
   SessionVelocityExceededError,
 } from '../session/session.errors';
 import { SettlementConfirmationService } from '../settlement/settlement-confirmation.service';
+import { SettlementService } from '../settlement/settlement.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { formatDisplayMoney } from '../fx/currency';
+import { SettlementAccountNotProvisionedError } from '../settlement/settlement.errors';
 import { signReturnUrl } from './return-url';
-import { PaymentProcessingError } from './checkout.errors';
+import {
+  ApprovalRequiredError,
+  PaymentProcessingError,
+} from './checkout.errors';
 import {
   AuthorizeBodySchema,
+  SettleBodySchema,
   type AuthorizeBody,
   type AuthorizeResponse,
   type IntentSummary,
+  type SettleBody,
+  type SettleResponse,
 } from './dtos';
 
 type IntentRow = typeof paymentIntents.$inferSelect;
@@ -78,13 +89,16 @@ export class CheckoutController {
   constructor(
     private readonly intents: PaymentIntentService,
     private readonly auth: PaymentAuthorizationService,
+    private readonly capacity: CapacityService,
     private readonly identity: IdentityService,
     private readonly sessions: SessionService,
     private readonly db: DbService,
     private readonly config: ConfigService,
+    private readonly settlement: SettlementService,
+    private readonly notifications: NotificationsService,
     // TEST ONLY — never production: used only by the dev settlement
     // short-circuit below (gated on NODE_ENV==='development').
-    private readonly settlement: SettlementConfirmationService,
+    private readonly confirmation: SettlementConfirmationService,
   ) {}
 
   @Get('intents/:reference')
@@ -120,7 +134,8 @@ export class CheckoutController {
         reference: intent.id,
         status: intent.status,
         merchantDisplayName: merchant.displayName,
-        ngnDisplayMinor: intent.ngnDisplayMinor,
+        displayCurrency: intent.displayCurrency,
+        displayAmountMinor: intent.displayAmountMinor,
         merchantOrigin,
         sessionRecognized,
         expiresAt: intent.expiresAt.toISOString(),
@@ -159,29 +174,85 @@ export class CheckoutController {
       const cookieName = this.config.getOrThrow<string>(
         'CHECKOUT_SESSION_COOKIE',
       );
+      const cookieToken = readCookie(req, cookieName);
 
+      // Who is paying, resolved before anything is written. The ceremony path
+      // reads it from the verified provider token; the one-tap path reads it
+      // from the Session, whose validation is read-only and repeated inside
+      // authorize below.
+      let consumerId: string;
       if (body.providerToken) {
-        // First-payment path: resolve the Consumer, authorize, issue a Session,
-        // and set the fresh raw token as the HttpOnly cookie (the one place
-        // Phase 2's raw token crosses to a cookie).
         const profile = await this.identity.resolveByProviderToken(
           body.providerToken,
         );
-        await this.auth.authorize({
-          intentId: reference,
-          consumerId: profile.consumerId,
+        consumerId = profile.consumerId;
+      } else {
+        if (!cookieToken) {
+          throw new SessionInvalidError('no session cookie or provider token');
+        }
+        const session = await this.sessions.validate(
+          cookieToken,
+          intent.merchantId,
+        );
+        consumerId = session.consumerId;
+      }
+
+      // Capacity first, and read-only: it decides whether this Payment can
+      // complete at all. Handing it to the app before asking would send the
+      // Consumer to their phone for a Payment their tier refuses the moment
+      // they get there. Nothing is consumed here; authorize below runs the
+      // same check again and is what actually spends the allowance.
+      await this.capacity.checkCapacity(consumerId, intent.usdcSettlementRaw);
+
+      // Then build the Spend, still BEFORE the intent moves, so an Account that
+      // cannot carry this Payment on one signature is refused with nothing
+      // consumed: no capacity spent, no Session issued, the intent still
+      // payable from the app. Skipped only by the development short-circuit
+      // below.
+      const devSettle =
+        this.config.get<string>('NODE_ENV') === 'development' &&
+        this.config.get<boolean>('CHECKOUT_DEV_FORCE_SETTLE') !== false;
+      const built = devSettle
+        ? null
+        : await this.settlement.buildSettlement(reference, consumerId);
+      if (built?.needsApprovalSignature) {
+        // Record who is paying before refusing. The intent stays payable and
+        // nothing is authorized, but without this the Payment is unfindable
+        // from the app: an intent only learns its Consumer when it is
+        // authorized, and this one deliberately never gets that far.
+        await this.intents.deferToApproval(reference, consumerId);
+
+        // Then reach for the phone. The popup says to open the app, but the
+        // Consumer may already have closed it, and the banner and the Activity
+        // row only exist once they look. Detached: the Payment is correctly
+        // refused whether or not a notice gets out, and somebody at a till is
+        // not kept waiting on a push provider.
+        const merchant = await this.merchantName(intent.merchantId);
+        void this.notifications.notifyPaymentNeedsApproval(consumerId, {
+          merchantName: merchant,
+          amount: formatDisplayMoney(
+            intent.displayCurrency,
+            intent.displayAmountMinor,
+          ),
         });
+
+        throw new ApprovalRequiredError(
+          `intent ${reference} is above the one-signature band and has to be approved from the Xend app`,
+        );
+      }
+
+      if (body.providerToken) {
+        // First-payment path: authorize, issue a Session, and set the fresh raw
+        // token as the HttpOnly cookie (the one place the raw token crosses to
+        // a cookie).
+        await this.auth.authorize({ intentId: reference, consumerId });
         const { token } = await this.sessions.issue({
-          consumerId: profile.consumerId,
+          consumerId,
           merchantId: intent.merchantId,
           issuingIntentId: reference,
         });
         this.setSessionCookie(res, cookieName, token);
       } else {
-        const cookieToken = readCookie(req, cookieName);
-        if (!cookieToken) {
-          throw new SessionInvalidError('no session cookie or provider token');
-        }
         // One-tap repeat path: authorize via the session cookie and rotate the
         // HttpOnly cookie in place.
         const result = await this.auth.authorize({
@@ -193,41 +264,83 @@ export class CheckoutController {
         }
       }
 
-      // TEST ONLY — never production. On devnet there is no funded relayer /
-      // settlement authority, so real settlement never confirms and the poll
-      // below would time out (PAYMENT_PROCESSING). Force the authorized intent
-      // to a terminal SUCCEEDED (fake signature, same payment.succeeded event)
-      // so local checkout resolves. Hard-gated on NODE_ENV==='development'.
-      if (this.config.get<string>('NODE_ENV') === 'development') {
-        await this.settlement.devForceSettleSucceeded(reference);
+      if (built) {
+        // The Consumer signs at the popup and hands the bytes to /settle. The
+        // pin is what makes that safe to complete with the fee payer.
+        await this.settlement.pinSettlement(reference, built);
+        return {
+          status: 'needs_signature',
+          unsignedTxBase64: built.unsignedTxBase64,
+          signerAddress: built.signerAddress,
+        };
       }
 
-      const terminal = await this.pollUntilTerminal(reference);
-      const status = terminal.status as 'succeeded' | 'failed';
-      const secret = this.config.getOrThrow<string>(
-        'CHECKOUT_RETURN_URL_SECRET',
-      );
-      const response: AuthorizeResponse = { status };
-      if (terminal.returnUrl) {
-        response.redirectUrl = signReturnUrl(
-          terminal.returnUrl,
-          reference,
-          status,
-          secret,
-        );
-      }
-      if (terminal.cancelUrl) {
-        response.cancelUrl = signReturnUrl(
-          terminal.cancelUrl,
-          reference,
-          'canceled',
-          secret,
-        );
-      }
-      return response;
+      // TEST ONLY — never production. Locally there is no Account on any
+      // cluster and no funded settlement authority, so no Spend can be built or
+      // broadcast and waiting for one would only time out (PAYMENT_PROCESSING).
+      // Force the authorized intent to a terminal SUCCEEDED (fake signature,
+      // same payment.succeeded event) so local checkout resolves, skipping the
+      // signature round trip entirely. Hard-gated on NODE_ENV==='development'.
+      await this.confirmation.devForceSettleSucceeded(reference);
+      return this.terminalResponse(reference);
     } catch (err) {
       this.mapServiceError(err);
     }
+  }
+
+  /**
+   * The second half of a Payment: the Consumer signed the Spend, the fee payer
+   * completes and broadcasts it, and this blocks until the chain says which way
+   * it went.
+   */
+  @Post('settle')
+  async settle(
+    @Body(new ZodValidationPipe(SettleBodySchema)) body: SettleBody,
+  ): Promise<SettleResponse> {
+    try {
+      await this.settlement.submitSettlement(
+        body.reference,
+        body.signedTxBase64,
+      );
+      return await this.terminalResponse(body.reference);
+    } catch (err) {
+      this.mapServiceError(err);
+    }
+  }
+
+  /** Waits for the chain and shapes the signed return URLs onto the outcome. */
+  private async terminalResponse(reference: string): Promise<SettleResponse> {
+    const terminal = await this.pollUntilTerminal(reference);
+    const status = terminal.status as 'succeeded' | 'failed';
+    const secret = this.config.getOrThrow<string>('CHECKOUT_RETURN_URL_SECRET');
+    const response: SettleResponse = { status };
+    if (terminal.returnUrl) {
+      response.redirectUrl = signReturnUrl(
+        terminal.returnUrl,
+        reference,
+        status,
+        secret,
+      );
+    }
+    if (terminal.cancelUrl) {
+      response.cancelUrl = signReturnUrl(
+        terminal.cancelUrl,
+        reference,
+        'canceled',
+        secret,
+      );
+    }
+    return response;
+  }
+
+  /** The Merchant as the Consumer knows them, never an id. */
+  private async merchantName(merchantId: string): Promise<string> {
+    const [merchant] = await this.db.client
+      .select({ displayName: merchants.displayName })
+      .from(merchants)
+      .where(eq(merchants.id, merchantId))
+      .limit(1);
+    return merchant?.displayName ?? 'A merchant';
   }
 
   private setSessionCookie(res: Response, name: string, token: string): void {
@@ -280,7 +393,9 @@ export class CheckoutController {
       err instanceof AttemptInFlightError ||
       err instanceof CapacityExceededError ||
       err instanceof SessionVelocityExceededError ||
-      err instanceof InsufficientBalanceError
+      err instanceof InsufficientBalanceError ||
+      err instanceof ApprovalRequiredError ||
+      err instanceof SettlementAccountNotProvisionedError
     ) {
       throw new HttpException(
         { code: err.code, message: err.message },

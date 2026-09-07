@@ -45,12 +45,21 @@ export const recoverySignerStatusEnum = pgEnum('recovery_signer_status', [
  *
  * An enum rather than a boolean so that every use of a proved inbox has to
  * name itself here, and a code issued for one purpose can never be spent on
- * another. Proving the address at sign-up and releasing S3 to a new phone are
- * the two that exist.
+ * another. Proving the address at sign-up, releasing S3 to a new phone,
+ * proving an extra recovery address, proving the address that replaces the
+ * one on file, and opening a limited session on an address that already has
+ * an Account are the ones that exist.
  */
 export const recoveryChallengePurposeEnum = pgEnum(
   'recovery_challenge_purpose',
-  ['device_rotation', 'contact_verification', 'recovery_key_email'],
+  [
+    'device_rotation',
+    'contact_verification',
+    'recovery_key_email',
+    'contact_rotation',
+    'entry_session',
+    'primary_rotation',
+  ],
 );
 
 /**
@@ -63,9 +72,18 @@ export const recoveryChallengePurposeEnum = pgEnum(
 export const accountEventKindEnum = pgEnum('account_event_kind', [
   'recovery_key_added',
   'recovery_key_removed',
+  'recovery_key_rotated',
   'wallet_renamed',
   'device_rotated',
+  'contact_email_changed',
+  'settings_change_staged',
+  'settings_change_executed',
+  'settings_change_rejected',
+  'passkey_enrolled',
+  'spending_limit_changed',
 ]);
+
+export type AccountEventKind = (typeof accountEventKindEnum.enumValues)[number];
 
 export const transferDirectionEnum = pgEnum('transfer_direction', [
   'SEND',
@@ -181,6 +199,16 @@ export const users = pgTable('users', {
    * claim the same inbox.
    */
   email: text('email').unique(),
+  /**
+   * Set while support is refusing to release the server-held recovery signer,
+   * typically because a compromise report is open.
+   *
+   * On the person rather than a signer row: every sealed recovery key we hold
+   * for them is released against an inbox, and a report that one inbox is
+   * compromised is a reason to release none of them. It costs the Consumer
+   * nothing, since their passkey plus their phone is threshold without us.
+   */
+  recoveryReleaseFrozenAt: timestamp('recovery_release_frozen_at'),
   /**
    * Whether they want to be told when money arrives.
    *
@@ -393,6 +421,60 @@ export const recoveryChallenges = pgTable(
 );
 
 /**
+ * signup_tokens: the single-use proof that carries a Consumer from the code
+ * they typed to the passkey they create next.
+ *
+ * A sign-up is two unauthenticated calls with a passkey ceremony between them,
+ * and nothing else ties the second call to the address the first one proved.
+ * The token is what does. Only its SHA-256 is stored; the raw value is handed
+ * out once and never logged.
+ */
+export const signupTokens = pgTable(
+  'signup_tokens',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at').notNull(),
+    /** Set by the exchange that spent it. A spent token never validates again. */
+    consumedAt: timestamp('consumed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('signup_tokens_user_idx').on(table.userId)],
+);
+
+/**
+ * entry_sessions: the limited session an email code opens on an Account that
+ * already exists.
+ *
+ * Its own table rather than a `kind` on signup_tokens, because the two are
+ * different credentials with different lifecycles. A sign-up token is spent
+ * once, by the exchange, and binds a passkey. An entry session is presented
+ * on every request until it expires or is revoked, and binds nothing. Kept
+ * apart, a query written for one can never read the other. Hash at rest only.
+ */
+export const entrySessions = pgTable(
+  'entry_sessions',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at').notNull(),
+    revokedAt: timestamp('revoked_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('entry_sessions_user_idx').on(table.userId)],
+);
+
+/**
  * account_events — everything in Activity that is not a movement of money.
  *
  * A separate table rather than another `transfers.kind`. A transfer row is
@@ -490,6 +572,14 @@ export const squadsAccounts = pgTable('squads_accounts', {
   pendingApprovalSigner: text('pending_approval_signer'),
   pendingApprovalSubOrgId: text('pending_approval_sub_org_id'),
   pendingApprovalChangeIndex: text('pending_approval_change_index'),
+  /**
+   * The primary signer a passkey replacement is moving to, and the Privy user
+   * behind it, while the settings change carrying them waits out the lock.
+   * The live columns and the smart_accounts binding move only on execution.
+   */
+  pendingPrimarySigner: text('pending_primary_signer'),
+  pendingPrimaryProviderId: text('pending_primary_provider_id'),
+  pendingPrimaryChangeIndex: text('pending_primary_change_index'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -760,7 +850,9 @@ export const paymentIntents = pgTable(
     consumerId: text('consumer_id').references(() => users.id),
     status: paymentIntentStatusEnum('status').notNull().default('created'),
     usdcSettlementRaw: text('usdc_settlement_raw').notNull(),
-    ngnDisplayMinor: text('ngn_display_minor'),
+    /** What the Merchant priced in, and the figure the Consumer is shown. */
+    displayCurrency: text('display_currency').notNull(),
+    displayAmountMinor: text('display_amount_minor').notNull(),
     fxRate: text('fx_rate'),
     fxSource: text('fx_source'),
     fxQuotedAt: timestamp('fx_quoted_at'),
@@ -775,10 +867,20 @@ export const paymentIntents = pgTable(
     cancelUrl: text('cancel_url'),
     expiresAt: timestamp('expires_at').notNull(),
     authorizedAt: timestamp('authorized_at'),
+    /**
+     * When Checkout handed this Payment to the Consumer's phone because it was
+     * above the band one signature carries. The intent stays payable; this is
+     * what lets the app find a Payment someone is waiting to finish.
+     */
+    approvalDeferredAt: timestamp('approval_deferred_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
+    deferredIdx: index('payment_intents_deferred_idx').on(
+      table.consumerId,
+      table.approvalDeferredAt,
+    ),
     // Replays of the same merchant write must return the same intent
     // (Postgres treats NULL idempotency keys as distinct, so intents
     // created without a key are unconstrained).
@@ -846,7 +948,8 @@ export const payments = pgTable(
       .notNull()
       .references(() => users.id),
     usdcSettlementRaw: text('usdc_settlement_raw').notNull(),
-    ngnDisplayMinor: text('ngn_display_minor'),
+    displayCurrency: text('display_currency').notNull(),
+    displayAmountMinor: text('display_amount_minor').notNull(),
     txSignature: text('tx_signature').unique(),
     settledAt: timestamp('settled_at'),
     refundOfPaymentId: text('refund_of_payment_id').references(

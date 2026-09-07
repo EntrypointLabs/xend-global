@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Redirect, Slot, useSegments } from "expo-router";
 import {
   AppState,
@@ -61,7 +61,10 @@ import {
 import LoadingScreen from "@/components/ui/layout/LoadingScreen";
 import LockScreen from "@/components/ui/layout/LockScreen";
 import { usePendingWatch } from "@/hooks/useTransfers";
-import { usePushRegistration } from "@/hooks/usePushRegistration";
+import {
+  useNotificationRouting,
+  usePushRegistration,
+} from "@/hooks/usePushRegistration";
 
 // Runs before any provider mounts, so the first Privy call is already covered.
 installPrivyRequestLog();
@@ -116,35 +119,55 @@ if (process.env.EXPO_PUBLIC_GRID_ENV === "production") {
 
 function AuthLayout() {
   const segments = useSegments();
-  const { isAuthenticated, needsContactEmail, holdAuthStack } = useAuth();
+  const { isAuthenticated, needsContactEmail } = useAuth();
   const { isLocked, isObscured } = useAppLock();
   const colorScheme = useColorScheme();
+
+  // The screens are held apart from this component's own renders on purpose.
+  // `useSegments()` above changes on every navigation, and without this the
+  // whole app below re-rendered each time a tab was tapped: every provider,
+  // every mounted screen, the lot. Memoising the element means a navigation
+  // re-renders the navigator and the screen it is going to, and nothing else.
+  const screens = useMemo(
+    () => (
+      <ScreenThemeProvider>
+        <ModalFlowProvider>
+          <ToastProvider>
+            <BlurTargetHost>
+              <Slot />
+            </BlurTargetHost>
+            <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+          </ToastProvider>
+        </ModalFlowProvider>
+      </ScreenThemeProvider>
+    ),
+    [colorScheme]
+  );
 
   if (isAuthenticated === null) {
     return <LoadingScreen />;
   }
 
   const inAuthGroup = segments[0] === "(auth)";
+  // Sign-up starts at the address, before there is a session, so the email
+  // screen is reachable signed out. It stays outside the auth group because a
+  // sign-up finishes on it too, after the session exists.
+  const atEmailScreen = segments[0] === "add-email";
 
-  if (!isAuthenticated && !inAuthGroup) {
+  if (!isAuthenticated && !inAuthGroup && !atEmailScreen) {
     return <Redirect href="/login" withAnchor />;
   }
 
-  // Before the tabs, and from anywhere. Sign-up finishes at the contact
-  // address: the recovery signer is anchored on it, so a Consumer without one
+  // Before the tabs, and from anywhere. An Account needs a contact address:
+  // the recovery signer is anchored on it, so a signed-in Consumer without one
   // has no Account at all. Deriving this from what is on file rather than from
   // a flag raised during sign-up means an interrupted sign-up resumes instead
   // of leaving somebody on a dashboard nothing has been created for.
-  if (
-    isAuthenticated &&
-    needsContactEmail &&
-    !holdAuthStack &&
-    segments[0] !== "add-email"
-  ) {
+  if (isAuthenticated && needsContactEmail && !atEmailScreen) {
     return <Redirect href="/add-email" withAnchor />;
   }
 
-  if (isAuthenticated && !holdAuthStack && inAuthGroup) {
+  if (isAuthenticated && inAuthGroup) {
     return <Redirect href="/(tabs)" withAnchor />;
   }
 
@@ -162,15 +185,8 @@ function AuthLayout() {
   // Theming is driven by NativeWind (ThemedRoot's `dark` class) and
   // ScreenThemeProvider; the navigator inherits light/dark from the OS.
   return (
-    <ScreenThemeProvider>
-      <ModalFlowProvider>
-        <ToastProvider>
-          <BlurTargetHost>
-            <Slot />
-          </BlurTargetHost>
-          <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-        </ToastProvider>
-      </ModalFlowProvider>
+    <>
+      {screens}
       {showObscure && (
         <View style={StyleSheet.absoluteFill}>
           <LoadingScreen />
@@ -181,7 +197,7 @@ function AuthLayout() {
           <LockScreen />
         </View>
       )}
-    </ScreenThemeProvider>
+    </>
   );
 }
 
@@ -259,6 +275,7 @@ function RootLayout() {
 function ActivityWatch() {
   usePendingWatch();
   usePushRegistration();
+  useNotificationRouting();
   return null;
 }
 

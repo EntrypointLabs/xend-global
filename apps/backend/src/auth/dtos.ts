@@ -8,6 +8,19 @@ import { z } from 'zod';
  */
 export const ExchangeRequestSchema = z.object({
   privyIdToken: z.string().min(1),
+  /**
+   * Present on the exchange that follows sign-up. It binds the Privy user to
+   * the users row whose address was proved a moment earlier; without it the
+   * exchange can only reach a row this Privy user is already bound to.
+   */
+  signupToken: z.string().min(1).optional(),
+  /**
+   * Present when the sign-in follows a proved inbox, and it pins the result:
+   * the exchange must land on this user or refuse. Without it, a device
+   * holding passkeys for two accounts can answer a code for one with the
+   * credential of the other, and the session silently changes owner.
+   */
+  expectUserId: z.string().min(1).optional(),
 });
 export type ExchangeRequest = z.infer<typeof ExchangeRequestSchema>;
 
@@ -66,3 +79,24 @@ export const SetEmailSchema = z.object({
   code: z.string().regex(/^\d{6}$/, 'a code is six digits'),
 });
 export type SetEmailRequest = z.infer<typeof SetEmailSchema>;
+
+/** Asks for a code at an address nobody has an account on. Unauthenticated. */
+export const SignupEmailChallengeSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+});
+export type SignupEmailChallengeRequest = z.infer<
+  typeof SignupEmailChallengeSchema
+>;
+
+/**
+ * Proves the address and comes back with a sign-up token. Unauthenticated.
+ *
+ * The token is the only thing that carries the proof forward: the passkey
+ * created next is a fresh Privy user with no email, and this is how the
+ * exchange knows which row it belongs on.
+ */
+export const SignupEmailSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  code: z.string().regex(/^\d{6}$/, 'a code is six digits'),
+});
+export type SignupEmailRequest = z.infer<typeof SignupEmailSchema>;

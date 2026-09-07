@@ -11,6 +11,12 @@ interface KeyActionsPopoverProps {
   onClose: () => void;
   onInfo: () => void;
   onExplorer: () => void;
+  /**
+   * Present only for the key anchored on the contact address. That address
+   * changes by rotating its key, so the row offers a change where the others
+   * offer a delete.
+   */
+  onChange?: () => void;
   /** Absent when this key cannot be removed, so no row is offered. */
   onDelete?: () => void;
   /**
@@ -31,6 +37,7 @@ export function KeyActionsPopover({
   onClose,
   onInfo,
   onExplorer,
+  onChange,
   onDelete,
   deleteLabel = "Delete key",
 }: KeyActionsPopoverProps) {
@@ -69,6 +76,13 @@ export function KeyActionsPopover({
           label="Explorer"
           onPress={pick(onExplorer)}
         />
+        {onChange && (
+          <Row
+            icon="create-outline"
+            label="Change email"
+            onPress={pick(onChange)}
+          />
+        )}
         {onDelete && (
           <>
             <Row

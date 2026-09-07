@@ -40,3 +40,28 @@ export class IncompleteSignerSetError extends Error {
     this.name = 'IncompleteSignerSetError';
   }
 }
+
+/**
+ * The fresh passkey offered as a replacement primary signer is already the
+ * credential of a different account. Mapped to 409 PASSKEY_IN_USE.
+ */
+export class PasskeyInUseError extends Error {
+  readonly code = 'PASSKEY_IN_USE';
+  constructor(message: string) {
+    super(message);
+    this.name = 'PasskeyInUseError';
+  }
+}
+
+/**
+ * A resume-style enrolment named a hardware key this account never attested.
+ * The ordinary answer on a phone that held a different account; the caller
+ * falls through to a fresh attestation. Mapped to 409 DEVICE_NOT_ATTESTED.
+ */
+export class DeviceNotAttestedError extends Error {
+  readonly code = 'DEVICE_NOT_ATTESTED';
+  constructor(message: string) {
+    super(message);
+    this.name = 'DeviceNotAttestedError';
+  }
+}

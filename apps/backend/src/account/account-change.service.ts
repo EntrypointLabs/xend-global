@@ -6,6 +6,7 @@ import {
   SETTINGS_TIME_LOCK_SECONDS,
 } from '@xend/smart-account';
 
+import { AccountEventsService } from '../activity/account-events.service';
 import { RecoveryService } from '../recovery/recovery.service';
 import { AccountCreationError } from './account.errors';
 import {
@@ -72,13 +73,21 @@ export class AccountChangeService {
    * Same reason as provisioning: the authority partially signs whatever arrives
    * at submit, so the bytes have to be pinned to what was prepared or the
    * endpoint becomes a way to have the backend sign anything.
+   *
+   * The index rides along because once the rejection lands the proposal is
+   * settled and no longer readable as pending, and the outcome is recorded
+   * against the change it decided.
    */
-  private readonly prepared = new Map<string, string>();
+  private readonly prepared = new Map<
+    string,
+    { messageBase64: string; transactionIndex: string }
+  >();
 
   constructor(
     @Inject(SQUADS_ACCOUNT_STORE) private readonly store: SquadsAccountStore,
     @Inject(PROVISIONING_CHAIN) private readonly chain: ProvisioningChain,
     private readonly recovery: RecoveryService,
+    private readonly events: AccountEventsService,
   ) {}
 
   /** The change awaiting execution on this Consumer's Account, if any. */
@@ -185,7 +194,10 @@ export class AccountChangeService {
     }
 
     const unsigned = await this.chain.compile({ instructions });
-    this.prepared.set(userId, unsigned.messageBase64);
+    this.prepared.set(userId, {
+      messageBase64: unsigned.messageBase64,
+      transactionIndex: staged.transactionIndex,
+    });
 
     this.logger.log(
       `account_change.reject_prepared userId=${userId} index=${staged.transactionIndex}`,
@@ -221,7 +233,7 @@ export class AccountChangeService {
         'signedTxBase64 is not a valid transaction',
       );
     }
-    if (submitted !== expected) {
+    if (submitted !== expected.messageBase64) {
       throw new AccountCreationError(
         'signed transaction does not match the prepared rejection',
       );
@@ -248,6 +260,11 @@ export class AccountChangeService {
     // guard.
     const open = await this.recovery.pendingChange(userId);
     if (open) await this.recovery.abandon(userId, open.changeIndex);
+
+    await this.events.recordSettingsChangeRejected(userId, {
+      changeIndex: expected.transactionIndex,
+      signature,
+    });
 
     this.logger.log(
       `account_change.rejected userId=${userId} signature=${signature}`,

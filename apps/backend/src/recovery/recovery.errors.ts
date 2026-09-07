@@ -91,3 +91,38 @@ export class NoRotationInFlightError extends Error {
     this.name = 'NoRotationInFlightError';
   }
 }
+
+/**
+ * Support has paused the release of the server-held recovery signer, usually
+ * because a compromise report is open. The Consumer's own two keys are
+ * unaffected: this refuses S3's vote and nothing else.
+ */
+export class RecoveryReleaseFrozenError extends Error {
+  readonly code = 'RECOVERY_RELEASE_FROZEN';
+  constructor(message: string) {
+    super(message);
+    this.name = 'RecoveryReleaseFrozenError';
+  }
+}
+
+/**
+ * The signer anchors the address on file, so it is rotated rather than
+ * removed. Removing it would leave the entry point pointing at an inbox with
+ * no key behind it.
+ */
+export class ContactRecoverySignerError extends Error {
+  readonly code = 'CONTACT_RECOVERY_SIGNER';
+  constructor(message: string) {
+    super(message);
+    this.name = 'ContactRecoverySignerError';
+  }
+}
+
+/** The replacement address is already another Consumer's contact address. */
+export class ContactEmailTakenError extends Error {
+  readonly code = 'CONTACT_EMAIL_TAKEN';
+  constructor(message: string) {
+    super(message);
+    this.name = 'ContactEmailTakenError';
+  }
+}

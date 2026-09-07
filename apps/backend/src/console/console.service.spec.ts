@@ -1,5 +1,9 @@
 import type { DbService } from '../db/db.service';
-import { ConsoleService, formatUsdc, formatNgn } from './console.service';
+import {
+  ConsoleService,
+  formatUsdc,
+  formatDisplayAmount,
+} from './console.service';
 import { escapeHtml } from './console-html';
 
 /**
@@ -25,10 +29,18 @@ describe('ConsoleService formatting', () => {
     expect(formatUsdc('0')).toBe('0');
   });
 
-  it('formats NGN minor units (kobo) via BigInt division', () => {
-    expect(formatNgn('5000')).toBe('50');
-    expect(formatNgn('150')).toBe('1.5');
-    expect(formatNgn('12345')).toBe('123.45');
+  it('formats a minor amount against its own currency, not against kobo', () => {
+    expect(formatDisplayAmount('NGN', '5000')).toBe('NGN 50');
+    expect(formatDisplayAmount('NGN', '12345')).toBe('NGN 123.45');
+    expect(formatDisplayAmount('USD', '150')).toBe('USD 1.5');
+  });
+
+  it('refuses a currency it has no minor unit for', () => {
+    // Guessing hundredths for an unknown currency would misstate the amount by
+    // a factor of a hundred on anything that does not use two decimals.
+    expect(() => formatDisplayAmount('JPY', '500')).toThrow(
+      /unsupported display currency/,
+    );
   });
 });
 
@@ -54,7 +66,8 @@ describe('ConsoleService.listPayments', () => {
           id: 'pay_1',
           merchantName: 'Cafe Neo',
           usdcAmount: '50000000',
-          ngnAmount: '8000000',
+          displayCurrency: 'NGN',
+          displayAmountMinor: '8000000',
           intentStatus: 'succeeded',
           signature: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
           settledAt: new Date('2026-07-11T10:00:00.000Z'),
@@ -67,21 +80,22 @@ describe('ConsoleService.listPayments', () => {
       id: 'pay_1',
       merchantName: 'Cafe Neo',
       usdcAmount: '50',
-      ngnAmount: '80000',
+      displayAmount: 'NGN 80000',
       intentStatus: 'succeeded',
       refundOfPaymentId: null,
     });
     expect(row.signature).toContain('…');
   });
 
-  it('carries null NGN and null merchant name through unchanged', async () => {
+  it('shows a dollar-priced Payment in dollars, not in the token behind it', async () => {
     const svc = new ConsoleService(
       makeDb([
         {
           id: 'pay_2',
           merchantName: null,
           usdcAmount: '1500000',
-          ngnAmount: null,
+          displayCurrency: 'USD',
+          displayAmountMinor: '150',
           intentStatus: null,
           signature: null,
           settledAt: null,
@@ -91,7 +105,7 @@ describe('ConsoleService.listPayments', () => {
     );
     const [row] = await svc.listPayments();
     expect(row.usdcAmount).toBe('1.5');
-    expect(row.ngnAmount).toBeNull();
+    expect(row.displayAmount).toBe('USD 1.5');
     expect(row.merchantName).toBeNull();
     expect(row.signature).toBeNull();
     expect(row.refundOfPaymentId).toBe('pay_1');

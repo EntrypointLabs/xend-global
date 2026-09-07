@@ -7,7 +7,8 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { AllowEntry } from '../auth/allow-entry.decorator';
+import { ConsumerAuthGuard } from '../auth/consumer-auth.guard';
 import { Request } from 'express';
 import { AccountHasBalanceError, WalletsService } from './wallets.service';
 
@@ -16,16 +17,18 @@ interface AuthenticatedRequest extends Request {
 }
 
 @Controller()
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ConsumerAuthGuard)
 export class WalletsController {
   constructor(private wallets: WalletsService) {}
 
   @Get('wallet/me')
+  @AllowEntry()
   getMe(@Req() req: AuthenticatedRequest) {
     return this.wallets.getMe(req.user.userId);
   }
 
   @Get('wallet/me/balances')
+  @AllowEntry()
   getMeBalances(@Req() req: AuthenticatedRequest) {
     return this.wallets.getMeBalances(req.user.userId);
   }

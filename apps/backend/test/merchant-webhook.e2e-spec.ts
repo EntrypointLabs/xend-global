@@ -34,11 +34,14 @@ import type { EventConsumer } from '../src/events/event-consumer.interface';
 import type { PlatformEvent } from '../src/events/event-publisher.interface';
 import { CheckoutController } from '../src/checkout/checkout.controller';
 import type { SettlementConfirmationService } from '../src/settlement/settlement-confirmation.service';
+import type { SettlementService } from '../src/settlement/settlement.service';
 import { verifyReturnUrl } from '../src/checkout/return-url';
 import { IdempotencyService } from '../src/merchant/idempotency.service';
 import type { PaymentIntentService } from '../src/payment/payment-intent.service';
 import type { PaymentAuthorizationService } from '../src/capability/payment-authorization.service';
 import type { IdentityService } from '../src/capability/identity.service';
+import type { CapacityService } from '../src/capability/capacity.service';
+import type { NotificationsService } from '../src/notifications/notifications.service';
 import type { SessionService } from '../src/session/session.service';
 import { IntentExpiredError } from '../src/payment/payment.errors';
 
@@ -80,7 +83,8 @@ function intentRow(over: Record<string, unknown> = {}) {
     consumerId: 'c1',
     status: 'succeeded',
     usdcSettlementRaw: '1000000',
-    ngnDisplayMinor: '160000',
+    displayCurrency: 'NGN',
+    displayAmountMinor: '160000',
     fxRate: '1600.00',
     fxSource: 'pilot-static',
     fxQuotedAt: new Date('2026-01-01'),
@@ -91,6 +95,7 @@ function intentRow(over: Record<string, unknown> = {}) {
     cancelUrl: null,
     expiresAt: new Date(Date.now() + 3_600_000),
     authorizedAt: null,
+    approvalDeferredAt: null,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     ...over,
@@ -439,6 +444,30 @@ function makeReq(cookie?: string): Request {
   } as unknown as Request;
 }
 
+/**
+ * A settlement service that builds a Spend inside the one-signature band. The
+ * Consumer signs it at the popup and hands it back to /checkout/settle, which
+ * is where a Payment now becomes terminal.
+ */
+function makeSettlement() {
+  return {
+    buildSettlement: jest.fn().mockResolvedValue({
+      unsignedTxBase64: 'UNSIGNED_SPEND',
+      messageBase64: 'PINNED',
+      blockhash: 'Blockhash11',
+      expectedSettlementAccount: 'Endpoint11',
+      signerAddress: 'Signer1111',
+      needsApprovalSignature: false,
+    }),
+    pinSettlement: jest.fn().mockResolvedValue({ attemptId: 'att_1' }),
+    submitSettlement: jest.fn().mockResolvedValue({
+      attemptId: 'att_1',
+      signature: 'sig',
+      status: 'settling',
+    }),
+  } as unknown as SettlementService;
+}
+
 describe('Phase 6 E2E harness: checkout surface', () => {
   it('serves a public summary with no USDC/FX leakage and sessionRecognized via peek', async () => {
     const intents = { findById: jest.fn().mockResolvedValue(intentRow()) };
@@ -446,10 +475,15 @@ describe('Phase 6 E2E harness: checkout surface', () => {
     const controller = new CheckoutController(
       intents as unknown as PaymentIntentService,
       {} as unknown as PaymentAuthorizationService,
+      { checkCapacity: jest.fn() } as unknown as CapacityService,
       {} as unknown as IdentityService,
       sessions as unknown as SessionService,
       makeCheckoutDb(checkoutMerchant()),
       makeConfig(),
+      makeSettlement(),
+      {
+        notifyPaymentNeedsApproval: jest.fn(),
+      } as unknown as NotificationsService,
       {
         devForceSettleSucceeded: jest.fn(),
       } as unknown as SettlementConfirmationService,
@@ -491,10 +525,15 @@ describe('Phase 6 E2E harness: checkout surface', () => {
     const controller = new CheckoutController(
       intents as unknown as PaymentIntentService,
       auth as unknown as PaymentAuthorizationService,
+      { checkCapacity: jest.fn() } as unknown as CapacityService,
       identity as unknown as IdentityService,
       sessions as unknown as SessionService,
       makeCheckoutDb(checkoutMerchant()),
       makeConfig(),
+      makeSettlement(),
+      {
+        notifyPaymentNeedsApproval: jest.fn(),
+      } as unknown as NotificationsService,
       {
         devForceSettleSucceeded: jest.fn(),
       } as unknown as SettlementConfirmationService,
@@ -503,18 +542,27 @@ describe('Phase 6 E2E harness: checkout surface', () => {
     controller.authorizePollMs = 10;
     const { res, cookie } = makeRes();
 
-    const response = await controller.authorize(makeReq(), res, {
+    // The ceremony authorizes and issues the Session; the Payment becomes
+    // terminal only once the Consumer's signed Spend comes back to /settle.
+    const authorized = await controller.authorize(makeReq(), res, {
       reference: INTENT_ID,
       providerToken: 'privy-id-token',
     });
 
-    expect(response.status).toBe('succeeded');
-    expect(JSON.stringify(response)).not.toContain('authorized');
+    expect(authorized.status).toBe('needs_signature');
+    expect(JSON.stringify(authorized)).not.toContain('authorized');
     expect(cookie).toHaveBeenCalledWith(
       COOKIE,
       'fresh',
       expect.objectContaining({ httpOnly: true, secure: true }),
     );
+
+    const response = await controller.settle({
+      reference: INTENT_ID,
+      signedTxBase64: 'SIGNED_SPEND',
+    });
+
+    expect(response.status).toBe('succeeded');
     const url = new URL(response.redirectUrl as string);
     const ts = Number(url.searchParams.get('xend_ts'));
     const sig = url.searchParams.get('xend_sig') as string;
@@ -572,20 +620,25 @@ describe('Phase 6 E2E harness: checkout surface', () => {
     const controller = new CheckoutController(
       intents as unknown as PaymentIntentService,
       auth as unknown as PaymentAuthorizationService,
+      { checkCapacity: jest.fn() } as unknown as CapacityService,
       {} as unknown as IdentityService,
       { peek: jest.fn() } as unknown as SessionService,
       makeCheckoutDb(checkoutMerchant()),
       makeConfig(),
+      makeSettlement(),
+      {
+        notifyPaymentNeedsApproval: jest.fn(),
+      } as unknown as NotificationsService,
       {
         devForceSettleSucceeded: jest.fn(),
       } as unknown as SettlementConfirmationService,
     );
     controller.authorizeWaitMs = 40;
     controller.authorizePollMs = 10;
-    const { res } = makeRes();
     try {
-      await controller.authorize(makeReq('sess'), res, {
+      await controller.settle({
         reference: INTENT_ID,
+        signedTxBase64: 'SIGNED_SPEND',
       });
       throw new Error('expected rejection');
     } catch (err) {
@@ -604,10 +657,18 @@ describe('Phase 6 E2E harness: checkout surface', () => {
     const controller = new CheckoutController(
       intents as unknown as PaymentIntentService,
       auth as unknown as PaymentAuthorizationService,
+      { checkCapacity: jest.fn() } as unknown as CapacityService,
       {} as unknown as IdentityService,
-      { peek: jest.fn() } as unknown as SessionService,
+      {
+        peek: jest.fn(),
+        validate: jest.fn().mockResolvedValue({ id: 's1', consumerId: 'c1' }),
+      } as unknown as SessionService,
       makeCheckoutDb(checkoutMerchant()),
       makeConfig(),
+      makeSettlement(),
+      {
+        notifyPaymentNeedsApproval: jest.fn(),
+      } as unknown as NotificationsService,
       {
         devForceSettleSucceeded: jest.fn(),
       } as unknown as SettlementConfirmationService,

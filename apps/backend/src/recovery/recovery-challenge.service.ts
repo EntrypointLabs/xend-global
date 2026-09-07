@@ -112,15 +112,35 @@ export class RecoveryChallengeService {
               'account to a new phone if you lose this one. It is not a way to sign in:',
               'that is your passkey.',
             ].join('\n')
-          : [
-              `${code} is your Xend recovery code.`,
-              '',
-              'It lets you move your account to a new phone, and it expires in 10 minutes.',
-              'Moving a phone takes 24 hours to take effect, and we will tell you when it starts.',
-              '',
-              'If you did not ask for this, someone else knows your email address. The code',
-              'alone cannot move your money: spending needs the phone you already have.',
-            ].join('\n'),
+          : purpose === 'contact_rotation'
+            ? [
+                `${code} confirms this as the new address for your Xend account.`,
+                '',
+                'It expires in 10 minutes.',
+                '',
+                'Both keys on your phone approve the change, then it takes a day to go',
+                'through. Until then the address already on your account stays in place,',
+                'and we will write to it too.',
+              ].join('\n')
+          : purpose === 'entry_session'
+            ? [
+                `${code} lets you into your Xend account to look around.`,
+                '',
+                'It expires in 10 minutes, and what it opens lasts an hour.',
+                '',
+                'It cannot send money or change your keys: those need your passkey.',
+                'If you did not ask for this, someone else knows your email address.',
+                'They cannot spend with it.',
+              ].join('\n')
+            : [
+                `${code} is your Xend recovery code.`,
+                '',
+                'It lets you move your account to a new phone, and it expires in 10 minutes.',
+                'Moving a phone takes 24 hours to take effect, and we will tell you when it starts.',
+                '',
+                'If you did not ask for this, someone else knows your email address. The code',
+                'alone cannot move your money: spending needs the phone you already have.',
+              ].join('\n'),
     });
 
     // The code never reaches the log, and neither does the address.

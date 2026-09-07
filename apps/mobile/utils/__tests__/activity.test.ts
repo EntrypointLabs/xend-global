@@ -1,7 +1,8 @@
 /// <reference types="jest" />
-import type { TransferRow } from "@/utils/apiClient";
+import type { AwaitingPayment, TransferRow } from "@/utils/apiClient";
 import {
   arrivalLabel,
+  awaitingPaymentActivityEntry,
   securityActivityEntry,
   mapAccountEventToActivityEntry,
   ActivityEntry,
@@ -660,5 +661,70 @@ describe("mapAccountEventToActivityEntry", () => {
     // Not when it was recorded: a key that landed on chain yesterday is
     // written when the app next polls, and the feed should say yesterday.
     expect(entry.createdAt).toBe(base.occurredAt);
+  });
+});
+
+describe("awaitingPaymentActivityEntry", () => {
+  const payment: AwaitingPayment = {
+    reference: "pi_1",
+    merchantDisplayName: "Sabi Market",
+    displayCurrency: "NGN",
+    displayAmountMinor: "4500000",
+    deferredAt: "2026-08-29T10:00:00.000Z",
+    expiresAt: "2026-08-29T11:00:00.000Z",
+  };
+
+  it("asks for approval rather than reporting a Payment that happened", () => {
+    const entry = awaitingPaymentActivityEntry(payment, "SELF");
+
+    expect(entry.kind).toBe("awaiting");
+    expect(statusLabel(entry)).toBe("Needs your approval");
+    expect(entry.merchantName).toBe("Sabi Market");
+  });
+
+  it("carries the Merchant's own currency, not a token amount", () => {
+    // Nothing has moved, so there is no settlement figure to render. Putting a
+    // token amount here would show a number no Payment has produced.
+    const entry = awaitingPaymentActivityEntry(payment, "SELF");
+
+    expect(entry.displayCurrency).toBe("NGN");
+    expect(entry.displayAmountMinor).toBe("4500000");
+    expect(entry.amountRaw).toBe("0");
+    expect(entry.mint).toBe("");
+  });
+
+  it("dates the entry when the Consumer was asked", () => {
+    // Not when it was rendered: a timestamp computed here moves on every
+    // render and drifts between the row's position and the day it files under.
+    const entry = awaitingPaymentActivityEntry(payment, "SELF");
+
+    expect(entry.createdAt).toBe(payment.deferredAt);
+  });
+
+  it("keys apart from the transfers beside it", () => {
+    // The list keys on id alone, and these come from a different source than
+    // the rows they are merged with.
+    const entry = awaitingPaymentActivityEntry(payment, "SELF");
+
+    expect(entry.id).toBe("awaiting:pi_1");
+  });
+
+  it("sits in the feed with the transfers, newest first", () => {
+    const older = securityActivityEntry({
+      id: "event:1",
+      label: "Added Recovery Key",
+      at: "2026-08-29T09:00:00.000Z",
+      self: "SELF",
+    });
+    const sections = groupIntoSections([
+      older,
+      awaitingPaymentActivityEntry(payment, "SELF"),
+    ]);
+
+    expect(sections).toHaveLength(1);
+    expect(sections[0].data.map((row) => row.id)).toEqual([
+      "awaiting:pi_1",
+      "event:1",
+    ]);
   });
 });

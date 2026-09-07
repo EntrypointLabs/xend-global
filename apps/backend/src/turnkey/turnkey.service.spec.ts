@@ -68,6 +68,10 @@ class FakeApprovalStore implements ApprovalSignerStore {
     );
   }
 
+  listByUser(userId: string) {
+    return Promise.resolve(this.rows.filter((r) => r.userId === userId));
+  }
+
   findBySubOrganization(subOrganizationId: string) {
     return Promise.resolve(
       this.rows.find((r) => r.subOrganizationId === subOrganizationId) ?? null,

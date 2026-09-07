@@ -10,8 +10,25 @@
 export type PasskeySignInOutcome =
   | "signed-in"
   | "no-passkey"
+  | "no-account"
+  | "wrong-account"
   | "cancelled"
   | "failed";
+
+/**
+ * The passkey worked and Xend has no account behind it.
+ *
+ * Every account starts from a proved address, so the only way forward is the
+ * email door. Raised through the sign-in path rather than reported as a
+ * failure, because the Consumer did nothing wrong and the next step is
+ * specific.
+ */
+export class PasskeyHasNoAccountError extends Error {
+  constructor() {
+    super("This passkey is not on a Xend account yet");
+    this.name = "PasskeyHasNoAccountError";
+  }
+}
 
 /**
  * Reads the platform's own verdict off a rejected passkey request.
@@ -27,7 +44,7 @@ export type PasskeySignInOutcome =
 export function classifyPasskeyError(
   err: unknown,
   platform: string
-): Exclude<PasskeySignInOutcome, "signed-in"> {
+): Exclude<PasskeySignInOutcome, "signed-in" | "no-account"> {
   const text = `${(err as { code?: string })?.code ?? ""} ${
     err instanceof Error ? err.message : String(err ?? "")
   }`;
@@ -37,4 +54,20 @@ export function classifyPasskeyError(
     return platform === "ios" ? "no-passkey" : "cancelled";
   }
   return "failed";
+}
+
+/**
+ * The passkey worked and belongs to a different account than the one the
+ * proved inbox named. The platform picker labels every credential the same,
+ * so this is an ordinary mistake; the backend refused before the session
+ * changed owner, and the answer is to try again with the other credential.
+ */
+export class PasskeyWrongAccountError extends Error {
+  constructor(
+    /** Masked address of the account the picked passkey opens, when known. */
+    readonly maskedEmail: string | null = null
+  ) {
+    super("That passkey opens a different account");
+    this.name = "PasskeyWrongAccountError";
+  }
 }

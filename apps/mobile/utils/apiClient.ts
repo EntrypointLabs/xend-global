@@ -4,6 +4,8 @@ import { handleError, ErrorCode } from "@/utils/errors";
 import { AuthStorage } from "@/utils/storage/authStorage";
 import {
   SEED_DEMO,
+  seedAccount,
+  seedProvisioningStep,
   seedRecoveryKeys,
   seedPendingChange,
   seedBalances,
@@ -20,6 +22,18 @@ import {
  */
 export const ExchangeRequestSchema = z.object({
   privyIdToken: z.string().min(1),
+  /**
+   * Carried on the exchange that follows sign-up. It is what binds the passkey
+   * just created to the address proved a moment earlier; without it the
+   * backend would have nothing to attach the new Privy user to.
+   */
+  signupToken: z.string().min(1).optional(),
+  /**
+   * Present when the sign-in follows a proved inbox: the exchange must land
+   * on this user or refuse, so a passkey for another account cannot quietly
+   * replace the session the code opened.
+   */
+  expectUserId: z.string().min(1).optional(),
 });
 export type ExchangeRequest = z.infer<typeof ExchangeRequestSchema>;
 
@@ -44,6 +58,41 @@ export const MirrorPasskeyCredentialRequestSchema = z.object({
 export type MirrorPasskeyCredentialRequest = z.infer<
   typeof MirrorPasskeyCredentialRequestSchema
 >;
+
+/** Mirrors the sign-up email responses in apps/backend/src/auth/dtos.ts. */
+export const SignupEmailChallengeResponseSchema = z.object({
+  sent: z.literal(true),
+  expiresAt: z.string(),
+});
+
+/**
+ * What proving an inbox earned. Mirrors `EmailProofOutcome` in
+ * apps/backend/src/auth/signup.service.ts.
+ *
+ * `signup` is an address nobody held: the token binds the passkey created
+ * next. `entry` is an address already on an account: a session that can look
+ * and start a recovery, and nothing else. Which one only becomes known after
+ * the code is right, so a stranger typing an address learns nothing.
+ */
+export const EmailProofResponseSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("signup"),
+    signupToken: z.string().min(1),
+    expiresAt: z.string(),
+  }),
+  z.object({
+    kind: z.literal("entry"),
+    entryToken: z.string().min(1),
+    expiresAt: z.string(),
+    user: z.object({
+      id: z.string(),
+      email: z.string().email(),
+      walletAddress: z.string(),
+    }),
+  }),
+]);
+export type EmailProofResponse = z.infer<typeof EmailProofResponseSchema>;
+export type EntryProof = Extract<EmailProofResponse, { kind: "entry" }>;
 
 export const MirrorPasskeyCredentialResponseSchema = z.object({
   mirrored: z.boolean(),
@@ -91,6 +140,8 @@ export const AccountResponseSchema = z.object({
    * older backend that does not report it is absent rather than "none".
    */
   pendingApprovalSigner: z.string().nullable().optional(),
+  /** Set while a passkey replacement is waiting out the time lock. */
+  pendingPrimarySigner: z.string().nullable().optional(),
   /**
    * The hardware key this Account enrolled with. Compared against the one on
    * this phone: a phone holding a different account's key is as unable to
@@ -181,6 +232,12 @@ export const RecoveryKeySchema = z.object({
   createdAt: z.string(),
   status: z.enum(["pending_add", "active", "pending_remove"]),
   removable: z.boolean(),
+  /**
+   * The key anchored on the address on file. Changing that address means
+   * rotating this key, which is why it is the only one offered a Change
+   * action and never a Delete.
+   */
+  isContactAddress: z.boolean().default(false),
 });
 export type RecoveryKey = z.infer<typeof RecoveryKeySchema>;
 
@@ -237,12 +294,38 @@ export const DeviceRotationStepSchema = z.object({
 });
 export type DeviceRotationStep = z.infer<typeof DeviceRotationStepSchema>;
 
+export const PrimaryRotationStepSchema = z.object({
+  done: z.boolean(),
+  step: z
+    .enum([
+      "propose",
+      "approve-approval",
+      "approve-recovery",
+      "waiting",
+      "execute",
+    ])
+    .optional(),
+  unsignedTxBase64: z.string().optional(),
+  changeIndex: z.string().optional(),
+  needsApprovalSignature: z.boolean().optional(),
+  executableAt: z.string().optional(),
+  newPrimarySigner: z.string().optional(),
+});
+export type PrimaryRotationStep = z.infer<typeof PrimaryRotationStepSchema>;
+
 export const AddRecoveryKeyResponseSchema = z.object({
   key: RecoveryKeySchema,
   plan: RecoveryChangeStepSchema,
 });
 
 export const RemoveRecoveryKeyResponseSchema = z.object({
+  plan: RecoveryChangeStepSchema,
+});
+
+/** A contact address change: the key coming in, the one it retires, and the first step. */
+export const RotateContactEmailResponseSchema = z.object({
+  key: RecoveryKeySchema,
+  retiring: RecoveryKeySchema,
   plan: RecoveryChangeStepSchema,
 });
 
@@ -326,9 +409,50 @@ export type PrepareTransferResponse = z.infer<
   typeof PrepareTransferResponseSchema
 >;
 
+/**
+ * A Payment waiting on this phone.
+ *
+ * Checkout can only reach the primary signer, so a Payment above the band that
+ * signer carries alone is left for the Consumer to finish here, where the
+ * approval signer lives.
+ */
+export const AwaitingPaymentSchema = z.object({
+  reference: z.string(),
+  merchantDisplayName: z.string(),
+  /** ISO 4217, whatever the Merchant priced in. */
+  displayCurrency: z.string(),
+  displayAmountMinor: z.string(),
+  /** When Checkout handed this over, which is when the Consumer was asked. */
+  deferredAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+});
+export type AwaitingPayment = z.infer<typeof AwaitingPaymentSchema>;
+
+export const AwaitingPaymentsResponseSchema = z.object({
+  payments: z.array(AwaitingPaymentSchema),
+});
+
+export const PreparePaymentResponseSchema = z.object({
+  unsignedTxBase64: z.string(),
+  needsApprovalSignature: z.boolean(),
+});
+export type PreparePaymentResponse = z.infer<
+  typeof PreparePaymentResponseSchema
+>;
+
+export const SubmitPaymentResponseSchema = z.object({
+  signature: z.string(),
+});
+
 export const SubmitTransferRequestSchema = z.object({
   intentId: z.string(),
   signedTxBase64: z.string(),
+  /**
+   * The device key's signature over the prepared message, proving the Consumer
+   * was here. Required by the backend for a send that settles on one signature;
+   * omitted above the limit, where the approval signature already is one.
+   */
+  presenceProof: z.string().optional(),
 });
 export type SubmitTransferRequest = z.infer<typeof SubmitTransferRequestSchema>;
 
@@ -449,6 +573,18 @@ class ApiError extends Error {
 /** The HTTP status behind a rejected request, or null if it never reached one. */
 export function apiErrorStatus(err: unknown): number | null {
   return err instanceof ApiError ? err.status : null;
+}
+
+/** The backend's typed refusal, when the response body carried one. */
+export function apiErrorCode(err: unknown): string | null {
+  const code = err instanceof ApiError ? err.data?.code : null;
+  return typeof code === "string" ? code : null;
+}
+
+/** The masked address a mismatched passkey actually opens, when named. */
+export function apiErrorMaskedEmail(err: unknown): string | null {
+  const masked = err instanceof ApiError ? err.data?.maskedEmail : null;
+  return typeof masked === "string" ? masked : null;
 }
 
 class BackendClient {
@@ -605,14 +741,49 @@ class BackendClient {
   }
 
   /**
-   * POST /auth/email — records the contact address given after sign-up.
-   *
-   * Contact only. A passkey is what signs the Consumer in, so this address
-   * unlocks nothing and losing it costs them notifications rather than the
-   * account. 409 means another account already claims it.
+   * POST /auth/signup/email/challenge: the first step of sign-up, before any
+   * session exists. Answers the same way whether or not the address already
+   * has an account, so a code not arriving is the only signal there is.
    */
+  async requestSignupEmailCode(email: string): Promise<void> {
+    const raw = await this.request<unknown>("/auth/signup/email/challenge", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+    SignupEmailChallengeResponseSchema.parse(raw);
+  }
+
   /**
-   * POST /auth/email/challenge — sends a code to an address being claimed.
+   * POST /auth/signup/email: proves the address and returns what it earned,
+   * a sign-up token for a new account or an entry session for an existing
+   * one. Both are single-purpose and short-lived.
+   */
+  async verifySignupEmail(
+    email: string,
+    code: string
+  ): Promise<EmailProofResponse> {
+    const raw = await this.request<unknown>("/auth/signup/email", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
+    });
+    return EmailProofResponseSchema.parse(raw);
+  }
+
+  /**
+   * POST /auth/signout: ends the session behind the stored token. Only an
+   * entry session has anything to revoke server-side; a JWT is simply
+   * forgotten, so this is called before the token is dropped.
+   */
+  async signOut(): Promise<void> {
+    await this.request<unknown>("/auth/signout", {
+      method: "POST",
+      auth: true,
+    });
+  }
+
+  /**
+   * POST /auth/email/challenge: sends a code to an address a signed-in
+   * Consumer with no address on file is claiming.
    *
    * Refused with 409 when the address is already on another Account, before
    * anything is mailed.
@@ -626,11 +797,11 @@ class BackendClient {
   }
 
   /**
-   * POST /auth/email — records the address, with the code that proves it.
+   * POST /auth/email: records the address, with the code that proves it.
    *
-   * The code is required: the recovery signer is anchored on this address at
-   * Account creation, so an unproved one leaves the only route back pointing
-   * at an inbox nobody reads.
+   * The code is required: the recovery signer is anchored on this address, so
+   * an unproved one leaves the only route back pointing at an inbox nobody
+   * reads.
    */
   async setContactEmail(email: string, code: string): Promise<void> {
     await this.request<unknown>("/auth/email", {
@@ -676,6 +847,7 @@ class BackendClient {
    * so it is mapped to null instead of thrown.
    */
   async getAccount(): Promise<AccountResponse | null> {
+    if (SEED_DEMO) return seedAccount();
     try {
       const raw = await this.request<unknown>("/account/me", {
         method: "GET",
@@ -733,6 +905,7 @@ class BackendClient {
    * to call again after an interruption and there is no cursor to carry.
    */
   async nextProvisioningStep(): Promise<ProvisioningStep> {
+    if (SEED_DEMO) return seedProvisioningStep();
     const raw = await this.request<unknown>("/account/provisioning/next", {
       method: "POST",
       auth: true,
@@ -865,6 +1038,54 @@ class BackendClient {
     return RecoveryChangeSubmitSchema.parse(raw);
   }
 
+  /** POST /account/recovery/primary/challenge: mails a code to the address on file. */
+  async requestPasskeyRotationCode(): Promise<{ expiresAt: string }> {
+    return this.request<{ expiresAt: string }>(
+      "/account/recovery/primary/challenge",
+      { method: "POST", auth: true }
+    );
+  }
+
+  /** POST /account/recovery/primary/verify: turns the code into a grant. */
+  async verifyPasskeyRotationCode(code: string): Promise<{ grantId: string }> {
+    return this.request<{ grantId: string }>(
+      "/account/recovery/primary/verify",
+      { method: "POST", body: JSON.stringify({ code }), auth: true }
+    );
+  }
+
+  /**
+   * POST /account/recovery/primary/start: verifies the fresh passkey's
+   * identity token and stages the swap that puts its wallet in the signer set.
+   */
+  async startPrimaryRotation(body: { grantId: string; privyIdToken: string }) {
+    const raw = await this.request<unknown>("/account/recovery/primary/start", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return PrimaryRotationStepSchema.parse(raw);
+  }
+
+  /** POST /account/recovery/primary/next: the next step, re-read from chain. */
+  async nextPrimaryRotationStep(grantId?: string) {
+    const raw = await this.request<unknown>("/account/recovery/primary/next", {
+      method: "POST",
+      body: JSON.stringify(grantId ? { grantId } : {}),
+      auth: true,
+    });
+    return PrimaryRotationStepSchema.parse(raw);
+  }
+
+  /** POST /account/recovery/primary/submit: hands back a signed step. */
+  async submitPrimaryRotationStep(body: { signedTxBase64: string }) {
+    const raw = await this.request<unknown>(
+      "/account/recovery/primary/submit",
+      { method: "POST", body: JSON.stringify(body), auth: true }
+    );
+    return RecoveryChangeSubmitSchema.parse(raw);
+  }
+
   async requestRecoveryEmailCode(email: string): Promise<void> {
     await this.request<unknown>("/account/recovery/email/challenge", {
       method: "POST",
@@ -900,6 +1121,45 @@ class BackendClient {
       auth: true,
     });
     return AddRecoveryKeyResponseSchema.parse(raw);
+  }
+
+  /**
+   * POST /account/recovery/contact/challenge: sends a code to the address
+   * that will replace the one on file. Refused before mailing when it is
+   * already a recovery key here or on another account.
+   */
+  async requestContactRotationCode(email: string): Promise<void> {
+    await this.request<unknown>("/account/recovery/contact/challenge", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      auth: true,
+    });
+  }
+
+  /** POST /account/recovery/contact/verify: checks the code and returns the grant. */
+  async verifyContactRotation(body: { email: string; code: string }) {
+    return this.request<{ grantId: string }>(
+      "/account/recovery/contact/verify",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        auth: true,
+      }
+    );
+  }
+
+  /**
+   * POST /account/recovery/contact: stages the change that moves the
+   * contact address and starts it. The address on file moves only when the
+   * change executes, a day after both Active Keys approve it.
+   */
+  async rotateContactEmail(body: { email: string; grantId: string }) {
+    const raw = await this.request<unknown>("/account/recovery/contact", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return RotateContactEmailResponseSchema.parse(raw);
   }
 
   /** POST /account/recovery/:id/remove — stages a recovery key's removal. */
@@ -1033,6 +1293,39 @@ class BackendClient {
       auth: true,
     });
     return SubmitTransferResponseSchema.parse(raw);
+  }
+
+  /** GET /payments/pending — Payments a Merchant is waiting on, that only
+   *  this phone can finish. */
+  async listAwaitingPayments(): Promise<AwaitingPayment[]> {
+    if (SEED_DEMO) return [];
+    const raw = await this.request<unknown>("/payments/pending", {
+      auth: true,
+    });
+    return AwaitingPaymentsResponseSchema.parse(raw).payments;
+  }
+
+  /** POST /payments/pending/:reference/prepare — builds the Spend and
+   *  authorizes the Payment. The transaction comes back needing both signers. */
+  async preparePayment(reference: string): Promise<PreparePaymentResponse> {
+    const raw = await this.request<unknown>(
+      `/payments/pending/${encodeURIComponent(reference)}/prepare`,
+      { method: "POST", auth: true }
+    );
+    return PreparePaymentResponseSchema.parse(raw);
+  }
+
+  /** POST /payments/pending/:reference/submit — the fee payer completes and
+   *  broadcasts what this phone signed. */
+  async submitPayment(
+    reference: string,
+    signedTxBase64: string
+  ): Promise<string> {
+    const raw = await this.request<unknown>(
+      `/payments/pending/${encodeURIComponent(reference)}/submit`,
+      { method: "POST", body: JSON.stringify({ signedTxBase64 }), auth: true }
+    );
+    return SubmitPaymentResponseSchema.parse(raw).signature;
   }
 
   /** GET /transfers — cursor-paginated list of the authenticated user's

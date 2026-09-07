@@ -15,7 +15,7 @@ export const ACCOUNT_SETUP_STATUS_KEY = ["account", "setup-status"] as const;
  * from chain state, so it survives a reinstall and cannot go stale.
  */
 export function useAccountSetupStatus() {
-  const { user } = useAuth();
+  const { user, sessionTier } = useAuth();
 
   return useQuery({
     // Keyed by Consumer: two accounts on one device must not read each other's
@@ -27,7 +27,9 @@ export function useAccountSetupStatus() {
       const step = await apiClient.nextProvisioningStep();
       return { finished: step.done };
     },
-    enabled: !!user,
+    // Finishing an Account needs the passkey, so an entry session is never
+    // offered it: the step it would ask for is one the server refuses.
+    enabled: !!user && sessionTier === "full",
     staleTime: 5 * 60 * 1000,
     // Asked again on every mount, and retried harder than the default. A
     // single failed read used to mean the offer to finish an Account never

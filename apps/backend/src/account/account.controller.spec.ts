@@ -23,6 +23,7 @@ import type {
 import type { RecoveryChangeService } from './recovery-change.service';
 import type { RecoveryChallengeService } from '../recovery/recovery-challenge.service';
 import type { DeviceRotationService } from './device-rotation.service';
+import type { PrimaryRotationService } from './primary-rotation.service';
 
 const USDC = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const SEED = 7n;
@@ -75,6 +76,7 @@ function makeController(
     {} as unknown as RecoveryChangeService,
     {} as unknown as RecoveryChallengeService,
     {} as unknown as DeviceRotationService,
+    {} as unknown as PrimaryRotationService,
   );
   return { controller, asked };
 }
@@ -164,6 +166,7 @@ describe('AccountController.enrol', () => {
       {} as unknown as RecoveryChangeService,
       {} as unknown as RecoveryChallengeService,
       {} as unknown as DeviceRotationService,
+      {} as unknown as PrimaryRotationService,
     );
     return { controller, createAccount, verify };
   }
@@ -263,6 +266,29 @@ describe('AccountController recovery key changes', () => {
       Object.assign(target, patch);
       return Promise.resolve(target);
     }
+
+    findContactEmail(): Promise<string | null> {
+      return Promise.resolve('a@example.com');
+    }
+
+    updateContactEmail(): Promise<void> {
+      return Promise.resolve();
+    }
+
+    isContactEmailTaken(): Promise<boolean> {
+      return Promise.resolve(false);
+    }
+    isEmailClaimStaged(): Promise<boolean> {
+      return Promise.resolve(false);
+    }
+
+    findReleaseFreeze(): Promise<Date | null> {
+      return Promise.resolve(null);
+    }
+
+    setReleaseFreeze(): Promise<void> {
+      return Promise.resolve();
+    }
   }
 
   function recoveryController() {
@@ -309,6 +335,7 @@ describe('AccountController recovery key changes', () => {
       recoveryChanges,
       {} as unknown as RecoveryChallengeService,
       {} as unknown as DeviceRotationService,
+      {} as unknown as PrimaryRotationService,
     );
     return { controller, recovery, store, claimed };
   }

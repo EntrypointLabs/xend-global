@@ -7,12 +7,13 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
-import { Request } from 'express';
+import { ConsumerAuthGuard } from './consumer-auth.guard';
+import type { Request } from 'express';
 import {
   AuthService,
   CredentialConflictError,
   EmailInUseError,
+  EmailRotationRequiredError,
 } from './auth.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { RecoveryChallengeService } from '../recovery/recovery-challenge.service';
@@ -28,14 +29,23 @@ import {
   MirrorPasskeyCredentialSchema,
   RequestEmailCodeSchema,
   SetEmailSchema,
+  SignupEmailChallengeSchema,
+  SignupEmailSchema,
   type ExchangeRequest,
   type MirrorPasskeyCredentialRequest,
   type RequestEmailCodeRequest,
   type SetEmailRequest,
+  type SignupEmailChallengeRequest,
+  type SignupEmailRequest,
 } from './dtos';
+import { SignupService } from './signup.service';
+import { TooManySignupAttemptsError } from './signup.errors';
+import { AllowEntry } from './allow-entry.decorator';
+import { EntrySessionService } from './entry-session.service';
+import type { Principal } from './principal';
 
 interface AuthenticatedRequest extends Request {
-  user: { userId: string; walletAddress: string };
+  user: Principal;
 }
 
 @Controller()
@@ -43,13 +53,74 @@ export class AuthController {
   constructor(
     private auth: AuthService,
     private challenges: RecoveryChallengeService,
+    private signup: SignupService,
+    private entrySessions: EntrySessionService,
   ) {}
 
   @Post('auth/exchange')
   exchange(
     @Body(new ZodValidationPipe(ExchangeRequestSchema)) dto: ExchangeRequest,
   ) {
-    return this.auth.exchange(dto.privyIdToken);
+    return this.auth.exchange(
+      dto.privyIdToken,
+      dto.signupToken,
+      dto.expectUserId,
+    );
+  }
+
+  /**
+   * The first step of sign-up: a code to the address the Consumer will be
+   * reached at. No session yet, so the answer never says whether the address
+   * is already on an Account.
+   */
+  @Post('auth/signup/email/challenge')
+  async requestSignupCode(
+    @Req() req: Request,
+    @Body(new ZodValidationPipe(SignupEmailChallengeSchema))
+    dto: SignupEmailChallengeRequest,
+  ) {
+    try {
+      return await this.signup.startEmailSignup(dto.email, clientIp(req));
+    } catch (err) {
+      throw toEmailHttp(err);
+    }
+  }
+
+  /**
+   * Proves the address and hands back what it earns: a sign-up token for an
+   * address nobody holds, or an entry session for one already on an Account.
+   */
+  @Post('auth/signup/email')
+  async verifySignupCode(
+    @Req() req: Request,
+    @Body(new ZodValidationPipe(SignupEmailSchema)) dto: SignupEmailRequest,
+  ) {
+    try {
+      return await this.signup.verifyEmailSignup(
+        dto.email,
+        dto.code,
+        clientIp(req),
+      );
+    } catch (err) {
+      throw toEmailHttp(err);
+    }
+  }
+
+  /**
+   * Ends the session behind the presented credential.
+   *
+   * Only an entry session has anything to revoke: a JWT carries its own expiry
+   * and the app forgets it. Reachable from an entry session because signing
+   * out is the one thing every session must be able to do.
+   */
+  @Post('auth/signout')
+  @UseGuards(ConsumerAuthGuard)
+  @AllowEntry()
+  async signOut(@Req() req: AuthenticatedRequest) {
+    if (req.user.tier === 'entry' && req.user.entrySessionId) {
+      await this.entrySessions.revoke(req.user.entrySessionId);
+    }
+    return { signedOut: true as const };
   }
 
   /**
@@ -60,7 +131,7 @@ export class AuthController {
    * somebody else's inbox.
    */
   @Post('auth/email/challenge')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(ConsumerAuthGuard)
   async requestEmailCode(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(RequestEmailCodeSchema))
@@ -82,7 +153,7 @@ export class AuthController {
 
   /** Records the contact address, against the grant that proved it. */
   @Post('auth/email')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(ConsumerAuthGuard)
   async setEmail(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(SetEmailSchema)) dto: SetEmailRequest,
@@ -118,7 +189,7 @@ export class AuthController {
    * Consumer. Cross-account credential claims map to 409 CREDENTIAL_CONFLICT.
    */
   @Post('auth/passkey-credentials')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(ConsumerAuthGuard)
   async mirrorPasskeyCredential(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(MirrorPasskeyCredentialSchema))
@@ -146,7 +217,10 @@ export class AuthController {
  * leave the screen with nothing useful to say.
  */
 function toEmailHttp(err: unknown): HttpException {
-  if (err instanceof EmailInUseError) {
+  if (
+    err instanceof EmailInUseError ||
+    err instanceof EmailRotationRequiredError
+  ) {
     return new HttpException(
       { code: err.code, message: err.message },
       HttpStatus.CONFLICT,
@@ -161,7 +235,10 @@ function toEmailHttp(err: unknown): HttpException {
       HttpStatus.UNAUTHORIZED,
     );
   }
-  if (err instanceof TooManyRecoveryCodesError) {
+  if (
+    err instanceof TooManyRecoveryCodesError ||
+    err instanceof TooManySignupAttemptsError
+  ) {
     return new HttpException(
       { code: err.code, message: err.message },
       HttpStatus.TOO_MANY_REQUESTS,
@@ -182,4 +259,13 @@ function toEmailHttp(err: unknown): HttpException {
         { code: 'EMAIL_UPDATE_FAILED', message: 'could not save that address' },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
+}
+
+/**
+ * Express fills `req.ip` from the socket, or from X-Forwarded-For when the
+ * app trusts its proxy. Behind one that is not trusted every caller shares
+ * the proxy's address and the per-IP cap becomes a global one.
+ */
+function clientIp(req: Request): string {
+  return req.ip ?? req.socket?.remoteAddress ?? 'unknown';
 }

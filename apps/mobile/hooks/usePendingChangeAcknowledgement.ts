@@ -1,9 +1,27 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 
 const ACKNOWLEDGED_KEY = ["pending-change", "acknowledged"] as const;
 const REVIEW_KEY = ["pending-change", "review-requested"] as const;
 const ACKNOWLEDGED_STORE = "pending-change:acknowledged";
+
+/**
+ * The same request as `requestReview` below, from outside a component: a
+ * tapped notification. Takes the client rather than being a hook so the
+ * routing effect can call it without a fresh function in its dependencies.
+ */
+export async function requestPendingChangeReview(
+  queryClient: QueryClient
+): Promise<void> {
+  await AsyncStorage.removeItem(ACKNOWLEDGED_STORE);
+  queryClient.setQueryData(ACKNOWLEDGED_KEY, null);
+  queryClient.setQueryData(REVIEW_KEY, true);
+}
 
 /**
  * Whether the Consumer has already answered the alarm for a given change.

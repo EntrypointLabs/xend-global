@@ -175,6 +175,15 @@ export default function KeysAndRecoveryScreen() {
                   key={entry.id}
                   entry={entry}
                   index={index}
+                  replaced={
+                    entry.status === "pending_remove" &&
+                    entry.isContactAddress &&
+                    (keys ?? []).some(
+                      (other) =>
+                        other.channel === "email" &&
+                        other.status === "pending_add"
+                    )
+                  }
                   onMenu={(anchor) => setMenu({ anchor, key: entry })}
                 />
               ))}
@@ -216,6 +225,15 @@ export default function KeysAndRecoveryScreen() {
         onExplorer={() => {
           if (menu) Linking.openURL(explorerAddressUrl(menu.key.address));
         }}
+        onChange={
+          menu && menu.key.isContactAddress && menu.key.status === "active"
+            ? () =>
+                router.push({
+                  pathname: "/settings/add-recovery-email",
+                  params: { intent: "change", current: menu.key.channelValue },
+                } as never)
+            : undefined
+        }
         onDelete={
           menu && (menu.key.removable || menu.key.status === "pending_add")
             ? () => onRemove(menu.key)
@@ -288,10 +306,13 @@ function ActiveKeyCard({
 function RecoveryKeyRow({
   entry,
   index,
+  replaced,
   onMenu,
 }: {
   entry: RecoveryKey;
   index: number;
+  /** On its way out because the contact address is changing, not being deleted. */
+  replaced: boolean;
   onMenu: (anchor: PopoverAnchor) => void;
 }) {
   const trigger = useRef<View>(null);
@@ -313,6 +334,13 @@ function RecoveryKeyRow({
         <Typography weight="600" className="text-[15px] text-black">
           {entry.channel === "email" ? "Email" : "Wallet"}
         </Typography>
+        {entry.isContactAddress && (
+          <View className="rounded-full bg-black/5 px-2 py-0.5">
+            <Typography weight="500" className="text-xs text-black/50">
+              Contact
+            </Typography>
+          </View>
+        )}
 
         <Typography
           weight="600"
@@ -338,7 +366,9 @@ function RecoveryKeyRow({
       {/* Its own line, under the whole row rather than squeezed beside the
           menu, so the wait reads as being about the key and not about the
           address next to it. */}
-      {entry.status !== "active" && <PendingNote status={entry.status} />}
+      {entry.status !== "active" && (
+        <PendingNote status={entry.status} replaced={replaced} />
+      )}
     </View>
   );
 }
@@ -348,16 +378,26 @@ function RecoveryKeyRow({
  *
  * Both in-flight states get one. A key that is only staged protects nothing,
  * and a row that looked settled would tell the Consumer they are covered a day
- * before they are.
+ * before they are. The contact key on its way out during an address change
+ * says so, because "being removed" on the address they use would read as an
+ * attack.
  */
-function PendingNote({ status }: { status: RecoveryKey["status"] }) {
+function PendingNote({
+  status,
+  replaced,
+}: {
+  status: RecoveryKey["status"];
+  replaced: boolean;
+}) {
   return (
     <View className="mt-1.5 flex-row items-center justify-end gap-1 pr-7">
       <Ionicons name="time-outline" size={12} color="#00000066" />
       <Typography weight="500" className="text-xs text-black/50">
         {status === "pending_add"
           ? "Waiting to become active"
-          : "Being removed"}
+          : replaced
+            ? "Being replaced"
+            : "Being removed"}
       </Typography>
     </View>
   );
