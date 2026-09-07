@@ -1,13 +1,33 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import type { ExecutionContext } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import type { KeyIssuanceService } from '../merchant/key-issuance.service';
 import { TestDashboardController } from './test-dashboard.controller';
-import { TestDashboardGuard } from './test-dashboard.guard';
+import {
+  TestDashboardGuard,
+  TEST_DASHBOARD_SECRET_HEADER,
+} from './test-dashboard.guard';
 import type { TestDashboardService } from './test-dashboard.service';
 
-function makeConfig(nodeEnv: string | undefined): ConfigService {
-  return { get: () => nodeEnv } as unknown as ConfigService;
+const SECRET = 'local-dashboard-secret';
+
+function makeConfig(
+  nodeEnv: string | undefined,
+  secret: string | undefined = SECRET,
+): ConfigService {
+  return {
+    get: (key: string) => (key === 'NODE_ENV' ? nodeEnv : secret),
+  } as unknown as ConfigService;
+}
+
+function makeContext(headerValue?: string): ExecutionContext {
+  const headers = headerValue
+    ? { [TEST_DASHBOARD_SECRET_HEADER]: headerValue }
+    : {};
+  return {
+    switchToHttp: () => ({ getRequest: () => ({ headers }) }),
+  } as unknown as ExecutionContext;
 }
 
 function makeRes(): {
@@ -26,19 +46,40 @@ function makeRes(): {
 }
 
 describe('TestDashboardGuard', () => {
-  it('404s outside development (production)', () => {
+  it('404s outside development (production), even with the secret', () => {
     const guard = new TestDashboardGuard(makeConfig('production'));
-    expect(() => guard.canActivate()).toThrow(NotFoundException);
+    expect(() => guard.canActivate(makeContext(SECRET))).toThrow(
+      NotFoundException,
+    );
   });
 
   it('404s outside development (test)', () => {
     const guard = new TestDashboardGuard(makeConfig('test'));
-    expect(() => guard.canActivate()).toThrow(NotFoundException);
+    expect(() => guard.canActivate(makeContext(SECRET))).toThrow(
+      NotFoundException,
+    );
   });
 
-  it('allows development', () => {
+  it('404s in development without the secret header', () => {
     const guard = new TestDashboardGuard(makeConfig('development'));
-    expect(guard.canActivate()).toBe(true);
+    expect(() => guard.canActivate(makeContext())).toThrow(NotFoundException);
+  });
+
+  it('404s in development with the wrong secret', () => {
+    const guard = new TestDashboardGuard(makeConfig('development'));
+    expect(() => guard.canActivate(makeContext('nope'))).toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('404s in development when no secret is configured', () => {
+    const guard = new TestDashboardGuard(makeConfig('development', ''));
+    expect(() => guard.canActivate(makeContext(''))).toThrow(NotFoundException);
+  });
+
+  it('allows development with the matching secret header', () => {
+    const guard = new TestDashboardGuard(makeConfig('development'));
+    expect(guard.canActivate(makeContext(SECRET))).toBe(true);
   });
 });
 

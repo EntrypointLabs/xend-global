@@ -21,19 +21,32 @@ export interface CosignRequest {
 @Injectable()
 export class RelayerClient implements OnModuleInit {
   private readonly logger = new Logger(RelayerClient.name);
-  private baseUrl!: string;
-  private authSecret!: string;
+  private baseUrl = '';
+  private authSecret = '';
 
   constructor(private readonly config: ConfigService) {}
 
   onModuleInit(): void {
-    this.baseUrl = this.config.getOrThrow<string>('RELAYER_URL');
-    this.authSecret = this.config.getOrThrow<string>(
-      'RELAYER_INTERNAL_AUTH_SECRET',
-    );
+    this.baseUrl = this.config.get<string>('RELAYER_URL') ?? '';
+    this.authSecret =
+      this.config.get<string>('RELAYER_INTERNAL_AUTH_SECRET') ?? '';
+    if (!this.baseUrl || !this.authSecret) {
+      this.logger.warn(
+        'relayer.client.unconfigured RELAYER_URL or RELAYER_INTERNAL_AUTH_SECRET is unset; relayer calls will fail',
+      );
+    }
+  }
+
+  get configured(): boolean {
+    return Boolean(this.baseUrl && this.authSecret);
   }
 
   private headers(correlationId: string): Record<string, string> {
+    if (!this.configured) {
+      throw new RelayerCosignError(
+        'relayer is not configured (RELAYER_URL / RELAYER_INTERNAL_AUTH_SECRET)',
+      );
+    }
     return {
       'X-Relayer-Auth': this.authSecret,
       'X-Correlation-Id': correlationId,

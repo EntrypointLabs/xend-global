@@ -18,9 +18,32 @@ import * as Joi from "joi";
           .default("development"),
         PORT: Joi.number().default(8787),
 
-        // Fee-payer key: base58 Ed25519 secret. RELAYER-ONLY. This variable
-        // must never be added to apps/backend env or committed to the repo.
-        RELAYER_FEE_PAYER_SECRET_KEY: Joi.string().required(),
+        // Fee-payer key custody. `env` reads the base58 Ed25519 secret from
+        // RELAYER_FEE_PAYER_SECRET_KEY; `aws-kms` reads a KMS ciphertext of
+        // it and decrypts once at boot. RELAYER-ONLY either way: neither
+        // variable may be added to apps/backend env or committed to the repo.
+        RELAYER_FEE_PAYER_PROVIDER: Joi.string()
+          .valid("env", "aws-kms")
+          .default("env"),
+        RELAYER_FEE_PAYER_SECRET_KEY: Joi.string().when(
+          "RELAYER_FEE_PAYER_PROVIDER",
+          {
+            is: "env",
+            then: Joi.required(),
+            otherwise: Joi.optional().allow(""),
+          },
+        ),
+        RELAYER_FEE_PAYER_SECRET_KEY_CIPHERTEXT: Joi.string().when(
+          "RELAYER_FEE_PAYER_PROVIDER",
+          {
+            is: "aws-kms",
+            then: Joi.required(),
+            otherwise: Joi.optional().allow(""),
+          },
+        ),
+        // KMS region for the aws-kms provider; falls back to the SDK's own
+        // AWS_REGION resolution when blank.
+        AWS_KMS_REGION: Joi.string().optional().allow(""),
 
         // Shared secret authenticating the internal co-sign channel. By
         // design this is also held by the Identity and Capability API caller
