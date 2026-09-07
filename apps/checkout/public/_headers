@@ -3,6 +3,9 @@
 # surface is ever fronted by a different host, apply this identical header set there.
 # Ownership note: ADR 0012 governs the backend API origin's CORS/COOP; this file
 # governs the checkout static host only. The two must not be conflated.
+# frame-ancestors here is the default deny. functions/_middleware.ts relaxes it
+# to a single server-verified merchant origin, and only for a document load that
+# names an intent; every other response keeps what is written below.
 /*
   Cross-Origin-Opener-Policy: same-origin-allow-popups
   Content-Security-Policy: frame-ancestors 'none'

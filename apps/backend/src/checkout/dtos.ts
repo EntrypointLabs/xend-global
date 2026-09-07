@@ -66,6 +66,10 @@ export type SettleBody = z.infer<typeof SettleBodySchema>;
  * Account's own signer is what moves the money, and those are two different
  * things. The terminal outcomes are unchanged; 'authorized' is an internal
  * attempt state and never appears on this wire.
+ *
+ * sessionToken appears only for a request that carried its Session on the
+ * X-Xend-Checkout-Session header, which is how a framed surface persists a
+ * rotation it cannot read off a cookie. A cookie-borne request never sees it.
  */
 export const AuthorizeResponseSchema = z.union([
   z.object({
@@ -73,11 +77,13 @@ export const AuthorizeResponseSchema = z.union([
     unsignedTxBase64: z.string(),
     /** Which of the Consumer's keys the popup must sign with. */
     signerAddress: z.string(),
+    sessionToken: z.string().optional(),
   }),
   z.object({
     status: z.enum(['succeeded', 'failed']),
     redirectUrl: z.string().optional(),
     cancelUrl: z.string().optional(),
+    sessionToken: z.string().optional(),
   }),
 ]);
 export type AuthorizeResponse = z.infer<typeof AuthorizeResponseSchema>;

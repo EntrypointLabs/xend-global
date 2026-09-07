@@ -19,7 +19,8 @@ import type {
 //   - type values are NAMESPACED: 'xend.checkout.result' |
 //     'xend.checkout.cancel' (never bare 'result'/'cancel'); cancel
 //     messages ALSO carry status 'canceled', so a status-driven parser
-//     resolves them; there is NO ready message in v1 (ADR 0016)
+//     resolves them; 'xend.checkout.ready' is the mount handshake and
+//     carries neither a reference nor a status (ADR 0016)
 //   - fields: reference (intent reference), nonce (must match the nonce
 //     this SDK generated at open), status
 //   - statuses: 'succeeded' | 'failed' | 'canceled' | 'expired'
@@ -38,6 +39,28 @@ const STATUSES = [
   "canceled",
   "expired",
 ] as const satisfies readonly CheckoutStatus[];
+const READY_TYPE = "xend.checkout.ready" satisfies CheckoutMessageTypeValue;
+
+/**
+ * Whether an already-origin-validated payload is the surface's mount
+ * handshake for the ceremony this SDK started. It carries no reference,
+ * because the handshake can precede one, so the nonce is the whole
+ * correlation. Never a result: it reports that the surface loaded, nothing
+ * about a payment.
+ */
+export function isCheckoutReady(
+  data: unknown,
+  expected: { nonce: string },
+): boolean {
+  if (typeof data !== "object" || data === null) return false;
+  const env = data as Record<string, unknown>;
+  return (
+    env["xend"] === "checkout" &&
+    env["v"] === 1 &&
+    env["type"] === READY_TYPE &&
+    env["nonce"] === expected.nonce
+  );
+}
 
 /**
  * Map an already-origin-validated message payload to a CheckoutResult, or

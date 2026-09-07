@@ -1,4 +1,8 @@
-import type { CheckoutEnvelope, CheckoutStatus } from './types';
+import type {
+  CheckoutEnvelope,
+  CheckoutReadyEnvelope,
+  CheckoutStatus,
+} from './types';
 
 /** Bump only for a breaking envelope change; consumers ignore unknown versions. */
 export const CHECKOUT_PROTOCOL_VERSION = 1 as const;
@@ -7,9 +11,20 @@ export const CHECKOUT_PROTOCOL_VERSION = 1 as const;
 export const CHECKOUT_ORIGIN = 'https://pay.xend.global' as const;
 
 export const CheckoutMessageType = {
+  Ready: 'xend.checkout.ready',
   Result: 'xend.checkout.result',
   Cancel: 'xend.checkout.cancel',
 } as const;
+
+/** Mount handshake. No reference and no status: neither exists yet. */
+export function buildReady(nonce: string): CheckoutReadyEnvelope {
+  return {
+    xend: 'checkout',
+    v: CHECKOUT_PROTOCOL_VERSION,
+    nonce,
+    type: CheckoutMessageType.Ready,
+  };
+}
 
 export function buildResult(
   nonce: string,
