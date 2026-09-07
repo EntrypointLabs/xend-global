@@ -64,6 +64,15 @@ type MerchantRow = typeof merchants.$inferSelect;
 const AUTHORIZE_WAIT_MS = 15_000;
 const AUTHORIZE_POLL_MS = 500;
 
+/**
+ * The Session carrier for a surface that cannot use the cookie. A third-party
+ * iframe never receives a host-only SameSite=Lax cookie, so the framed surface
+ * sends the raw token here instead. Sending the header at all (even empty, on a
+ * first Payment with no Session yet) is what marks the request as header-borne,
+ * so a rotated token is handed back in the response body.
+ */
+const SESSION_HEADER = 'x-xend-checkout-session';
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function readCookie(req: Request, name: string): string | undefined {
@@ -76,6 +85,13 @@ function readCookie(req: Request, name: string): string | undefined {
     if (key === name) return decodeURIComponent(part.slice(eq + 1).trim());
   }
   return undefined;
+}
+
+interface SessionCarrier {
+  /** The raw Session token, from whichever carrier supplied one. */
+  token?: string;
+  /** Whether a rotated or freshly issued token belongs in the response body. */
+  echoToken: boolean;
 }
 
 /**
@@ -130,12 +146,9 @@ export class CheckoutController {
         opener,
       );
 
-      const cookieName = this.config.getOrThrow<string>(
-        'CHECKOUT_SESSION_COOKIE',
-      );
-      const cookieToken = readCookie(req, cookieName);
-      const sessionRecognized = cookieToken
-        ? await this.sessions.peek(cookieToken, intent.merchantId)
+      const carrier = this.readSessionCarrier(req);
+      const sessionRecognized = carrier.token
+        ? await this.sessions.peek(carrier.token, intent.merchantId)
         : false;
 
       const summary: IntentSummary = {
@@ -182,7 +195,16 @@ export class CheckoutController {
       const cookieName = this.config.getOrThrow<string>(
         'CHECKOUT_SESSION_COOKIE',
       );
-      const cookieToken = readCookie(req, cookieName);
+      const carrier = this.readSessionCarrier(req);
+
+      // A rotated or freshly issued Session always lands on the cookie, exactly
+      // as it always has. A header-borne request additionally gets it in the
+      // body, because a framed surface has no cookie to read it back out of.
+      let issuedToken: string | undefined;
+      const carry = (response: AuthorizeResponse): AuthorizeResponse =>
+        carrier.echoToken && issuedToken
+          ? { ...response, sessionToken: issuedToken }
+          : response;
 
       // A test-mode intent settles through the sandbox: the Consumer is still
       // a verified identity, but needs no Account, no capacity and no chain.
@@ -200,11 +222,11 @@ export class CheckoutController {
         );
         consumerId = profile.consumerId;
       } else {
-        if (!cookieToken) {
-          throw new SessionInvalidError('no session cookie or provider token');
+        if (!carrier.token) {
+          throw new SessionInvalidError('no session token or provider token');
         }
         const session = await this.sessions.validate(
-          cookieToken,
+          carrier.token,
           intent.merchantId,
         );
         consumerId = session.consumerId;
@@ -218,10 +240,11 @@ export class CheckoutController {
             merchantId: intent.merchantId,
             issuingIntentId: reference,
           });
+          issuedToken = token;
           this.setSessionCookie(res, cookieName, token);
         }
         await this.confirmation.settleTestMode(reference);
-        return await this.terminalResponse(reference);
+        return carry(await this.terminalResponse(reference));
       }
 
       // Capacity first, and read-only: it decides whether this Payment can
@@ -278,15 +301,17 @@ export class CheckoutController {
           merchantId: intent.merchantId,
           issuingIntentId: reference,
         });
+        issuedToken = token;
         this.setSessionCookie(res, cookieName, token);
       } else {
-        // One-tap repeat path: authorize via the session cookie and rotate the
+        // One-tap repeat path: authorize via the carried Session and rotate the
         // HttpOnly cookie in place.
         const result = await this.auth.authorize({
           intentId: reference,
-          sessionToken: cookieToken,
+          sessionToken: carrier.token,
         });
         if (result.rotatedSessionToken) {
+          issuedToken = result.rotatedSessionToken;
           this.setSessionCookie(res, cookieName, result.rotatedSessionToken);
         }
       }
@@ -295,11 +320,11 @@ export class CheckoutController {
         // The Consumer signs at the popup and hands the bytes to /settle. The
         // pin is what makes that safe to complete with the fee payer.
         await this.settlement.pinSettlement(reference, built);
-        return {
+        return carry({
           status: 'needs_signature',
           unsignedTxBase64: built.unsignedTxBase64,
           signerAddress: built.signerAddress,
-        };
+        });
       }
 
       // TEST ONLY, never production. A live-mode intent in local development
@@ -309,7 +334,7 @@ export class CheckoutController {
       // terminal SUCCEEDED (fake signature, same payment.succeeded event).
       // Hard-gated on NODE_ENV==='development'.
       await this.confirmation.devForceSettleSucceeded(reference);
-      return this.terminalResponse(reference);
+      return carry(await this.terminalResponse(reference));
     } catch (err) {
       this.mapServiceError(err);
     }
@@ -401,6 +426,25 @@ export class CheckoutController {
       .where(eq(merchants.id, merchantId))
       .limit(1);
     return merchant?.displayName ?? 'A merchant';
+  }
+
+  /**
+   * Where this request carries its Session. The cookie wins whenever it is
+   * present, so the popup path is untouched; the header is the fallback for a
+   * surface a third-party cookie never reaches.
+   */
+  private readSessionCarrier(req: Request): SessionCarrier {
+    const cookieName = this.config.getOrThrow<string>(
+      'CHECKOUT_SESSION_COOKIE',
+    );
+    const cookieToken = readCookie(req, cookieName);
+    if (cookieToken) return { token: cookieToken, echoToken: false };
+
+    const raw = req.headers[SESSION_HEADER];
+    const header = Array.isArray(raw) ? raw[0] : raw;
+    if (header === undefined) return { echoToken: false };
+    const token = header.trim();
+    return { token: token || undefined, echoToken: true };
   }
 
   private setSessionCookie(res: Response, name: string, token: string): void {
