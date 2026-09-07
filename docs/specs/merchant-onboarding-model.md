@@ -6,7 +6,7 @@
 
 ## Why one model
 
-Merchant onboarding is specified once here so the manual pilot sequence and the future self-serve portal at merchants.xend.global execute the exact same four stages. The manual pilot runs this model at automation level zero (the `scripts/issue-merchant-key.ts` ops script); the portal runs the same stages as software over this phase's keys, payments, and webhook-delivery surfaces. There is no separate portal specification to drift from.
+Merchant onboarding is specified once here so the manual pilot sequence and the future self-serve portal at merchants.xend.global execute the exact same four stages. The manual pilot runs this model at automation level zero (the `apps/backend/scripts/issue-merchant-key.ts` ops script); the portal runs the same stages as software over this phase's keys, payments, and webhook-delivery surfaces. There is no separate portal specification to drift from.
 
 A guiding rule threads all four stages: KYB gates real money, never developer experience. Test-mode keys are instant and ungated; only live-mode keys wait on verification. The Merchant's integration code never changes between test and live. Only the key does.
 
@@ -47,5 +47,5 @@ A naira Merchant prices in naira. Checkout pins an executable naira to USDC quot
 
 ## Automation levels
 
-- **Level zero (pilot):** `scripts/issue-merchant-key.ts` is this model run by hand. It creates the profile, stamps KYB with `--mark-kyb-verified`, and issues keys through the shared live-key gate. No portal UI ships in v1.
+- **Level zero (pilot):** `apps/backend/scripts/issue-merchant-key.ts` is this model run by hand. It creates the profile, stamps KYB with `--mark-kyb-verified`, and issues keys through the shared live-key gate. No portal UI ships in v1.
 - **Level one (fast-follow):** merchants.xend.global executes the same four stages as software (profile and keys, Payments and Payouts views, refund approval, metrics) over the surfaces this phase builds. It is a named fast-follow, not a pilot dependency.

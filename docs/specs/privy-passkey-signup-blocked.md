@@ -1,3 +1,5 @@
+**Status (2026-09-07): Closed.** Not reproduced since 2026-08-27; passkey sign-up works on device and the sign-up order changed under ADR 0027. O10 closed on 2026-08-30 (`b6dc884`). Kept as the record of the symptom in case it returns.
+
 # Passkey sign-up is blocked: Privy answers `register/init` with 200 and no body
 
 **Not reproduced on 2026-08-27 retest.** Passkey **sign-in** works end to end

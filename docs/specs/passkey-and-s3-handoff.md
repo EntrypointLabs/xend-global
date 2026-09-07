@@ -1,3 +1,5 @@
+**Status (2026-09-07):** handoff, partly historical. The "What changed" table and "What is left" are updated below; the flow descriptions under "The flows as they now run" predate ADR 0027 (sign-up now leads with the address) and are kept for the reasoning, not the order.
+
 # Handoff: sign-up, S3 and recovery
 
 Written 2026-08-25, rewritten 2026-08-29 after the recovery work landed. Everything described here is on `pay/p6-recovery`.
@@ -8,16 +10,17 @@ Read [`account-security-model-decisions.md`](./account-security-model-decisions.
 
 The last version of this opened by saying an email inbox still unlocked S1, and that closing it was the whole job. That is done, and so is most of what depended on it.
 
-|                                           |                                                                     |
-| ----------------------------------------- | ------------------------------------------------------------------- |
-| Passkey sign-up                           | Works. XEN-29 did not reproduce, and one was created by hand        |
-| Sign-up end to end                        | Proven on a Seeker: passkey, verified email, Account, both policies |
-| Contact address, proved before it is used | Done. No verified address, no Account                               |
-| S3 minted, sealed, anchored               | Done, and the anchor moves when the contact address moves           |
-| S3 released against an emailed code       | Done. `vault.open()` finally has a caller                           |
-| Second email recovery key                 | Done. 2 of 3 on the test Account, waiting out its lock              |
-| Lost-phone restore onto a new device      | Built and driven end to end, minus the 24 hour wait                 |
-| Email login removed                       | **No.** Still the migration route. See "What is left"               |
+|                                           |                                                                                                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Passkey sign-up                           | Works. XEN-29 did not reproduce, and one was created by hand                                                                         |
+| Sign-up end to end                        | Proven on a Seeker: passkey, verified email, Account, both policies                                                                  |
+| Contact address, proved before it is used | Done. No verified address, no Account                                                                                                |
+| S3 minted, sealed, anchored               | Done, and the anchor moves when the contact address moves                                                                            |
+| S3 released against an emailed code       | Done. `vault.open()` finally has a caller                                                                                            |
+| Second email recovery key                 | Done. 2 of 3 on the test Account, waiting out its lock                                                                               |
+| Lost-phone restore onto a new device      | Built and driven end to end, minus the 24 hour wait                                                                                  |
+| Email login removed                       | **Yes**, 2026-08-30. `(auth)/email-login.tsx` and `restore-account.tsx` deleted in `b6dc884`; entry sessions in `d8dfb08` (ADR 0028) |
+| Lost passkey                              | Built. `settings/replace-passkey.tsx` drives `PrimaryRotationService` (ADR 0031)                                                     |
 
 ## The flows as they now run
 
@@ -69,11 +72,13 @@ The phone holding S2 is gone and its key cannot be copied, so a new one is minte
 
 ## What is left
 
-**Email login is still the migration route, and O10 stays open until it is gone.** Passkey sign-up works, so the blocker is no longer technical. What remains is choosing when to disable the method in the Privy dashboard, and O7 is still unanswered, so we do not know whether disabling it breaks Consumers who already have an address linked. `(auth)/email-login.tsx` and the "Recover existing wallet" button come out with it, and the lost-phone flow is what replaces them.
+**Email login is gone and O10 is closed** (2026-08-30). `(auth)/email-login.tsx`, `restore-account.tsx` and the "Recover existing wallet" button were removed in `b6dc884`. What an emailed code opens on an existing Account is now an entry session: Xend's own `xentry_` token, one hour, no Privy session behind it, refused by every route that spends, changes the signer set or enrols a credential (`apps/backend/src/auth/consumer-auth.guard.ts`, `entry-route-inventory.spec.ts`; ADR 0028). Sign-up leads with the address (`app/(auth)/login.tsx` pushes to `add-email.tsx`) per ADR 0027, so the "New here? Create an account" workaround is gone too.
 
 **Passkeys are indistinguishable in the platform picker.** Privy sets the WebAuthn user name to the app name, so every credential shows as "Xend Mobile" and a Consumer with two accounts cannot tell them apart. `signupWithPasskey` takes only `relyingParty`, so this is Privy's to fix; worth raising alongside XEN-29. `exclude_credentials` is empty at sign-up too, which is why the platform will mint a second credential for an identity that already has one.
 
-**The iPhone to Android case is knowingly unsupported.** The passkey does not cross, so S1 goes with it, S2 was already gone, and S3 alone is one vote against a threshold of two. A second recovery key covers it, and adding one now works, but nothing requires a Consumer to have one.
+**A lost passkey has an exit now.** `settings/replace-passkey.tsx` mints a fresh passkey and `PrimaryRotationService` (`apps/backend/src/account/primary-rotation.service.ts`) swaps it into the signer set and both policies, approved by the Device Key on the phone and S3 released against an emailed code, executable after the 24 hour lock (ADR 0031). It needs the phone, so it covers a passkey deleted from the password manager, not a move between ecosystems.
+
+**The iPhone to Android case is still knowingly unsupported.** The passkey does not cross, so S1 goes with it, S2 was already gone, and S3 alone is one vote against a threshold of two. A second recovery key covers it, and adding one now works, but nothing requires a Consumer to have one.
 
 **Custody of S3 is undecided.** Ours today, sealed under an env key with a `keyId` so KMS is a migration rather than a rewrite. A third vendor reads better commercially and buys the same security property.
 
@@ -83,7 +88,7 @@ The phone holding S2 is gone and its key cannot be copied, so a new one is minte
 
 The sequencing decision still holds: the multisig ships before the resubmission.
 
-1. **Email login has to be gone.** A listing is general availability, which is what O10 forbids. This is now the only thing between the work and the store.
+1. **Email login has to be gone.** Done 2026-08-30 (`b6dc884`, `d8dfb08`).
 2. **The backend is a free ngrok tunnel on a laptop.** EAS `production` still carries that URL, there is no deploy pipeline, and it needs Postgres, Redis and Kafka. Largest remaining risk, and it needs a human.
 3. **Mainnet has never seen an Account.** The network config is right; every Account, provisioning run and Spend so far has been devnet or local. Create one on mainnet, provision it, then send once under the limit and once above it.
 4. **One real mainnet swap on a funded device.** It quotes through Socket and executes, and has never settled on chain.

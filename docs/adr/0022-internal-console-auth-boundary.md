@@ -75,3 +75,9 @@ This scope is revisited when the console grows a write surface beyond redelivery
 - Plan: `.claude/plans/pay-with-xend/phases/08-p2-surfaces/PLAN.md` (task 8.1)
 - Source: `apps/backend/src/console/console-auth.guard.ts`, `apps/backend/src/console/console.controller.ts`, `apps/backend/src/console/console.service.ts`, `apps/backend/src/console/console-html.ts`
 - Related: [ADR-0010](./0010-no-load-bearing-provider.md) (owned-interface posture), [ADR-0017](./0017-webhook-contract.md) (the delivery subsystem whose redelivery capability the console calls)
+
+## Update 2026-09-07
+
+The console has grown the write surface this ADR said would revisit its scope. `apps/backend/src/console/console.controller.ts` now serves four read views (payments, webhook deliveries, API key fingerprints, and Consumer Accounts) and three POST routes: `deliveries/:id/redeliver`, and `accounts/:userId/recovery/freeze` and `.../unfreeze`, which set and clear `users.recovery_release_frozen_at` through `RecoveryService.freezeRelease` ([0030](0030-support-freeze-of-recovery-signer-release.md)). The freeze is a refusal to sign, not a power over the Account, so it does not widen what an operator can do to a Consumer's funds; it does make the console an instrument in a compromise response, which is the audit case this ADR deferred.
+
+The Basic Auth guard is unchanged. Two controls are being added around the write routes in the same pass: a CSRF check on the form POSTs, since a browser holding a Basic Auth credential will replay it to any page that submits a form at the console, and an audit log line per write action carrying the operator, the target and the time. Per-operator identity is still not built; when a second operator exists, session auth with named accounts is the next step this ADR already names.

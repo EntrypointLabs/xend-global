@@ -8,7 +8,7 @@ Scope: Phase 5 Privy configuration verification: custom RP ID on the registrable
 
 Privy is the adopted consumer-side signing vendor (ADR 0024): the earlier Squads Grid work was ported to it and the vendor race is closed. This is therefore a configuration verification with a written outcome, not a pass/fail gate with a fallback. There is no Turnkey or Crossmint contingency in scope and no re-enrollment plan. Privy is reached only through the `WALLET_PROVIDER` adapter (`apps/backend/src/wallet/wallet-provider.interface.ts:16`); nothing here selects or swaps a vendor.
 
-The whole cross-subdomain Checkout hinges on one fact: that Privy can be configured with a custom RP ID of the registrable root xend.global, so passkeys enrolled by the mobile app (`apps/mobile/hooks/usePasskey.ts:42`, `relyingParty: "https://xend.global"`) are usable on pay.xend.global.
+The whole cross-subdomain Checkout hinges on one fact: that Privy can be configured with a custom RP ID of the registrable root xend.global, so passkeys enrolled by the mobile app (`apps/mobile/hooks/usePasskey.ts:72`, `relyingParty: "https://xend.global"`) are usable on pay.xend.global.
 
 ## Verification items
 
@@ -16,7 +16,7 @@ Doc-level items (a) to (d) were confirmed against Privy's current documentation 
 
 ### (a) Custom RP ID on the registrable root
 
-- **Result: Confirmed.** Privy accepts a developer-supplied `relyingParty` parameter on both the web SDK (`@privy-io/react-auth`) and the mobile enrollment path (`@privy-io/expo`). Setting `relyingParty: "https://xend.global"` makes Privy derive the WebAuthn rp.id from the registrable root xend.global (not a subdomain, not a Privy-owned domain). A passkey enrolled by the app under that rp.id resolves on pay.xend.global by same eTLD+1 WebAuthn scoping. Related Origins is not required and is not on the assertion path, so no `/.well-known/webauthn` lookup sits on the hot path. This matches the constant already shipped at `apps/mobile/hooks/usePasskey.ts:42`.
+- **Result: Confirmed.** Privy accepts a developer-supplied `relyingParty` parameter on both the web SDK (`@privy-io/react-auth`) and the mobile enrollment path (`@privy-io/expo`). Setting `relyingParty: "https://xend.global"` makes Privy derive the WebAuthn rp.id from the registrable root xend.global (not a subdomain, not a Privy-owned domain). A passkey enrolled by the app under that rp.id resolves on pay.xend.global by same eTLD+1 WebAuthn scoping. Related Origins is not required and is not on the assertion path, so no `/.well-known/webauthn` lookup sits on the hot path. This matches the constant already shipped at `apps/mobile/hooks/usePasskey.ts:72`.
 - Highest-priority confirmation; the cross-subdomain Checkout depends on it.
 
 ### (b) Web assertion on pay.xend.global
@@ -45,7 +45,7 @@ Doc gaps and caveats carried to the ceremony task and to the mainnet gate:
 - Smart wallets and batching are EVM-only and unused here.
 - On-device latency, the real-credential web assertion, and the live session-signer round trip on real TLS are the human device matrix (task 5.5), not part of this automated run.
 
-Sources: docs.privy.io passkey, allowed-domains, session-signer, and Solana key-export pages (reviewed 2026-07-12); repo `apps/mobile/hooks/usePasskey.ts:42`.
+Sources: docs.privy.io passkey, allowed-domains, session-signer, and Solana key-export pages (reviewed 2026-07-12); repo `apps/mobile/hooks/usePasskey.ts:72`.
 
 ## Device matrix results
 

@@ -1,6 +1,6 @@
 # B4 — Real on-chain devnet settlement: implementation plan
 
-Status: Proposal for review (uncommitted)
+Status: **Superseded by [ADR 0026](../adr/0026-checkout-settles-from-the-account.md)** (2026-08-29). The plan below settles a Payment as a plain SPL transfer out of the Privy wallet with the relayer as fee payer. A Payment now leaves the Account's vault through `SpendService` with the settlement authority as fee payer, in two calls (`POST /checkout/authorize`, `POST /checkout/settle`). The `Ceremony` screen it refers to no longer exists (`apps/checkout/src/ceremony/passkey.ts` and `screens/PaymentFlow.tsx` replaced it). Historical.
 Goal: one real devnet USDC payment, end to end, through the co-signed transfer
 ceremony — no dev short-circuit. Complements `pay-with-xend-preview-and-production-gaps.md`.
 
