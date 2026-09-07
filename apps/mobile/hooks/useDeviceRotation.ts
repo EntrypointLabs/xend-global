@@ -6,6 +6,7 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { VersionedTransaction } from "@solana/web3.js";
+import * as Sentry from "@sentry/react-native";
 import { toByteArray, fromByteArray } from "base64-js";
 
 import { ACCOUNT_QUERY_KEY, useAccount } from "@/hooks/useAccount";
@@ -13,7 +14,12 @@ import { DEVICE_RESTORE_KEY } from "@/hooks/useDeviceNeedsRestore";
 import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { PENDING_CHANGE_KEY } from "@/hooks/usePendingAccountChange";
 import { devicePlatform, hardwareKey } from "@/modules/hardware-key/src";
-import { apiClient, type DeviceRotationStep } from "@/utils/apiClient";
+import {
+  apiClient,
+  type AccountResponse,
+  type DeviceRotationStep,
+} from "@/utils/apiClient";
+import { assertSettings } from "@/utils/verifyTransaction";
 
 /** Propose, approve, then execute a day later. Slack for a re-signed step. */
 const MAX_STEPS = 5;
@@ -40,7 +46,7 @@ type SolanaProvider = {
  * code bought, and it never reaches this loop.
  */
 export async function runDeviceRotation(
-  primarySigner: string,
+  account: AccountResponse,
   provider: SolanaProvider,
   grantId?: string
 ): Promise<DeviceRotationOutcome> {
@@ -64,6 +70,16 @@ export async function runDeviceRotation(
       );
     }
 
+    // The phone holds both signatures this change needs, so a payload that
+    // is not the rotation it asked for would meet nothing else that could
+    // disagree with it.
+    assertSettings(plan.unsignedTxBase64, {
+      vault: account.address,
+      addSigners: plan.newApprovalSigner ? [plan.newApprovalSigner] : [],
+      removeSigners: [account.signers.approval],
+      policyUpdates: 1,
+    });
+
     const tx = VersionedTransaction.deserialize(
       toByteArray(plan.unsignedTxBase64)
     );
@@ -71,7 +87,7 @@ export async function runDeviceRotation(
     // Only when S1 actually has a slot: the fee payer is the settlement
     // authority, and handing Privy a transaction its key does not appear in
     // fails the step outright.
-    const signed = requiresPrimary(tx, primarySigner)
+    const signed = requiresPrimary(tx, account.signers.primary)
       ? (
           await provider.request({
             method: "signTransaction",
@@ -131,11 +147,14 @@ export function useDeviceRotation() {
           // the phone that staged it.
           if (staged.changeIndex) recordStarted(staged.changeIndex);
           return runDeviceRotation(
-            account.signers.primary,
+            account,
             (await wallet.getProvider()) as SolanaProvider,
             grantId
           );
         } catch (err) {
+          Sentry.captureException(err, {
+            tags: { deviceRotation: "resume-with-local-key" },
+          });
           if (__DEV__) {
             console.warn("[rotation] could not resume with the local key", err);
           }
@@ -149,7 +168,11 @@ export function useDeviceRotation() {
       try {
         ({ attestation, publicKey } = await hardwareKey.enrol(nonce));
       } catch (err) {
-        await hardwareKey.reset().catch(() => {});
+        await hardwareKey.reset().catch((resetError) => {
+          Sentry.captureException(resetError, {
+            tags: { hardwareKey: "reset-after-failed-attestation" },
+          });
+        });
         throw err;
       }
 
@@ -163,7 +186,7 @@ export function useDeviceRotation() {
       if (staged.changeIndex) recordStarted(staged.changeIndex);
 
       return runDeviceRotation(
-        account.signers.primary,
+        account,
         (await wallet.getProvider()) as SolanaProvider,
         grantId
       );
@@ -194,7 +217,7 @@ export function useFinishDeviceRotation() {
     queryKey: ["device-rotation", "finish", pending ?? "none"],
     queryFn: async () => {
       const outcome = await runDeviceRotation(
-        account!.signers.primary,
+        account!,
         (await wallet!.getProvider()) as SolanaProvider
       );
       invalidateAfterRotation(queryClient);

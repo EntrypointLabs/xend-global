@@ -6,18 +6,13 @@ import {
 import { instructions, utils } from "@sqds/smart-account";
 
 import type { LimitPeriod } from "./policy.js";
+import {
+  ABOVE_LIMIT_PROGRAM_ALLOWLIST,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+} from "./programs.js";
 import type { AccountAddresses } from "./types.js";
 
 const PRIMARY_ACCOUNT_INDEX = 0;
-
-/**
- * Associated Token Program. Pinned rather than taking a dependency on
- * `@solana/spl-token`, which this package would otherwise need for one
- * address derivation.
- */
-const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-);
 
 /** The mint a spending limit uses to mean native SOL. */
 const NATIVE_MINT = PublicKey.default;
@@ -171,6 +166,12 @@ export interface BuildSpendParams {
    * either SPL Token or Token-2022 and checks the account against the mint.
    */
   tokenProgram?: PublicKey;
+  /**
+   * The allowlist the above-limit policy carries, in the order it was created
+   * with. Defaults to {@link ABOVE_LIMIT_PROGRAM_ALLOWLIST}. Unused on the
+   * spending-limit route.
+   */
+  allowedPrograms?: readonly PublicKey[];
 }
 
 /**
@@ -192,6 +193,7 @@ export function buildSpend({
   signers,
   decimals,
   tokenProgram,
+  allowedPrograms = ABOVE_LIMIT_PROGRAM_ALLOWLIST,
 }: BuildSpendParams): TransactionInstruction {
   if (route.kind === "spending-limit") {
     if (signers.length !== 1) {
@@ -263,7 +265,10 @@ export function buildSpend({
       __kind: "ProgramInteraction",
       fields: [
         {
-          instructionConstraintIndices: null,
+          instructionConstraintIndices: constraintIndices(
+            [transfer],
+            allowedPrograms,
+          ),
           transactionPayload: {
             __kind: "SyncTransaction",
             fields: [
@@ -278,6 +283,30 @@ export function buildSpend({
     },
     instruction_accounts: [...signerAccounts, ...compiled.accounts],
   });
+}
+
+/**
+ * Which of the policy's instruction constraints each inner instruction is
+ * checked against. The policy holds one constraint per allowed program, so an
+ * instruction's index is the position of its program in the allowlist. A
+ * program outside it has no constraint to satisfy, and the Spend is refused
+ * here rather than on chain.
+ */
+function constraintIndices(
+  inner: readonly TransactionInstruction[],
+  allowedPrograms: readonly PublicKey[],
+): Uint8Array {
+  return Uint8Array.from(
+    inner.map((ix) => {
+      const index = allowedPrograms.findIndex((p) => p.equals(ix.programId));
+      if (index < 0) {
+        throw new Error(
+          `${ix.programId.toBase58()} is not on the above-limit program allowlist`,
+        );
+      }
+      return index;
+    }),
+  );
 }
 
 /**

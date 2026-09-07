@@ -11,6 +11,7 @@ import { ACCOUNT_QUERY_KEY, useAccount } from "@/hooks/useAccount";
 import { PENDING_CHANGE_KEY } from "@/hooks/usePendingAccountChange";
 import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
+import { assertSettings } from "@/utils/verifyTransaction";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import { apiClient, type AccountResponse } from "@/utils/apiClient";
 
@@ -53,6 +54,13 @@ export async function runPrimaryRotation(
         `Replacement did not finish in ${MAX_STEPS} steps; stuck on ${plan.step}`
       );
     }
+
+    assertSettings(plan.unsignedTxBase64, {
+      vault: account.address,
+      addSigners: plan.newPrimarySigner ? [plan.newPrimarySigner] : [],
+      removeSigners: [account.signers.primary],
+      policyUpdates: 2,
+    });
 
     const signedHex = await signWithApprovalSigner({
       organizationId: account.approvalSubOrgId,

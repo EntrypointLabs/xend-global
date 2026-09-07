@@ -30,6 +30,7 @@ import {
 } from "@/utils/apiClient";
 import { toByteArray, fromByteArray } from "base64-js";
 import { VersionedTransaction } from "@solana/web3.js";
+import { checkSpend, MISMATCH_MESSAGE } from "@/utils/verifyTransaction";
 
 /**
  * Router params are typed as strings and are not guaranteed to be there, and
@@ -183,7 +184,7 @@ export default function ConfirmScreen() {
 
     const embeddedWallet = embeddedSolana.wallets?.[0];
     if (!embeddedWallet) {
-      showToast("Wallet not ready, please try again");
+      showToast("Your Account is not ready yet, please try again");
       return;
     }
 
@@ -255,6 +256,24 @@ export default function ConfirmScreen() {
         // the Account approves alongside the Consumer decides one row, so a
         // guess that turns out wrong is corrected here rather than left up.
         aboveLimit = prep.needsApprovalSignature === true;
+
+        // Read the prepared message back before either signature goes on it.
+        // Both signatures are asked for on this phone, so nothing else would
+        // notice a payload that is not the one on screen.
+        const mismatch = checkSpend(prep.unsignedTxBase64, {
+          vault: account?.address ?? "",
+          destination: recipient,
+          mint: USDC_MINT,
+          amountRaw,
+        });
+        if (mismatch) {
+          Sentry.captureException(new Error(`spend mismatch: ${mismatch}`), {
+            tags: { surface: "send.confirm" },
+          });
+          hold("failed", MISMATCH_MESSAGE);
+          setIsLoading(false);
+          return;
+        }
 
         let signedBase64: string;
         let presenceProof: string | undefined;
