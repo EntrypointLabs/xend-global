@@ -44,6 +44,7 @@ function makeConfig(budgetMs = 15): ConfigService {
 function makeDb(cfg: {
   claim?: { intentId: string }[][];
   payment?: typeof PAYMENT_ROW | null;
+  inserts?: unknown[];
 }): DbService {
   const claims = [...(cfg.claim ?? [])];
   const thenableWhere = (returningResult: unknown[]) => {
@@ -61,7 +62,12 @@ function makeDb(cfg: {
       }),
     }),
     insert: () => ({
-      values: () => ({ onConflictDoNothing: () => Promise.resolve(undefined) }),
+      values: (v: unknown) => ({
+        onConflictDoNothing: () => {
+          cfg.inserts?.push(v);
+          return Promise.resolve(undefined);
+        },
+      }),
     }),
     select: () => ({
       from: (tbl: unknown) => ({
@@ -79,7 +85,7 @@ function makeDb(cfg: {
 
 function makeExecDb(cfg: {
   settling?: unknown[];
-  claimedWithoutPayment?: unknown[];
+  claimedUnfinished?: unknown[];
   authorized?: unknown[];
   orphanHit?: boolean;
   reapRowCount?: number;
@@ -95,7 +101,7 @@ function makeExecDb(cfg: {
       return Promise.resolve({ rows: cfg.orphanHit ? [{ n: 1 }] : [] });
     }
     if (str.includes("pa.status = 'succeeded'")) {
-      return Promise.resolve({ rows: cfg.claimedWithoutPayment ?? [] });
+      return Promise.resolve({ rows: cfg.claimedUnfinished ?? [] });
     }
     if (str.includes("status = 'settling'")) {
       return Promise.resolve({ rows: cfg.settling ?? [] });
@@ -487,27 +493,39 @@ describe('SettlementConfirmationService', () => {
       });
     });
 
-    it('finishes a claimed attempt that lost its process before the payments row was written', async () => {
-      const { provider, handleIncomingSettlement } = makeProvider({
-        status: 'complete',
-      });
-      const { intents, transition } = makeIntents();
-      const { publisher, events } = makePublisher();
+    // The resume path writes through the query builder, so graft the builder
+    // fake onto the execute fake.
+    function makeResumeDb(cfg: {
+      claimedUnfinished: unknown[];
+      captured?: string[];
+      inserts?: unknown[];
+    }): DbService {
       const execDb = makeExecDb({
-        claimedWithoutPayment: [{ txSignature: 'sig-c', intentId: 'pi_1' }],
+        claimedUnfinished: cfg.claimedUnfinished,
+        captured: cfg.captured,
       });
-      // The resume path writes through the query builder, so graft the
-      // builder fake onto the execute fake.
-      const builderDb = makeDb({ payment: PAYMENT_ROW });
-      const db = {
+      const builderDb = makeDb({ payment: PAYMENT_ROW, inserts: cfg.inserts });
+      return {
         client: {
           ...builderDb.client,
           execute: (...args: unknown[]) =>
             (execDb.client.execute as (...a: unknown[]) => unknown)(...args),
         },
       } as unknown as DbService;
+    }
+
+    it('finishes a claimed attempt that lost its process before the payments row was written', async () => {
+      const { provider, handleIncomingSettlement } = makeProvider({
+        status: 'complete',
+      });
+      const { intents, transition } = makeIntents();
+      const { publisher, events } = makePublisher();
+      const inserts: unknown[] = [];
       const service = makeService({
-        db,
+        db: makeResumeDb({
+          claimedUnfinished: [{ txSignature: 'sig-c', intentId: 'pi_1' }],
+          inserts,
+        }),
         intents,
         provider,
         publisher,
@@ -515,6 +533,7 @@ describe('SettlementConfirmationService', () => {
 
       await service.reconcileSettling();
 
+      expect(inserts).toHaveLength(1);
       expect(handleIncomingSettlement).toHaveBeenCalledTimes(1);
       expect(transition).toHaveBeenCalledWith(
         'pi_1',
@@ -522,6 +541,71 @@ describe('SettlementConfirmationService', () => {
         'succeeded',
         {},
       );
+      expect(events.map((e) => e.topic)).toEqual(['payment.succeeded']);
+    });
+
+    it('resumes a claimed attempt whose payments row was already written, which the sweep must not exclude', async () => {
+      const { provider } = makeProvider({ status: 'complete' });
+      const { intents, transition } = makeIntents();
+      const { publisher, events } = makePublisher();
+      const captured: string[] = [];
+      const service = makeService({
+        db: makeResumeDb({
+          claimedUnfinished: [{ txSignature: 'sig-c', intentId: 'pi_1' }],
+          captured,
+        }),
+        intents,
+        provider,
+        publisher,
+      });
+
+      await service.reconcileSettling();
+
+      // A payments row alone no longer disqualifies a settling attempt; only
+      // a payment AND an off-ramp row (a deferred payout) is left alone.
+      const resumeQuery = captured.find((c) =>
+        c.includes("pa.status = 'succeeded'"),
+      );
+      expect(resumeQuery).toContain('(p.id IS NULL OR o.id IS NULL)');
+      expect(resumeQuery).toContain('settlement_offramps');
+
+      // One sweep finalizes it from the payment row that already exists, and
+      // the merchant is told exactly once.
+      expect(transition).toHaveBeenCalledWith(
+        'pi_1',
+        'settling',
+        'succeeded',
+        {},
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        topic: 'payment.succeeded',
+        payload: { intentId: 'pi_1', paymentId: 'pay_1' },
+      });
+    });
+
+    it('does not publish payment.succeeded twice when a second sweep re-enters a finalized intent', async () => {
+      const { provider } = makeProvider({ status: 'complete' });
+      const { intents, transition } = makeIntents();
+      const { publisher, events } = makePublisher();
+      const service = makeService({
+        db: makeResumeDb({
+          claimedUnfinished: [{ txSignature: 'sig-c', intentId: 'pi_1' }],
+        }),
+        intents,
+        provider,
+        publisher,
+      });
+
+      await service.reconcileSettling();
+      // The first sweep moved the intent out of settling, so the guarded
+      // transition refuses the second.
+      transition.mockRejectedValueOnce(
+        new IntentStateConflictError('intent pi_1 was succeeded'),
+      );
+      await service.reconcileSettling();
+
+      expect(transition).toHaveBeenCalledTimes(2);
       expect(events.map((e) => e.topic)).toEqual(['payment.succeeded']);
     });
 

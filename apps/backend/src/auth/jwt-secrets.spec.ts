@@ -77,6 +77,33 @@ describe('JWT key rotation', () => {
     expect(after.verify(legacy)).toMatchObject({ sub: 'u_1' });
   });
 
+  it('verifies a kidless token the rotated-out key signed, so the first rotation ends no session', () => {
+    const legacy = jwt.sign({ sub: 'u_1' }, 'old', { expiresIn: '1h' });
+    expect(jwt.decode(legacy, { complete: true })?.header.kid).toBeUndefined();
+    expect(after.verify(legacy)).toMatchObject({ sub: 'u_1' });
+  });
+
+  it('rejects a kidless token signed by a key the ring does not hold', () => {
+    const forged = jwt.sign({ sub: 'u_1' }, 'attacker', { expiresIn: '1h' });
+    expect(jwt.decode(forged, { complete: true })?.header.kid).toBeUndefined();
+    expect(() => void after.verify(forged)).toThrow(
+      /matches no configured key/,
+    );
+    expect(() => void retired.verify(forged)).toThrow(
+      /matches no configured key/,
+    );
+  });
+
+  it('resolves a kid-bearing token strictly by its kid, never by trying the ring', () => {
+    // Signed by 'old' but naming 'new': resolution must land on 'new' and the
+    // signature check must then fail, not fall through to the signing key.
+    const mismatched = jwt.sign({ sub: 'u_1' }, 'old', {
+      expiresIn: '1h',
+      keyid: keyIdFor('new'),
+    });
+    expect(() => void after.verify(mismatched)).toThrow(/invalid signature/);
+  });
+
   it('does not let a forged kid pick a secret it names itself', () => {
     const forged = jwt.sign({ sub: 'u_1' }, 'attacker', {
       expiresIn: '1h',

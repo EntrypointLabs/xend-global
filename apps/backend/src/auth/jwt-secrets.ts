@@ -1,5 +1,5 @@
 import type { ConfigService } from '@nestjs/config';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
 export interface JwtKey {
   kid: string;
@@ -48,30 +48,62 @@ export function keyIdFor(secret: string): string {
   return createHash('sha256').update(secret).digest('hex').slice(0, 16);
 }
 
+/** The HS families jsonwebtoken accepts for a symmetric secret. */
+const HMAC_BY_ALG: Record<string, string> = {
+  HS256: 'sha256',
+  HS384: 'sha384',
+  HS512: 'sha512',
+};
+
 /**
- * The secret a token must verify against, by the `kid` in its header. A token
- * with no `kid` predates key ids and verifies against the current key, which
- * is the only one that could have signed it before rotation existed.
+ * The secret a token must verify against. A `kid` resolves strictly to the key
+ * it names, so a forged header cannot pick its own secret. A token with no
+ * `kid` predates the ring and could have been signed by any key now in it, so
+ * every key is tried and the one whose signature matches is returned; without
+ * that, the first rotation would reject every session minted before it. Each
+ * ring key is already a trusted signer, so this widens nothing.
  */
 export function secretForToken(ring: JwtKeyRing, rawToken: string): string {
-  const kid = readKid(rawToken);
-  if (kid === null) return ring.current.secret;
-  const key = ring.byKid.get(kid);
-  if (!key) {
-    throw new Error('token signed under an unknown key');
+  const kid = readHeader(rawToken)?.kid ?? null;
+  if (kid !== null) {
+    const key = ring.byKid.get(kid);
+    if (!key) {
+      throw new Error('token signed under an unknown key');
+    }
+    return key.secret;
   }
-  return key.secret;
+  for (const key of ring.byKid.values()) {
+    if (signatureMatches(rawToken, key.secret)) {
+      return key.secret;
+    }
+  }
+  throw new Error('token signature matches no configured key');
 }
 
-function readKid(rawToken: string): string | null {
+function signatureMatches(rawToken: string, secret: string): boolean {
+  const parts = rawToken.split('.');
+  if (parts.length !== 3) return false;
+  const [header, payload, signature] = parts;
+  const hash = HMAC_BY_ALG[readHeader(rawToken)?.alg ?? ''];
+  if (!hash) return false;
+  const expected = createHmac(hash, secret)
+    .update(`${header}.${payload}`)
+    .digest();
+  const actual = Buffer.from(signature, 'base64url');
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+
+function readHeader(rawToken: string): { kid?: string; alg?: string } | null {
   const [header] = rawToken.split('.');
   if (!header) return null;
   try {
-    const parsed: unknown = JSON.parse(
+    const parsed = JSON.parse(
       Buffer.from(header, 'base64url').toString('utf-8'),
-    );
-    const kid = (parsed as { kid?: unknown })?.kid;
-    return typeof kid === 'string' ? kid : null;
+    ) as { kid?: unknown; alg?: unknown };
+    return {
+      kid: typeof parsed?.kid === 'string' ? parsed.kid : undefined,
+      alg: typeof parsed?.alg === 'string' ? parsed.alg : undefined,
+    };
   } catch {
     return null;
   }

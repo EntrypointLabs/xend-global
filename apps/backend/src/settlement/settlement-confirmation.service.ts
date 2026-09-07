@@ -413,11 +413,18 @@ export class SettlementConfirmationService implements OnModuleInit {
   }
 
   /**
-   * Claim-first finalize means a crash between the attempt claim and the
-   * payments insert leaves the attempt succeeded, the intent settling, and no
-   * payments row: nothing else would ever touch it again. Rerun the
-   * post-claim steps for those. A deferred naira Payment has its payments row
-   * and is deliberately left in settling for the off-ramp signal.
+   * Claim-first finalize means a crash anywhere after the attempt claim leaves
+   * the attempt succeeded and the intent settling, with nothing else that
+   * would ever touch it again: before the payments insert there is no payments
+   * row, and after it the payment exists but the intent was never transitioned
+   * and the merchant was never told. Rerun the post-claim steps for both;
+   * they are idempotent (the insert conflicts away, the provider is idempotent
+   * per signature, and the rowCount-guarded settling->succeeded transition
+   * gates the single payment.succeeded publish).
+   *
+   * The one settling attempt that is NOT stuck is a deferred naira payout: it
+   * has both its payments row and the off-ramp row the provider opened, and is
+   * deliberately left settling until the off-ramp signal arrives.
    */
   private async resumeClaimedSettlements(): Promise<void> {
     const rows = (await this.db.client.execute(sql`
@@ -425,9 +432,11 @@ export class SettlementConfirmationService implements OnModuleInit {
       FROM payment_attempts pa
       JOIN payment_intents pi ON pi.id = pa.intent_id
       LEFT JOIN payments p ON p.intent_id = pa.intent_id
+      LEFT JOIN settlement_offramps o
+        ON o.signature = pa.tx_signature AND o.direction = 'settlement'
       WHERE pa.status = 'succeeded'
-        AND pi.status IN ('settling')
-        AND p.id IS NULL
+        AND pi.status = 'settling'
+        AND (p.id IS NULL OR o.id IS NULL)
         AND pa.tx_signature IS NOT NULL
         AND pa.updated_at < (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${CLAIM_RESUME_AFTER_SECONDS}`)} seconds'
       ORDER BY pa.updated_at ASC

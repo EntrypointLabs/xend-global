@@ -12,6 +12,11 @@ import {
 const BATCH = 100;
 const TIMEOUT_REASON = JSON.stringify({ code: 'OFFRAMP_TIMEOUT' });
 
+type StuckOfframp = Pick<
+  typeof settlementOfframps.$inferSelect,
+  'id' | 'status' | 'failureReason' | 'updatedAt'
+>;
+
 /**
  * A naira off-ramp only leaves pending or converting when Blockradar's
  * webhook says so. If that webhook never arrives, the off-ramp row and the
@@ -22,6 +27,12 @@ const TIMEOUT_REASON = JSON.stringify({ code: 'OFFRAMP_TIMEOUT' });
  * The Payment's intent is left alone on purpose: its USDC already landed in
  * the settlement endpoint, so telling the merchant the Payment failed would be
  * wrong. The warning log is the ops signal to settle it by hand.
+ *
+ * payout.failed is the only thing that tells anyone downstream the payout
+ * died, and a `failed` row is no longer selectable, so a broker outage must
+ * not be allowed to consume the row: the timeout write is undone when the
+ * publish throws and the next run retries it. Exactly one run can move the row
+ * out of the status it was selected under, so the event goes out once.
  */
 @Injectable()
 export class OfframpReconcilerService {
@@ -43,6 +54,8 @@ export class OfframpReconcilerService {
       .select({
         id: settlementOfframps.id,
         status: settlementOfframps.status,
+        failureReason: settlementOfframps.failureReason,
+        updatedAt: settlementOfframps.updatedAt,
       })
       .from(settlementOfframps)
       .where(
@@ -82,17 +95,54 @@ export class OfframpReconcilerService {
       this.logger.warn(
         `settlement.offramp.timeout offramp_id=${offramp.id} merchant_id=${offramp.merchantId} payment_id=${offramp.paymentId ?? '-'} stuck_minutes=${stuckMinutes}`,
       );
-      await this.events.publish({
-        topic: 'payout.failed',
-        key: offramp.id,
-        payload: {
-          offrampId: offramp.id,
-          merchantId: offramp.merchantId,
-          paymentId: offramp.paymentId,
-          reason: 'OFFRAMP_TIMEOUT',
-        },
-        correlationId: offramp.id,
-      });
+      try {
+        await this.events.publish({
+          topic: 'payout.failed',
+          key: offramp.id,
+          payload: {
+            offrampId: offramp.id,
+            merchantId: offramp.merchantId,
+            paymentId: offramp.paymentId,
+            reason: 'OFFRAMP_TIMEOUT',
+          },
+          correlationId: offramp.id,
+        });
+      } catch (err) {
+        this.logger.error(
+          `settlement.offramp.timeout_publish_failed offramp_id=${offramp.id}`,
+          err,
+        );
+        await this.reopen(row);
+      }
+    }
+  }
+
+  /**
+   * Put a timed-out row back exactly as it was selected, original timestamp
+   * included, so the next run selects it again and publishes the event that
+   * did not go out. Conditional on `failed` so a webhook that resolved the row
+   * in the meantime is not overwritten.
+   */
+  private async reopen(row: StuckOfframp): Promise<void> {
+    try {
+      await this.db.client
+        .update(settlementOfframps)
+        .set({
+          status: row.status,
+          failureReason: row.failureReason,
+          updatedAt: row.updatedAt,
+        })
+        .where(
+          and(
+            eq(settlementOfframps.id, row.id),
+            eq(settlementOfframps.status, 'failed'),
+          ),
+        );
+    } catch (err) {
+      this.logger.error(
+        `settlement.offramp.timeout_reopen_failed offramp_id=${row.id}`,
+        err,
+      );
     }
   }
 }
