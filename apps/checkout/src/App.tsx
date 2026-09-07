@@ -9,8 +9,9 @@ import {
   type TerminalResult,
 } from './lib/api';
 import {
-  postResultToOpener,
-  postCancelToOpener,
+  postReadyToMerchant,
+  postResultToMerchant,
+  postCancelToMerchant,
 } from './messaging/postMessage';
 import { completeByRedirect } from './messaging/redirect';
 import { LoadingShell } from './screens/LoadingShell';
@@ -60,10 +61,18 @@ export function App() {
     }
   }, []);
 
+  // Announce the surface to the merchant page as soon as the launch parses,
+  // before the intent is fetched. Without a named opener there is no exact
+  // origin to post to, and a wildcard target is never an option.
+  useEffect(() => {
+    if (!launch || launch.mode === 'redirect' || !launch.opener) return;
+    postReadyToMerchant(launch.opener, launch.nonce);
+  }, [launch]);
+
   // Deliver a terminal result. Redirect mode navigates to the backend-signed
   // return URL when one exists (a dead intent has none, so it renders in place).
-  // Popup mode posts to the exact merchant origin and, if the opener is severed,
-  // falls back to a return-to-store state rather than hanging.
+  // Popup and iframe mode post to the exact merchant origin and, if that channel
+  // is gone, fall back to a return-to-store state rather than hanging.
   const deliverResult = useCallback(
     (intent: IntentView, status: CheckoutStatus, redirectUrl?: string) => {
       if (!launch) return;
@@ -75,7 +84,7 @@ export function App() {
         setPhase({ kind: 'result', status });
         return;
       }
-      const posted = postResultToOpener(
+      const posted = postResultToMerchant(
         intent.merchantOrigin,
         launch.nonce,
         intent.reference,
@@ -100,7 +109,7 @@ export function App() {
         setPhase({ kind: 'result', status: 'canceled' });
         return;
       }
-      const posted = postCancelToOpener(
+      const posted = postCancelToMerchant(
         intent.merchantOrigin,
         launch.nonce,
         intent.reference,
