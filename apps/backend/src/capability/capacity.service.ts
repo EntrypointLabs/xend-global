@@ -5,8 +5,8 @@ import { DbService } from '../db/db.service';
 import { smartAccounts } from '../db/schema';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
-import { RATE_COUNTER } from '../counters/rate-counter.interface';
-import type { RateCounter } from '../counters/rate-counter.interface';
+import { CAPACITY_COUNTER } from '../counters/rate-counter.interface';
+import type { ReservingRateCounter } from '../counters/rate-counter.interface';
 import { parseTierTable, type TierBand } from './tier-config';
 import {
   CapacityExceededError,
@@ -14,6 +14,7 @@ import {
   UnknownConsumerError,
 } from './capability.errors';
 import { findVaultAddress } from './vault-address';
+import { capacityReservationsRefused } from '../metrics/metrics';
 
 /** Day counters outlive their UTC day by a couple of hours for clock skew. */
 const DAY_COUNTER_TTL_SECONDS = 26 * 60 * 60;
@@ -50,7 +51,7 @@ export class CapacityService implements OnModuleInit {
     private readonly db: DbService,
     private readonly config: ConfigService,
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
-    @Inject(RATE_COUNTER) private readonly counter: RateCounter,
+    @Inject(CAPACITY_COUNTER) private readonly counter: ReservingRateCounter,
   ) {}
 
   onModuleInit() {
@@ -118,6 +119,11 @@ export class CapacityService implements OnModuleInit {
     };
   }
 
+  /**
+   * Read-only preview: the same refusals reserveCapacity gives, without
+   * spending anything. Two callers can both pass this and only one can then
+   * reserve, so it decides nothing on its own.
+   */
   async checkCapacity(
     consumerId: string,
     amountRaw: string,
@@ -130,13 +136,7 @@ export class CapacityService implements OnModuleInit {
         `capacity.check consumer_id=${consumerId} tier=${capability.tier} amount_raw=${amountRaw} allowed=${allowed}`,
       );
 
-    if (amount > BigInt(limits.perPaymentMaxRaw)) {
-      log(false);
-      throw new CapacityExceededError(
-        'PER_PAYMENT_CAP',
-        `amount ${amountRaw} exceeds per-payment cap ${limits.perPaymentMaxRaw}`,
-      );
-    }
+    this.assertPerPaymentAndBalance(capability, amount, amountRaw, log);
     if (BigInt(capability.usedTodayRaw) + amount > BigInt(limits.dailyCapRaw)) {
       log(false);
       throw new CapacityExceededError(
@@ -154,7 +154,107 @@ export class CapacityService implements OnModuleInit {
         `amount ${amountRaw} would exceed monthly cap ${limits.monthlyCapRaw}`,
       );
     }
-    // TEST ONLY — never production. Skipped only while development is also
+    log(true);
+    return capability;
+  }
+
+  /**
+   * Spends capacity for a Payment: the day and month windows are incremented
+   * and compared against their caps in one atomic step each, and rolled back
+   * on overshoot, so concurrent authorizations cannot add up past a cap the
+   * way a read-then-increment could. Returns the snapshot after the spend.
+   */
+  async reserveCapacity(
+    consumerId: string,
+    amountRaw: string,
+  ): Promise<CapabilitySnapshot> {
+    try {
+      return await this.reserve(consumerId, amountRaw);
+    } catch (err) {
+      if (err instanceof CapacityExceededError) {
+        capacityReservationsRefused.inc({ reason: err.reason.toLowerCase() });
+      } else if (err instanceof InsufficientBalanceError) {
+        capacityReservationsRefused.inc({ reason: 'insufficient_balance' });
+      }
+      throw err;
+    }
+  }
+
+  private async reserve(
+    consumerId: string,
+    amountRaw: string,
+  ): Promise<CapabilitySnapshot> {
+    const capability = await this.getCapability(consumerId);
+    const amount = BigInt(amountRaw);
+    const { limits } = capability;
+    const log = (allowed: boolean) =>
+      this.logger.log(
+        `capacity.reserve consumer_id=${consumerId} tier=${capability.tier} amount_raw=${amountRaw} allowed=${allowed}`,
+      );
+
+    this.assertPerPaymentAndBalance(capability, amount, amountRaw, log);
+
+    const now = new Date();
+    const dayKey = this.dayKey(consumerId, now);
+    const monthKey = this.monthKey(consumerId, now);
+    const day = await this.counter.reserve(
+      dayKey,
+      amountRaw,
+      limits.dailyCapRaw,
+      DAY_COUNTER_TTL_SECONDS,
+    );
+    if (!day.allowed) {
+      log(false);
+      throw new CapacityExceededError(
+        'DAILY_CAP',
+        `amount ${amountRaw} would exceed daily cap ${limits.dailyCapRaw}`,
+      );
+    }
+    const month = await this.counter.reserve(
+      monthKey,
+      amountRaw,
+      limits.monthlyCapRaw,
+      MONTH_COUNTER_TTL_SECONDS,
+    );
+    if (!month.allowed) {
+      await this.counter.release(dayKey, amountRaw);
+      log(false);
+      throw new CapacityExceededError(
+        'MONTHLY_CAP',
+        `amount ${amountRaw} would exceed monthly cap ${limits.monthlyCapRaw}`,
+      );
+    }
+
+    log(true);
+    return {
+      ...capability,
+      usedTodayRaw: day.snapshot.totalRaw,
+      usedThisMonthRaw: month.snapshot.totalRaw,
+    };
+  }
+
+  /** Undoes reserveCapacity for a Payment that did not get authorized. */
+  async releaseCapacity(consumerId: string, amountRaw: string): Promise<void> {
+    const now = new Date();
+    await this.counter.release(this.dayKey(consumerId, now), amountRaw);
+    await this.counter.release(this.monthKey(consumerId, now), amountRaw);
+  }
+
+  private assertPerPaymentAndBalance(
+    capability: CapabilitySnapshot,
+    amount: bigint,
+    amountRaw: string,
+    log: (allowed: boolean) => void,
+  ): void {
+    const { limits } = capability;
+    if (amount > BigInt(limits.perPaymentMaxRaw)) {
+      log(false);
+      throw new CapacityExceededError(
+        'PER_PAYMENT_CAP',
+        `amount ${amountRaw} exceeds per-payment cap ${limits.perPaymentMaxRaw}`,
+      );
+    }
+    // TEST ONLY, never production. Skipped only while development is also
     // short-circuiting settlement, where the Consumer has no Account on any
     // cluster and every Balance reads zero. Turning the real Payment path on
     // turns this back on with it: at that point the vault is real and holds
@@ -169,9 +269,6 @@ export class CapacityService implements OnModuleInit {
         `amount ${amountRaw} exceeds balance ${capability.balanceRaw}`,
       );
     }
-
-    log(true);
-    return capability;
   }
 
   /**
@@ -183,7 +280,7 @@ export class CapacityService implements OnModuleInit {
     const vault = await findVaultAddress(this.db, consumerId);
     if (vault) return vault;
 
-    // TEST ONLY — never production. A dev-provisioned Consumer has no Account
+    // TEST ONLY, never production. A dev-provisioned Consumer has no Account
     // on any cluster; the balance gate below is already skipped in development,
     // so the Privy wallet stands in only to keep the snapshot shape whole.
     if (this.config.get<string>('NODE_ENV') === 'development') {
@@ -196,23 +293,6 @@ export class CapacityService implements OnModuleInit {
     }
 
     throw new UnknownConsumerError(`no Account for consumer ${consumerId}`);
-  }
-
-  async recordAuthorizedPayment(
-    consumerId: string,
-    amountRaw: string,
-  ): Promise<void> {
-    const now = new Date();
-    await this.counter.increment(
-      this.dayKey(consumerId, now),
-      amountRaw,
-      DAY_COUNTER_TTL_SECONDS,
-    );
-    await this.counter.increment(
-      this.monthKey(consumerId, now),
-      amountRaw,
-      MONTH_COUNTER_TTL_SECONDS,
-    );
   }
 
   private dayKey(consumerId: string, now: Date): string {

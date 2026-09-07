@@ -9,6 +9,8 @@ import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema';
 
+const PING_TIMEOUT_MS = 5000;
+
 @Injectable()
 export class DbService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DbService.name);
@@ -20,17 +22,41 @@ export class DbService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     this.pool = new Pool({
       connectionString: this.config.getOrThrow('DATABASE_URL'),
+      max: this.config.get<number>('DB_POOL_MAX') ?? 10,
+      connectionTimeoutMillis:
+        this.config.get<number>('DB_CONNECTION_TIMEOUT_MS') ?? 5000,
+      idleTimeoutMillis: this.config.get<number>('DB_IDLE_TIMEOUT_MS') ?? 30000,
+    });
+    // An idle client dropped by the server emits here; unhandled, it is an
+    // uncaught exception that takes the process down.
+    this.pool.on('error', (err: Error) => {
+      this.logger.error(`db.pool.error message=${err.message}`);
     });
 
     this.client = drizzle(this.pool, { schema });
 
-    // verify connection on startup
-    await this.pool.query('SELECT 1');
+    await this.ping(PING_TIMEOUT_MS);
     this.logger.log('Database connected');
   }
 
   async onModuleDestroy() {
     await this.pool.end();
+  }
+
+  /** Round-trips SELECT 1, rejecting if the database does not answer in time. */
+  async ping(timeoutMs = PING_TIMEOUT_MS): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`database ping timed out after ${timeoutMs}ms`)),
+        timeoutMs,
+      );
+    });
+    try {
+      await Promise.race([this.pool.query('SELECT 1'), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /**

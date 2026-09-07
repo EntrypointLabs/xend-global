@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -21,6 +21,7 @@ import { WithScreenTheme } from "@/components/WithScreenTheme";
 import { useAccountSetup } from "@/hooks/useAccountSetup";
 import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { useAuth } from "@/contexts/AuthContext";
+import { hardwareKey } from "@/modules/hardware-key/src";
 import { Email } from "@/types/Auth";
 import { apiClient, apiErrorCode, apiErrorStatus } from "@/utils/apiClient";
 import { cn } from "@/utils/cn";
@@ -77,6 +78,28 @@ function AddEmailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [settingUpAccount, setSettingUpAccount] = useState(false);
+  /**
+   * Whether this phone holds a Device Key. Replacing a lost passkey needs
+   * that key to approve the change, so without one the offer would lead to
+   * a screen that cannot finish; null until asked.
+   */
+  const [hasDeviceKey, setHasDeviceKey] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (step !== "unlock" || hasDeviceKey !== null) return;
+    let cancelled = false;
+    hardwareKey
+      .getPublicKey()
+      .then((key) => {
+        if (!cancelled) setHasDeviceKey(!!key);
+      })
+      .catch(() => {
+        if (!cancelled) setHasDeviceKey(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [step, hasDeviceKey]);
   const {
     stage: setupStage,
     error: setupError,
@@ -123,7 +146,7 @@ function AddEmailScreen() {
       );
     } else if (outcome === "no-passkey") {
       setError(
-        `No passkey on this phone opens ${claimed ?? "this account"}. Replace it below, or use the phone that has it.`
+        `No passkey on this phone opens ${claimed ?? "this account"}. Use the phone that has it, or see below.`
       );
     }
   };
@@ -193,16 +216,19 @@ function AddEmailScreen() {
     } catch (err) {
       console.error("[add-email] could not confirm the code", err);
       const status = apiErrorStatus(err);
+      const code = apiErrorCode(err);
       setError(
         status === 401
           ? "That code is not right. Check the email and try again."
-          : apiErrorCode(err) === "EMAIL_IN_USE"
+          : code === "EMAIL_IN_USE"
             ? "That email is already on another account."
-            : status === 409
-              ? "That code has expired. Send a new one."
-              : status === 429
-                ? "Too many attempts. Wait a few minutes and try again."
-                : "Could not confirm that code. Please try again."
+            : code === "EMAIL_ROTATION_REQUIRED"
+              ? "Your Account already has an address. It changes through Keys & Recovery in Settings."
+              : status === 409
+                ? "That code has expired. Send a new one."
+                : status === 429
+                  ? "Too many attempts. Wait a few minutes and try again."
+                  : "Could not confirm that code. Please try again."
       );
     } finally {
       setSaving(false);
@@ -362,17 +388,28 @@ function AddEmailScreen() {
                       {creatingPasskey ? "Waiting…" : "Use passkey"}
                     </Typography>
                   </HapticPressable>
-                  <HapticPressable
-                    onPress={() =>
-                      router.replace("/(tabs)/settings/replace-passkey")
-                    }
-                    disabled={creatingPasskey}
-                    className="mt-4 items-center p-2"
-                  >
-                    <Typography weight="500" className="text-base text-white">
-                      {"I don't have a passkey for this account"}
+                  {hasDeviceKey ? (
+                    <HapticPressable
+                      onPress={() =>
+                        router.replace("/(tabs)/settings/replace-passkey")
+                      }
+                      disabled={creatingPasskey}
+                      className="mt-4 items-center p-2"
+                    >
+                      <Typography weight="500" className="text-base text-white">
+                        {"I don't have a passkey for this account"}
+                      </Typography>
+                    </HapticPressable>
+                  ) : hasDeviceKey === false ? (
+                    <Typography
+                      weight="400"
+                      className="mt-4 px-2 text-center text-sm leading-5 text-white/70"
+                    >
+                      No passkey for this account on this phone? Recover from
+                      the phone that has your Account, or with a second Recovery
+                      Key.
                     </Typography>
-                  </HapticPressable>
+                  ) : null}
                   <HapticPressable
                     onPress={finishEntry}
                     disabled={creatingPasskey}

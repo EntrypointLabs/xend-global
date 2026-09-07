@@ -1,94 +1,27 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
-import { KycStatus } from "@/types/Kyc";
-import { EasClient } from "@/utils/easClient";
-import { useAuth } from "./AuthContext";
-import { Currency } from "@/types/Transaction";
-import * as SecureStore from "expo-secure-store";
-import { AUTH_STORAGE_KEYS } from "@/utils/auth";
-import { MockDatabase } from "@/utils/mockDatabase";
-import * as Sentry from "@sentry/react-native";
-
-interface BankAccountDetails {
-  currency: Currency;
-  accountNumber: string;
-  routingNumber?: string;
-  iban?: string;
-  swift?: string;
-  bank_name: string;
-  beneficiaryName: string;
-  bankAddress: string;
-}
 
 interface ModalFlowContextType {
-  // Modal visibility states
   isReceiveModalVisible: boolean;
-  isBankDetailsModalVisible: boolean;
-  isCreateBankAccountModalVisible: boolean;
-  isKycModalVisible: boolean;
   isSendModalVisible: boolean;
-
-  // Shared data
-  selectedCurrency: Currency;
-  kycStatus: KycStatus | null;
-  setKycStatus: (status: KycStatus) => void;
-  bankAccountDetails: any[] | null; // TODO: define type
-  isLoading: boolean;
-  error: string | null;
-
-  // Actions
   showReceiveModal: () => void;
-  showBankDetailsModal: () => void;
-  showCreateBankAccountModal: () => void;
-  showKycModal: () => void;
   showSendModal: () => void;
   hideAllModals: () => void;
-
-  // Data actions
-  setSelectedCurrency: (currency: Currency) => void;
-  fetchBankDetails: () => Promise<void>;
-  fetchKycStatus: () => Promise<void>;
 }
 
 const ModalFlowContext = createContext<ModalFlowContextType | undefined>(
   undefined
 );
 
+/**
+ * Holds visibility only. The screen that is open renders the modals, so a
+ * Send tapped from the tab bar shows on whatever screen the Consumer is on.
+ */
 export function ModalFlowProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
-
-  // Modal visibility states
   const [isReceiveModalVisible, setIsReceiveModalVisible] = useState(false);
-  const [isBankDetailsModalVisible, setIsBankDetailsModalVisible] =
-    useState(false);
-  const [isCreateBankAccountModalVisible, setIsCreateBankAccountModalVisible] =
-    useState(false);
-  const [isKycModalVisible, setIsKycModalVisible] = useState(false);
   const [isSendModalVisible, setIsSendModalVisible] = useState(false);
 
-  // Shared data
-  const [selectedCurrency, setSelectedCurrency] = useState<Currency>("usd");
-  const [kycStatus, setKycStatus] = useState<KycStatus | null>(null);
-  const [bankAccountDetails, setBankAccountDetails] = useState<
-    BankAccountDetails[] | null
-  >(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Modal actions
   const showReceiveModal = useCallback(() => {
     setIsReceiveModalVisible(true);
-  }, []);
-
-  const showBankDetailsModal = useCallback(() => {
-    setIsBankDetailsModalVisible(true);
-  }, []);
-
-  const showCreateBankAccountModal = useCallback(() => {
-    setIsCreateBankAccountModalVisible(true);
-  }, []);
-
-  const showKycModal = useCallback(() => {
-    setIsKycModalVisible(true);
   }, []);
 
   const showSendModal = useCallback(() => {
@@ -97,95 +30,19 @@ export function ModalFlowProvider({ children }: { children: React.ReactNode }) {
 
   const hideAllModals = useCallback(() => {
     setIsReceiveModalVisible(false);
-    setIsBankDetailsModalVisible(false);
-    setIsCreateBankAccountModalVisible(false);
-    setIsKycModalVisible(false);
     setIsSendModalVisible(false);
   }, []);
 
-  // No-op stub: virtual-account fetching is not yet available. Kept on the
-  // context because the KYC flow calls fetchBankDetails after approval.
-  const fetchBankDetails = useCallback(async () => {
-    if (!user) return;
-    setBankAccountDetails(null);
-  }, [user]);
-
-  const fetchKycStatus = useCallback(async () => {
-    if (!user?.address || !user?.grid_user_id) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const userData = await MockDatabase.getUser(user.grid_user_id);
-      console.log(
-        "🍓 userData in ModalFlowContext.tsx::::: ",
-        JSON.stringify(userData, null, 2)
-      );
-      const kycLinkId = userData?.kyc_link_id;
-      console.log("🍓 kycLinkId in ModalFlowContext.tsx::::: ", kycLinkId);
-      if (!kycLinkId) {
-        setKycStatus("not_started");
-        return;
-      }
-
-      const easClient = new EasClient();
-      const kycResponse = await easClient.getKYCStatus(user.address, kycLinkId);
-
-      SecureStore.setItemAsync(
-        AUTH_STORAGE_KEYS.KYC_STATUS,
-        kycResponse.data.status
-      );
-      SecureStore.setItemAsync(
-        AUTH_STORAGE_KEYS.KYC_LINK,
-        kycResponse.data.kyc_continuation_link
-      );
-      setKycStatus(kycResponse.data.status);
-    } catch (err) {
-      Sentry.captureException(
-        new Error(
-          `Failed to fetch KYC status: ${err}. (contexts)/ModalFlowContext.tsx (fetchKycStatus)`
-        )
-      );
-      setError("Failed to fetch KYC status");
-      console.error("Error fetching KYC status:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
-
-  const value = {
-    // Modal visibility states
-    isReceiveModalVisible,
-    isBankDetailsModalVisible,
-    isCreateBankAccountModalVisible,
-    isKycModalVisible,
-    isSendModalVisible,
-
-    // Shared data
-    selectedCurrency,
-    kycStatus,
-    setKycStatus,
-    bankAccountDetails,
-    isLoading,
-    error,
-
-    // Actions
-    showReceiveModal,
-    showBankDetailsModal,
-    showCreateBankAccountModal,
-    showKycModal,
-    showSendModal,
-    hideAllModals,
-
-    // Data actions
-    setSelectedCurrency,
-    fetchBankDetails,
-    fetchKycStatus,
-  };
-
   return (
-    <ModalFlowContext.Provider value={value}>
+    <ModalFlowContext.Provider
+      value={{
+        isReceiveModalVisible,
+        isSendModalVisible,
+        showReceiveModal,
+        showSendModal,
+        hideAllModals,
+      }}
+    >
       {children}
     </ModalFlowContext.Provider>
   );
@@ -194,11 +51,6 @@ export function ModalFlowProvider({ children }: { children: React.ReactNode }) {
 export function useModalFlow() {
   const context = useContext(ModalFlowContext);
   if (context === undefined) {
-    Sentry.captureException(
-      new Error(
-        `useModalFlow must be used within a ModalFlowProvider. (contexts)/ModalFlowContext.tsx (useModalFlow)`
-      )
-    );
     throw new Error("useModalFlow must be used within a ModalFlowProvider");
   }
   return context;

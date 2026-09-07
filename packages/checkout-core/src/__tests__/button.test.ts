@@ -28,7 +28,8 @@ describe("renderButton", () => {
     const mount = container();
     renderButton(mount, { onClick: () => {} });
     const style = document.getElementById("xend-pay-style");
-    expect(style?.textContent).toContain(`background: ${BRAND_BLACK}`);
+    expect(style?.textContent).toContain(`--xend-pay-bg: ${BRAND_BLACK}`);
+    expect(style?.textContent).toContain("background: var(--xend-pay-bg)");
     // No green anywhere in the button styling.
     expect(style?.textContent?.toLowerCase()).not.toContain("green");
     expect(style?.textContent).not.toMatch(/#0*(f0|00ff00|008000)/i);
@@ -62,6 +63,19 @@ describe("renderButton", () => {
     expect(onReady).toHaveBeenCalledTimes(1);
     handle.element.click();
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("stamps the theme so the dark material can swap the brand tokens", () => {
+    const auto = renderButton(container(), { onClick: () => {} });
+    expect(auto.element.dataset["theme"]).toBe("auto");
+    const dark = renderButton(container(), {
+      onClick: () => {},
+      theme: "dark",
+    });
+    expect(dark.element.dataset["theme"]).toBe("dark");
+    const style = document.getElementById("xend-pay-style");
+    expect(style?.textContent).toContain("[data-theme='dark']");
+    expect(style?.textContent).toContain("prefers-color-scheme: dark");
   });
 
   it("does not fire onClick while disabled", () => {

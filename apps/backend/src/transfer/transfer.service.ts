@@ -20,6 +20,8 @@ import { AccountEventsService } from '../activity/account-events.service';
 import { SpendService } from '../account/spend.service';
 import { DbService } from '../db/db.service';
 import { smartAccounts, transfers, payments, merchants } from '../db/schema';
+import { PREPARED_TX_STORE } from '../prepared/prepared-tx.interface';
+import type { PreparedTxStore } from '../prepared/prepared-tx.interface';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import { TOKEN_METADATA_PROVIDER } from '../tokens/token-metadata.interface';
 import type {
@@ -49,23 +51,14 @@ import type {
 } from './dtos';
 
 /**
- * In-memory record of a prepared transfer intent. Stored only between
- * /transfers/prepare and /transfers/submit; once submit lands the intent
- * is erased and the canonical row lives in the `transfers` table
+ * A prepared transfer intent. Held in the prepared-transaction store only
+ * between /transfers/prepare and /transfers/submit; once submit lands the
+ * intent is erased and the canonical row lives in the `transfers` table
  * (idempotency on intentId is enforced by the UNIQUE index on
  * `transfers.intent_id`).
  *
- * An in-memory Map keyed by intentId with a 5-min TTL is sufficient
- * because:
- *   - Blockhash lifetime is ~60-90 seconds; intents do not need to
- *     survive longer than that.
- *   - The prepare -> submit round-trip in normal UX is single-digit
- *     seconds.
- *   - Server restart between prepare and submit is rare, and the mobile
- *     app retries with a fresh prepare anyway.
- *
- * A `transfer_intents` table could be added later if intent durability
- * across restarts is ever needed; today it is not on the success path.
+ * A short TTL is enough: blockhash lifetime is about a minute, so an intent
+ * that outlives it cannot be broadcast anyway.
  */
 interface IntentRecord {
   intentId: string;
@@ -127,7 +120,6 @@ const BLOCKHASH_LIFETIME_SLOTS = 150;
 @Injectable()
 export class TransferService {
   private readonly logger = new Logger(TransferService.name);
-  private readonly intents = new Map<string, IntentRecord>();
   /** Set of mint pubkeys we accept for /transfers/prepare in v1. */
   private readonly mintAllowlist = new Set<string>();
 
@@ -142,6 +134,7 @@ export class TransferService {
     private readonly events: AccountEventsService,
     @Inject(APPROVAL_SIGNER_STORE)
     private readonly approvalSigners: ApprovalSignerStore,
+    @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
   ) {
     // Pull the stablecoin mint allowlist from env so devnet vs mainnet
     // mints can swap without code changes.
@@ -306,7 +299,7 @@ export class TransferService {
     const unsignedTxBase64 = Buffer.from(tx.serialize()).toString('base64');
     const messageBase64 = Buffer.from(messageV0.serialize()).toString('base64');
 
-    // 8. Persist intent in-memory with TTL.
+    // 8. Persist the intent with a TTL.
     const intentId = createId();
     const now = Date.now();
     // expiresAt: blockhash lifetime upper bound. lastValidBlockHeight is
@@ -316,7 +309,7 @@ export class TransferService {
     const expiresAt =
       now + Math.min(BLOCKHASH_LIFETIME_SLOTS * SLOT_MS, INTENT_TTL_MS);
 
-    this.intents.set(intentId, {
+    await this.storeIntent({
       intentId,
       smartAccountId: account.id,
       walletAddress: fromAddress,
@@ -332,11 +325,6 @@ export class TransferService {
       createdAt: now,
       expiresAt,
     });
-
-    // Best-effort cleanup of obviously-stale entries to keep the Map
-    // bounded. Not a substitute for TTL-on-read, which is the
-    // authoritative check during submit().
-    this.pruneIntents();
 
     return {
       intentId,
@@ -390,7 +378,7 @@ export class TransferService {
     const expiresAt =
       now + Math.min(BLOCKHASH_LIFETIME_SLOTS * SLOT_MS, INTENT_TTL_MS);
 
-    this.intents.set(intentId, {
+    await this.storeIntent({
       intentId,
       smartAccountId,
       walletAddress: spend.vaultAddress,
@@ -406,7 +394,6 @@ export class TransferService {
       createdAt: now,
       expiresAt,
     });
-    this.pruneIntents();
 
     return {
       intentId,
@@ -446,10 +433,11 @@ export class TransferService {
     }
 
     // 2. Look up the intent.
-    const intent = this.intents.get(req.intentId);
+    const intent = await this.prepared.get<IntentRecord>(
+      intentKey(req.intentId),
+    );
     if (!intent || intent.expiresAt < Date.now()) {
-      // Drop it if expired so the Map doesn't grow.
-      if (intent) this.intents.delete(req.intentId);
+      if (intent) await this.prepared.delete(intentKey(req.intentId));
       throw new IntentExpiredError(
         'intent not found or blockhash past lifetime; reissue /transfers/prepare',
       );
@@ -587,8 +575,8 @@ export class TransferService {
       })
       .returning();
 
-    // 6. Erase the intent — it has served its purpose.
-    this.intents.delete(req.intentId);
+    // 6. Erase the intent: it has served its purpose.
+    await this.prepared.delete(intentKey(req.intentId));
 
     return {
       transferId: row.id,
@@ -616,6 +604,10 @@ export class TransferService {
    * Enrolment happens during Account setup, so an Account with a vault and no
    * device key is a broken state, and the safe reading of it is that the phone
    * asking is not one that ever proved it holds S2.
+   *
+   * Only the device behind the Account's live approval signer counts. A
+   * rotation leaves the old phone's row in place, and a key that has been
+   * rotated out of the signer set must not go on proving presence for it.
    */
   private async requirePresence(
     userId: string,
@@ -623,7 +615,10 @@ export class TransferService {
     signedTx: VersionedTransaction,
     presenceProof: string | undefined,
   ): Promise<void> {
-    const enrolled = await this.approvalSigners.listByUser(userId);
+    const account = await this.accounts.findByUserId(userId);
+    const enrolled = (await this.approvalSigners.listByUser(userId)).filter(
+      (row) => row.address === account?.approvalSigner,
+    );
     if (enrolled.length === 0) {
       this.logger.error(
         `transfer.presence.not_enrolled user_id=${userId} intent_id=${intent.intentId}`,
@@ -806,9 +801,12 @@ export class TransferService {
 
   // ── internals ──────────────────────────────────────────────────────
 
-  /** Test-only / introspection helper. */
-  intentCount(): number {
-    return this.intents.size;
+  private storeIntent(intent: IntentRecord): Promise<void> {
+    const ttlSeconds = Math.max(
+      1,
+      Math.ceil((intent.expiresAt - Date.now()) / 1000),
+    );
+    return this.prepared.set(intentKey(intent.intentId), intent, ttlSeconds);
   }
 
   /**
@@ -829,11 +827,8 @@ export class TransferService {
       return new Map();
     }
   }
+}
 
-  private pruneIntents(): void {
-    const now = Date.now();
-    for (const [id, intent] of this.intents) {
-      if (intent.expiresAt < now) this.intents.delete(id);
-    }
-  }
+function intentKey(intentId: string): string {
+  return `transfer-intent:${intentId}`;
 }

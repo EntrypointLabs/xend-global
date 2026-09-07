@@ -13,7 +13,7 @@ import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { BalanceChart } from "@/components/ui/organisms/BalanceChart";
 import { HomeBanners } from "@/components/ui/organisms/HomeBanners";
 import { useBalanceDelta, useBalanceHistory } from "@/hooks/useBalanceHistory";
-import { useEarnPosition } from "@/hooks/useEarn";
+import { earnHeadlineApy, useEarnPosition } from "@/hooks/useEarn";
 import { formatMoney } from "@/utils/balances";
 import { getUsdcMint } from "@/utils/cluster";
 import { useBalances } from "@/hooks/useBalances";
@@ -99,7 +99,7 @@ function HomeScreenContent() {
       },
       {
         title: "Investments",
-        subtitle: "Trade crypto",
+        subtitle: "What else you hold",
         amount: tileAmount(portfolio.investmentsUsd),
         icon: require("@/assets/icons/investment.png"),
         onPress: () => router.push("/investments"),
@@ -108,7 +108,7 @@ function HomeScreenContent() {
       },
       {
         title: "Earn",
-        subtitle: "Up to 4.93% APY",
+        subtitle: `Up to ${earnHeadlineApy()} APY`,
         amount: tileAmount(earnBalance),
         icon: require("@/assets/icons/earn.png"),
         onPress: () => router.push("/earn"),
@@ -234,7 +234,7 @@ function HomeScreenContent() {
                 marginBottom: compact ? 6 : size(14),
               }}
             >
-              Deposit tokens to your address and start using Xend Wallet
+              Receive money at your address and start using Xend
             </Typography>
 
             <HapticPressable

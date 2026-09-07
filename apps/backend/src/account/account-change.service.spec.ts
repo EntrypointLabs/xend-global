@@ -7,6 +7,7 @@ import { SETTINGS_TIME_LOCK_SECONDS } from '@xend/smart-account';
 
 import { AccountChangeService } from './account-change.service';
 import type { AccountEventsService } from '../activity/account-events.service';
+import { InMemoryPreparedTxStore } from '../prepared/prepared-tx.memory';
 import type { RecoveryService } from '../recovery/recovery.service';
 import {
   ABOVE_LIMIT_POLICY_SEED,
@@ -65,7 +66,11 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
       Promise.resolve({
         timeLockSeconds: provisioned ? SETTINGS_TIME_LOCK_SECONDS : 0,
         transactionIndex: state.transactionIndex ?? 7n,
+        policySeed: null,
+        signers: [],
       }),
+    readSpendingLimit: () =>
+      Promise.reject(new Error('readSpendingLimit is not exercised here')),
     policyExists: (_settings, seed) =>
       Promise.resolve(
         provisioned &&
@@ -139,7 +144,13 @@ function service(
   recovery: RecoveryService = fakeRecovery().recovery,
   events: AccountEventsService = fakeEvents().events,
 ) {
-  return new AccountChangeService(store(row), chain, recovery, events);
+  return new AccountChangeService(
+    store(row),
+    chain,
+    recovery,
+    events,
+    new InMemoryPreparedTxStore(),
+  );
 }
 
 function signable() {

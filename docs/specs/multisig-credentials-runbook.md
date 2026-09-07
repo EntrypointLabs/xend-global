@@ -168,19 +168,131 @@ Then on a real phone, in order:
 2. **Biometric prompt on every signature.** Sign twice in a row. Two prompts.
    One prompt for two signatures means the `LAContext` is being reused and the
    possession factor is weaker than it looks.
-3. **A Spend.** The two-signature route is exercised by default because no
-   spending limit exists yet, so this also proves the Turnkey stamp.
+3. **A Spend above the limit.** Provisioning installs a US $100 daily limit
+   (ADR 0032), so a Spend over it takes the two-signature route and proves the
+   Turnkey stamp; one under it proves the passkey path alone.
 4. **Low-S.** If Turnkey rejects a stamp as an invalid signature, the
    normalisation in `modules/hardware-key/src/lowS.ts` is the first place to
    look. It is unit tested, but only against synthetic signatures.
 
-## 7. Create the spending limit, and mind the 24-hour wait
+## 7. The spending limit, and the 24-hour wait
 
-Until a spending limit policy exists, **every** Spend takes the two-signature
-route and needs the phone. That is safe but not the product: D5 wants everyday
-Spends at one tap.
+Provisioning creates the spending-limit policy and the above-limit policy in the
+same settings change that sets the time lock (`ProvisioningService`, ADR 0033),
+while the lock is still zero, so a Consumer has a limit from the first minute. The
+terms are fixed in `apps/backend/src/account/spending-limit.terms.ts` (ADR 0032).
 
-Creating the policy is a settings change, so it is subject to the 24-hour
-Settings time lock from D3. A Consumer therefore cannot have a spending limit on
-their first day. Decide deliberately whether that is acceptable for the pilot or
-whether the time lock should start shorter and be raised.
+Changing them on an existing Account is a settings change under the 24-hour lock,
+and no endpoint or screen drives it yet. Until one exists, `read-spending-limit.ts`
+under `apps/backend/scripts/` is the only way to inspect a live limit.
+
+## 8. Compromise report: freeze S3's release first
+
+The first step when a Consumer reports an inbox or passkey compromise, before
+anything is investigated. It is mandatory because a single remaining signer cannot
+reject a staged change (the rejection cutoff is two signers; see D3 in the decisions
+spec), so the only lever that stops an attacker who holds one signer and is fishing
+for S3's vote is withholding that vote.
+
+1. Open the console at `/console/accounts`, find the Account by its contact email,
+   and press **Freeze**. This sets `users.recovery_release_frozen_at`
+   (`RecoveryService.freezeRelease`) and every path that would open the vault for
+   S3 (a device rotation, a passkey rotation, a recovery-key change that needs
+   S3's vote) refuses with `RecoveryReleaseFrozenError` from that moment.
+2. Check `/account/changes/pending` for the Account. If a change is staged, note
+   its index and executable time. A Consumer who still holds their passkey and
+   phone can reject it themselves (S2 then S1); a Consumer holding only one signer
+   cannot, and the freeze is what keeps the change from reaching two approvals.
+3. Verify the Consumer out of band, then either help them rotate the compromised
+   anchor with their own two signers, or leave the freeze in place until the
+   staged change expires or is rejected.
+4. Press **Release** only after the report is closed. A frozen Account cannot be
+   recovered onto a new phone, so leaving it frozen after the fact strands a
+   Consumer who later loses their phone.
+
+The freeze never touches a change approved by S1 and S2 together
+(`apps/backend/src/account/release-freeze.spec.ts`), because S3 is never asked. It
+is a refusal to sign, not a power to sign, and it is logged at `warn` on both
+transitions.
+
+## 9. Move the three signing keys to KMS
+
+Every server key starts life as a raw environment value, which is the pilot
+floor and not where any of them should sit for a mainnet run. Three keys move,
+each behind its own provider switch, so they can move one at a time.
+
+The wrapping is envelope encryption rather than KMS signing: KMS does not sign
+ed25519, so the secret is decrypted into process memory at boot and the key
+never leaves the account it was created in.
+
+**Create one KMS key per environment.** Symmetric, encrypt and decrypt usage,
+with a key policy that grants `kms:Decrypt` to the backend's role and
+`kms:GenerateDataKey` as well for the recovery vault. Note the ARN.
+
+**Encrypt each secret.** The script reads from stdin so nothing lands in shell
+history:
+
+```
+printf '%s' "$SECRET" | npm --workspace @xend/backend exec \
+  tsx scripts/kms-encrypt-secret.ts -- --key-id <arn> --region <region>
+```
+
+**Set the switches**, one service at a time, verifying each before the next:
+
+| Key                  | Switch                                                             | Ciphertext                                                                          |
+| -------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Recovery vault       | `RECOVERY_VAULT_PROVIDER=aws-kms` plus `RECOVERY_VAULT_KMS_KEY_ID` | Per row, generated on each seal. Existing rows keep opening under their own key id. |
+| Settlement authority | `SETTLEMENT_AUTHORITY_PROVIDER=aws-kms`                            | `SETTLEMENT_AUTHORITY_SECRET_KEY_CIPHERTEXT`                                        |
+| Relayer fee payer    | `RELAYER_FEE_PAYER_PROVIDER=aws-kms`                               | `RELAYER_FEE_PAYER_SECRET_KEY_CIPHERTEXT`                                           |
+
+**Verify before removing the raw value.** The boot log names the provider, and
+`GET /health` fails if a signer cannot resolve. Keep the raw environment value
+in place until one full recovery and one settlement have run under KMS, because
+the vault opens rows under whichever key id sealed them and a half-migrated
+deployment is a supported state, not a broken one.
+
+**Rotating the vault key later** does not need a migration. Put the new key
+first in `RECOVERY_VAULT_KEYS` as `id:base64`, leave the old entry in place so
+existing rows still open, and reseal when convenient. Removing an id before its
+rows are resealed is what makes a row unopenable, so drop an entry only after a
+reseal reports zero rows left under it.
+
+## 10. Verify the Turnkey policies before enabling them
+
+`TURNKEY_POLICIES_ENABLED` ships **false** and must stay false until this is
+done. The policy bodies are built and unit tested against a pinned JSON shape,
+but they have never been sent to Turnkey, so the flag is a claim the code cannot
+yet support.
+
+1. Create a throwaway sub-organization in a Turnkey test organization.
+2. Turn the flag on for a local backend pointed at that organization and enrol a
+   device, so the policies are created the way production would create them.
+3. Confirm in the Turnkey dashboard that the policies exist on the
+   sub-organization and read as intended.
+4. Prove both directions with a real signing request: a Squads settings change
+   or spend is stamped, and a transaction carrying an instruction to a program
+   outside the allowlist is refused by Turnkey rather than by our code.
+5. Only then enable the flag in production, and only for new sub-organizations.
+   Existing ones were created without policies and need a backfill, which does
+   not exist yet: write it before turning the flag on for an account that
+   already holds money.
+
+If step 4 refuses something it should allow, the payloads are wrong and the flag
+goes back off. A policy that blocks a legitimate above-limit Spend takes the
+Account's second signature away, which is worse than having no policy at all.
+
+## 11. Close the Privy email login, in this order
+
+O7's second question stopped mattering for Consumers, because there are none in
+production, but it still matters for the internal accounts and for one real
+balance.
+
+1. **Sweep first.** Roughly 0.75 USDC left by the dApp Store reviewer sits on a
+   mainnet Privy wallet whose only way in may be email. Move it before the
+   method is disabled, or the answer to O7 stops being irrelevant.
+2. Disable email as a login method in the Privy dashboard.
+3. Confirm a fresh install still signs up: email proves the address and mints
+   the recovery signer, the passkey creates the primary signer, and neither step
+   asks Privy for an emailed code.
+4. Re-create any internal test accounts the change strands. That is the accepted
+   cost recorded in ADR 0027.

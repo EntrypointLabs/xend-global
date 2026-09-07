@@ -154,3 +154,61 @@ describe('KeyIssuanceService.markKybVerified', () => {
     ).toBeInstanceOf(Date);
   });
 });
+
+describe('KeyIssuanceService.revokeKey', () => {
+  function revokeDb(cfg: { unrevoked: boolean; existing: boolean }) {
+    const revokedAt = new Date('2026-02-01');
+    const row = {
+      id: 'ak1',
+      merchantId: 'm1',
+      keyHash: 'h',
+      keyPrefix: 'xnd_live_',
+      fingerprint: 'xnd_live_...abcd',
+      mode: 'live' as const,
+      revokedAt,
+      lastUsedAt: null,
+      createdAt: new Date('2026-01-01'),
+    };
+    const client = {
+      update: () => ({
+        set: () => ({
+          where: () => ({
+            returning: () => Promise.resolve(cfg.unrevoked ? [row] : []),
+          }),
+        }),
+      }),
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve(cfg.existing ? [row] : []),
+          }),
+        }),
+      }),
+    };
+    return { db: { client } as unknown as DbService, revokedAt };
+  }
+
+  it('stamps revoked_at on a live key', async () => {
+    const { db, revokedAt } = revokeDb({ unrevoked: true, existing: true });
+    const svc = new KeyIssuanceService(db);
+    await expect(svc.revokeKey('ak1')).resolves.toMatchObject({
+      id: 'ak1',
+      fingerprint: 'xnd_live_...abcd',
+      revokedAt,
+    });
+  });
+
+  it('is safe to repeat: an already revoked key keeps its first timestamp', async () => {
+    const { db, revokedAt } = revokeDb({ unrevoked: false, existing: true });
+    const svc = new KeyIssuanceService(db);
+    await expect(svc.revokeKey('ak1')).resolves.toMatchObject({ revokedAt });
+  });
+
+  it('refuses an unknown key', async () => {
+    const { db } = revokeDb({ unrevoked: false, existing: false });
+    const svc = new KeyIssuanceService(db);
+    await expect(svc.revokeKey('ghost')).rejects.toMatchObject({
+      code: 'API_KEY_NOT_FOUND',
+    });
+  });
+});

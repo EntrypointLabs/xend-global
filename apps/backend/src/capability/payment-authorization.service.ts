@@ -11,6 +11,7 @@ import {
 } from '../payment/payment.errors';
 import { SessionService } from '../session/session.service';
 import { CapacityService } from './capacity.service';
+import { LiveIntentOnSimulatedPathError } from './capability.errors';
 
 /** Postgres unique-violation SQLSTATE, surfaced by node-postgres. */
 function pgErrorCode(err: unknown): string | undefined {
@@ -37,9 +38,9 @@ export interface AuthorizeResult {
 }
 
 /**
- * The keystone authorization path: capacity check, conditional
- * created -> authorized transition, guarded attempt insert, counter
- * recording, and the payment.authorized event, in that order. A valid Session
+ * The keystone authorization path: atomic capacity reservation, conditional
+ * created -> authorized transition, guarded attempt insert, and the
+ * payment.authorized event, in that order. A valid Session
  * lets a repeat Payment skip the ceremony, but every Payment still passes the
  * live capacity check; the session's own velocity caps gate first and the
  * token rotates only after the authorization succeeds. Settlement is not here.
@@ -55,6 +56,65 @@ export class PaymentAuthorizationService {
     private readonly sessions: SessionService,
     @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
   ) {}
+
+  /**
+   * The test-mode counterpart of {@link authorize}: the same intent
+   * transition, attempt row and payment.authorized event, with no capacity
+   * reservation and no Session velocity, because a sandbox Payment spends
+   * nothing. Refuses a live intent outright so a real Payment can never be
+   * authorized without the caps being consulted.
+   */
+  async authorizeSimulated(params: {
+    intentId: string;
+    consumerId: string;
+  }): Promise<AuthorizeResult> {
+    const { intentId, consumerId } = params;
+    const intent = await this.intents.findById(intentId);
+    if (intent.mode !== 'test') {
+      throw new LiveIntentOnSimulatedPathError(
+        `intent ${intentId} is live and cannot take the simulated path`,
+      );
+    }
+    if (intent.status !== 'created') {
+      throw new IntentStateConflictError(
+        `intent ${intentId} is ${intent.status}, not authorizable`,
+      );
+    }
+    if (intent.expiresAt.getTime() < Date.now()) {
+      await this.intents.transition(intentId, 'created', 'expired');
+      await this.events.publish({
+        topic: 'payment.expired',
+        key: intentId,
+        payload: { intentId },
+        correlationId: intentId,
+      });
+      throw new IntentExpiredError(`intent ${intentId} expired`);
+    }
+
+    await this.intents.transition(intentId, 'created', 'authorized', {
+      consumerId,
+      authorizedAt: new Date(),
+    });
+    const attemptId = await this.insertAttempt(intentId);
+
+    await this.events.publish({
+      topic: 'payment.authorized',
+      key: intentId,
+      payload: {
+        intentId,
+        consumerId,
+        merchantId: intent.merchantId,
+        usdcSettlementRaw: intent.usdcSettlementRaw,
+        attemptId,
+        simulated: true,
+      },
+      correlationId: intentId,
+    });
+    this.logger.log(
+      `payment.authorize intent_id=${intentId} consumer_id=${consumerId} amount_raw=${intent.usdcSettlementRaw} attempt_id=${attemptId} simulated=true`,
+    );
+    return { intentId, attemptId, status: 'authorized' };
+  }
 
   async authorize(params: AuthorizeParams): Promise<AuthorizeResult> {
     const { intentId, sessionToken } = params;
@@ -98,43 +158,26 @@ export class PaymentAuthorizationService {
       consumerId = params.consumerId as string;
     }
 
-    // Capacity check (read-only) BEFORE any write.
-    await this.capacity.checkCapacity(consumerId, intent.usdcSettlementRaw);
-
-    // Reserve capacity BEFORE the authorizing transition. Recording first means
+    // Reserve capacity BEFORE the authorizing transition. Reserving first means
     // a counter-write failure throws while the intent is still `created` (clean
     // and retryable) instead of leaving it authorized-but-uncounted, which would
-    // let the amount bypass the daily/monthly caps. The narrow residual is a
-    // rare fail-safe over-count if the transition below then loses a race: a
-    // daily window self-heals and it errs toward over-restricting, never bypass.
-    await this.capacity.recordAuthorizedPayment(
-      consumerId,
-      intent.usdcSettlementRaw,
-    );
+    // let the amount bypass the daily/monthly caps. The reservation is atomic
+    // against the caps, so two concurrent authorizations cannot both pass.
+    await this.capacity.reserveCapacity(consumerId, intent.usdcSettlementRaw);
 
-    // The conditional transition is the race arbiter.
-    await this.intents.transition(intentId, 'created', 'authorized', {
-      consumerId,
-      authorizedAt: new Date(),
-    });
-
-    let attemptId: string;
+    // The conditional transition is the race arbiter; a lost race gives the
+    // reservation back so the loser's amount is not held against the caps.
     try {
-      const [attempt] = await this.db.client
-        .insert(paymentAttempts)
-        .values({ intentId, status: 'authorized' })
-        .returning({ id: paymentAttempts.id });
-      attemptId = attempt.id;
+      await this.intents.transition(intentId, 'created', 'authorized', {
+        consumerId,
+        authorizedAt: new Date(),
+      });
     } catch (err) {
-      // Defense-in-depth behind the transition: the payment_attempts partial
-      // unique index is the last word on one-live-attempt.
-      if (pgErrorCode(err) === '23505') {
-        throw new AttemptInFlightError(
-          `intent ${intentId} already has a live attempt`,
-        );
-      }
+      await this.capacity.releaseCapacity(consumerId, intent.usdcSettlementRaw);
       throw err;
     }
+
+    const attemptId = await this.insertAttempt(intentId);
 
     // Record velocity + rotate only after the authorization has committed: a
     // rejected Payment must neither burn a session's daily slot nor invalidate
@@ -168,5 +211,24 @@ export class PaymentAuthorizationService {
       status: 'authorized',
       ...(rotatedSessionToken ? { rotatedSessionToken } : {}),
     };
+  }
+
+  private async insertAttempt(intentId: string): Promise<string> {
+    try {
+      const [attempt] = await this.db.client
+        .insert(paymentAttempts)
+        .values({ intentId, status: 'authorized' })
+        .returning({ id: paymentAttempts.id });
+      return attempt.id;
+    } catch (err) {
+      // Defense-in-depth behind the transition: the payment_attempts partial
+      // unique index is the last word on one-live-attempt.
+      if (pgErrorCode(err) === '23505') {
+        throw new AttemptInFlightError(
+          `intent ${intentId} already has a live attempt`,
+        );
+      }
+      throw err;
+    }
   }
 }

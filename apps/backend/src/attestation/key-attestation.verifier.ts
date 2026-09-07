@@ -12,6 +12,16 @@ import { GOOGLE_ATTESTATION_ROOTS } from './roots';
 const KEY_ATTESTATION_OID = '1.3.6.1.4.1.11129.2.1.17';
 
 /**
+ * The app the attested key must belong to, as the device reports it in the
+ * attestationApplicationId authorization. A genuine Google-rooted chain from
+ * any other app on the phone would otherwise pass every check here.
+ */
+export const ANDROID_PACKAGE_NAME = 'com.giftedborg.xend';
+
+/** Tag of attestationApplicationId inside an AuthorizationList. */
+const ATTESTATION_APPLICATION_ID_TAG = 709;
+
+/**
  * SecurityLevel from the attestation schema. Software (0) means the key is not
  * in hardware at all, which is exactly the case this whole check exists to
  * reject.
@@ -40,6 +50,7 @@ export class KeyAttestationVerifier {
     const record = parseAttestationExtension(leaf);
 
     assertChallenge(record.challenge, nonce);
+    assertApplication(record.packageNames, ANDROID_PACKAGE_NAME);
 
     const security = readSecurityLevel(record.keymasterSecurityLevel);
     return {
@@ -107,21 +118,13 @@ async function assertChainToGoogleRoot(
   }
 }
 
-interface AttestationRecord {
+export interface AttestationRecord {
   challenge: Buffer;
   keymasterSecurityLevel: number;
+  /** Every package the attestationApplicationId names. */
+  packageNames: string[];
 }
 
-/**
- * KeyDescription ::= SEQUENCE {
- *   attestationVersion INTEGER, attestationSecurityLevel ENUMERATED,
- *   keymasterVersion INTEGER, keymasterSecurityLevel ENUMERATED,
- *   attestationChallenge OCTET_STRING, uniqueId OCTET_STRING, ... }
- *
- * Only the first five fields are read. The authorization lists after them
- * describe key usage constraints, which the device enforces and which this
- * check does not need to re-derive.
- */
 function parseAttestationExtension(
   leaf: x509.X509Certificate,
 ): AttestationRecord {
@@ -131,8 +134,22 @@ function parseAttestationExtension(
       'leaf certificate carries no key attestation extension, so the key is not attested',
     );
   }
+  return parseKeyDescription(extension.value);
+}
 
-  const parsed = asn1js.fromBER(extension.value);
+/**
+ * KeyDescription ::= SEQUENCE {
+ *   attestationVersion INTEGER, attestationSecurityLevel ENUMERATED,
+ *   keymasterVersion INTEGER, keymasterSecurityLevel ENUMERATED,
+ *   attestationChallenge OCTET_STRING, uniqueId OCTET_STRING,
+ *   softwareEnforced AuthorizationList, teeEnforced AuthorizationList }
+ *
+ * The authorization lists are read only for attestationApplicationId. The
+ * rest describes key usage constraints, which the device enforces and which
+ * this check does not need to re-derive.
+ */
+export function parseKeyDescription(der: ArrayBuffer): AttestationRecord {
+  const parsed = asn1js.fromBER(der);
   if (parsed.offset === -1) {
     throw new AttestationRejectedError(
       'key attestation extension is malformed',
@@ -155,7 +172,61 @@ function parseAttestationExtension(
   return {
     keymasterSecurityLevel: securityLevel.valueBlock.valueDec,
     challenge: Buffer.from(challenge.valueBlock.valueHexView),
+    packageNames: [values[6], values[7]].flatMap(readPackageNames),
   };
+}
+
+/**
+ * AttestationApplicationId ::= SEQUENCE {
+ *   package_infos SET OF SEQUENCE { package_name OCTET_STRING, version INTEGER },
+ *   signature_digests SET OF OCTET_STRING }
+ *
+ * Carried inside an explicitly tagged OCTET STRING in the authorization list.
+ */
+function readPackageNames(list: asn1js.AsnType | undefined): string[] {
+  if (!(list instanceof asn1js.Sequence)) return [];
+
+  const tagged = list.valueBlock.value.find(
+    (entry) =>
+      entry.idBlock.tagClass === 3 &&
+      entry.idBlock.tagNumber === ATTESTATION_APPLICATION_ID_TAG,
+  );
+  if (!(tagged instanceof asn1js.Constructed)) return [];
+
+  const wrapped = tagged.valueBlock.value[0];
+  if (!(wrapped instanceof asn1js.OctetString)) return [];
+
+  const inner = asn1js.fromBER(wrapped.valueBlock.valueHexView);
+  if (inner.offset === -1 || !(inner.result instanceof asn1js.Sequence)) {
+    throw new AttestationRejectedError(
+      'attestation application id is malformed',
+    );
+  }
+
+  const packageInfos = inner.result.valueBlock.value[0];
+  if (!(packageInfos instanceof asn1js.Set)) return [];
+
+  return packageInfos.valueBlock.value.flatMap((info) => {
+    const name =
+      info instanceof asn1js.Sequence ? info.valueBlock.value[0] : undefined;
+    return name instanceof asn1js.OctetString
+      ? [Buffer.from(name.valueBlock.valueHexView).toString('utf8')]
+      : [];
+  });
+}
+
+export function assertApplication(
+  packageNames: string[],
+  expected: string,
+): void {
+  if (packageNames.length === 0) {
+    throw new AttestationRejectedError('attestation names no application');
+  }
+  if (!packageNames.includes(expected)) {
+    throw new AttestationRejectedError(
+      'attestation was produced for a different app',
+    );
+  }
 }
 
 function assertChallenge(challenge: Buffer, nonce: string): void {

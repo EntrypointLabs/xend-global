@@ -80,3 +80,7 @@ The reachable glob set is derived from the manual reachability sweep in `apps/mo
 - `.claude/plans/style-cleanup/phases/06-enforcement-and-verification/PLAN.md` (task 6.2)
 - `apps/mobile/eslint.config.mjs` (rules wired here)
 - Related: [ADR-0001](./0001-consolidate-on-nativewind-styling.md), [ADR-0004](./0004-inline-style-exceptions.md), [ADR-0008](./0008-style-cleanup-dependency-policy.md)
+
+## Update 2026-09-07
+
+`apps/mobile/DEAD-CODE.md` was deleted on 2026-09-07. Every file it listed has since been removed or made reachable (the email login, `restore-account.tsx`, the Grid-backed BFF routes and their clients are gone), so the sweep it recorded no longer describes the tree. The reachable glob set in the mobile ESLint config is now the only list, and it is kept in step with the routes under `apps/mobile/app/` directly.

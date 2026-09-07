@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import * as Sentry from "@sentry/react-native";
 
 import { ACCOUNT_QUERY_KEY } from "@/hooks/useAccount";
 import { devicePlatform, hardwareKey } from "@/modules/hardware-key/src";
-import { apiClient } from "@/utils/apiClient";
+import { apiClient, apiErrorCode, apiErrorStatus } from "@/utils/apiClient";
 
 /**
  * Creates the Consumer's Account: hardware key, attestation, then enrolment.
@@ -27,15 +28,21 @@ export function useEnrolAccount() {
       // attesting. Attesting again would mint a new one, and `enrol` replaces
       // what is there — stranding the sub-organization the backend built around
       // the old key, on every transient failure, forever. The backend only
-      // honours a key it already holds an approval signer for, so an unknown
-      // one falls through to a fresh attestation below.
+      // honours a key it already holds an approval signer for, and says so
+      // with a typed refusal: that one falls through to a fresh attestation
+      // below. Anything else (network, a server fault) is a failed attempt to
+      // retry, not a reason to mint a second key.
       const existing = await hardwareKey.getPublicKey();
       if (existing) {
         try {
           return await apiClient.enrolAccount({ hardwarePublicKey: existing });
         } catch (err) {
+          const unattested =
+            apiErrorStatus(err) === 409 &&
+            apiErrorCode(err) === "DEVICE_NOT_ATTESTED";
+          if (!unattested) throw err;
           if (__DEV__) {
-            console.warn("[enrol] could not resume with the existing key", err);
+            console.warn("[enrol] key on this phone is not attested here", err);
           }
         }
       }
@@ -49,7 +56,11 @@ export function useEnrolAccount() {
       } catch (err) {
         // The native side already discards a key whose attestation failed;
         // this covers the case where it could not.
-        await hardwareKey.reset().catch(() => {});
+        await hardwareKey.reset().catch((resetError) => {
+          Sentry.captureException(resetError, {
+            tags: { hardwareKey: "reset-after-failed-attestation" },
+          });
+        });
         throw err;
       }
 

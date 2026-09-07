@@ -45,6 +45,7 @@ import {
   PasskeyInUseError,
   DeviceNotAttestedError,
   IncompleteSignerSetError,
+  SpendingLimitChangeError,
 } from './account.errors';
 import { AccountService } from './account.service';
 import { SweepService } from './sweep.service';
@@ -74,12 +75,18 @@ import {
   type VerifyRecoveryCodeDto,
   StartPrimaryRotationSchema,
   type StartPrimaryRotationDto,
+  StartSpendingLimitChangeSchema,
+  type StartSpendingLimitChangeDto,
+  SubmitSpendingLimitChangeSchema,
+  type SubmitSpendingLimitChangeDto,
 } from './dtos';
 import { ProvisioningService } from './provisioning.service';
 import { RecoveryService } from '../recovery/recovery.service';
 import { RecoveryChangeService } from './recovery-change.service';
 import { RecoveryChallengeService } from '../recovery/recovery-challenge.service';
 import { DeviceRotationService } from './device-rotation.service';
+import { spendingLimitSeed } from './account.interface';
+import { SpendingLimitChangeService } from './spending-limit-change.service';
 import { SpendingLimitService } from './spending-limit.service';
 
 interface AuthenticatedRequest extends Request {
@@ -104,6 +111,7 @@ export class AccountController {
     private readonly challenges: RecoveryChallengeService,
     private readonly rotations: DeviceRotationService,
     private readonly primaryRotations: PrimaryRotationService,
+    private readonly spendingLimitChanges: SpendingLimitChangeService,
   ) {}
 
   /**
@@ -171,10 +179,7 @@ export class AccountController {
         this.logger.log(
           `account.enrolment_resume_unattested userId=${req.user.userId}`,
         );
-        throw new HttpException(
-          { code: err.code, message: err.message },
-          HttpStatus.CONFLICT,
-        );
+        throw toHttp(err);
       }
       // toHttp deliberately flattens everything into "could not create the
       // Account", which is right for the caller and useless for us. By the
@@ -530,6 +535,60 @@ export class AccountController {
   }
 
   /**
+   * Starts a Spending Limit change: a new cap for the period, or a removal.
+   *
+   * Deliberately no lighter than a signer change. The limit is the size of the
+   * band one signature can move, so raising it runs through the same two
+   * approvals and the same 24 hour delay, and the Consumer is told it has
+   * started the same way.
+   */
+  @Post('limits/spending/start')
+  async startSpendingLimitChange(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(StartSpendingLimitChangeSchema))
+    body: StartSpendingLimitChangeDto,
+  ) {
+    try {
+      return await this.spendingLimitChanges.start(req.user.userId, body);
+    } catch (err) {
+      throw this.spendingLimitFailure(req.user.userId, 'start', err);
+    }
+  }
+
+  /**
+   * The next step of the Spending Limit change, or done.
+   *
+   * Also what reconciles the staged change with the chain, so the app calls it
+   * until it says done rather than assuming its own last step landed.
+   */
+  @Post('limits/spending/next')
+  async nextSpendingLimitChangeStep(@Req() req: AuthenticatedRequest) {
+    try {
+      return await this.spendingLimitChanges.next(req.user.userId);
+    } catch (err) {
+      throw this.spendingLimitFailure(req.user.userId, 'next', err);
+    }
+  }
+
+  @Post('limits/spending/submit')
+  async submitSpendingLimitChangeStep(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(SubmitSpendingLimitChangeSchema))
+    body: SubmitSpendingLimitChangeDto,
+  ) {
+    try {
+      return {
+        signature: await this.spendingLimitChanges.submit(
+          req.user.userId,
+          body.signedTxBase64,
+        ),
+      };
+    } catch (err) {
+      throw this.spendingLimitFailure(req.user.userId, 'submit', err);
+    }
+  }
+
+  /**
    * Picks up an enrolment that already attested this device.
    *
    * A key the backend has never seen is refused. The device generates a fresh
@@ -785,6 +844,17 @@ export class AccountController {
     return toHttp(err);
   }
 
+  private spendingLimitFailure(
+    userId: string,
+    operation: string,
+    err: unknown,
+  ): HttpException {
+    this.logger.error(
+      `account.spending_limit_change_failed userId=${userId} op=${operation}: ${describeError(err)}`,
+    );
+    return toHttp(err);
+  }
+
   private async assertNotAnActiveSigner(userId: string, address: string) {
     const account = await this.accounts.findByUserId(userId);
     if (
@@ -887,6 +957,7 @@ export class AccountController {
       // would let the two disagree about which Account they describe.
       spendingLimit: await this.spendingLimits.forAccount(
         account.settingsAddress,
+        spendingLimitSeed(account),
       ),
     };
   }
@@ -910,6 +981,15 @@ function toHttp(err: unknown): HttpException {
     return new HttpException(
       { code: err.code, message: err.message },
       HttpStatus.BAD_REQUEST,
+    );
+  }
+  // Reached from enrolment and from a device rotation resuming with a key on
+  // file. Both callers fall through to a fresh attestation on this answer,
+  // so it has to be recognisable rather than flattened into a 500.
+  if (err instanceof DeviceNotAttestedError) {
+    return new HttpException(
+      { code: err.code, message: err.message },
+      HttpStatus.CONFLICT,
     );
   }
   // Recovery key rules are the Consumer's to act on: which key, why it was
@@ -962,7 +1042,8 @@ function toHttp(err: unknown): HttpException {
     err instanceof DuplicateRecoveryChannelError ||
     err instanceof RecoveryChangeInFlightError ||
     err instanceof ContactRecoverySignerError ||
-    err instanceof ContactEmailTakenError
+    err instanceof ContactEmailTakenError ||
+    err instanceof SpendingLimitChangeError
   ) {
     return new HttpException(
       { code: err.code, message: err.message },

@@ -1,6 +1,6 @@
 # 0024: Privy adopted as the consumer-side signing vendor
 
-**Status:** Accepted, extended by [0025](0025-account-multisig-signer-set.md)
+**Status:** Accepted, superseded in part by [0025](0025-account-multisig-signer-set.md)
 **Date:** 2026-07-12
 **Deciders:** Pay with Xend planning
 **Tags:** backend, wallet, vendor, pay
@@ -72,3 +72,9 @@ Chosen option: **"Privy adopted behind the WALLET_PROVIDER adapter"**, because t
 - Plan: `.claude/plans/pay-with-xend/phases/05-checkout-surface/PLAN.md`
 - Related: [ADR-0010](./0010-no-load-bearing-provider.md) (owned interfaces per provider category), [ADR-0015](./0015-settlement-provider-layer.md) (settlement vendors behind their own seam; merchants have no wallet)
 - Source: `apps/backend/src/wallet/wallet-provider.interface.ts`, `apps/mobile/hooks/usePasskey.ts`, `apps/checkout/src/ceremony/passkey.ts`
+
+## Update 2026-09-07
+
+Superseded in part by [0025](0025-account-multisig-signer-set.md). The sentence "there is no Turnkey or Crossmint fallback plan" and the description of the Turnkey name in the adapter comments as "an illustrative future-adapter reference" no longer describe the code. Turnkey is the S2 signer vendor: `apps/backend/src/turnkey/` enrols the phone's approval signer as a Turnkey sub-organization (`turnkey.service.ts`), and `TURNKEY_*` is required backend config (`apps/backend/.env.example`). It is a second simultaneous signer, not a fallback for Privy, and Privy remains S1.
+
+Still in force: Privy as the consumer-side passkey and S1 signing vendor, reached only through `WALLET_PROVIDER` (`apps/backend/src/wallet/wallet-provider.interface.ts`), and the review-blocking rule that a vendor SDK lives only in its own adapter. That rule now covers two adapters: Privy under `wallet/` and Turnkey under `turnkey/`.

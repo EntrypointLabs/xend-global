@@ -8,12 +8,14 @@ import {
   MARK_RADIUS_PERCENT,
   MIN_TOUCH_TARGET,
 } from "./brand";
+import type { ButtonTheme } from "./types";
 
 export type ButtonState = "ready" | "loading" | "disabled" | "processing";
 
 export interface RenderButtonOptions {
   onClick: () => void;
   onReady?: () => void;
+  theme?: ButtonTheme;
 }
 
 export interface ButtonHandle {
@@ -28,9 +30,14 @@ const STYLE_ID = "xend-pay-style";
 // Scoped, brand-baked CSS injected once. No Tailwind runtime, no global
 // selectors; every rule is namespaced under the class prefix. The button
 // is never green: green is reserved for the passkey success checkmark.
+// The dark theme swaps the two brand tokens so the button stays the same
+// shape on a dark page; nothing else changes.
 function styleText(): string {
+  const inverted = `--${CLASS_PREFIX}bg: ${LABEL_COLOR}; --${CLASS_PREFIX}fg: ${BRAND_BLACK};`;
   return `
 .${CLASS_PREFIX}btn {
+  --${CLASS_PREFIX}bg: ${BRAND_BLACK};
+  --${CLASS_PREFIX}fg: ${LABEL_COLOR};
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -39,8 +46,8 @@ function styleText(): string {
   padding: 0 20px;
   border: 0;
   border-radius: 12px;
-  background: ${BRAND_BLACK};
-  color: ${LABEL_COLOR};
+  background: var(--${CLASS_PREFIX}bg);
+  color: var(--${CLASS_PREFIX}fg);
   font-family: ${FONT_STACK};
   font-weight: ${FONT_WEIGHT};
   font-size: 16px;
@@ -51,8 +58,12 @@ function styleText(): string {
   appearance: none;
   user-select: none;
 }
+.${CLASS_PREFIX}btn[data-theme='dark'] { ${inverted} }
+@media (prefers-color-scheme: dark) {
+  .${CLASS_PREFIX}btn[data-theme='auto'] { ${inverted} }
+}
 .${CLASS_PREFIX}btn:focus-visible {
-  outline: 2px solid ${LABEL_COLOR};
+  outline: 2px solid var(--${CLASS_PREFIX}fg);
   outline-offset: 2px;
 }
 .${CLASS_PREFIX}btn[data-state='disabled'],
@@ -66,11 +77,13 @@ function styleText(): string {
   height: 18px;
   flex: 0 0 auto;
 }
+.${CLASS_PREFIX}mark rect { fill: var(--${CLASS_PREFIX}fg); }
+.${CLASS_PREFIX}mark path { stroke: var(--${CLASS_PREFIX}bg); }
 .${CLASS_PREFIX}spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  border-top-color: ${LABEL_COLOR};
+  border: 2px solid color-mix(in srgb, var(--${CLASS_PREFIX}fg) 35%, transparent);
+  border-top-color: var(--${CLASS_PREFIX}fg);
   border-radius: 50%;
   animation: ${CLASS_PREFIX}spin 0.7s linear infinite;
 }
@@ -84,10 +97,10 @@ function styleText(): string {
 }
 
 // The Xend mark as a tiny inline SVG: a rounded square (rx at 22% of its
-// box) enclosing an "X". White on the brand background; never green.
+// box) enclosing an "X". Label colour on the brand background; never green.
 function markSvg(): string {
   const rx = `${MARK_RADIUS_PERCENT}%`;
-  return `<svg class="${CLASS_PREFIX}mark" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="0" y="0" width="20" height="20" rx="${rx}" ry="${rx}" fill="${LABEL_COLOR}"></rect><path d="M6 6 L14 14 M14 6 L6 14" stroke="${BRAND_BLACK}" stroke-width="2" stroke-linecap="round"></path></svg>`;
+  return `<svg class="${CLASS_PREFIX}mark" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="0" y="0" width="20" height="20" rx="${rx}" ry="${rx}"></rect><path d="M6 6 L14 14 M14 6 L6 14" stroke-width="2" stroke-linecap="round"></path></svg>`;
 }
 
 function ensureStyle(doc: Document): void {
@@ -115,6 +128,7 @@ export function renderButton(
   button.className = `${CLASS_PREFIX}btn`;
   button.setAttribute("aria-label", LABEL_TEXT);
   button.dataset["state"] = "ready";
+  button.dataset["theme"] = options.theme ?? "auto";
 
   const label = doc.createElement("span");
   label.className = `${CLASS_PREFIX}label`;

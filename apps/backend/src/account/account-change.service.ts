@@ -7,12 +7,17 @@ import {
 } from '@xend/smart-account';
 
 import { AccountEventsService } from '../activity/account-events.service';
+import {
+  PREPARED_TX_STORE,
+  PREPARED_TX_TTL_SECONDS,
+} from '../prepared/prepared-tx.interface';
+import type { PreparedTxStore } from '../prepared/prepared-tx.interface';
 import { RecoveryService } from '../recovery/recovery.service';
 import { AccountCreationError } from './account.errors';
 import {
   ABOVE_LIMIT_POLICY_SEED,
   PROVISIONING_CHAIN,
-  SPENDING_LIMIT_POLICY_SEED,
+  spendingLimitSeed,
   SQUADS_ACCOUNT_STORE,
 } from './account.interface';
 import type {
@@ -67,27 +72,23 @@ export interface StagedChange {
 export class AccountChangeService {
   private readonly logger = new Logger(AccountChangeService.name);
 
-  /**
-   * The rejection each Consumer was last handed, by user id.
-   *
-   * Same reason as provisioning: the authority partially signs whatever arrives
-   * at submit, so the bytes have to be pinned to what was prepared or the
-   * endpoint becomes a way to have the backend sign anything.
-   *
-   * The index rides along because once the rejection lands the proposal is
-   * settled and no longer readable as pending, and the outcome is recorded
-   * against the change it decided.
-   */
-  private readonly prepared = new Map<
-    string,
-    { messageBase64: string; transactionIndex: string }
-  >();
-
   constructor(
     @Inject(SQUADS_ACCOUNT_STORE) private readonly store: SquadsAccountStore,
     @Inject(PROVISIONING_CHAIN) private readonly chain: ProvisioningChain,
     private readonly recovery: RecoveryService,
     private readonly events: AccountEventsService,
+    /**
+     * The rejection each Consumer was last handed.
+     *
+     * Same reason as provisioning: the authority partially signs whatever
+     * arrives at submit, so the bytes have to be pinned to what was prepared
+     * or the endpoint becomes a way to have the backend sign anything.
+     *
+     * The index rides along because once the rejection lands the proposal is
+     * settled and no longer readable as pending, and the outcome is recorded
+     * against the change it decided.
+     */
+    @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
   ) {}
 
   /** The change awaiting execution on this Consumer's Account, if any. */
@@ -194,10 +195,14 @@ export class AccountChangeService {
     }
 
     const unsigned = await this.chain.compile({ instructions });
-    this.prepared.set(userId, {
-      messageBase64: unsigned.messageBase64,
-      transactionIndex: staged.transactionIndex,
-    });
+    await this.prepared.set<PreparedRejection>(
+      preparedKey(userId),
+      {
+        messageBase64: unsigned.messageBase64,
+        transactionIndex: staged.transactionIndex,
+      },
+      PREPARED_TX_TTL_SECONDS,
+    );
 
     this.logger.log(
       `account_change.reject_prepared userId=${userId} index=${staged.transactionIndex}`,
@@ -214,7 +219,9 @@ export class AccountChangeService {
     userId: string,
     signedTxBase64: string,
   ): Promise<string> {
-    const expected = this.prepared.get(userId);
+    const expected = await this.prepared.get<PreparedRejection>(
+      preparedKey(userId),
+    );
     if (!expected) {
       throw new AccountCreationError(
         'No rejection is awaiting a signature for this Consumer',
@@ -252,7 +259,7 @@ export class AccountChangeService {
       );
       throw cause;
     }
-    this.prepared.delete(userId);
+    await this.prepared.delete(preparedKey(userId));
 
     // A rejected change never reaches the signer set, so any recovery key row
     // staged against it has to go back. Leaving it would show the Consumer a
@@ -280,7 +287,7 @@ export class AccountChangeService {
     return (
       (await this.chain.policyExists(
         account.settingsAddress,
-        SPENDING_LIMIT_POLICY_SEED,
+        spendingLimitSeed(account),
       )) &&
       (await this.chain.policyExists(
         account.settingsAddress,
@@ -288,6 +295,15 @@ export class AccountChangeService {
       ))
     );
   }
+}
+
+interface PreparedRejection {
+  messageBase64: string;
+  transactionIndex: string;
+}
+
+function preparedKey(userId: string): string {
+  return `account-change:${userId}`;
 }
 
 function describe(cause: unknown): string {

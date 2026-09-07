@@ -195,6 +195,31 @@ describe('IdentityService.resolveByProviderToken', () => {
       email: 'a@b.com',
     });
   });
+
+  it('resolves a verified identity with no Account when a test-mode Payment asks for it, outside development', async () => {
+    const wallet = {
+      verifyIdToken: jest.fn().mockResolvedValue(providerUser),
+      getUser: jest.fn(),
+    } as unknown as WalletProvider;
+    const { db, store } = makeStatefulDb();
+    const service = new IdentityService(db, wallet, makeConfig('production'));
+
+    await expect(service.resolveByProviderToken('token')).rejects.toMatchObject(
+      { code: 'UNKNOWN_CONSUMER' },
+    );
+    expect(store.users).toHaveLength(0);
+
+    const profile = await service.resolveByProviderToken('token', {
+      withoutAccount: true,
+    });
+
+    expect(store.users).toHaveLength(1);
+    expect(profile).toEqual({
+      consumerId: store.users[0].id,
+      accountAddress: 'Wallet1',
+      email: 'a@b.com',
+    });
+  });
 });
 
 /**

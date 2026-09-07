@@ -5,16 +5,21 @@ import {
   NotFoundException,
   Param,
   Post,
+  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
+import type { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
+import { THROTTLE_LIMITS } from '../common/throttle';
 import { DbService } from '../db/db.service';
 import { webhookDeliveries } from '../db/schema';
 import { RecoveryService } from '../recovery/recovery.service';
 import { WebhookDeliveryService } from '../webhook/webhook-delivery.service';
-import { ConsoleAuthGuard } from './console-auth.guard';
+import { AdminAuditService } from './admin-audit.service';
+import { ConsoleAuthGuard, consoleActor } from './console-auth.guard';
+import { ConsoleCsrfGuard, csrfField } from './console-csrf.guard';
 import {
   ConsoleService,
   type ConsoleAccountRow,
@@ -35,6 +40,11 @@ function iso(date: Date | null): string | null {
   return date ? date.toISOString() : null;
 }
 
+/** Set by ConsoleCsrfGuard on every safe request; base64url, so HTML-safe. */
+function csrfTokenOf(res: Response): string {
+  return (res.locals as { csrfToken?: string }).csrfToken ?? '';
+}
+
 /**
  * Ops console (ADR 0022). Renders server-side HTML tables behind Basic Auth:
  * payments (with refund linkage shown, never actionable), the webhook delivery
@@ -42,9 +52,12 @@ function iso(date: Date | null): string | null {
  * Consumer Accounts. Two write paths: webhook redelivery, and freezing or
  * releasing an Account's recovery signer. Neither reaches a Consumer-facing
  * route, and the freeze is a refusal to sign rather than a power to sign.
+ * Every write is CSRF-checked and lands a row in admin_audit_log. The auth
+ * throttle caps credential guessing against the Basic Auth prompt.
  */
 @Controller('console')
-@UseGuards(ConsoleAuthGuard)
+@Throttle({ auth: THROTTLE_LIMITS.auth })
+@UseGuards(ConsoleAuthGuard, ConsoleCsrfGuard)
 export class ConsoleController {
   private readonly logger = new Logger(ConsoleController.name);
 
@@ -53,6 +66,7 @@ export class ConsoleController {
     private readonly delivery: WebhookDeliveryService,
     private readonly recovery: RecoveryService,
     private readonly db: DbService,
+    private readonly audit: AdminAuditService,
   ) {}
 
   @Get()
@@ -71,7 +85,12 @@ export class ConsoleController {
     const rows = await this.console.listDeliveries();
     res
       .type('html')
-      .send(layout('Webhook deliveries', this.renderDeliveries(rows)));
+      .send(
+        layout(
+          'Webhook deliveries',
+          this.renderDeliveries(rows, csrfTokenOf(res)),
+        ),
+      );
   }
 
   @Get('keys')
@@ -83,7 +102,9 @@ export class ConsoleController {
   @Get('accounts')
   async accounts(@Res() res: Response): Promise<void> {
     const rows = await this.console.listAccounts();
-    res.type('html').send(layout('Accounts', this.renderAccounts(rows)));
+    res
+      .type('html')
+      .send(layout('Accounts', this.renderAccounts(rows, csrfTokenOf(res))));
   }
 
   /**
@@ -97,28 +118,35 @@ export class ConsoleController {
   @Post('accounts/:userId/recovery/freeze')
   async freezeRecovery(
     @Param('userId') userId: string,
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
     await this.requireAccount(userId);
     await this.recovery.freezeRelease(userId);
-    this.logger.warn(`console.recovery_freeze user=${userId}`);
+    const actor = consoleActor(req);
+    await this.audit.record(actor, 'recovery.freeze', userId);
+    this.logger.warn(`console.recovery_freeze user=${userId} actor=${actor}`);
     res.redirect(303, '/console/accounts');
   }
 
   @Post('accounts/:userId/recovery/unfreeze')
   async unfreezeRecovery(
     @Param('userId') userId: string,
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
     await this.requireAccount(userId);
     await this.recovery.unfreezeRelease(userId);
-    this.logger.warn(`console.recovery_unfreeze user=${userId}`);
+    const actor = consoleActor(req);
+    await this.audit.record(actor, 'recovery.unfreeze', userId);
+    this.logger.warn(`console.recovery_unfreeze user=${userId} actor=${actor}`);
     res.redirect(303, '/console/accounts');
   }
 
   @Post('deliveries/:id/redeliver')
   async redeliver(
     @Param('id') id: string,
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
     const [existing] = await this.db.client
@@ -142,7 +170,9 @@ export class ConsoleController {
         origin: 'manual',
       });
       if (created) await this.delivery.attempt(created);
-      this.logger.log(`console.redeliver delivery_id=${id}`);
+      const actor = consoleActor(req);
+      await this.audit.record(actor, 'webhook.redeliver', id);
+      this.logger.log(`console.redeliver delivery_id=${id} actor=${actor}`);
     } catch (err) {
       // Surface the failure as a logged 5xx to the browser — no retry loop,
       // no swallowing. The operator retries manually from the refreshed log.
@@ -179,7 +209,10 @@ export class ConsoleController {
     return `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
   }
 
-  private renderDeliveries(rows: ConsoleDeliveryRow[]): string {
+  private renderDeliveries(
+    rows: ConsoleDeliveryRow[],
+    csrfToken: string,
+  ): string {
     if (rows.length === 0) {
       return '<p class="empty">No webhook deliveries yet.</p>';
     }
@@ -190,7 +223,7 @@ export class ConsoleController {
     const body = rows
       .map((r) => {
         const action = `/console/deliveries/${encodeURIComponent(r.id)}/redeliver`;
-        const button = `<form method="post" action="${escapeHtml(action)}"><button type="submit">Redeliver</button></form>`;
+        const button = `<form method="post" action="${escapeHtml(action)}">${csrfField(csrfToken)}<button type="submit">Redeliver</button></form>`;
         return (
           '<tr>' +
           cell(r.eventId, true) +
@@ -216,7 +249,7 @@ export class ConsoleController {
     }
   }
 
-  private renderAccounts(rows: ConsoleAccountRow[]): string {
+  private renderAccounts(rows: ConsoleAccountRow[], csrfToken: string): string {
     if (rows.length === 0) {
       return '<p class="empty">No Accounts yet.</p>';
     }
@@ -227,7 +260,7 @@ export class ConsoleController {
       .map((r) => {
         const frozen = r.recoveryReleaseFrozenAt !== null;
         const action = `/console/accounts/${encodeURIComponent(r.userId)}/recovery/${frozen ? 'unfreeze' : 'freeze'}`;
-        const button = `<form method="post" action="${escapeHtml(action)}"><button type="submit">${frozen ? 'Release' : 'Freeze'}</button></form>`;
+        const button = `<form method="post" action="${escapeHtml(action)}">${csrfField(csrfToken)}<button type="submit">${frozen ? 'Release' : 'Freeze'}</button></form>`;
         return (
           '<tr>' +
           cell(r.userId, true) +

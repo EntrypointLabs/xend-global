@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { RecoveryModule } from '../recovery/recovery.module';
 import { WebhookModule } from '../webhook/webhook.module';
+import { AdminAuditService } from './admin-audit.service';
 import { ConsoleAuthGuard } from './console-auth.guard';
+import { ConsoleCsrfGuard } from './console-csrf.guard';
 import { ConsoleService } from './console.service';
 import { ConsoleController } from './console.controller';
 
@@ -15,7 +17,12 @@ import { ConsoleController } from './console.controller';
  */
 @Module({
   imports: [WebhookModule, RecoveryModule],
-  providers: [ConsoleAuthGuard, ConsoleService],
+  providers: [
+    ConsoleAuthGuard,
+    ConsoleCsrfGuard,
+    ConsoleService,
+    AdminAuditService,
+  ],
   controllers: [ConsoleController],
 })
 export class ConsoleModule {}

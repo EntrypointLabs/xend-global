@@ -25,8 +25,18 @@ export interface RecoveryChallengeStore {
     now: Date,
   ): Promise<RecoveryChallengeRow | null>;
   findById(id: string): Promise<RecoveryChallengeRow | null>;
-  /** How many codes went to this Consumer since `since`. The send-rate guard. */
-  countSince(userId: string, since: Date): Promise<number>;
+  /**
+   * How many codes for this purpose went to this Consumer since `since`.
+   *
+   * Per purpose rather than per Consumer: an entry-session code can be
+   * requested by anyone who knows the address, and a cap shared across
+   * purposes would let them spend the budget a real recovery needs.
+   */
+  countSince(
+    userId: string,
+    purpose: RecoveryChallengePurpose,
+    since: Date,
+  ): Promise<number>;
   updateById(
     id: string,
     patch: Partial<NewRecoveryChallenge>,
@@ -99,13 +109,18 @@ export class DrizzleRecoveryChallengeStore implements RecoveryChallengeStore {
     return row ?? null;
   }
 
-  async countSince(userId: string, since: Date): Promise<number> {
+  async countSince(
+    userId: string,
+    purpose: RecoveryChallengePurpose,
+    since: Date,
+  ): Promise<number> {
     const rows = await this.db.client
       .select({ id: recoveryChallenges.id })
       .from(recoveryChallenges)
       .where(
         and(
           eq(recoveryChallenges.userId, userId),
+          eq(recoveryChallenges.purpose, purpose),
           gt(recoveryChallenges.createdAt, since),
         ),
       );

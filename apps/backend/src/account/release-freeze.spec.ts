@@ -22,6 +22,7 @@ import type {
   SquadsAccountRow,
   SquadsAccountStore,
 } from './account.interface';
+import { InMemoryPreparedTxStore } from '../prepared/prepared-tx.memory';
 import { DeviceRotationService } from './device-rotation.service';
 import { RecoveryChangeService } from './recovery-change.service';
 
@@ -74,6 +75,7 @@ class FakeSignerStore implements RecoverySignerStore {
   insert(row: NewRecoverySigner): Promise<RecoverySignerRow> {
     const created: RecoverySignerRow = {
       id: `signer-${++this.seq}`,
+      wrappedDataKey: row.wrappedDataKey ?? null,
       userId: row.userId,
       address: row.address,
       channel: row.channel,
@@ -130,6 +132,7 @@ class FakeSignerStore implements RecoverySignerStore {
 }
 
 const vault: RecoveryVault = {
+  currentKeyId: 'test',
   seal: (secret) =>
     Promise.resolve({
       ciphertext: Buffer.from(secret).toString('base64'),
@@ -142,10 +145,21 @@ const vault: RecoveryVault = {
 /** A chain whose proposal state the test moves along by hand. */
 function fakeChain() {
   let proposal: ProposalState | null = null;
+  let signers: string[] = [];
   const chain: ProvisioningChain = {
     rentPayer: AUTHORITY,
     readSettings: () =>
-      Promise.resolve({ timeLockSeconds: DAY, transactionIndex: 7n }),
+      Promise.resolve({
+        timeLockSeconds: DAY,
+        transactionIndex: 7n,
+        policySeed: null,
+        signers: signers.map((key) => ({
+          key: new PublicKey(key),
+          permissions: { mask: 7 },
+        })),
+      }),
+    readSpendingLimit: () =>
+      Promise.reject(new Error('readSpendingLimit is not exercised here')),
     policyExists: () => Promise.resolve(true),
     readProposal: () => Promise.resolve(proposal),
     compile: () =>
@@ -167,6 +181,9 @@ function fakeChain() {
   };
   return {
     chain,
+    setSigners: (next: string[]) => {
+      signers = next;
+    },
     set: (next: Partial<ProposalState>) => {
       proposal = {
         approved: [],
@@ -201,7 +218,7 @@ function setUp() {
     },
   };
 
-  const { chain, set } = fakeChain();
+  const { chain, set, setSigners } = fakeChain();
   const challenges = {
     assertGrant: () => Promise.resolve({ target: CONTACT }),
     consume: () => Promise.resolve(),
@@ -219,6 +236,7 @@ function setUp() {
     signers,
     patches,
     setProposal: set,
+    setSigners,
     rotations: new DeviceRotationService(
       accounts,
       chain,
@@ -231,12 +249,19 @@ function setUp() {
         recordSettingsChangeExecuted: () => Promise.resolve(null),
         recordSettingsChangeRejected: () => Promise.resolve(null),
       } as unknown as AccountEventsService,
+      new InMemoryPreparedTxStore(),
     ),
-    changes: new RecoveryChangeService(accounts, chain, recovery, {
-      recordSettingsChangeStaged: () => Promise.resolve(null),
-      recordSettingsChangeExecuted: () => Promise.resolve(null),
-      recordSettingsChangeRejected: () => Promise.resolve(null),
-    } as unknown as AccountEventsService),
+    changes: new RecoveryChangeService(
+      accounts,
+      chain,
+      recovery,
+      {
+        recordSettingsChangeStaged: () => Promise.resolve(null),
+        recordSettingsChangeExecuted: () => Promise.resolve(null),
+        recordSettingsChangeRejected: () => Promise.resolve(null),
+      } as unknown as AccountEventsService,
+      new InMemoryPreparedTxStore(),
+    ),
   };
 }
 
@@ -253,7 +278,7 @@ describe('recovery release freeze', () => {
   });
 
   it('leaves a recovery key change by the passkey and the phone untouched', async () => {
-    const { recovery, changes, setProposal } = setUp();
+    const { recovery, changes, setProposal, setSigners } = setUp();
     await recovery.provisionEmailSigner(USER, CONTACT);
     await recovery.freezeRelease(USER);
 
@@ -272,6 +297,7 @@ describe('recovery release freeze', () => {
     expect((await changes.next(USER)).step).toBe('execute');
 
     setProposal({ settled: true, status: 'Executed' });
+    setSigners([PRIMARY, APPROVAL, wallet]);
     expect((await changes.next(USER)).done).toBe(true);
     expect(
       (await recovery.list(USER)).find((s) => s.address === wallet)?.status,

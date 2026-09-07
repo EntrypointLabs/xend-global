@@ -6,6 +6,7 @@ import { DeviceRotationRunner } from "@/components/DeviceRotationRunner";
 import { PrimaryRotationRunner } from "@/components/PrimaryRotationRunner";
 import { PendingChangeNotice } from "@/components/PendingChangeNotice";
 import { RecoveryChangeRunner } from "@/components/RecoveryChangeRunner";
+import { SpendingLimitChangeRunner } from "@/components/SpendingLimitChangeRunner";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { CustomTabBar } from "@/components/ui/organisms";
 
@@ -34,7 +35,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="history"
           options={{
-            title: "History",
+            title: "Activity",
           }}
         />
         <Tabs.Screen
@@ -49,6 +50,7 @@ export default function TabLayout() {
       <PrimaryRotationRunner />
       <PendingChangeNotice />
       <RecoveryChangeRunner />
+      <SpendingLimitChangeRunner />
     </ProtectedRoute>
   );
 }

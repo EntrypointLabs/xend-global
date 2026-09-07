@@ -73,7 +73,7 @@ export function useAccountSetup() {
       report(err);
       setStage("idle");
       setError(
-        "We could not finish securing your wallet. You can try again, or carry on and we will pick this up next time."
+        "We could not finish securing your Account. You can try again, or carry on and we will pick this up next time."
       );
       return false;
     }

@@ -31,6 +31,7 @@ import { TurnkeyService } from './turnkey.service';
           api,
           config.get<string>('TURNKEY_DELEGATED_PUBLIC_KEY') ?? '',
           store,
+          config.get<boolean>('TURNKEY_POLICIES_ENABLED') === true,
         ),
     },
   ],

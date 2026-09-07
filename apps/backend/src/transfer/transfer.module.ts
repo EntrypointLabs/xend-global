@@ -6,6 +6,7 @@ import { SolanaModule } from '../solana/solana.module';
 import { TokensModule } from '../tokens/tokens.module';
 import { AccountEventsModule } from '../activity/account-events.module';
 import { TurnkeyModule } from '../turnkey/turnkey.module';
+import { PreparedModule } from '../prepared/prepared.module';
 
 /**
  * prepare/submit/list endpoints at /transfers/*. DbModule is @Global so
@@ -21,6 +22,7 @@ import { TurnkeyModule } from '../turnkey/turnkey.module';
     TokensModule,
     AccountEventsModule,
     TurnkeyModule,
+    PreparedModule,
   ],
   controllers: [TransferController],
   providers: [TransferService],

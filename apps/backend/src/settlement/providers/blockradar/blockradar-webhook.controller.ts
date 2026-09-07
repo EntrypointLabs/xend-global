@@ -10,9 +10,14 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import { and, eq } from 'drizzle-orm';
 import { DbService } from '../../../db/db.service';
+import {
+  InboundWebhookDedupe,
+  assertFreshTimestamp,
+} from '../../../db/inbound-webhook-dedupe';
 import { settlementOfframps } from '../../../db/schema';
 import {
   EVENT_PUBLISHER,
@@ -22,18 +27,10 @@ import { SettlementConfirmationService } from '../../settlement-confirmation.ser
 import { BlockradarSettlementProvider } from './blockradar-settlement.provider';
 
 /**
- * Kill-switch: when SETTLEMENT_WEBHOOK_KILLSWITCH=1 the receiver acknowledges
- * deliveries without verifying, parsing, or writing. A one-line operator toggle
- * (env var, not a table).
- */
-function killSwitchActive(): boolean {
-  return process.env.SETTLEMENT_WEBHOOK_KILLSWITCH === '1';
-}
-
-/**
  * POST /webhooks/blockradar — the Blockradar off-ramp status receiver
  * (Pattern 4). Flow: kill switch -> raw-body HMAC verify BEFORE any DB access
- * -> parse -> conditional idempotent status transition on the off-ramp row.
+ * -> timestamp tolerance -> parse -> claim the provider event id -> conditional
+ * idempotent status transition on the off-ramp row.
  *
  * On a 'paid' event (naira landed) it builds a SettlementCompletion and drives
  * completion through Phase 4's completeDeferredSettlement(paymentId, completion)
@@ -46,6 +43,8 @@ function killSwitchActive(): boolean {
  * but is registered by SettlementModule so it can reach completeDeferredSettlement
  * without a module cycle.
  */
+const PROVIDER = 'blockradar';
+
 @Controller('webhooks')
 export class BlockradarWebhookController {
   private readonly logger = new Logger(BlockradarWebhookController.name);
@@ -55,16 +54,32 @@ export class BlockradarWebhookController {
     private readonly provider: BlockradarSettlementProvider,
     private readonly confirmation: SettlementConfirmationService,
     @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
+    private readonly config: ConfigService,
+    private readonly dedupe: InboundWebhookDedupe,
   ) {}
+
+  /**
+   * SETTLEMENT_WEBHOOK_KILLSWITCH: acknowledge deliveries without verifying,
+   * parsing, or writing. A one-line operator toggle (env var, not a table).
+   */
+  private killSwitchActive(): boolean {
+    return this.config.get<boolean>('SETTLEMENT_WEBHOOK_KILLSWITCH') === true;
+  }
 
   @Post('blockradar')
   @HttpCode(200)
   async receive(
     @Req() reqUnknown: unknown,
     @Headers('x-blockradar-signature') signature: string,
+    @Headers('x-blockradar-timestamp') timestamp: string | undefined,
     @Body() bodyParsed: unknown,
-  ): Promise<{ ok: true; killSwitched?: boolean; skipped?: boolean }> {
-    if (killSwitchActive()) {
+  ): Promise<{
+    ok: true;
+    killSwitched?: boolean;
+    skipped?: boolean;
+    replayed?: boolean;
+  }> {
+    if (this.killSwitchActive()) {
       this.logger.warn('settlement.offramp.webhook killSwitched');
       return { ok: true, killSwitched: true };
     }
@@ -75,10 +90,20 @@ export class BlockradarWebhookController {
 
     // Throws 401 on mismatch; no DB access happens before this line.
     this.provider.verifyWebhookSignature(rawBody, signature ?? '');
+    // A valid signature over a stale body is a replay with the original
+    // headers; when the provider dates the delivery, the date has to hold.
+    if (timestamp) assertFreshTimestamp(timestamp);
 
     const event = this.provider.parseWebhookEvent(bodyParsed);
     if (!event) {
       return { ok: true, skipped: true };
+    }
+
+    if (!(await this.dedupe.claim(PROVIDER, event.eventId))) {
+      this.logger.warn(
+        `settlement.offramp.webhook.replayed event_id=${event.eventId}`,
+      );
+      return { ok: true, replayed: true };
     }
 
     try {
@@ -102,6 +127,9 @@ export class BlockradarWebhookController {
       this.logger.error(
         `settlement.offramp.webhook.failed provider_ref=${event.providerRef} error=${(err as Error).message}`,
       );
+      // The provider redelivers on 500; the claim must not outlive the attempt
+      // or that redelivery would be dropped as a replay.
+      await this.dedupe.release(PROVIDER, event.eventId);
       throw new HttpException(
         'webhook processing failed; retry requested',
         HttpStatus.INTERNAL_SERVER_ERROR,

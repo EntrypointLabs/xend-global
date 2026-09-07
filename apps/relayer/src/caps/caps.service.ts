@@ -65,6 +65,17 @@ export class CapsService {
     this.merchantPayments.get(params.merchantId)!.push(now);
   }
 
+  /**
+   * Give back a slot {@link checkAndReserve} took for a request that was
+   * then refused before anything was signed. Without this every rejected
+   * request still counts against the caps, so a burst of malformed requests
+   * locks a Consumer or a merchant out of legitimate ones for the hour.
+   */
+  release(params: { consumerId: string; merchantId: string }): void {
+    this.consumerPayments.get(params.consumerId)?.pop();
+    this.merchantPayments.get(params.merchantId)?.pop();
+  }
+
   /** Record actual fee spend after a successful broadcast. */
   recordSpend(params: { consumerId: string; feeLamports: bigint }): void {
     const now = Date.now();

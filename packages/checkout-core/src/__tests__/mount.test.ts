@@ -103,6 +103,108 @@ describe("mountXendButton sync-open handshake", () => {
     expect(navUrl.searchParams.get("mode")).toBe("popup");
   });
 
+  it("tells the checkout which origin opened it, on both the launch and the full URL", async () => {
+    const fakeWin = makeFakeWindow();
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockImplementation(() => fakeWin as unknown as Window);
+
+    handle = mountXendButton({
+      mount: container(),
+      checkoutOrigin: ORIGIN,
+      createIntent: () => Promise.resolve({ reference: "pi_ref_opener" }),
+      onResult: () => {},
+    });
+    document.querySelector("button")!.click();
+
+    const launched = new URL(String(openSpy.mock.calls[0]![0]));
+    expect(launched.searchParams.get("opener")).toBe(window.location.origin);
+    await vi.waitFor(() => expect(fakeWin.location.href).not.toBe(""));
+    const navUrl = new URL(fakeWin.location.href);
+    expect(navUrl.searchParams.get("opener")).toBe(window.location.origin);
+  });
+
+  it("opens the popup when the default sheet has no apiBase to read the summary from", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockImplementation(() => makeFakeWindow() as unknown as Window);
+
+    handle = mountXendButton({
+      mount: container(),
+      checkoutOrigin: ORIGIN,
+      createIntent: () => Promise.resolve({ reference: "pi_default" }),
+      onResult: () => {},
+    });
+    document.querySelector("button")!.click();
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("[data-xend-checkout]")).toBeNull();
+    // Nothing was asked for that could not be delivered, so nothing is said.
+    expect(warn).not.toHaveBeenCalled();
+    handle.unmount();
+
+    handle = mountXendButton({
+      mount: container(),
+      checkoutOrigin: ORIGIN,
+      presentation: "modal",
+      createIntent: () => Promise.resolve({ reference: "pi_modal" }),
+      onResult: () => {},
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]![0])).toContain("apiBase");
+    document.querySelector("button")!.click();
+    expect(openSpy).toHaveBeenCalledTimes(2);
+    expect(document.querySelector("[data-xend-checkout]")).toBeNull();
+  });
+
+  it("opens the popup for a presentation value it does not recognise", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockImplementation(() => makeFakeWindow() as unknown as Window);
+
+    handle = mountXendButton({
+      mount: container(),
+      checkoutOrigin: ORIGIN,
+      // Script-tag callers are untyped and can pass anything.
+      presentation: "drawer" as unknown as "popup",
+      apiBase: "https://api.xend.test",
+      createIntent: () => Promise.resolve({ reference: "pi_unknown" }),
+      onResult: () => {},
+    });
+    document.querySelector("button")!.click();
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("[data-xend-checkout]")).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("goes straight to the redirect flow when presentation is 'redirect'", async () => {
+    const openSpy = vi.spyOn(window, "open");
+    const assign = stubLocationAssign();
+    const onUnresolved = vi.fn();
+
+    handle = mountXendButton({
+      mount: container(),
+      checkoutOrigin: ORIGIN,
+      presentation: "redirect",
+      createIntent: () => Promise.resolve({ reference: "pi_ref_redirect" }),
+      onResult: () => {},
+      onUnresolved,
+    });
+    document.querySelector("button")!.click();
+
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
+    expect(openSpy).not.toHaveBeenCalled();
+    const url = new URL(String(assign.mock.calls[0]![0]));
+    expect(url.searchParams.get("mode")).toBe("redirect");
+    expect(url.searchParams.get("intent")).toBe("pi_ref_redirect");
+    expect(url.searchParams.get("opener")).toBe(ORIGIN);
+    expect(onUnresolved).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "redirected" }),
+    );
+  });
+
   it("falls back to a redirect with mode=redirect when the popup is blocked", async () => {
     vi.spyOn(window, "open").mockImplementation(() => null);
     const assign = stubLocationAssign();

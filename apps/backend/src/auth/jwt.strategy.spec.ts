@@ -8,7 +8,7 @@ type UsersRow = typeof users.$inferSelect;
 
 function makeConfig(): ConfigService {
   return {
-    getOrThrow: () => 'test-secret',
+    get: (key: string) => (key === 'JWT_SECRET' ? 'test-secret' : undefined),
   } as unknown as ConfigService;
 }
 

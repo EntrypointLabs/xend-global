@@ -1,4 +1,4 @@
-# fuse-android
+# xend
 
 ## Agent skills
 
@@ -8,8 +8,8 @@ Issues live in Linear, team **XEND** (key `XEN`) at https://linear.app/entrypoin
 
 ### Triage labels
 
-Category labels reuse existing Linear labels (`Bug`, `Feature`). State labels use canonical names (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) — create them in Linear on first use. See `docs/agents/triage-labels.md`.
+Category labels reuse existing Linear labels (`Bug`, `Feature`). State labels use canonical names (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). Create them in Linear on first use. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Single-context. `CONTEXT.md` at the repo root (not yet written — `/grill-with-docs` creates it lazily), and ADRs under `docs/adr/`. See `docs/agents/domain.md`.
+Single-context. The domain glossary is `CONTEXT.md` at the repo root, and decisions are ADRs under `docs/adr/` (index in `docs/adr/README.md`). `docs/xend-master-context.md` is the briefing for outward-facing material. See `docs/agents/domain.md`.

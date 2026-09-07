@@ -9,9 +9,13 @@ import { WithScreenTheme } from "@/components/WithScreenTheme";
 
 /**
  * The recovery door. Email is the route that works today: prove the address
- * on the account and the restore flow takes it from there. A recovery wallet
+ * on the account and the recovery flow takes it from there. A recovery wallet
  * can be added as a key, but signing in with one is not built yet, so that
  * option says so instead of pretending.
+ *
+ * The email alone opens a session that can look. Taking over on this phone
+ * needs a second key as well: the passkey, if it synced here, or a Recovery
+ * Key. The copy says so rather than promising the takeover outright.
  */
 function RecoverScreen() {
   const onEmail = () =>
@@ -30,8 +34,9 @@ function RecoverScreen() {
           className="mb-8 text-base leading-6 text-[#8FE5F6]"
         >
           Lost your phone or moved to a new one? Prove the email on your account
-          and this phone can take over, with a one day delay that keeps anyone
-          else from doing the same.
+          to get back in. Paired with your passkey or a second Recovery Key,
+          this phone can take over, after a one day delay that keeps anyone else
+          from doing the same.
         </Typography>
 
         <View className="gap-2.5">

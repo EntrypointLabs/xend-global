@@ -6,7 +6,13 @@ import * as x509 from '@peculiar/x509';
 import { encode as cborEncode } from 'cbor-x';
 import { webcrypto } from 'node:crypto';
 
-import { AppAttestVerifier, compressP256 } from './app-attest.verifier';
+import * as asn1js from 'asn1js';
+
+import {
+  AppAttestVerifier,
+  compressP256,
+  parseAuthData,
+} from './app-attest.verifier';
 import {
   AttestationNonceError,
   AttestationNotConfiguredError,
@@ -17,7 +23,12 @@ import type {
   VerifiedAttestation,
 } from './attestation.interface';
 import { AttestationService } from './attestation.service';
-import { KeyAttestationVerifier } from './key-attestation.verifier';
+import {
+  ANDROID_PACKAGE_NAME,
+  KeyAttestationVerifier,
+  assertApplication,
+  parseKeyDescription,
+} from './key-attestation.verifier';
 
 x509.cryptoProvider.set(webcrypto as Crypto);
 
@@ -44,8 +55,71 @@ async function selfSignedChain(): Promise<x509.X509Certificate> {
   });
 }
 
-function config(appId?: string): ConfigService {
-  return { get: () => appId } as unknown as ConfigService;
+function config(appId?: string, nodeEnv = 'test'): ConfigService {
+  const values: Record<string, string | undefined> = {
+    IOS_APP_ATTEST_APP_ID: appId,
+    NODE_ENV: nodeEnv,
+  };
+  return { get: (key: string) => values[key] } as unknown as ConfigService;
+}
+
+/** Authenticator data carrying the given AAGUID and a one-byte credential id. */
+function authDataWith(aaguid: string): Uint8Array {
+  const data = Buffer.alloc(56);
+  Buffer.from(aaguid, 'binary').copy(data, 37);
+  data.writeUInt16BE(1, 53);
+  return data;
+}
+
+/**
+ * A KeyDescription the way an Android device emits one, with the application
+ * id carried in the software-enforced list under its explicit tag.
+ */
+function keyDescription(packageNames: string[] | null): ArrayBuffer {
+  const applicationId = packageNames
+    ? new asn1js.Sequence({
+        value: [
+          new asn1js.Set({
+            value: packageNames.map(
+              (name) =>
+                new asn1js.Sequence({
+                  value: [
+                    new asn1js.OctetString({
+                      valueHex: Buffer.from(name, 'utf8'),
+                    }),
+                    new asn1js.Integer({ value: 1 }),
+                  ],
+                }),
+            ),
+          }),
+          new asn1js.Set({ value: [] }),
+        ],
+      })
+    : null;
+  const softwareEnforced = new asn1js.Sequence({
+    value: applicationId
+      ? [
+          new asn1js.Constructed({
+            idBlock: { tagClass: 3, tagNumber: 709 },
+            value: [
+              new asn1js.OctetString({ valueHex: applicationId.toBER() }),
+            ],
+          }),
+        ]
+      : [],
+  });
+  return new asn1js.Sequence({
+    value: [
+      new asn1js.Integer({ value: 4 }),
+      new asn1js.Enumerated({ value: 1 }),
+      new asn1js.Integer({ value: 4 }),
+      new asn1js.Enumerated({ value: 1 }),
+      new asn1js.OctetString({ valueHex: Buffer.from(NONCE, 'utf8') }),
+      new asn1js.OctetString({ valueHex: Buffer.alloc(0) }),
+      softwareEnforced,
+      new asn1js.Sequence({ value: [] }),
+    ],
+  }).toBER();
 }
 
 describe('AppAttestVerifier', () => {
@@ -107,6 +181,70 @@ describe('AppAttestVerifier', () => {
     await expect(
       new AppAttestVerifier(config(APP_ID)).verify(blob, NONCE, '02ab'),
     ).rejects.toBeInstanceOf(AttestationRejectedError);
+  });
+});
+
+describe('parseAuthData', () => {
+  const production = 'appattest\0\0\0\0\0\0\0';
+
+  it('accepts a production key anywhere', () => {
+    expect(parseAuthData(authDataWith(production), false).aaguid).toBe(
+      production,
+    );
+  });
+
+  it('accepts a development key only outside production', () => {
+    expect(parseAuthData(authDataWith('appattestdevelop'), true).aaguid).toBe(
+      'appattestdevelop',
+    );
+    // A test build carries this AAGUID with a genuine Apple chain, so letting
+    // it through in production would enrol keys from builds we never shipped.
+    expect(() =>
+      parseAuthData(authDataWith('appattestdevelop'), false),
+    ).toThrow(AttestationRejectedError);
+  });
+
+  it('rejects an AAGUID Apple never issues', () => {
+    expect(() => parseAuthData(authDataWith('somethingelse!!!'), true)).toThrow(
+      /unexpected aaguid/,
+    );
+  });
+});
+
+describe('parseKeyDescription', () => {
+  it('reads the challenge and the packages the key was issued to', () => {
+    const record = parseKeyDescription(keyDescription([ANDROID_PACKAGE_NAME]));
+
+    expect(record.challenge.toString('utf8')).toBe(NONCE);
+    expect(record.keymasterSecurityLevel).toBe(1);
+    expect(record.packageNames).toEqual([ANDROID_PACKAGE_NAME]);
+  });
+
+  it('binds the attestation to our package', () => {
+    // A genuine chain from any other app on the same phone would pass every
+    // other check here.
+    expect(() =>
+      assertApplication(
+        parseKeyDescription(keyDescription(['com.example.other'])).packageNames,
+        ANDROID_PACKAGE_NAME,
+      ),
+    ).toThrow(/different app/);
+
+    expect(() =>
+      assertApplication(
+        parseKeyDescription(keyDescription(null)).packageNames,
+        ANDROID_PACKAGE_NAME,
+      ),
+    ).toThrow(/names no application/);
+
+    expect(() =>
+      assertApplication(
+        parseKeyDescription(
+          keyDescription(['com.example.other', ANDROID_PACKAGE_NAME]),
+        ).packageNames,
+        ANDROID_PACKAGE_NAME,
+      ),
+    ).not.toThrow();
   });
 });
 

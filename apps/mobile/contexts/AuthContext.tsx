@@ -216,7 +216,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         Sentry.captureException(
           new Error(`Silent token refresh failed: ${error}. AuthContext`)
         );
-        await AuthStorage.clearAuthData().catch(() => {});
+        await AuthStorage.clearAuthData().catch((wipeError) => {
+          Sentry.captureException(wipeError, {
+            tags: { auth: "wipe-after-failed-refresh" },
+          });
+        });
         if (cancelled) return;
         setUser(null);
         setWallet(null);
@@ -320,9 +324,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // The entry token is about to be replaced. Revoked while it can still
-      // authenticate, so it is not left live for the rest of its hour.
+      // authenticate, so it is not left live for the rest of its hour. A
+      // failed revocation is worth knowing about: the token stays valid
+      // until it expires on its own.
       if (sessionTier === "entry") {
-        await apiClient.signOut().catch(() => undefined);
+        await apiClient.signOut().catch((revokeError) => {
+          Sentry.captureException(revokeError, {
+            tags: { auth: "revoke-entry-before-upgrade" },
+          });
+        });
       }
 
       await AuthStorage.saveToken(exchange.token);
@@ -424,7 +434,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // The token is revoked rather than merely forgotten, while it can
         // still authenticate the call that revokes it.
         await apiClient.signOut().catch((err) => {
-          if (__DEV__) console.warn("[auth] could not revoke the session", err);
+          Sentry.captureException(err, {
+            tags: { auth: "revoke-entry-on-sign-out" },
+          });
+          showToast(
+            "Signed out on this phone. Your email session could not be closed and ends on its own within the hour."
+          );
         });
       } else {
         // Before the session is torn down, while the call can still

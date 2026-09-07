@@ -21,6 +21,7 @@ import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { usePendingChangeAcknowledgement } from "@/hooks/usePendingChangeAcknowledgement";
 import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { cn } from "@/utils/cn";
+import { earnHeadlineApy } from "@/hooks/useEarn";
 
 /** The card is inset by the screen's own padding on both sides. */
 const SCREEN_PADDING = 20;
@@ -131,7 +132,7 @@ export function HomeBanners() {
       key: "pending-change",
       icon: "phone-portrait-outline",
       tint: "#0A0A0A",
-      title: mine ? "Restoring this phone" : "A phone is being added",
+      title: mine ? "Recovering on this phone" : "A phone is being added",
       description: remaining
         ? `Takes over in ${remaining}. Tap to review.`
         : "Waiting on approval. Tap to review.",
@@ -169,7 +170,7 @@ export function HomeBanners() {
       icon: "phone-portrait-outline",
       tint: "#0A0A0A",
       title: "This phone cannot approve",
-      description: "Your Device Key is on another phone. Tap to restore it.",
+      description: "Your Device Key is on another phone. Tap to recover it.",
       onPress: () => router.push("/settings/restore-device" as never),
     });
   }
@@ -178,8 +179,8 @@ export function HomeBanners() {
     key: "earn",
     icon: "trending-up-outline",
     tint: "#0080FF",
-    title: "Earn up to 4.93% APY",
-    description: "Put USDC into Earn",
+    title: `Earn up to ${earnHeadlineApy()} APY`,
+    description: "Put your Cash to work",
     onPress: () => router.push("/earn"),
   });
 

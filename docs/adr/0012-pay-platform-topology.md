@@ -125,3 +125,23 @@ The Kafka topic catalog gains two settlement-owned lifecycle events, published b
 - `payment.succeeded` and `payment.failed` are published on provider settlement COMPLETION only, never on submission. For the direct-USDC pilot adapter, completion is USDC confirmation; for the Blockradar adapter (Phase 8), "paid" may mean naira-landed, which is a Phase 6 webhook-semantics decision, so the lifecycle keys off the provider's completion signal rather than the USDC confirmation alone. Both events use the intent id as their Kafka key and their `correlationId`, so one correlation id traces a Payment across services.
 
 These join the Phase 2 events (`payment.created`, `payment.authorized`, `payment.expired`). The topology above is unchanged.
+
+## Update 2026-09-07 (topic catalog synced with the code)
+
+The catalog above was written before any producer existed. The topics that are produced today, and that `docker-compose.yml`'s `kafka-topics` job seeds so a consumer subscribing with `fromBeginning: false` does not miss an early publish, are:
+
+| Topic                | Producer                                                                                 |
+| -------------------- | ---------------------------------------------------------------------------------------- |
+| `payment.created`    | `apps/backend/src/payment/payment-intent.service.ts`                                     |
+| `payment.authorized` | `apps/backend/src/capability/payment-authorization.service.ts`                           |
+| `payment.succeeded`  | `apps/backend/src/settlement/settlement-confirmation.service.ts`, on provider completion |
+| `payment.failed`     | `settlement-confirmation.service.ts`                                                     |
+| `payment.expired`    | `payment-intent.service.ts` and `payment-authorization.service.ts`                       |
+| `session.issued`     | `apps/backend/src/session/session.service.ts`                                            |
+| `session.revoked`    | `session.service.ts`                                                                     |
+| `payout.initiated`   | `apps/backend/src/settlement/providers/blockradar/blockradar-settlement.provider.ts`     |
+| `payout.completed`   | `apps/backend/src/settlement/providers/blockradar/blockradar-webhook.controller.ts`      |
+| `payout.failed`      | `blockradar-webhook.controller.ts`                                                       |
+| `events.dead-letter` | the Kafka consumer, for a message whose handler failed past its retries                  |
+
+`payment.settling` and `refund.recorded` were named in the original catalog and have no producer; a refund is recorded as a `payments` row with `refund_of_payment_id` and surfaces through `payment.succeeded` for the reverse leg. `payout.failed` and `events.dead-letter` were not in the original catalog and are contracts from the day they were first produced. `events.dead-letter` is the parking topic for a consumed message that could not be handled, so a poison message stops a partition once rather than forever; it is being added alongside the compose seed list and must stay in both places.

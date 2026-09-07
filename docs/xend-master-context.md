@@ -162,9 +162,9 @@ Expo React Native, Android and iOS, currently in pre-launch. The following is wh
 
 ### 3.1 Getting an Account
 
-**Passkey-first signup.** "Continue with Passkey" signs in. "New here? Create an account" creates one. There is no password and no seed phrase at any point.
+**Email first, then a passkey.** The front door asks for an address and a six-digit code (ADR 0027). A new Consumer then creates a passkey and the phone enrols its hardware key; a returning Consumer is offered their passkey. There is no password and no seed phrase at any point.
 
-**Then one email, collected once.** Address, then a six-digit code, then the Account is built. This is not skippable, because the third signer on the Account is anchored to that verified address and an Account without it would have no recovery path at all. The email is a contact detail, not a credential: it does not unlock the Account on its own.
+**The email is a contact detail, not a credential.** The third signer on the Account is anchored to that verified address, so it is not skippable: an Account without it would have no recovery path at all. On an existing Account an emailed code opens only a limited entry session, which can read and can start a recovery and can neither Spend nor change the signer set (ADR 0028).
 
 **Then the Account is created in its final shape:** three signers, two policies, a 24-hour lock on settings changes. If a signup is interrupted, the Consumer resumes where they left off rather than landing on an empty dashboard, because the resume point is derived from what is actually on file.
 
@@ -186,7 +186,7 @@ One reverse-chronological feed per Account covering everything: Spends, Receives
 ### 3.4 Contacts and limits
 
 - **Address book.** A saved destination plus a label. A personal shortcut, not a directory or a social graph.
-- **Spending Limits.** A self-imposed cap on outflow per period, checked before a Spend executes, editable or removable at any time. An Account with no spending limit is a valid, higher-security state, not an error: every Spend then takes two signatures.
+- **Spending Limits.** Every Account is provisioned with one daily limit, US $100, chosen to sit under the Nigerian OTP-tier ceiling (ADR 0032). Under it a Spend takes one signature; above it the phone's key signs as well. The limit can be raised, lowered or removed from Settings. Changing it is a settings change like a signer change: both on-device keys approve it, it waits out the 24-hour lock, and the Consumer is told when it is staged and when it lands. Removing it leaves a stricter Account, not a looser one, because every Spend then takes two signatures.
 
 ### 3.5 Investments and Swap
 
@@ -195,14 +195,14 @@ One reverse-chronological feed per Account covering everything: Spends, Receives
 
 ### 3.6 Earn
 
-A yield position on the spending balance, with the real position, real APY, and lifetime earned. Deposits are not wired yet, so the screen shows an honest zero position and the products actually on offer rather than a "coming soon" wall. See section 9.
+A yield position on the spending balance, with the position, the rate on offer, and lifetime earned. Deposits are not wired yet, so the screen shows an honest zero position and the products actually on offer rather than a "coming soon" wall. The rate is the provider's quoted figure rather than a live read, and the home tile derives its headline from that same figure so the two cannot disagree. See section 9.
 
 ### 3.7 Security and recovery surfaces
 
 Under Settings, Security:
 
 - **Keys and Recovery.** See the signer set, add and remove recovery keys, watch a staged settings change and reject it.
-- **Spending Limits.**
+- **Spending Limit.** See the current limit and what is left in the period, set a new one, or remove it. See 3.4.
 - **Connected Merchants.** Every Merchant the Consumer has an active Session with, and a one-tap revoke that forces a full passkey ceremony next time.
 
 Plus notifications, address book, edit account name, contact support, and delete Account.
@@ -440,7 +440,7 @@ Three horizons. Nothing here should appear on a marketing site as available; lab
 - **Earn deposits.** The position screen and the products are built; funding them is the remaining work.
 - **Hide my wallet.** Send and receive without revealing the Account address. The toggle exists; the mechanism behind it does not.
 - **Naira payouts to merchant bank accounts.** Built behind the provider interface and currently switched off pending a settlement route that works natively on Solana.
-- **The merchant portal.** Self-serve profile and keys, payments and payouts views, refund approval, metrics. Today this is an internal read-only console plus a manual operations script running the same four-stage onboarding model.
+- **The merchant portal.** Self-serve profile and keys, payments and payouts views, refund approval, metrics. Today this is an internal operations console (payments, webhook deliveries, API key fingerprints and Consumer Accounts, with two write actions: webhook redelivery and freezing the release of an Account's recovery signer) plus a manual operations script running the same four-stage onboarding model.
 - **Publishing the SDK to npm** and the public developer documentation around it.
 
 ### Later
@@ -483,14 +483,14 @@ Everything here is measured or shipped, not estimated. Nothing else should be pr
 A marketing site must not contradict any line in this section.
 
 - **The app is in private beta, invite-only.** It is not generally available.
-- **No Account has ever existed on mainnet.** Everything so far has run on devnet or locally. The network configuration is correct and the mainnet run has not happened.
+- **No Squads Account has been created, provisioned or spent from on mainnet.** Every Account, provisioning run and Spend so far has been devnet or local. Mainnet is not untouched, though: the app defaults to mainnet (`apps/mobile/utils/cluster.ts`), and a real USDC deposit landed on a mainnet Privy wallet, which is what forced that default. Roughly 0.75 USDC from the dApp Store reviewer also sits on a mainnet Privy wallet awaiting the sweep. The first mainnet Account is a listed pre-launch step, not a done one.
 - **Xend Card does not exist.** The screen is a preview of a promise. No card has been issued.
 - **Xend Plus does not exist.** Same.
 - **Earn deposits do not work.** The position reads correctly and there is no way to fund it.
 - **Hide my wallet does not work.** The toggle renders and there is nothing behind it.
 - **Virtual bank accounts are not live.** The older documentation describing them belongs to a discontinued vendor integration.
 - **Naira payouts are switched off.** The adapter is built and gated, pending a settlement route that works natively on Solana.
-- **The merchant portal does not exist.** There is an internal read-only console and a manual script.
+- **The merchant portal does not exist.** There is an internal operations console behind Basic Auth (read views plus webhook redelivery and the recovery-signer freeze) and a manual script.
 - **The SDK is not published to npm.** It is built, tested, and size-gated, and no release has been cut.
 - **No real merchant has taken a live payment.** The end-to-end flow is proven on devnet with a real passkey ceremony.
 - **Refunds work for dollar settlement only.** The naira path is capability-gated off.
@@ -530,6 +530,6 @@ Monochrome. Photography carrying every coloured pixel: macro on the consumer pag
 
 ## 11. Provenance
 
-Assembled from the repository at `xend-mobile`: the domain glossary (`CONTEXT.md`), the twenty-six architecture decision records under `docs/adr/`, the specifications under `docs/specs/` (in particular the account security model, the merchant onboarding model, the integration quickstart, and the passkey and recovery handoff), the Pay with Xend platform plan and build log, the shipped mobile application source, and the brand system in the `xend-assets` repository (`BRAND-TOKENS.md`, `BRAND-KIT.md`, `AVOID-LIST.md`).
+Assembled from the repository at `xend-mobile`: the domain glossary (`CONTEXT.md`), the architecture decision records under `docs/adr/`, the specifications under `docs/specs/` (in particular the account security model, the merchant onboarding model, the integration quickstart, and the passkey and recovery handoff), the Pay with Xend platform plan and build log, the shipped mobile application source, and the brand system in the `xend-assets` repository (`BRAND-TOKENS.md`, `BRAND-KIT.md`, `AVOID-LIST.md`).
 
 When this document and the repository disagree, the repository wins and this document should be corrected.

@@ -62,6 +62,10 @@ export class AppAttestVerifier {
 
     const object = decodeAttestation(attestation);
     const { credCert, chain } = parseChain(object.attStmt.x5c);
+    // Apple issues the development AAGUID to any build signed for testing,
+    // so accepting it in production would let a test build enrol a key.
+    const allowDevelopmentAaguid =
+      this.config.get<string>('NODE_ENV') !== 'production';
 
     if (!hardwarePublicKey) {
       throw new AttestationRejectedError(
@@ -73,7 +77,7 @@ export class AppAttestVerifier {
     assertNonce(credCert, object.authData, nonce + hardwarePublicKey);
 
     const publicKey = extractUncompressedKey(credCert);
-    const authData = parseAuthData(object.authData);
+    const authData = parseAuthData(object.authData, allowDevelopmentAaguid);
 
     assertAppId(authData.rpIdHash, appId);
     assertKeyIdentifier(authData.credentialId, publicKey);
@@ -203,14 +207,17 @@ function extractUncompressedKey(credCert: x509.X509Certificate): Buffer {
   return point;
 }
 
-interface AuthData {
+export interface AuthData {
   rpIdHash: Buffer;
   counter: number;
   aaguid: string;
   credentialId: Buffer;
 }
 
-function parseAuthData(raw: Uint8Array): AuthData {
+export function parseAuthData(
+  raw: Uint8Array,
+  allowDevelopmentAaguid: boolean,
+): AuthData {
   const data = Buffer.from(raw);
   if (data.length < 55) {
     throw new AttestationRejectedError('authenticator data is too short');
@@ -224,6 +231,11 @@ function parseAuthData(raw: Uint8Array): AuthData {
 
   if (credentialId.length !== credentialIdLength) {
     throw new AttestationRejectedError('credential id is truncated');
+  }
+  if (aaguid === AAGUID_DEVELOPMENT && !allowDevelopmentAaguid) {
+    throw new AttestationRejectedError(
+      'development App Attest keys are not accepted here',
+    );
   }
   if (aaguid !== AAGUID_DEVELOPMENT && aaguid !== AAGUID_PRODUCTION) {
     throw new AttestationRejectedError(`unexpected aaguid ${aaguid.trim()}`);

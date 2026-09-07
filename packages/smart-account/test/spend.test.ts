@@ -6,6 +6,7 @@ import {
   buildSpend,
   resolveSpendRoute,
   deriveAccountAddresses,
+  TOKEN_PROGRAM_ID,
   type SpendingLimit,
 } from "../src/index.js";
 
@@ -208,6 +209,23 @@ describe("buildSpend", () => {
     expect(ix.keys.some((k) => k.pubkey.equals(approval) && k.isSigner)).toBe(
       true,
     );
+  });
+
+  it("refuses a two-signature spend whose program is off the policy's allowlist", () => {
+    expect(() =>
+      buildSpend({
+        addresses,
+        request: { mint: NATIVE, amount: 1_000_000n, destination: dest },
+        route: {
+          kind: "two-signature",
+          reason: "no-spending-limit",
+          policy: ABOVE_POLICY,
+        },
+        signers: [primary, approval],
+        decimals: 9,
+        allowedPrograms: [TOKEN_PROGRAM_ID],
+      }),
+    ).toThrow(/not on the above-limit program allowlist/);
   });
 
   it("refuses a limit route carrying more than one signer", () => {

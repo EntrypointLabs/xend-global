@@ -754,6 +754,7 @@ function makeController(opts: {
   ownedAccounts?: SmartAccountRow[];
   ownedVaults?: SmartAccountRow[];
   verify?: SolanaRpc['verifyWebhookSignature'];
+  killSwitch?: boolean;
 }): {
   controller: WebhookController;
   calls: FakeDbCall[];
@@ -777,21 +778,26 @@ function makeController(opts: {
   const reconciler = {
     recordWebhookFinalization: jest.fn(),
   } as unknown as import('./reconciler.service').ReconcilerService;
+  const killSwitch = opts.killSwitch ?? false;
   const controller = new WebhookController(
     db,
     tailer,
     parser,
     solana,
     reconciler,
+    {
+      get: (key: string) =>
+        key === 'ACTIVITY_WEBHOOK_KILLSWITCH' ? killSwitch : undefined,
+    } as unknown as import('@nestjs/config').ConfigService,
+    {
+      claim: () => Promise.resolve(true),
+      release: () => Promise.resolve(),
+    } as unknown as import('../db/inbound-webhook-dedupe').InboundWebhookDedupe,
   );
   return { controller, calls, solana };
 }
 
 describe('WebhookController POST /webhooks/helius', () => {
-  beforeEach(() => {
-    delete process.env.ACTIVITY_WEBHOOK_KILLSWITCH;
-  });
-
   it('writes CONFIRMED row when valid HMAC + matching wallet', async () => {
     const { controller, calls } = makeController({
       ownedAccounts: [{ id: 'sa_1', walletAddress: OWNED_WALLET }],
@@ -923,9 +929,9 @@ describe('WebhookController POST /webhooks/helius', () => {
   });
 
   it('killSwitch acks delivery without parsing or writing', async () => {
-    process.env.ACTIVITY_WEBHOOK_KILLSWITCH = '1';
     const { controller, calls, solana } = makeController({
       ownedAccounts: [{ id: 'sa_1', walletAddress: OWNED_WALLET }],
+      killSwitch: true,
     });
     const req = {
       rawBody: Buffer.from(JSON.stringify(sampleHeliusBody)),

@@ -109,6 +109,26 @@ describe('SecurityNoticeService', () => {
     }
   });
 
+  it('names the limit and the delay when a Spending Limit change is staged', async () => {
+    const { db } = makeFakeDb({ tokens: ['tok'] });
+    const mailer = makeMailer();
+    const sender = makeSender();
+    const service = new SecurityNoticeService(db, sender, mailer);
+
+    await service.deliver(
+      event({ kind: 'settings_change_staged', subject: '$250 a day' }),
+      { change: 'spending_limit' },
+    );
+
+    const [push] = sentMessages(sender);
+    expect(push.title).toBe('Your spending limit is changing');
+    expect(push.body).toContain('$250 a day');
+    expect(push.body).toContain('24 hour delay');
+    expect(sentMails(mailer)[0].text).toContain(
+      'A change of your spending limit to $250 a day was started',
+    );
+  });
+
   it('mails the old address and the new one when the contact address rotates', async () => {
     const { db } = makeFakeDb({ tokens: ['tok'] });
     const mailer = makeMailer();

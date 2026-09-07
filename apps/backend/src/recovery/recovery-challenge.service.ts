@@ -75,6 +75,7 @@ export class RecoveryChallengeService {
   ): Promise<{ expiresAt: Date }> {
     const recent = await this.store.countSince(
       userId,
+      purpose,
       new Date(now.getTime() - 60 * 60 * 1000),
     );
     if (recent >= MAX_CODES_PER_HOUR) {
@@ -122,25 +123,25 @@ export class RecoveryChallengeService {
                 'through. Until then the address already on your account stays in place,',
                 'and we will write to it too.',
               ].join('\n')
-          : purpose === 'entry_session'
-            ? [
-                `${code} lets you into your Xend account to look around.`,
-                '',
-                'It expires in 10 minutes, and what it opens lasts an hour.',
-                '',
-                'It cannot send money or change your keys: those need your passkey.',
-                'If you did not ask for this, someone else knows your email address.',
-                'They cannot spend with it.',
-              ].join('\n')
-            : [
-                `${code} is your Xend recovery code.`,
-                '',
-                'It lets you move your account to a new phone, and it expires in 10 minutes.',
-                'Moving a phone takes 24 hours to take effect, and we will tell you when it starts.',
-                '',
-                'If you did not ask for this, someone else knows your email address. The code',
-                'alone cannot move your money: spending needs the phone you already have.',
-              ].join('\n'),
+            : purpose === 'entry_session'
+              ? [
+                  `${code} lets you into your Xend account to look around.`,
+                  '',
+                  'It expires in 10 minutes, and what it opens lasts an hour.',
+                  '',
+                  'It cannot send money or change your keys: those need your passkey.',
+                  'If you did not ask for this, someone else knows your email address.',
+                  'They cannot spend with it.',
+                ].join('\n')
+              : [
+                  `${code} is your Xend recovery code.`,
+                  '',
+                  'It lets you move your account to a new phone, and it expires in 10 minutes.',
+                  'Moving a phone takes 24 hours to take effect, and we will tell you when it starts.',
+                  '',
+                  'If you did not ask for this, someone else knows your email address. The code',
+                  'alone cannot move your money: spending needs the phone you already have.',
+                ].join('\n'),
     });
 
     // The code never reaches the log, and neither does the address.

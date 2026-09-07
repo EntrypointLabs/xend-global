@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { smartAccounts, users } from '../db/schema';
+import { parseJwtKeyRing, secretForToken } from './jwt-secrets';
 import type { Principal } from './principal';
 
 /**
@@ -24,10 +25,21 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     config: ConfigService,
     private db: DbService,
   ) {
+    const ring = parseJwtKeyRing(config);
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.getOrThrow('JWT_SECRET'),
+      secretOrKeyProvider: (
+        _request: unknown,
+        rawToken: string,
+        done: (err: Error | null, secret?: string) => void,
+      ) => {
+        try {
+          done(null, secretForToken(ring, rawToken));
+        } catch (err) {
+          done(err as Error);
+        }
+      },
     });
   }
 

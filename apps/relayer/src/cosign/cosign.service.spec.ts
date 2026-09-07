@@ -1,5 +1,5 @@
 import { CosignService } from "./cosign.service";
-import { InstructionNotAllowedError } from "./cosign.errors";
+import { CapExceededError, InstructionNotAllowedError } from "./cosign.errors";
 import { validateSettlementTransaction } from "./tx-validation";
 import type { RelayerConfig } from "../relayer-config";
 import type { FeePayerSigner } from "../signer/signer.interface";
@@ -29,6 +29,7 @@ function deps() {
   const simulateTransaction = jest.fn().mockResolvedValue({ err: null });
   const sendRawTransaction = jest.fn().mockResolvedValue("SIG123");
   const checkAndReserve = jest.fn();
+  const release = jest.fn();
   const recordSpend = jest.fn();
 
   const signer = { address: "FEE", signTransaction } as FeePayerSigner;
@@ -38,6 +39,7 @@ function deps() {
   } as unknown as RelayerRpc;
   const caps = {
     checkAndReserve,
+    release,
     recordSpend,
     globalFeeLamportsToday: jest.fn().mockReturnValue(0n),
   } as unknown as CapsService;
@@ -49,6 +51,8 @@ function deps() {
     signTransaction,
     simulateTransaction,
     sendRawTransaction,
+    checkAndReserve,
+    release,
     recordSpend,
   };
 }
@@ -96,6 +100,10 @@ describe("CosignService", () => {
     );
     expect(d.signTransaction).not.toHaveBeenCalled();
     expect(d.sendRawTransaction).not.toHaveBeenCalled();
+    expect(d.release).toHaveBeenCalledWith({
+      consumerId: "c1",
+      merchantId: "m1",
+    });
   });
 
   it("never signs or broadcasts when simulation fails", async () => {
@@ -109,6 +117,36 @@ describe("CosignService", () => {
     });
     expect(d.signTransaction).not.toHaveBeenCalled();
     expect(d.sendRawTransaction).not.toHaveBeenCalled();
+    expect(d.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the cap slot when a request is refused by the caps themselves", async () => {
+    const d = deps();
+    d.checkAndReserve.mockImplementation(() => {
+      throw new CapExceededError("per-consumer payments/hour cap exceeded");
+    });
+    const svc = new CosignService(cfg, d.signer, d.rpc, d.caps);
+    await expect(svc.cosign(makeReq(), "corr-6")).rejects.toBeInstanceOf(
+      CapExceededError,
+    );
+    expect(d.release).not.toHaveBeenCalled();
+  });
+
+  it("keeps the cap slot once the transaction has been signed", async () => {
+    const d = deps();
+    d.sendRawTransaction.mockRejectedValue(new Error("rpc down"));
+    const svc = new CosignService(cfg, d.signer, d.rpc, d.caps);
+    await expect(svc.cosign(makeReq(), "corr-7")).rejects.toMatchObject({
+      code: "BROADCAST_FAILED",
+    });
+    expect(d.release).not.toHaveBeenCalled();
+  });
+
+  it("keeps the cap slot after a successful broadcast", async () => {
+    const d = deps();
+    const svc = new CosignService(cfg, d.signer, d.rpc, d.caps);
+    await svc.cosign(makeReq(), "corr-8");
+    expect(d.release).not.toHaveBeenCalled();
   });
 
   it("serves a repeated intentId from the replay guard without re-validating, signing, or broadcasting", async () => {

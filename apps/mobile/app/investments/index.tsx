@@ -12,6 +12,7 @@ import { ScreenLayout } from "@/components/ui/layout";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
+import { useSendGate } from "@/hooks/useSendGate";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useInvestments, type InvestmentHolding } from "@/hooks/useInvestments";
 import { TokenMark } from "@/components/ui/atoms/TokenMark";
@@ -31,6 +32,7 @@ export default function InvestmentsScreen() {
   const { showReceiveModal, isReceiveModalVisible, hideAllModals } =
     useModalFlow();
   const address = useWalletAddress();
+  const gateSend = useSendGate();
   const qrCodeModalRef = useRef<BottomSheetModal>(null);
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
   const [isSendModalVisible, setIsSendModalVisible] = useState(false);
@@ -59,11 +61,11 @@ export default function InvestmentsScreen() {
             </Typography>
           </View>
         ),
-        onPress: () => setIsSendModalVisible(true),
+        onPress: () => gateSend(() => setIsSendModalVisible(true)),
         accessibilityLabel: "Send",
       },
     ],
-    [router]
+    [router, gateSend]
   );
 
   const total = isError ? "0.00" : formatMoney(totalUsd);
@@ -132,7 +134,6 @@ export default function InvestmentsScreen() {
         visible={isReceiveModalVisible}
         onClose={hideAllModals}
         onOpenQRCode={() => qrCodeModalRef.current?.present()}
-        cryptoOnly
       />
       <QRCodeModal ref={qrCodeModalRef} walletAddress={address ?? ""} />
     </ScreenLayout>
