@@ -14,6 +14,11 @@ import {
 } from '@xend/smart-account';
 
 import { AccountEventsService } from '../activity/account-events.service';
+import {
+  PREPARED_TX_STORE,
+  PREPARED_TX_TTL_SECONDS,
+} from '../prepared/prepared-tx.interface';
+import type { PreparedTxStore } from '../prepared/prepared-tx.interface';
 import { RecoveryChallengeService } from '../recovery/recovery-challenge.service';
 import { RecoveryService } from '../recovery/recovery.service';
 import { NoRotationInFlightError } from '../recovery/recovery.errors';
@@ -90,9 +95,6 @@ export interface DeviceRotationPlan {
 export class DeviceRotationService {
   private readonly logger = new Logger(DeviceRotationService.name);
 
-  /** Same guard as provisioning: the only bytes submitted are bytes we built. */
-  private readonly prepared = new Map<string, string>();
-
   constructor(
     @Inject(SQUADS_ACCOUNT_STORE) private readonly store: SquadsAccountStore,
     @Inject(PROVISIONING_CHAIN) private readonly chain: ProvisioningChain,
@@ -100,6 +102,8 @@ export class DeviceRotationService {
     private readonly challenges: RecoveryChallengeService,
     private readonly turnkey: TurnkeyService,
     private readonly events: AccountEventsService,
+    /** Same guard as provisioning: the only bytes submitted are bytes we built. */
+    @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
   ) {}
 
   /**
@@ -134,7 +138,7 @@ export class DeviceRotationService {
     grantId: string,
     device: { hardwarePublicKey: string; security?: string },
   ): Promise<DeviceRotationPlan> {
-    const account = await this.requireAccount(userId);
+    let account = await this.requireAccount(userId);
 
     const enrolled = await this.turnkey.ensureApprovalSigner({
       reference: userId,
@@ -150,6 +154,17 @@ export class DeviceRotationService {
 
     if (account.pendingApprovalSigner === enrolled.address) {
       return this.planFrom(userId, grantId, true);
+    }
+
+    if (account.pendingPrimaryChangeIndex) {
+      // The two rotations write the same signer set and race the same index.
+      throw new AccountCreationError(
+        'another change to this Account is already in flight',
+      );
+    }
+
+    if (account.pendingApprovalChangeIndex) {
+      account = await this.settleOrRefuse(userId, account);
     }
 
     const settings = await this.chain.readSettings(account.settingsAddress);
@@ -218,12 +233,17 @@ export class DeviceRotationService {
       changeIndex,
     );
     if (!proposal) {
-      return this.prepare(userId, account, 'propose', changeIndex);
+      if (await this.isNextIndex(account, changeIndex)) {
+        return this.prepare(userId, account, 'propose', changeIndex);
+      }
+      await this.resolveWithoutProposal(account, changeIndex);
+      await this.prepared.delete(preparedKey(userId));
+      return { done: true };
     }
 
     if (proposal.settled) {
       await this.settle(account, proposal.status === 'Executed');
-      this.prepared.delete(userId);
+      await this.prepared.delete(preparedKey(userId));
       return { done: true };
     }
 
@@ -270,14 +290,93 @@ export class DeviceRotationService {
 
   async submit(userId: string, signedTxBase64: string): Promise<string> {
     await this.requireAccount(userId);
-    this.assertMatchesPreparedStep(userId, signedTxBase64);
+    await this.assertMatchesPreparedStep(userId, signedTxBase64);
 
     const signature = await this.chain.submit(signedTxBase64);
-    this.prepared.delete(userId);
+    await this.prepared.delete(preparedKey(userId));
     this.logger.log(
       `device_rotation.step_landed userId=${userId} signature=${signature}`,
     );
     return signature;
+  }
+
+  /**
+   * A second start while a rotation is staged either finishes the first or is
+   * refused. Restaging over it would leave the change already proposed on
+   * chain able to execute against a key the row no longer names.
+   */
+  private async settleOrRefuse(
+    userId: string,
+    account: SquadsAccountRow,
+  ): Promise<SquadsAccountRow> {
+    const changeIndex = BigInt(account.pendingApprovalChangeIndex as string);
+    const inFlight = new AccountCreationError(
+      'a device rotation is already in flight; finish or reject it first',
+    );
+
+    const proposal = await this.chain.readProposal(
+      account.settingsAddress,
+      changeIndex,
+    );
+    if (proposal) {
+      if (!proposal.settled) throw inFlight;
+      await this.settle(account, proposal.status === 'Executed');
+    } else if (await this.isNextIndex(account, changeIndex)) {
+      throw inFlight;
+    } else {
+      await this.resolveWithoutProposal(account, changeIndex);
+    }
+    await this.prepared.delete(preparedKey(userId));
+    return this.requireAccount(userId);
+  }
+
+  /** Whether the staged index is still the one the next proposal would take. */
+  private async isNextIndex(
+    account: SquadsAccountRow,
+    changeIndex: bigint,
+  ): Promise<boolean> {
+    const settings = await this.chain.readSettings(account.settingsAddress);
+    return changeIndex === settings.transactionIndex + 1n;
+  }
+
+  /**
+   * A staged index with no proposal that is no longer the next index can never
+   * be proposed, so without this the Account is stuck behind it forever. The
+   * signer set decides which way it resolves: a rotation whose proposal has
+   * since been closed shows the new key in place and is committed, anything
+   * else is forgotten and recorded as a change that did not land.
+   */
+  private async resolveWithoutProposal(
+    account: SquadsAccountRow,
+    changeIndex: bigint,
+  ): Promise<void> {
+    if (await this.rotationLanded(account)) {
+      await this.commit(account);
+      return;
+    }
+    await this.store.updateByUserId(account.userId, {
+      pendingApprovalSigner: null,
+      pendingApprovalSubOrgId: null,
+      pendingApprovalChangeIndex: null,
+    });
+    await this.events.recordSettingsChangeRejected(account.userId, {
+      changeIndex,
+      subject: account.pendingApprovalSigner,
+    });
+    this.logger.warn(
+      `device_rotation.stale_index_cleared userId=${account.userId} index=${changeIndex}`,
+    );
+  }
+
+  private async rotationLanded(account: SquadsAccountRow): Promise<boolean> {
+    if (!account.pendingApprovalSigner) return false;
+    const signers = (
+      await this.chain.readSettings(account.settingsAddress)
+    ).signers.map((signer) => signer.key.toBase58());
+    return (
+      signers.includes(account.pendingApprovalSigner) &&
+      !signers.includes(account.approvalSigner)
+    );
   }
 
   /**
@@ -353,23 +452,18 @@ export class DeviceRotationService {
   ): Promise<void> {
     const changeIndex = account.pendingApprovalChangeIndex;
     if (executed && account.pendingApprovalSigner) {
-      await this.store.updateByUserId(account.userId, {
-        approvalSigner: account.pendingApprovalSigner,
-        approvalSubOrgId: account.pendingApprovalSubOrgId ?? undefined,
-        pendingApprovalSigner: null,
-        pendingApprovalSubOrgId: null,
-        pendingApprovalChangeIndex: null,
-      });
-      await this.events.recordDeviceRotated(
-        account.userId,
-        account.pendingApprovalSigner,
-      );
-      if (changeIndex) {
-        await this.events.recordSettingsChangeExecuted(account.userId, {
-          changeIndex,
-          subject: account.pendingApprovalSigner,
-        });
+      // An executed proposal at the index proves a change landed there, not
+      // that it was this one. Committing on that alone would name a key the
+      // signer set never took.
+      if (!(await this.rotationLanded(account))) {
+        this.logger.error(
+          `device_rotation.signer_set_mismatch userId=${account.userId} index=${changeIndex}`,
+        );
+        throw new AccountCreationError(
+          'the executed change did not install the staged approval signer',
+        );
       }
+      await this.commit(account);
     } else {
       await this.store.updateByUserId(account.userId, {
         pendingApprovalSigner: null,
@@ -389,6 +483,24 @@ export class DeviceRotationService {
     );
   }
 
+  private async commit(account: SquadsAccountRow): Promise<void> {
+    const newSigner = account.pendingApprovalSigner as string;
+    await this.store.updateByUserId(account.userId, {
+      approvalSigner: newSigner,
+      approvalSubOrgId: account.pendingApprovalSubOrgId ?? undefined,
+      pendingApprovalSigner: null,
+      pendingApprovalSubOrgId: null,
+      pendingApprovalChangeIndex: null,
+    });
+    await this.events.recordDeviceRotated(account.userId, newSigner);
+    if (account.pendingApprovalChangeIndex) {
+      await this.events.recordSettingsChangeExecuted(account.userId, {
+        changeIndex: account.pendingApprovalChangeIndex,
+        subject: newSigner,
+      });
+    }
+  }
+
   private async prepare(
     userId: string,
     account: SquadsAccountRow,
@@ -401,7 +513,11 @@ export class DeviceRotationService {
       changeIndex,
     );
     const unsigned = await this.chain.compile({ instructions });
-    this.prepared.set(userId, unsigned.messageBase64);
+    await this.prepared.set(
+      preparedKey(userId),
+      unsigned.messageBase64,
+      PREPARED_TX_TTL_SECONDS,
+    );
 
     this.logger.log(
       `device_rotation.step userId=${userId} step=${step} index=${changeIndex} policies=${policies.length}`,
@@ -512,8 +628,11 @@ export class DeviceRotationService {
     return account;
   }
 
-  private assertMatchesPreparedStep(userId: string, signedTxBase64: string) {
-    const expected = this.prepared.get(userId);
+  private async assertMatchesPreparedStep(
+    userId: string,
+    signedTxBase64: string,
+  ): Promise<void> {
+    const expected = await this.prepared.get<string>(preparedKey(userId));
     if (!expected) {
       throw new AccountCreationError(
         'No rotation step is awaiting a signature for this Consumer',
@@ -539,4 +658,8 @@ export class DeviceRotationService {
       );
     }
   }
+}
+
+function preparedKey(userId: string): string {
+  return `device-rotation:${userId}`;
 }

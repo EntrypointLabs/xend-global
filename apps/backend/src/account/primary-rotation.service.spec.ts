@@ -1,16 +1,22 @@
-import { Keypair } from '@solana/web3.js';
+import { Keypair, PublicKey } from '@solana/web3.js';
+import {
+  deriveAccountAddresses,
+  derivePolicyAddress,
+} from '@xend/smart-account';
 
 import type { AccountEventsService } from '../activity/account-events.service';
 import type { DbService } from '../db/db.service';
 import type { RecoveryChallengeService } from '../recovery/recovery-challenge.service';
 import type { RecoveryService } from '../recovery/recovery.service';
 import { RecoveryReleaseFrozenError } from '../recovery/recovery.errors';
+import { InMemoryPreparedTxStore } from '../prepared/prepared-tx.memory';
 import type { WalletProvider } from '../wallet/wallet-provider.interface';
 import { PasskeyInUseError } from './account.errors';
-import type {
-  ProvisioningChain,
-  SquadsAccountRow,
-  SquadsAccountStore,
+import {
+  SPENDING_LIMIT_POLICY_SEED,
+  type ProvisioningChain,
+  type SquadsAccountRow,
+  type SquadsAccountStore,
 } from './account.interface';
 import { PrimaryRotationService } from './primary-rotation.service';
 
@@ -113,6 +119,8 @@ function setUp(opts: {
   frozen?: boolean;
   boundElsewhere?: boolean;
   proposalStatus?: 'Executed' | 'Rejected';
+  /** The Settings signer set as the chain reports it. */
+  signers?: string[];
 }) {
   const row = opts.row ?? account();
   const { store, patches, read } = fakeStore(row);
@@ -122,7 +130,28 @@ function setUp(opts: {
   const chain = {
     rentPayer: Keypair.generate().publicKey.toBase58(),
     readSettings: () =>
-      Promise.resolve({ timeLockSeconds: 86_400, transactionIndex: 7n }),
+      Promise.resolve({
+        timeLockSeconds: 86_400,
+        transactionIndex: 7n,
+        policySeed: null,
+        signers: (opts.signers ?? [OLD_PRIMARY, APPROVAL]).map((key) => ({
+          key: new PublicKey(key),
+          permissions: { mask: 7 },
+        })),
+      }),
+    readSpendingLimit: () =>
+      Promise.resolve({
+        policy: derivePolicyAddress(
+          deriveAccountAddresses(row.settingsSeed).settings,
+          SPENDING_LIMIT_POLICY_SEED,
+        ),
+        mint: new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'),
+        maxPerUse: 100_000_000n,
+        maxPerPeriod: 500_000_000n,
+        remainingInPeriod: 500_000_000n,
+        period: 'Daily',
+        destinations: [],
+      }),
     readProposal: () =>
       Promise.resolve(
         opts.proposalStatus
@@ -168,11 +197,9 @@ function setUp(opts: {
       consume: () => Promise.resolve(),
     } as unknown as RecoveryChallengeService,
     events,
-    {
-      getOrThrow: () => 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-    } as never,
     db,
     { registerWebhookAddress: () => Promise.resolve() } as never,
+    new InMemoryPreparedTxStore(),
   );
 
   return { service, patches, read, rebinds, recorded };
@@ -251,6 +278,7 @@ describe('PrimaryRotationService settle', () => {
     const { service, read, rebinds, recorded } = setUp({
       row: staged(),
       proposalStatus: 'Executed',
+      signers: [NEW_PRIMARY, APPROVAL],
     });
     const plan = await service.next(USER);
     expect(plan).toEqual({ done: true });
@@ -279,5 +307,67 @@ describe('PrimaryRotationService settle', () => {
     expect(rebinds).toHaveLength(0);
     expect(recorded).toContain('rejected');
     expect(recorded).not.toContain('passkey_enrolled');
+  });
+});
+
+describe('PrimaryRotationService against a signer set that disagrees', () => {
+  const staged = () =>
+    account({
+      pendingPrimarySigner: NEW_PRIMARY,
+      pendingPrimaryProviderId: NEW_DID,
+      pendingPrimaryChangeIndex: '8',
+    });
+
+  it('refuses to rebind the credential when the executed index did not install it', async () => {
+    const { service, read, rebinds, recorded } = setUp({
+      row: staged(),
+      proposalStatus: 'Executed',
+      signers: [OLD_PRIMARY, APPROVAL],
+    });
+
+    // Rebinding here would open this Account to a passkey the signer set
+    // never accepted.
+    await expect(service.next(USER)).rejects.toThrow(
+      'did not install the staged primary signer',
+    );
+    expect(read().primarySigner).toBe(OLD_PRIMARY);
+    expect(read().pendingPrimarySigner).toBe(NEW_PRIMARY);
+    expect(rebinds).toHaveLength(0);
+    expect(recorded).not.toContain('passkey_enrolled');
+  });
+
+  it('clears a staged index the chain has moved past without a proposal', async () => {
+    const { service, read, rebinds, recorded } = setUp({
+      row: account({
+        pendingPrimarySigner: NEW_PRIMARY,
+        pendingPrimaryProviderId: NEW_DID,
+        pendingPrimaryChangeIndex: '5',
+      }),
+    });
+
+    const plan = await service.next(USER);
+
+    expect(plan).toEqual({ done: true });
+    expect(read().pendingPrimarySigner).toBeNull();
+    expect(read().pendingPrimaryChangeIndex).toBeNull();
+    expect(read().primarySigner).toBe(OLD_PRIMARY);
+    expect(rebinds).toHaveLength(0);
+    expect(recorded).toContain('rejected');
+  });
+
+  it('lets a fresh passkey be staged once the stale index is cleared', async () => {
+    const { service, read } = setUp({
+      row: account({
+        pendingPrimarySigner: Keypair.generate().publicKey.toBase58(),
+        pendingPrimaryProviderId: 'did:privy:earlier',
+        pendingPrimaryChangeIndex: '5',
+      }),
+    });
+
+    const plan = await service.start(USER, 'grant-1', 'token');
+
+    expect(plan.step).toBe('propose');
+    expect(read().pendingPrimarySigner).toBe(NEW_PRIMARY);
+    expect(read().pendingPrimaryChangeIndex).toBe('8');
   });
 });

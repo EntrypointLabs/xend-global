@@ -22,6 +22,7 @@ import type {
   SquadsAccountRow,
   SquadsAccountStore,
 } from './account.interface';
+import { InMemoryPreparedTxStore } from '../prepared/prepared-tx.memory';
 import { DeviceRotationService } from './device-rotation.service';
 import { RecoveryChangeService } from './recovery-change.service';
 
@@ -74,6 +75,7 @@ class FakeSignerStore implements RecoverySignerStore {
   insert(row: NewRecoverySigner): Promise<RecoverySignerRow> {
     const created: RecoverySignerRow = {
       id: `signer-${++this.seq}`,
+      wrappedDataKey: row.wrappedDataKey ?? null,
       userId: row.userId,
       address: row.address,
       channel: row.channel,
@@ -130,6 +132,7 @@ class FakeSignerStore implements RecoverySignerStore {
 }
 
 const vault: RecoveryVault = {
+  currentKeyId: 'test',
   seal: (secret) =>
     Promise.resolve({
       ciphertext: Buffer.from(secret).toString('base64'),
@@ -145,7 +148,14 @@ function fakeChain() {
   const chain: ProvisioningChain = {
     rentPayer: AUTHORITY,
     readSettings: () =>
-      Promise.resolve({ timeLockSeconds: DAY, transactionIndex: 7n }),
+      Promise.resolve({
+        timeLockSeconds: DAY,
+        transactionIndex: 7n,
+        policySeed: null,
+        signers: [],
+      }),
+    readSpendingLimit: () =>
+      Promise.reject(new Error('readSpendingLimit is not exercised here')),
     policyExists: () => Promise.resolve(true),
     readProposal: () => Promise.resolve(proposal),
     compile: () =>
@@ -231,12 +241,19 @@ function setUp() {
         recordSettingsChangeExecuted: () => Promise.resolve(null),
         recordSettingsChangeRejected: () => Promise.resolve(null),
       } as unknown as AccountEventsService,
+      new InMemoryPreparedTxStore(),
     ),
-    changes: new RecoveryChangeService(accounts, chain, recovery, {
-      recordSettingsChangeStaged: () => Promise.resolve(null),
-      recordSettingsChangeExecuted: () => Promise.resolve(null),
-      recordSettingsChangeRejected: () => Promise.resolve(null),
-    } as unknown as AccountEventsService),
+    changes: new RecoveryChangeService(
+      accounts,
+      chain,
+      recovery,
+      {
+        recordSettingsChangeStaged: () => Promise.resolve(null),
+        recordSettingsChangeExecuted: () => Promise.resolve(null),
+        recordSettingsChangeRejected: () => Promise.resolve(null),
+      } as unknown as AccountEventsService,
+      new InMemoryPreparedTxStore(),
+    ),
   };
 }
 

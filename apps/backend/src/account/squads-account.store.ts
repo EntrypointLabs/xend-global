@@ -75,5 +75,6 @@ function toRow(row: typeof squadsAccounts.$inferSelect): SquadsAccountRow {
     pendingPrimarySigner: row.pendingPrimarySigner,
     pendingPrimaryProviderId: row.pendingPrimaryProviderId,
     pendingPrimaryChangeIndex: row.pendingPrimaryChangeIndex,
+    spendingLimitPolicySeed: row.spendingLimitPolicySeed,
   };
 }

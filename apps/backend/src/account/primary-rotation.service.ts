@@ -1,5 +1,4 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { PublicKey, VersionedTransaction } from '@solana/web3.js';
 import { eq } from 'drizzle-orm';
 import type { TransactionInstruction } from '@solana/web3.js';
@@ -15,6 +14,11 @@ import {
 import { AccountEventsService } from '../activity/account-events.service';
 import { DbService } from '../db/db.service';
 import { smartAccounts } from '../db/schema';
+import {
+  PREPARED_TX_STORE,
+  PREPARED_TX_TTL_SECONDS,
+} from '../prepared/prepared-tx.interface';
+import type { PreparedTxStore } from '../prepared/prepared-tx.interface';
 import { RecoveryChallengeService } from '../recovery/recovery-challenge.service';
 import { RecoveryService } from '../recovery/recovery.service';
 import { NoRotationInFlightError } from '../recovery/recovery.errors';
@@ -26,7 +30,7 @@ import { AccountCreationError, PasskeyInUseError } from './account.errors';
 import {
   ABOVE_LIMIT_POLICY_SEED,
   PROVISIONING_CHAIN,
-  SPENDING_LIMIT_POLICY_SEED,
+  spendingLimitSeed,
   SQUADS_ACCOUNT_STORE,
 } from './account.interface';
 import type {
@@ -34,7 +38,6 @@ import type {
   SquadsAccountRow,
   SquadsAccountStore,
 } from './account.interface';
-import { buildDefaultSpendingLimit } from './spending-limit.terms';
 
 export type PrimaryRotationStep =
   | 'propose'
@@ -89,9 +92,6 @@ export interface PrimaryRotationPlan {
 export class PrimaryRotationService {
   private readonly logger = new Logger(PrimaryRotationService.name);
 
-  /** Same guard as provisioning: the only bytes submitted are bytes we built. */
-  private readonly prepared = new Map<string, string>();
-
   constructor(
     @Inject(SQUADS_ACCOUNT_STORE) private readonly store: SquadsAccountStore,
     @Inject(PROVISIONING_CHAIN) private readonly chain: ProvisioningChain,
@@ -99,9 +99,10 @@ export class PrimaryRotationService {
     private readonly recovery: RecoveryService,
     private readonly challenges: RecoveryChallengeService,
     private readonly events: AccountEventsService,
-    private readonly config: ConfigService,
     private readonly db: DbService,
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
+    /** Same guard as provisioning: the only bytes submitted are bytes we built. */
+    @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
   ) {}
 
   /**
@@ -134,7 +135,7 @@ export class PrimaryRotationService {
     grantId: string,
     incoming: { signer: string; providerId: string },
   ): Promise<PrimaryRotationPlan> {
-    const account = await this.requireAccount(userId);
+    let account = await this.requireAccount(userId);
 
     if (incoming.signer === account.primarySigner) {
       // The passkey they just used is the one already on the Account. Nothing
@@ -174,9 +175,7 @@ export class PrimaryRotationService {
       // the staged columns here would let that proposal execute and then be
       // recorded as if it had installed this one, binding a credential the
       // signer set never accepted.
-      throw new AccountCreationError(
-        'a passkey replacement is already in flight; finish or reject it first',
-      );
+      account = await this.settleOrRefuse(userId, account);
     }
 
     const settings = await this.chain.readSettings(account.settingsAddress);
@@ -226,12 +225,17 @@ export class PrimaryRotationService {
       changeIndex,
     );
     if (!proposal) {
-      return this.prepare(userId, account, 'propose', changeIndex);
+      if (await this.isNextIndex(account, changeIndex)) {
+        return this.prepare(userId, account, 'propose', changeIndex);
+      }
+      await this.resolveWithoutProposal(account, changeIndex);
+      await this.prepared.delete(preparedKey(userId));
+      return { done: true };
     }
 
     if (proposal.settled) {
       await this.settle(account, proposal.status === 'Executed');
-      this.prepared.delete(userId);
+      await this.prepared.delete(preparedKey(userId));
       return { done: true };
     }
 
@@ -275,14 +279,82 @@ export class PrimaryRotationService {
 
   async submit(userId: string, signedTxBase64: string): Promise<string> {
     await this.requireAccount(userId);
-    this.assertMatchesPreparedStep(userId, signedTxBase64);
+    await this.assertMatchesPreparedStep(userId, signedTxBase64);
 
     const signature = await this.chain.submit(signedTxBase64);
-    this.prepared.delete(userId);
+    await this.prepared.delete(preparedKey(userId));
     this.logger.log(
       `primary_rotation.step_landed userId=${userId} signature=${signature}`,
     );
     return signature;
+  }
+
+  /** Mirrors DeviceRotationService.settleOrRefuse. */
+  private async settleOrRefuse(
+    userId: string,
+    account: SquadsAccountRow,
+  ): Promise<SquadsAccountRow> {
+    const changeIndex = BigInt(account.pendingPrimaryChangeIndex as string);
+    const inFlight = new AccountCreationError(
+      'a passkey replacement is already in flight; finish or reject it first',
+    );
+
+    const proposal = await this.chain.readProposal(
+      account.settingsAddress,
+      changeIndex,
+    );
+    if (proposal) {
+      if (!proposal.settled) throw inFlight;
+      await this.settle(account, proposal.status === 'Executed');
+    } else if (await this.isNextIndex(account, changeIndex)) {
+      throw inFlight;
+    } else {
+      await this.resolveWithoutProposal(account, changeIndex);
+    }
+    await this.prepared.delete(preparedKey(userId));
+    return this.requireAccount(userId);
+  }
+
+  private async isNextIndex(
+    account: SquadsAccountRow,
+    changeIndex: bigint,
+  ): Promise<boolean> {
+    const settings = await this.chain.readSettings(account.settingsAddress);
+    return changeIndex === settings.transactionIndex + 1n;
+  }
+
+  /** Mirrors DeviceRotationService.resolveWithoutProposal. */
+  private async resolveWithoutProposal(
+    account: SquadsAccountRow,
+    changeIndex: bigint,
+  ): Promise<void> {
+    if (await this.rotationLanded(account)) {
+      await this.commit(account);
+      return;
+    }
+    await this.store.updateByUserId(account.userId, {
+      pendingPrimarySigner: null,
+      pendingPrimaryProviderId: null,
+      pendingPrimaryChangeIndex: null,
+    });
+    await this.events.recordSettingsChangeRejected(account.userId, {
+      changeIndex,
+      subject: account.pendingPrimarySigner,
+    });
+    this.logger.warn(
+      `primary_rotation.stale_index_cleared userId=${account.userId} index=${changeIndex}`,
+    );
+  }
+
+  private async rotationLanded(account: SquadsAccountRow): Promise<boolean> {
+    if (!account.pendingPrimarySigner) return false;
+    const signers = (
+      await this.chain.readSettings(account.settingsAddress)
+    ).signers.map((signer) => signer.key.toBase58());
+    return (
+      signers.includes(account.pendingPrimarySigner) &&
+      !signers.includes(account.primarySigner)
+    );
   }
 
   private async approveAsRecovery(
@@ -348,40 +420,18 @@ export class PrimaryRotationService {
       account.pendingPrimarySigner &&
       account.pendingPrimaryProviderId
     ) {
-      const newSigner = account.pendingPrimarySigner;
-      await this.db.client
-        .update(smartAccounts)
-        .set({
-          providerUserId: account.pendingPrimaryProviderId,
-          walletAddress: newSigner,
-          updatedAt: new Date(),
-        })
-        .where(eq(smartAccounts.userId, account.userId));
-      await this.store.updateByUserId(account.userId, {
-        primarySigner: newSigner,
-        pendingPrimarySigner: null,
-        pendingPrimaryProviderId: null,
-        pendingPrimaryChangeIndex: null,
-      });
-      await this.events.recordPasskeyEnrolled(account.userId, {
-        credentialId: newSigner,
-      });
-      if (changeIndex) {
-        await this.events.recordSettingsChangeExecuted(account.userId, {
-          changeIndex,
-          subject: newSigner,
-        });
-      }
-      // Best-effort; the reconciler is the safety net, and a rotation that
-      // executed must not be reported failed over a webhook registration.
-      try {
-        await this.solana.registerWebhookAddress(newSigner);
-      } catch (err) {
+      // An executed proposal at the index proves a change landed there, not
+      // that it was this one. Rebinding the credential on that alone would
+      // hand the Account to a passkey the signer set never took.
+      if (!(await this.rotationLanded(account))) {
         this.logger.error(
-          `Failed to register webhook address for ${newSigner} (continuing; reconciler will catch up)`,
-          err,
+          `primary_rotation.signer_set_mismatch userId=${account.userId} index=${changeIndex}`,
+        );
+        throw new AccountCreationError(
+          'the executed change did not install the staged primary signer',
         );
       }
+      await this.commit(account);
     } else {
       await this.store.updateByUserId(account.userId, {
         pendingPrimarySigner: null,
@@ -401,15 +451,56 @@ export class PrimaryRotationService {
     );
   }
 
+  private async commit(account: SquadsAccountRow): Promise<void> {
+    const newSigner = account.pendingPrimarySigner as string;
+    await this.db.client
+      .update(smartAccounts)
+      .set({
+        providerUserId: account.pendingPrimaryProviderId as string,
+        walletAddress: newSigner,
+        updatedAt: new Date(),
+      })
+      .where(eq(smartAccounts.userId, account.userId));
+    await this.store.updateByUserId(account.userId, {
+      primarySigner: newSigner,
+      pendingPrimarySigner: null,
+      pendingPrimaryProviderId: null,
+      pendingPrimaryChangeIndex: null,
+    });
+    await this.events.recordPasskeyEnrolled(account.userId, {
+      credentialId: newSigner,
+    });
+    if (account.pendingPrimaryChangeIndex) {
+      await this.events.recordSettingsChangeExecuted(account.userId, {
+        changeIndex: account.pendingPrimaryChangeIndex,
+        subject: newSigner,
+      });
+    }
+    // Best-effort; the reconciler is the safety net, and a rotation that
+    // executed must not be reported failed over a webhook registration.
+    try {
+      await this.solana.registerWebhookAddress(newSigner);
+    } catch (err) {
+      this.logger.error(
+        `Failed to register webhook address for ${newSigner} (continuing; reconciler will catch up)`,
+        err,
+      );
+    }
+  }
+
   private async prepare(
     userId: string,
     account: SquadsAccountRow,
     step: PrimaryRotationStep,
     changeIndex: bigint,
   ): Promise<PrimaryRotationPlan> {
-    const { instructions } = this.build(account, step, changeIndex);
+    const { instructions } = await this.build(account, step, changeIndex);
     const unsigned = await this.chain.compile({ instructions });
-    this.prepared.set(userId, unsigned.messageBase64);
+    await this.prepared.set(
+      preparedKey(userId),
+      unsigned.messageBase64,
+      PREPARED_TX_TTL_SECONDS,
+    );
 
     this.logger.log(
       `primary_rotation.step userId=${userId} step=${step} index=${changeIndex}`,
@@ -425,11 +516,11 @@ export class PrimaryRotationService {
     };
   }
 
-  private build(
+  private async build(
     account: SquadsAccountRow,
     step: PrimaryRotationStep,
     transactionIndex: bigint,
-  ): { instructions: TransactionInstruction[] } {
+  ): Promise<{ instructions: TransactionInstruction[] }> {
     const addresses = deriveAccountAddresses(account.settingsSeed);
     const approval = new PublicKey(account.approvalSigner);
     const rentPayer = new PublicKey(this.chain.rentPayer);
@@ -438,20 +529,25 @@ export class PrimaryRotationService {
       if (!account.pendingPrimarySigner) {
         throw new NoRotationInFlightError('no rotation is staged');
       }
+      // Both read live. A PolicyUpdate replaces the whole spending-limit
+      // policy, so the limit is restated from what the chain holds rather
+      // than from what provisioning wrote, and the signer set is what says
+      // the approval signer may propose at all.
+      const [settings, currentLimit] = await Promise.all([
+        this.chain.readSettings(account.settingsAddress),
+        this.chain.readSpendingLimit(
+          account.settingsAddress,
+          spendingLimitSeed(account),
+        ),
+      ]);
       const { propose } = buildRotatePrimarySigner({
         addresses,
         oldPrimary: new PublicKey(account.primarySigner),
         newPrimary: new PublicKey(account.pendingPrimarySigner),
         approval,
-        spendingLimitSeed: SPENDING_LIMIT_POLICY_SEED,
-        // Restated from the same source provisioning builds from, because a
-        // PolicyUpdate replaces the whole policy. The day limits become
-        // editable, this has to read the live terms instead.
-        terms: buildDefaultSpendingLimit(
-          new PublicKey(
-            this.config.getOrThrow<string>('EXPO_PUBLIC_USDC_MINT_ADDRESS'),
-          ),
-        ),
+        signers: settings.signers,
+        spendingLimitSeed: spendingLimitSeed(account),
+        currentLimit,
         aboveLimitSeed: ABOVE_LIMIT_POLICY_SEED,
         proposer: approval,
         rentPayer,
@@ -462,7 +558,7 @@ export class PrimaryRotationService {
 
     if (step === 'execute') {
       const policies = [
-        derivePolicyAddress(addresses.settings, SPENDING_LIMIT_POLICY_SEED),
+        derivePolicyAddress(addresses.settings, spendingLimitSeed(account)),
         derivePolicyAddress(addresses.settings, ABOVE_LIMIT_POLICY_SEED),
       ];
       return {
@@ -512,8 +608,11 @@ export class PrimaryRotationService {
     );
   }
 
-  private assertMatchesPreparedStep(userId: string, signedTxBase64: string) {
-    const expected = this.prepared.get(userId);
+  private async assertMatchesPreparedStep(
+    userId: string,
+    signedTxBase64: string,
+  ): Promise<void> {
+    const expected = await this.prepared.get<string>(preparedKey(userId));
     if (!expected) {
       throw new AccountCreationError(
         'No rotation step is awaiting a signature for this Consumer',
@@ -547,4 +646,8 @@ export class PrimaryRotationService {
     }
     return account;
   }
+}
+
+function preparedKey(userId: string): string {
+  return `primary-rotation:${userId}`;
 }

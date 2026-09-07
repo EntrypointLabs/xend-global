@@ -18,6 +18,7 @@ import type {
   SquadsAccountRow,
   SquadsAccountStore,
 } from './account.interface';
+import { InMemoryPreparedTxStore } from '../prepared/prepared-tx.memory';
 import { RecoveryChangeService } from './recovery-change.service';
 
 const USER = 'user-1';
@@ -67,7 +68,11 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
       Promise.resolve({
         timeLockSeconds: DAY,
         transactionIndex: state.transactionIndex ?? 0n,
+        policySeed: null,
+        signers: [],
       }),
+    readSpendingLimit: () =>
+      Promise.reject(new Error('readSpendingLimit is not exercised here')),
     policyExists: () => Promise.resolve(true),
     readProposal: () =>
       Promise.resolve(
@@ -216,6 +221,7 @@ describe('RecoveryChangeService.start', () => {
       chain,
       recovery,
       events,
+      new InMemoryPreparedTxStore(),
     ).start(USER, 'signer-1');
 
     expect(plan.step).toBe('propose');
@@ -229,6 +235,28 @@ describe('RecoveryChangeService.start', () => {
     expect(recorded).toEqual([`staged:recovery_key:8:${SIGNER_ADDRESS}`]);
   });
 
+  it('refuses to claim an index a device or passkey rotation already holds', async () => {
+    const { chain } = fakeChain({ transactionIndex: 7n });
+    const { recovery, calls } = fakeRecovery();
+
+    for (const pending of [
+      { pendingApprovalChangeIndex: '8' },
+      { pendingPrimaryChangeIndex: '8' },
+    ]) {
+      await expect(
+        new RecoveryChangeService(
+          store({ ...ACCOUNT, ...pending }),
+          chain,
+          recovery,
+          fakeEvents().events,
+          new InMemoryPreparedTxStore(),
+        ).start(USER, 'signer-1'),
+      ).rejects.toThrow('already in flight');
+    }
+    // Nothing staged: two changes on one index would settle the wrong one.
+    expect(calls).toEqual([]);
+  });
+
   it('stages a rotation with both rows on the same index', async () => {
     const { chain } = fakeChain({ transactionIndex: 7n });
     const { recovery, calls } = fakeRecovery();
@@ -238,6 +266,7 @@ describe('RecoveryChangeService.start', () => {
       chain,
       recovery,
       fakeEvents().events,
+      new InMemoryPreparedTxStore(),
     ).start(USER, 'signer-new', 'signer-old');
 
     expect(plan.changeIndex).toBe('8');
@@ -278,6 +307,7 @@ describe('RecoveryChangeService.start', () => {
       chain,
       recovery,
       fakeEvents().events,
+      new InMemoryPreparedTxStore(),
     ).start(USER, 'signer-new', 'signer-old');
 
     // A single settings transaction whose action list carries both keys,
@@ -300,6 +330,7 @@ describe('RecoveryChangeService.start', () => {
       chain,
       recovery,
       fakeEvents().events,
+      new InMemoryPreparedTxStore(),
     ).start(USER, 'signer-1');
 
     expect(keysOf(compiled[0])).toContain(ADDRESSES.settings.toBase58());
@@ -318,6 +349,7 @@ describe('RecoveryChangeService.start', () => {
         chain,
         recovery,
         fakeEvents().events,
+        new InMemoryPreparedTxStore(),
       ).start(USER, 'signer-1'),
     ).rejects.toThrow();
   });
@@ -333,6 +365,7 @@ describe('RecoveryChangeService.next', () => {
       chain,
       recovery,
       fakeEvents().events,
+      new InMemoryPreparedTxStore(),
     ).next(USER);
 
     expect(plan.done).toBe(true);
@@ -347,6 +380,7 @@ describe('RecoveryChangeService.next', () => {
       chain,
       recovery,
       fakeEvents().events,
+      new InMemoryPreparedTxStore(),
     ).next(USER);
 
     expect(plan.step).toBe('propose');
@@ -364,6 +398,7 @@ describe('RecoveryChangeService.next', () => {
           first.chain,
           fakeRecovery({ changeIndex: 8n }).recovery,
           fakeEvents().events,
+          new InMemoryPreparedTxStore(),
         ).next(USER)
       ).step,
     ).toBe('approve-primary');
@@ -373,6 +408,7 @@ describe('RecoveryChangeService.next', () => {
       second.chain,
       fakeRecovery({ changeIndex: 8n }).recovery,
       fakeEvents().events,
+      new InMemoryPreparedTxStore(),
     ).next(USER);
     expect(plan.step).toBe('approve-approval');
     expect(plan.needsApprovalSignature).toBe(true);
@@ -394,6 +430,7 @@ describe('RecoveryChangeService.next', () => {
       chain,
       recovery,
       fakeEvents().events,
+      new InMemoryPreparedTxStore(),
     ).next(USER);
 
     expect(plan.step).toBe('waiting');
@@ -418,6 +455,7 @@ describe('RecoveryChangeService.next', () => {
       chain,
       recovery,
       fakeEvents().events,
+      new InMemoryPreparedTxStore(),
     ).next(USER);
 
     expect(plan.step).toBe('execute');
@@ -435,6 +473,7 @@ describe('RecoveryChangeService.next', () => {
       chain,
       recovery,
       events,
+      new InMemoryPreparedTxStore(),
     ).next(USER);
 
     expect(plan.done).toBe(true);
@@ -461,6 +500,7 @@ describe('RecoveryChangeService.next', () => {
       chain,
       recovery,
       events,
+      new InMemoryPreparedTxStore(),
     ).next(USER);
 
     expect(plan.done).toBe(true);
@@ -480,6 +520,7 @@ describe('RecoveryChangeService.next', () => {
       chain,
       recovery,
       fakeEvents().events,
+      new InMemoryPreparedTxStore(),
     ).next(USER);
 
     expect(calls).toContain('abandon:8');
@@ -495,6 +536,7 @@ describe('RecoveryChangeService.submit', () => {
       chain,
       recovery,
       fakeEvents().events,
+      new InMemoryPreparedTxStore(),
     );
     await service.start(USER, 'signer-1');
 
@@ -515,6 +557,7 @@ describe('RecoveryChangeService.submit', () => {
         chain,
         recovery,
         fakeEvents().events,
+        new InMemoryPreparedTxStore(),
       ).submit(USER, signedFor('anything')),
     ).rejects.toThrow('No recovery key step is awaiting a signature');
   });
@@ -527,6 +570,7 @@ describe('RecoveryChangeService.submit', () => {
       chain,
       recovery,
       fakeEvents().events,
+      new InMemoryPreparedTxStore(),
     );
     await service.start(USER, 'signer-1');
 
@@ -543,6 +587,7 @@ describe('RecoveryChangeService.submit', () => {
       chain,
       recovery,
       fakeEvents().events,
+      new InMemoryPreparedTxStore(),
     );
     const plan = await service.start(USER, 'signer-1');
 
@@ -561,6 +606,7 @@ describe('RecoveryChangeService.submit', () => {
       replayable.chain,
       fakeRecovery().recovery,
       fakeEvents().events,
+      new InMemoryPreparedTxStore(),
     );
     await pinned.start(USER, 'signer-1');
 

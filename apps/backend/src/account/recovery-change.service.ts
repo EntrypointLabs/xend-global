@@ -15,6 +15,11 @@ import {
 } from '@xend/smart-account';
 
 import { AccountEventsService } from '../activity/account-events.service';
+import {
+  PREPARED_TX_STORE,
+  PREPARED_TX_TTL_SECONDS,
+} from '../prepared/prepared-tx.interface';
+import type { PreparedTxStore } from '../prepared/prepared-tx.interface';
 import { RecoveryService } from '../recovery/recovery.service';
 import { AccountCreationError } from './account.errors';
 import { PROVISIONING_CHAIN, SQUADS_ACCOUNT_STORE } from './account.interface';
@@ -69,20 +74,17 @@ export interface RecoveryChangePlan {
 export class RecoveryChangeService {
   private readonly logger = new Logger(RecoveryChangeService.name);
 
-  /**
-   * The message each Consumer was last asked to sign, by user id.
-   *
-   * Same guard as provisioning: the authority partially signs whatever arrives
-   * at `submit`, so the only bytes it will ever sign are bytes this service
-   * built. In memory, so a restart just means preparing again.
-   */
-  private readonly prepared = new Map<string, string>();
-
   constructor(
     @Inject(SQUADS_ACCOUNT_STORE) private readonly store: SquadsAccountStore,
     @Inject(PROVISIONING_CHAIN) private readonly chain: ProvisioningChain,
     private readonly recovery: RecoveryService,
     private readonly events: AccountEventsService,
+    /**
+     * The message each Consumer was last asked to sign. Same guard as
+     * provisioning: the authority partially signs whatever arrives at
+     * `submit`, so the only bytes it will ever sign are bytes this built.
+     */
+    @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
   ) {}
 
   /**
@@ -131,7 +133,7 @@ export class RecoveryChangeService {
           subject,
         });
       }
-      this.prepared.delete(userId);
+      await this.prepared.delete(preparedKey(userId));
       this.logger.log(
         `recovery_change.settled userId=${userId} index=${open.changeIndex} executed=${executed}`,
       );
@@ -177,6 +179,17 @@ export class RecoveryChangeService {
     ...signerIds: string[]
   ): Promise<RecoveryChangePlan> {
     const account = await this.requireAccount(userId);
+    if (
+      account.pendingApprovalChangeIndex ||
+      account.pendingPrimaryChangeIndex
+    ) {
+      // A rotation has already claimed the next index. Staging here would
+      // claim it again, and whichever change landed second would be settled
+      // as if it were the first.
+      throw new AccountCreationError(
+        'another change to this Account is already in flight',
+      );
+    }
     const settings = await this.chain.readSettings(account.settingsAddress);
     const changeIndex = settings.transactionIndex + 1n;
 
@@ -201,10 +214,10 @@ export class RecoveryChangeService {
 
   async submit(userId: string, signedTxBase64: string): Promise<string> {
     await this.requireAccount(userId);
-    this.assertMatchesPreparedStep(userId, signedTxBase64);
+    await this.assertMatchesPreparedStep(userId, signedTxBase64);
 
     const signature = await this.chain.submit(signedTxBase64);
-    this.prepared.delete(userId);
+    await this.prepared.delete(preparedKey(userId));
     // Kept against the staged row so Activity can name the transaction that
     // landed the key. Each step overwrites it, leaving the execute signature.
     await this.recovery.markSignature(userId, signature);
@@ -222,7 +235,11 @@ export class RecoveryChangeService {
   ): Promise<RecoveryChangePlan> {
     const instructions = await this.build(userId, account, step, changeIndex);
     const unsigned = await this.chain.compile({ instructions });
-    this.prepared.set(userId, unsigned.messageBase64);
+    await this.prepared.set(
+      preparedKey(userId),
+      unsigned.messageBase64,
+      PREPARED_TX_TTL_SECONDS,
+    );
 
     this.logger.log(
       `recovery_change.step userId=${userId} step=${step} index=${changeIndex}`,
@@ -279,6 +296,9 @@ export class RecoveryChangeService {
         return buildRemoveRecoverySigner({
           ...params,
           oldSigner: new PublicKey(outgoing.address),
+          recoverySigners: (await this.recovery.list(userId))
+            .filter((signer) => signer.status !== 'pending_add')
+            .map((signer) => new PublicKey(signer.address)),
         });
       }
       throw new AccountCreationError(
@@ -341,8 +361,11 @@ export class RecoveryChangeService {
     return account;
   }
 
-  private assertMatchesPreparedStep(userId: string, signedTxBase64: string) {
-    const expected = this.prepared.get(userId);
+  private async assertMatchesPreparedStep(
+    userId: string,
+    signedTxBase64: string,
+  ): Promise<void> {
+    const expected = await this.prepared.get<string>(preparedKey(userId));
     if (!expected) {
       throw new AccountCreationError(
         'No recovery key step is awaiting a signature for this Consumer',
@@ -368,4 +391,8 @@ export class RecoveryChangeService {
       );
     }
   }
+}
+
+function preparedKey(userId: string): string {
+  return `recovery-change:${userId}`;
 }
