@@ -216,6 +216,7 @@ export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
   const handleSheetClick = (): void => {
     let reference = "";
     let settled = false;
+    let cancelAwaitingReference = false;
     let popup: Window | null = null;
 
     function dropListener(): void {
@@ -241,6 +242,12 @@ export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
       // must not report a second, contradictory onResult.
       if (settled) return;
       settled = true;
+      // Dismissed while the intent was still being created. Reporting now would
+      // name an empty reference, so the cancel waits for the one it belongs to.
+      if (!reference) {
+        cancelAwaitingReference = true;
+        return;
+      }
       onResult({ reference, status: "canceled" });
     }
 
@@ -302,7 +309,16 @@ export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
     createIntent()
       .then(async ({ reference: r }) => {
         reference = r;
+        // The shopper dismissed the sheet before this resolved. The intent is
+        // real now, so the cancel finally has the reference it belongs to.
+        if (cancelAwaitingReference) {
+          cancelAwaitingReference = false;
+          onResult({ reference, status: "canceled" });
+          return;
+        }
+        if (settled) return;
         const summary = await fetchSummary(apiBase as string, r, opener);
+        if (settled) return;
         if (summary.expiresAt && Date.parse(summary.expiresAt) <= Date.now()) {
           finish("expired");
           return;
@@ -311,6 +327,9 @@ export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
         button.setState("ready");
       })
       .catch(() => {
+        // Nothing to report: no intent was ever created, so there is no
+        // reference to name, and the sheet the shopper closed is gone.
+        if (settled) return;
         sheet?.showError("We couldn't start the payment.");
         button.setState("ready");
       });

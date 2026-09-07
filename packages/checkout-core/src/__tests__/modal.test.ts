@@ -102,6 +102,39 @@ afterEach(() => {
 });
 
 describe("mountXendButton glass sheet", () => {
+  it("waits for the reference before reporting a cancel taken while loading", async () => {
+    const results: unknown[] = [];
+    let release!: (v: { reference: string }) => void;
+    const pending = new Promise<{ reference: string }>((r) => (release = r));
+    const fetchMock = stubSummary({ merchantDisplayName: "Sabi Market" });
+
+    handle = mountXendButton({
+      mount: container(),
+      checkoutOrigin: ORIGIN,
+      apiBase: API,
+      createIntent: () => pending,
+      onResult: (r) => results.push(r),
+    });
+    document.querySelector("button")!.click();
+
+    // Dismissed while the intent is still being created.
+    await vi.waitFor(() => expect(sheetText()).not.toBe(""));
+    // The scrim is the only dismissal the loading state offers.
+    shadow()
+      .querySelector("[data-close]")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(results).toEqual([]);
+
+    release({ reference: "pi_late" });
+    await vi.waitFor(() => expect(results).toHaveLength(1));
+
+    // One cancel, naming the intent it belongs to, and never an empty string.
+    expect(results).toEqual([{ reference: "pi_late", status: "canceled" }]);
+    // The closed sheet is not revived by the continuation.
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sheetText()).not.toContain("Sabi Market");
+  });
+
   it("is the default presentation, and renders the summary without opening a window", async () => {
     const openSpy = vi.spyOn(window, "open");
     const fetchMock = stubSummary({
