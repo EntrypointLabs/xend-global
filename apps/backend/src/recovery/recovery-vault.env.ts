@@ -1,23 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import type { RecoveryVault, SealedKey } from './recovery-vault.interface';
-
-const ALGORITHM = 'aes-256-gcm';
-const IV_BYTES = 12;
-const KEY_ID = 'env-v1';
+import {
+  aesGcmOpen,
+  aesGcmSeal,
+  parseVaultKeyRing,
+  type VaultKeyRing,
+} from './recovery-vault.keys';
 
 /**
- * Env-key recovery vault. AES-256-GCM under RECOVERY_VAULT_KEY.
+ * Env-key recovery vault. AES-256-GCM under the current key in
+ * RECOVERY_VAULT_KEYS (or RECOVERY_VAULT_KEY as the single `env-v1` key).
  *
  * Pilot floor only. Custody order is KMS > cloud-KMS > raw env, and the `keyId`
  * on every sealed key is what makes moving up that order a migration rather
- * than a rewrite.
+ * than a rewrite: old rows open under the key they name, new seals take the
+ * current one, and `reseal-recovery-signers.ts` closes the gap.
  */
 @Injectable()
 export class EnvRecoveryVault implements RecoveryVault {
   private readonly logger = new Logger(EnvRecoveryVault.name);
-  private cached?: Buffer;
+  private cached?: VaultKeyRing;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -26,50 +29,54 @@ export class EnvRecoveryVault implements RecoveryVault {
    * without a vault key boots and serves every other route. Recovery is the
    * only thing that fails, and it fails where it is called.
    */
-  private get key(): Buffer {
+  private get ring(): VaultKeyRing {
     if (this.cached) return this.cached;
-
-    const raw = this.config.getOrThrow<string>('RECOVERY_VAULT_KEY');
-    const key = Buffer.from(raw, 'base64');
-    if (key.length !== 32) {
-      throw new Error(
-        `RECOVERY_VAULT_KEY must decode to 32 bytes, got ${key.length}`,
-      );
+    const ring = parseVaultKeyRing(this.config);
+    if (!ring) {
+      throw new Error('RECOVERY_VAULT_KEYS or RECOVERY_VAULT_KEY is required');
     }
-    this.cached = key;
+    this.cached = ring;
     // Log readiness only. NEVER log the key or any sealed payload.
-    this.logger.log(`recovery.vault.ready keyId=${KEY_ID}`);
-    return key;
+    this.logger.log(
+      `recovery.vault.ready provider=env keyId=${ring.current.id} keys=${ring.byId.size}`,
+    );
+    return ring;
   }
 
+  get currentKeyId(): string {
+    return this.ring.current.id;
+  }
+
+  /** Whether a sealed key names one of the env keys this vault holds. */
+  holds(keyId: string): boolean {
+    return this.ring.byId.has(keyId);
+  }
+
+  // Async so a missing or unknown key rejects the call rather than throwing
+  // out of it: every caller awaits, and a synchronous throw would escape the
+  // handler that is meant to turn this into a refusal.
   seal(secretKey: Uint8Array): Promise<SealedKey> {
-    const iv = randomBytes(IV_BYTES);
-    const cipher = createCipheriv(ALGORITHM, this.key, iv);
-    const sealed = Buffer.concat([
-      cipher.update(Buffer.from(secretKey)),
-      cipher.final(),
-    ]);
-    const tag = cipher.getAuthTag();
-    return Promise.resolve({
-      ciphertext: Buffer.concat([iv, tag, sealed]).toString('base64'),
-      keyId: KEY_ID,
-    });
+    try {
+      const { current } = this.ring;
+      return Promise.resolve({
+        ciphertext: aesGcmSeal(current.key, secretKey),
+        keyId: current.id,
+        wrappedDataKey: null,
+      });
+    } catch (err) {
+      return Promise.reject(err as Error);
+    }
   }
 
   open(sealed: SealedKey): Promise<Uint8Array> {
-    // keyId is not secret, so a plain compare is fine here.
-    if (sealed.keyId !== KEY_ID) {
-      throw new Error(`sealed under an unknown key: ${sealed.keyId}`);
+    try {
+      const key = this.ring.byId.get(sealed.keyId);
+      if (!key) {
+        throw new Error(`sealed under an unknown key: ${sealed.keyId}`);
+      }
+      return Promise.resolve(aesGcmOpen(key.key, sealed.ciphertext));
+    } catch (err) {
+      return Promise.reject(err as Error);
     }
-    const raw = Buffer.from(sealed.ciphertext, 'base64');
-    const iv = raw.subarray(0, IV_BYTES);
-    const tag = raw.subarray(IV_BYTES, IV_BYTES + 16);
-    const body = raw.subarray(IV_BYTES + 16);
-
-    const decipher = createDecipheriv(ALGORITHM, this.key, iv);
-    decipher.setAuthTag(tag);
-    return Promise.resolve(
-      new Uint8Array(Buffer.concat([decipher.update(body), decipher.final()])),
-    );
   }
 }

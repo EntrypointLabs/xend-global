@@ -53,6 +53,7 @@ class FakeStore implements RecoverySignerStore {
   insert(row: NewRecoverySigner): Promise<RecoverySignerRow> {
     const created: RecoverySignerRow = {
       id: `signer-${++this.seq}`,
+      wrappedDataKey: row.wrappedDataKey ?? null,
       userId: row.userId,
       address: row.address,
       channel: row.channel,
@@ -128,6 +129,7 @@ function transactionSignedBy(address: string): VersionedTransaction {
 }
 
 const vault: RecoveryVault = {
+  currentKeyId: 'test',
   seal: (secret) =>
     Promise.resolve({
       ciphertext: Buffer.from(secret).toString('base64'),

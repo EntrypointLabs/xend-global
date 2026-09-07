@@ -32,12 +32,14 @@ export interface EnrolledApprovalSigner {
   subOrganizationId: string;
   /** Base58 Solana pubkey. This is S2's address in the Squads signer set. */
   address: string;
+  /** Policies written onto the sub-organization, when the flag is on. */
+  policyIds?: string[];
 }
 
 /**
- * The four Turnkey calls the enrolment sequence needs, and nothing else.
+ * The five Turnkey calls the enrolment sequence needs, and nothing else.
  *
- * Narrow on purpose: a fake in a test implements four methods rather than the
+ * Narrow on purpose: a fake in a test implements five methods rather than the
  * SDK's several hundred, and widening it is a deliberate act.
  */
 export interface TurnkeyApi {
@@ -66,6 +68,20 @@ export interface TurnkeyApi {
   getRootQuorum(params: {
     organizationId: string;
   }): Promise<{ threshold: number; userIds: string[] }>;
+
+  /**
+   * Writes one policy onto a sub-organization. Only reachable while the
+   * backend is still in the root quorum, so enrolment calls it before
+   * narrowing and never afterwards.
+   */
+  createPolicy(params: {
+    organizationId: string;
+    policyName: string;
+    effect: 'EFFECT_ALLOW' | 'EFFECT_DENY';
+    consensus: string;
+    condition: string;
+    notes: string;
+  }): Promise<{ policyId: string }>;
 }
 
 export interface TurnkeyRootUser {

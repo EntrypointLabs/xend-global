@@ -8,7 +8,7 @@ import { TurnkeyApi, TurnkeyRootUser } from './turnkey.interface';
 /**
  * The only place `@turnkey/*` is imported, per ADR 0024.
  *
- * Everything above this file talks to `TurnkeyApi`, which is four methods wide.
+ * Everything above this file talks to `TurnkeyApi`, which is five methods wide.
  * The SDK's surface stops here.
  *
  * The SDK is constructed on first use rather than at module init, so a
@@ -98,6 +98,18 @@ export class TurnkeySdkClient implements TurnkeyApi {
     userIds: string[];
   }) {
     return this.delegated.updateRootQuorum(params);
+  }
+
+  async createPolicy(params: {
+    organizationId: string;
+    policyName: string;
+    effect: 'EFFECT_ALLOW' | 'EFFECT_DENY';
+    consensus: string;
+    condition: string;
+    notes: string;
+  }) {
+    const { policyId } = await this.delegated.createPolicy(params);
+    return { policyId };
   }
 
   async getRootQuorum(params: { organizationId: string }) {
