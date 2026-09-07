@@ -20,6 +20,7 @@ export type ModalTheme = ButtonTheme;
 export interface ModalHandle {
   showLoading: () => void;
   showConfirm: (summary: CheckoutSummary) => void;
+  showFrame: (src: string) => HTMLIFrameElement;
   showWaiting: () => void;
   showResult: (status: CheckoutStatus) => void;
   showError: (message: string) => void;
@@ -87,6 +88,9 @@ const CSS = `
 .sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
 .spinner { width: 34px; height: 34px; margin: 20px auto; border-radius: 50%; border: 3px solid var(--field); border-top-color: var(--muted); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* The ceremony frame is an inset panel under the Xend lockup, so it reads as
+   Xend's own surface and never as merchant chrome. */
+.frame { display: block; width: 100%; height: min(58vh, 440px); border: 1px solid var(--fedge); border-radius: 16px; background: var(--field); }
 `;
 
 const FACE_ID = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--pink)" stroke-width="1.7" stroke-linecap="round" style="flex:0 0 auto"><path d="M4 8V6.5A2.5 2.5 0 016.5 4H8"/><path d="M16 4h1.5A2.5 2.5 0 0120 6.5V8"/><path d="M20 16v1.5a2.5 2.5 0 01-2.5 2.5H16"/><path d="M8 20H6.5A2.5 2.5 0 014 17.5V16"/><path d="M9 10v1M15 10v1M12 9v4l-1 1M9.5 15.5a3.5 3.5 0 005 0"/></svg>`;
@@ -223,6 +227,26 @@ export function openModal(opts: ModalOptions): ModalHandle {
       ["pointermove", "keydown", "wheel", "touchstart"].forEach((e) =>
         root.addEventListener(e, onInteract, { once: true }),
       );
+    },
+    showFrame(src) {
+      render(
+        `<div class="foot" style="margin:0 0 10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="var(--muted2)" stroke-width="1.7"/><path d="M8 11V8a4 4 0 018 0v3" stroke="var(--muted2)" stroke-width="1.7"/></svg>Confirming on Xend</div>`,
+      );
+      const frame = doc.createElement("iframe");
+      frame.className = "frame";
+      frame.title = "Xend checkout";
+      // publickey-credentials-get is what lets the passkey ceremony run in a
+      // cross-origin frame at all; allow-same-origin keeps the frame on the
+      // checkout's real origin, without which its postMessage would arrive as
+      // the "null" origin the listener rejects.
+      frame.setAttribute("allow", "publickey-credentials-get");
+      frame.setAttribute(
+        "sandbox",
+        "allow-scripts allow-forms allow-same-origin",
+      );
+      frame.src = src;
+      body.appendChild(frame);
+      return frame;
     },
     showWaiting() {
       render(

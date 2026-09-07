@@ -21,14 +21,16 @@ export interface CheckoutUnresolved {
 }
 
 /**
- * "modal" (default) draws the glass sheet in the merchant page and opens the
- * hosted checkout in a window underneath it once the shopper taps Pay, so the
- * ceremony still runs on Xend's own origin. "popup" opens that window straight
- * from the button with no sheet. "redirect" navigates the whole page to the
- * hosted checkout and returns the shopper to the intent's return URL.
- * Webviews, Opera Mini and blocked popups fall back to redirect on their own.
+ * "iframe" (default) draws the glass sheet in the merchant page and runs the
+ * ceremony inline, in a cross-origin frame on Xend's own origin, so no second
+ * window appears. "modal" draws the same sheet but always opens the ceremony
+ * in a window. "popup" opens that window straight from the button with no
+ * sheet. "redirect" navigates the whole page to the hosted checkout and returns
+ * the shopper to the intent's return URL. A frame that cannot run the ceremony
+ * falls back to the window without changing the sheet; webviews, Opera Mini and
+ * blocked popups fall back to redirect on their own.
  */
-export type CheckoutPresentation = "modal" | "popup" | "redirect";
+export type CheckoutPresentation = "iframe" | "modal" | "popup" | "redirect";
 
 /**
  * The button's and the sheet's material. "auto" (default) follows the viewer's
@@ -50,7 +52,8 @@ export interface XendButtonConfig {
   theme?: ButtonTheme;
   /**
    * Origin of the Xend API, e.g. "https://api.xend.global". The sheet reads the
-   * merchant name and amount from it; without one, "modal" degrades to "popup".
+   * merchant name and amount from it; without one, the sheet presentations
+   * degrade to "popup".
    */
   apiBase?: string;
 }

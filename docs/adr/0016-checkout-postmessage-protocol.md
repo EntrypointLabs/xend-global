@@ -48,7 +48,7 @@ The popup launch handshake (paired SDK contract): the SDK opens the popup synchr
 
 Consumption model: `@xend/checkout-protocol` is the canonical contract. The zero-dependency merchant SDK hand-mirrors the envelope, must reconcile field-for-field against `envelope.ts` in review, and imports `@xend/checkout-protocol/types` as a devDependency. Types erase at build, so zod never enters the SDK runtime, and re-drift fails compilation. The `satisfies z.ZodType<CheckoutEnvelope>` clause in `envelope.ts` ties the runtime schema to the types-only file so the two cannot silently disagree.
 
-Surface security-header posture (this ADR governs the pay.xend.global static host): the host serves `Cross-Origin-Opener-Policy: same-origin-allow-popups` (never `same-origin`, which would sever `window.opener` and kill the popup channel), `Content-Security-Policy: frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer`. Ownership note: ADR 0012 governs the backend API origin's CORS and COOP policy; this ADR governs the checkout static host. The two are different origins and must not be conflated.
+Surface security-header posture (this ADR governs the pay.xend.global static host): the host serves `Cross-Origin-Opener-Policy: same-origin-allow-popups` (never `same-origin`, which would sever `window.opener` and kill the popup channel), `Content-Security-Policy: frame-ancestors 'none'` (superseded, see the 2026-09-07 update), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer`. Ownership note: ADR 0012 governs the backend API origin's CORS and COOP policy; this ADR governs the checkout static host. The two are different origins and must not be conflated.
 
 ### Consequences
 
@@ -58,6 +58,94 @@ Surface security-header posture (this ADR governs the pay.xend.global static hos
 - Good: the header posture preserves the popup channel while closing framing and clickjacking vectors.
 - Bad: the hand-mirror plus reconciliation is process, not a runtime import, so a careless reviewer could let a mirror drift. The types-only devDependency and the reconciliation checklist exist to catch that, but they depend on the review being run.
 - Bad: keeping the envelope fulfillment-hostile means the merchant page cannot render a trustworthy amount from the message alone and must rely on its own record or the webhook.
+
+## Update 2026-09-07: the surface is framable by a registered merchant origin
+
+This supersedes the framing half of the header posture recorded above. It does
+not change the envelope, the origin matching, the nonce and reference
+correlation, or the rule that the webhook is the settlement truth.
+
+Running the ceremony in a popup works everywhere, but a second window appears,
+and that is the one place the flow stops feeling like Apple Pay. A cross-origin
+frame can run `navigator.credentials.get()` only when the embedding frame
+carries `allow="publickey-credentials-get"`, which the SDK can set because the
+SDK creates the frame. So the ceremony now runs inline in the sheet, and the
+popup becomes the fallback.
+
+What changes:
+
+- **`frame-ancestors` names the merchant instead of nobody.** The surface is
+  served with `frame-ancestors` listing the Merchant's registered origins,
+  where it previously said `'none'`. The header is set per merchant at the
+  edge from the server-validated `merchantOrigin`, resolved against the
+  Merchant's allowlist. It is **never** built from a query parameter: a
+  request-controlled `frame-ancestors` is an attacker-controlled
+  `frame-ancestors`.
+- **`X-Frame-Options` is dropped on those responses only.** It has no
+  allowlist form, so `DENY` would veto the CSP and `ALLOW-FROM` is dead in
+  every current browser. Responses that are not framed by a registered origin
+  keep it.
+- **The popup channel and its COOP posture are unchanged.**
+  `Cross-Origin-Opener-Policy: same-origin-allow-popups` stays, and the popup
+  remains a fully supported presentation and the automatic fallback. The SDK
+  falls back to it when the environment is an in-app browser, when the frame
+  errors, when a settled frame is still readable from the merchant page (which
+  means it never left about:blank, which is what a surviving `frame-ancestors
+'none'` looks like from the outside), and as a backstop when the frame has
+  not loaded at all inside a short timeout. The fallback carries the same nonce
+  and reference, so nothing about the correlation is weakened by taking it.
+- **`mode=iframe` joins `popup` and `redirect`.** The frame is navigated to
+  the same launch URL the popup gets, with `mode=iframe`. Results still arrive
+  as the v1 envelope, validated by the same guard, from the same exact origin.
+- **v1 gains a handshake: `xend.checkout.ready`.** The original decision above
+  declined to ship one on the grounds that it had no v1 consumer, and said that
+  if a handshake were ever needed it would arrive as a new message type under
+  the same version rules. That is what this is. The surface posts it the moment
+  it mounts, including on the intent-less first load, through the same
+  `merchantWindow()` and the same exact target-origin discipline as every other
+  message. It is its own shape rather than a status-bearing envelope, because
+  at handshake time there is honestly no reference and no status to report:
+  `{ xend, v, nonce, type }` and nothing more. `parseCheckoutMessage` returns
+  it as itself, so reading a status off a handshake is a compile error rather
+  than an undefined.
+  Its one exception: it is the only message whose target origin is the one the
+  launch URL named rather than the one the server stored, because it is sent
+  before the intent that carries the verified origin exists. That is bounded by
+  what it says, which is a nonce the receiver itself generated. Every terminal
+  message still goes only to the server-verified merchant origin.
+
+What this gives up:
+
+- **Clickjacking is back on the table.** `frame-ancestors 'none'` was an
+  absolute answer, and an allowlist is not. A registered origin that is itself
+  compromised, or a merchant that registers an origin they do not fully
+  control, can now frame the ceremony. The bound on that is the allowlist plus
+  the sheet's existing arming delay, which enables the confirm control only
+  after a delay and a genuine interaction, so a transparent overlay cannot be
+  tapped through. That is mitigation, not elimination.
+- **The blast radius of a bad allowlist entry grew.** An origin on the list was
+  previously trusted to receive a reference and a status. It is now also
+  trusted to host the ceremony. Allowlist entry is the security boundary for
+  the whole feature, so allowlist writes deserve the scrutiny of a
+  security-relevant change.
+- **One more thing can quietly stop working.** The inline path depends on the
+  edge computing the right header per merchant. Get it wrong and nothing
+  breaks visibly: every shopper silently takes the popup fallback, and the
+  Apple Pay feel is gone with no error anywhere. This needs monitoring on the
+  fallback rate, not just on failures.
+
+The SDK keeps three liveness signals rather than one: the handshake, which is
+proof; an `about:blank` readability probe on the settled frame, which infers the
+same thing from the browser and covers a surface deployed before the handshake
+existed; and a timer, for a frame that never settles at all. The timer stays
+short, three seconds, because the fallback `window.open` runs from it and has
+to remain inside the browser's transient activation window.
+
+What is gained: on a correctly registered merchant, the whole payment happens
+in one window, on one page, with the passkey still on Xend's origin and the
+merchant still unable to see or influence the ceremony.
+
+Source: `packages/checkout-core/src/{index,modal,message-listener,popup}.ts`.
 
 ## Pros and Cons of the Options
 

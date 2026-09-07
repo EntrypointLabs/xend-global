@@ -2,8 +2,9 @@
 
 Framework-agnostic Pay with Xend button and result relay. Zero runtime
 dependencies. Renders a brand-compliant button, draws the checkout sheet on
-your page, runs the passkey ceremony on Xend's own origin, and relays a result
-back. A separate Node entry ships the webhook verification helper.
+your page, runs the passkey ceremony inline on Xend's own origin without
+opening a second window, and relays a result back. A separate Node entry ships
+the webhook verification helper.
 
 ## The one rule
 
@@ -52,24 +53,43 @@ import { mountXendButton } from "@xend/checkout-core";
 
 Tapping the button draws a sheet on your page showing the merchant name and
 the amount, read from `GET /checkout/intents/:reference` on `apiBase`. Tapping
-Pay opens Xend's hosted checkout in a window, synchronously inside that click,
-and the sheet waits there while the shopper's Face ID or fingerprint runs on
-Xend's origin. The result comes back over the same exact-origin postMessage
-channel the popup flow uses.
+Pay swaps the sheet's body for Xend's hosted checkout in a cross-origin frame,
+so the shopper's Face ID or fingerprint runs on Xend's origin without a second
+window ever appearing. The result comes back over the same exact-origin
+postMessage channel, with the same nonce and reference correlation, as the
+popup flow.
+
+The checkout announces itself as soon as it loads, and that handshake is what
+tells the SDK the inline ceremony is live. If it never arrives, the popup takes
+over behind the same sheet, automatically and with the same nonce and
+reference. That happens when your origin is not registered with Xend, because
+the checkout then refuses to be framed by it; when the frame errors; when the
+shopper is in an in-app browser; and as a backstop, when nothing has been heard
+within three seconds. The only visible difference is that a window appears.
 
 The sheet never authenticates, never signs, and never reads a balance. It is
 the interface; Xend's own origin is the ceremony.
 
+## What you have to do
+
+**Register every origin you mount the button on** with Xend, on your
+Merchant's allowed origins list. Xend serves the checkout with a
+`frame-ancestors` allowlist built from that list, so an unregistered origin
+gets the popup fallback instead of the inline ceremony, and the checkout will
+not post a result to it either.
+
 ## Options
 
-- `presentation`: `"modal"` (default) draws the sheet. `"popup"` opens the
-  hosted checkout straight from the button with no sheet. `"redirect"`
-  navigates the whole page. Webviews, Opera Mini and blocked popups fall back
-  to redirect on their own.
+- `presentation`: `"iframe"` (default) draws the sheet and runs the ceremony
+  inline, falling back to a window if it cannot. `"modal"` draws the same
+  sheet but always uses the window. `"popup"` opens the hosted checkout
+  straight from the button with no sheet. `"redirect"` navigates the whole
+  page. Webviews, Opera Mini and blocked popups fall back to redirect on their
+  own, and any value the SDK does not recognise falls back to `"popup"`.
 - `apiBase`: origin of the Xend API, e.g. `"https://api.xend.global"`. The
-  sheet reads the intent summary from it; without one, `"modal"` degrades to
-  `"popup"`. Every origin you mount the button on must be allowed to read that
-  endpoint cross-origin.
+  sheet reads the intent summary from it; without one, `"iframe"` and
+  `"modal"` degrade to `"popup"`. Every origin you mount the button on must be
+  allowed to read that endpoint cross-origin.
 - `theme`: `"auto"` (default) follows the viewer's colour scheme; `"light"`
   and `"dark"` pin the material.
 
@@ -84,6 +104,10 @@ origins list.
   origin are rejected.
 - **Reference and nonce matched.** Each open generates a fresh cryptographic
   nonce; a result must carry both the intent reference and that nonce.
+- **The frame is locked down.** It is sandboxed to scripts, forms and its own
+  origin, and the only permission granted to it is
+  `publickey-credentials-get`, which is what lets the passkey ceremony run
+  there at all.
 - **Redirect fallback.** In an in-app webview, in Opera Mini, or when the
   popup is blocked, the SDK opens the full-page redirect flow instead of
   leaving a dead popup or a stranded sheet.
@@ -101,7 +125,7 @@ inline SVG.
 
 ## COOP requirement
 
-The merchant page must not send a strict `Cross-Origin-Opener-Policy`. Use
-`same-origin-allow-popups` or no COOP header so the popup keeps its opener
-handle. Strict COOP severs the channel and the flow falls back to the
-redirect result path.
+The popup remains the fallback channel, so the merchant page must not send a
+strict `Cross-Origin-Opener-Policy`. Use `same-origin-allow-popups` or no COOP
+header so the popup keeps its opener handle. Strict COOP severs the channel
+and the flow falls back to the redirect result path.

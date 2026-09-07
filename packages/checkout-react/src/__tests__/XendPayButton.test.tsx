@@ -44,20 +44,23 @@ describe("XendPayButton", () => {
     expect(second).toBe(first);
   });
 
-  it("accepts the default glass-sheet presentation and its apiBase", () => {
-    const { container } = render(
-      <XendPayButton
-        checkoutOrigin={ORIGIN}
-        apiBase="https://api.xend.test"
-        presentation="modal"
-        createIntent={createIntent}
-        onResult={() => {}}
-      />,
-    );
-    expect(container.querySelector("button")).not.toBeNull();
-    // The sheet is drawn on click, so nothing is in the page until then.
-    expect(document.querySelector("[data-xend-checkout]")).toBeNull();
-  });
+  it.each(["iframe", "modal"] as const)(
+    "accepts the %s glass-sheet presentation and its apiBase",
+    (presentation) => {
+      const { container } = render(
+        <XendPayButton
+          checkoutOrigin={ORIGIN}
+          apiBase="https://api.xend.test"
+          presentation={presentation}
+          createIntent={createIntent}
+          onResult={() => {}}
+        />,
+      );
+      expect(container.querySelector("button")).not.toBeNull();
+      // The sheet is drawn on click, so nothing is in the page until then.
+      expect(document.querySelector("[data-xend-checkout]")).toBeNull();
+    },
+  );
 
   it("forwards theme and presentation to the core button", () => {
     const { container, rerender } = render(
