@@ -101,7 +101,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("mountXendButton glass sheet", () => {
+describe("mountXendButton glass sheet with a popup ceremony", () => {
   it("waits for the reference before reporting a cancel taken while loading", async () => {
     const results: unknown[] = [];
     let release!: (v: { reference: string }) => void;
@@ -112,6 +112,7 @@ describe("mountXendButton glass sheet", () => {
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => pending,
       onResult: (r) => results.push(r),
     });
@@ -135,7 +136,7 @@ describe("mountXendButton glass sheet", () => {
     expect(sheetText()).not.toContain("Sabi Market");
   });
 
-  it("is the default presentation, and renders the summary without opening a window", async () => {
+  it("renders the summary without opening a window", async () => {
     const openSpy = vi.spyOn(window, "open");
     const fetchMock = stubSummary({
       merchantDisplayName: "Sabi Market",
@@ -207,6 +208,7 @@ describe("mountXendButton glass sheet", () => {
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_confirm" }),
       onResult: () => {},
     });
@@ -251,6 +253,7 @@ describe("mountXendButton glass sheet", () => {
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_msg" }),
       onResult,
     });
@@ -296,6 +299,7 @@ describe("mountXendButton glass sheet", () => {
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_blocked" }),
       onResult: () => {},
       onUnresolved,
@@ -360,6 +364,7 @@ describe("mountXendButton glass sheet", () => {
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_cancel" }),
       onResult,
     });

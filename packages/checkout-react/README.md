@@ -2,10 +2,10 @@
 
 React wrapper for the Pay with Xend button. It wraps
 [`@xend/checkout-core`](https://www.npmjs.com/package/@xend/checkout-core) and
-carries the same security and brand guarantees: the checkout sheet,
-exact-origin result matching, nonce correlation, redirect fallback for in-app
-webviews, and the brand-compliant button. No sheet, popup, postMessage, or
-nonce logic is reimplemented here.
+carries the same security and brand guarantees: the checkout sheet with its
+inline ceremony, exact-origin result matching, nonce correlation, the popup and
+redirect fallbacks, and the brand-compliant button. No sheet, frame, popup,
+postMessage, or nonce logic is reimplemented here.
 
 ## The one rule
 
@@ -47,12 +47,19 @@ export function Checkout() {
 ```
 
 Tapping the button draws the checkout sheet on your page with the merchant
-name and amount, read from `apiBase`; tapping Pay opens Xend's hosted checkout
-underneath it so the passkey ceremony runs on Xend's own origin.
+name and amount, read from `apiBase`; tapping Pay swaps the sheet's body for
+Xend's hosted checkout in a cross-origin frame, so the passkey ceremony runs on
+Xend's own origin with no second window. If that frame cannot run, the popup
+takes over behind the same sheet automatically, keeping the same nonce and
+reference.
+
+**Register every origin you mount the button on** with Xend, on your
+Merchant's allowed origins list. Xend only lets a registered origin frame the
+checkout, and only a registered origin receives the result.
 
 Changing callback props (like `onResult`) does not remount the button, so an
 in-flight payment is never interrupted by a re-render. `presentation`
-(`"modal"` default, or `"popup"` / `"redirect"`), `apiBase` and `theme`
-(`"auto"`, `"light"`, `"dark"`) are mount-time options and do remount it.
-Without an `apiBase` the sheet has no summary to show, so `"modal"` degrades
-to `"popup"`.
+(`"iframe"` default, or `"modal"` / `"popup"` / `"redirect"`), `apiBase` and
+`theme` (`"auto"`, `"light"`, `"dark"`) are mount-time options and do remount
+it. Without an `apiBase` the sheet has no summary to show, so `"iframe"` and
+`"modal"` degrade to `"popup"`.
