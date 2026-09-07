@@ -668,4 +668,15 @@ describe('DeviceRotationService.start with a change already staged', () => {
     ).rejects.toThrow('already in flight');
     expect(patches).toHaveLength(0);
   });
+
+  it('refuses to race a Spending Limit change already holding the index', async () => {
+    const { service, patches } = setUp({
+      row: account({ pendingSpendingLimitChangeIndex: '8' }),
+    });
+
+    await expect(
+      service.start(USER, 'grant-1', { hardwarePublicKey: 'key' }),
+    ).rejects.toThrow('already in flight');
+    expect(patches).toHaveLength(0);
+  });
 });

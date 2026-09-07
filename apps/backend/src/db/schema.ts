@@ -595,6 +595,25 @@ export const squadsAccounts = pgTable('squads_accounts', {
   spendingLimitPolicySeed: bigint('spending_limit_policy_seed', {
     mode: 'bigint',
   }),
+  /**
+   * The Spending Limit change in flight, held here rather than in a cache
+   * because a proposal can sit unproposed or unapproved for as long as the
+   * Consumer leaves it, and the terms it installs are the only description of
+   * it anything holds. Losing them strands a change the chain can still take.
+   *
+   * The index is the marker: null means nothing is staged. A staged removal
+   * carries an index and no amount.
+   */
+  pendingSpendingLimitChangeIndex: text('pending_spending_limit_change_index'),
+  pendingSpendingLimitAmount: text('pending_spending_limit_amount'),
+  pendingSpendingLimitPolicySeed: bigint('pending_spending_limit_policy_seed', {
+    mode: 'bigint',
+  }),
+  /** The change creates the policy rather than rewriting one already there. */
+  pendingSpendingLimitCreating: boolean('pending_spending_limit_creating'),
+  pendingSpendingLimitPeriod: text('pending_spending_limit_period'),
+  /** The terms being replaced, kept because the outcome is recorded against them. */
+  pendingSpendingLimitPrevious: text('pending_spending_limit_previous'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

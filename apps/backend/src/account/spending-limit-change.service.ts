@@ -81,8 +81,8 @@ export interface SpendingLimitChangePlan {
 }
 
 /**
- * What the Consumer asked for, held for as long as the change can still be
- * walked.
+ * What the Consumer asked for, read off the Account's staged columns for as
+ * long as the change can still be walked.
  *
  * Only the propose step needs it: every later step is an approval or an
  * execute against an index, and the actions are already fixed on chain by
@@ -114,14 +114,6 @@ interface StagedChange {
 const CREATED_LIMIT_PERIOD: LimitPeriod = 'Daily';
 
 /**
- * Longer than the time lock, because the change is staged on one day and
- * executed on the next. Anything shorter would forget a change halfway
- * through its own delay, and the Consumer would be left with an on-chain
- * proposal nothing here could finish.
- */
-const STAGED_TTL_SECONDS = SETTINGS_TIME_LOCK_SECONDS * 2;
-
-/**
  * Drives the settings change that raises, lowers or removes the Spending Limit.
  *
  * The Spending Limit is the size of the band one signature can move, so
@@ -148,10 +140,9 @@ export class SpendingLimitChangeService {
     private readonly events: AccountEventsService,
     private readonly config: ConfigService,
     /**
-     * The message each Consumer was last asked to sign, and what they asked
-     * for. Same guard as provisioning on the first: the authority partially
-     * signs whatever arrives at `submit`, so the only bytes it will ever sign
-     * are bytes this built.
+     * The message each Consumer was last asked to sign. Same guard as
+     * provisioning: the authority partially signs whatever arrives at
+     * `submit`, so the only bytes it will ever sign are bytes this built.
      */
     @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
   ) {}
@@ -164,6 +155,16 @@ export class SpendingLimitChangeService {
    * holding a notice saying something started.
    */
   async start(
+    userId: string,
+    request: SpendingLimitChangeRequest,
+  ): Promise<SpendingLimitChangePlan> {
+    // Reading the next index and staging a change against it are two
+    // statements. Two starts that cross in between claim the same index for
+    // two different changes, and whichever one executes settles both.
+    return this.store.withUserLock(userId, () => this.stage(userId, request));
+  }
+
+  private async stage(
     userId: string,
     request: SpendingLimitChangeRequest,
   ): Promise<SpendingLimitChangePlan> {
@@ -200,7 +201,7 @@ export class SpendingLimitChangeService {
     }
 
     const instructions = await this.build(account, staged, 'propose');
-    await this.prepared.set(stagedKey(userId), staged, STAGED_TTL_SECONDS);
+    await this.store.updateByUserId(userId, patchFor(staged));
     // Announced at the moment of staging rather than when a watcher next sees
     // it on chain: the notice is the Consumer's only warning that the delay
     // has started, and it cannot depend on a poll or on the app being open.
@@ -225,7 +226,7 @@ export class SpendingLimitChangeService {
    */
   async next(userId: string): Promise<SpendingLimitChangePlan> {
     const account = await this.requireAccount(userId);
-    const staged = await this.prepared.get<StagedChange>(stagedKey(userId));
+    const staged = stagedOn(account);
     if (!staged) return { done: true };
 
     const changeIndex = BigInt(staged.changeIndex);
@@ -328,7 +329,7 @@ export class SpendingLimitChangeService {
       });
     }
 
-    await this.prepared.delete(stagedKey(userId));
+    await this.store.updateByUserId(userId, CLEARED);
     await this.prepared.delete(preparedKey(userId));
     this.logger.log(
       `spending_limit_change.settled userId=${userId} index=${staged.changeIndex} executed=${executed}`,
@@ -389,7 +390,7 @@ export class SpendingLimitChangeService {
         'another change to this Account is already in flight',
       );
     }
-    if (await this.prepared.get<StagedChange>(stagedKey(userId))) {
+    if (account.pendingSpendingLimitChangeIndex) {
       // Reconciled rather than refused outright: the common case is a change
       // the chain has already settled and nothing has cleared yet.
       const open = await this.next(userId);
@@ -677,6 +678,39 @@ function preparedKey(userId: string): string {
   return `spending-limit-change:${userId}`;
 }
 
-function stagedKey(userId: string): string {
-  return `spending-limit-change:staged:${userId}`;
+/** The change staged on the Account, or null when there is none in flight. */
+function stagedOn(account: SquadsAccountRow): StagedChange | null {
+  if (!account.pendingSpendingLimitChangeIndex) return null;
+  return {
+    changeIndex: account.pendingSpendingLimitChangeIndex,
+    maxPerPeriod: account.pendingSpendingLimitAmount ?? null,
+    creating: account.pendingSpendingLimitCreating ?? false,
+    policySeed: (
+      account.pendingSpendingLimitPolicySeed ?? spendingLimitSeed(account)
+    ).toString(),
+    period:
+      (account.pendingSpendingLimitPeriod as LimitPeriod | null) ??
+      CREATED_LIMIT_PERIOD,
+    previous: account.pendingSpendingLimitPrevious ?? null,
+  };
 }
+
+function patchFor(staged: StagedChange): Partial<SquadsAccountRow> {
+  return {
+    pendingSpendingLimitChangeIndex: staged.changeIndex,
+    pendingSpendingLimitAmount: staged.maxPerPeriod,
+    pendingSpendingLimitPolicySeed: BigInt(staged.policySeed),
+    pendingSpendingLimitCreating: staged.creating,
+    pendingSpendingLimitPeriod: staged.period,
+    pendingSpendingLimitPrevious: staged.previous,
+  };
+}
+
+const CLEARED: Partial<SquadsAccountRow> = {
+  pendingSpendingLimitChangeIndex: null,
+  pendingSpendingLimitAmount: null,
+  pendingSpendingLimitPolicySeed: null,
+  pendingSpendingLimitCreating: null,
+  pendingSpendingLimitPeriod: null,
+  pendingSpendingLimitPrevious: null,
+};

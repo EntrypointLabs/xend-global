@@ -121,6 +121,7 @@ export class RecoveryChangeService {
       // outcome is recorded against the key it was about.
       const subject = await this.channelValueOf(userId, open.signerId);
       if (executed) {
+        await this.assertLanded(userId, account, open.changeIndex);
         await this.recovery.settle(userId, open.changeIndex);
         await this.events.recordSettingsChangeExecuted(userId, {
           changeIndex: open.changeIndex,
@@ -174,14 +175,22 @@ export class RecoveryChangeService {
    * re-propose rather than rows nobody remembers. A rotation carries two: the
    * key coming in and the one going out share the index.
    */
-  async start(
+  start(userId: string, ...signerIds: string[]): Promise<RecoveryChangePlan> {
+    // The same lock every other settings change takes. Reading the next index
+    // and staging against it are two statements, and two starts that cross in
+    // between claim one index for two different changes.
+    return this.store.withUserLock(userId, () => this.stage(userId, signerIds));
+  }
+
+  private async stage(
     userId: string,
-    ...signerIds: string[]
+    signerIds: string[],
   ): Promise<RecoveryChangePlan> {
     const account = await this.requireAccount(userId);
     if (
       account.pendingApprovalChangeIndex ||
-      account.pendingPrimaryChangeIndex
+      account.pendingPrimaryChangeIndex ||
+      account.pendingSpendingLimitChangeIndex
     ) {
       // A rotation has already claimed the next index. Staging here would
       // claim it again, and whichever change landed second would be settled
@@ -327,6 +336,36 @@ export class RecoveryChangeService {
             : new PublicKey(account.approvalSigner),
       }),
     ];
+  }
+
+  /**
+   * An executed proposal at an index proves that some change landed there, not
+   * that it was this one. The staged keys are checked against the signer set
+   * the chain actually holds before the rows are committed, so a settled row
+   * can never name a recovery key the Account never took.
+   */
+  private async assertLanded(
+    userId: string,
+    account: SquadsAccountRow,
+    changeIndex: bigint,
+  ): Promise<void> {
+    const staged = await this.recovery.stagedSigners(userId, changeIndex);
+    const signers = (
+      await this.chain.readSettings(account.settingsAddress)
+    ).signers.map((signer) => signer.key.toBase58());
+
+    const missing = staged.some(
+      (signer) =>
+        (signer.status === 'pending_add') !== signers.includes(signer.address),
+    );
+    if (missing) {
+      this.logger.error(
+        `recovery_change.signer_set_mismatch userId=${userId} index=${changeIndex}`,
+      );
+      throw new AccountCreationError(
+        'the executed change did not install the staged recovery key',
+      );
+    }
   }
 
   private async channelValueOf(

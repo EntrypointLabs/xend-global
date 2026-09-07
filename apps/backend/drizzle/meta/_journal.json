@@ -281,6 +281,13 @@
       "when": 1787777600000,
       "tag": "0038_spending_limit_policy_seed",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1788801141424,
+      "tag": "0039_spending_limit_staged_change",
+      "breakpoints": true
     }
   ]
 }

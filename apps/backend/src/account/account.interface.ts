@@ -59,6 +59,17 @@ export interface SquadsAccountRow {
    * not the one provisioning wrote. Read through {@link spendingLimitSeed}.
    */
   spendingLimitPolicySeed?: bigint | null;
+  /**
+   * Set only while a Spending Limit change is in flight. The index is the
+   * marker: the other columns describe the change it stages, and a removal
+   * carries an index with no amount. See SpendingLimitChangeService.
+   */
+  pendingSpendingLimitChangeIndex?: string | null;
+  pendingSpendingLimitAmount?: string | null;
+  pendingSpendingLimitPolicySeed?: bigint | null;
+  pendingSpendingLimitCreating?: boolean | null;
+  pendingSpendingLimitPeriod?: string | null;
+  pendingSpendingLimitPrevious?: string | null;
 }
 
 export interface SquadsAccountStore {
@@ -84,7 +95,7 @@ export interface SquadsAccountStore {
   ): Promise<SquadsAccountRow>;
 
   /**
-   * Serialises enrolment for one Consumer.
+   * Serialises enrolment and every settings change for one Consumer.
    *
    * Enrolment reads "does an Account exist", then spends twenty seconds
    * creating a Turnkey sub-organization and an on-chain account before writing
@@ -95,6 +106,12 @@ export interface SquadsAccountStore {
    * Nothing cheaper closes it. The device mints a fresh hardware key for every
    * attestation, so the duplicate attempt looks like a different device to
    * every key-based check.
+   *
+   * The settings changes need it for the same shape of reason and must take
+   * the same lock as each other: reading the next Settings `transactionIndex`
+   * and staging a change against it are two statements, so two starts that
+   * cross in between claim one index for two different changes, and whichever
+   * executes is settled as though it were both.
    */
   withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T>;
 }

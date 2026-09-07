@@ -56,7 +56,35 @@ function limit(over: Partial<SpendingLimit> = {}): SpendingLimit {
   };
 }
 
-function store(row: SquadsAccountRow | null = ACCOUNT) {
+/** The seeds a run wrote to the Account's own column, ignoring staged state. */
+function seedWrites(patches: Partial<SquadsAccountRow>[]): bigint[] {
+  return patches
+    .filter((patch) => 'spendingLimitPolicySeed' in patch)
+    .map((patch) => patch.spendingLimitPolicySeed as bigint);
+}
+
+type UserLock = <T>(userId: string, fn: () => Promise<T>) => Promise<T>;
+
+const NO_LOCK: UserLock = (_userId, fn) => fn();
+
+/**
+ * A lock that actually serialises, the way the Postgres advisory lock does.
+ * Without one, two starts that cross between the index read and the write
+ * both claim the index and only one of them can ever settle.
+ */
+function serialisingLock(): UserLock {
+  let tail: Promise<unknown> = Promise.resolve();
+  return <T>(_userId: string, fn: () => Promise<T>) => {
+    const next = tail.then(fn, fn);
+    tail = next.catch(() => undefined);
+    return next;
+  };
+}
+
+function store(
+  row: SquadsAccountRow | null = ACCOUNT,
+  lock: UserLock = NO_LOCK,
+) {
   let current = row;
   const patches: Partial<SquadsAccountRow>[] = [];
   const accounts: SquadsAccountStore = {
@@ -64,7 +92,7 @@ function store(row: SquadsAccountRow | null = ACCOUNT) {
     insert: (r) => Promise.resolve(r),
     listAll: () => Promise.resolve([]),
     findUserEmail: () => Promise.resolve('consumer@example.com'),
-    withUserLock: <T>(_userId: string, fn: () => Promise<T>) => fn(),
+    withUserLock: lock,
     updateByUserId: (_userId, patch) => {
       patches.push(patch);
       current = { ...(current as SquadsAccountRow), ...patch };
@@ -168,11 +196,15 @@ function fakeRecovery(pending: { changeIndex: bigint } | null = null) {
   } as unknown as RecoveryService;
 }
 
-function build(state: ChainState = {}, row: SquadsAccountRow | null = ACCOUNT) {
+function build(
+  state: ChainState = {},
+  row: SquadsAccountRow | null = ACCOUNT,
+  options: { lock?: UserLock; now?: () => number } = {},
+) {
   const { chain, compiled, submitted, readsAt } = fakeChain(state);
   const { events, calls } = fakeEvents();
-  const { accounts, patches } = store(row);
-  const prepared = new InMemoryPreparedTxStore();
+  const { accounts, patches } = store(row, options.lock ?? NO_LOCK);
+  const prepared = new InMemoryPreparedTxStore(options.now);
   const service = new SpendingLimitChangeService(
     accounts,
     chain,
@@ -323,15 +355,16 @@ describe('SpendingLimitChangeService.start', () => {
 
     const plan = await service.start(USER, { maxPerPeriod: '50000000' });
     expect(plan).toMatchObject({ step: 'propose', creating: true });
-    // Nothing is written while the change is only staged.
-    expect(patches).toEqual([]);
+    // The seed the Account resolves to is not written while the change is
+    // only staged: the policy it names does not exist yet.
+    expect(seedWrites(patches)).toEqual([]);
 
     chain.policyExists = () => Promise.resolve(true);
     chain.readSpendingLimit = () =>
       Promise.resolve(limit({ maxPerPeriod: 50_000_000n }));
 
     expect(await service.next(USER)).toEqual({ done: true });
-    expect(patches).toEqual([{ spendingLimitPolicySeed: 3n }]);
+    expect(seedWrites(patches)).toEqual([3n]);
     expect(calls.map((c) => c.method)).toEqual(['staged', 'limit', 'executed']);
   });
 
@@ -346,7 +379,7 @@ describe('SpendingLimitChangeService.start', () => {
     await service.start(USER, { maxPerPeriod: '50000000' });
     expect(await service.next(USER)).toEqual({ done: true });
 
-    expect(patches).toEqual([]);
+    expect(seedWrites(patches)).toEqual([]);
     expect(calls.map((c) => c.method)).toEqual(['staged', 'rejected']);
   });
 
@@ -623,5 +656,77 @@ describe('SpendingLimitChangeService.submit', () => {
     await expect(service.submit(USER, 'anything')).rejects.toThrow(
       /No Spending Limit step is awaiting a signature/,
     );
+  });
+});
+
+describe('SpendingLimitChangeService staging', () => {
+  it('lets only one of two concurrent starts claim the index', async () => {
+    const { service, calls, patches } = build({}, ACCOUNT, {
+      lock: serialisingLock(),
+    });
+
+    const [first, second] = await Promise.allSettled([
+      service.start(USER, { maxPerPeriod: '250000000' }),
+      service.start(USER, { maxPerPeriod: '10000000' }),
+    ]);
+
+    expect(first.status).toBe('fulfilled');
+    const refusal: unknown =
+      second.status === 'rejected' ? (second.reason as unknown) : null;
+    expect(refusal).toBeInstanceOf(SpendingLimitChangeError);
+    // One index claimed, one change announced. Both starts read index 5 as
+    // free, so without the lock both would stage against it.
+    expect(
+      patches.filter((patch) => patch.pendingSpendingLimitChangeIndex === '5'),
+    ).toHaveLength(1);
+    expect(calls.filter((call) => call.method === 'staged')).toHaveLength(1);
+  });
+
+  it('still walks a change whose prepared pins have expired', async () => {
+    let now = Date.now();
+    const { service } = build({}, ACCOUNT, { now: () => now });
+
+    await service.start(USER, { maxPerPeriod: '250000000' });
+    // Three days on. The pinned message is long gone, and so is anything held
+    // on a two-day TTL, but the proposal is still executable on chain.
+    now += 3 * 24 * 60 * 60 * 1000;
+
+    expect(await service.next(USER)).toMatchObject({
+      done: false,
+      step: 'propose',
+      changeIndex: '5',
+      limit: '$250 a day',
+    });
+  });
+
+  it('clears the staged columns once the change executes', async () => {
+    const { service, patches } = build({
+      proposal: { settled: true, status: 'Executed' },
+      spendingLimit: limit({ maxPerPeriod: 250_000_000n }),
+    });
+
+    await service.start(USER, { maxPerPeriod: '250000000' });
+    expect(await service.next(USER)).toEqual({ done: true });
+
+    expect(patches.at(-1)).toMatchObject({
+      pendingSpendingLimitChangeIndex: null,
+      pendingSpendingLimitAmount: null,
+      pendingSpendingLimitPolicySeed: null,
+      pendingSpendingLimitCreating: null,
+      pendingSpendingLimitPeriod: null,
+      pendingSpendingLimitPrevious: null,
+    });
+  });
+
+  it('clears the staged columns when the change is rejected', async () => {
+    const { service, patches } = build({
+      proposal: { settled: true, status: 'Rejected' },
+    });
+
+    await service.start(USER, { maxPerPeriod: '250000000' });
+    expect(await service.next(USER)).toEqual({ done: true });
+
+    expect(patches.at(-1)?.pendingSpendingLimitChangeIndex).toBeNull();
+    expect(patches.at(-1)?.pendingSpendingLimitAmount).toBeNull();
   });
 });

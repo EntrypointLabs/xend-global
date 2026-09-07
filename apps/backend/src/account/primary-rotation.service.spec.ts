@@ -256,6 +256,15 @@ describe('PrimaryRotationService.start', () => {
     expect(read().pendingPrimaryProviderId).toBe('did:privy:earlier');
   });
 
+  it('refuses to race a Spending Limit change already holding the index', async () => {
+    const { service } = setUp({
+      row: account({ pendingSpendingLimitChangeIndex: '5' }),
+    });
+    await expect(service.start(USER, 'grant-1', 'token')).rejects.toThrow(
+      'already in flight',
+    );
+  });
+
   it('refuses to race a device rotation already in flight', async () => {
     const { service } = setUp({
       row: account({ pendingApprovalChangeIndex: '5' }),

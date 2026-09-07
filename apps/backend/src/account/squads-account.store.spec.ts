@@ -33,6 +33,12 @@ function dbRow(patch: Partial<DbRow> = {}): DbRow {
     pendingPrimaryProviderId: 'did:privy:new',
     pendingPrimaryChangeIndex: '9',
     spendingLimitPolicySeed: null,
+    pendingSpendingLimitChangeIndex: '10',
+    pendingSpendingLimitAmount: '250000000',
+    pendingSpendingLimitPolicySeed: 3n,
+    pendingSpendingLimitCreating: true,
+    pendingSpendingLimitPeriod: 'Daily',
+    pendingSpendingLimitPrevious: '$100 a day',
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...patch,
@@ -78,6 +84,12 @@ describe('DrizzleSquadsAccountStore', () => {
       pendingPrimarySigner: PENDING_PRIMARY,
       pendingPrimaryProviderId: 'did:privy:new',
       pendingPrimaryChangeIndex: '9',
+      pendingSpendingLimitChangeIndex: '10',
+      pendingSpendingLimitAmount: '250000000',
+      pendingSpendingLimitPolicySeed: 3n,
+      pendingSpendingLimitCreating: true,
+      pendingSpendingLimitPeriod: 'Daily',
+      pendingSpendingLimitPrevious: '$100 a day',
     });
   });
 

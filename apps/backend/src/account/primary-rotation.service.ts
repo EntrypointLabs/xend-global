@@ -159,8 +159,12 @@ export class PrimaryRotationService {
       );
     }
 
-    if (account.pendingApprovalChangeIndex) {
-      // The two rotations write the same signer set and race the same index.
+    if (
+      account.pendingApprovalChangeIndex ||
+      account.pendingSpendingLimitChangeIndex
+    ) {
+      // Every settings change races the same index, and the two rotations
+      // write the same signer set on top of that.
       throw new AccountCreationError(
         'another change to this Account is already in flight',
       );
