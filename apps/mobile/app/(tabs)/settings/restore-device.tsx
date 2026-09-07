@@ -70,7 +70,7 @@ export default function RestoreDeviceScreen() {
           ? "That code is not right. Check the email and try again."
           : status === 409
             ? "That code has expired. Go back and send a new one."
-            : "Could not restore this phone. Please try again."
+            : "Could not recover on this phone. Please try again."
       );
       setStage("code");
       setAttempt((n) => n + 1);
@@ -85,7 +85,7 @@ export default function RestoreDeviceScreen() {
             <Ionicons name="time-outline" size={30} color="#FFFFFF" />
           </View>
           <Typography weight="700" className="mt-6 text-3xl text-black">
-            Restoring this phone
+            Recovering on this phone
           </Typography>
           <Typography
             weight="500"
@@ -133,7 +133,7 @@ export default function RestoreDeviceScreen() {
           weight="700"
           className="mt-10 text-5xl leading-[44px] text-black"
         >
-          {stage === "code" ? "Confirm email" : "Restore\nthis phone"}
+          {stage === "code" ? "Confirm email" : "Recover on\nthis phone"}
         </Typography>
 
         {stage === "code" ? (

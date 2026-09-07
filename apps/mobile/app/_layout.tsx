@@ -26,7 +26,7 @@ import {
   BlurTargetHost,
 } from "@/contexts/BlurTargetContext";
 import * as Sentry from "@sentry/react-native";
-import { sentryApiResponse } from "@/types/Sentry";
+import Constants from "expo-constants";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import {
@@ -93,28 +93,25 @@ function ReactQueryFocusBridge() {
 // matching JS splash (LoadingScreen) — no white flash in between.
 SplashScreen.preventAutoHideAsync();
 
-// Error tracking, production only. Config is fetched from the `/api/sentry`
-// route so it can be rotated without an app rebuild.
-if (process.env.EXPO_PUBLIC_GRID_ENV === "production") {
-  const initSentry = async () => {
-    try {
-      const res = await fetch("/api/sentry");
-      const raw = await res.json();
-      const sentryConfig = sentryApiResponse.parse(raw);
+// Error tracking in release builds only, and only when a DSN is configured.
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+const SENTRY_ENABLED = !__DEV__ && !!SENTRY_DSN;
 
-      Sentry.init({
-        ...sentryConfig,
-        integrations: [
-          Sentry.mobileReplayIntegration(),
-          Sentry.feedbackIntegration(),
-        ],
-      });
-    } catch (error) {
-      console.error("Failed to initialize Sentry:", error);
-    }
-  };
-
-  initSentry();
+if (SENTRY_ENABLED) {
+  const app = Constants.expoConfig;
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    environment: process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ?? "production",
+    release: app?.version ? `${app.slug ?? "xend"}@${app.version}` : undefined,
+    dist: app?.ios?.buildNumber ?? app?.android?.versionCode?.toString(),
+    sendDefaultPii: true,
+    replaysSessionSampleRate: 0.1,
+    replaysOnErrorSampleRate: 1,
+    integrations: [
+      Sentry.mobileReplayIntegration(),
+      Sentry.feedbackIntegration(),
+    ],
+  });
 }
 
 function AuthLayout() {
@@ -288,6 +285,11 @@ function PrivyAppShell({ children }: { children: React.ReactNode }) {
   const configuredClientId = process.env.EXPO_PUBLIC_PRIVY_CLIENT_ID;
 
   if (!configuredAppId) {
+    // A release build with no app id cannot sign anyone in, and a placeholder
+    // would only move the failure to the first passkey prompt.
+    if (!__DEV__) {
+      throw new Error("EXPO_PUBLIC_PRIVY_APP_ID is not set");
+    }
     console.warn(
       "[PrivyAppShell] EXPO_PUBLIC_PRIVY_APP_ID is unset; Privy hooks will not be able to authenticate."
     );
@@ -325,6 +327,4 @@ function ThemedRoot({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default process.env.EXPO_PUBLIC_GRID_ENV === "production"
-  ? Sentry.wrap(RootLayout)
-  : RootLayout;
+export default SENTRY_ENABLED ? Sentry.wrap(RootLayout) : RootLayout;

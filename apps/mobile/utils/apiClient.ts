@@ -1,6 +1,13 @@
 import { z } from "zod";
 
-import { handleError, ErrorCode } from "@/utils/errors";
+import * as Sentry from "@sentry/react-native";
+
+import {
+  handleError,
+  ErrorCode,
+  ENTRY_SESSION_SEND_MESSAGE,
+} from "@/utils/errors";
+import { showToast } from "@/utils/toast";
 import { AuthStorage } from "@/utils/storage/authStorage";
 import {
   SEED_DEMO,
@@ -213,7 +220,13 @@ export const ProvisioningStepSchema = z.object({
   done: z.boolean(),
   change: z.enum(["provision"]).optional(),
   step: z
-    .enum(["propose", "approve-primary", "approve-approval", "execute"])
+    .enum([
+      "propose",
+      "approve-primary",
+      "approve-approval",
+      "provision",
+      "execute",
+    ])
     .optional(),
   unsignedTxBase64: z.string().optional(),
   needsApprovalSignature: z.boolean(),
@@ -268,6 +281,35 @@ export const RecoveryChangeStepSchema = z.object({
   needsApprovalSignature: z.boolean().optional(),
 });
 export type RecoveryChangeStep = z.infer<typeof RecoveryChangeStepSchema>;
+
+/**
+ * A step of the settings change that moves the Spending Limit, or takes it off.
+ *
+ * `limit` is the limit the change installs, in the words the Consumer is
+ * shown, so the screen and the notice say the same thing.
+ */
+export const SpendingLimitChangeStepSchema = z.object({
+  done: z.boolean(),
+  step: z
+    .enum([
+      "propose",
+      "approve-primary",
+      "approve-approval",
+      "waiting",
+      "execute",
+    ])
+    .optional(),
+  unsignedTxBase64: z.string().optional(),
+  changeIndex: z.string().optional(),
+  executableAt: z.string().optional(),
+  needsApprovalSignature: z.boolean().optional(),
+  removing: z.boolean().optional(),
+  creating: z.boolean().optional(),
+  limit: z.string().optional(),
+});
+export type SpendingLimitChangeStep = z.infer<
+  typeof SpendingLimitChangeStepSchema
+>;
 
 /**
  * A step of the settings change that moves the approval signer to this phone.
@@ -581,6 +623,12 @@ export function apiErrorCode(err: unknown): string | null {
   return typeof code === "string" ? code : null;
 }
 
+/** The sentence the backend sent with a typed refusal, when there was one. */
+export function apiErrorMessage(err: unknown): string | null {
+  const message = err instanceof ApiError ? err.data?.message : null;
+  return typeof message === "string" ? message : null;
+}
+
 /** The masked address a mismatched passkey actually opens, when named. */
 export function apiErrorMaskedEmail(err: unknown): string | null {
   const masked = err instanceof ApiError ? err.data?.maskedEmail : null;
@@ -673,9 +721,12 @@ class BackendClient {
       }
 
       if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => console.error("Error parsing response:", response));
+        const errorData = await response.json().catch((parseError) => {
+          Sentry.captureException(parseError, {
+            tags: { api: "error-body", endpoint, status: response.status },
+          });
+          return undefined;
+        });
 
         // 401 on an authed endpoint → token is invalid or expired. Clear the
         // local JWT so the next app start re-exchanges against the Privy
@@ -684,6 +735,15 @@ class BackendClient {
         // response (toast / retry / redirect).
         if (response.status === 401 && options.auth) {
           await AuthStorage.saveToken("").catch(() => {});
+        }
+
+        // Refused for what the session is rather than what was asked: an
+        // entry session reached for something only the passkey may do.
+        if (
+          response.status === 403 &&
+          errorData?.code === "ENTRY_SESSION_FORBIDDEN"
+        ) {
+          showToast(ENTRY_SESSION_SEND_MESSAGE);
         }
 
         if (errorData?.details?.[0]?.code) {
@@ -1185,6 +1245,44 @@ class BackendClient {
     signedTxBase64: string;
   }): Promise<{ signature: string }> {
     const raw = await this.request<unknown>("/account/recovery/change/submit", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return RecoveryChangeSubmitSchema.parse(raw);
+  }
+
+  /**
+   * POST /account/limits/spending/start: stages a new limit, or its removal.
+   *
+   * `maxPerPeriod` is in the mint's smallest units, as an integer string: the
+   * caps do not survive JSON's number, and the ones in use today only just do.
+   */
+  async startSpendingLimitChange(
+    body: { maxPerPeriod: string } | { remove: true }
+  ): Promise<SpendingLimitChangeStep> {
+    const raw = await this.request<unknown>("/account/limits/spending/start", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    });
+    return SpendingLimitChangeStepSchema.parse(raw);
+  }
+
+  /** POST /account/limits/spending/next: the next step, or done. */
+  async nextSpendingLimitChangeStep(): Promise<SpendingLimitChangeStep> {
+    const raw = await this.request<unknown>("/account/limits/spending/next", {
+      method: "POST",
+      auth: true,
+    });
+    return SpendingLimitChangeStepSchema.parse(raw);
+  }
+
+  /** POST /account/limits/spending/submit: lands a signed step. */
+  async submitSpendingLimitChangeStep(body: {
+    signedTxBase64: string;
+  }): Promise<{ signature: string }> {
+    const raw = await this.request<unknown>("/account/limits/spending/submit", {
       method: "POST",
       body: JSON.stringify(body),
       auth: true,

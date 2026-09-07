@@ -57,7 +57,7 @@ export default function AmountStep({
         amount,
         recipient,
         type: "wallet",
-        title: "Confirm Transaction",
+        title: "Confirm Send",
       },
     });
   };
