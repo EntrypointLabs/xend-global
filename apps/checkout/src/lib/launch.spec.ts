@@ -27,6 +27,16 @@ describe('parseLaunch', () => {
     expect(launch.nonce).toBe('n1');
   });
 
+  it('reads the iframe launch mode the embedded surface is opened with', () => {
+    expect(parseLaunch('?nonce=n1&mode=iframe&intent=pi_1').mode).toBe(
+      'iframe',
+    );
+  });
+
+  it('falls back to popup for an unknown mode', () => {
+    expect(parseLaunch('?nonce=n1&mode=teleport').mode).toBe('popup');
+  });
+
   it('still refuses a launch without a nonce', () => {
     expect(() => parseLaunch('?opener=https%3A%2F%2Fshop.example.com')).toThrow(
       /nonce/,

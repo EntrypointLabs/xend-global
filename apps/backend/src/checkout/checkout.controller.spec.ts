@@ -131,6 +131,16 @@ function makeReq(cookie?: string): Request {
   } as unknown as Request;
 }
 
+/** A framed surface, which carries its Session on the header instead. */
+function makeFramedReq(session = '', cookie?: string): Request {
+  return {
+    headers: {
+      'x-xend-checkout-session': session,
+      ...(cookie ? { cookie: `${COOKIE}=${cookie}` } : {}),
+    },
+  } as unknown as Request;
+}
+
 function makeRes() {
   const cookie = jest.fn();
   return { res: { cookie } as unknown as Response, cookie };
@@ -368,6 +378,48 @@ describe('CheckoutController.getSummary', () => {
     expect(sessions.peek).toHaveBeenCalledWith('tok', 'm1');
     expect(sessions.validate).not.toHaveBeenCalled();
     expect(sessions.rotate).not.toHaveBeenCalled();
+  });
+
+  it('peeks the Session a framed surface carries on the header', async () => {
+    const sessions = {
+      peek: jest.fn().mockResolvedValue(true),
+      issue: jest.fn(),
+      validate: jest.fn(),
+      rotate: jest.fn(),
+    };
+    const { controller, intents } = makeController(merchantRow(), { sessions });
+    intents.findById.mockResolvedValue(intentRow());
+    const summary = await controller.getSummary(makeFramedReq('hdr'), 'pi_1');
+    expect(summary.sessionRecognized).toBe(true);
+    expect(sessions.peek).toHaveBeenCalledWith('hdr', 'm1');
+    expect(sessions.validate).not.toHaveBeenCalled();
+  });
+
+  it('prefers the cookie over the header when a request carries both', async () => {
+    const sessions = {
+      peek: jest.fn().mockResolvedValue(true),
+      issue: jest.fn(),
+      validate: jest.fn(),
+      rotate: jest.fn(),
+    };
+    const { controller, intents } = makeController(merchantRow(), { sessions });
+    intents.findById.mockResolvedValue(intentRow());
+    await controller.getSummary(makeFramedReq('hdr', 'cook'), 'pi_1');
+    expect(sessions.peek).toHaveBeenCalledWith('cook', 'm1');
+  });
+
+  it('reports sessionRecognized=false for an empty header and never peeks', async () => {
+    const sessions = {
+      peek: jest.fn().mockResolvedValue(true),
+      issue: jest.fn(),
+      validate: jest.fn(),
+      rotate: jest.fn(),
+    };
+    const { controller, intents } = makeController(merchantRow(), { sessions });
+    intents.findById.mockResolvedValue(intentRow());
+    const summary = await controller.getSummary(makeFramedReq(), 'pi_1');
+    expect(summary.sessionRecognized).toBe(false);
+    expect(sessions.peek).not.toHaveBeenCalled();
   });
 
   it('includes a signed cancelUrl when the intent carries one', async () => {
@@ -616,6 +668,121 @@ describe('CheckoutController.authorize', () => {
         amount: '₦1,600',
       },
     );
+  });
+
+  it('header path authorizes and hands the rotated token back in the body', async () => {
+    const auth = {
+      authorize: jest.fn().mockResolvedValue({
+        intentId: 'pi_1',
+        attemptId: 'att_1',
+        status: 'authorized',
+        rotatedSessionToken: 'rotated-token',
+      }),
+    };
+    const { controller, intents } = makeController(merchantRow(), {
+      auth,
+      sessions: liveSessions(),
+    });
+    const resPair = makeRes();
+    intents.findById.mockResolvedValue(intentRow({ status: 'created' }));
+
+    const response = await controller.authorize(
+      makeFramedReq('hdr-tok'),
+      resPair.res,
+      { reference: 'pi_1' },
+    );
+
+    expect(auth.authorize).toHaveBeenCalledWith({
+      intentId: 'pi_1',
+      sessionToken: 'hdr-tok',
+    });
+    expect(response).toEqual({
+      status: 'needs_signature',
+      unsignedTxBase64: 'UNSIGNED_SPEND',
+      signerAddress: 'Signer1111',
+      sessionToken: 'rotated-token',
+    });
+    // The cookie still goes out unchanged; a third-party frame just drops it.
+    expect(resPair.cookie).toHaveBeenCalledWith(
+      COOKIE,
+      'rotated-token',
+      expect.objectContaining({ httpOnly: true }),
+    );
+  });
+
+  it('hands a framed ceremony its freshly issued Session in the body', async () => {
+    const auth = { authorize: jest.fn().mockResolvedValue({ status: 'ok' }) };
+    const identity = {
+      resolveByProviderToken: jest.fn().mockResolvedValue({ consumerId: 'c1' }),
+    };
+    const sessions = {
+      peek: jest.fn(),
+      issue: jest.fn().mockResolvedValue({ sessionId: 's1', token: 'fresh' }),
+      validate: jest.fn(),
+      rotate: jest.fn(),
+    };
+    const { controller, intents } = makeController(merchantRow(), {
+      auth,
+      identity,
+      sessions,
+    });
+    const resPair = makeRes();
+    intents.findById.mockResolvedValue(intentRow({ status: 'created' }));
+
+    const response = await controller.authorize(makeFramedReq(), resPair.res, {
+      reference: 'pi_1',
+      providerToken: 'privy-token',
+    });
+
+    expect(sessions.validate).not.toHaveBeenCalled();
+    expect(response).toMatchObject({ sessionToken: 'fresh' });
+  });
+
+  it('never puts a Session in the body of a cookie-borne request', async () => {
+    const auth = {
+      authorize: jest.fn().mockResolvedValue({
+        intentId: 'pi_1',
+        status: 'authorized',
+        rotatedSessionToken: 'rotated-token',
+      }),
+    };
+    const { controller, intents } = makeController(merchantRow(), {
+      auth,
+      sessions: liveSessions(),
+    });
+    const resPair = makeRes();
+    intents.findById.mockResolvedValue(intentRow({ status: 'created' }));
+
+    const response = await controller.authorize(
+      makeReq('sess-tok'),
+      resPair.res,
+      { reference: 'pi_1' },
+    );
+    expect(JSON.stringify(response)).not.toContain('rotated-token');
+  });
+
+  it('rejects an empty header with no provider token as 401', async () => {
+    const auth = { authorize: jest.fn() };
+    const sessions = {
+      peek: jest.fn(),
+      issue: jest.fn(),
+      validate: jest.fn(),
+      rotate: jest.fn(),
+    };
+    const { controller, intents } = makeController(merchantRow(), {
+      auth,
+      sessions,
+    });
+    intents.findById.mockResolvedValue(intentRow());
+    const resPair = makeRes();
+    await expectRejectHttp(
+      controller.authorize(makeFramedReq(), resPair.res, {
+        reference: 'pi_1',
+      }),
+      401,
+      'SESSION_INVALID',
+    );
+    expect(sessions.validate).not.toHaveBeenCalled();
   });
 
   it('rejects with 401 and no service write when no credential is supplied', async () => {
