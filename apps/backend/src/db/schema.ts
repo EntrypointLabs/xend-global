@@ -7,6 +7,7 @@ import {
   integer,
   boolean,
   numeric,
+  jsonb,
   index,
   uniqueIndex,
   type AnyPgColumn,
@@ -344,6 +345,8 @@ export const recoverySigners = pgTable(
     sealedKey: text('sealed_key'),
     /** Which wrapping key sealed it, so the vault key can be rotated. */
     sealedKeyId: text('sealed_key_id'),
+    /** The per-seal data key under KMS envelope custody; null for env keys. */
+    wrappedDataKey: text('wrapped_data_key'),
     status: recoverySignerStatusEnum('status').notNull().default('active'),
     /**
      * The `transactionIndex` of the Settings change adding or removing this
@@ -580,6 +583,18 @@ export const squadsAccounts = pgTable('squads_accounts', {
   pendingPrimarySigner: text('pending_primary_signer'),
   pendingPrimaryProviderId: text('pending_primary_provider_id'),
   pendingPrimaryChangeIndex: text('pending_primary_change_index'),
+  /**
+   * The seed of the policy holding this Account's Spending Limit.
+   *
+   * Null means the seed provisioning wrote, which is every Account created so
+   * far. It only differs once a limit has been removed and set again: the
+   * program assigns policy seeds in order from a counter on the Settings and
+   * never gives one back, so the replacement policy lands past the original
+   * seed and nothing could find it without this.
+   */
+  spendingLimitPolicySeed: bigint('spending_limit_policy_seed', {
+    mode: 'bigint',
+  }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -653,6 +668,10 @@ export const approvalSigners = pgTable(
      * not answering.
      */
     security: text('security'),
+    /** Turnkey policy ids written onto the sub-organization at enrolment. */
+    policyIds: jsonb('policy_ids').$type<string[]>(),
+    /** Set when a rotation retired this device's signer. */
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -744,6 +763,9 @@ export const transfers = pgTable(
     pendingIdx: index('transfers_pending_idx')
       .on(table.submittedAt)
       .where(sql`status = 'PENDING'`),
+    smartAccountIdx: index('transfers_smart_account_idx').on(
+      table.smartAccountId,
+    ),
     signatureLegIdx: uniqueIndex('transfers_signature_leg_idx').on(
       table.signature,
       table.mint,
@@ -767,7 +789,7 @@ export const tailerState = pgTable('tailer_state', {
   walletAddress: text('wallet_address').primaryKey(),
   lastIndexedSlot: bigint('last_indexed_slot', { mode: 'bigint' })
     .notNull()
-    .default(0n),
+    .default(sql`0`),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
@@ -873,6 +895,10 @@ export const paymentIntents = pgTable(
      * what lets the app find a Payment someone is waiting to finish.
      */
     approvalDeferredAt: timestamp('approval_deferred_at'),
+    /** Merchant-supplied key/value pairs, echoed back on the intent and in webhooks. */
+    metadata: jsonb('metadata').$type<Record<string, string>>(),
+    /** The browser origin that opened Checkout for this intent, when known. */
+    openerOrigin: text('opener_origin'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -923,6 +949,7 @@ export const paymentAttempts = pgTable(
     liveAttemptIdx: uniqueIndex('payment_attempts_live_idx')
       .on(table.intentId)
       .where(sql`status IN ('authorized', 'settling')`),
+    statusIdx: index('payment_attempts_status_idx').on(table.status),
   }),
 );
 
@@ -1019,6 +1046,8 @@ export const webhookEndpoints = pgTable(
     url: text('url').notNull(),
     secretPrimary: text('secret_primary').notNull(),
     secretSecondary: text('secret_secondary'),
+    /** After this the retired secret no longer signs; null means it never expires. */
+    secondaryExpiresAt: timestamp('secondary_expires_at'),
     enabled: boolean('enabled').notNull().default(true),
     eventTypes: text('event_types').array(),
     // An endpoint delivers only events created under its own mode, so a test
@@ -1069,6 +1098,11 @@ export const webhookDeliveries = pgTable(
     autoDeliveryIdx: uniqueIndex('webhook_deliveries_auto_idx')
       .on(table.endpointId, table.eventId)
       .where(sql`origin = 'event'`),
+    // The retry sweep's scan: due failed rows and stale pending ones.
+    retryIdx: index('webhook_deliveries_retry_idx').on(
+      table.status,
+      table.nextRetryAt,
+    ),
   }),
 );
 
@@ -1218,6 +1252,48 @@ export const settlementOfframps = pgTable(
     settlementSignatureIdx: uniqueIndex('settlement_offramps_signature_idx')
       .on(table.signature)
       .where(sql`direction = 'settlement'`),
+    statusIdx: index('settlement_offramps_status_idx').on(table.status),
+  }),
+);
+
+/**
+ * admin_audit_log: one row per operator write from the internal console:
+ * who (the Basic Auth user), what (freeze, unfreeze, redeliver), on which
+ * target, and when. Append-only.
+ */
+/**
+ * inbound_webhook_events records every provider delivery already acted on, so
+ * a replayed delivery is a no-op before any row it would have touched.
+ */
+export const inboundWebhookEvents = pgTable(
+  'inbound_webhook_events',
+  {
+    provider: text('provider').notNull(),
+    eventId: text('event_id').notNull(),
+    receivedAt: timestamp('received_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('inbound_webhook_events_provider_event_idx').on(
+      table.provider,
+      table.eventId,
+    ),
+    index('inbound_webhook_events_received_idx').on(table.receivedAt),
+  ],
+);
+
+export const adminAuditLog = pgTable(
+  'admin_audit_log',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    actor: text('actor').notNull(),
+    action: text('action').notNull(),
+    target: text('target'),
+    at: timestamp('at').defaultNow().notNull(),
+  },
+  (table) => ({
+    atIdx: index('admin_audit_log_at_idx').on(table.at),
   }),
 );
 

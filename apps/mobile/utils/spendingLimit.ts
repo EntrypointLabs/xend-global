@@ -1,7 +1,9 @@
-import type { AccountResponse } from "@/utils/apiClient";
+import type { AccountResponse, SpendingLimit } from "@/utils/apiClient";
 import { getUsdcMint } from "@/utils/cluster";
 
 const USDC_DECIMALS = 6;
+
+type SpendingLimitPeriod = SpendingLimit["period"];
 
 /**
  * A typed amount as an integer at USDC's decimals, or null when it is not a
@@ -85,4 +87,52 @@ export function describeSecondCheck(
     return { reason: "above-remaining", certain: false };
   }
   return null;
+}
+
+/** How often the limit refills, in the words the Consumer reads. */
+export const LIMIT_PERIOD_WORDS: Record<SpendingLimitPeriod, string> = {
+  OneTime: "in total",
+  Daily: "a day",
+  Weekly: "a week",
+  Monthly: "a month",
+};
+
+/**
+ * What is left of the limit, in the words the Consumer reads.
+ *
+ * A second phrasing rather than a reuse of {@link LIMIT_PERIOD_WORDS}, because
+ * "$40 a day left" says something the counter does not: the figure is what
+ * remains of this one period, not a rate.
+ */
+export const LIMIT_PERIOD_REMAINING: Record<SpendingLimitPeriod, string> = {
+  OneTime: "left",
+  Daily: "left today",
+  Weekly: "left this week",
+  Monthly: "left this month",
+};
+
+/**
+ * The largest limit an Account can carry.
+ *
+ * The policy stores the cap as a u64, so anything past this is refused several
+ * steps into the change rather than at the keyboard. Nothing a Consumer means
+ * to type comes near it; a stray paste does.
+ */
+export const MAX_LIMIT_RAW = 2n ** 64n - 1n;
+
+/**
+ * An integer at USDC's decimals as money: "100000000" reads "$100".
+ *
+ * Cents only when there are any. The limits a Consumer sets are round numbers,
+ * and "$100.00 a day" reads like a figure somebody calculated for them.
+ */
+export function formatUsdcRaw(raw: string): string {
+  const unit = 10n ** BigInt(USDC_DECIMALS);
+  const value = BigInt(raw);
+  const whole = (value / unit).toLocaleString("en-US");
+  const fraction = (value % unit)
+    .toString()
+    .padStart(USDC_DECIMALS, "0")
+    .replace(/0+$/, "");
+  return fraction ? `$${whole}.${fraction}` : `$${whole}`;
 }

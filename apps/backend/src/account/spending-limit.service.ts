@@ -32,10 +32,11 @@ export class SpendingLimitService {
    */
   async forAccount(
     settingsAddress: string,
+    policySeed: bigint,
   ): Promise<SpendingLimitResponse | null> {
     let limits: readonly SpendingLimit[];
     try {
-      limits = await this.chain.readSpendingLimits(settingsAddress);
+      limits = await this.chain.readSpendingLimits(settingsAddress, policySeed);
     } catch (cause) {
       this.logger.warn(
         `account.spending_limit_unreadable settings=${settingsAddress}: ${describe(cause)}`,

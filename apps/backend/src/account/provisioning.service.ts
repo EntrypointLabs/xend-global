@@ -10,6 +10,11 @@ import {
   SETTINGS_TIME_LOCK_SECONDS,
 } from '@xend/smart-account';
 
+import {
+  PREPARED_TX_STORE,
+  PREPARED_TX_TTL_SECONDS,
+} from '../prepared/prepared-tx.interface';
+import type { PreparedTxStore } from '../prepared/prepared-tx.interface';
 import { AccountCreationError } from './account.errors';
 import {
   ABOVE_LIMIT_POLICY_SEED,
@@ -52,23 +57,20 @@ import { VersionedTransaction } from '@solana/web3.js';
 export class ProvisioningService {
   private readonly logger = new Logger(ProvisioningService.name);
 
-  /**
-   * The message each Consumer was last asked to sign, by user id.
-   *
-   * The authority partially signs whatever arrives at `submit`, so without
-   * this a caller could hand over any transaction naming the authority as fee
-   * payer and have the backend sign and broadcast it. Pinning the prepared
-   * message is the same guard the transfer flow applies to its intents.
-   *
-   * In memory, like those intents: a restart loses it, and the client simply
-   * prepares again.
-   */
-  private readonly prepared = new Map<string, string>();
-
   constructor(
     @Inject(SQUADS_ACCOUNT_STORE) private readonly store: SquadsAccountStore,
     @Inject(PROVISIONING_CHAIN) private readonly chain: ProvisioningChain,
     private readonly config: ConfigService,
+    /**
+     * The message each Consumer was last asked to sign.
+     *
+     * The authority partially signs whatever arrives at `submit`, so without
+     * this a caller could hand over any transaction naming the authority as
+     * fee payer and have the backend sign and broadcast it. Pinning the
+     * prepared message is the same guard the transfer flow applies to its
+     * intents.
+     */
+    @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
   ) {}
 
   async prepareNext(userId: string): Promise<ProvisioningPlan> {
@@ -103,7 +105,11 @@ export class ProvisioningService {
     // can pay.
     const unsigned = await this.chain.compile({ instructions });
 
-    this.prepared.set(userId, unsigned.messageBase64);
+    await this.prepared.set(
+      preparedKey(userId),
+      unsigned.messageBase64,
+      PREPARED_TX_TTL_SECONDS,
+    );
 
     this.logger.log(
       `provisioning.step userId=${userId} step=${step} index=${transactionIndex}`,
@@ -133,12 +139,12 @@ export class ProvisioningService {
       throw new AccountCreationError('No Account exists for this Consumer');
     }
 
-    this.assertMatchesPreparedStep(userId, signedTxBase64);
+    await this.assertMatchesPreparedStep(userId, signedTxBase64);
 
     const signature = await this.chain.submit(signedTxBase64);
     // Spent: a signed step is submitted once, and a replay has to prepare
     // again against the chain's current index.
-    this.prepared.delete(userId);
+    await this.prepared.delete(preparedKey(userId));
     this.logger.log(
       `provisioning.step_landed userId=${userId} signature=${signature}`,
     );
@@ -153,8 +159,11 @@ export class ProvisioningService {
    * back signed and broadcast; comparing the compiled message means the only
    * bytes it will ever sign are bytes this service built.
    */
-  private assertMatchesPreparedStep(userId: string, signedTxBase64: string) {
-    const expected = this.prepared.get(userId);
+  private async assertMatchesPreparedStep(
+    userId: string,
+    signedTxBase64: string,
+  ): Promise<void> {
+    const expected = await this.prepared.get<string>(preparedKey(userId));
     if (!expected) {
       throw new AccountCreationError(
         'No provisioning step is awaiting a signature for this Consumer',
@@ -308,4 +317,8 @@ function nextStep(
   if (!approved.includes(account.primarySigner)) return 'approve-primary';
   if (!approved.includes(account.approvalSigner)) return 'approve-approval';
   return 'execute';
+}
+
+function preparedKey(userId: string): string {
+  return `provisioning:${userId}`;
 }

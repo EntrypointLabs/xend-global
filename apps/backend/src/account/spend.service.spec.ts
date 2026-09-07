@@ -1,10 +1,16 @@
-import { Keypair, PublicKey } from '@solana/web3.js';
+import {
+  Keypair,
+  PublicKey,
+  TransactionMessage,
+  VersionedTransaction,
+} from '@solana/web3.js';
 import {
   deriveAccountAddresses,
   derivePolicyAddress,
   type SpendingLimit,
 } from '@xend/smart-account';
 
+import { InMemoryPreparedTxStore } from '../prepared/prepared-tx.memory';
 import type { SettlementAuthoritySigner } from '../settlement/settlement-authority.interface';
 import { AccountCreationError } from './account.errors';
 import {
@@ -54,7 +60,10 @@ function store(row: SquadsAccountRow | null = account): SquadsAccountStore {
 
 function chain(
   limits: readonly SpendingLimit[] | Error = [],
-  { programAccepts = false }: { programAccepts?: boolean } = {},
+  {
+    programAccepts = false,
+    messageBase64 = 'bXNn',
+  }: { programAccepts?: boolean; messageBase64?: string } = {},
 ) {
   const read: string[] = [];
   const simulated: unknown[] = [];
@@ -72,7 +81,7 @@ function chain(
     compile: () =>
       Promise.resolve({
         unsignedTxBase64: 'dHg=',
-        messageBase64: 'bXNn',
+        messageBase64,
         blockhash: 'BlockHash11111111111111111111111111111111111',
         lastValidBlockHeight: 100,
       }),
@@ -130,7 +139,12 @@ function service(
   spendChain: SpendChain,
   row: SquadsAccountRow | null = account,
 ) {
-  return new SpendService(store(row), spendChain, authority().signer);
+  return new SpendService(
+    store(row),
+    spendChain,
+    authority().signer,
+    new InMemoryPreparedTxStore(),
+  );
 }
 
 describe('SpendService.prepare', () => {
@@ -253,7 +267,12 @@ describe('SpendService.prepare', () => {
     const { spendChain } = chain([]);
     const { signer } = authority();
 
-    await new SpendService(store(), spendChain, signer).prepare(nativeRequest);
+    await new SpendService(
+      store(),
+      spendChain,
+      signer,
+      new InMemoryPreparedTxStore(),
+    ).prepare(nativeRequest);
 
     // The fee payer's signature slot is the one submit fills. Compiled against
     // any other key, S1 included, the Spend reaches the cluster still missing
@@ -300,19 +319,89 @@ describe('SpendService.prepare', () => {
 });
 
 describe('SpendService.submit', () => {
-  it('completes the Spend with the fee payer signature before broadcasting', async () => {
-    const { spendChain } = chain([]);
-    const { signer, sent } = authority();
+  /** A real transaction, so the message comparison has something to compare. */
+  function signable() {
+    const tx = new VersionedTransaction(
+      new TransactionMessage({
+        payerKey: new PublicKey(AUTHORITY),
+        recentBlockhash: PublicKey.default.toBase58(),
+        instructions: [],
+      }).compileToV0Message(),
+    );
+    return {
+      messageBase64: Buffer.from(tx.message.serialize()).toString('base64'),
+      wire: Buffer.from(tx.serialize()).toString('base64'),
+    };
+  }
 
-    const signature = await new SpendService(
+  it('completes the Spend with the fee payer signature before broadcasting', async () => {
+    const { messageBase64, wire } = signable();
+    const { spendChain } = chain([], { messageBase64 });
+    const { signer, sent } = authority();
+    const service = new SpendService(
       store(),
       spendChain,
       signer,
-    ).submit('c2lnbmVk');
+      new InMemoryPreparedTxStore(),
+    );
+    await service.prepare(request);
+
+    const signature = await service.submit(wire);
 
     // The device cannot fill the fee payer's slot, so a Spend that skipped
     // this would reach the cluster missing its first signature.
-    expect(sent).toEqual(['c2lnbmVk']);
+    expect(sent).toEqual([wire]);
     expect(signature).toBe('signature-1');
+  });
+
+  it('refuses a transaction it did not prepare', async () => {
+    const { wire } = signable();
+    const { spendChain } = chain([]);
+    const { signer, sent } = authority();
+    const service = new SpendService(
+      store(),
+      spendChain,
+      signer,
+      new InMemoryPreparedTxStore(),
+    );
+    await service.prepare(request);
+
+    // The authority co-signs whatever reaches it, so anything but a message
+    // this service compiled would be a way to have the backend sign for you.
+    await expect(service.submit(wire)).rejects.toBeInstanceOf(
+      AccountCreationError,
+    );
+    expect(sent).toEqual([]);
+  });
+
+  it('spends the pin so the same Spend cannot be broadcast twice', async () => {
+    const { messageBase64, wire } = signable();
+    const { spendChain } = chain([], { messageBase64 });
+    const { signer, sent } = authority();
+    const service = new SpendService(
+      store(),
+      spendChain,
+      signer,
+      new InMemoryPreparedTxStore(),
+    );
+    await service.prepare(request);
+
+    await service.submit(wire);
+    await expect(service.submit(wire)).rejects.toBeInstanceOf(
+      AccountCreationError,
+    );
+    expect(sent).toEqual([wire]);
+  });
+
+  it('refuses bytes that are not a transaction at all', async () => {
+    const { spendChain } = chain([]);
+    await expect(
+      new SpendService(
+        store(),
+        spendChain,
+        authority().signer,
+        new InMemoryPreparedTxStore(),
+      ).submit('bm90LWEtdHg='),
+    ).rejects.toThrow('not a valid transaction');
   });
 });

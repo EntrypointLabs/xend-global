@@ -4,6 +4,7 @@ import { AccountEventsModule } from '../activity/account-events.module';
 import { AttestationModule } from '../attestation/attestation.module';
 import { DbModule } from '../db/db.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PreparedModule } from '../prepared/prepared.module';
 import { RecoveryModule } from '../recovery/recovery.module';
 import { SettlementModule } from '../settlement/settlement.module';
 import { SolanaModule } from '../solana/solana.module';
@@ -19,6 +20,7 @@ import { Web3ProvisioningChain } from './provisioning-chain.web3';
 import { ProvisioningService } from './provisioning.service';
 import { RecoveryChangeService } from './recovery-change.service';
 import { SpendModule } from './spend.module';
+import { SpendingLimitChangeService } from './spending-limit-change.service';
 import { SpendingLimitService } from './spending-limit.service';
 import { SweepService } from './sweep.service';
 import { ACCOUNT_CHAIN, PROVISIONING_CHAIN } from './account.interface';
@@ -36,6 +38,7 @@ import { AccountService } from './account.service';
     NotificationsModule,
     AccountEventsModule,
     SpendModule,
+    PreparedModule,
   ],
   controllers: [AccountController],
   providers: [
@@ -46,6 +49,7 @@ import { AccountService } from './account.service';
     AccountChangeService,
     AccountChangeWatcher,
     RecoveryChangeService,
+    SpendingLimitChangeService,
     DeviceRotationService,
     PrimaryRotationService,
     { provide: ACCOUNT_CHAIN, useClass: Web3AccountChain },
@@ -59,6 +63,7 @@ import { AccountService } from './account.service';
     ProvisioningService,
     AccountChangeService,
     RecoveryChangeService,
+    SpendingLimitChangeService,
     DeviceRotationService,
     PrimaryRotationService,
   ],

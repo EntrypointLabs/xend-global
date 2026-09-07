@@ -54,6 +54,11 @@ export interface SquadsAccountRow {
   pendingPrimarySigner?: string | null;
   pendingPrimaryProviderId?: string | null;
   pendingPrimaryChangeIndex?: string | null;
+  /**
+   * The seed of the policy holding this Account's Spending Limit, when it is
+   * not the one provisioning wrote. Read through {@link spendingLimitSeed}.
+   */
+  spendingLimitPolicySeed?: bigint | null;
 }
 
 export interface SquadsAccountStore {
@@ -103,6 +108,21 @@ export const SPEND_CHAIN = Symbol('SPEND_CHAIN');
  */
 export const SPENDING_LIMIT_POLICY_SEED = 1n;
 export const ABOVE_LIMIT_POLICY_SEED = 2n;
+
+/**
+ * Where this Account's Spending Limit actually lives.
+ *
+ * The program assigns policy seeds in order from a counter on the Settings and
+ * never gives one back, so a limit removed and set again lands past the seed
+ * provisioning wrote. Every Account that has not done that carries no seed of
+ * its own and resolves to the original, which is what keeps the constant
+ * meaningful for every Account created so far.
+ */
+export function spendingLimitSeed(account: {
+  spendingLimitPolicySeed?: bigint | null;
+}): bigint {
+  return account.spendingLimitPolicySeed ?? SPENDING_LIMIT_POLICY_SEED;
+}
 
 export interface UnsignedSpend {
   /** Base64 wire transaction, unsigned. */
@@ -161,6 +181,18 @@ export interface SettingsState {
   timeLockSeconds: number;
   /** The last index the program assigned. The next change takes this plus one. */
   transactionIndex: bigint;
+  /**
+   * The last policy seed the program assigned, or null before it has assigned
+   * any. A policy created on this Account has to take this plus one.
+   */
+  policySeed: bigint | null;
+  /**
+   * The signer set as the chain holds it, with the permissions each key was
+   * granted. Read on every settings change: an executed proposal at an index
+   * only proves that some change landed there, and which keys the Account
+   * now names is what says whether it was the one a rotation staged.
+   */
+  signers: import('@xend/smart-account').SettingsSigner[];
 }
 
 export interface ProposalState {
@@ -191,6 +223,15 @@ export interface ProvisioningChain {
   readonly rentPayer: string;
 
   readSettings(settingsAddress: string): Promise<SettingsState>;
+  /**
+   * The spending limit as the chain holds it. A change that restates the
+   * limit reads it from here, so a limit the Consumer has since changed is
+   * carried forward rather than reset to what provisioning wrote.
+   */
+  readSpendingLimit(
+    settingsAddress: string,
+    policySeed: bigint,
+  ): Promise<import('@xend/smart-account').SpendingLimit>;
   policyExists(settingsAddress: string, policySeed: bigint): Promise<boolean>;
   /** Null when no proposal was ever created at that index. */
   readProposal(
@@ -259,6 +300,7 @@ export interface SpendChain {
    */
   readSpendingLimits(
     settingsAddress: string,
+    policySeed: bigint,
   ): Promise<readonly import('@xend/smart-account').SpendingLimit[]>;
 
   /**

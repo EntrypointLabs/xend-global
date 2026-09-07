@@ -5,6 +5,7 @@ import { deriveAccountAddresses } from '@xend/smart-account';
 
 import type { AttestationService } from '../attestation/attestation.service';
 import { AccountController } from './account.controller';
+import { SpendingLimitChangeError } from './account.errors';
 import type { AccountService } from './account.service';
 import type { SquadsAccountRow } from './account.interface';
 import { AccountResponseSchema, type SpendingLimitResponse } from './dtos';
@@ -24,6 +25,7 @@ import type { RecoveryChangeService } from './recovery-change.service';
 import type { RecoveryChallengeService } from '../recovery/recovery-challenge.service';
 import type { DeviceRotationService } from './device-rotation.service';
 import type { PrimaryRotationService } from './primary-rotation.service';
+import type { SpendingLimitChangeService } from './spending-limit-change.service';
 
 const USDC = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const SEED = 7n;
@@ -77,6 +79,7 @@ function makeController(
     {} as unknown as RecoveryChallengeService,
     {} as unknown as DeviceRotationService,
     {} as unknown as PrimaryRotationService,
+    {} as unknown as SpendingLimitChangeService,
   );
   return { controller, asked };
 }
@@ -167,6 +170,7 @@ describe('AccountController.enrol', () => {
       {} as unknown as RecoveryChallengeService,
       {} as unknown as DeviceRotationService,
       {} as unknown as PrimaryRotationService,
+      {} as unknown as SpendingLimitChangeService,
     );
     return { controller, createAccount, verify };
   }
@@ -200,8 +204,49 @@ describe('AccountController.enrol', () => {
     // enrol a software key it actually controls.
     await expect(
       controller.enrol(req, { hardwarePublicKey: '03ff' }),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: 'DEVICE_NOT_ATTESTED' },
+    });
     expect(createAccount).not.toHaveBeenCalled();
+  });
+});
+
+describe('AccountController.startDeviceRotation', () => {
+  it('answers 409 DEVICE_NOT_ATTESTED for a key with no attestation on file', async () => {
+    const start = jest.fn();
+    const controller = new AccountController(
+      {} as unknown as AccountService,
+      { verify: jest.fn() } as unknown as AttestationService,
+      {} as unknown as SweepService,
+      {} as unknown as ProvisioningService,
+      {} as unknown as SpendingLimitService,
+      {
+        findEnrolledDevice: jest.fn().mockResolvedValue(null),
+      } as unknown as TurnkeyService,
+      {} as unknown as AccountChangeService,
+      {} as unknown as RecoveryService,
+      {} as unknown as RecoveryChangeService,
+      {} as unknown as RecoveryChallengeService,
+      { start } as unknown as DeviceRotationService,
+      {} as unknown as PrimaryRotationService,
+      {} as unknown as SpendingLimitChangeService,
+    );
+
+    // The same answer enrolment gives, and for the same reason: the app falls
+    // through to a fresh attestation on it, which a 500 would not let it do.
+    await expect(
+      controller.startDeviceRotation(
+        {
+          user: { userId: 'user-1', walletAddress: 'privy-1' },
+        } as Parameters<AccountController['startDeviceRotation']>[0],
+        { grantId: 'grant-1', hardwarePublicKey: '03ff' },
+      ),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: 'DEVICE_NOT_ATTESTED' },
+    });
+    expect(start).not.toHaveBeenCalled();
   });
 });
 
@@ -237,6 +282,7 @@ describe('AccountController recovery key changes', () => {
     insert(row: NewRecoverySigner): Promise<RecoverySignerRow> {
       const created: RecoverySignerRow = {
         id: `signer-${++this.seq}`,
+        wrappedDataKey: row.wrappedDataKey ?? null,
         userId: row.userId,
         address: row.address,
         channel: row.channel,
@@ -294,6 +340,7 @@ describe('AccountController recovery key changes', () => {
   function recoveryController() {
     const store = new SerialisingStore();
     const vault = {
+      currentKeyId: 'test',
       seal: (secret: Uint8Array) =>
         Promise.resolve({
           ciphertext: Buffer.from(secret).toString('base64'),
@@ -336,6 +383,7 @@ describe('AccountController recovery key changes', () => {
       {} as unknown as RecoveryChallengeService,
       {} as unknown as DeviceRotationService,
       {} as unknown as PrimaryRotationService,
+      {} as unknown as SpendingLimitChangeService,
     );
     return { controller, recovery, store, claimed };
   }
@@ -370,5 +418,91 @@ describe('AccountController recovery key changes', () => {
     const error = (refused as PromiseRejectedResult).reason as HttpException;
     expect(error).toBeInstanceOf(HttpException);
     expect(error.getStatus()).toBe(409);
+  });
+});
+
+describe('AccountController Spending Limit changes', () => {
+  function limitController(changes: Partial<SpendingLimitChangeService>) {
+    return new AccountController(
+      {} as unknown as AccountService,
+      {} as unknown as AttestationService,
+      {} as unknown as SweepService,
+      {} as unknown as ProvisioningService,
+      {} as unknown as SpendingLimitService,
+      {} as unknown as TurnkeyService,
+      {} as unknown as AccountChangeService,
+      {} as unknown as RecoveryService,
+      {} as unknown as RecoveryChangeService,
+      {} as unknown as RecoveryChallengeService,
+      {} as unknown as DeviceRotationService,
+      {} as unknown as PrimaryRotationService,
+      changes as SpendingLimitChangeService,
+    );
+  }
+
+  it('passes the new amount through to the change', async () => {
+    const start = jest.fn().mockResolvedValue({ done: false, step: 'propose' });
+    const controller = limitController({ start });
+
+    await controller.startSpendingLimitChange(request(), {
+      maxPerPeriod: '250000000',
+    });
+
+    expect(start).toHaveBeenCalledWith(USER_ID, { maxPerPeriod: '250000000' });
+  });
+
+  it('passes a removal through as a removal', async () => {
+    const start = jest.fn().mockResolvedValue({ done: false, step: 'propose' });
+    const controller = limitController({ start });
+
+    await controller.startSpendingLimitChange(request(), { remove: true });
+
+    expect(start).toHaveBeenCalledWith(USER_ID, { remove: true });
+  });
+
+  it('answers 409 when another change already holds the next index', async () => {
+    const controller = limitController({
+      start: jest
+        .fn()
+        .mockRejectedValue(
+          new SpendingLimitChangeError(
+            'another change to this Account is already in flight',
+          ),
+        ),
+    });
+
+    // The Consumer's to act on: finish or reject the other change and come
+    // back. Flattened into a 500 the app would have nothing to say.
+    await expect(
+      controller.startSpendingLimitChange(request(), { remove: true }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        code: 'SPENDING_LIMIT_CHANGE_REFUSED',
+        message: 'another change to this Account is already in flight',
+      },
+    });
+  });
+
+  it('returns the signature of a submitted step', async () => {
+    const submit = jest.fn().mockResolvedValue('sig-1');
+    const controller = limitController({ submit });
+
+    await expect(
+      controller.submitSpendingLimitChangeStep(request(), {
+        signedTxBase64: 'signed',
+      }),
+    ).resolves.toEqual({ signature: 'sig-1' });
+    expect(submit).toHaveBeenCalledWith(USER_ID, 'signed');
+  });
+
+  it('reconciles on next rather than trusting the client', async () => {
+    const next = jest.fn().mockResolvedValue({ done: true });
+    const controller = limitController({ next });
+
+    await expect(
+      controller.nextSpendingLimitChangeStep(request()),
+    ).resolves.toEqual({ done: true });
+    expect(next).toHaveBeenCalledWith(USER_ID);
   });
 });
