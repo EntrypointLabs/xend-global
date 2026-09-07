@@ -70,7 +70,7 @@ npm run dev:mobile    # expo start in its own terminal, so the keyboard shortcut
 
 | Service          | Port                                       | Where it is set                                                                                                                        |
 | ---------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend          | 8000                                       | `PORT` in `apps/backend/.env.example`; `scripts/dev.mjs` assumes 8000 when unset                                                       |
+| Backend          | 8008                                       | `PORT` in `apps/backend/.env.example`, and what `apps/checkout/vite.config.ts` proxies to                                              |
 | Relayer          | 8787                                       | `PORT` in `apps/relayer/.env.example`, the Joi default in `apps/relayer/src/config/config.module.ts`, `docker-compose.yml`             |
 | Checkout         | 5173, or 443 with a `www.xend.global` cert | `apps/checkout/vite.config.ts` serves on whichever mkcert cert is present under `apps/checkout/certs/`; with none, Vite's default 5173 |
 | Metro            | 8081                                       | Expo default; `scripts/dev.mjs` refuses to start if it is taken                                                                        |
@@ -105,7 +105,7 @@ The backend ships as a container built from the repo root, because it imports
 docker build -f apps/backend/Dockerfile -t xend-backend .
 ```
 
-It runs as `node`, listens on `PORT` (8000 by default), and answers
+It runs as `node`, listens on `PORT` (8008 in the example env), and answers
 `GET /health` with the state of Postgres and Redis. The image carries its own
 migrations, so apply them before the first request reaches a new release:
 
