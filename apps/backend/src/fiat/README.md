@@ -104,11 +104,19 @@ The simulator currency cards now show available funds (settled minus reserved), 
 
 `banking/accounts.service.ts` now calls a credentialed sandbox adapter and stores its actual response per owner/provider/environment. GET/POST `/fiat/banking/accounts` are Consumer-authenticated. Local simulator mode uses the explicit `/dev/fiat/banking/accounts` route and its loopback-only guard; this still calls the provider sandbox, never the unified simulator. In the mobile test screen select **Provider sandbox: Naira account**. The standalone account screen also appears in the normal fiat screen.
 
-Configure `FIAT_NGN_ACCOUNT_PROVIDER=nomba` and enable Nomba in `FIAT_BANKING_PROVIDERS`. Set `NOMBA_SANDBOX_CLIENT_ID`, `NOMBA_SANDBOX_CLIENT_SECRET`, `NOMBA_SANDBOX_ACCOUNT_ID` from the official sandbox dashboard. Nomba OAuth is acquired/refreshed on the server. Alternatively select `paga` with the existing three `PAGA_SANDBOX_*` credentials. No keys appear in the mobile bundle.
+Paga is the current local integration target; Nomba is on hold. Select `FIAT_BANKING_PROVIDERS=paga` and `FIAT_NGN_ACCOUNT_PROVIDER=paga` with the three `PAGA_SANDBOX_*` credentials in the ignored backend environment. No keys appear in the mobile bundle. Before creating accounts, run this read-only check from the repository root:
+
+```sh
+node --env-file=apps/backend/.env apps/backend/scripts/probe-paga-adapter.cjs
+```
+
+Once an owned sandbox account exists, append `--account=ACCOUNT_REFERENCE` to verify retrieval and its actual balance. The script only permits the two official sandbox hosts and read operations, and omits identities, balances and secrets from its report.
 
 Migrations0043 and0044 have been applied locally: ownership uniqueness, persisted create claims, and an active external account number cannot be assigned to two users for one provider/environment. Unknown outcomes stay `needs_attention`; a page refresh never repeats account creation. The optional BVN and submitted identity fields are forwarded to the provider but are not stored in this provisioning table. A returned account does not establish regulatory eligibility or prove deposits/payouts settle.
 
-Nine HTTP/PostgreSQL tests exercise persistence and request concurrency with controlled provider responses. Current local official-provider credential fields remain empty, so the running endpoint returns `available:false`; no official sandbox account has yet been created. This boundary is visible in the mobile screen.
+HTTP/PostgreSQL tests exercise persistence and request concurrency with controlled provider responses. Configuration presence alone does not prove access: on 2026-09-09 at 22:33 UTC, both tested Paga APIs rejected the configured keys with HTTP 401. No official sandbox account or money movement has been verified. The account endpoint's `available` flag currently describes configured capability, not a successful provider authentication check.
+
+For a timed-out creation, use **Check account status** in the mobile account screen. `POST /fiat/banking/accounts/reconcile` (or its guarded `/dev` equivalent) takes `{accountId}` and reads the provider using the owner's persisted account reference. A matched active account is saved without submitting another creation or changing balances. Unknown accounts, authentication failures and identity/uniqueness conflicts retain `needs_attention`; this action cannot repair a request that never created an account. Concurrent failed reads cannot undo another successful recovery. The current verification is 303 backend fiat tests, including isolated PostgreSQL suites, and 15 mobile contract tests; provider boundaries in automated tests use controlled responses.
 
 ## Observed balances and Paga NGN transfers
 

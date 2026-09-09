@@ -12,6 +12,12 @@ export const CreateNairaAccountBody = z
       .optional(),
   })
   .strict();
+export const ReconcileNairaAccountBody = z
+  .object({ accountId: z.string().uuid() })
+  .strict();
+export type ReconcileNairaAccountInput = z.infer<
+  typeof ReconcileNairaAccountBody
+>;
 export type CreateNairaAccountInput = z.infer<typeof CreateNairaAccountBody>;
 export interface NairaAccountRecord {
   id: string;

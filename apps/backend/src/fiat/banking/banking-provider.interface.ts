@@ -40,6 +40,13 @@ export interface BankAccountProvider {
     bvn?: string;
   }): Promise<BankAccount>;
 }
+/** Authenticated read by the stable reference assigned before account creation. */
+export interface BankAccountReader {
+  retrieveAccount(
+    accountReference: string,
+    requestReference: string,
+  ): Promise<BankAccount>;
+}
 /** A customer-scoped balance observation, not an authorization to spend it. */
 export interface BankBalanceReader {
   getBalance(

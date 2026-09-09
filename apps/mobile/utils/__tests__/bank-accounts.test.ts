@@ -6,6 +6,7 @@ describe("provider bank account contract", () => {
         provider: "nomba",
         environment: "sandbox",
         available: false,
+        reconciliationAvailable: false,
         accounts: [],
       }).available
     ).toBe(false);
@@ -33,6 +34,7 @@ describe("provider bank account contract", () => {
       provider: "paga",
       environment: "sandbox",
       available: true,
+      reconciliationAvailable: true,
       accounts: [record],
     };
     expect(BankAccountsSchema.safeParse(envelope).success).toBe(true);

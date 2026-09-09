@@ -16,7 +16,10 @@ import * as schema from '../../db/schema';
 import { BankingRegistry } from './banking.registry';
 import { NairaAccountsService } from './accounts.service';
 import { NairaAccountsController } from './accounts.controller';
-import type { BankAccountProvider } from './banking-provider.interface';
+import type {
+  BankAccountProvider,
+  BankAccountReader,
+} from './banking-provider.interface';
 
 const describePg = process.env.FIAT_PG_TEST_DATABASE_URL
   ? describe
@@ -33,6 +36,10 @@ describePg('per-user naira accounts HTTP + PostgreSQL', () => {
     ReturnType<BankAccountProvider['createAccount']>,
     Parameters<BankAccountProvider['createAccount']>
   >();
+  const retrieveAccount = jest.fn<
+    ReturnType<BankAccountReader['retrieveAccount']>,
+    Parameters<BankAccountReader['retrieveAccount']>
+  >();
   async function start() {
     const module = await Test.createTestingModule({
       controllers: [NairaAccountsController],
@@ -44,6 +51,7 @@ describePg('per-user naira accounts HTTP + PostgreSQL', () => {
           useValue: {
             accountProvisioningReady: () => ready,
             get: () => ({ createAccount }),
+            accountReader: () => (ready ? { retrieveAccount } : null),
           },
         },
         {
@@ -109,6 +117,17 @@ describePg('per-user naira accounts HTTP + PostgreSQL', () => {
     environment = 'test';
     selected = 'paga';
     ready = true;
+    retrieveAccount.mockReset().mockImplementation((reference) =>
+      Promise.resolve({
+        provider: 'paga',
+        reference,
+        currency: 'NGN',
+        custody: 'pooled',
+        bankName: 'Paga',
+        accountNumber: '0123456789',
+        accountName: 'Alice Example',
+      }),
+    );
     createAccount.mockReset().mockImplementation((input) =>
       Promise.resolve({
         provider: selected,
@@ -258,6 +277,173 @@ describePg('per-user naira accounts HTTP + PostgreSQL', () => {
     expect((await pool.query('SELECT * FROM fiat_bank_accounts')).rows).toEqual(
       [],
     );
+  });
+  it('recovers an uncertain owned claim by its persisted reference and never repeats create', async () => {
+    createAccount.mockRejectedValue(new Error('timeout'));
+    const failed = (await create()).body;
+    const record = (await pool.query('SELECT * FROM fiat_bank_accounts'))
+      .rows[0];
+    const recovered = (
+      await http()
+        .post(`${path}/reconcile`)
+        .send({ accountId: failed.id })
+        .expect(201)
+    ).body;
+    expect(recovered).toMatchObject({
+      id: failed.id,
+      status: 'active',
+      account: { reference: record.account_reference },
+    });
+    expect(retrieveAccount).toHaveBeenCalledWith(
+      record.account_reference,
+      expect.stringMatching(/^[a-f0-9-]{36}$/),
+    );
+    await http()
+      .post(`${path}/reconcile`)
+      .send({ accountId: failed.id })
+      .expect(201);
+    await create();
+    expect(retrieveAccount).toHaveBeenCalledTimes(1);
+    expect(createAccount).toHaveBeenCalledTimes(1);
+    expect(
+      (await pool.query('SELECT * FROM fiat_bank_accounts')).rows,
+    ).toHaveLength(1);
+  });
+  it('prevents cross-owner reconciliation and caller-selected references', async () => {
+    createAccount.mockRejectedValue(new Error('timeout'));
+    const failed = (await create()).body;
+    await http()
+      .post(`${path}/reconcile`)
+      .set('x-test-consumer', 'bob')
+      .send({ accountId: failed.id })
+      .expect(404);
+    await http()
+      .post(`${path}/reconcile`)
+      .send({ accountId: failed.id, accountReference: 'unowned' })
+      .expect(400);
+    await http()
+      .post(`${path}/reconcile`)
+      .send({ accountId: 'invalid' })
+      .expect(400);
+    expect(retrieveAccount).not.toHaveBeenCalled();
+  });
+  it.each(['error', 'reference', 'provider', 'currency', 'accountNumber'])(
+    'preserves uncertain claims on %s without storing provider errors',
+    async (failure) => {
+      createAccount.mockRejectedValue(new Error('timeout'));
+      const failed = (await create()).body;
+      const implementation = retrieveAccount.getMockImplementation()!;
+      retrieveAccount.mockImplementation(async (...args) => {
+        if (failure === 'error') throw new Error('private provider response');
+        return { ...(await implementation(...args)), [failure]: 'mismatch' };
+      });
+      expect(
+        (
+          await http()
+            .post(`${path}/reconcile`)
+            .send({ accountId: failed.id })
+            .expect(201)
+        ).body,
+      ).toMatchObject({ status: 'needs_attention', account: null });
+      expect(
+        JSON.stringify(
+          (await pool.query('SELECT * FROM fiat_bank_accounts')).rows,
+        ),
+      ).not.toContain('private provider');
+      expect(createAccount).toHaveBeenCalledTimes(1);
+    },
+  );
+  it('does not activate an external account already assigned to another consumer', async () => {
+    const implementation = createAccount.getMockImplementation()!;
+    createAccount.mockImplementation(async (input) => ({
+      ...(await implementation(input)),
+      accountNumber: '0123456789',
+    }));
+    await create('bob');
+    createAccount.mockRejectedValue(new Error('timeout'));
+    const failed = (await create()).body;
+    expect(
+      (
+        await http()
+          .post(`${path}/reconcile`)
+          .send({ accountId: failed.id })
+          .expect(201)
+      ).body.status,
+    ).toBe('needs_attention');
+    expect(
+      (
+        await pool.query(
+          "SELECT * FROM fiat_bank_accounts WHERE status = 'active'",
+        )
+      ).rows,
+    ).toHaveLength(1);
+  });
+  it('a failed concurrent requery cannot downgrade a successfully activated account', async () => {
+    createAccount.mockRejectedValue(new Error('timeout'));
+    const failed = (await create()).body;
+    let reject!: (reason: Error) => void;
+    retrieveAccount.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, rejectPromise) => {
+          reject = rejectPromise;
+        }),
+    );
+    const pending = http()
+      .post(`${path}/reconcile`)
+      .send({ accountId: failed.id })
+      .expect(201)
+      .then((response) => response);
+    while (!retrieveAccount.mock.calls.length)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    try {
+      expect(
+        (
+          await http()
+            .post(`${path}/reconcile`)
+            .send({ accountId: failed.id })
+            .expect(201)
+        ).body.status,
+      ).toBe('active');
+    } finally {
+      reject(new Error('late provider error'));
+    }
+    expect((await pending).body.status).toBe('active');
+    expect(createAccount).toHaveBeenCalledTimes(1);
+  });
+  it('does not requery a current create and gates unavailable, deselected or production providers', async () => {
+    const created = (await create()).body;
+    await pool.query(
+      "UPDATE fiat_bank_accounts SET status = 'creating', account = NULL",
+    );
+    expect(
+      (
+        await http()
+          .post(`${path}/reconcile`)
+          .send({ accountId: created.id })
+          .expect(201)
+      ).body.status,
+    ).toBe('creating');
+    await pool.query(
+      "UPDATE fiat_bank_accounts SET status = 'needs_attention'",
+    );
+    ready = false;
+    await http()
+      .post(`${path}/reconcile`)
+      .send({ accountId: created.id })
+      .expect(503);
+    ready = true;
+    selected = 'nomba';
+    await http()
+      .post(`${path}/reconcile`)
+      .send({ accountId: created.id })
+      .expect(503);
+    selected = 'paga';
+    environment = 'production';
+    await http()
+      .post(`${path}/reconcile`)
+      .send({ accountId: created.id })
+      .expect(503);
+    expect(retrieveAccount).not.toHaveBeenCalled();
   });
   it('validates identity fields without implying optional BVN waives provider KYC', async () => {
     await http()

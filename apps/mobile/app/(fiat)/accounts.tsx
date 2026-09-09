@@ -69,6 +69,28 @@ export default function NairaAccountScreen() {
       setBusy(false);
     }
   }
+  async function reconcile(accountId: string) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const account = await apiClient.reconcileBankAccount(accountId);
+      if (account.status === "needs_attention") {
+        setError(
+          "The provider has not confirmed this account yet. The original request is retained."
+        );
+      }
+      await accounts.refetch();
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Unable to check account status."
+      );
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  }
   return (
     <ThemedScreen>
       <Stack.Screen options={{ headerShown: false }} />
@@ -91,8 +113,16 @@ export default function NairaAccountScreen() {
             Use provider-approved test details; do not send real money. These
             accounts do not fund the unified simulator.
           </Typography>
-          <ThemedButton variant="quiet" title="Read account balances" onPress={() => router.push("/(fiat)/balances" as Href)} />
-          <ThemedButton variant="quiet" title="Send to another Xend Paga account" onPress={() => router.push("/(fiat)/naira-send" as Href)} />
+          <ThemedButton
+            variant="quiet"
+            title="Read account balances"
+            onPress={() => router.push("/(fiat)/balances" as Href)}
+          />
+          <ThemedButton
+            variant="quiet"
+            title="Send to another Xend Paga account"
+            onPress={() => router.push("/(fiat)/naira-send" as Href)}
+          />
           {accounts.isLoading && <ActivityIndicator />}
           {accounts.isError && (
             <>
@@ -140,10 +170,26 @@ export default function NairaAccountScreen() {
                     </Typography>
                   )}
                   {account.status === "needs_attention" && (
-                    <Typography>
-                      The account request needs reconciliation. We will not
-                      create another account automatically.
-                    </Typography>
+                    <>
+                      <Typography>
+                        The provider has not confirmed this account. Check the
+                        original request to retrieve its account details.
+                      </Typography>
+                      {accounts.data.reconciliationAvailable &&
+                        account.provider === accounts.data.provider && (
+                          <ThemedButton
+                            title={
+                              busy
+                                ? "Checking account…"
+                                : "Check account status"
+                            }
+                            disabled={busy}
+                            onPress={() => {
+                              void reconcile(account.id);
+                            }}
+                          />
+                        )}
+                    </>
                   )}
                 </View>
               ))}

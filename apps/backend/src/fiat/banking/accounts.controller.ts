@@ -3,8 +3,14 @@ import { ConsumerAuthGuard } from '../../auth/consumer-auth.guard';
 import { ZodValidationPipe } from '../../common/zod-validation.pipe';
 import { UnifiedLocalGuard } from '../unified/unified-local.guard';
 import { NairaAccountsService } from './accounts.service';
-import { CreateNairaAccountBody } from './accounts.types';
-import type { CreateNairaAccountInput } from './accounts.types';
+import {
+  CreateNairaAccountBody,
+  ReconcileNairaAccountBody,
+} from './accounts.types';
+import type {
+  CreateNairaAccountInput,
+  ReconcileNairaAccountInput,
+} from './accounts.types';
 
 @Controller('fiat/banking/accounts')
 @UseGuards(ConsumerAuthGuard)
@@ -13,6 +19,14 @@ export class NairaAccountsController {
   @Get()
   list(@Req() req: { user: { userId: string } }) {
     return this.accounts.list(req.user.userId);
+  }
+  @Post('reconcile')
+  reconcile(
+    @Req() req: { user: { userId: string } },
+    @Body(new ZodValidationPipe(ReconcileNairaAccountBody))
+    input: ReconcileNairaAccountInput,
+  ) {
+    return this.accounts.reconcile(req.user.userId, input.accountId);
   }
   @Post()
   create(
@@ -32,6 +46,14 @@ export class NairaAccountsLocalController {
   @Get()
   list(@Req() req: { user: { userId: string } }) {
     return this.accounts.list(req.user.userId);
+  }
+  @Post('reconcile')
+  reconcile(
+    @Req() req: { user: { userId: string } },
+    @Body(new ZodValidationPipe(ReconcileNairaAccountBody))
+    input: ReconcileNairaAccountInput,
+  ) {
+    return this.accounts.reconcile(req.user.userId, input.accountId);
   }
   @Post()
   create(

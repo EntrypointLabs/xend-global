@@ -1,4 +1,8 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -13,6 +17,7 @@ import type {
 type AccountRow = {
   id: string;
   provider: string;
+  account_reference: string;
   environment: 'sandbox';
   status: NairaAccountRecord['status'];
   account: NairaAccountRecord['account'];
@@ -69,8 +74,64 @@ export class NairaAccountsService {
       provider,
       environment: 'sandbox' as const,
       available: this.available(provider),
+      reconciliationAvailable:
+        this.available(provider) && !!this.registry.accountReader(provider!),
       accounts: (result.rows as AccountRow[]).map(view),
     };
+  }
+
+  /** Requery the retained claim only. A failed creation is never resubmitted here. */
+  async reconcile(ownerId: string, accountId: string) {
+    await this.list(ownerId);
+    const result = await this.db.client.execute(sql`
+      SELECT * FROM fiat_bank_accounts WHERE id = ${accountId} AND owner_id = ${ownerId}
+        AND environment = 'sandbox'
+    `);
+    const row = result.rows[0] as AccountRow | undefined;
+    if (!row) throw new NotFoundException('Account not found.');
+    const reader = this.registry.accountReader(row.provider);
+    if (
+      row.provider !== this.provider() ||
+      !this.available(row.provider) ||
+      !reader
+    )
+      throw new ServiceUnavailableException(
+        'Sandbox account reconciliation is unavailable.',
+      );
+    // In-flight creation must finish or age out before a reconciliation can run.
+    if (row.status !== 'needs_attention') return view(row);
+    try {
+      const account = await reader.retrieveAccount(
+        row.account_reference,
+        randomUUID(),
+      );
+      if (
+        account.provider !== row.provider ||
+        account.reference !== row.account_reference ||
+        account.currency !== 'NGN' ||
+        !/^\d{10}$/.test(account.accountNumber) ||
+        !account.accountName ||
+        !account.bankName ||
+        (account.custody !== 'pooled' && account.custody !== 'individual') ||
+        (row.account &&
+          (account.accountNumber !== row.account.accountNumber ||
+            account.accountName !== row.account.accountName))
+      )
+        throw new Error('BANK_ACCOUNT_RESPONSE_MISMATCH');
+      await this.db.client.execute(sql`
+        UPDATE fiat_bank_accounts SET status = 'active', account = ${JSON.stringify(account)}::jsonb,
+          updated_at = now()
+        WHERE id = ${accountId} AND owner_id = ${ownerId} AND status = 'needs_attention'
+      `);
+    } catch {
+      // Keep the uncertain claim, including after uniqueness conflicts. Never
+      // downgrade an account that a concurrent matched requery already activated.
+    }
+    const current = await this.db.client.execute(sql`
+      SELECT * FROM fiat_bank_accounts WHERE id = ${accountId} AND owner_id = ${ownerId}
+        AND environment = 'sandbox'
+    `);
+    return view(current.rows[0] as AccountRow);
   }
 
   async create(ownerId: string, raw: CreateNairaAccountInput) {

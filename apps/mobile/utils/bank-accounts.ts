@@ -35,5 +35,6 @@ export const BankAccountsSchema = z.object({
   provider: z.enum(["nomba", "paga"]).nullable(),
   environment: z.literal("sandbox"),
   available: z.boolean(),
+  reconciliationAvailable: z.boolean(),
   accounts: z.array(BankAccountRecordSchema),
 });

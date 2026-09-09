@@ -5,6 +5,7 @@ import { NombaSandboxAuth } from './nomba-auth';
 import { PagaProvider } from './paga.provider';
 import type {
   BankAccountProvider,
+  BankAccountReader,
   BankBalanceReader,
   BankUsdValuationReader,
   BankPayoutProvider,
@@ -82,6 +83,28 @@ export class BankingRegistry {
   }
   accountProvisioningReady(name: string): boolean {
     return this.providers.has(name) && this.authenticated.has(name);
+  }
+  accountReader(name: string): BankAccountReader | null {
+    if (!this.authenticated.has(name)) return null;
+    const provider = this.providers.get(name);
+    if (!(provider instanceof PagaProvider)) return null;
+    return {
+      async retrieveAccount(accountReference, requestReference) {
+        const account = await provider.retrieveAccount(
+          accountReference,
+          requestReference,
+        );
+        return {
+          provider: provider.name,
+          reference: account.accountReference,
+          accountNumber: account.accountNumber,
+          accountName: account.accountName,
+          bankName: 'Paga',
+          currency: 'NGN',
+          custody: 'pooled',
+        };
+      },
+    };
   }
   balanceReader(name: string): BankBalanceReader | null {
     // Nomba virtual accounts route collections to a parent account. Returning

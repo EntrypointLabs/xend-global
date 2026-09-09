@@ -45,3 +45,13 @@ Both providers offer testing without real-money expenditure:
 - [Nomba environments](https://developer.nomba.com/docs/api-basics/environment) documents separate sandbox and production client credentials generated through its dashboard. Authenticated sandbox testing requires the corresponding client ID, client secret and account ID. Anonymous fixture behaviour does not establish authenticated tenant persistence.
 
 The current banking adapters are explicitly sandbox-only; configuring keys alone does not enable live transfers. Paga subsidiary accounts currently document NGN only. The [Sui/Paga announcement](https://www.sui.io/blog/shaping-the-way-money-moves-across-continents-with-sui-and-paga) supports pursuing USDsui API access, but does not supply the executable conversion and external Solana USDC settlement contract required by Xend. Request the quote/order/status API, tenant entitlement, fee semantics, supported networks and test funding procedure before connecting it to real ledger execution.
+
+## Paga credentialed probe: 2026-09-09, 22:33 UTC
+
+The three Paga sandbox credential fields are now populated locally. The local selection is `FIAT_BANKING_PROVIDERS=paga` and `FIAT_NGN_ACCOUNT_PROVIDER=paga`; Nomba is on hold pending CAC. This supersedes the earlier observation that Paga credentials were absent.
+
+`apps/backend/scripts/probe-paga-adapter.cjs` executed the actual Paga adapter against official sandbox hosts. Both the Business `getBanks` call and the Collect subsidiary-account negative read returned HTTP 401. A separate sanitized inspection of the Collect response reported `invalid username or password`. No account creation, top-up, payout or transfer was submitted. The keys may be invalid or belong to another environment; the response alone does not distinguish these causes. No live endpoint was probed.
+
+The probe is read-only and logs neither credentials nor customer/provider payloads. Its optional `--account` argument checks retrieval and balance for an existing owned sandbox account. It never treats a rejected or nonexistent-account response as successful provisioning or settlement.
+
+Current gaps remain: valid sandbox authentication; two persisted per-user accounts and funded sandbox balances; verified NGN debit/credit and bank payout; a contracted, executable NGN↔USDC converter; signed Solana execution; reconciled unified holdings and unified send. The consumer simulator is separate from these provider balances. Future Pay With Xend must consume the same verified funding and settlement evidence, rather than infer spendability from the simulator or this access probe.

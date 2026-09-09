@@ -668,6 +668,9 @@ class BackendClient {
   async bankAccounts() {
     return BankAccountsSchema.parse(await this.request<unknown>("/fiat/banking/accounts", { auth: true }));
   }
+  async reconcileBankAccount(accountId: string) {
+    return BankAccountRecordSchema.parse(await this.request<unknown>("/fiat/banking/accounts/reconcile", { auth: true, method: "POST", body: JSON.stringify({ accountId }) }));
+  }
   async createBankAccount(input: BankAccountInput) {
     return BankAccountRecordSchema.parse(await this.request<unknown>("/fiat/banking/accounts", { auth: true, method: "POST", body: JSON.stringify(input) }));
   }
@@ -718,7 +721,7 @@ class BackendClient {
     options: RequestInit & { auth?: boolean } = {}
   ): Promise<T> {
     try {
-      const localSimulation = localFiatDemo && (/^\/fiat\/unified(?:[/?]|$)/.test(endpoint) || endpoint === "/fiat/banking/accounts" || endpoint === "/fiat/balances" || endpoint === "/fiat/banking/transfers" || endpoint === "/fiat/banking/transfers/quotes");
+      const localSimulation = localFiatDemo && (/^\/fiat\/unified(?:[/?]|$)/.test(endpoint) || endpoint === "/fiat/banking/accounts" || endpoint === "/fiat/banking/accounts/reconcile" || endpoint === "/fiat/balances" || endpoint === "/fiat/banking/transfers" || endpoint === "/fiat/banking/transfers/quotes");
       if (localSimulation) options = { ...options, auth: false, headers: { ...options.headers, "x-xend-local-simulation": "1" } };
       const url = `${this.baseUrl}${localSimulation ? "/dev" : ""}${endpoint}`;
 
