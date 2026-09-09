@@ -19,6 +19,21 @@ export const USDC_MINT_BY_CLUSTER = {
           .valid('development', 'production', 'test')
           .required(),
         PORT: Joi.number().default(8000),
+        // Fiat execution remains simulated; production exposes no test routes.
+        FIAT_ENABLED_PROVIDERS: Joi.string().allow('').default(''),
+        FIAT_LOCAL_DEMO: Joi.boolean().default(false),
+        FIAT_UNIFIED_SIMULATION: Joi.boolean().default(false),
+        NOMBA_SANDBOX_CLIENT_ID: Joi.string().allow('').optional(),
+        NOMBA_SANDBOX_CLIENT_SECRET: Joi.string().allow('').optional(),
+        NOMBA_SANDBOX_ACCOUNT_ID: Joi.string().allow('').optional(),
+        FIAT_NGN_ACCOUNT_PROVIDER: Joi.string().valid('nomba', 'paga').allow('').default(''),
+        FIAT_BANKING_PROVIDERS: Joi.string().allow('').default(''),
+        PAGA_SANDBOX_PUBLIC_KEY: Joi.string().allow('').optional(),
+        PAGA_SANDBOX_SECRET_KEY: Joi.string().allow('').optional(),
+        PAGA_SANDBOX_HASH_KEY: Joi.string().allow('').optional(),
+        FONBNK_ENV: Joi.string().valid('sandbox').optional(),
+        FONBNK_CLIENT_ID: Joi.string().allow('').optional(),
+        FONBNK_CLIENT_SECRET: Joi.string().allow('').optional(),
         // Express trust-proxy setting: behind one load balancer in production
         // (so client IPs and rate limits come from X-Forwarded-For), off
         // everywhere else so a spoofed header cannot forge an address.

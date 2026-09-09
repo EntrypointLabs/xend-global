@@ -288,6 +288,41 @@
       "when": 1788801141424,
       "tag": "0039_spending_limit_staged_change",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1788885236359,
+      "tag": "0041_consumer_fiat_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1788962860614,
+      "tag": "0042_unified_fiat_simulation",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1788990517467,
+      "tag": "0043_bank_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1788990667035,
+      "tag": "0044_bank_account_uniqueness",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1788991293519,
+      "tag": "0045_bank_transfers",
+      "breakpoints": true
     }
   ]
 }

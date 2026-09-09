@@ -14,6 +14,58 @@ import {
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { createId } from '@paralleldrive/cuid2';
+import type { FiatQuote, FiatOrder } from '../fiat/fiat.types';
+
+// Provider references stay opaque; changing an adapter never changes the schema.
+export const fiatQuotes = pgTable('fiat_quotes', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id),
+  payload: jsonb('payload').$type<FiatQuote>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+export const fiatOrders = pgTable(
+  'fiat_orders',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    quoteId: text('quote_id')
+      .notNull()
+      .references(() => fiatQuotes.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    providerReference: text('provider_reference'),
+    payload: jsonb('payload').$type<FiatOrder>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex('fiat_order_request_unique').on(t.userId, t.idempotencyKey),
+    uniqueIndex('fiat_order_quote_unique').on(t.quoteId),
+    index('fiat_order_owner_idx').on(t.userId, t.createdAt),
+  ],
+);
+export const fiatOrderEvents = pgTable(
+  'fiat_order_events',
+  {
+    id: text('id').primaryKey(),
+    orderId: text('order_id')
+      .notNull()
+      .references(() => fiatOrders.id),
+    eventKey: text('event_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [uniqueIndex('fiat_order_event_unique').on(t.orderId, t.eventKey)],
+);
 
 // ---------- Enums ----------
 //
@@ -1435,3 +1487,42 @@ export const refundsRelations = relations(refunds, ({ one }) => ({
     references: [merchants.id],
   }),
 }));
+
+// Isolated developer simulation: never reconciled into consumer bank/chain balances.
+export const fiatUnifiedWallets = pgTable('fiat_unified_wallets', {
+  ownerId: text('owner_id').primaryKey().references(() => users.id),
+  holdings: jsonb('holdings').notNull(),
+  records: jsonb('records').notNull().default(sql`'[]'::jsonb`),
+});
+
+// Provider-created bank coordinates; separate from reconciled consumer holdings.
+export const fiatBankAccounts = pgTable('fiat_bank_accounts', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull().references(() => users.id),
+  provider: text('provider').notNull(),
+  environment: text('environment').notNull(),
+  status: text('status').notNull(),
+  accountReference: text('account_reference').notNull(),
+  account: jsonb('account'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('fiat_bank_accounts_owner_provider_env_key').on(table.ownerId, table.provider, table.environment),
+  uniqueIndex('fiat_bank_accounts_provider_reference_key').on(table.provider, table.environment, table.accountReference),
+  uniqueIndex('fiat_bank_accounts_active_number_key')
+    .on(table.provider, table.environment, sql`(${table.account}->>'accountNumber')`)
+    .where(sql`${table.status} = 'active'`),
+]);
+
+// Durable sandbox subsidiary transfers; separate from production execution journal.
+export const fiatBankTransfers = pgTable('fiat_bank_transfers', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull().references(() => users.id),
+  sourceAccountId: text('source_account_id').notNull().references(() => fiatBankAccounts.id),
+  destinationAccountId: text('destination_account_id').notNull().references(() => fiatBankAccounts.id),
+  idempotencyKey: text('idempotency_key'),
+  record: jsonb('record').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('fiat_bank_transfers_owner_key').on(table.ownerId, table.idempotencyKey),
+]);

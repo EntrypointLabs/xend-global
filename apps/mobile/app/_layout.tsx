@@ -1,3 +1,4 @@
+import { localFiatDemo } from "@/utils/local-fiat-demo";
 import React, { useEffect, useMemo, useState } from "react";
 import { Redirect, Slot, useSegments } from "expo-router";
 import {
@@ -140,6 +141,11 @@ function AuthLayout() {
     ),
     [colorScheme]
   );
+
+  if (localFiatDemo) {
+    if (segments[0] === "(fiat)" && (segments[1] === "unified" || segments[1] === "accounts" || segments[1] === "balances" || segments[1] === "naira-send")) return screens;
+    if (!isAuthenticated) return <Redirect href="/(fiat)/unified" withAnchor />;
+  }
 
   if (isAuthenticated === null) {
     return <LoadingScreen />;
