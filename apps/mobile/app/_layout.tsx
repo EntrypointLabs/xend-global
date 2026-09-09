@@ -116,7 +116,7 @@ if (SENTRY_ENABLED) {
 }
 
 function AuthLayout() {
-  const segments = useSegments();
+  const segments: readonly string[] = useSegments();
   const { isAuthenticated, needsContactEmail } = useAuth();
   const { isLocked, isObscured } = useAppLock();
   const colorScheme = useColorScheme();
