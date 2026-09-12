@@ -7,7 +7,12 @@ export function useUnifiedFiat(displayCurrency: "USD" | "NGN") {
   const { isAuthenticated } = useAuth();
   const userId = useUserId();
   return useQuery({
-    queryKey: ["fiat", "unified", localFiatDemo ? "local-simulation" : userId, displayCurrency],
+    queryKey: [
+      "fiat",
+      "unified",
+      localFiatDemo ? "local-simulation" : userId,
+      displayCurrency,
+    ],
     queryFn: () => apiClient.unifiedFiat(displayCurrency),
     enabled: localFiatDemo || Boolean(isAuthenticated && userId),
     refetchInterval: 5000,

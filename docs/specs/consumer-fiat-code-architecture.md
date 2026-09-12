@@ -86,16 +86,16 @@ KYC service stores Xend verification and provider-specific eligibility separatel
 
 Planned tables in the existing Drizzle schema:
 
-| Table | Responsibility / key constraints |
-| --- | --- |
-| `fiat_quotes` | Owner, route, normalized amounts/fees/expiry, provider reference; immutable snapshot |
-| `fiat_orders` | Owner, kind, quote/account/beneficiary snapshot, provider/environment, version, status, linked chain Activity; unique owner + client idempotency key |
-| `fiat_operations` | Durable create/confirm/return/broadcast attempt, request hash, external reference, status, retry time and lease; unique order + operation identity |
-| `fiat_provider_events` | Verified durable inbox; unique provider + environment + event ID; processing status and retry metadata |
-| `virtual_accounts` | Owner, provider account reference, kind, expiry/lifecycle and destination; unique provider + environment + account reference |
-| `fiat_receipts` | One incoming receipt per provider transfer ID; links permanent account to individual conversion order; unique provider + environment + receipt ID |
-| `fiat_preferences` | Conversion policy/version and explicit consent time; applies to future uncommitted receipts |
-| `verification_profiles` | Consumer/provider applicant, level, status, expiry; authoritative webhook/poll revision |
+| Table                   | Responsibility / key constraints                                                                                                                     |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fiat_quotes`           | Owner, route, normalized amounts/fees/expiry, provider reference; immutable snapshot                                                                 |
+| `fiat_orders`           | Owner, kind, quote/account/beneficiary snapshot, provider/environment, version, status, linked chain Activity; unique owner + client idempotency key |
+| `fiat_operations`       | Durable create/confirm/return/broadcast attempt, request hash, external reference, status, retry time and lease; unique order + operation identity   |
+| `fiat_provider_events`  | Verified durable inbox; unique provider + environment + event ID; processing status and retry metadata                                               |
+| `virtual_accounts`      | Owner, provider account reference, kind, expiry/lifecycle and destination; unique provider + environment + account reference                         |
+| `fiat_receipts`         | One incoming receipt per provider transfer ID; links permanent account to individual conversion order; unique provider + environment + receipt ID    |
+| `fiat_preferences`      | Conversion policy/version and explicit consent time; applies to future uncommitted receipts                                                          |
+| `verification_profiles` | Consumer/provider applicant, level, status, expiry; authoritative webhook/poll revision                                                              |
 
 Use PostgreSQL row version checks/locks and durable operation claims with the existing scheduled-worker approach. No new message broker is required. Remote calls run outside database locks. Persist intent before the call; persist the response after it. On an ambiguous timeout, reconcile by external reference/idempotency key before retry. If a provider cannot deduplicate or look up an uncertain write, stop for reconciliation rather than issue another payment.
 
@@ -152,16 +152,16 @@ Meaningful automated tests: duplicate create/submit, changed idempotency payload
 
 The founder supplied the complete server-to-server test credential pair after the initial unauthenticated probes below. It authenticated successfully against sandbox. Credentials are in ignored backend `.env`, not this document. This supersedes the earlier missing-credentials blocker.
 
-| Test | Observed result |
-| --- | --- |
-| Signed sandbox discovery | NGN bank deposits/payouts enabled; `SOLANA_USDC` deposits/payouts enabled. Sandbox mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`, not mainnet USDC. |
-| NGN → Solana USDC limits | NGN 1,432–715,513, whole-naira step; crypto USD-equivalent 1–500. Snapshot only. |
-| NGN 10,000 quote | Deposit fee reported NGN 250; payout 6.987995 sandbox USDC. Quote ID `6aa02fbbac337e846499f942`; expiry 2026-09-08T16:24:35.556Z. Manual deposit transfer type. |
-| Solana USDC → NGN limits | 1–500 test USDC, step 0.000001; NGN 1,337–667,997. Snapshot only. |
-| 10 test USDC quote | NGN 13,359 after fees; pre-fee 13,702; fee field 342.55. Quote ID `6aa02fbcac337e846499f943`; expiry 2026-09-08T16:24:36.169Z. Preserve quoted amounts; do not independently derive recipient amount from rounded fee display. |
-| Sandbox KYC pre-check, synthetic identity | HTTP 403: account feature not available; contact support. No end-user KYC result obtained. |
-| Sandbox create order, NGN → USDC | HTTP 403 with the same account-feature response. No order created. |
-| Sandbox create order, USDC → NGN | HTTP 403 with the same account-feature response. No order created. |
+| Test                                      | Observed result                                                                                                                                                                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Signed sandbox discovery                  | NGN bank deposits/payouts enabled; `SOLANA_USDC` deposits/payouts enabled. Sandbox mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`, not mainnet USDC.                                                                      |
+| NGN → Solana USDC limits                  | NGN 1,432–715,513, whole-naira step; crypto USD-equivalent 1–500. Snapshot only.                                                                                                                                               |
+| NGN 10,000 quote                          | Deposit fee reported NGN 250; payout 6.987995 sandbox USDC. Quote ID `6aa02fbbac337e846499f942`; expiry 2026-09-08T16:24:35.556Z. Manual deposit transfer type.                                                                |
+| Solana USDC → NGN limits                  | 1–500 test USDC, step 0.000001; NGN 1,337–667,997. Snapshot only.                                                                                                                                                              |
+| 10 test USDC quote                        | NGN 13,359 after fees; pre-fee 13,702; fee field 342.55. Quote ID `6aa02fbcac337e846499f943`; expiry 2026-09-08T16:24:36.169Z. Preserve quoted amounts; do not independently derive recipient amount from rounded fee display. |
+| Sandbox KYC pre-check, synthetic identity | HTTP 403: account feature not available; contact support. No end-user KYC result obtained.                                                                                                                                     |
+| Sandbox create order, NGN → USDC          | HTTP 403 with the same account-feature response. No order created.                                                                                                                                                             |
+| Sandbox create order, USDC → NGN          | HTTP 403 with the same account-feature response. No order created.                                                                                                                                                             |
 
 Quotes expose forced deposit success/invalid outcomes in both directions; the NGN deposit also exposes underpayment/overpayment. Both payout legs expose success/failure controls. Those options were discovered, NOT executed. Synthetic example.com identity, documentation IP and test bank/address fields were used only for sandbox permission probes. No confirmation, bank payment, chain transaction, full KYC submission or real-money movement occurred.
 
@@ -173,14 +173,14 @@ Unsent support request: “Please enable the create-users permission for our Xen
 
 No provider credentials were configured in the current backend/mobile environment or matching process variables. Founder confirmed no accounts yet and is creating access. No personal identity data, account creation, quote creation, trade, transfer or funded order was submitted.
 
-| Probe on 2026-09-08 | Result | What it proves |
-| --- | --- | --- |
-| Fonbnk sandbox `GET /api/v2/currencies` | HTTP 400, signature/client-ID/timestamp validation | Endpoint responds; authentication required |
-| Fonbnk production `GET /api/v2/currencies` | Same HTTP 400 | Production endpoint responds; no route availability established |
-| Fonbnk production `GET /api/v2/order-limits`, NGN bank → SOLANA_USDC crypto | Same HTTP 400 | Exact route request attempted, blocked at authentication |
-| Fonbnk production `GET /api/v2/order-limits`, SOLANA_USDC crypto → NGN bank | Same HTTP 400 | Reverse route request attempted, blocked at authentication |
-| Breet `GET https://api.breet.io/v1/trades/assets`, no credentials | HTTP 400, missing headers | Endpoint responds; asset/corridor availability not established |
-| Bread documented `GET https://api.bread.africa/tokens` | TLS hostname mismatch, curl exit 60; no HTTP response | Cannot safely use this documented host from this environment yet; confirm canonical host. Certificate verification was not bypassed. |
+| Probe on 2026-09-08                                                         | Result                                                | What it proves                                                                                                                       |
+| --------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Fonbnk sandbox `GET /api/v2/currencies`                                     | HTTP 400, signature/client-ID/timestamp validation    | Endpoint responds; authentication required                                                                                           |
+| Fonbnk production `GET /api/v2/currencies`                                  | Same HTTP 400                                         | Production endpoint responds; no route availability established                                                                      |
+| Fonbnk production `GET /api/v2/order-limits`, NGN bank → SOLANA_USDC crypto | Same HTTP 400                                         | Exact route request attempted, blocked at authentication                                                                             |
+| Fonbnk production `GET /api/v2/order-limits`, SOLANA_USDC crypto → NGN bank | Same HTTP 400                                         | Reverse route request attempted, blocked at authentication                                                                           |
+| Breet `GET https://api.breet.io/v1/trades/assets`, no credentials           | HTTP 400, missing headers                             | Endpoint responds; asset/corridor availability not established                                                                       |
+| Bread documented `GET https://api.bread.africa/tokens`                      | TLS hostname mismatch, curl exit 60; no HTTP response | Cannot safely use this documented host from this environment yet; confirm canonical host. Certificate verification was not bypassed. |
 
 These are access probes, not passing payment tests. No live quote or conversion succeeded. Bread's result is an observed connection issue, not a claim its whole service is down.
 
@@ -192,8 +192,18 @@ Example quote body for a NGN 10,000 discovery test, adjusted to live limits (not
 
 ```json
 {
-  "deposit": { "paymentChannel": "bank", "currencyType": "fiat", "currencyCode": "NGN", "countryIsoCode": "NG", "amount": 10000 },
-  "payout": { "paymentChannel": "crypto", "currencyType": "crypto", "currencyCode": "SOLANA_USDC" }
+  "deposit": {
+    "paymentChannel": "bank",
+    "currencyType": "fiat",
+    "currencyCode": "NGN",
+    "countryIsoCode": "NG",
+    "amount": 10000
+  },
+  "payout": {
+    "paymentChannel": "crypto",
+    "currencyType": "crypto",
+    "currencyCode": "SOLANA_USDC"
+  }
 }
 ```
 

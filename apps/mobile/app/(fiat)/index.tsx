@@ -37,7 +37,7 @@ export default function FiatScreen() {
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   const createKey = useRef<string | null>(null);
   const eventKeys = useRef<Record<string, string>>({});
   useEffect(() => {
@@ -126,9 +126,23 @@ export default function FiatScreen() {
               ? "Convert a bank transfer into USDC in your Account."
               : "Convert USDC from your Account into naira."}
           </Typography>
-          {__DEV__ && <ThemedButton variant="quiet" title="Test unified NGN + USDC balance" onPress={() => router.push("/(fiat)/unified" as Href)} />}
-          <ThemedButton variant="quiet" title="Naira account (provider sandbox)" onPress={() => router.push("/(fiat)/accounts" as Href)} />
-          <ThemedButton variant="quiet" title="Read account balances" onPress={() => router.push("/(fiat)/balances" as Href)} />
+          {__DEV__ && (
+            <ThemedButton
+              variant="quiet"
+              title="Test unified NGN + USDC balance"
+              onPress={() => router.push("/(fiat)/unified" as Href)}
+            />
+          )}
+          <ThemedButton
+            variant="quiet"
+            title="Naira account (provider sandbox)"
+            onPress={() => router.push("/(fiat)/accounts" as Href)}
+          />
+          <ThemedButton
+            variant="quiet"
+            title="Read account balances"
+            onPress={() => router.push("/(fiat)/balances" as Href)}
+          />
           {routes.isLoading && <ActivityIndicator />}
           {routes.isError && (
             <ThemedButton

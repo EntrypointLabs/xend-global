@@ -2,20 +2,20 @@
 
 Date: 2026-09-08, approximately 21:54–21:56 UTC. Actual HTTP probes, no supplied credentials, no production mutations and no real funding. Reproduce with `node apps/backend/scripts/probe-public-fiat.mjs`. Script outputs redacted summaries; it does not load environment files or enable providers.
 
-| Provider / request | Observed result | What it proves |
-| --- | --- | --- |
-| Nomba POST sandbox /v1/accounts/virtual | HTTP 200, account-shaped response, NGN, echoed reference | No-auth creation response available, not proven persistent customer account |
-| Nomba GET virtual account just returned | Different account number and demo name | Read-back did not establish persistence |
-| Nomba POST sandbox /v2/transfers/bank, nine-digit account | HTTP 422, requires ten digits | Input validation works; published quickstart's nine-digit example fails |
-| Nomba same endpoint, synthetic ten-digit account | HTTP 200, PENDING_BILLING | Request accepted by test endpoint only |
-| Nomba exact retry with same merchantTxRef | Different transaction ID, PENDING_BILLING | No reliable idempotency demonstrated |
-| Nomba GET single transaction with documented transactionRef | SUCCESS with matching ID but unrelated merchant reference | Cannot trust this alone as persisted settlement |
-| Nomba same requery with never-created synthetic reference | SUCCESS, echoes nonexistent ID | Strong evidence of fixture-style responses; not an end-to-end transfer test |
-| Nomba GET sandbox /v1/transfers/bank | System error JSON code 500; HTTP status not captured in initial call | Public bank-directory route did not succeed in that probe |
-| Paga GET beta-collect.paga.com/banks | HTTP 401, Error validating hash | Access requires signing/authentication |
-| Flutterwave GET developersandbox-api.flutterwave.com/banks?country=NG | HTTP 401, UNAUTHORIZED / 10401 | No anonymous access on tested endpoint |
-| Paystack GET api.paystack.co/bank?country=nigeria | HTTP 200, bank directory | Public read-only metadata accessible |
-| Paystack GET api.paystack.co/dedicated_account | HTTP 401, No Authorization Header was found | Account resource needs credentials |
+| Provider / request                                                    | Observed result                                                      | What it proves                                                              |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Nomba POST sandbox /v1/accounts/virtual                               | HTTP 200, account-shaped response, NGN, echoed reference             | No-auth creation response available, not proven persistent customer account |
+| Nomba GET virtual account just returned                               | Different account number and demo name                               | Read-back did not establish persistence                                     |
+| Nomba POST sandbox /v2/transfers/bank, nine-digit account             | HTTP 422, requires ten digits                                        | Input validation works; published quickstart's nine-digit example fails     |
+| Nomba same endpoint, synthetic ten-digit account                      | HTTP 200, PENDING_BILLING                                            | Request accepted by test endpoint only                                      |
+| Nomba exact retry with same merchantTxRef                             | Different transaction ID, PENDING_BILLING                            | No reliable idempotency demonstrated                                        |
+| Nomba GET single transaction with documented transactionRef           | SUCCESS with matching ID but unrelated merchant reference            | Cannot trust this alone as persisted settlement                             |
+| Nomba same requery with never-created synthetic reference             | SUCCESS, echoes nonexistent ID                                       | Strong evidence of fixture-style responses; not an end-to-end transfer test |
+| Nomba GET sandbox /v1/transfers/bank                                  | System error JSON code 500; HTTP status not captured in initial call | Public bank-directory route did not succeed in that probe                   |
+| Paga GET beta-collect.paga.com/banks                                  | HTTP 401, Error validating hash                                      | Access requires signing/authentication                                      |
+| Flutterwave GET developersandbox-api.flutterwave.com/banks?country=NG | HTTP 401, UNAUTHORIZED / 10401                                       | No anonymous access on tested endpoint                                      |
+| Paystack GET api.paystack.co/bank?country=nigeria                     | HTTP 200, bank directory                                             | Public read-only metadata accessible                                        |
+| Paystack GET api.paystack.co/dedicated_account                        | HTTP 401, No Authorization Header was found                          | Account resource needs credentials                                          |
 
 An initial Nomba requery used the wrong parameter `transactionId`; discard that result. The corrected `transactionRef` and nonexistent-reference control above establish the limitation. Do not poll unrelated fixture IDs or expose sample identity data. No callbacks, real receiving deposits, production approvals, authenticated tenant isolation, refunds or actual USDC conversion were tested.
 

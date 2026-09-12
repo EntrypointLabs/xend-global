@@ -127,7 +127,11 @@ export default function UnifiedFiatScreen() {
             title="Provider sandbox: Naira account"
             onPress={() => router.push("/(fiat)/accounts" as Href)}
           />
-          <ThemedButton variant="quiet" title="Read provider and chain balances" onPress={() => router.push("/(fiat)/balances" as Href)} />
+          <ThemedButton
+            variant="quiet"
+            title="Read provider and chain balances"
+            onPress={() => router.push("/(fiat)/balances" as Href)}
+          />
           {snapshot.isLoading && <ActivityIndicator />}
           {snapshot.isError && (
             <>

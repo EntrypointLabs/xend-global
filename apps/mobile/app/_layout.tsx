@@ -143,7 +143,14 @@ function AuthLayout() {
   );
 
   if (localFiatDemo) {
-    if (segments[0] === "(fiat)" && (segments[1] === "unified" || segments[1] === "accounts" || segments[1] === "balances" || segments[1] === "naira-send")) return screens;
+    if (
+      segments[0] === "(fiat)" &&
+      (segments[1] === "unified" ||
+        segments[1] === "accounts" ||
+        segments[1] === "balances" ||
+        segments[1] === "naira-send")
+    )
+      return screens;
     if (!isAuthenticated) return <Redirect href="/(fiat)/unified" withAnchor />;
   }
 

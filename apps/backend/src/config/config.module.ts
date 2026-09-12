@@ -26,7 +26,10 @@ export const USDC_MINT_BY_CLUSTER = {
         NOMBA_SANDBOX_CLIENT_ID: Joi.string().allow('').optional(),
         NOMBA_SANDBOX_CLIENT_SECRET: Joi.string().allow('').optional(),
         NOMBA_SANDBOX_ACCOUNT_ID: Joi.string().allow('').optional(),
-        FIAT_NGN_ACCOUNT_PROVIDER: Joi.string().valid('nomba', 'paga').allow('').default(''),
+        FIAT_NGN_ACCOUNT_PROVIDER: Joi.string()
+          .valid('nomba', 'paga')
+          .allow('')
+          .default(''),
         FIAT_BANKING_PROVIDERS: Joi.string().allow('').default(''),
         PAGA_SANDBOX_PUBLIC_KEY: Joi.string().allow('').optional(),
         PAGA_SANDBOX_SECRET_KEY: Joi.string().allow('').optional(),

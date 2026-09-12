@@ -14,11 +14,11 @@ Every eligible user should be able to activate a naira account, but account issu
 
 There is no evidenced no-KYC personal NGN account among these providers. The [CBN December 2023 circular](https://www.cbn.gov.ng/Out/2023/PSMD/Circular%20on%20Tier%201%20Wallets%20%26%20Accounts%2C%20Guidance%20Note%20%26%20Profiling%20of%20Customers%27%20Accounts%20%26%20Wallets.pdf) requires electronically validated BVN or NIN for Tier 1, and both for Tiers 2 and 3. Old phone-only descriptions and optional API fields do not override the account-opening requirements.
 
-| Candidate | Published customer requirements / evidence | Interpretation for Xend |
-| --- | --- | --- |
-| Paga | Consumer wallet tiers exist. Persistent collection API lists BVN as optional. | First product-fit inquiry, but embedded consumer wallet onboarding and exact KYC cannot be ranked as easier than Flutterwave without Paga's current partner requirements. Optional BVN is not evidence of no-KYC fiat holding. |
-| Flutterwave | Static NGN virtual-account guide requires NIN or BVN plus customer details. | Lowest clearly documented identity requirement of the compared static-account APIs; still a collection product, not proof of per-user custody. |
-| Paystack | Financial-services DVA validation requires BVN and an existing bank account linked to it. | More customer friction than Flutterwave's documented NIN/BVN route. Crypto/FX use-case eligibility is a separate blocker. |
+| Candidate   | Published customer requirements / evidence                                                | Interpretation for Xend                                                                                                                                                                                                        |
+| ----------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Paga        | Consumer wallet tiers exist. Persistent collection API lists BVN as optional.             | First product-fit inquiry, but embedded consumer wallet onboarding and exact KYC cannot be ranked as easier than Flutterwave without Paga's current partner requirements. Optional BVN is not evidence of no-KYC fiat holding. |
+| Flutterwave | Static NGN virtual-account guide requires NIN or BVN plus customer details.               | Lowest clearly documented identity requirement of the compared static-account APIs; still a collection product, not proof of per-user custody.                                                                                 |
+| Paystack    | Financial-services DVA validation requires BVN and an existing bank account linked to it. | More customer friction than Flutterwave's documented NIN/BVN route. Crypto/FX use-case eligibility is a separate blocker.                                                                                                      |
 
 Sources: [Paga persistent accounts](https://developer-docs.paga.com/v1.2/docs/persistent-wallet-account), [Flutterwave NGN accounts](https://developer.flutterwave.com/v3.0/docs/ngn-virtual-accounts), [Paystack validation](https://paystack.com/docs/identity-verification/validate-customer/).
 
@@ -26,11 +26,11 @@ Practical investigation order is Paga first, Flutterwave conditional second, Pay
 
 ### Published Paga retail tiers, not approved Xend limits
 
-| Tier | Daily transaction limit | Balance limit |
-| --- | --- | --- |
-| KYC 1 | NGN 50,000 | NGN 300,000 |
-| KYC 2 | NGN 200,000 | NGN 500,000 |
-| KYC 3 | NGN 5,000,000 | Unlimited as published |
+| Tier  | Daily transaction limit | Balance limit          |
+| ----- | ----------------------- | ---------------------- |
+| KYC 1 | NGN 50,000              | NGN 300,000            |
+| KYC 2 | NGN 200,000             | NGN 500,000            |
+| KYC 3 | NGN 5,000,000           | Unlimited as published |
 
 [Paga support](https://mypaga.freshdesk.com/support/solutions/articles/35000067842-what-is-kyc-) publishes these values and an upgrade flow with selfie, valid ID and proof of address. Its older terms contain conflicting historical limits, so partner confirmation is required before displaying these as Xend allowances. Daily transaction limit is not a separately verified daily incoming-transfer allowance; neither per-transfer receipt limits nor overflow handling are established here. Do not translate “unlimited balance” into unlimited sends. Flutterwave and Paystack do not establish comparable consumer wallet tiers in the cited collection documentation.
 
