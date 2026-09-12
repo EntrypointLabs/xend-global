@@ -1,3 +1,4 @@
+import { router, type Href } from "expo-router";
 import React from "react";
 import { ActionModal } from "../ActionModal";
 import {
@@ -26,6 +27,16 @@ export function SendModal({
   };
 
   const sendOptions: ActionOption[] = [
+    {
+      key: "fiat",
+      title: "To a bank account",
+      description: "Convert USDC to naira",
+      icon: walletIcon,
+      onPress: () => {
+        onClose();
+        router.push("/(fiat)?direction=send" as Href);
+      },
+    },
     {
       key: "crypto",
       title: "To an address",

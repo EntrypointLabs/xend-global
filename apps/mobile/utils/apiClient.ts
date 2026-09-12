@@ -1,3 +1,27 @@
+import {
+  NairaTransferSchema,
+  NairaTransfersSchema,
+} from "@/utils/naira-transfers";
+import { ObservedBalancesSchema } from "@/utils/observed-balances";
+import {
+  BankAccountsSchema,
+  BankAccountRecordSchema,
+  type BankAccountInput,
+} from "@/utils/bank-accounts";
+import { localFiatDemo } from "@/utils/local-fiat-demo";
+import {
+  UnifiedSnapshotSchema,
+  UnifiedQuoteSchema,
+  UnifiedOrderSchema,
+  UnifiedCurrency,
+  UnifiedQuoteInput,
+} from "@/utils/unified-fiat";
+import {
+  FiatRouteSchema,
+  FiatQuoteSchema,
+  FiatOrderSchema,
+  FiatSimulationEvent,
+} from "@/utils/fiat";
 import { z } from "zod";
 
 import * as Sentry from "@sentry/react-native";
@@ -647,6 +671,173 @@ class BackendClient {
     };
   }
 
+  async nairaTransfers() {
+    return NairaTransfersSchema.parse(
+      await this.request<unknown>("/fiat/banking/transfers", { auth: true })
+    );
+  }
+  async quoteNairaTransfer(
+    destinationAccountNumber: string,
+    amountMinor: string
+  ) {
+    return NairaTransferSchema.parse(
+      await this.request<unknown>("/fiat/banking/transfers/quotes", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ destinationAccountNumber, amountMinor }),
+      })
+    );
+  }
+  async sendNairaTransfer(quoteId: string, idempotencyKey: string) {
+    return NairaTransferSchema.parse(
+      await this.request<unknown>("/fiat/banking/transfers", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ quoteId, idempotencyKey }),
+      })
+    );
+  }
+  async observedBalances() {
+    return ObservedBalancesSchema.parse(
+      await this.request<unknown>("/fiat/balances", { auth: true })
+    );
+  }
+  async bankAccounts() {
+    return BankAccountsSchema.parse(
+      await this.request<unknown>("/fiat/banking/accounts", { auth: true })
+    );
+  }
+  async reconcileBankAccount(accountId: string) {
+    return BankAccountRecordSchema.parse(
+      await this.request<unknown>("/fiat/banking/accounts/reconcile", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ accountId }),
+      })
+    );
+  }
+  async createBankAccount(input: BankAccountInput) {
+    return BankAccountRecordSchema.parse(
+      await this.request<unknown>("/fiat/banking/accounts", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify(input),
+      })
+    );
+  }
+  async unifiedFiat(displayCurrency: "USD" | "NGN") {
+    return UnifiedSnapshotSchema.parse(
+      await this.request<unknown>(
+        `/fiat/unified?displayCurrency=${displayCurrency}`,
+        { auth: true }
+      )
+    );
+  }
+  async unifiedReceive(
+    currency: UnifiedCurrency,
+    amountMinor: string,
+    idempotencyKey: string
+  ) {
+    return this.request<unknown>("/fiat/unified/receive", {
+      auth: true,
+      method: "POST",
+      body: JSON.stringify({ currency, amountMinor, idempotencyKey }),
+    });
+  }
+  async unifiedQuote(input: UnifiedQuoteInput) {
+    return UnifiedQuoteSchema.parse(
+      await this.request<unknown>("/fiat/unified/quotes", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify(input),
+      })
+    );
+  }
+  async unifiedCreateOrder(
+    quoteId: string,
+    idempotencyKey: string,
+    autoAdvance = true
+  ) {
+    return UnifiedOrderSchema.parse(
+      await this.request<unknown>("/fiat/unified/orders", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ quoteId, idempotencyKey, autoAdvance }),
+      })
+    );
+  }
+  async unifiedAdvance(
+    id: string,
+    action: "advance" | "fail",
+    idempotencyKey: string
+  ) {
+    return UnifiedOrderSchema.parse(
+      await this.request<unknown>(
+        `/fiat/unified/orders/${encodeURIComponent(id)}/advance`,
+        {
+          auth: true,
+          method: "POST",
+          body: JSON.stringify({ action, idempotencyKey }),
+        }
+      )
+    );
+  }
+  async fiatRoutes() {
+    return z
+      .object({ routes: z.array(FiatRouteSchema) })
+      .parse(await this.request<unknown>("/fiat/routes", { auth: true }));
+  }
+  async fiatQuote(routeId: string, amountMinor: string) {
+    return FiatQuoteSchema.parse(
+      await this.request<unknown>("/fiat/quotes", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ routeId, amountMinor }),
+      })
+    );
+  }
+  async fiatCreateOrder(
+    quoteId: string,
+    idempotencyKey: string,
+    fields: Record<string, string>
+  ) {
+    return FiatOrderSchema.parse(
+      await this.request<unknown>("/fiat/orders", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ quoteId, idempotencyKey, fields }),
+      })
+    );
+  }
+  async fiatOrders() {
+    return z
+      .object({ orders: z.array(FiatOrderSchema) })
+      .parse(await this.request<unknown>("/fiat/orders", { auth: true }));
+  }
+  async fiatOrder(id: string) {
+    return FiatOrderSchema.parse(
+      await this.request<unknown>(`/fiat/orders/${encodeURIComponent(id)}`, {
+        auth: true,
+      })
+    );
+  }
+  async fiatSimulate(
+    id: string,
+    event: FiatSimulationEvent,
+    idempotencyKey: string
+  ) {
+    return FiatOrderSchema.parse(
+      await this.request<unknown>(
+        `/fiat/orders/${encodeURIComponent(id)}/simulate`,
+        {
+          auth: true,
+          method: "POST",
+          body: JSON.stringify({ event, idempotencyKey }),
+        }
+      )
+    );
+  }
+
   private validateEnv() {
     if (!process.env.EXPO_PUBLIC_BACKEND_URL) {
       throw new Error(
@@ -660,7 +851,21 @@ class BackendClient {
     options: RequestInit & { auth?: boolean } = {}
   ): Promise<T> {
     try {
-      const url = `${this.baseUrl}${endpoint}`;
+      const localSimulation =
+        localFiatDemo &&
+        (/^\/fiat\/unified(?:[/?]|$)/.test(endpoint) ||
+          endpoint === "/fiat/banking/accounts" ||
+          endpoint === "/fiat/banking/accounts/reconcile" ||
+          endpoint === "/fiat/balances" ||
+          endpoint === "/fiat/banking/transfers" ||
+          endpoint === "/fiat/banking/transfers/quotes");
+      if (localSimulation)
+        options = {
+          ...options,
+          auth: false,
+          headers: { ...options.headers, "x-xend-local-simulation": "1" },
+        };
+      const url = `${this.baseUrl}${localSimulation ? "/dev" : ""}${endpoint}`;
 
       // Attach the Bearer JWT from AuthStorage only when `auth: true` is set.
       const authHeaders: Record<string, string> = {};
@@ -695,7 +900,7 @@ class BackendClient {
       // Remove our internal flag before fetch sees it.
       delete (fetchOptions as { auth?: boolean }).auth;
 
-      if (options.method === "GET") {
+      if ((options.method ?? "GET").toUpperCase() === "GET") {
         delete fetchOptions.body;
       } else if (fetchOptions.body === undefined) {
         // React Native's fetch puts a single NUL byte on the wire for a POST
