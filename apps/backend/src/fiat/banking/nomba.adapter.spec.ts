@@ -183,9 +183,14 @@ describe('Nomba sandbox adapter', () => {
     ).rejects.toThrow('NOMBA_ACCOUNT_MISMATCH');
   });
   it('lists banks and checks lookup identity', async () => {
-    expect(
-      await setup([{ code: '058', name: 'Test Bank' }]).adapter.banks(),
-    ).toEqual([{ code: '058', name: 'Test Bank' }]);
+    const banks = setup([{ code: '058', name: 'Test Bank' }]);
+    expect(await banks.adapter.banks()).toEqual([
+      { code: '058', name: 'Test Bank' },
+    ]);
+    expect(banks.transport).toHaveBeenCalledWith(
+      'https://sandbox.nomba.com/v1/transfers/banks',
+      expect.objectContaining({ method: 'GET' }),
+    );
     expect(
       await setup(recipient).adapter.resolveRecipient('058', '0000000000'),
     ).toEqual(recipient);
@@ -196,6 +201,98 @@ describe('Nomba sandbox adapter', () => {
       }).adapter.resolveRecipient('058', '0000000000'),
     ).rejects.toThrow('NOMBA_RECIPIENT_MISMATCH');
   });
+});
+
+describe('Nomba account recovery', () => {
+  const account = {
+    accountRef: 'xna-owned-account-reference',
+    accountHolderId: 'sandbox-parent',
+    currency: 'NGN',
+    expired: false,
+    bankAccountNumber: '0123456789',
+    bankAccountName: 'Xend Sandbox',
+    bankName: 'Nomba',
+  };
+  function authenticated(data: unknown) {
+    const { transport } = setup(data);
+    return {
+      transport,
+      adapter: new NombaAdapter(
+        {
+          senderName: 'Xend',
+          accessToken: 'sandbox-token',
+          accountId: 'sandbox-parent',
+        },
+        transport,
+      ),
+    };
+  }
+  it('recovers only the matching active account under the configured parent using a read', async () => {
+    const { adapter, transport } = authenticated(account);
+    await expect(
+      adapter.retrieveAccount(account.accountRef, 'request'),
+    ).resolves.toEqual({
+      provider: 'nomba',
+      reference: account.accountRef,
+      accountNumber: account.bankAccountNumber,
+      accountName: account.bankAccountName,
+      bankName: account.bankName,
+      currency: 'NGN',
+      custody: 'pooled',
+    });
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(transport).toHaveBeenCalledWith(
+      `https://sandbox.nomba.com/v1/accounts/virtual/${account.accountRef}`,
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ accountId: 'sandbox-parent' }),
+      }),
+    );
+  });
+  it.each([
+    { accountRef: 'other-reference' },
+    { accountHolderId: 'other-parent' },
+    { accountHolderId: undefined },
+    { currency: 'USD' },
+    { expired: true },
+    { expired: undefined },
+    { bankAccountNumber: '123' },
+  ])(
+    'refuses mismatched or incomplete recovery evidence: %j',
+    async (overrides) => {
+      await expect(
+        authenticated({ ...account, ...overrides }).adapter.retrieveAccount(
+          account.accountRef,
+          'request',
+        ),
+      ).rejects.toThrow('NOMBA_ACCOUNT_MISMATCH');
+    },
+  );
+  it('does not recover an account from anonymous sandbox responses', async () => {
+    const { adapter, transport } = setup(account);
+    await expect(
+      adapter.retrieveAccount(account.accountRef, 'request'),
+    ).rejects.toThrow('NOMBA_AUTH_REQUIRED');
+    expect(transport).not.toHaveBeenCalled();
+  });
+  it.each([
+    { accountHolderId: 'other-parent' },
+    { accountHolderId: undefined },
+    { expired: undefined },
+  ])(
+    'does not activate an authenticated create response with incomplete parent ownership: %j',
+    async (overrides) => {
+      await expect(
+        authenticated({ ...account, ...overrides }).adapter.createAccount({
+          reference: 'request',
+          accountReference: account.accountRef,
+          firstName: 'Xend',
+          lastName: 'Sandbox',
+          email: 'sandbox@example.com',
+        }),
+      ).rejects.toThrow('NOMBA_ACCOUNT_MISMATCH');
+    },
+  );
 });
 
 describe('Nomba webhook notification verification', () => {
