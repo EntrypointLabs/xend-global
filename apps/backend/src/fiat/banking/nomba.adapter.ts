@@ -6,6 +6,8 @@ import type {
   BankOperation,
   BankPayoutProvider,
   BankRecipient,
+  BankTransactionReader,
+  BankTransactionObservation,
 } from './banking-provider.interface';
 
 export interface NombaConfig {
@@ -74,7 +76,11 @@ function recipient(value: BankRecipient): void {
  * Durable idempotency/reservations belong in Xend's orchestrator. This adapter never retries writes.
  */
 export class NombaAdapter
-  implements BankAccountProvider, BankAccountReader, BankPayoutProvider
+  implements
+    BankAccountProvider,
+    BankAccountReader,
+    BankPayoutProvider,
+    BankTransactionReader
 {
   readonly name = 'nomba';
   private readonly baseUrl: string;
@@ -249,6 +255,38 @@ export class NombaAdapter
       const row = object(item);
       return { code: text(row.code), name: text(row.name) };
     });
+  }
+  /** Requery the signed notification's ID, never its unsigned monetary fields.
+   * The sandbox can return canned successes, so consumers must match identities
+   * and independently establish customer attribution before treating this as cash.
+   */
+  async getTransaction(
+    transactionId: string,
+  ): Promise<BankTransactionObservation> {
+    if (!this.config.accessToken || !this.config.accountId)
+      throw new NombaError('NOMBA_AUTH_REQUIRED');
+    text(transactionId);
+    const data = object(
+      await this.request(
+        `/v1/transactions/accounts/single?${new URLSearchParams({ transactionRef: transactionId })}`,
+      ),
+    );
+    if (data.id !== transactionId)
+      throw new NombaError('NOMBA_TRANSACTION_MISMATCH');
+    const createdAt = text(data.timeCreated);
+    if (!Number.isFinite(Date.parse(createdAt)))
+      throw new NombaError('NOMBA_INVALID_RESPONSE');
+    return {
+      transactionId,
+      merchantId: data.userId == null ? null : text(data.userId),
+      type: text(data.type),
+      status: text(data.status),
+      amountMinor: minor(data.amount),
+      feeMinor: data.fixedCharge == null ? null : minor(data.fixedCharge),
+      createdAt,
+      source: text(data.source),
+      evidence: 'authenticated_sandbox',
+    };
   }
   /** Recover a provisioned account by Xend's persisted reference, never create again. */
   async retrieveAccount(
