@@ -245,7 +245,11 @@ describe('Nomba account recovery', () => {
       `https://sandbox.nomba.com/v1/accounts/virtual/${account.accountRef}`,
       expect.objectContaining({
         method: 'GET',
-        headers: expect.objectContaining({ accountId: 'sandbox-parent' }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer sandbox-token',
+          accountId: 'sandbox-parent',
+        },
       }),
     );
   });
