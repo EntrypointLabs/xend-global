@@ -10,11 +10,48 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  uuid,
+  check,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { createId } from '@paralleldrive/cuid2';
 import type { FiatQuote, FiatOrder } from '../fiat/fiat.types';
+
+// A provider notification is a request to reconcile, never a money balance.
+export const fiatBankNotifications = pgTable(
+  'fiat_bank_notifications',
+  {
+    id: uuid('id').primaryKey(),
+    provider: text('provider').notNull(),
+    environment: text('environment').notNull(),
+    merchantId: text('merchant_id').notNull(),
+    eventId: text('event_id').notNull(),
+    transactionId: text('transaction_id').notNull(),
+    signedHash: text('signed_hash').notNull(),
+    notification: jsonb('notification').notNull(),
+    status: text('status').notNull().default('received'),
+    receivedAt: timestamp('received_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('fiat_bank_notifications_identity_key').on(
+      table.provider,
+      table.environment,
+      table.merchantId,
+      table.eventId,
+    ),
+    check(
+      'fiat_bank_notifications_environment_check',
+      sql`${table.environment} IN ('sandbox', 'production')`,
+    ),
+    check(
+      'fiat_bank_notifications_status_check',
+      sql`${table.status} IN ('received', 'needs_attention', 'reconciled')`,
+    ),
+  ],
+);
 
 // Provider references stay opaque; changing an adapter never changes the schema.
 export const fiatQuotes = pgTable('fiat_quotes', {

@@ -118,11 +118,13 @@ export default function NairaAccountScreen() {
             title="Read account balances"
             onPress={() => router.push("/(fiat)/balances" as Href)}
           />
-          <ThemedButton
-            variant="quiet"
-            title="Send to another Xend Paga account"
-            onPress={() => router.push("/(fiat)/naira-send" as Href)}
-          />
+          {accounts.data?.provider === "paga" && (
+            <ThemedButton
+              variant="quiet"
+              title="Send to another Xend Paga account"
+              onPress={() => router.push("/(fiat)/naira-send" as Href)}
+            />
+          )}
           {accounts.isLoading && <ActivityIndicator />}
           {accounts.isError && (
             <>

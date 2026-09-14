@@ -87,6 +87,7 @@ export class BankingRegistry {
   accountReader(name: string): BankAccountReader | null {
     if (!this.authenticated.has(name)) return null;
     const provider = this.providers.get(name);
+    if (provider instanceof NombaAdapter) return provider;
     if (!(provider instanceof PagaProvider)) return null;
     return {
       async retrieveAccount(accountReference, requestReference) {
