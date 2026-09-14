@@ -54,6 +54,21 @@ export interface BankBalanceReader {
     reference: string,
   ): Promise<{ amountMinor: string; currency: 'NGN'; observedAt: string }>;
 }
+/** Authenticated provider lookup. Observation alone is not customer settlement. */
+export interface BankTransactionObservation {
+  transactionId: string;
+  merchantId: string | null;
+  type: string;
+  status: string;
+  amountMinor: string;
+  feeMinor: string | null;
+  createdAt: string;
+  source: string;
+  evidence: 'authenticated_sandbox';
+}
+export interface BankTransactionReader {
+  getTransaction(transactionId: string): Promise<BankTransactionObservation>;
+}
 /** Read-only indicative valuation. This never authorizes an exchange or payout. */
 export interface BankUsdValuationReader {
   quoteNgnUsd(amountMinor: string): Promise<{
