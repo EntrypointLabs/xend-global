@@ -72,7 +72,7 @@ describe('banking adapter selection', () => {
     expect(registry.accountReader('paga')).not.toBeNull();
     expect(registry.usdValuationReader()).toBe(registry.get('nomba'));
     expect(registry.balanceReader('nomba')).toBeNull();
-    expect(registry.accountReader('nomba')).toBeNull();
+    expect(registry.accountReader('nomba')).toBe(registry.get('nomba'));
     expect(registry.capabilities()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

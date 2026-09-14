@@ -26,6 +26,8 @@ export const USDC_MINT_BY_CLUSTER = {
         NOMBA_SANDBOX_CLIENT_ID: Joi.string().allow('').optional(),
         NOMBA_SANDBOX_CLIENT_SECRET: Joi.string().allow('').optional(),
         NOMBA_SANDBOX_ACCOUNT_ID: Joi.string().allow('').optional(),
+        // Independent from OAuth credentials; shared with the sandbox callback setup.
+        NOMBA_SANDBOX_WEBHOOK_SECRET: Joi.string().allow('').optional(),
         FIAT_NGN_ACCOUNT_PROVIDER: Joi.string()
           .valid('nomba', 'paga')
           .allow('')

@@ -3,6 +3,8 @@ import {
   NairaTransfersLocalController,
 } from './banking/transfers.controller';
 import { NairaTransfersService } from './banking/transfers.service';
+import { BankNotificationInbox } from './banking/notification-inbox';
+import { NombaWebhookController } from './banking/nomba-webhook.controller';
 import { UnifiedLocalController } from './unified/unified-local.controller';
 import { UnifiedLocalGuard } from './unified/unified-local.guard';
 import { UnifiedFiatWorker } from './unified/unified.worker';
@@ -33,6 +35,7 @@ import { FonbnkFiatProvider } from './providers/fonbnk-fiat.provider';
   imports: [SolanaModule],
   exports: [BankingRegistry],
   controllers: [
+    NombaWebhookController,
     NairaTransfersController,
     NairaTransfersLocalController,
     ObservedBalancesController,
@@ -44,6 +47,7 @@ import { FonbnkFiatProvider } from './providers/fonbnk-fiat.provider';
     NairaAccountsLocalController,
   ],
   providers: [
+    BankNotificationInbox,
     NairaTransfersService,
     ObservedBalancesService,
     FiatService,
