@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type {
   BankAccount,
   BankAccountProvider,
+  BankAccountReader,
   BankOperation,
   BankPayoutProvider,
   BankRecipient,
@@ -72,7 +73,9 @@ function recipient(value: BankRecipient): void {
 /** Sandbox contract adapter only. Even authenticated sandbox responses remain fixtures.
  * Durable idempotency/reservations belong in Xend's orchestrator. This adapter never retries writes.
  */
-export class NombaAdapter implements BankAccountProvider, BankPayoutProvider {
+export class NombaAdapter
+  implements BankAccountProvider, BankAccountReader, BankPayoutProvider
+{
   readonly name = 'nomba';
   private readonly baseUrl: string;
   constructor(
@@ -220,7 +223,10 @@ export class NombaAdapter implements BankAccountProvider, BankPayoutProvider {
     if (
       data.accountRef !== input.accountReference ||
       data.currency !== 'NGN' ||
-      data.expired === true
+      data.expired === true ||
+      (this.config.accountId &&
+        (data.accountHolderId !== this.config.accountId ||
+          data.expired !== false))
     )
       throw new NombaError('NOMBA_ACCOUNT_MISMATCH');
     const accountNumber = text(data.bankAccountNumber);
@@ -237,12 +243,45 @@ export class NombaAdapter implements BankAccountProvider, BankPayoutProvider {
     };
   }
   async banks(): Promise<{ code: string; name: string }[]> {
-    const data = await this.request('/v1/transfers/bank');
+    const data = await this.request('/v1/transfers/banks');
     if (!Array.isArray(data)) throw new NombaError('NOMBA_INVALID_RESPONSE');
     return data.map((item: unknown) => {
       const row = object(item);
       return { code: text(row.code), name: text(row.name) };
     });
+  }
+  /** Recover a provisioned account by Xend's persisted reference, never create again. */
+  async retrieveAccount(
+    accountReference: string,
+    requestReference: string,
+  ): Promise<BankAccount> {
+    if (!this.config.accessToken || !this.config.accountId)
+      throw new NombaError('NOMBA_AUTH_REQUIRED');
+    text(accountReference);
+    text(requestReference);
+    const data = object(
+      await this.request(
+        `/v1/accounts/virtual/${encodeURIComponent(accountReference)}`,
+      ),
+    );
+    if (
+      data.accountRef !== accountReference ||
+      data.accountHolderId !== this.config.accountId ||
+      data.currency !== 'NGN' ||
+      data.expired !== false ||
+      typeof data.bankAccountNumber !== 'string' ||
+      !/^\d{10}$/.test(data.bankAccountNumber)
+    )
+      throw new NombaError('NOMBA_ACCOUNT_MISMATCH');
+    return {
+      provider: this.name,
+      reference: accountReference,
+      accountNumber: data.bankAccountNumber,
+      accountName: text(data.bankAccountName),
+      bankName: text(data.bankName),
+      currency: 'NGN',
+      custody: 'pooled',
+    };
   }
   async resolveRecipient(
     bankCode: string,
