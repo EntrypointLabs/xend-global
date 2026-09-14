@@ -4,6 +4,7 @@ import {
 } from './banking/transfers.controller';
 import { NairaTransfersService } from './banking/transfers.service';
 import { BankNotificationInbox } from './banking/notification-inbox';
+import { BankNotificationRequeryService } from './banking/notification-requery.service';
 import { NombaWebhookController } from './banking/nomba-webhook.controller';
 import { UnifiedLocalController } from './unified/unified-local.controller';
 import { UnifiedLocalGuard } from './unified/unified-local.guard';
@@ -47,6 +48,7 @@ import { FonbnkFiatProvider } from './providers/fonbnk-fiat.provider';
     NairaAccountsLocalController,
   ],
   providers: [
+    BankNotificationRequeryService,
     BankNotificationInbox,
     NairaTransfersService,
     ObservedBalancesService,

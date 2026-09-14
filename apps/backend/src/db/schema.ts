@@ -31,6 +31,14 @@ export const fiatBankNotifications = pgTable(
     signedHash: text('signed_hash').notNull(),
     notification: jsonb('notification').notNull(),
     status: text('status').notNull().default('received'),
+    queryAttempts: integer('query_attempts').notNull().default(0),
+    queryClaim: uuid('query_claim'),
+    nextQueryAt: timestamp('next_query_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    queriedAt: timestamp('queried_at', { withTimezone: true }),
+    queryResult: jsonb('query_result'),
+    queryError: text('query_error'),
     receivedAt: timestamp('received_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -41,6 +49,18 @@ export const fiatBankNotifications = pgTable(
       table.environment,
       table.merchantId,
       table.eventId,
+    ),
+    index('fiat_bank_notifications_due')
+      .on(
+        table.provider,
+        table.environment,
+        table.merchantId,
+        table.nextQueryAt,
+      )
+      .where(sql`${table.status} = 'received'`),
+    check(
+      'fiat_bank_notifications_query_attempts_check',
+      sql`${table.queryAttempts} >= 0`,
     ),
     check(
       'fiat_bank_notifications_environment_check',

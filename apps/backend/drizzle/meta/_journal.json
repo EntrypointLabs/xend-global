@@ -330,6 +330,13 @@
       "when": 1789387301269,
       "tag": "0046_bank_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1789390349044,
+      "tag": "0047_bank_notification_requery",
+      "breakpoints": true
     }
   ]
 }

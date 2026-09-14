@@ -53,24 +53,36 @@ Current runtime: Redis and Kafka restored, backend at localhost:8008, Metro at l
 
 Still required for the complete consumer flow:
 
-1. A provider-supported way to fund a specific sandbox virtual account, plus an authenticated credit requery identifying that account, amount, currency and unique transaction. Confirm a negative reference cannot report a matching successful payment.
+1. An authenticated credit requery identifying the funded virtual account, amount, currency and unique transaction. The exact ₦100 bank deposit and signed callback succeeded on September 14; lookup results still contradict that callback. Confirm a negative reference cannot report a matching successful payment.
 2. Durable owner-attributed NGN credits, debit reservations, reconciliation and payouts integrated into the consumer API. Parent-account balance is insufficient evidence.
 3. A working NGN↔USDC quote/order/settlement provider and devnet vault signing through the existing spending controls. Nomba fiat USD quotes do not provide this contract.
 4. Wire those verified legs into unified execution, demonstrate destination-asset-first spending and shortfall conversion, and show reconciled balances after completion and failures. Future Pay With Xend must use those same funding guarantees.
 
 ### Follow-up: a documented ₦100 deposit test and durable callback receiver
 
-The [virtual-account guide](https://developer.nomba.com/docs/products/accept-payment/virtual-account) explicitly describes funding a sandbox virtual account with exactly ₦100 from a Nigerian bank, a maximum of two sandbox virtual accounts, and sandbox webhook delivery. It allows an expected amount between ₦100 and ₦150. This is a more specific test procedure than the general sandbox environment description. It has **not yet been performed** on our account. Read-back confirms our account is active, but does not return an `expectedAmount` field; do not treat absence of that field as permission to test larger amounts.
+The [virtual-account guide](https://developer.nomba.com/docs/products/accept-payment/virtual-account) explicitly describes funding a sandbox virtual account with exactly ₦100 from a Nigerian bank, a maximum of two sandbox virtual accounts, and sandbox webhook delivery. The founder performed this test on September 14. Read-back confirms our account is active, but does not return an `expectedAmount` field; do not treat absence of that field as permission to test larger amounts.
 
 Implemented `POST /webhooks/nomba/sandbox` in the running backend and migration `0046_bank_notifications`. The receiver verifies HMAC, freshness and the configured Nomba merchant before any write; retains only signed notification identities in a provider/environment-scoped durable inbox; handles concurrent duplicates and restarts; and rejects an event ID reused for different signed content. It returns a non-2xx response if persistence fails, allowing provider redelivery. It is disabled in production and when the selected provider credentials or webhook secret are missing.
 
-Nomba's [signature algorithm](https://developer.nomba.com/docs/api-basics/webhook) does not include amount, fee, currency, virtual account reference or beneficiary. Those unsigned fields never become trusted inbox data. A received event is **not a credit**. The requery/credit worker is still outstanding pending a deposit response that establishes the correct account and amount. No notification has been received from Nomba yet.
+Nomba's [signature algorithm](https://developer.nomba.com/docs/api-basics/webhook) does not include amount, fee, currency, virtual account reference or beneficiary. Those unsigned fields never become trusted inbox data. A received event is **not a credit**. The automatic requery worker is implemented; customer attribution and ledger credits remain outstanding because the actual deposit lookup does not establish matching settlement.
 
-Validation: 323 fiat tests across 24 suites passed, including eight real HTTP/PostgreSQL receiver cases. The running local backend accepts a signed non-payment connectivity probe with HTTP 200 and `ignored: true`, rejects an invalid signature with HTTP 401, and writes no payment for either probe. A sandbox webhook signature secret has been generated in the ignored backend `.env`; copy its `NOMBA_SANDBOX_WEBHOOK_SECRET` value into the dashboard's test webhook signature-key field.
+Validation: 342 fiat tests across 26 suites passed, including HTTP/PostgreSQL receiver and requery cases. Backend typecheck and changed-file lint pass. The dashboard's connectivity validation sends unsigned `{}`; the receiver now acknowledges only that empty check without a database write. Unsigned monetary notifications and invalid signatures still return HTTP 401. Configuration and production guards apply to the connectivity check too.
 
-The existing Xend development tunnel's health endpoint responds successfully. Its proposed callback URL is `https://unvertiginous-echinate-shawana.ngrok-free.dev/webhooks/nomba/sandbox`. An authenticated public connectivity probe is awaiting explicit user approval after automatic approval review rejected sending the account ID and HMAC signature through that URL. The existing tunnel has not been reconfigured.
+The founder explicitly approved ngrok. The signed public connectivity probe passed, and the founder saved the test webhook and subscribed to all six payment/payout lifecycle events. The callback URL is `https://unvertiginous-echinate-shawana.ngrok-free.dev/webhooks/nomba/sandbox`. The existing tunnel has not been reconfigured.
 
-Once the callback is verified, configure the **sandbox** webhook URL and matching signature key in Nomba, subscribing to payment success/failure/reversal and payout success/failure/refund. Then perform one exact ₦100 bank transfer to the active account shown in the simulator. Capture the provider notification, independently requery its transaction, and only implement the corresponding credit after matching the deposit to the persisted owner/account. Do not repeat a transfer simply because a webhook is delayed. No live API credentials, larger deposits or automatic ledger credits are enabled by this setup.
+### Actual deposit: September 14, 12:51 UTC
+
+The founder sent exactly ₦100 from a Nigerian bank. Nomba delivered `payment_success` / `vact_transfer` through ngrok; the configured signature, merchant identity and timestamp passed and the backend acknowledged HTTP 200 after durable storage. Inspection of the callback showed the expected virtual account, ₦100 amount and ₦10 fee. Amount, fee and account coordinates remain unsigned claims.
+
+| Independent authenticated check | Result |
+| --- | --- |
+| Single transaction lookup using the signed transaction ID | Echoed ID and correct parent, but `type=transfer`, ₦100 amount, ₦20 fee and a different timestamp |
+| Requery using callback session ID | Different transaction ID, `type=transfer`, ₦400 amount and ₦20 fee |
+| Today's parent transaction list | One result, no matching deposit ID |
+
+The worker now re-queries signed transaction identities using the provider registry. Migration `0047_bank_notification_requery` adds durable attempt count, two-minute claims, backoff, lookup observation and review reason. Claims are safe across processes and stale responses cannot overwrite a newer result. Transient query failures retry at most six attempts; contradictory responses are retained as `needs_attention`, never a guessed credit. It is sandbox-only and scopes work to the configured merchant. No new public routes are added.
+
+At 12:59:53 UTC the running worker processed the actual deposit and persisted `TRANSACTION_IDENTITY_MISMATCH` after one attempt. This proves bank → Nomba → public webhook → durable inbox → authenticated API lookup. It does not prove a reconciled consumer balance, NGN payout, conversion or unified send. No additional deposit or automatic refund was attempted. Next provider question: which sandbox endpoint returns the actual `vact_transfer` record, its virtual-account reference, net credited amount and fee, rather than a canned transfer response? Resolving that contract is necessary before attributing and spending this deposit.
 
 ## Consequences for implementation
 

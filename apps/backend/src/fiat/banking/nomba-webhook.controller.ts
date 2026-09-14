@@ -64,6 +64,18 @@ export class NombaWebhookController {
       throw new ServiceUnavailableException(
         'Nomba sandbox webhook is not configured.',
       );
+    // The dashboard validates the URL with an unsigned POST containing exactly {}.
+    // Acknowledge connectivity only; this cannot enter the notification inbox.
+    if (
+      body !== null &&
+      typeof body === 'object' &&
+      !Array.isArray(body) &&
+      Object.keys(body).length === 0 &&
+      !Object.keys(headers).some((key) =>
+        key.toLowerCase().startsWith('nomba-'),
+      )
+    )
+      return { accepted: true as const, ignored: true };
     if (!verifyNombaWebhook(body, headers, secret))
       throw new UnauthorizedException('Invalid Nomba webhook signature.');
     const parsed = payloadSchema.safeParse(body);

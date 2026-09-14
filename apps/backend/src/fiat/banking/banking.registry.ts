@@ -9,6 +9,7 @@ import type {
   BankBalanceReader,
   BankUsdValuationReader,
   BankPayoutProvider,
+  BankTransactionReader,
 } from './banking-provider.interface';
 type BankProvider = BankAccountProvider & BankPayoutProvider;
 /** Banking capabilities stay separate from executable conversion routes. */
@@ -113,6 +114,11 @@ export class BankingRegistry {
     if (name !== 'paga' || !this.authenticated.has(name)) return null;
     const provider = this.providers.get(name);
     return provider instanceof PagaProvider ? provider : null;
+  }
+  transactionReader(name: string): BankTransactionReader | null {
+    if (!this.authenticated.has(name)) return null;
+    const provider = this.providers.get(name);
+    return provider instanceof NombaAdapter ? provider : null;
   }
   usdValuationReader(): BankUsdValuationReader | null {
     if (!this.authenticated.has('nomba')) return null;

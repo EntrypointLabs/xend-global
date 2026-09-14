@@ -120,11 +120,45 @@ describePg('Nomba notification HTTP + PostgreSQL', () => {
       'nomba-timestamp': timestamp,
     };
   }
-  const post = (body: ReturnType<typeof payload>, headers = signed(body)) =>
+  const post = (
+    body: ReturnType<typeof payload>,
+    headers: Record<string, string> = signed(body),
+  ) =>
     request(app.getHttpServer() as Server)
       .post('/webhooks/nomba/sandbox')
       .set(headers)
       .send(body);
+  it('acknowledges the empty unsigned dashboard check without writing a notification', async () => {
+    const response = await request(app.getHttpServer() as Server)
+      .post('/webhooks/nomba/sandbox')
+      .send({})
+      .expect(200);
+    expect(response.body).toEqual({ accepted: true, ignored: true });
+    await post(payload(), {}).expect(401);
+    for (const body of [[], { event_type: 'payment_success' }, { data: {} }]) {
+      await request(app.getHttpServer() as Server)
+        .post('/webhooks/nomba/sandbox')
+        .send(body)
+        .expect(401);
+    }
+    await request(app.getHttpServer() as Server)
+      .post('/webhooks/nomba/sandbox')
+      .set('nomba-signature', 'invalid')
+      .send({})
+      .expect(401);
+    expect(
+      (
+        await pool.query<{ count: string }>(
+          'SELECT count(*) FROM fiat_bank_notifications',
+        )
+      ).rows[0].count,
+    ).toBe('0');
+    config.NODE_ENV = 'production';
+    await request(app.getHttpServer() as Server)
+      .post('/webhooks/nomba/sandbox')
+      .send({})
+      .expect(503);
+  });
   it('persists only signed identities across restart and deduplicates concurrent delivery', async () => {
     const body = payload();
     const results = await Promise.all([post(body), post(body)]);
