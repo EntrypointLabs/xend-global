@@ -1,3 +1,4 @@
+import { router, type Href } from "expo-router";
 import React from "react";
 import { ActionModal } from "../ActionModal";
 import {
@@ -34,6 +35,16 @@ export function ReceiveModal({
   };
 
   const receiveOptions: ActionOption[] = [
+    {
+      key: "fiat",
+      title: "Naira bank transfer",
+      description: "Receive naira into your Account",
+      icon: walletIcon,
+      onPress: () => {
+        hideAllModals();
+        router.push("/(fiat)?direction=receive" as Href);
+      },
+    },
     {
       key: "crypto",
       title: "Your address",
