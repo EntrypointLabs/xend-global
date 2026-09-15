@@ -1,118 +1,56 @@
 # @xend/mobile
 
-The Xend mobile app, an Expo React Native client for Android, iOS, and Web. Authentication and the embedded Solana wallet run on [Privy](https://www.privy.io/); the [@sqds/grid-react-native SDK](https://www.npmjs.com/package/@sqds/grid-react-native) is retained for KYC, virtual bank accounts, and payment history only. Pairs with [`@xend/backend`](../backend) for any operations that require server-held credentials.
+The Xend app: an Expo React Native client for Android and iOS. It talks to [`@xend/backend`](../backend) over HTTPS with a Xend-issued token. The passkey and the embedded Solana wallet behind it are held by Privy and reached through `hooks/usePasskey.ts`; the phone's hardware key is enrolled with Turnkey through `modules/hardware-key`; the Account itself is a Squads smart account (ADR 0025).
 
-> Built against Expo SDK 56. Expo Go only supports the latest SDK; use a [development build](https://docs.expo.dev/develop/development-builds/introduction/) for the full feature set.
+Built against Expo SDK 56 (ADR 0011). Use a [development build](https://docs.expo.dev/develop/development-builds/introduction/); Expo Go cannot load the native modules.
 
-## Architecture
+## What is in the app
 
-- **Frontend** uses [`utils/easClient.ts`](utils/easClient.ts) to call backend API routes.
-- **Backend routes** under `app/api/` use the Grid SDK via [`grid/sdkClient.ts`](grid/sdkClient.ts).
-- **Security**: API keys live in environment variables on the server side and are never exposed to the client.
+Routes live under `app/` (expo-router).
 
-### SDK client
+- **Sign-up and sign-in** (`(auth)/`, `add-email.tsx`): email first, then a passkey, then the phone's hardware key, then the Account (ADR 0027). An email code on an existing Account opens a read-only entry session; the passkey opens a full one.
+- **Home and Cash** (`(tabs)/index.tsx`, `cash/`): the Balance, read from the Account's vault.
+- **Send** (`(send)/`): to an address, a `.sol` name or a Contact; under the daily limit one passkey signature, above it the phone's key as well.
+- **Receive**: address and QR from the Cash surface.
+- **Activity** (`(tabs)/history.tsx`): the unified feed, including merchant Payments and Account events.
+- **Settings** (`(tabs)/settings/`): address book, spending limits, Keys and Recovery (add and remove recovery emails and wallets, review and reject a staged change), replace a lost passkey, restore onto a new phone, connected Merchants with Session revocation, finish an above-limit Payment a Merchant is waiting on.
+- **Investments and Swap** (`investments/`, `swap/`): the non-spending tokens the Consumer holds, and a quoted swap between them.
+- **Previews**: `earn/`, `card/` and `plus/` render surfaces whose backing does not exist yet. See section 9 of `docs/xend-master-context.md` before describing them anywhere.
+- **KYC** (`(modals)/kyc.tsx`, `app/api/kyc*.ts`): the one remaining Grid SDK carve-out, behind `GRID_API_KEY`.
 
-The Grid SDK is wrapped in a singleton in [`grid/sdkClient.ts`](grid/sdkClient.ts):
+## Running
 
-```typescript
-import { GridClient, GridEnvironment } from "@sqds/grid-react-native";
-
-const gridClient = new GridClient({
-  apiKey: process.env.GRID_API_KEY,
-  environment: "sandbox" as GridEnvironment,
-  baseUrl: process.env.EXPO_PUBLIC_GRID_ENDPOINT,
-});
-
-const sessionSecrets = await gridClient.generateSessionSecrets();
-```
-
-## Features
-
-- [KYC onboarding](docs/kyc.md)
-- [Virtual bank accounts and deposits](docs/deposit.md)
-- [Withdrawals](docs/withdraw.md)
-- [USDC transfers](docs/usdc-transfers.md)
-- [Balance and transfers](docs/balance-and-transfers.md)
-
-## Getting started
-
-Run all commands from the repo root unless noted.
-
-### 1. Install dependencies
+From the repo root:
 
 ```sh
 npm install
-```
-
-### 2. Configure environment
-
-```sh
 cp apps/mobile/example.env apps/mobile/.env
+npm run dev:mobile                              # expo start
+npm --workspace @xend/mobile run android
+npm --workspace @xend/mobile run ios
 ```
 
-Required variables:
+`npm run dev` at the root starts Metro alongside the backend; see the root README for ports. Tests are `npm --workspace @xend/mobile run test`; types `check-types`; lint `lint`.
 
-```env
-# Server-side only — never exposed to the client
-GRID_API_KEY=your_grid_api_key_here
+## Environment
 
-# Public — safe for the client bundle
-EXPO_PUBLIC_GRID_ENV=sandbox            # or production
-EXPO_PUBLIC_API_ENDPOINT=http://localhost:8081/api
-EXPO_PUBLIC_BACKEND_URL=http://localhost:3000   # use 10.0.2.2 on Android emulator
-EXPO_PUBLIC_USDC_MINT_ADDRESS=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
-```
+`example.env` is the template. Every `EXPO_PUBLIC_*` value ships in the bundle.
 
-If you're using EAS, set these as [EAS secrets](https://docs.expo.dev/build-reference/variables/#using-secrets-in-environment-variables).
+| Variable                        | What it is                                                                                                      |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `EXPO_PUBLIC_BACKEND_URL`       | The backend, `http://localhost:8000` locally; `10.0.2.2` on the Android emulator                                |
+| `EXPO_PUBLIC_PRIVY_APP_ID`      | Privy app id, the same value as the backend's `PRIVY_APP_ID`                                                    |
+| `EXPO_PUBLIC_PRIVY_CLIENT_ID`   | Privy client id for native builds                                                                               |
+| `EXPO_PUBLIC_USDC_MINT_ADDRESS` | The USDC mint. Must match the backend and the cluster; `utils/cluster.ts` rejects a mint from the other network |
+| `EXPO_PUBLIC_USDT_MINT_ADDRESS` | Optional; mainnet only, adds USDT to the headline Balance                                                       |
+| `EXPO_PUBLIC_SOLANA_RPC_URL`    | RPC for `.sol` resolution; never embed a provider key                                                           |
+| `EXPO_PUBLIC_DISABLE_APP_LOCK`  | Dev-only, skips the biometric app lock in dev builds                                                            |
+| `EXPO_PUBLIC_GRID_ENV`          | `sandbox` or `production`, KYC carve-out only                                                                   |
+| `GRID_API_KEY`                  | Server-side only, KYC carve-out                                                                                 |
+| `SENTRY_DNS_URL`                | Optional error reporting                                                                                        |
 
-### 3. Run
+`utils/cluster.ts` reads `EXPO_PUBLIC_SOLANA_CLUSTER` and **defaults to mainnet**; set it to `devnet` for a devnet build. It is not in `example.env` yet, so a copied `.env` with the devnet mint and no cluster value targets mainnet and logs a mint mismatch.
 
-```sh
-npm --workspace @xend/mobile run start          # Expo dev tools
-npm --workspace @xend/mobile run android        # Android device/emulator
-npm --workspace @xend/mobile run ios            # iOS simulator
-npm --workspace @xend/mobile run web            # Web target
-```
+## Conventions
 
-Scan the QR code with Expo Go (SDK 54 only) or run on a development build.
-
-## Project structure
-
-```
-app/
-  (auth)/        # Email + OTP flow
-  (tabs)/        # Main authenticated experience
-  (send)/        # Send-money flow
-  (modals)/      # Shared modal screens
-  api/           # Server routes that use the Grid SDK
-  cash/          # Cash deposit / withdraw screens
-grid/
-  sdkClient.ts   # Grid SDK singleton wrapper
-components/      # UI primitives (atoms → organisms)
-contexts/        # React contexts
-hooks/           # Reusable hooks (auth, kyc, transfers, ...)
-utils/
-  easClient.ts   # Typed client for backend API routes
-docs/            # Feature-level docs (auth, kyc, transfers, etc.)
-```
-
-## App flow
-
-1. **Authenticate** with email and OTP.
-2. **Complete KYC** and accept the Terms of Service.
-3. **Create a virtual bank account** for fiat deposits.
-4. **Send and receive** USDC and fiat via the in-app flows.
-
-## Troubleshooting
-
-- **Env changes not picked up?** Restart Expo after editing `.env` or EAS secrets.
-- **Localhost unreachable from device?** Replace `localhost` with your machine's LAN IP in `EXPO_PUBLIC_API_ENDPOINT` / `EXPO_PUBLIC_BACKEND_URL`. On Android emulator, use `10.0.2.2`.
-- **SDK connection errors?** Double-check `GRID_API_KEY` and that `EXPO_PUBLIC_GRID_ENV` matches the environment your key was issued for.
-- **Expo Go can't connect?** Open the dev server directly via `exp://<your-ip>:8081` on the device, on the same network.
-- **Stale bundler state?** `npx expo start -c` clears the cache.
-
-## References
-
-- [@sqds/grid-react-native SDK](https://www.npmjs.com/package/@sqds/grid-react-native)
-- [Expo docs](https://docs.expo.dev/)
-- [Expo CLI](https://docs.expo.dev/workflow/expo-cli/)
+Styling is NativeWind `className` only; see [`STYLE.md`](./STYLE.md) and ADRs 0001 to 0009. The domain vocabulary is [`CONTEXT.md`](../../CONTEXT.md).

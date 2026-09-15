@@ -20,12 +20,17 @@ const SOLANA_ADDRESS = 'GkP9xL7mQwR2sT4vB6nH8jC3dF5aZ1yU2eW4rK6tN9pM';
 type Calls = {
   createSubOrganization: Parameters<TurnkeyApi['createSubOrganization']>[0][];
   updateRootQuorum: Parameters<TurnkeyApi['updateRootQuorum']>[0][];
+  createPolicy: Parameters<TurnkeyApi['createPolicy']>[0][];
+  /** Every call in the order Turnkey saw it. */
+  order: string[];
 };
 
 function fakeApi(overrides: Partial<TurnkeyApi> = {}) {
   const calls: Calls = {
     createSubOrganization: [],
     updateRootQuorum: [],
+    createPolicy: [],
+    order: [],
   };
 
   // Mirrors the real service: the quorum only narrows once updateRootQuorum
@@ -43,11 +48,19 @@ function fakeApi(overrides: Partial<TurnkeyApi> = {}) {
     },
     updateRootQuorum(params) {
       calls.updateRootQuorum.push(params);
+      calls.order.push('updateRootQuorum');
       quorum = { threshold: params.threshold, userIds: params.userIds };
       return Promise.resolve({});
     },
     getRootQuorum() {
       return Promise.resolve(quorum);
+    },
+    createPolicy(params) {
+      calls.createPolicy.push(params);
+      calls.order.push('createPolicy');
+      return Promise.resolve({
+        policyId: `policy-${calls.createPolicy.length}`,
+      });
     },
     ...overrides,
   };
@@ -93,8 +106,9 @@ class FakeApprovalStore implements ApprovalSignerStore {
 function service(
   api: TurnkeyApi,
   store: ApprovalSignerStore = new FakeApprovalStore(),
+  policiesEnabled = false,
 ) {
-  return new TurnkeyService(api, DELEGATED_KEY, store);
+  return new TurnkeyService(api, DELEGATED_KEY, store, policiesEnabled);
 }
 
 describe('TurnkeyService.enrolApprovalSigner', () => {
@@ -159,7 +173,71 @@ describe('TurnkeyService.enrolApprovalSigner', () => {
     // already holds S3, so one compromise reached threshold. Narrowing is now
     // the only thing enrolment leaves behind.
     expect(calls.updateRootQuorum[0].userIds).toEqual([CONSUMER_USER]);
-    expect('createPolicy' in api).toBe(false);
+    expect(calls.createPolicy).toEqual([]);
+  });
+
+  describe('with TURNKEY_POLICIES_ENABLED', () => {
+    it('writes both policies inside the window, before narrowing', async () => {
+      const { api, calls } = fakeApi();
+
+      const enrolled = await service(
+        api,
+        new FakeApprovalStore(),
+        true,
+      ).enrolApprovalSigner({
+        reference: 'consumer-1',
+        hardwarePublicKey: '03bb',
+      });
+
+      expect(calls.order).toEqual([
+        'createPolicy',
+        'createPolicy',
+        'updateRootQuorum',
+      ]);
+      expect(calls.createPolicy.map((p) => p.organizationId)).toEqual([
+        SUB_ORG,
+        SUB_ORG,
+      ]);
+      expect(calls.createPolicy.map((p) => p.effect)).toEqual([
+        'EFFECT_ALLOW',
+        'EFFECT_DENY',
+      ]);
+      // Every policy names the Consumer's user, never the backend's.
+      expect(calls.createPolicy[0].consensus).toContain(CONSUMER_USER);
+      expect(JSON.stringify(calls.createPolicy)).not.toContain(DELEGATED_USER);
+      expect(enrolled.policyIds).toEqual(['policy-1', 'policy-2']);
+    });
+
+    it('records the policy ids on the sub-organization row', async () => {
+      const { api } = fakeApi();
+      const store = new FakeApprovalStore();
+
+      await service(api, store, true).ensureApprovalSigner({
+        reference: 'consumer-1',
+        hardwarePublicKey: '03bb',
+      });
+
+      expect(store.rows[0].policyIds).toEqual(['policy-1', 'policy-2']);
+    });
+
+    it('reports an unsafe sub-organization when a policy write fails', async () => {
+      const { api, calls } = fakeApi({
+        createPolicy() {
+          return Promise.reject(new Error('turnkey 400'));
+        },
+      });
+
+      await expect(
+        service(api, new FakeApprovalStore(), true).enrolApprovalSigner({
+          reference: 'consumer-1',
+          hardwarePublicKey: '03bb',
+        }),
+      ).rejects.toMatchObject({
+        code: 'UNSAFE_SUB_ORGANIZATION',
+        subOrganizationId: SUB_ORG,
+      });
+      expect(calls.updateRootQuorum).toEqual([]);
+    });
   });
 
   it('reports an unsafe sub-organization when narrowing fails', async () => {

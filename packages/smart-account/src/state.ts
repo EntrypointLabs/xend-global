@@ -14,11 +14,25 @@ import type { SpendingLimit } from "./spend.js";
 
 export class AccountStateError extends Error {}
 
+export interface SettingsSigner {
+  key: PublicKey;
+  /** The `Initiate | Vote | Execute` bitmask the Settings grants this key. */
+  permissions: { mask: number };
+}
+
 /** The Settings fields anything outside the program actually acts on. */
 export interface SettingsState {
   timeLockSeconds: number;
   /** The index the next settings change will take. */
   transactionIndex: bigint;
+  signers: SettingsSigner[];
+  /**
+   * The last policy seed the program assigned, or null before it has assigned
+   * any. The next policy must take exactly this plus one: the counter only
+   * ever moves forward, and removing a policy does not give its seed back, so
+   * a create at any other seed is refused at execute.
+   */
+  policySeed: bigint | null;
 }
 
 export interface ProposalState {
@@ -70,14 +84,39 @@ export async function fetchSettings(
     connection,
     settings,
   );
-  // transactionIndex is a u64 the SDK surfaces as a bignum, which is a BN at
-  // runtime and loosely typed at compile time. Going through its string form is
-  // the only conversion that survives values past 2^53.
-  const index = state.transactionIndex as unknown as { toString(): string };
   return {
     timeLockSeconds: state.timeLock,
-    transactionIndex: BigInt(index.toString()),
+    transactionIndex: toBigInt(state.transactionIndex),
+    signers: state.signers.map(({ key, permissions }) => ({
+      key,
+      permissions: { mask: permissions.mask },
+    })),
+    policySeed:
+      state.policySeed === null || state.policySeed === undefined
+        ? null
+        : toBigInt(state.policySeed),
   };
+}
+
+/** The seed the next policy on this Account has to take. */
+export function nextPolicySeed(settings: SettingsState): bigint {
+  return (settings.policySeed ?? 0n) + 1n;
+}
+
+/**
+ * The spending limit a policy account currently holds. Anything that restates
+ * the limit, such as a primary signer rotation, reads it from here rather than
+ * from whatever provisioning wrote.
+ */
+export async function fetchSpendingLimit(
+  connection: Connection,
+  policy: PublicKey,
+): Promise<SpendingLimit> {
+  const info = await connection.getAccountInfo(policy);
+  if (!info) {
+    throw new AccountStateError(`No policy account at ${policy.toBase58()}`);
+  }
+  return decodeSpendingLimit(policy, info);
 }
 
 export function deriveProposalAddress(

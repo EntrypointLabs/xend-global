@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AccountModule } from './account/account.module';
 import { RecoveryModule } from './recovery/recovery.module';
 import { AppController } from './app.controller';
@@ -28,12 +30,30 @@ import { CheckoutModule } from './checkout/checkout.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { ConsoleModule } from './console/console.module';
 import { TestDashboardModule } from './test-dashboard/test-dashboard.module';
+import { HealthModule } from './health/health.module';
+import { MetricsModule } from './metrics/metrics.module';
+import { TracingModule } from './tracing/tracing.module';
+import { THROTTLE_LIMITS } from './common/throttle';
+
+// Module metadata is evaluated at import time, before ConfigService exists,
+// so the production check reads the raw environment. The dashboard mints
+// Merchant API keys with no auth and must not exist in production at all.
+const testDashboardEnabled = process.env.NODE_ENV !== 'production';
 
 @Module({
   imports: [
     NotificationsModule,
     ConfigModule,
+    ThrottlerModule.forRoot({
+      throttlers: [
+        { name: 'default', ...THROTTLE_LIMITS.default },
+        { name: 'auth', ...THROTTLE_LIMITS.auth },
+      ],
+    }),
     DbModule,
+    HealthModule,
+    MetricsModule,
+    TracingModule,
     EntrySessionModule,
     AuthModule,
     WalletsModule,
@@ -55,11 +75,11 @@ import { TestDashboardModule } from './test-dashboard/test-dashboard.module';
     CheckoutModule,
     WebhookModule,
     ConsoleModule,
-    TestDashboardModule,
+    ...(testDashboardEnabled ? [TestDashboardModule] : []),
     RecoveryModule,
     AccountModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

@@ -116,7 +116,7 @@ export function App() {
     let stale = false;
     const reference = launch.reference;
 
-    getIntent(reference)
+    getIntent(reference, launch.opener)
       .then((intent) => {
         if (stale) return;
         if (isNonPayable(intent.status)) {

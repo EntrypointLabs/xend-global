@@ -1,3 +1,5 @@
+**Status (2026-09-07): Resolved 2026-08-21.** Kept for the diagnosis. The Digital Asset Links and signing-certificate steps it records are still the ones to repeat for a new build certificate.
+
 # Passkeys failed because Privy did not accept this build's signing certificate
 
 **Resolved 2026-08-21.** The certificate was added to the Privy dashboard and

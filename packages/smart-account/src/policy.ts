@@ -4,10 +4,26 @@ import type { generated } from "@sqds/smart-account";
 
 import { ROLE_PERMISSIONS } from "./account.js";
 import { derivePolicyAddress } from "./pda.js";
+import { ABOVE_LIMIT_PROGRAM_ALLOWLIST } from "./programs.js";
+import type { SpendingLimit } from "./spend.js";
+import type { SettingsSigner } from "./state.js";
 import type { AccountAddresses, SignerRole } from "./types.js";
 
-const { Permissions } = types;
+const { Permission, Permissions } = types;
 const PRIMARY_ACCOUNT_INDEX = 0;
+/** The program's own ceiling on instruction constraints per policy. */
+const MAX_INSTRUCTION_CONSTRAINTS = 20;
+
+/**
+ * A settings change this package will not build, because the program would
+ * accept it and the Account would be worse off for it.
+ */
+export class SettingsChangeRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SettingsChangeRefusedError";
+  }
+}
 
 export type LimitPeriod = "OneTime" | "Daily" | "Weekly" | "Monthly";
 
@@ -176,6 +192,11 @@ export interface CreateAboveLimitPolicyParams {
    */
   rentPayer?: PublicKey;
   transactionIndex: bigint;
+  /**
+   * The programs a Spend under this policy may call. Defaults to
+   * {@link ABOVE_LIMIT_PROGRAM_ALLOWLIST}. Order matters: see there.
+   */
+  allowedPrograms?: readonly PublicKey[];
 }
 
 /**
@@ -187,10 +208,11 @@ export interface CreateAboveLimitPolicyParams {
  * with a zero time lock. It also keeps the recovery signer out of the spend path,
  * which permissions alone do not do.
  *
- * `instructionsConstraints` is deliberately **empty**. In the program that means no
- * constraint checking runs at all, so the policy permits any instruction. The
- * protection here is the threshold of 2, not an instruction allowlist. Narrowing it
- * later (destination allowlists, merchant rules) is a policy update, not a rewrite.
+ * The policy carries one instruction constraint per allowed program and
+ * nothing finer. An empty constraint list would mean no checking at all, so
+ * the threshold of 2 would be the only thing between a compromised pair and
+ * any program on the cluster. Account and data constraints (destination
+ * allowlists, merchant rules) are a later policy update, not a rewrite.
  */
 export function buildCreateAboveLimitPolicy({
   addresses,
@@ -200,6 +222,7 @@ export function buildCreateAboveLimitPolicy({
   proposer,
   rentPayer,
   transactionIndex,
+  allowedPrograms = ABOVE_LIMIT_PROGRAM_ALLOWLIST,
 }: CreateAboveLimitPolicyParams): CreateSpendingLimitPolicyResult {
   return {
     policy: derivePolicyAddress(addresses.settings, policySeed),
@@ -208,7 +231,14 @@ export function buildCreateAboveLimitPolicy({
       transactionIndex,
       proposer,
       rentPayer,
-      actions: [aboveLimitPolicyAction({ policySeed, primary, approval })],
+      actions: [
+        aboveLimitPolicyAction({
+          policySeed,
+          primary,
+          approval,
+          allowedPrograms,
+        }),
+      ],
     }),
   };
 }
@@ -315,6 +345,8 @@ export interface RemoveRecoverySignerParams {
   addresses: AccountAddresses;
   /** The recovery signer leaving the Settings signer set. */
   oldSigner: PublicKey;
+  /** Every recovery signer the Account currently has, `oldSigner` included. */
+  recoverySigners: readonly PublicKey[];
   /** Proposes the change. Must be a signer with `Initiate`, so S1. */
   proposer: PublicKey;
   /** Funds the rent. Defaults to `proposer`. Removal reallocates down and refunds nothing. */
@@ -330,17 +362,30 @@ export interface RemoveRecoverySignerParams {
  * than the threshold, with `InvalidThreshold` at execute time. That is a weaker
  * guard than it sounds: an Account with S1, S2 and one recovery signer still
  * has two signers left without it, so the program is happy to strip the last
- * recovery signer and leave a lost phone unrecoverable. The rule that an
- * Account always keeps one lives in `RecoveryService`, and this builder trusts
- * the caller to have applied it.
+ * recovery signer and leave a lost phone unrecoverable. So the rule that an
+ * Account always keeps one is applied here, against the recovery signers the
+ * caller has read off the Account. Replacing the only one is
+ * {@link buildRotateRecoverySigner}, which never passes through zero.
  */
 export function buildRemoveRecoverySigner({
   addresses,
   oldSigner,
+  recoverySigners,
   proposer,
   rentPayer,
   transactionIndex,
 }: RemoveRecoverySignerParams): TransactionInstruction[] {
+  if (!recoverySigners.some((signer) => signer.equals(oldSigner))) {
+    throw new SettingsChangeRefusedError(
+      `${oldSigner.toBase58()} is not one of the Account's recovery signers`,
+    );
+  }
+  if (recoverySigners.length === 1) {
+    throw new SettingsChangeRefusedError(
+      `${oldSigner.toBase58()} is the Account's only recovery signer; rotate it rather than remove it`,
+    );
+  }
+
   return proposeSettingsChange({
     addresses,
     transactionIndex,
@@ -423,6 +468,12 @@ export interface RotateApprovalSignerParams {
   rentPayer?: PublicKey;
   /** The Settings account's current `transactionIndex`, plus one. */
   transactionIndex: bigint;
+  /**
+   * The allowlist the above-limit policy was created with, restated because
+   * `PolicyUpdate` replaces the whole policy. Defaults to
+   * {@link ABOVE_LIMIT_PROGRAM_ALLOWLIST}.
+   */
+  allowedPrograms?: readonly PublicKey[];
 }
 
 export interface RotateApprovalSignerResult {
@@ -460,6 +511,7 @@ export function buildRotateApprovalSigner({
   proposer,
   rentPayer,
   transactionIndex,
+  allowedPrograms = ABOVE_LIMIT_PROGRAM_ALLOWLIST,
 }: RotateApprovalSignerParams): RotateApprovalSignerResult {
   if (oldApproval.equals(newApproval)) {
     throw new Error("the new approval signer must differ from the old one");
@@ -481,6 +533,7 @@ export function buildRotateApprovalSigner({
           policy,
           primary,
           approval: newApproval,
+          allowedPrograms,
         }),
       ],
     }),
@@ -495,10 +548,22 @@ export interface RotatePrimarySignerParams {
   newPrimary: PublicKey;
   /** Stays in the above-limit policy's signer set beside the new primary. */
   approval: PublicKey;
+  /**
+   * The Settings signer set as it stands, from {@link fetchSettings}. The
+   * approval signer has to hold `Initiate` there to propose this at all.
+   */
+  signers: readonly SettingsSigner[];
   /** Identifies the spending-limit policy, whose only signer is the primary. */
   spendingLimitSeed: bigint;
-  /** The limit as it stands, restated because `PolicyUpdate` replaces whole. */
-  terms: SpendingLimitTerms;
+  /**
+   * The spending limit as the chain holds it, from {@link fetchSpendingLimit}.
+   *
+   * `PolicyUpdate` replaces the whole policy, so the limit is restated from
+   * this. Taking the decoded policy rather than bare terms is what stops a
+   * rotation from quietly resetting a limit the Consumer has since changed:
+   * the address it carries has to be the policy this rotation rewrites.
+   */
+  currentLimit: SpendingLimit;
   /** Identifies the above-limit policy naming primary and approval. */
   aboveLimitSeed: bigint;
   /** Proposes the change. Must hold `Initiate`, which is the approval signer. */
@@ -507,6 +572,12 @@ export interface RotatePrimarySignerParams {
   rentPayer?: PublicKey;
   /** The Settings account's current `transactionIndex`, plus one. */
   transactionIndex: bigint;
+  /**
+   * The allowlist the above-limit policy was created with, restated because
+   * `PolicyUpdate` replaces the whole policy. Defaults to
+   * {@link ABOVE_LIMIT_PROGRAM_ALLOWLIST}.
+   */
+  allowedPrograms?: readonly PublicKey[];
 }
 
 export interface RotatePrimarySignerResult {
@@ -537,12 +608,14 @@ export function buildRotatePrimarySigner({
   oldPrimary,
   newPrimary,
   approval,
+  signers,
   spendingLimitSeed,
-  terms,
+  currentLimit,
   aboveLimitSeed,
   proposer,
   rentPayer,
   transactionIndex,
+  allowedPrograms = ABOVE_LIMIT_PROGRAM_ALLOWLIST,
 }: RotatePrimarySignerParams): RotatePrimarySignerResult {
   if (oldPrimary.equals(newPrimary)) {
     throw new Error("the new primary signer must differ from the old one");
@@ -551,10 +624,27 @@ export function buildRotatePrimarySigner({
     throw new Error("the two policies must take distinct seeds");
   }
 
+  const approvalSigner = signers.find((s) => s.key.equals(approval));
+  if (!approvalSigner) {
+    throw new SettingsChangeRefusedError(
+      `approval signer ${approval.toBase58()} is not on the Settings signer set`,
+    );
+  }
+  if (!Permissions.has(approvalSigner.permissions, Permission.Initiate)) {
+    throw new SettingsChangeRefusedError(
+      `approval signer ${approval.toBase58()} does not hold Initiate, so it cannot propose the rotation; the primary signer cannot be replaced until it is granted`,
+    );
+  }
+
   const spendingLimitPolicy = derivePolicyAddress(
     addresses.settings,
     spendingLimitSeed,
   );
+  if (!currentLimit.policy.equals(spendingLimitPolicy)) {
+    throw new SettingsChangeRefusedError(
+      `the spending limit given is for policy ${currentLimit.policy.toBase58()}, not the one at seed ${spendingLimitSeed} (${spendingLimitPolicy.toBase58()})`,
+    );
+  }
   const aboveLimitPolicy = derivePolicyAddress(
     addresses.settings,
     aboveLimitSeed,
@@ -572,15 +662,184 @@ export function buildRotatePrimarySigner({
         removeSignerAction(oldPrimary),
         spendingLimitPolicyUpdateAction({
           policy: spendingLimitPolicy,
-          terms,
+          terms: termsOf(currentLimit),
           limitSigner: newPrimary,
         }),
         aboveLimitPolicyUpdateAction({
           policy: aboveLimitPolicy,
           primary: newPrimary,
           approval,
+          allowedPrograms,
         }),
       ],
+    }),
+  };
+}
+
+export interface UpdateSpendingLimitParams {
+  addresses: AccountAddresses;
+  /** Identifies the spending-limit policy whose terms this replaces. */
+  spendingLimitSeed: bigint;
+  /**
+   * The limit as the chain holds it, from {@link fetchSpendingLimit}.
+   *
+   * Read rather than assumed, because a caller that does not know what it is
+   * replacing cannot tell a raise from a lower. The address it carries has to
+   * be the policy at `spendingLimitSeed`, which is what stops a limit read off
+   * one Account being written onto another.
+   */
+  currentLimit: SpendingLimit;
+  /** The terms replacing {@link currentLimit}. */
+  terms: SpendingLimitTerms;
+  /** The signer that may draw on the limit. The primary signer in our model. */
+  limitSigner: PublicKey;
+  /**
+   * The Settings signer set as it stands, from {@link fetchSettings}. The
+   * proposer has to hold `Initiate` there, and the limit signer has to be a
+   * key the Account actually names.
+   */
+  signers: readonly SettingsSigner[];
+  /** Proposes the change. Must be a signer with `Initiate`, so S1. */
+  proposer: PublicKey;
+  /** Funds the rent. Defaults to `proposer`. */
+  rentPayer?: PublicKey;
+  /** The Settings account's current `transactionIndex`, plus one. */
+  transactionIndex: bigint;
+}
+
+export interface SpendingLimitChangeResult {
+  /**
+   * The policy the change rewrites or removes, which
+   * {@link buildExecuteSettingsChange} has to carry.
+   */
+  policies: PublicKey[];
+  /** Propose the change. Signed by `proposer` alone. */
+  propose: TransactionInstruction[];
+}
+
+/**
+ * Replaces the spending limit's terms with new ones.
+ *
+ * A settings change like any other: two approvals and the full time lock. That
+ * is what the limit is worth. It is the size of the band one signature can
+ * move, so a Consumer able to raise it on one signature would have no limit at
+ * all, and the delay is the window in which a raise nobody asked for can be
+ * rejected.
+ *
+ * `PolicyUpdate` replaces the whole policy rather than patching it, so the
+ * signer, the threshold of 1 and the zero time lock are restated here from the
+ * same helpers the create path uses. Anything left out would be dropped
+ * silently, and a spending-limit policy with no signer is a one-signature route
+ * nobody can take.
+ *
+ * The above-limit policy is deliberately untouched. It governs what the limit
+ * does not admit, and that is unchanged by where the line sits.
+ */
+export function buildUpdateSpendingLimit({
+  addresses,
+  spendingLimitSeed,
+  currentLimit,
+  terms,
+  limitSigner,
+  signers,
+  proposer,
+  rentPayer,
+  transactionIndex,
+}: UpdateSpendingLimitParams): SpendingLimitChangeResult {
+  const policy = spendingLimitPolicyOf(
+    addresses,
+    spendingLimitSeed,
+    currentLimit,
+  );
+  assertHoldsInitiate(signers, proposer);
+
+  if (!terms.mint.equals(currentLimit.mint)) {
+    throw new SettingsChangeRefusedError(
+      `the limit is denominated in ${currentLimit.mint.toBase58()}; writing ${terms.mint.toBase58()} onto it would put every Spend in the old mint on two signatures`,
+    );
+  }
+  if (!signers.some((signer) => signer.key.equals(limitSigner))) {
+    throw new SettingsChangeRefusedError(
+      `${limitSigner.toBase58()} is not on the Settings signer set, so it cannot be the key the limit answers to`,
+    );
+  }
+  if (sameTerms(terms, currentLimit)) {
+    throw new SettingsChangeRefusedError(
+      "the new terms are the terms the Account already carries",
+    );
+  }
+
+  return {
+    policies: [policy],
+    propose: proposeSettingsChange({
+      addresses,
+      transactionIndex,
+      proposer,
+      rentPayer,
+      actions: [
+        spendingLimitPolicyUpdateAction({ policy, terms, limitSigner }),
+      ],
+    }),
+  };
+}
+
+export interface RemoveSpendingLimitParams {
+  addresses: AccountAddresses;
+  /** Identifies the spending-limit policy being removed. */
+  spendingLimitSeed: bigint;
+  /**
+   * The limit as the chain holds it, from {@link fetchSpendingLimit}. Removal
+   * names an address, and this is what proves the address named is the limit
+   * rather than whatever else sits at that seed.
+   */
+  currentLimit: SpendingLimit;
+  /** The Settings signer set as it stands, from {@link fetchSettings}. */
+  signers: readonly SettingsSigner[];
+  /** Proposes the change. Must be a signer with `Initiate`, so S1. */
+  proposer: PublicKey;
+  /** Funds the rent. Defaults to `proposer`. Removal refunds nothing. */
+  rentPayer?: PublicKey;
+  /** The Settings account's current `transactionIndex`, plus one. */
+  transactionIndex: bigint;
+}
+
+/**
+ * Takes the spending limit off the Account entirely.
+ *
+ * What is left is an Account with no one-signature route: every Spend then
+ * resolves to the above-limit policy and needs the primary and the approval
+ * signer together. That is a valid higher-security state, not a broken
+ * Account, which is exactly why the above-limit policy is untouched here.
+ * Removing both would leave an Account that cannot pay anyone at all.
+ *
+ * The removal runs through the Account's own threshold and time lock like any
+ * other settings change. Nothing is lost by waiting: while the change sits, the
+ * limit still stands and Spends under it still take one signature.
+ */
+export function buildRemoveSpendingLimit({
+  addresses,
+  spendingLimitSeed,
+  currentLimit,
+  signers,
+  proposer,
+  rentPayer,
+  transactionIndex,
+}: RemoveSpendingLimitParams): SpendingLimitChangeResult {
+  const policy = spendingLimitPolicyOf(
+    addresses,
+    spendingLimitSeed,
+    currentLimit,
+  );
+  assertHoldsInitiate(signers, proposer);
+
+  return {
+    policies: [policy],
+    propose: proposeSettingsChange({
+      addresses,
+      transactionIndex,
+      proposer,
+      rentPayer,
+      actions: [{ __kind: "PolicyRemove", policy }],
     }),
   };
 }
@@ -607,6 +866,11 @@ export interface ProvisionAccountParams {
   transactionIndex: bigint;
   /** Seconds. `SETTINGS_TIME_LOCK_SECONDS` is the value D3 settled on. */
   timeLockSeconds: number;
+  /**
+   * The programs a Spend above the limit may call. Defaults to
+   * {@link ABOVE_LIMIT_PROGRAM_ALLOWLIST}.
+   */
+  allowedPrograms?: readonly PublicKey[];
 }
 
 export interface ProvisionAccountResult {
@@ -644,6 +908,7 @@ export function buildProvisionAccount({
   rentPayer,
   transactionIndex,
   timeLockSeconds,
+  allowedPrograms = ABOVE_LIMIT_PROGRAM_ALLOWLIST,
 }: ProvisionAccountParams): ProvisionAccountResult {
   if (spendingLimitSeed === aboveLimitSeed) {
     throw new Error("the two policies must take distinct seeds");
@@ -669,6 +934,7 @@ export function buildProvisionAccount({
           policySeed: aboveLimitSeed,
           primary,
           approval,
+          allowedPrograms,
         }),
         setTimeLockAction(timeLockSeconds),
       ],
@@ -685,12 +951,6 @@ function spendingLimitPolicyAction({
   terms: SpendingLimitTerms;
   limitSigner: PublicKey;
 }): generated.SettingsAction {
-  if (terms.maxPerUse > terms.maxPerPeriod) {
-    throw new Error(
-      "maxPerUse exceeds maxPerPeriod, so the per-use cap could never be reached",
-    );
-  }
-
   return {
     __kind: "PolicyCreate",
     seed: policySeed,
@@ -706,6 +966,12 @@ function spendingLimitPolicyAction({
 function spendingLimitPayload(
   terms: SpendingLimitTerms,
 ): generated.PolicyCreationPayload {
+  if (terms.maxPerUse > terms.maxPerPeriod) {
+    throw new Error(
+      "maxPerUse exceeds maxPerPeriod, so the per-use cap could never be reached",
+    );
+  }
+
   return {
     __kind: "SpendingLimit",
     fields: [
@@ -766,10 +1032,12 @@ function aboveLimitPolicyAction({
   policySeed,
   primary,
   approval,
+  allowedPrograms,
 }: {
   policySeed: bigint;
   primary: PublicKey;
   approval: PublicKey;
+  allowedPrograms: readonly PublicKey[];
 }): generated.SettingsAction {
   if (primary.equals(approval)) {
     throw new Error("primary and approval signers must be distinct");
@@ -778,7 +1046,7 @@ function aboveLimitPolicyAction({
   return {
     __kind: "PolicyCreate",
     seed: policySeed,
-    policyCreationPayload: aboveLimitPayload(),
+    policyCreationPayload: aboveLimitPayload(allowedPrograms),
     signers: aboveLimitSigners(primary, approval),
     threshold: 2,
     timeLock: 0,
@@ -800,10 +1068,12 @@ function aboveLimitPolicyUpdateAction({
   policy,
   primary,
   approval,
+  allowedPrograms,
 }: {
   policy: PublicKey;
   primary: PublicKey;
   approval: PublicKey;
+  allowedPrograms: readonly PublicKey[];
 }): generated.SettingsAction {
   if (primary.equals(approval)) {
     throw new Error("primary and approval signers must be distinct");
@@ -812,7 +1082,7 @@ function aboveLimitPolicyUpdateAction({
   return {
     __kind: "PolicyUpdate",
     policy,
-    policyUpdatePayload: aboveLimitPayload(),
+    policyUpdatePayload: aboveLimitPayload(allowedPrograms),
     signers: aboveLimitSigners(primary, approval),
     threshold: 2,
     timeLock: 0,
@@ -820,18 +1090,107 @@ function aboveLimitPolicyUpdateAction({
   };
 }
 
-function aboveLimitPayload(): generated.PolicyCreationPayload {
+/**
+ * One constraint per allowed program, each with no account or data
+ * constraints, so any instruction to that program passes. A Spend then names
+ * the constraint each of its instructions satisfies, by index into this list.
+ */
+function aboveLimitPayload(
+  allowedPrograms: readonly PublicKey[],
+): generated.PolicyCreationPayload {
+  if (allowedPrograms.length === 0) {
+    throw new Error(
+      "the above-limit policy needs at least one allowed program; an empty list disables constraint checking",
+    );
+  }
+  if (allowedPrograms.length > MAX_INSTRUCTION_CONSTRAINTS) {
+    throw new Error(
+      `the above-limit policy takes at most ${MAX_INSTRUCTION_CONSTRAINTS} allowed programs, got ${allowedPrograms.length}`,
+    );
+  }
+  if (
+    new Set(allowedPrograms.map((p) => p.toBase58())).size !==
+    allowedPrograms.length
+  ) {
+    throw new Error("allowed programs must be distinct");
+  }
+
   return {
     __kind: "ProgramInteraction",
     fields: [
       {
         accountIndex: PRIMARY_ACCOUNT_INDEX,
-        instructionsConstraints: [],
+        instructionsConstraints: allowedPrograms.map((programId) => ({
+          programId,
+          accountConstraints: [],
+          dataConstraints: [],
+        })),
         preHook: null,
         postHook: null,
         spendingLimits: [],
       },
     ],
+  };
+}
+
+/**
+ * The policy address the caller means, checked against the limit they read.
+ *
+ * A seed alone derives an address whatever sits there, so a change built from
+ * a seed the Account never used would propose a rewrite of nothing and fail a
+ * day later at execute, having spent an index and the whole time lock.
+ */
+function spendingLimitPolicyOf(
+  addresses: AccountAddresses,
+  spendingLimitSeed: bigint,
+  currentLimit: SpendingLimit,
+): PublicKey {
+  const policy = derivePolicyAddress(addresses.settings, spendingLimitSeed);
+  if (!currentLimit.policy.equals(policy)) {
+    throw new SettingsChangeRefusedError(
+      `the spending limit given is for policy ${currentLimit.policy.toBase58()}, not the one at seed ${spendingLimitSeed} (${policy.toBase58()})`,
+    );
+  }
+  return policy;
+}
+
+function assertHoldsInitiate(
+  signers: readonly SettingsSigner[],
+  proposer: PublicKey,
+): void {
+  const signer = signers.find((candidate) => candidate.key.equals(proposer));
+  if (!signer) {
+    throw new SettingsChangeRefusedError(
+      `${proposer.toBase58()} is not on the Settings signer set, so it cannot propose a change`,
+    );
+  }
+  if (!Permissions.has(signer.permissions, Permission.Initiate)) {
+    throw new SettingsChangeRefusedError(
+      `${proposer.toBase58()} does not hold Initiate, so it cannot propose a change`,
+    );
+  }
+}
+
+function sameTerms(terms: SpendingLimitTerms, limit: SpendingLimit): boolean {
+  const destinations = terms.destinations ?? [];
+  return (
+    terms.maxPerUse === limit.maxPerUse &&
+    terms.maxPerPeriod === limit.maxPerPeriod &&
+    terms.period === limit.period &&
+    destinations.length === limit.destinations.length &&
+    destinations.every((destination, index) =>
+      destination.equals(limit.destinations[index]!),
+    )
+  );
+}
+
+function termsOf(limit: SpendingLimit): SpendingLimitTerms {
+  return {
+    mint: limit.mint,
+    maxPerUse: limit.maxPerUse,
+    maxPerPeriod: limit.maxPerPeriod,
+    period: limit.period,
+    destinations: limit.destinations,
   };
 }
 

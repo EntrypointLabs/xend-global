@@ -5,6 +5,11 @@ export interface SealedKey {
   ciphertext: string;
   /** Identifies which wrapping key sealed it, so keys can be rotated. */
   keyId: string;
+  /**
+   * The per-seal data key, itself encrypted by KMS. Present only for sealed
+   * keys under envelope custody; an env-key seal has nothing to put here.
+   */
+  wrappedDataKey?: string | null;
 }
 
 /**
@@ -21,6 +26,8 @@ export interface SealedKey {
  * threshold: this signer is one of three, and it cannot spend under any path.
  */
 export interface RecoveryVault {
+  /** The id every new seal is written under. */
+  readonly currentKeyId: string;
   seal(secretKey: Uint8Array): Promise<SealedKey>;
   open(sealed: SealedKey): Promise<Uint8Array>;
 }

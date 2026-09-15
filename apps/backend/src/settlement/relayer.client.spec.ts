@@ -7,10 +7,10 @@ const AUTH_SECRET = 'shared-secret';
 
 function makeClient(): RelayerClient {
   const config = {
-    getOrThrow: (key: string): string => {
+    get: (key: string): string | undefined => {
       if (key === 'RELAYER_URL') return RELAYER_URL;
       if (key === 'RELAYER_INTERNAL_AUTH_SECRET') return AUTH_SECRET;
-      throw new Error(`missing config ${key}`);
+      return undefined;
     },
   } as unknown as ConfigService;
   const client = new RelayerClient(config);
@@ -109,5 +109,18 @@ describe('RelayerClient', () => {
     expect(url).toContain('/internal/cosign');
     expect(options.method).toBe('POST');
     expect(options.redirect).toBe('manual');
+  });
+});
+
+describe('RelayerClient without config', () => {
+  it('boots without RELAYER_* set and fails at the call, not at startup', async () => {
+    const client = new RelayerClient({
+      get: () => undefined,
+    } as unknown as ConfigService);
+    expect(() => client.onModuleInit()).not.toThrow();
+    expect(client.configured).toBe(false);
+    await expect(client.health()).rejects.toMatchObject({
+      message: expect.stringContaining('not configured') as string,
+    });
   });
 });

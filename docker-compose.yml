@@ -42,6 +42,8 @@ services:
   # Auto-creation covers the producer, but the consumer subscribes with
   # fromBeginning:false, so a topic born at subscribe time starts at an offset
   # past anything already published. Seeding first makes the ordering moot.
+  # The list is the ADR 0012 catalog plus events.dead-letter, where the
+  # consumer parks a message it cannot parse or keeps failing on.
   kafka-topics:
     image: apache/kafka:4.0.0
     depends_on:
@@ -51,9 +53,11 @@ services:
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
-        for topic in payment.created payment.authorized payment.succeeded payment.failed \
-                     payment.expired payout.initiated payout.completed payout.failed \
-                     session.issued session.revoked; do
+        for topic in payment.created payment.authorized payment.settling \
+                     payment.succeeded payment.failed payment.expired \
+                     payout.initiated payout.completed payout.failed \
+                     refund.recorded session.issued session.revoked \
+                     events.dead-letter; do
           /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 \
             --create --if-not-exists --topic "$$topic" \
             --partitions 1 --replication-factor 1

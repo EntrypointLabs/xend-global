@@ -5,7 +5,7 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1772598366308,
+      "when": 1748639999999,
       "tag": "0000_swift_winter_soldier",
       "breakpoints": true
     },
@@ -259,6 +259,34 @@
       "version": "7",
       "when": 1787518400000,
       "tag": "0035_f_primary_rotation",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1787604800000,
+      "tag": "0036_indexes_audit_intent_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1787691200000,
+      "tag": "0037_custody_policies_webhook_replay",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1787777600000,
+      "tag": "0038_spending_limit_policy_seed",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1788801141424,
+      "tag": "0039_spending_limit_staged_change",
       "breakpoints": true
     }
   ]

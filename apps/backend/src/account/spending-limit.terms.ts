@@ -1,5 +1,5 @@
 import { PublicKey } from '@solana/web3.js';
-import type { SpendingLimitTerms } from '@xend/smart-account';
+import type { LimitPeriod, SpendingLimitTerms } from '@xend/smart-account';
 
 /**
  * The band a Spend may cross on one signature, from O3.
@@ -44,3 +44,31 @@ export function buildDefaultSpendingLimit(mint: PublicKey): SpendingLimitTerms {
     destinations: [],
   };
 }
+
+/**
+ * The limit in the words a Consumer reads, for the notice and the Activity row.
+ *
+ * Written here beside the constant that scales it, because both depend on the
+ * same fact: the policy is denominated in USDC and USDC has six decimals.
+ * Whole dollars where the amount is one, since the amounts a Consumer sets are.
+ */
+export function describeSpendingLimit(
+  maxPerPeriod: bigint,
+  period: LimitPeriod,
+): string {
+  const unit = 10n ** BigInt(USDC_DECIMALS);
+  const whole = maxPerPeriod / unit;
+  const fraction = maxPerPeriod % unit;
+  const amount =
+    fraction === 0n
+      ? whole.toString()
+      : `${whole}.${fraction.toString().padStart(USDC_DECIMALS, '0').replace(/0+$/, '')}`;
+  return `$${amount} ${PER_PERIOD[period]}`;
+}
+
+const PER_PERIOD: Record<LimitPeriod, string> = {
+  OneTime: 'in total',
+  Daily: 'a day',
+  Weekly: 'a week',
+  Monthly: 'a month',
+};

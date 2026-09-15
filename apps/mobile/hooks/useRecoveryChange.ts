@@ -17,6 +17,7 @@ import {
 import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { RECOVERY_KEYS_QUERY_KEY } from "@/hooks/useRecoveryKeys";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
+import { assertSettings } from "@/utils/verifyTransaction";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import {
   apiClient,
@@ -84,6 +85,15 @@ export async function runRecoveryChange(
         `Recovery key change did not finish in ${MAX_STEPS} steps; stuck on ${plan.step}`
       );
     }
+
+    // The step does not name the key, so bound what the change may do: one
+    // recovery key moves, and nothing touches the spending rules or the lock.
+    assertSettings(plan.unsignedTxBase64, {
+      vault: account.address,
+      maxAddSigners: 1,
+      maxRemoveSigners: 1,
+      policyUpdates: 1,
+    });
 
     let tx = VersionedTransaction.deserialize(
       toByteArray(plan.unsignedTxBase64)

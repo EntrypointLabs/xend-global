@@ -3,7 +3,7 @@ import { StorageService, userScopedKey } from "@/utils/storage";
 import { AUTH_STORAGE_KEYS } from "@/utils/auth";
 import { useUserId } from "@/hooks/useUserId";
 
-const DEFAULT_NAME = "Wallet";
+const DEFAULT_NAME = "Account";
 
 // Scoped to the signed-in user so each account keeps its own wallet name.
 function walletNameKey(userId: string) {

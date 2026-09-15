@@ -57,12 +57,16 @@ function intentRow(over: Partial<IntentRow> = {}): IntentRow {
     fxQuotedAt: new Date('2026-01-01'),
     merchantReference: null,
     idempotencyKey: null,
-    mode: 'test',
+    // The real (chain) path is the default under test; the sandbox path has
+    // its own describe below.
+    mode: 'live',
     returnUrl: 'https://shop.example.com/return',
     cancelUrl: null,
     expiresAt: new Date(Date.now() + 3_600_000),
     authorizedAt: null,
     approvalDeferredAt: null,
+    metadata: null,
+    openerOrigin: null,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     ...over,
@@ -92,6 +96,8 @@ function makeConfig(): ConfigService {
   } as unknown as ConfigService;
 }
 
+const intentUpdates: Record<string, unknown>[] = [];
+
 function makeDb(merchant: MerchantRow | null) {
   return {
     client: {
@@ -105,6 +111,15 @@ function makeDb(merchant: MerchantRow | null) {
             };
           throw new Error('unknown table');
         },
+      }),
+      update: (tbl: unknown) => ({
+        set: (v: Record<string, unknown>) => ({
+          where: () => {
+            if (tbl !== paymentIntents) throw new Error('unknown table');
+            intentUpdates.push(v);
+            return Promise.resolve();
+          },
+        }),
       }),
     },
   } as unknown as DbService;
@@ -123,7 +138,7 @@ function makeRes() {
 
 interface Fakes {
   intents: { findById: jest.Mock; deferToApproval: jest.Mock };
-  auth: { authorize: jest.Mock };
+  auth: { authorize: jest.Mock; authorizeSimulated?: jest.Mock };
   identity: { resolveByProviderToken: jest.Mock };
   capacity: { checkCapacity: jest.Mock };
   sessions: {
@@ -132,7 +147,10 @@ interface Fakes {
     validate: jest.Mock;
     rotate: jest.Mock;
   };
-  confirmation: { devForceSettleSucceeded: jest.Mock };
+  confirmation: {
+    devForceSettleSucceeded: jest.Mock;
+    settleTestMode: jest.Mock;
+  };
   notifications: { notifyPaymentNeedsApproval: jest.Mock };
   settlement: {
     buildSettlement: jest.Mock;
@@ -182,6 +200,7 @@ function makeController(
   };
   const confirmation = fakes.confirmation ?? {
     devForceSettleSucceeded: jest.fn(),
+    settleTestMode: jest.fn(),
   };
   const notifications = fakes.notifications ?? {
     notifyPaymentNeedsApproval: jest.fn().mockResolvedValue(undefined),
@@ -239,6 +258,10 @@ async function expectRejectHttp(
 }
 
 describe('CheckoutController.getSummary', () => {
+  beforeEach(() => {
+    intentUpdates.length = 0;
+  });
+
   it('returns exactly the camelCase contract fields, no USDC/FX leakage', async () => {
     const { controller, intents } = makeController(merchantRow());
     intents.findById.mockResolvedValue(intentRow());
@@ -263,6 +286,56 @@ describe('CheckoutController.getSummary', () => {
     expect(serialized).not.toContain('usdcSettlementRaw');
     expect(serialized).not.toContain('fxRate');
     expect(serialized).not.toContain('1000000');
+  });
+
+  it('posts to the opener when it is a second allowed origin, and remembers it on the intent', async () => {
+    const { controller, intents } = makeController(
+      merchantRow({
+        allowedOrigins: [
+          'https://acme.example.com',
+          'https://eu.acme.example.com',
+        ],
+      }),
+    );
+    intents.findById.mockResolvedValue(intentRow());
+    const summary = await controller.getSummary(
+      makeReq(),
+      'pi_1',
+      'https://eu.acme.example.com',
+    );
+    expect(summary.merchantOrigin).toBe('https://eu.acme.example.com');
+    expect(intentUpdates).toEqual([
+      expect.objectContaining({ openerOrigin: 'https://eu.acme.example.com' }),
+    ]);
+  });
+
+  it('ignores an opener outside the allowlist and keeps the first registered origin', async () => {
+    const { controller, intents } = makeController(merchantRow());
+    intents.findById.mockResolvedValue(intentRow());
+    const summary = await controller.getSummary(
+      makeReq(),
+      'pi_1',
+      'https://evil.example.com',
+    );
+    expect(summary.merchantOrigin).toBe('https://acme.example.com');
+    expect(intentUpdates).toEqual([]);
+  });
+
+  it('answers a later load with the opener already stored on the intent', async () => {
+    const { controller, intents } = makeController(
+      merchantRow({
+        allowedOrigins: [
+          'https://acme.example.com',
+          'https://eu.acme.example.com',
+        ],
+      }),
+    );
+    intents.findById.mockResolvedValue(
+      intentRow({ openerOrigin: 'https://eu.acme.example.com' }),
+    );
+    const summary = await controller.getSummary(makeReq(), 'pi_1');
+    expect(summary.merchantOrigin).toBe('https://eu.acme.example.com');
+    expect(intentUpdates).toEqual([]);
   });
 
   it('reports sessionRecognized=false with no cookie and never mutates the session', async () => {
@@ -425,6 +498,7 @@ describe('CheckoutController.authorize', () => {
 
     expect(identity.resolveByProviderToken).toHaveBeenCalledWith(
       'privy-id-token',
+      { withoutAccount: false },
     );
     expect(auth.authorize).toHaveBeenCalledWith({
       intentId: 'pi_1',
@@ -659,5 +733,130 @@ describe('CheckoutController.settle', () => {
       502,
       'PAYMENT_PROCESSING',
     );
+  });
+});
+
+describe('CheckoutController.authorize (test mode)', () => {
+  function testModeFakes() {
+    const auth = {
+      authorize: jest.fn(),
+      authorizeSimulated: jest.fn().mockResolvedValue({
+        intentId: 'pi_1',
+        attemptId: 'att_sim',
+        status: 'authorized',
+      }),
+    };
+    const identity = {
+      resolveByProviderToken: jest.fn().mockResolvedValue({
+        consumerId: 'c1',
+        accountAddress: 'Wallet1',
+        email: null,
+      }),
+    };
+    const sessions = {
+      peek: jest.fn(),
+      issue: jest.fn().mockResolvedValue({ sessionId: 's1', token: 'fresh' }),
+      validate: jest.fn(),
+      rotate: jest.fn(),
+    };
+    const capacity = { checkCapacity: jest.fn() };
+    const settlement = {
+      buildSettlement: jest.fn(),
+      pinSettlement: jest.fn(),
+      submitSettlement: jest.fn(),
+    };
+    const confirmation = {
+      devForceSettleSucceeded: jest.fn(),
+      settleTestMode: jest.fn().mockResolvedValue(undefined),
+    };
+    return { auth, identity, sessions, capacity, settlement, confirmation };
+  }
+
+  it('settles a test-mode intent through the sandbox: no capacity, no Spend, no chain, and a succeeded redirect', async () => {
+    const fakes = testModeFakes();
+    const { controller, intents } = makeController(merchantRow(), fakes);
+    const resPair = makeRes();
+    intents.findById
+      .mockResolvedValueOnce(intentRow({ mode: 'test', status: 'created' }))
+      .mockResolvedValue(intentRow({ mode: 'test', status: 'succeeded' }));
+
+    const response = await controller.authorize(makeReq(), resPair.res, {
+      reference: 'pi_1',
+      providerToken: 'privy-id-token',
+    });
+
+    expect(fakes.identity.resolveByProviderToken).toHaveBeenCalledWith(
+      'privy-id-token',
+      { withoutAccount: true },
+    );
+    expect(fakes.auth.authorizeSimulated).toHaveBeenCalledWith({
+      intentId: 'pi_1',
+      consumerId: 'c1',
+    });
+    expect(fakes.confirmation.settleTestMode).toHaveBeenCalledWith('pi_1');
+    expect(fakes.auth.authorize).not.toHaveBeenCalled();
+    expect(fakes.capacity.checkCapacity).not.toHaveBeenCalled();
+    expect(fakes.settlement.buildSettlement).not.toHaveBeenCalled();
+    expect(fakes.settlement.pinSettlement).not.toHaveBeenCalled();
+    expect(fakes.confirmation.devForceSettleSucceeded).not.toHaveBeenCalled();
+    expect(fakes.sessions.issue).toHaveBeenCalledWith({
+      consumerId: 'c1',
+      merchantId: 'm1',
+      issuingIntentId: 'pi_1',
+    });
+    expect(resPair.cookie).toHaveBeenCalledWith(
+      COOKIE,
+      'fresh',
+      expect.objectContaining({ httpOnly: true }),
+    );
+    expect(response.status).toBe('succeeded');
+    const redirect = (response as { redirectUrl?: string }).redirectUrl;
+    expect(redirect).toBeDefined();
+    const url = new URL(redirect as string);
+    expect(url.searchParams.get('xend_status')).toBe('succeeded');
+    expect(
+      verifyReturnUrl(
+        'https://shop.example.com/return',
+        'pi_1',
+        'succeeded',
+        Number(url.searchParams.get('xend_ts')),
+        url.searchParams.get('xend_sig') as string,
+        SECRET,
+        900,
+      ),
+    ).toBe(true);
+  });
+
+  it('never takes the sandbox for a live intent, whatever the environment', async () => {
+    const fakes = testModeFakes();
+    fakes.auth.authorize.mockResolvedValue({
+      intentId: 'pi_1',
+      attemptId: 'att_1',
+      status: 'authorized',
+    });
+    fakes.settlement.buildSettlement.mockResolvedValue(builtSettlement());
+    fakes.settlement.pinSettlement.mockResolvedValue({ attemptId: 'att_1' });
+    const { controller, intents } = makeController(merchantRow(), fakes);
+    intents.findById.mockResolvedValue(
+      intentRow({ mode: 'live', status: 'created' }),
+    );
+
+    const response = await controller.authorize(makeReq(), makeRes().res, {
+      reference: 'pi_1',
+      providerToken: 'privy-id-token',
+    });
+
+    expect(fakes.auth.authorizeSimulated).not.toHaveBeenCalled();
+    expect(fakes.confirmation.settleTestMode).not.toHaveBeenCalled();
+    expect(fakes.identity.resolveByProviderToken).toHaveBeenCalledWith(
+      'privy-id-token',
+      { withoutAccount: false },
+    );
+    expect(fakes.capacity.checkCapacity).toHaveBeenCalledWith('c1', '1000000');
+    expect(fakes.auth.authorize).toHaveBeenCalledWith({
+      intentId: 'pi_1',
+      consumerId: 'c1',
+    });
+    expect(response.status).toBe('needs_signature');
   });
 });

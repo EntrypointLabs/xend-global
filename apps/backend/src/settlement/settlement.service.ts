@@ -284,14 +284,14 @@ export class SettlementService implements OnModuleInit {
     const [status] = await this.solana.getSignatureStatuses([
       attempt.txSignature,
     ]);
+    if (status?.err) {
+      return 'failed';
+    }
     if (
       status?.confirmationStatus === 'confirmed' ||
       status?.confirmationStatus === 'finalized'
     ) {
       return 'succeeded';
-    }
-    if (status?.err) {
-      return 'failed';
     }
     return 'still_settling';
   }

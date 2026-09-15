@@ -1,7 +1,35 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  AwsKmsClient,
+  KMS_CLIENT,
+  type KmsClient,
+} from '../recovery/kms.client';
+import { SOLANA_RPC, type SolanaRpc } from '../solana/solana-rpc.interface';
 import { SolanaModule } from '../solana/solana.module';
 import { SETTLEMENT_AUTHORITY_SIGNER } from './settlement-authority.interface';
 import { SettlementAuthorityEnvSigner } from './settlement-authority.env-signer';
+import { SettlementAuthorityKmsSigner } from './settlement-authority.kms-signer';
+
+/**
+ * Only the selected signer is constructed. Registering both would run both
+ * boot hooks, and the one not in use would fail on the secret it does not have.
+ */
+export function selectSettlementAuthoritySigner(
+  config: ConfigService,
+  solana: SolanaRpc,
+  kms: KmsClient,
+): SettlementAuthorityEnvSigner | SettlementAuthorityKmsSigner {
+  const provider = config.get<string>('SETTLEMENT_AUTHORITY_PROVIDER') ?? 'env';
+  switch (provider) {
+    case 'env':
+      return new SettlementAuthorityEnvSigner(config, solana);
+    case 'aws-kms':
+      return new SettlementAuthorityKmsSigner(config, solana, kms);
+    default:
+      throw new Error(`unknown SETTLEMENT_AUTHORITY_PROVIDER: ${provider}`);
+  }
+}
 
 /**
  * The settlement authority, bound on its own.
@@ -14,10 +42,11 @@ import { SettlementAuthorityEnvSigner } from './settlement-authority.env-signer'
 @Module({
   imports: [SolanaModule],
   providers: [
-    SettlementAuthorityEnvSigner,
+    { provide: KMS_CLIENT, useClass: AwsKmsClient },
     {
       provide: SETTLEMENT_AUTHORITY_SIGNER,
-      useExisting: SettlementAuthorityEnvSigner,
+      inject: [ConfigService, SOLANA_RPC, KMS_CLIENT],
+      useFactory: selectSettlementAuthoritySigner,
     },
   ],
   exports: [SETTLEMENT_AUTHORITY_SIGNER],

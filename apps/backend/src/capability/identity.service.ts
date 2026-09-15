@@ -17,6 +17,15 @@ export interface ConsumerProfile {
   email: string | null;
 }
 
+export interface ResolveOptions {
+  /**
+   * Accept a verified identity that has no Account yet, minting the Consumer
+   * row if needed and standing the provider wallet in for the vault. Only a
+   * test-mode Payment may ask for this: nothing it authorizes moves money.
+   */
+  withoutAccount?: boolean;
+}
+
 /**
  * Resolves a verified identity to a Consumer (id + Account address). Passkey
  * assertion verification happens upstream at the hosted checkout; this service
@@ -65,7 +74,10 @@ export class IdentityService {
     return this.profileForUser(cred.userId);
   }
 
-  async resolveByProviderToken(idToken: string): Promise<ConsumerProfile> {
+  async resolveByProviderToken(
+    idToken: string,
+    options: ResolveOptions = {},
+  ): Promise<ConsumerProfile> {
     const providerUser = await this.walletProvider.verifyIdToken(idToken);
     const [account] = await this.db.client
       .select()
@@ -73,25 +85,25 @@ export class IdentityService {
       .where(eq(smartAccounts.providerUserId, providerUser.providerUserId))
       .limit(1);
     if (!account) {
-      // TEST ONLY — never production, and off once development is walking the
+      // TEST ONLY, never production, and off once development is walking the
       // real Payment path. A passkey with no smart_accounts row is a person
       // whose Account was never created here, and minting a throwaway identity
       // for them is how the orphan rows in this table got made: no email, no
       // Account, and a Payment that fails as though they were short of money.
       // Refusing is the honest answer and matches production.
-      if (this.devScaffoldEnabled()) {
+      if (options.withoutAccount || this.devScaffoldEnabled()) {
         const userId = await this.devProvisionConsumer(providerUser);
-        return this.profileForUser(userId);
+        return this.profileForUser(userId, options);
       }
       throw new UnknownConsumerError(
         `no Account for provider user ${providerUser.providerUserId}`,
       );
     }
-    return this.profileForUser(account.userId);
+    return this.profileForUser(account.userId, options);
   }
 
   /**
-   * TEST ONLY — never production. Auto-provisions a minimal Consumer for a
+   * TEST ONLY, never production. Auto-provisions a minimal Consumer for a
    * verified provider identity that has no smart_accounts row yet, reusing the
    * exact insert shape /auth/exchange (AuthService.exchange) uses: upsert the
    * users row by email, then upsert the smart_accounts row keyed on user_id.
@@ -144,7 +156,10 @@ export class IdentityService {
     return userId;
   }
 
-  private async profileForUser(userId: string): Promise<ConsumerProfile> {
+  private async profileForUser(
+    userId: string,
+    options: ResolveOptions = {},
+  ): Promise<ConsumerProfile> {
     const [user] = await this.db.client
       .select()
       .from(users)
@@ -155,7 +170,7 @@ export class IdentityService {
     }
     return {
       consumerId: user.id,
-      accountAddress: await this.accountAddress(userId),
+      accountAddress: await this.accountAddress(userId, options),
       email: user.email,
     };
   }
@@ -165,16 +180,19 @@ export class IdentityService {
    * wallet and no vault, and cannot pay from it, so that is refused rather than
    * answered with an address holding nothing.
    */
-  private async accountAddress(userId: string): Promise<string> {
+  private async accountAddress(
+    userId: string,
+    options: ResolveOptions = {},
+  ): Promise<string> {
     const vault = await findVaultAddress(this.db, userId);
     if (vault) return vault;
 
-    // TEST ONLY — never production, and off once development is walking the
+    // TEST ONLY, never production, and off once development is walking the
     // real Payment path, where the vault is read for real. Standing the Privy
     // wallet in past that point reports a Consumer with no Account as one with
     // no money, which is the wrong problem and sends them to top up an Account
     // that does not exist.
-    if (this.devScaffoldEnabled()) {
+    if (options.withoutAccount || this.devScaffoldEnabled()) {
       const [account] = await this.db.client
         .select()
         .from(smartAccounts)

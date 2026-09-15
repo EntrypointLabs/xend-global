@@ -1,6 +1,10 @@
 # Pay with Xend — preview findings & production gaps
 
-Status: Living log
+Status: **Closed 2026-09-07.** No longer maintained; the items below are frozen at their last state. Where they stand:
+
+Closed: settlement out of the vault with the settlement authority as fee payer (ADR 0026); `display_currency` and `display_amount_minor` on `payment_intents` and `payments`; the above-limit handoff to the app (`GET /payments/pending`, `settings/finish-payment.tsx`); the real Privy ceremony bundling by default; `Ceremony.tsx` and its "create a passkey" affordance removed (the checkout only authenticates, `apps/checkout/src/ceremony/passkey.ts`); the SDK's simulated modal authorize removed (`presentation: "modal"` now falls back to the popup, `packages/checkout-core/src/index.ts`); the size gate measuring `popup-[hash].js`.
+
+Still open: Activity for a Payment unverified end to end; the lazy Privy chunk weight against the popup budget; deploying the checkout at `pay.xend.global` and registering it with Privy; an explicit Privy `config` for the checkout's `PrivyProvider`; a funded settlement authority on devnet; the `/test-dashboard` being dev-only until a merchant portal exists.
 Scope: Everything we hit while running the checkout locally and driving a **real** Privy passkey on devnet. Each item records what happened, the current state (fixed / worked-around / open), and the production fix owed. Complements the `PROGRESS.md` "Flags for human decision" (#1-#16); this is the hands-on-testing companion.
 
 > TL;DR: the open items are (1) an app-owned identity/onboarding model, (2) deploying the checkout at a Privy-registered domain, and (3) funded settlement on the backend. The money path, the currency handling, the above-limit handoff and the Privy web bundle are done.

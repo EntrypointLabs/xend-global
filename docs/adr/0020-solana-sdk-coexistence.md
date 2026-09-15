@@ -64,3 +64,9 @@ Specifics:
 - Plan: `.claude/plans/pay-with-xend/phases/04-settlement-leg/PLAN.md`
 - Related: [ADR-0010](./0010-no-load-bearing-provider.md) (owned SOLANA_RPC seam), [ADR-0015](./0015-settlement-provider-layer.md) (settlement provider layer)
 - Source: `apps/backend/src/solana/solana-rpc.interface.ts` (SDK-neutral seam, extended with `getMinimumBalanceForRentExemption`), `apps/backend/src/settlement/` (kit money-moving code)
+
+## Update 2026-09-07
+
+The Account path is on web3.js, not kit, and this is deliberate rather than a leftover. `packages/smart-account` builds every Squads instruction with `@solana/web3.js` `TransactionInstruction`s because the vendored `@sqds/smart-account` SDK is web3.js-based, and the backend modules that consume it follow (`apps/backend/src/account/account-chain.web3.ts`, `provisioning-chain.web3.ts`, `spend-chain.web3.ts`; the `.web3.ts` suffix marks the choice). `ProvisioningChain` and `SpendChain` (`apps/backend/src/account/account.interface.ts`) keep the SDK types out of the services, which is the ADR 0010 seam applied inside the account module.
+
+So the rule "kit for new money-moving code" has one standing exception: code that has to hand instructions to `@sqds/smart-account` uses web3.js, because converting kit instructions to web3.js objects for a vendored SDK would add a bridge this ADR explicitly declined. Kit still carries the settlement authority signer (`apps/backend/src/settlement/settlement.service.ts`) and the recovery signer's key derivation (`apps/backend/src/recovery/recovery.service.ts` uses `createKeyPairSignerFromPrivateKeyBytes` from kit and `Keypair` from web3.js side by side). The migration trigger for the Account path is the SDK moving to kit, not a rework of our own modules.

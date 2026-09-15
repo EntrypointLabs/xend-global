@@ -10,6 +10,14 @@ export interface Launch {
   reference: string | null;
   nonce: string;
   mode: LaunchMode;
+  /**
+   * The origin of the merchant page that opened the checkout, so the result
+   * goes back to that page rather than to whichever allowed origin the
+   * Merchant registered first. Read here only to be handed to the backend,
+   * which decides whether it is one of the Merchant's origins; a malformed or
+   * opaque value is dropped, never fatal.
+   */
+  opener: string | null;
 }
 
 export class LaunchError extends Error {
@@ -23,10 +31,30 @@ export class LaunchError extends Error {
 
 const REFERENCE_PATTERN = /^pi_[A-Za-z0-9_-]+$/;
 
+function isLoopbackHost(hostname: string): boolean {
+  return (
+    hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
+  );
+}
+
+function parseOpener(raw: string | null): string | null {
+  if (!raw) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  const httpLoopback = url.protocol === 'http:' && isLoopbackHost(url.hostname);
+  if (url.protocol !== 'https:' && !httpLoopback) return null;
+  return url.origin === raw ? raw : null;
+}
+
 /**
- * Parse the launch parameters from the popup URL. Reads only nonce, mode, and
- * intent. Amount, currency, merchant, and origin are never read from the URL:
- * every money-related and trust-related value comes from the server record.
+ * Parse the launch parameters from the popup URL. Reads only nonce, mode,
+ * intent and the opener origin. Amount, currency and merchant are never read
+ * from the URL: every money-related and trust-related value comes from the
+ * server record, and the opener is only ever a hint the backend checks.
  */
 export function parseLaunch(search: string): Launch {
   const params = new URLSearchParams(search);
@@ -47,5 +75,10 @@ export function parseLaunch(search: string): Launch {
     );
   }
 
-  return { reference: intent, nonce, mode };
+  return {
+    reference: intent,
+    nonce,
+    mode,
+    opener: parseOpener(params.get('opener')),
+  };
 }

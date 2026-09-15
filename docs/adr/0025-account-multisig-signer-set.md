@@ -1,6 +1,6 @@
 # 0025: The Account becomes a Squads smart account with a 2-of-3 signer set
 
-**Status:** Accepted, extended by [0027](0027-email-is-an-entry-point-not-a-login-method.md)
+**Status:** Accepted, extended by [0027](0027-email-is-an-entry-point-not-a-login-method.md); see the 2026-09-07 update on rejection
 **Date:** 2026-08-02
 **Accepted:** 2026-08-09
 **Deciders:** Xend founding team
@@ -241,3 +241,13 @@ the invariant are unchanged, and checkout is still passkey-only. The ordering wa
 what held the invariant up; the anchors were. 0027 states the rule the ordering has to
 respect: **email proves the inbox and unlocks S3, it never returns S1 and never enrols
 a signer.**
+
+## Update 2026-09-07: a lone signer cannot reject a staged change
+
+"That is what keeps a compromise reaching both S1 and S3 to a survivable event rather than a drain" rests on the remaining signer being able to reject the staged change during the lock. The program does not allow that. A proposal on a 2-of-3 Account settles either way at two votes: two approvals execute it after the lock, and two rejections kill it. The rejection cutoff is two signers, so one rejection is recorded against the proposal and leaves it open. The app already knows this: `useRejectAccountChange` (`apps/mobile/hooks/usePendingAccountChange.ts`) signs a rejection with S2 and then S1 because "one is not a refusal", and `ProposalState.rejected` (`packages/smart-account/src/state.ts`) exists so a rejection can be built by whoever has not voted yet.
+
+The consequence, stated plainly: **a Consumer who has lost one signer to an attacker cannot reject the change that attacker stages with a second one.** If S1 and S3 are compromised together, S2 alone cannot stop the rotation; it can only wait out the lock and watch. The time lock still buys what O4 said it buys, a notified window, but the window is for support, not for a one-tap refusal.
+
+This is accepted as a risk rather than solved. The mitigation is the support freeze of S3's release ([0030](0030-support-freeze-of-recovery-signer-release.md)): every path that would ask the vault for S3's signature calls `RecoveryService.assertReleaseAllowed` first, so while a compromise report is open the attacker's second vote never arrives and the staged change cannot reach two approvals. The freeze is the mandatory first step of the compromise runbook (`docs/specs/multisig-credentials-runbook.md`, section 8), not an optional one. It does nothing for a pair that does not include S3; that case is a stolen phone and a stolen passkey together, which is two of the Consumer's own anchors and is outside what this design defends.
+
+`docs/specs/account-security-model-decisions.md` D3 and D5b carry the same correction.

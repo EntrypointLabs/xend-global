@@ -69,6 +69,7 @@ describe('SpendingLimitService', () => {
 
     const result = await new SpendingLimitService(spendChain).forAccount(
       SETTINGS,
+      1n,
     );
 
     expect(result).toEqual({
@@ -89,6 +90,7 @@ describe('SpendingLimitService', () => {
 
     const result = await new SpendingLimitService(spendChain).forAccount(
       SETTINGS,
+      1n,
     );
 
     expect(result?.maxPerUse).toBe('18446744073709551615');
@@ -101,7 +103,7 @@ describe('SpendingLimitService', () => {
     // Not an error and not a zero cap. Provisioning creates the policy after
     // the Account, so this is what every Account looks like in between.
     await expect(
-      new SpendingLimitService(spendChain).forAccount(SETTINGS),
+      new SpendingLimitService(spendChain).forAccount(SETTINGS, 1n),
     ).resolves.toBeNull();
   });
 
@@ -113,14 +115,14 @@ describe('SpendingLimitService', () => {
     // down with it. An absent limit only makes the app ask for the second
     // confirmation, which is what an unreadable limit produces anyway.
     await expect(
-      new SpendingLimitService(spendChain).forAccount(SETTINGS),
+      new SpendingLimitService(spendChain).forAccount(SETTINGS, 1n),
     ).resolves.toBeNull();
   });
 
   it('reads the limit of the Account it was asked about', async () => {
     const { spendChain, read } = chain([limit()]);
 
-    await new SpendingLimitService(spendChain).forAccount(SETTINGS);
+    await new SpendingLimitService(spendChain).forAccount(SETTINGS, 1n);
 
     expect(read).toEqual([SETTINGS]);
   });

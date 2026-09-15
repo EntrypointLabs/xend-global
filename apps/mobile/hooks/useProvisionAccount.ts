@@ -6,6 +6,8 @@ import { Buffer } from "buffer";
 
 import { ACCOUNT_QUERY_KEY } from "@/hooks/useAccount";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
+import { assertSettings } from "@/utils/verifyTransaction";
+import { SETTINGS_TIME_LOCK_SECONDS } from "@xend/smart-account";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import { apiClient, type AccountResponse } from "@/utils/apiClient";
 
@@ -56,6 +58,14 @@ export function useProvisionAccount() {
             `Provisioning did not finish in ${MAX_STEPS} steps; stuck on ${plan.step}`
           );
         }
+
+        // Setting the Account up may create its two spending rules and set
+        // the lock. It may never move a signer.
+        assertSettings(plan.unsignedTxBase64, {
+          vault: account.address,
+          policyCreates: 2,
+          setTimeLockSeconds: SETTINGS_TIME_LOCK_SECONDS,
+        });
 
         let tx = VersionedTransaction.deserialize(
           toByteArray(plan.unsignedTxBase64)

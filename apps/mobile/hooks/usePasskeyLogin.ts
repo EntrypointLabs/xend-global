@@ -5,8 +5,10 @@ import {
   useSignupWithPasskey,
 } from "@privy-io/expo/passkey";
 import { useIdentityToken, usePrivy } from "@privy-io/expo";
+import * as Sentry from "@sentry/react-native";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { authenticateWithRetry } from "@/utils/passkeyCeremony";
 import {
   classifyPasskeyError,
   PasskeyHasNoAccountError,
@@ -39,8 +41,26 @@ export function usePasskeyLogin() {
 
   const { loginWithPasskey } = useLoginWithPasskey();
   const { signupWithPasskey } = useSignupWithPasskey();
-  const { user: privyUser, logout: privyLogout } = usePrivy();
+  const {
+    user: privyUser,
+    logout: privyLogout,
+    getAccessToken: privyAccessToken,
+  } = usePrivy();
   const { getIdentityToken } = useIdentityToken();
+
+  /**
+   * Closes a session the first ceremony call may have opened before its
+   * answer was lost. Asked of Privy at the time rather than read off the
+   * render, which predates the call.
+   */
+  const closeHalfOpenSession = async () => {
+    const open = await privyAccessToken().catch(() => null);
+    if (open) await privyLogout();
+  };
+
+  const reportLogoutFailure = (stage: string) => (err: unknown) => {
+    Sentry.captureException(err, { tags: { passkey: `logout-${stage}` } });
+  };
 
   /**
    * Privy authenticating is only half of it. The app's own session comes from
@@ -51,9 +71,14 @@ export function usePasskeyLogin() {
   const run = async (
     authenticate: () => Promise<{ id?: string } | undefined | null>,
     noUser: string,
-    signupToken?: string,
-    expectUserId?: string
+    options: {
+      signupToken?: string;
+      expectUserId?: string;
+      /** Sign-in only: a retried registration mints an orphan credential. */
+      retryEmptyResponse?: boolean;
+    } = {}
   ): Promise<PasskeySignInOutcome> => {
+    const { signupToken, expectUserId, retryEmptyResponse } = options;
     setError(null);
     setBusy(true);
     try {
@@ -62,18 +87,10 @@ export function usePasskeyLogin() {
       // exchange leaves Privy logged in and Xend logged out.
       if (privyUser) await privyLogout();
 
-      // The provider intermittently answers its first ceremony call with an
-      // empty body, which surfaces as a JSON parse error before any
-      // credential exists. One clean retry absorbs it; a second failure is
-      // reported rather than looped.
-      let user: Awaited<ReturnType<typeof authenticate>>;
-      try {
-        user = await authenticate();
-      } catch (err) {
-        if (!(err instanceof SyntaxError)) throw err;
-        console.log("[passkey] empty ceremony response; retrying once");
-        user = await authenticate();
-      }
+      const user = await authenticateWithRetry(
+        authenticate,
+        retryEmptyResponse ? closeHalfOpenSession : undefined
+      );
       if (!user) {
         setError(noUser);
         return "failed";
@@ -89,8 +106,8 @@ export function usePasskeyLogin() {
       // show in red: the answer is the email door, and Privy's half-open
       // session is closed so the next attempt starts clean.
       if (err instanceof PasskeyHasNoAccountError) {
-        await privyLogout().catch(() => undefined);
-        console.log("[passkey] sign-in ended as no-account");
+        await privyLogout().catch(reportLogoutFailure("no-account"));
+        if (__DEV__) console.warn("[passkey] sign-in ended as no-account");
         return "no-account";
       }
       // The wrong credential for the account the inbox named. Privy's
@@ -98,8 +115,8 @@ export function usePasskeyLogin() {
       // the retry, and the refusal happened before the session changed owner.
       if (err instanceof PasskeyWrongAccountError) {
         wrongAccount.current = err.maskedEmail;
-        await privyLogout().catch(() => undefined);
-        console.log("[passkey] sign-in ended as wrong-account");
+        await privyLogout().catch(reportLogoutFailure("wrong-account"));
+        if (__DEV__) console.warn("[passkey] sign-in ended as wrong-account");
         return "wrong-account";
       }
       const outcome = classifyPasskeyError(err, Platform.OS);
@@ -112,7 +129,7 @@ export function usePasskeyLogin() {
         // Deliberately not an error. An empty keychain and a dismissed sheet
         // are both things the flow expects and answers, and logging them at
         // error level buries the ones that are actually wrong.
-        console.log(`[passkey] sign-in ended as ${outcome}`);
+        if (__DEV__) console.warn(`[passkey] sign-in ended as ${outcome}`);
       }
       return outcome;
     } finally {
@@ -124,8 +141,7 @@ export function usePasskeyLogin() {
     run(
       () => loginWithPasskey({ relyingParty: RELYING_PARTY }),
       "That passkey did not sign you in.",
-      undefined,
-      expectUserId
+      { expectUserId, retryEmptyResponse: true }
     );
 
   /**
@@ -139,7 +155,7 @@ export function usePasskeyLogin() {
       async () =>
         (await signupWithPasskey({ relyingParty: RELYING_PARTY })).user,
       "The passkey was not created.",
-      signupToken
+      { signupToken }
     )) === "signed-in";
 
   /**
@@ -170,8 +186,8 @@ export function usePasskeyLogin() {
       if (outcome === "failed") {
         setError(describe(err));
         console.error("[passkey] replacement failed", err);
-      } else {
-        console.log(`[passkey] replacement ended as ${outcome}`);
+      } else if (__DEV__) {
+        console.warn(`[passkey] replacement ended as ${outcome}`);
       }
       return null;
     } finally {
@@ -180,7 +196,8 @@ export function usePasskeyLogin() {
   };
 
   /** Closes the fresh credential's session once its token has been handed over. */
-  const discardPrivySession = () => privyLogout().catch(() => undefined);
+  const discardPrivySession = () =>
+    privyLogout().catch(reportLogoutFailure("discard-replacement"));
 
   return {
     signIn,

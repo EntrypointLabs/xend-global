@@ -10,9 +10,11 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import { eq, inArray } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
+import { InboundWebhookDedupe } from '../db/inbound-webhook-dedupe';
 import { smartAccounts, squadsAccounts } from '../db/schema';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
@@ -20,18 +22,6 @@ import { EventParser } from './event-parser';
 import type { HeliusWebhookBody } from './event-parser';
 import { ReconcilerService } from './reconciler.service';
 import { TailerService } from './tailer.service';
-
-/**
- * Kill-switch for dropping inbound webhooks. When
- * `ACTIVITY_WEBHOOK_KILLSWITCH=1`, the receiver acknowledges deliveries
- * with `{ killSwitched: true, processed: 0 }` without parsing, looking
- * up wallets, or writing rows. The reconciler remains the only
- * confirmation path until the env var is cleared. Kept as an env var
- * (not a feature-flag table) for a one-line operator toggle.
- */
-function killSwitchActive(): boolean {
-  return process.env.ACTIVITY_WEBHOOK_KILLSWITCH === '1';
-}
 
 /**
  * POST /webhooks/helius.
@@ -53,6 +43,8 @@ function killSwitchActive(): boolean {
  * and let Helius redeliver the whole batch — the succeeded events are
  * collapsed by ON CONFLICT on redelivery.
  */
+const PROVIDER = 'helius';
+
 @Controller('webhooks')
 export class WebhookController {
   private readonly logger = new Logger(WebhookController.name);
@@ -63,7 +55,20 @@ export class WebhookController {
     private readonly parser: EventParser,
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
     private readonly reconciler: ReconcilerService,
+    private readonly config: ConfigService,
+    private readonly dedupe: InboundWebhookDedupe,
   ) {}
+
+  /**
+   * ACTIVITY_WEBHOOK_KILLSWITCH: acknowledge deliveries with
+   * `{ killSwitched: true, processed: 0 }` without parsing, looking up
+   * wallets, or writing rows. The reconciler remains the only confirmation
+   * path until the flag is cleared. An env var (not a feature-flag table)
+   * for a one-line operator toggle.
+   */
+  private killSwitchActive(): boolean {
+    return this.config.get<boolean>('ACTIVITY_WEBHOOK_KILLSWITCH') === true;
+  }
 
   @Post('helius')
   @HttpCode(200)
@@ -75,7 +80,7 @@ export class WebhookController {
   ): Promise<{ processed: number; skipped: number; killSwitched?: boolean }> {
     const req = reqUnknown as Request;
     const body = rawBodyParsed as HeliusWebhookBody;
-    if (killSwitchActive()) {
+    if (this.killSwitchActive()) {
       this.logger.warn(
         `tailer.webhook.received killSwitched events=${Array.isArray(body) ? body.length : 0}`,
       );
@@ -156,6 +161,13 @@ export class WebhookController {
         continue;
       }
       const smartAccountId = addrToAccount.get(ownerAddr)!;
+      // One transaction can carry several legs, so the leg is part of the id.
+      const eventId = `${evt.signature}:${evt.legIndex}`;
+      if (!(await this.dedupe.claim(PROVIDER, eventId))) {
+        this.logger.warn(`tailer.webhook.replayed sig=${evt.signature}`);
+        skipped++;
+        continue;
+      }
       try {
         const dir = await this.tailer.upsertConfirmedTransfer(
           evt,
@@ -177,6 +189,7 @@ export class WebhookController {
           `Failed to upsert transfer sig=${evt.signature}: ${(err as Error).message}`,
           err,
         );
+        await this.dedupe.release(PROVIDER, eventId);
         failed++;
       }
     }

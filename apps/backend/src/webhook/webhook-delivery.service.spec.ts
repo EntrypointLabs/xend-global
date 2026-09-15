@@ -14,6 +14,7 @@ function endpointRow(over: Partial<EndpointRow> = {}): EndpointRow {
     url: 'https://merchant.example.com/hook',
     secretPrimary: 'whsec_primary',
     secretSecondary: null,
+    secondaryExpiresAt: null,
     enabled: true,
     eventTypes: null,
     mode: 'test',
@@ -159,6 +160,52 @@ describe('WebhookDeliveryService.attempt', () => {
     await service.attempt(deliveryRow());
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(updates[0]).toMatchObject({ status: 'failed' });
+  });
+
+  it('signs with the secondary secret only while its grace window is open', async () => {
+    const headersSeen: string[] = [];
+    const capture = () =>
+      mockFetch((...args: unknown[]) => {
+        const init = args[1] as { headers: Record<string, string> };
+        headersSeen.push(init.headers['Xend-Signature']);
+        return Promise.resolve({
+          status: 200,
+          text: () => Promise.resolve(''),
+        });
+      });
+    const v1Count = (header: string) =>
+      header.split(',').filter((p) => p.startsWith('v1=')).length;
+
+    capture();
+    const open = makeDb(
+      endpointRow({
+        secretSecondary: 'whsec_old',
+        secondaryExpiresAt: new Date(Date.now() + 60_000),
+      }),
+    );
+    await new WebhookDeliveryService(open.db, makeConfig()).attempt(
+      deliveryRow(),
+    );
+    expect(v1Count(headersSeen[0])).toBe(2);
+
+    const expired = makeDb(
+      endpointRow({
+        secretSecondary: 'whsec_old',
+        secondaryExpiresAt: new Date(Date.now() - 60_000),
+      }),
+    );
+    await new WebhookDeliveryService(expired.db, makeConfig()).attempt(
+      deliveryRow(),
+    );
+    expect(v1Count(headersSeen[1])).toBe(1);
+
+    const legacy = makeDb(
+      endpointRow({ secretSecondary: 'whsec_old', secondaryExpiresAt: null }),
+    );
+    await new WebhookDeliveryService(legacy.db, makeConfig()).attempt(
+      deliveryRow(),
+    );
+    expect(v1Count(headersSeen[2])).toBe(2);
   });
 
   it('truncates the recorded response body to the cap', async () => {

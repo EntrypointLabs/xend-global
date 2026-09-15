@@ -230,10 +230,14 @@ function makeChallenges(onIssue: (userId: string, target: string) => void) {
     findById(id) {
       return Promise.resolve(rows.find((row) => row.id === id) ?? null);
     },
-    countSince(userId, since) {
+    countSince(userId, purpose, since) {
       return Promise.resolve(
-        rows.filter((row) => row.userId === userId && row.createdAt > since)
-          .length,
+        rows.filter(
+          (row) =>
+            row.userId === userId &&
+            row.purpose === purpose &&
+            row.createdAt > since,
+        ).length,
       );
     },
     claimAttempt(id, maxAttempts) {
@@ -769,9 +773,10 @@ describe('SignupService entry session', () => {
   it('keeps the per-address and per-network caps on the entry path', async () => {
     const ctx = setUp();
     await claimAddress(ctx, TAKEN);
-    const already = ctx.sent.filter((mail) => mail.to === TAKEN).length;
 
-    for (let i = already; i < 5; i++) {
+    // The code that proved the address at sign-up had another purpose and
+    // does not count here: the entry path has its own budget of five.
+    for (let i = 0; i < 5; i++) {
       await ctx.service.startEmailSignup(TAKEN, IP);
     }
     await expect(ctx.service.startEmailSignup(TAKEN, IP)).rejects.toThrow(

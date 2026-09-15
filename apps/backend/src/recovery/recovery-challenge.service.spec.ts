@@ -60,10 +60,14 @@ function makeStore() {
     findById(id) {
       return Promise.resolve(rows.find((row) => row.id === id) ?? null);
     },
-    countSince(userId, since) {
+    countSince(userId, purpose, since) {
       return Promise.resolve(
-        rows.filter((row) => row.userId === userId && row.createdAt > since)
-          .length,
+        rows.filter(
+          (row) =>
+            row.userId === userId &&
+            row.purpose === purpose &&
+            row.createdAt > since,
+        ).length,
       );
     },
     claimAttempt(id, maxAttempts) {
@@ -212,6 +216,22 @@ describe('RecoveryChallengeService', () => {
     await expect(service.issue(USER, EMAIL, PURPOSE)).rejects.toBeInstanceOf(
       TooManyRecoveryCodesError,
     );
+  });
+
+  it('counts the hourly cap per purpose, so entry codes cannot starve a recovery', async () => {
+    const { service } = setUp();
+    // Anyone who knows the address can ask for these without signing in.
+    for (let i = 0; i < 5; i++) {
+      await service.issue(USER, EMAIL, 'entry_session');
+    }
+    await expect(
+      service.issue(USER, EMAIL, 'entry_session'),
+    ).rejects.toBeInstanceOf(TooManyRecoveryCodesError);
+
+    // The Consumer who actually lost their phone still gets their code.
+    await expect(
+      service.issue(USER, EMAIL, 'device_rotation'),
+    ).resolves.toMatchObject({ expiresAt: expect.any(Date) as Date });
   });
 
   it('refuses a code that has expired', async () => {

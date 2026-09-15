@@ -19,6 +19,7 @@ import type {
   SquadsAccountRow,
   SquadsAccountStore,
 } from './account.interface';
+import { InMemoryPreparedTxStore } from '../prepared/prepared-tx.memory';
 import { ProvisioningService } from './provisioning.service';
 
 const USER = 'user-1';
@@ -79,7 +80,11 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
       Promise.resolve({
         timeLockSeconds: state.timeLockSeconds ?? 0,
         transactionIndex: state.transactionIndex ?? 0n,
+        policySeed: null,
+        signers: [],
       }),
+    readSpendingLimit: () =>
+      Promise.reject(new Error('readSpendingLimit is not exercised here')),
     policyExists: (_settings, seed) =>
       Promise.resolve((state.policies ?? []).includes(seed)),
     readProposal: () =>
@@ -114,7 +119,12 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
 }
 
 function service(chain: ProvisioningChain) {
-  return new ProvisioningService(store, chain, config);
+  return new ProvisioningService(
+    store,
+    chain,
+    config,
+    new InMemoryPreparedTxStore(),
+  );
 }
 
 /** Every account any of the compiled instructions touches, base58. */
@@ -307,7 +317,12 @@ describe('ProvisioningService.prepareNext', () => {
     };
 
     await expect(
-      new ProvisioningService(empty, chain, config).prepareNext(USER),
+      new ProvisioningService(
+        empty,
+        chain,
+        config,
+        new InMemoryPreparedTxStore(),
+      ).prepareNext(USER),
     ).rejects.toThrow(/No Account/);
   });
 });

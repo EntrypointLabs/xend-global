@@ -56,7 +56,7 @@ export class DrizzleSquadsAccountStore implements SquadsAccountStore {
   }
 
   withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
-    return this.db.withAdvisoryLock(`account:enrolment:${userId}`, fn);
+    return this.db.withAdvisoryLock(`account:settings-change:${userId}`, fn);
   }
 }
 
@@ -75,5 +75,12 @@ function toRow(row: typeof squadsAccounts.$inferSelect): SquadsAccountRow {
     pendingPrimarySigner: row.pendingPrimarySigner,
     pendingPrimaryProviderId: row.pendingPrimaryProviderId,
     pendingPrimaryChangeIndex: row.pendingPrimaryChangeIndex,
+    spendingLimitPolicySeed: row.spendingLimitPolicySeed,
+    pendingSpendingLimitChangeIndex: row.pendingSpendingLimitChangeIndex,
+    pendingSpendingLimitAmount: row.pendingSpendingLimitAmount,
+    pendingSpendingLimitPolicySeed: row.pendingSpendingLimitPolicySeed,
+    pendingSpendingLimitCreating: row.pendingSpendingLimitCreating,
+    pendingSpendingLimitPeriod: row.pendingSpendingLimitPeriod,
+    pendingSpendingLimitPrevious: row.pendingSpendingLimitPrevious,
   };
 }

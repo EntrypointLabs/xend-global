@@ -58,6 +58,27 @@ describe("CapsService", () => {
     ).toThrow(CapExceededError);
   });
 
+  it("gives back a released slot so a rejected request does not count", () => {
+    const caps = new CapsService(
+      makeCfg({ perConsumerPaymentsPerHour: 1, perMerchantPaymentsPerHour: 1 }),
+    );
+    caps.checkAndReserve({ consumerId: "c1", merchantId: "m1" });
+    caps.release({ consumerId: "c1", merchantId: "m1" });
+    expect(() =>
+      caps.checkAndReserve({ consumerId: "c1", merchantId: "m1" }),
+    ).not.toThrow();
+    expect(() =>
+      caps.checkAndReserve({ consumerId: "c1", merchantId: "m1" }),
+    ).toThrow(CapExceededError);
+  });
+
+  it("tolerates a release for a pair that never reserved", () => {
+    const caps = new CapsService(makeCfg());
+    expect(() =>
+      caps.release({ consumerId: "nobody", merchantId: "nowhere" }),
+    ).not.toThrow();
+  });
+
   it("reports the global fee spent today", () => {
     const caps = new CapsService(makeCfg());
     caps.recordSpend({ consumerId: "c1", feeLamports: 700n });

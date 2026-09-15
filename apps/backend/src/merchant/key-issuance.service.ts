@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { apiKeys, merchants, settlementAccounts } from '../db/schema';
 import { MerchantNotFoundError } from '../payment/payment.errors';
+import { ApiKeyNotFoundError } from './merchant.errors';
 import { generateApiKey } from './api-key.util';
 import {
   KybNotVerifiedError,
@@ -48,6 +49,14 @@ export function assertLiveKeyEligible(
   }
 }
 
+export interface RevokedKey {
+  id: string;
+  merchantId: string;
+  fingerprint: string;
+  mode: 'test' | 'live';
+  revokedAt: Date;
+}
+
 /**
  * The single key-issuance path. The ops script drives it today; the
  * merchants.xend.global portal drives it later. Test keys are instant and
@@ -90,6 +99,37 @@ export class KeyIssuanceService {
     });
 
     return { raw: key.raw, fingerprint: key.fingerprint };
+  }
+
+  /**
+   * Retires a key. The guard refuses a revoked key on its next use; a key
+   * already revoked keeps its original timestamp so the call is safe to repeat.
+   */
+  async revokeKey(keyId: string): Promise<RevokedKey> {
+    const [revoked] = await this.db.client
+      .update(apiKeys)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(apiKeys.id, keyId), isNull(apiKeys.revokedAt)))
+      .returning();
+    const row =
+      revoked ??
+      (
+        await this.db.client
+          .select()
+          .from(apiKeys)
+          .where(eq(apiKeys.id, keyId))
+          .limit(1)
+      )[0];
+    if (!row?.revokedAt) {
+      throw new ApiKeyNotFoundError(`api key ${keyId} not found`);
+    }
+    return {
+      id: row.id,
+      merchantId: row.merchantId,
+      fingerprint: row.fingerprint,
+      mode: row.mode,
+      revokedAt: row.revokedAt,
+    };
   }
 
   /**

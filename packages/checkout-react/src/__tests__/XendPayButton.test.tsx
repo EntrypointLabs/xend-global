@@ -43,4 +43,47 @@ describe("XendPayButton", () => {
     const second = container.querySelector("button");
     expect(second).toBe(first);
   });
+
+  it("accepts the default glass-sheet presentation and its apiBase", () => {
+    const { container } = render(
+      <XendPayButton
+        checkoutOrigin={ORIGIN}
+        apiBase="https://api.xend.test"
+        presentation="modal"
+        createIntent={createIntent}
+        onResult={() => {}}
+      />,
+    );
+    expect(container.querySelector("button")).not.toBeNull();
+    // The sheet is drawn on click, so nothing is in the page until then.
+    expect(document.querySelector("[data-xend-checkout]")).toBeNull();
+  });
+
+  it("forwards theme and presentation to the core button", () => {
+    const { container, rerender } = render(
+      <XendPayButton
+        checkoutOrigin={ORIGIN}
+        createIntent={createIntent}
+        onResult={() => {}}
+        theme="dark"
+        presentation="redirect"
+      />,
+    );
+    const first = container.querySelector("button");
+    expect(first?.dataset["theme"]).toBe("dark");
+
+    // A mount-time option change is the one thing that rebuilds the button.
+    rerender(
+      <XendPayButton
+        checkoutOrigin={ORIGIN}
+        createIntent={createIntent}
+        onResult={() => {}}
+        theme="light"
+        presentation="redirect"
+      />,
+    );
+    const second = container.querySelector("button");
+    expect(second).not.toBe(first);
+    expect(second?.dataset["theme"]).toBe("light");
+  });
 });

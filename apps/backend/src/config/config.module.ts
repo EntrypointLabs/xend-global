@@ -2,18 +2,46 @@ import { Module } from '@nestjs/common';
 import { ConfigModule as NestConfigModule } from '@nestjs/config';
 import * as Joi from 'joi';
 
+export const USDC_MINT_BY_CLUSTER = {
+  mainnet: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  devnet: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
+} as const;
+
 /** Joi-validated env loader. */
 @Module({
   imports: [
     NestConfigModule.forRoot({
       isGlobal: true,
       validationSchema: Joi.object({
+        // No default: an environment that forgets to say what it is must not
+        // silently get the development-only escape hatches below.
         NODE_ENV: Joi.string()
           .valid('development', 'production', 'test')
-          .default('development'),
+          .required(),
         PORT: Joi.number().default(8000),
+        // Express trust-proxy setting: behind one load balancer in production
+        // (so client IPs and rate limits come from X-Forwarded-For), off
+        // everywhere else so a spoofed header cannot forge an address.
+        TRUST_PROXY: Joi.alternatives()
+          .try(Joi.boolean(), Joi.number().integer().min(0))
+          .when('NODE_ENV', {
+            is: 'production',
+            then: Joi.any().default(1),
+            otherwise: Joi.any().default(false),
+          }),
         DATABASE_URL: Joi.string().required(),
-        JWT_SECRET: Joi.string().required(),
+        DB_POOL_MAX: Joi.number().integer().min(1).default(10),
+        DB_CONNECTION_TIMEOUT_MS: Joi.number().integer().min(100).default(5000),
+        DB_IDLE_TIMEOUT_MS: Joi.number().integer().min(1000).default(30000),
+        // JWT_SECRETS is a comma list, signing secret first, every entry
+        // verifying (the token header carries a kid). JWT_SECRET is the
+        // single-key fallback; one of the two must be set.
+        JWT_SECRETS: Joi.string().optional().allow(''),
+        JWT_SECRET: Joi.string().when('JWT_SECRETS', {
+          is: Joi.string().min(1),
+          then: Joi.optional().allow(''),
+          otherwise: Joi.required(),
+        }),
         JWT_EXPIRES_IN: Joi.string().default('7d'),
 
         // Privy — server-side ID token verification.
@@ -38,10 +66,33 @@ import * as Joi from 'joi';
         TURNKEY_API_BASE_URL: Joi.string()
           .uri()
           .default('https://api.turnkey.com'),
+        // Writes program-allowlist policies onto each new S2 sub-organization.
+        // Off until the policy bodies have been exercised against Turnkey.
+        TURNKEY_POLICIES_ENABLED: Joi.boolean().default(false),
 
         // Seals the recovery signer's secret (S3). Optional for the same
         // reason as the Turnkey keys: recovery fails at the call, not at boot.
+        //   env: AES-256-GCM under RECOVERY_VAULT_KEYS (id:base64 list,
+        //     current first) or RECOVERY_VAULT_KEY as the single env-v1 key.
+        //   aws-kms: envelope custody; each seal wraps a fresh data key from
+        //     RECOVERY_VAULT_KMS_KEY_ID. Env keys still open old rows until
+        //     scripts/reseal-recovery-signers.ts has moved them.
+        RECOVERY_VAULT_PROVIDER: Joi.string()
+          .valid('env', 'aws-kms')
+          .default('env'),
         RECOVERY_VAULT_KEY: Joi.string().optional().allow(''),
+        RECOVERY_VAULT_KEYS: Joi.string().optional().allow(''),
+        RECOVERY_VAULT_KMS_KEY_ID: Joi.string().when(
+          'RECOVERY_VAULT_PROVIDER',
+          {
+            is: 'aws-kms',
+            then: Joi.required(),
+            otherwise: Joi.optional().allow(''),
+          },
+        ),
+        // Region for every KMS call; blank defers to the AWS SDK's own
+        // AWS_REGION resolution. Credentials come from the standard chain.
+        AWS_KMS_REGION: Joi.string().optional().allow(''),
 
         // Mail. Only recovery codes go out over this, and a deployment with no
         // key logs them instead, which MailModule refuses in production.
@@ -76,8 +127,27 @@ import * as Joi from 'joi';
         // set server-side. USDC is required and non-empty: the capacity
         // engine reads live USDC Balance for every money decision, so a
         // present-but-empty value must fail at boot rather than read zero.
+        // It must also be the canonical mint for SOLANA_CLUSTER: a devnet
+        // mint on mainnet reads every Balance as zero, and the reverse
+        // prices real money against a test token.
         EXPO_PUBLIC_USDT_MINT_ADDRESS: Joi.string().optional().allow(''),
-        EXPO_PUBLIC_USDC_MINT_ADDRESS: Joi.string().required(),
+        EXPO_PUBLIC_USDC_MINT_ADDRESS: Joi.string()
+          .required()
+          .when('SOLANA_CLUSTER', {
+            is: 'mainnet',
+            then: Joi.valid(USDC_MINT_BY_CLUSTER.mainnet),
+            otherwise: Joi.valid(USDC_MINT_BY_CLUSTER.devnet),
+          })
+          .messages({
+            'any.only':
+              'EXPO_PUBLIC_USDC_MINT_ADDRESS must be the canonical USDC mint for SOLANA_CLUSTER',
+          }),
+        // Operator toggle: drop inbound Helius deliveries (acknowledged, not
+        // processed) while the reconciler stays the only confirmation path.
+        ACTIVITY_WEBHOOK_KILLSWITCH: Joi.boolean()
+          .truthy('1')
+          .falsy('0', '')
+          .default(false),
 
         // Redis: Session and rate-limit state (managed in cloud, docker-compose
         // locally). rediss:// for TLS-terminated managed instances.
@@ -96,6 +166,10 @@ import * as Joi from 'joi';
           .default('plain'),
         KAFKA_SASL_USERNAME: Joi.string().optional().allow(''),
         KAFKA_SASL_PASSWORD: Joi.string().optional().allow(''),
+        // A message whose handler keeps failing is parked on this topic after
+        // this many attempts so it stops blocking its partition.
+        KAFKA_DEAD_LETTER_TOPIC: Joi.string().default('events.dead-letter'),
+        KAFKA_CONSUMER_MAX_ATTEMPTS: Joi.number().integer().min(1).default(5),
 
         // Capacity tiers: JSON table of tier bands; amounts are raw u64
         // strings in USDC minor units. Pilot default: 50 USDC per payment,
@@ -142,16 +216,37 @@ import * as Joi from 'joi';
         // as the relayer fee-payer key (KMS/Turnkey signer > cloud-KMS-wrapped
         // key > raw env at pilot floor). Never logged. The Blockradar master
         // wallet + payout credentials are a Phase 8 concern, not added here.
-        SETTLEMENT_AUTHORITY_SECRET_KEY: Joi.string().required(),
-        // Phase 3 relayer deployable base URL (internal network only).
-        RELAYER_URL: Joi.string().uri().required(),
+        // Authority custody: env reads the base58 secret; aws-kms reads its
+        // KMS ciphertext and decrypts once at boot.
+        SETTLEMENT_AUTHORITY_PROVIDER: Joi.string()
+          .valid('env', 'aws-kms')
+          .default('env'),
+        SETTLEMENT_AUTHORITY_SECRET_KEY: Joi.string().when(
+          'SETTLEMENT_AUTHORITY_PROVIDER',
+          {
+            is: 'env',
+            then: Joi.required(),
+            otherwise: Joi.optional().allow(''),
+          },
+        ),
+        SETTLEMENT_AUTHORITY_SECRET_KEY_CIPHERTEXT: Joi.string().when(
+          'SETTLEMENT_AUTHORITY_PROVIDER',
+          {
+            is: 'aws-kms',
+            then: Joi.required(),
+            otherwise: Joi.optional().allow(''),
+          },
+        ),
+        // Fee-payer relayer deployable (internal network only). Optional:
+        // nothing on the payment path calls it since settlement moved to the
+        // Spend path (ADR 0026), so its client tolerates absent config and
+        // fails at the call site instead of the boot.
+        RELAYER_URL: Joi.string().uri().optional().allow(''),
         // MUST equal the relayer's RELAYER_INTERNAL_AUTH_SECRET (shared secret
         // on X-Relayer-Auth for /internal/*).
-        RELAYER_INTERNAL_AUTH_SECRET: Joi.string().required(),
-        // The relayer fee-payer pubkey (tx payerKey). Verified against the
-        // relayer's GET /health at the phase checkpoint; drift silently breaks
-        // every settlement.
-        RELAYER_FEE_PAYER_ADDRESS: Joi.string().required(),
+        RELAYER_INTERNAL_AUTH_SECRET: Joi.string().optional().allow(''),
+        // The relayer fee-payer pubkey (tx payerKey).
+        RELAYER_FEE_PAYER_ADDRESS: Joi.string().optional().allow(''),
         // Active confirmation poll cadence and ceiling (hot path). The poll
         // races the Helius webhook; the 30s sweep is the tail safety net.
         SETTLEMENT_CONFIRM_POLL_INTERVAL_MS: Joi.number()
@@ -162,6 +257,13 @@ import * as Joi from 'joi';
           .integer()
           .min(1000)
           .default(8000),
+        // A naira off-ramp that has heard nothing from the provider for this
+        // long is failed by the reconciler so its Payment does not sit in
+        // settling forever.
+        SETTLEMENT_OFFRAMP_STUCK_MINUTES: Joi.number()
+          .integer()
+          .min(5)
+          .default(120),
 
         // Internal ops surface (webhook endpoint registration, manual
         // redelivery). Not a merchant credential; not the consumer JWT.
@@ -196,10 +298,17 @@ import * as Joi from 'joi';
         WEBHOOK_MAX_ATTEMPTS: Joi.number().integer().min(1).default(12),
         WEBHOOK_RETRY_BASE_SECONDS: Joi.number().integer().min(1).default(30),
         WEBHOOK_RETRY_MAX_SECONDS: Joi.number().integer().min(1).default(21600),
-        WEBHOOK_REPLAY_TOLERANCE_SECONDS: Joi.number()
+        // A delivery still pending this long after creation was orphaned by a
+        // crash mid-attempt and is picked up by the retry sweep.
+        WEBHOOK_PENDING_STALE_MINUTES: Joi.number()
           .integer()
-          .min(30)
-          .default(300),
+          .min(1)
+          .default(10),
+        // How long the previous secret keeps signing after a rotation.
+        WEBHOOK_SECRET_ROTATION_GRACE_HOURS: Joi.number()
+          .integer()
+          .min(1)
+          .default(24),
         WEBHOOK_RESPONSE_BODY_MAX: Joi.number()
           .integer()
           .min(256)
@@ -219,8 +328,20 @@ import * as Joi from 'joi';
         // what decides whether a Payment is routed through the Consumer's
         // Account at all, and with it on, an above-limit Payment is never
         // detected and Checkout never hands one to the app. Ignored outside
-        // development, where the real path is the only path.
-        CHECKOUT_DEV_FORCE_SETTLE: Joi.boolean().default(true),
+        // development, where the real path is the only path, and refused
+        // outright in production so it cannot be reached by a misread NODE_ENV.
+        CHECKOUT_DEV_FORCE_SETTLE: Joi.boolean()
+          .default(false)
+          .when('NODE_ENV', { is: 'production', then: Joi.valid(false) })
+          .messages({
+            'any.only': 'CHECKOUT_DEV_FORCE_SETTLE must be false in production',
+          }),
+
+        // Local test dashboard (mints Merchant API keys with no auth). The
+        // module is not registered in production at all; elsewhere the guard
+        // additionally requires this secret on x-test-dashboard-secret and
+        // 404s when it is unset.
+        TEST_DASHBOARD_SECRET: Joi.string().optional().allow(''),
 
         // Internal ops console (read-only, pilot). Unset = console disabled:
         // the guard denies every request when either value is missing.
@@ -236,10 +357,33 @@ import * as Joi from 'joi';
         // confirmation (c) (per-Merchant reverse) is unconfirmed, so Phase 6's
         // capability gate keeps naira refunds at REFUND_NOT_SUPPORTED (manual-ops).
         BLOCKRADAR_API_KEY: Joi.string().optional().allow(''),
-        BLOCKRADAR_WEBHOOK_SECRET: Joi.string().optional().allow(''),
+        // The webhook receiver is only mounted when the leg is enabled, and
+        // then the secret it verifies with is required at boot.
+        BLOCKRADAR_WEBHOOK_SECRET: Joi.string().when(
+          'BLOCKRADAR_SOLANA_NATIVE_ENABLED',
+          {
+            is: true,
+            then: Joi.required(),
+            otherwise: Joi.optional().allow(''),
+          },
+        ),
         BLOCKRADAR_MASTER_WALLET_ID: Joi.string().optional().allow(''),
         BLOCKRADAR_REFUND_SUPPORTED: Joi.boolean().default(false),
         BLOCKRADAR_SOLANA_NATIVE_ENABLED: Joi.boolean().default(false),
+        // Operator toggle: acknowledge inbound off-ramp webhooks without
+        // verifying, parsing, or writing.
+        SETTLEMENT_WEBHOOK_KILLSWITCH: Joi.boolean()
+          .truthy('1')
+          .falsy('0', '')
+          .default(false),
+
+        // Observability. GET /metrics requires this as a bearer token when
+        // set; unset, the route is open outside production and absent in it.
+        METRICS_SECRET: Joi.string().optional().allow(''),
+        // Tracing is on only when an OTLP/HTTP collector endpoint is given;
+        // the SDK starts in main.ts before Nest loads.
+        OTEL_EXPORTER_OTLP_ENDPOINT: Joi.string().uri().optional().allow(''),
+        OTEL_SERVICE_NAME: Joi.string().default('xend-backend'),
       }),
     }),
   ],

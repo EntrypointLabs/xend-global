@@ -11,7 +11,11 @@ import type { Request } from 'express';
 import { DbService } from '../db/db.service';
 import { apiKeys, merchants } from '../db/schema';
 import { hashApiKey, LIVE_PREFIX, TEST_PREFIX } from './api-key.util';
-import { InvalidApiKeyError, MerchantSuspendedError } from './merchant.errors';
+import {
+  InvalidApiKeyError,
+  KybNotVerifiedError,
+  MerchantSuspendedError,
+} from './merchant.errors';
 
 /** Attached to the request by ApiKeyGuard for the merchant API surface. */
 export interface MerchantContext {
@@ -30,7 +34,8 @@ export interface MerchantRequest extends Request {
  * to x-api-key), hashes the raw key, looks it up by SHA-256, and attaches
  * `request.merchant`. Raw keys are never compared or stored; only the hash
  * is. The guard is the HTTP boundary, so it maps its own typed errors to 401
- * / 403 here.
+ * / 403 here. A live key is re-checked against the Merchant's KYB on every
+ * use, so a verification withdrawn after issuance takes live access with it.
  */
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
@@ -70,6 +75,11 @@ export class ApiKeyGuard implements CanActivate {
       if (merchant.status !== 'active') {
         throw new MerchantSuspendedError(`merchant is ${merchant.status}`);
       }
+      if (keyRow.mode === 'live' && merchant.kybStatus !== 'verified') {
+        throw new KybNotVerifiedError(
+          `live keys require a verified KYB (merchant is ${merchant.kybStatus})`,
+        );
+      }
 
       request.merchant = {
         merchantId: keyRow.merchantId,
@@ -97,7 +107,10 @@ export class ApiKeyGuard implements CanActivate {
           HttpStatus.UNAUTHORIZED,
         );
       }
-      if (err instanceof MerchantSuspendedError) {
+      if (
+        err instanceof MerchantSuspendedError ||
+        err instanceof KybNotVerifiedError
+      ) {
         throw new HttpException(
           { code: err.code, message: err.message },
           HttpStatus.FORBIDDEN,

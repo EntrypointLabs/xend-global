@@ -11,6 +11,10 @@
 const CURRENCIES: Record<string, { symbol: string; decimals: number }> = {
   NGN: { symbol: '₦', decimals: 2 },
   USD: { symbol: '$', decimals: 2 },
+  // Priced in the token's own six-decimal minor unit, and shown as dollars
+  // because that is what the amount is. Reading it at two decimals turned a
+  // $0.25 order into a quarter of a million.
+  USDC: { symbol: '$', decimals: 6 },
 };
 
 function groupThousands(digits: string): string {

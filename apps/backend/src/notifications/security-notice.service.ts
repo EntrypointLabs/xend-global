@@ -12,7 +12,8 @@ export type StagedChangeKind =
   | 'recovery_key'
   | 'device'
   | 'contact_email'
-  | 'passkey';
+  | 'passkey'
+  | 'spending_limit';
 
 export interface SecurityEvent {
   userId: string;
@@ -378,6 +379,12 @@ function staged(
           body: 'The new one takes over after a 24 hour delay. If this was not you, open Xend and reject it.',
           kind,
         };
+      case 'spending_limit':
+        return {
+          title: 'Your spending limit is changing',
+          body: `It becomes${subject ? ` ${subject}` : ''} after a 24 hour delay. If this was not you, open Xend and reject it.`,
+          kind,
+        };
       default:
         return {
           title: 'Check your Xend account',
@@ -401,6 +408,10 @@ function staged(
           : 'A change of your contact email was started';
       case 'passkey':
         return 'A replacement of the passkey that signs you in was started';
+      case 'spending_limit':
+        return subject
+          ? `A change of your spending limit to ${subject} was started`
+          : 'A change of your spending limit was started';
       default:
         return 'Someone started a change to the security settings of your account';
     }

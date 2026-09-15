@@ -29,6 +29,18 @@ export const EARN_PRODUCTS: EarnProduct[] = [
   },
 ];
 
+/**
+ * The headline rate the home tile advertises: the best rate actually on offer.
+ * Derived rather than written down a second time, because a tile quoting a
+ * figure no product pays is a promise nobody can keep.
+ */
+export function earnHeadlineApy(): string {
+  const best = EARN_PRODUCTS.map((product) =>
+    Number.parseFloat(product.apyDisplay)
+  ).reduce((highest, rate) => (rate > highest ? rate : highest), 0);
+  return `${best.toFixed(2)}%`;
+}
+
 export interface EarnPosition {
   /** Display units. Drives whether the Consumer has a position at all. */
   balance: number;

@@ -4,13 +4,9 @@ import {
   ModalOptionsList,
   ActionOption,
 } from "../../molecules/ModalOptionsList";
-import { router } from "expo-router";
-import { useKyc } from "@/hooks/useKyc";
-import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { Image, View } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 
-const bankIcon = require("@/assets/icons/bank.png");
 const walletIcon = require("@/assets/icons/wallet.png");
 
 interface SendModalProps {
@@ -24,49 +20,16 @@ export function SendModal({
   onClose,
   onSendToWallet,
 }: SendModalProps) {
-  const { isBankDisabled, status, tosStatus } = useKyc();
-  const { hideAllModals } = useModalFlow();
-
   const handleSendToWallet = () => {
     onClose();
     onSendToWallet();
   };
 
-  const handleSendToBank = () => {
-    onClose();
-
-    if (
-      status === "not_started" ||
-      status === "incomplete" ||
-      tosStatus === "pending"
-    ) {
-      hideAllModals();
-      router.push({ pathname: "/kyc", params: { source: "send" } });
-      return;
-    }
-
-    router.push({
-      pathname: "/(send)/fiatamount",
-      params: {
-        type: "bank",
-        title: "Send Fiat",
-      },
-    });
-  };
-
   const sendOptions: ActionOption[] = [
     {
-      key: "fiat",
-      title: "To bank account",
-      description: "Send USDC/EURC to bank Account",
-      icon: bankIcon,
-      onPress: handleSendToBank,
-      disabled: isBankDisabled,
-    },
-    {
       key: "crypto",
-      title: "To crypto wallet",
-      description: "Send assets to a solana address",
+      title: "To an address",
+      description: "Send to a Solana address or .sol name",
       icon: walletIcon,
       onPress: handleSendToWallet,
     },
@@ -87,7 +50,7 @@ export function SendModal({
           weight="500"
           className="max-w-[192px] text-center text-sm text-black/40"
         >
-          Choose one of the options below to send crypto assets
+          Choose where the money goes
         </Typography>
       </View>
       <ModalOptionsList options={sendOptions} />

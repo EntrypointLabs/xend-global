@@ -4,8 +4,10 @@ import {
   Get,
   HttpException,
   HttpStatus,
+  Logger,
   Param,
   Post,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -28,6 +30,7 @@ import { IdentityService } from '../capability/identity.service';
 import {
   CapacityExceededError,
   InsufficientBalanceError,
+  LiveIntentOnSimulatedPathError,
   UnknownConsumerError,
 } from '../capability/capability.errors';
 import { SessionService } from '../session/session.service';
@@ -56,6 +59,7 @@ import {
 } from './dtos';
 
 type IntentRow = typeof paymentIntents.$inferSelect;
+type MerchantRow = typeof merchants.$inferSelect;
 
 const AUTHORIZE_WAIT_MS = 15_000;
 const AUTHORIZE_POLL_MS = 500;
@@ -82,6 +86,8 @@ function readCookie(req: Request, name: string): string | undefined {
  */
 @Controller('checkout')
 export class CheckoutController {
+  private readonly logger = new Logger(CheckoutController.name);
+
   // Test-tunable so a spec can exercise the blocking wait without real delays.
   authorizeWaitMs = AUTHORIZE_WAIT_MS;
   authorizePollMs = AUTHORIZE_POLL_MS;
@@ -96,8 +102,8 @@ export class CheckoutController {
     private readonly config: ConfigService,
     private readonly settlement: SettlementService,
     private readonly notifications: NotificationsService,
-    // TEST ONLY — never production: used only by the dev settlement
-    // short-circuit below (gated on NODE_ENV==='development').
+    // The sandbox settlement for test-mode intents, and the development
+    // short-circuit for live ones (gated on NODE_ENV==='development').
     private readonly confirmation: SettlementConfirmationService,
   ) {}
 
@@ -105,6 +111,7 @@ export class CheckoutController {
   async getSummary(
     @Req() req: Request,
     @Param('reference') reference: string,
+    @Query('opener') opener?: string,
   ): Promise<IntentSummary> {
     try {
       const intent = await this.intents.findById(reference);
@@ -117,10 +124,11 @@ export class CheckoutController {
         throw new IntentNotFoundError(`intent ${reference} not found`);
       }
 
-      const merchantOrigin =
-        merchant.allowedOrigins && merchant.allowedOrigins.length > 0
-          ? merchant.allowedOrigins[0]
-          : null;
+      const merchantOrigin = await this.resolveMerchantOrigin(
+        intent,
+        merchant,
+        opener,
+      );
 
       const cookieName = this.config.getOrThrow<string>(
         'CHECKOUT_SESSION_COOKIE',
@@ -176,6 +184,10 @@ export class CheckoutController {
       );
       const cookieToken = readCookie(req, cookieName);
 
+      // A test-mode intent settles through the sandbox: the Consumer is still
+      // a verified identity, but needs no Account, no capacity and no chain.
+      const simulated = intent.mode === 'test';
+
       // Who is paying, resolved before anything is written. The ceremony path
       // reads it from the verified provider token; the one-tap path reads it
       // from the Session, whose validation is read-only and repeated inside
@@ -184,6 +196,7 @@ export class CheckoutController {
       if (body.providerToken) {
         const profile = await this.identity.resolveByProviderToken(
           body.providerToken,
+          { withoutAccount: simulated },
         );
         consumerId = profile.consumerId;
       } else {
@@ -195,6 +208,20 @@ export class CheckoutController {
           intent.merchantId,
         );
         consumerId = session.consumerId;
+      }
+
+      if (simulated) {
+        await this.auth.authorizeSimulated({ intentId: reference, consumerId });
+        if (body.providerToken) {
+          const { token } = await this.sessions.issue({
+            consumerId,
+            merchantId: intent.merchantId,
+            issuingIntentId: reference,
+          });
+          this.setSessionCookie(res, cookieName, token);
+        }
+        await this.confirmation.settleTestMode(reference);
+        return await this.terminalResponse(reference);
       }
 
       // Capacity first, and read-only: it decides whether this Payment can
@@ -275,12 +302,12 @@ export class CheckoutController {
         };
       }
 
-      // TEST ONLY — never production. Locally there is no Account on any
-      // cluster and no funded settlement authority, so no Spend can be built or
-      // broadcast and waiting for one would only time out (PAYMENT_PROCESSING).
-      // Force the authorized intent to a terminal SUCCEEDED (fake signature,
-      // same payment.succeeded event) so local checkout resolves, skipping the
-      // signature round trip entirely. Hard-gated on NODE_ENV==='development'.
+      // TEST ONLY, never production. A live-mode intent in local development
+      // with CHECKOUT_DEV_FORCE_SETTLE on: there is no funded settlement
+      // authority, so no Spend can be broadcast and waiting for one would only
+      // time out (PAYMENT_PROCESSING). Force the authorized intent to a
+      // terminal SUCCEEDED (fake signature, same payment.succeeded event).
+      // Hard-gated on NODE_ENV==='development'.
       await this.confirmation.devForceSettleSucceeded(reference);
       return this.terminalResponse(reference);
     } catch (err) {
@@ -331,6 +358,39 @@ export class CheckoutController {
       );
     }
     return response;
+  }
+
+  /**
+   * Where the popup posts the result. The page that opened the checkout names
+   * itself on the launch URL; it is honoured only if it is one of the
+   * Merchant's registered origins, and then remembered on the intent so a
+   * later load (the redirect return, a reload) still answers with it. With
+   * nothing usable the first registered origin stands, as it always has.
+   */
+  private async resolveMerchantOrigin(
+    intent: IntentRow,
+    merchant: MerchantRow,
+    requested: string | undefined,
+  ): Promise<string | null> {
+    const allowed = merchant.allowedOrigins ?? [];
+    if (requested && allowed.includes(requested)) {
+      if (intent.openerOrigin !== requested) {
+        await this.db.client
+          .update(paymentIntents)
+          .set({ openerOrigin: requested, updatedAt: new Date() })
+          .where(eq(paymentIntents.id, intent.id));
+      }
+      return requested;
+    }
+    if (requested) {
+      this.logger.warn(
+        `checkout.opener_not_allowed intent_id=${intent.id} merchant_id=${merchant.id}`,
+      );
+    }
+    if (intent.openerOrigin && allowed.includes(intent.openerOrigin)) {
+      return intent.openerOrigin;
+    }
+    return allowed[0] ?? null;
   }
 
   /** The Merchant as the Consumer knows them, never an id. */
@@ -391,6 +451,7 @@ export class CheckoutController {
     if (
       err instanceof IntentStateConflictError ||
       err instanceof AttemptInFlightError ||
+      err instanceof LiveIntentOnSimulatedPathError ||
       err instanceof CapacityExceededError ||
       err instanceof SessionVelocityExceededError ||
       err instanceof InsufficientBalanceError ||

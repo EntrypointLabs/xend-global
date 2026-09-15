@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { assertPublicHttpsUrl, UnsafeUrlError } from '../common/url-safety';
 import { FX_QUOTE_PROVIDER } from '../fx/fx-quote-provider.interface';
@@ -29,6 +30,7 @@ import {
   MerchantNotFoundError,
   MerchantSuspendedError,
 } from '../payment/payment.errors';
+import { DbService } from '../db/db.service';
 import { paymentIntents } from '../db/schema';
 import { ApiKeyGuard, type MerchantRequest } from './api-key.guard';
 import { IdempotencyService } from './idempotency.service';
@@ -70,6 +72,7 @@ export class MerchantController {
     private readonly intents: PaymentIntentService,
     private readonly idempotency: IdempotencyService,
     private readonly config: ConfigService,
+    private readonly db: DbService,
     @Inject(FX_QUOTE_PROVIDER) private readonly fx: FxQuoteProvider,
   ) {}
 
@@ -142,7 +145,10 @@ export class MerchantController {
             params.displayAmountMinor = usdcRawToUsdMinor(body.amount);
           }
 
-          const intent = await this.intents.create(params);
+          let intent = await this.intents.create(params);
+          if (body.metadata && !intent.metadata) {
+            intent = await this.attachMetadata(intent.id, body.metadata);
+          }
           return { status: HttpStatus.CREATED, body: this.toObject(intent) };
         },
       );
@@ -173,13 +179,31 @@ export class MerchantController {
     }
   }
 
+  private async attachMetadata(
+    intentId: string,
+    metadata: Record<string, string>,
+  ): Promise<IntentRow> {
+    const [updated] = await this.db.client
+      .update(paymentIntents)
+      .set({ metadata, updatedAt: new Date() })
+      .where(eq(paymentIntents.id, intentId))
+      .returning();
+    return updated;
+  }
+
   private toObject(intent: IntentRow): IntentObject {
+    // Only a USDC-priced intent is displayed in USD; the Merchant sent six
+    // decimal raw units and reads the same back, not the cents shown to the
+    // shopper.
+    const pricedInUsdc = intent.displayCurrency === 'USD';
     return {
       id: intent.id,
       object: 'payment_intent',
       status: intent.status,
-      currency: intent.displayCurrency,
-      amount: intent.displayAmountMinor,
+      currency: pricedInUsdc ? 'USDC' : intent.displayCurrency,
+      amount: pricedInUsdc
+        ? intent.usdcSettlementRaw
+        : intent.displayAmountMinor,
       usdc_settlement_raw: intent.usdcSettlementRaw,
       fx_rate: intent.fxRate,
       fx_source: intent.fxSource,
@@ -190,6 +214,7 @@ export class MerchantController {
       cancel_url: intent.cancelUrl,
       livemode: intent.mode === 'live',
       created: Math.floor(intent.createdAt.getTime() / 1000),
+      metadata: intent.metadata ?? null,
     };
   }
 

@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { createId } from '@paralleldrive/cuid2';
 import type { NextFunction, Request, Response } from 'express';
+import { tagActiveSpanWithCorrelationId } from '../tracing/span-correlation';
 import { correlationStorage } from './correlation-id.storage';
 
 const HEADER = 'x-correlation-id';
@@ -15,6 +16,7 @@ export function correlationIdMiddleware(
   const inbound = req.header(HEADER);
   const id = inbound && VALID_ID.test(inbound) ? inbound : createId();
   res.setHeader('X-Correlation-Id', id);
+  tagActiveSpanWithCorrelationId(id);
   const startedAt = Date.now();
   res.on('finish', () => {
     logger.log(

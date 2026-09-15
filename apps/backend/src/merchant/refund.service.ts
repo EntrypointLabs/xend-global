@@ -7,11 +7,12 @@ import {
   payments,
   refunds,
   settlementAccounts,
-  smartAccounts,
 } from '../db/schema';
+import { findVaultAddress } from '../capability/vault-address';
 import { SettlementRouter } from '../settlement/settlement-router';
 import { IdempotencyService } from './idempotency.service';
 import {
+  IdempotencyKeyRequiredError,
   PaymentNotRefundableError,
   RefundAmountExceedsRefundableError,
   RefundNotFoundError,
@@ -29,7 +30,7 @@ export interface RefundParams {
   paymentId: string;
   amountUsdcRaw?: string;
   reason?: string;
-  idempotencyKey?: string;
+  idempotencyKey: string;
 }
 
 /**
@@ -37,9 +38,12 @@ export interface RefundParams {
  * through Phase 4's SettlementProvider.reverse() at the provider's live rate
  * at refund time (never the pinned checkout quote). The durable refunds row is
  * written BEFORE the provider call (crash-safe), and the whole write is
- * idempotent by Idempotency-Key so a retry never double-reverses. The
- * naira/Blockradar reverse path is capability-gated (REFUND_NOT_SUPPORTED)
- * until Phase 8; the direct-USDC pilot path works now.
+ * idempotent by Idempotency-Key so a retry never double-reverses. The key is
+ * mandatory and the remainder check runs under a per-payment advisory lock,
+ * so two distinct requests for the same payment are decided one after the
+ * other rather than both reading the same remainder. The naira/Blockradar
+ * reverse path is capability-gated (REFUND_NOT_SUPPORTED) until Phase 8; the
+ * direct-USDC pilot path works now.
  */
 @Injectable()
 export class RefundService {
@@ -52,6 +56,11 @@ export class RefundService {
   ) {}
 
   async refund(params: RefundParams): Promise<RefundObject> {
+    if (!params.idempotencyKey) {
+      throw new IdempotencyKeyRequiredError(
+        'refunds require an Idempotency-Key header',
+      );
+    }
     const [payment] = await this.db.client
       .select()
       .from(payments)
@@ -71,11 +80,15 @@ export class RefundService {
       )
       .digest('hex');
 
-    const result = await this.idempotency.run<RefundObject>(
-      payment.merchantId,
-      params.idempotencyKey,
-      requestHash,
-      () => this.execute(payment, params),
+    const result = await this.db.withAdvisoryLock(
+      `refund:payment:${payment.id}`,
+      () =>
+        this.idempotency.run<RefundObject>(
+          payment.merchantId,
+          params.idempotencyKey,
+          requestHash,
+          () => this.execute(payment, params),
+        ),
     );
     return result.body;
   }
@@ -85,7 +98,7 @@ export class RefundService {
     params: RefundParams,
   ): Promise<{ status: number; body: RefundObject }> {
     const [intent] = await this.db.client
-      .select({ status: paymentIntents.status })
+      .select({ status: paymentIntents.status, mode: paymentIntents.mode })
       .from(paymentIntents)
       .where(eq(paymentIntents.id, payment.intentId))
       .limit(1);
@@ -116,6 +129,36 @@ export class RefundService {
       );
     }
 
+    // A test-mode Payment was never settled on any chain, so its refund is
+    // simulated the same way: a durable refunds row under a `test_` reference,
+    // with no provider, no vault and no signer involved.
+    if (intent.mode === 'test') {
+      const inserted = await this.insertRefundRow(payment, requested, params);
+      if ('existing' in inserted) {
+        return { status: 200, body: this.toRefundObject(inserted.existing) };
+      }
+      const reference = `test_${inserted.row.id}`;
+      await this.db.client
+        .update(refunds)
+        .set({
+          status: 'succeeded',
+          providerReference: reference,
+          updatedAt: new Date(),
+        })
+        .where(eq(refunds.id, inserted.row.id));
+      this.logger.log(
+        `refund.reverse refund_id=${inserted.row.id} payment_id=${payment.id} amount_raw=${requested} simulated=true`,
+      );
+      return {
+        status: 200,
+        body: this.toRefundObject({
+          ...inserted.row,
+          status: 'succeeded',
+          providerReference: reference,
+        }),
+      };
+    }
+
     const [account] = await this.db.client
       .select()
       .from(settlementAccounts)
@@ -134,59 +177,25 @@ export class RefundService {
       );
     }
 
-    const [consumerAccount] = await this.db.client
-      .select({ walletAddress: smartAccounts.walletAddress })
-      .from(smartAccounts)
-      .where(eq(smartAccounts.userId, payment.consumerId))
-      .limit(1);
-    if (!consumerAccount) {
+    // The money goes back where it came from: the Consumer's vault, never the
+    // signer that spent it.
+    const vaultAddress = await findVaultAddress(this.db, payment.consumerId);
+    if (!vaultAddress) {
       throw new RefundNotSupportedError(
         `no Consumer Account for payment ${payment.id}`,
       );
     }
 
-    // Durable record first, then the provider reverse (crash-safe). The insert
-    // is also the concurrency guard: the (merchant, idempotency_key) unique
-    // index means a duplicate refund request loses here (23505) BEFORE it can
-    // reverse funds a second time.
-    let refundRow: typeof refunds.$inferSelect;
-    try {
-      [refundRow] = await this.db.client
-        .insert(refunds)
-        .values({
-          paymentId: payment.id,
-          merchantId: payment.merchantId,
-          status: 'pending',
-          amountUsdcRaw: requested.toString(),
-          reason: params.reason ?? null,
-          idempotencyKey: params.idempotencyKey ?? null,
-        })
-        .returning();
-    } catch (err) {
-      // Lost the concurrent-refund race: the winning request already created
-      // the refund and is reversing (or has reversed). Return its record rather
-      // than reversing again. Without an idempotency key there is no backstop.
-      if (pgErrorCode(err) === '23505' && params.idempotencyKey) {
-        const [existing] = await this.db.client
-          .select()
-          .from(refunds)
-          .where(
-            and(
-              eq(refunds.merchantId, payment.merchantId),
-              eq(refunds.idempotencyKey, params.idempotencyKey),
-            ),
-          )
-          .limit(1);
-        if (existing)
-          return { status: 200, body: this.toRefundObject(existing) };
-      }
-      throw err;
+    const inserted = await this.insertRefundRow(payment, requested, params);
+    if ('existing' in inserted) {
+      return { status: 200, body: this.toRefundObject(inserted.existing) };
     }
+    const refundRow = inserted.row;
 
     try {
       const { signature } = await provider.reverse({
         endpointAddress: account.address,
-        consumerAddress: consumerAccount.walletAddress,
+        consumerAddress: vaultAddress,
         amountRaw: requested.toString(),
         paymentId: payment.id,
       });
@@ -220,6 +229,51 @@ export class RefundService {
         .update(refunds)
         .set({ status: 'failed', updatedAt: new Date() })
         .where(eq(refunds.id, refundRow.id));
+      throw err;
+    }
+  }
+
+  /**
+   * Durable record first, then the reverse (crash-safe). The insert is also
+   * the last concurrency guard: the (merchant, idempotency_key) unique index
+   * means a duplicate refund request loses here (23505) BEFORE it can reverse
+   * funds a second time, and gets the winner's record instead.
+   */
+  private async insertRefundRow(
+    payment: typeof payments.$inferSelect,
+    requested: bigint,
+    params: RefundParams,
+  ): Promise<
+    | { row: typeof refunds.$inferSelect }
+    | { existing: typeof refunds.$inferSelect }
+  > {
+    try {
+      const [row] = await this.db.client
+        .insert(refunds)
+        .values({
+          paymentId: payment.id,
+          merchantId: payment.merchantId,
+          status: 'pending',
+          amountUsdcRaw: requested.toString(),
+          reason: params.reason ?? null,
+          idempotencyKey: params.idempotencyKey,
+        })
+        .returning();
+      return { row };
+    } catch (err) {
+      if (pgErrorCode(err) === '23505') {
+        const [existing] = await this.db.client
+          .select()
+          .from(refunds)
+          .where(
+            and(
+              eq(refunds.merchantId, payment.merchantId),
+              eq(refunds.idempotencyKey, params.idempotencyKey),
+            ),
+          )
+          .limit(1);
+        if (existing) return { existing };
+      }
       throw err;
     }
   }

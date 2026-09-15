@@ -15,6 +15,7 @@ import type {
   EnrolledApprovalSigner,
   TurnkeyApi,
 } from './turnkey.interface';
+import { buildApprovalSignerPolicies } from './turnkey.policies';
 
 /**
  * Enrols the approval signer (S2) as a Turnkey sub-organization.
@@ -49,6 +50,7 @@ export class TurnkeyService {
     @Inject(TURNKEY_API) private readonly api: TurnkeyApi,
     private readonly delegatedUserPublicKey: string,
     @Inject(APPROVAL_SIGNER_STORE) private readonly store: ApprovalSignerStore,
+    private readonly policiesEnabled: boolean = false,
   ) {}
 
   /**
@@ -107,6 +109,7 @@ export class TurnkeyService {
       return {
         subOrganizationId: existing.subOrganizationId,
         address: existing.address,
+        policyIds: existing.policyIds ?? undefined,
       };
     }
 
@@ -121,6 +124,7 @@ export class TurnkeyService {
       address: enrolled.address,
       hardwarePublicKey: params.hardwarePublicKey,
       security: params.security,
+      policyIds: enrolled.policyIds ?? null,
     });
 
     return enrolled;
@@ -152,9 +156,41 @@ export class TurnkeyService {
       );
     }
 
+    // Policies can only be written while the backend is still a root user, so
+    // this has to sit inside the window rather than after it closes. Nothing
+    // here grants the backend anything: every policy names the Consumer.
+    const policyIds = this.policiesEnabled
+      ? await this.writePolicies(subOrganizationId, consumerUserId)
+      : undefined;
+
     await this.narrowRootQuorum(subOrganizationId, consumerUserId);
 
-    return { subOrganizationId, address };
+    return { subOrganizationId, address, policyIds };
+  }
+
+  private async writePolicies(
+    subOrganizationId: string,
+    consumerUserId: string,
+  ): Promise<string[]> {
+    const policyIds: string[] = [];
+    for (const policy of buildApprovalSignerPolicies(consumerUserId)) {
+      try {
+        const { policyId } = await this.api.createPolicy({
+          organizationId: subOrganizationId,
+          ...policy,
+        });
+        policyIds.push(policyId);
+      } catch (cause) {
+        throw new UnsafeSubOrganizationError(
+          `Could not write policy ${policy.policyName}: ${describe(cause)}`,
+          subOrganizationId,
+        );
+      }
+    }
+    this.logger.log(
+      `turnkey.enrolment.policies subOrganizationId=${subOrganizationId} count=${policyIds.length}`,
+    );
+    return policyIds;
   }
 
   private async createSubOrganization(params: EnrolApprovalSignerParams) {

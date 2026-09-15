@@ -160,10 +160,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function getIntent(reference: string): Promise<IntentView> {
+export async function getIntent(
+  reference: string,
+  opener: string | null = null,
+): Promise<IntentView> {
   if (useFixture) return fixtureIntent(reference);
+  const query = opener ? `?opener=${encodeURIComponent(opener)}` : '';
   return request<IntentView>(
-    `/checkout/intents/${encodeURIComponent(reference)}`,
+    `/checkout/intents/${encodeURIComponent(reference)}${query}`,
   );
 }
 

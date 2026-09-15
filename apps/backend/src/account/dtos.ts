@@ -232,3 +232,34 @@ export const NextDeviceRotationSchema = z.object({
 });
 
 export type NextDeviceRotationDto = z.infer<typeof NextDeviceRotationSchema>;
+
+/**
+ * A Spending Limit change: a new cap for the period, or a removal.
+ *
+ * Only the amount. The mint, the period and the destinations are carried
+ * forward from the policy the Account already holds, so a client cannot
+ * quietly move the limit onto another token or another window. `maxPerPeriod`
+ * is an integer string at the mint's decimals, for the reason
+ * {@link SpendingLimitResponseSchema} gives.
+ */
+export const StartSpendingLimitChangeSchema = z.union([
+  z.object({
+    maxPerPeriod: z
+      .string()
+      .regex(/^[1-9]\d*$/, 'an amount in the smallest units of the mint'),
+  }),
+  z.object({ remove: z.literal(true) }),
+]);
+
+export type StartSpendingLimitChangeDto = z.infer<
+  typeof StartSpendingLimitChangeSchema
+>;
+
+/** A signed step of a Spending Limit change. See {@link SubmitProvisioningStepSchema}. */
+export const SubmitSpendingLimitChangeSchema = z.object({
+  signedTxBase64: z.string().min(1),
+});
+
+export type SubmitSpendingLimitChangeDto = z.infer<
+  typeof SubmitSpendingLimitChangeSchema
+>;

@@ -80,6 +80,12 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /account/recovery/:id/remove',
   'POST /account/recovery/change/next',
   'POST /account/recovery/change/submit',
+  // The Spending Limit is the size of the band one signature can move, so
+  // raising or removing it from an inbox alone would hand a mailbox the very
+  // band the second signature exists to guard.
+  'POST /account/limits/spending/start',
+  'POST /account/limits/spending/next',
+  'POST /account/limits/spending/submit',
   // The contact address, and closing the account. Moving the address moves
   // the entry point, which an entry session must never be able to do.
   'POST /auth/email/challenge',
@@ -116,8 +122,14 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /console/deliveries/:id/redeliver',
   'POST /console/accounts/:userId/recovery/freeze',
   'POST /console/accounts/:userId/recovery/unfreeze',
-  'POST /webhooks/blockradar',
+  'POST /internal/api_keys/:id/revoke',
   'POST /webhooks/helius',
+  'GET /health',
+  'GET /metrics',
+  'GET /v1/webhook_endpoints',
+  'POST /v1/webhook_endpoints',
+  'POST /v1/webhook_endpoints/:id/rotate_secret',
+  'DELETE /v1/webhook_endpoints/:id',
   'GET /test-dashboard',
   'POST /test-dashboard/merchants',
   'POST /test-dashboard/merchants/:id/kyb',
@@ -274,6 +286,9 @@ describe('entry session route inventory', () => {
       'POST /account/recovery/:id/remove',
       'POST /account/recovery/change/next',
       'POST /account/recovery/change/submit',
+      'POST /account/limits/spending/start',
+      'POST /account/limits/spending/next',
+      'POST /account/limits/spending/submit',
       'POST /account/changes/reject/prepare',
       'POST /account/changes/reject/submit',
       'POST /account/enrolment',

@@ -20,7 +20,10 @@
       "<rootDir>/jest.setup.ts"
     ],
     "moduleNameMapper": {
-      "^@/(.*)$": "<rootDir>/$1"
+      "\\.(png|jpg|jpeg|gif|webp|svg)$": "<rootDir>/test/assetStub.js",
+      "^@/(.*)$": "<rootDir>/$1",
+      "^@xend/smart-account$": "<rootDir>/../../packages/smart-account/src/index.ts",
+      "^(\\.{1,2}/.*)\\.js$": "$1"
     },
     "transform": {
       "^.+\\.(t|j)sx?$": [
@@ -28,9 +31,11 @@
         {
           "isolatedModules": true,
           "tsconfig": {
-            "rootDir": ".",
-            "module": "node16",
-            "moduleResolution": "node16"
+            "module": "commonjs",
+            "moduleResolution": "node",
+            "esModuleInterop": true,
+            "ignoreDeprecations": "6.0",
+            "rootDir": "../.."
           }
         }
       ]
@@ -40,7 +45,6 @@
     ]
   },
   "dependencies": {
-    "@craftzdog/react-native-buffer": "^6.1.0",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo/vector-icons": "^15.0.2",
     "@gorhom/bottom-sheet": "^5.2.14",
@@ -52,8 +56,8 @@
     "@react-navigation/native": "^7.1.6",
     "@sentry/react-native": "~7.11.0",
     "@solana/web3.js": "^1.98.2",
-    "@sqds/grid-react-native": "^1.0.0",
-    "@types/uuid": "^10.0.0",
+    "@xend/smart-account": "*",
+    "base64-js": "^1.5.1",
     "bs58": "^5.0.0",
     "buffer": "^6.0.3",
     "clsx": "^2.1.1",
@@ -74,7 +78,6 @@
     "expo-linking": "~56.0.13",
     "expo-local-authentication": "~56.0.4",
     "expo-notifications": "~56.0.24",
-    "expo-random": "^14.0.1",
     "expo-router": "~56.2.8",
     "expo-secure-store": "~56.0.4",
     "expo-splash-screen": "~56.0.10",
@@ -82,19 +85,14 @@
     "expo-symbols": "~56.0.5",
     "expo-system-ui": "~56.0.5",
     "expo-web-browser": "~56.0.5",
-    "fast-text-encoding": "^1.0.6",
-    "import": "^0.0.6",
     "nativewind": "^4.2.1",
-    "permissionless": "^0.2.47",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.85.3",
     "react-native-gesture-handler": "~2.31.1",
     "react-native-get-random-values": "^1.11.0",
     "react-native-passkeys": "^0.4.0",
-    "react-native-qrcode-styled": "0.3.3",
     "react-native-qrcode-svg": "^6.3.15",
-    "react-native-randombytes": "^3.6.2",
     "react-native-reanimated": "4.3.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "4.25.2",
@@ -104,8 +102,6 @@
     "react-native-worklets": "^0.8.3",
     "text-encoding": "^0.7.0",
     "tinycolor2": "^1.6.0",
-    "uuid": "^11.1.0",
-    "viem": "2.51.2",
     "zod": "^3.25.28"
   },
   "devDependencies": {

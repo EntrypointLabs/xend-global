@@ -23,7 +23,6 @@ import {
   type SettlementAuthoritySigner,
 } from '../settlement/settlement-authority.interface';
 import { AccountCreationError } from './account.errors';
-import { SPENDING_LIMIT_POLICY_SEED } from './account.interface';
 import type { SpendChain } from './account.interface';
 
 /**
@@ -67,10 +66,11 @@ export class Web3SpendChain implements SpendChain, OnModuleInit {
    */
   async readSpendingLimits(
     settingsAddress: string,
+    policySeed: bigint,
   ): Promise<readonly SpendingLimit[]> {
     const policy = derivePolicyAddress(
       new PublicKey(settingsAddress),
-      SPENDING_LIMIT_POLICY_SEED,
+      policySeed,
     );
 
     let info: AccountInfo<Buffer> | null;

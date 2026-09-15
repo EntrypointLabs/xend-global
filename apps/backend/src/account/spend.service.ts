@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { PublicKey } from '@solana/web3.js';
+import { PublicKey, VersionedTransaction } from '@solana/web3.js';
+import { createHash } from 'node:crypto';
 import {
   buildSpend,
   deriveAccountAddresses,
@@ -12,12 +13,18 @@ import {
 } from '@xend/smart-account';
 
 import {
+  PREPARED_TX_STORE,
+  PREPARED_TX_TTL_SECONDS,
+} from '../prepared/prepared-tx.interface';
+import type { PreparedTxStore } from '../prepared/prepared-tx.interface';
+import {
   SETTLEMENT_AUTHORITY_SIGNER,
   type SettlementAuthoritySigner,
 } from '../settlement/settlement-authority.interface';
 import { AccountCreationError } from './account.errors';
 import {
   ABOVE_LIMIT_POLICY_SEED,
+  spendingLimitSeed,
   SPEND_CHAIN,
   SQUADS_ACCOUNT_STORE,
 } from './account.interface';
@@ -76,6 +83,14 @@ export class SpendService {
     @Inject(SPEND_CHAIN) private readonly chain: SpendChain,
     @Inject(SETTLEMENT_AUTHORITY_SIGNER)
     private readonly authority: SettlementAuthoritySigner,
+    /**
+     * Every message this service compiled and has not yet broadcast.
+     *
+     * Keyed by the message rather than the Consumer because two callers
+     * prepare through here, a Send and a Checkout settlement, and either may
+     * have more than one Spend open at once.
+     */
+    @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
   ) {}
 
   async prepare(params: PrepareSpendParams): Promise<UnsignedSpend> {
@@ -103,7 +118,10 @@ export class SpendService {
       ? undefined
       : await this.chain.tokenProgramFor(request.mint.toBase58());
 
-    const limits = await this.chain.readSpendingLimits(account.settingsAddress);
+    const limits = await this.chain.readSpendingLimits(
+      account.settingsAddress,
+      spendingLimitSeed(account),
+    );
     const aboveLimitPolicy = derivePolicyAddress(
       addresses.settings,
       ABOVE_LIMIT_POLICY_SEED,
@@ -148,6 +166,12 @@ export class SpendService {
         ? [openDestination, instruction]
         : [instruction],
     });
+
+    await this.prepared.set(
+      preparedKey(unsigned.messageBase64),
+      params.userId,
+      PREPARED_TX_TTL_SECONDS,
+    );
 
     this.logger.log(
       `spend.prepared userId=${params.userId} route=${route.kind}` +
@@ -239,12 +263,39 @@ export class SpendService {
    * first slot and the cluster rejects it outright. Signing here is partial and
    * leaves the device's signatures intact, so authorisation still comes from the
    * Account's own signers.
+   *
+   * Only a message this service compiled is completed. The authority would
+   * otherwise co-sign any transaction that named it as fee payer.
    */
   async submit(signedTxBase64: string): Promise<string> {
+    const key = preparedKey(messageOf(signedTxBase64));
+    if ((await this.prepared.get<string>(key)) === null) {
+      throw new AccountCreationError(
+        'signed transaction does not match a prepared Spend',
+      );
+    }
+
     const signature = await this.authority.signAndSend(signedTxBase64);
+    await this.prepared.delete(key);
     this.logger.log(`spend.submitted signature=${signature}`);
     return signature;
   }
+}
+
+function messageOf(signedTxBase64: string): string {
+  try {
+    return Buffer.from(
+      VersionedTransaction.deserialize(
+        Buffer.from(signedTxBase64, 'base64'),
+      ).message.serialize(),
+    ).toString('base64');
+  } catch {
+    throw new AccountCreationError('signedTxBase64 is not a valid transaction');
+  }
+}
+
+function preparedKey(messageBase64: string): string {
+  return `spend:${createHash('sha256').update(messageBase64).digest('hex')}`;
 }
 
 function signersFor(

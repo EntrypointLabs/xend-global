@@ -1,6 +1,6 @@
 # Migration: Already-Built Features off Squads Grid
 
-Status: draft, pre-implementation
+Status: **Closed 2026-09-07.** Executed and superseded. Grid is gone from every path but the KYC carve-out (`apps/mobile/app/api/kyc*.ts`); the expo-router BFF, virtual accounts and Grid-backed identity described below no longer exist. Privy is S1 (ADR 0024), the Account is a Squads smart account (ADR 0025), and the backend is `apps/backend`. Kept as the record of why the seams look the way they do.
 Author: discovery + spec pass, 2026-05-30
 Scope: only the features that work end-to-end on Grid today. Card issuance, yield, swaps, confidential transfers, and the fiat-funded virtual account on-ramp are explicitly out of scope. The virtual account work has its own spec slot reserved; this document mentions it only where it shapes interface boundaries we need to leave room for.
 
@@ -25,22 +25,22 @@ Outcome of this migration:
 
 The Grid integration is split across two server processes. The mobile app picks which one to call per endpoint:
 
-| Feature                          | Mobile caller     | Server route                            | Server module                            | Grid SDK calls                                                  |
-| -------------------------------- | ----------------- | --------------------------------------- | ---------------------------------------- | --------------------------------------------------------------- |
-| Register, OTP send               | `apiClient`       | NestJS `POST /register`                 | `apps/backend/src/auth/auth.service.ts`  | `client.createAccount({ email })`                               |
-| Login, OTP send                  | `apiClient`       | NestJS `POST /auth`                     | `auth.service.ts`                        | `client.initAuth({ email })`                                    |
-| Verify OTP + create account      | `apiClient`       | NestJS `POST /verify-otp-and-create-account` | `auth.service.ts`                   | `client.completeAuthAndCreateAccount(...)`                      |
-| Verify OTP (login)               | `apiClient`       | NestJS `POST /verify-otp`               | `auth.service.ts`                        | `client.completeAuth(...)`                                      |
-| Passkey check                    | `apiClient`       | NestJS `POST /passkeys/check`           | `auth.service.ts`                        | `client.getPasskeys(addr)`                                      |
-| Passkey enroll session           | `apiClient`       | NestJS `POST /passkeys/session`         | `auth.service.ts`                        | `client.generateSessionSecrets()` + `client.createPasskeySession(...)` (returns Grid-hosted WebAuthn URL) |
-| Balance                          | `EasClient`       | BFF `app/api/balance+api.ts`            | `apps/mobile/grid/sdkClient.ts`          | `client.getAccountBalances(addr)`                               |
-| Transfers history                | `EasClient`       | BFF `app/api/get-transfers+api.ts`      | `sdkClient.ts`                           | `client.getTransfers(addr)`                                     |
-| Send: prepare                    | `EasClient`       | BFF `app/api/prepare-payment-intent+api.ts` | `sdkClient.ts`                       | `client.createPaymentIntent(addr, payload)`                     |
-| Send: sign (in app)              | direct            | n/a (mobile-only)                       | `apps/mobile/app/(send)/confirm.tsx`     | `gridClient.sign({ sessionSecrets, session, transactionPayload })` |
-| Send: submit                     | `EasClient`       | BFF `app/api/confirm+api.ts`            | `sdkClient.ts`                           | `client.send({ signedTransactionPayload, address })`            |
-| KYC link                         | `EasClient`       | BFF `app/api/kyc+api.ts`                | `sdkClient.ts`                           | `client.requestKycLink(addr, { type: 'individual', endorsements: [] })` |
-| KYC status                       | `EasClient`       | BFF `app/api/kyc-status+api.ts`         | `sdkClient.ts`                           | `client.getKycStatus(addr, kycId)`                              |
-| Virtual account (out of v1)      | `EasClient`       | BFF `app/api/open-virtual-account+api.ts`, `get-virtual-accounts+api.ts` | `sdkClient.ts` | `client.requestVirtualAccount(...)`, `client.getVirtualAccounts(...)` |
+| Feature                     | Mobile caller | Server route                                                             | Server module                           | Grid SDK calls                                                                                            |
+| --------------------------- | ------------- | ------------------------------------------------------------------------ | --------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Register, OTP send          | `apiClient`   | NestJS `POST /register`                                                  | `apps/backend/src/auth/auth.service.ts` | `client.createAccount({ email })`                                                                         |
+| Login, OTP send             | `apiClient`   | NestJS `POST /auth`                                                      | `auth.service.ts`                       | `client.initAuth({ email })`                                                                              |
+| Verify OTP + create account | `apiClient`   | NestJS `POST /verify-otp-and-create-account`                             | `auth.service.ts`                       | `client.completeAuthAndCreateAccount(...)`                                                                |
+| Verify OTP (login)          | `apiClient`   | NestJS `POST /verify-otp`                                                | `auth.service.ts`                       | `client.completeAuth(...)`                                                                                |
+| Passkey check               | `apiClient`   | NestJS `POST /passkeys/check`                                            | `auth.service.ts`                       | `client.getPasskeys(addr)`                                                                                |
+| Passkey enroll session      | `apiClient`   | NestJS `POST /passkeys/session`                                          | `auth.service.ts`                       | `client.generateSessionSecrets()` + `client.createPasskeySession(...)` (returns Grid-hosted WebAuthn URL) |
+| Balance                     | `EasClient`   | BFF `app/api/balance+api.ts`                                             | `apps/mobile/grid/sdkClient.ts`         | `client.getAccountBalances(addr)`                                                                         |
+| Transfers history           | `EasClient`   | BFF `app/api/get-transfers+api.ts`                                       | `sdkClient.ts`                          | `client.getTransfers(addr)`                                                                               |
+| Send: prepare               | `EasClient`   | BFF `app/api/prepare-payment-intent+api.ts`                              | `sdkClient.ts`                          | `client.createPaymentIntent(addr, payload)`                                                               |
+| Send: sign (in app)         | direct        | n/a (mobile-only)                                                        | `apps/mobile/app/(send)/confirm.tsx`    | `gridClient.sign({ sessionSecrets, session, transactionPayload })`                                        |
+| Send: submit                | `EasClient`   | BFF `app/api/confirm+api.ts`                                             | `sdkClient.ts`                          | `client.send({ signedTransactionPayload, address })`                                                      |
+| KYC link                    | `EasClient`   | BFF `app/api/kyc+api.ts`                                                 | `sdkClient.ts`                          | `client.requestKycLink(addr, { type: 'individual', endorsements: [] })`                                   |
+| KYC status                  | `EasClient`   | BFF `app/api/kyc-status+api.ts`                                          | `sdkClient.ts`                          | `client.getKycStatus(addr, kycId)`                                                                        |
+| Virtual account (out of v1) | `EasClient`   | BFF `app/api/open-virtual-account+api.ts`, `get-virtual-accounts+api.ts` | `sdkClient.ts`                          | `client.requestVirtualAccount(...)`, `client.getVirtualAccounts(...)`                                     |
 
 Important runtime facts surfaced by reading the code:
 
@@ -62,29 +62,35 @@ Important runtime facts surfaced by reading the code:
 Everything that touches Grid, in one place. Migration is not done until every item here is addressed.
 
 ### Server packages
+
 - `@sqds/grid` in `apps/backend/package.json` (used by `GridService`, `AuthService`)
 - `@sqds/grid-react-native` in `apps/mobile/package.json` (used by `apps/mobile/grid/sdkClient.ts`, every `apps/mobile/app/api/*+api.ts`, `apps/mobile/app/(send)/confirm.tsx`, and assorted DTOs)
 
 ### Server runtime objects
+
 - `GridClient` in `apps/backend/src/grid/grid.service.ts`
 - `GridClient` (`SDKGridClient.getInstance`, `getFrontendClient`) in `apps/mobile/grid/sdkClient.ts`
 
 ### Env vars
+
 - `GRID_API_KEY` (NestJS, validated in `apps/backend/src/config/config.module.ts`)
 - `GRID_API_KEY` (mobile BFF, validated in `sdkClient.ts:6-11`)
 - `EXPO_PUBLIC_GRID_ENDPOINT` (mobile)
 - `EXPO_PUBLIC_GRID_ENV` (mobile; also branched on in `useKyc.ts:119` to fake-approve TOS in sandbox)
 
 ### Postgres columns
+
 - `smart_accounts.grid_account_id` (text, unique, not null) — Grid smart account address, also embedded in every JWT payload as `gridAccountId`
 - (transactively) `transactions.signature`, `from_address`, `to_address`, `status`, `slot`, `confirmed_at` are provider-neutral on the surface but today never written outside the unused `/transactions/send` path; they get a real owner only after migration
 
 ### JWT payload
+
 - `JwtPayload = { sub: userId, gridAccountId }` in `apps/backend/src/auth/jwt.strategy.ts`. Every signed token embeds the Grid account address. Renaming required.
 
 ### Mobile SecureStore keys (`AUTH_STORAGE_KEYS` in `apps/mobile/utils/auth.ts`)
 
 Grid-shaped or Grid-derived:
+
 - `auth_grid_user_id`
 - `auth_mpc_primary_id`
 - `auth_smart_account_address`
@@ -95,25 +101,31 @@ Grid-shaped or Grid-derived:
 - `auth_kyc_status`
 
 Provider-neutral, kept after migration:
+
 - `auth_user`, `auth_email`, `auth_persistent_email`, `auth_is_authenticated`, `auth_token`, `auth_has_passkey`, `auth_cached_balance`, `wallet_name`, `address_book`
 
 ### Device-local data store
+
 - `MockDatabase` in `apps/mobile/utils/mockDatabase.ts` (SecureStore JSON blob keyed by `mock_database`) stores `{ grid_user_id, email, kyc_link_id, created_at, updated_at }`. The only persistence of `kyc_link_id` anywhere. Deletion or device switch wipes it.
 
 ### Webhooks
+
 - None. There is no webhook receiver in NestJS, no Sumsub webhook today, no Bridge webhook, no Grid webhook. The migration adds them; today there are zero.
 
 ### Hosted UI redirects
+
 - Passkey ceremony: Grid-hosted page opened via `expo-web-browser` with the `passkey-callback` deep link, parsed in `apps/mobile/hooks/usePasskey.ts:48-98` and routed by `apps/mobile/app/passkey-callback.tsx`.
 - KYC link: Bridge-hosted KYC page opened by `apps/mobile/app/(modals)/kyc.tsx`. TOS link comes in the same response.
 
 ### Grid identifier formats we depend on
+
 - Smart account address (Solana pubkey, base58 string, stored as `grid_account_id`)
 - KYC link ID (opaque Grid string, stored in `MockDatabase.kyc_link_id`)
 - Grid user ID (opaque Grid string, stored as `auth_grid_user_id`; not present in DB schema)
 - Turnkey primary ID, wallet ID, wallet address (held inside `MpcProviderInfo.Turnkey`; opaque under Grid)
 
 ### Codepaths to delete
+
 - `apps/mobile/app/api/*+api.ts` (all 13 files except `sentry+api.ts` which is config delivery, not Grid-related)
 - `apps/mobile/grid/sdkClient.ts`
 - `apps/mobile/utils/easClient.ts` (the BFF client)
@@ -168,17 +180,17 @@ There is no boundary. The expo-router `app/api/*+api.ts` directory is deleted in
 
 ### Old → new mapping
 
-| Old (Grid)                                     | New                                                     |
-| ---------------------------------------------- | ------------------------------------------------------- |
-| `createAccount(email)` + email OTP             | Privy email OTP via Privy SDK in mobile; backend mints our JWT after verifying Privy ID token |
-| `completeAuthAndCreateAccount`                 | Privy creates the embedded Solana wallet; backend records `smart_accounts` row keyed by Privy user ID |
-| `getPasskeys`, `createPasskeySession`, hosted WebAuthn URL | Privy SDK in-app passkey ceremony (no hosted browser redirect) |
-| `generateSessionSecrets`, `sign`, 15-min Turnkey API key | Privy session, signing via Privy SDK (`signAndSendTransaction`). Silent re-auth via passkey when the session expires; no force-logout. |
-| `getAccountBalances(addr)`                     | `solana` module: `getTokenAccountsByOwner` via Helius, sum by mint, render whichever balances we recognize |
-| `getTransfers(addr)`                           | `activity` module: union of `transfers` table (sends we wrote) and on-chain reads (Helius enhanced txs for receives) |
-| `createPaymentIntent` + `sign` + `send`        | `transfer` module: build the SPL token transfer instruction server-side, return unsigned tx, mobile signs via Privy, mobile submits via backend, RPC tailer confirms |
-| `requestKycLink(addr, ...)` + Bridge URL       | `kyc` module: Sumsub applicant + access token; mobile opens Sumsub SDK or web flow; Sumsub webhook updates `kyc_records.status` |
-| `requestVirtualAccount`, `getVirtualAccounts`  | Out of v1. Interface stub only (`VirtualAccountProvider`); implementation lives in a separate spec |
+| Old (Grid)                                                 | New                                                                                                                                                                  |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createAccount(email)` + email OTP                         | Privy email OTP via Privy SDK in mobile; backend mints our JWT after verifying Privy ID token                                                                        |
+| `completeAuthAndCreateAccount`                             | Privy creates the embedded Solana wallet; backend records `smart_accounts` row keyed by Privy user ID                                                                |
+| `getPasskeys`, `createPasskeySession`, hosted WebAuthn URL | Privy SDK in-app passkey ceremony (no hosted browser redirect)                                                                                                       |
+| `generateSessionSecrets`, `sign`, 15-min Turnkey API key   | Privy session, signing via Privy SDK (`signAndSendTransaction`). Silent re-auth via passkey when the session expires; no force-logout.                               |
+| `getAccountBalances(addr)`                                 | `solana` module: `getTokenAccountsByOwner` via Helius, sum by mint, render whichever balances we recognize                                                           |
+| `getTransfers(addr)`                                       | `activity` module: union of `transfers` table (sends we wrote) and on-chain reads (Helius enhanced txs for receives)                                                 |
+| `createPaymentIntent` + `sign` + `send`                    | `transfer` module: build the SPL token transfer instruction server-side, return unsigned tx, mobile signs via Privy, mobile submits via backend, RPC tailer confirms |
+| `requestKycLink(addr, ...)` + Bridge URL                   | `kyc` module: Sumsub applicant + access token; mobile opens Sumsub SDK or web flow; Sumsub webhook updates `kyc_records.status`                                      |
+| `requestVirtualAccount`, `getVirtualAccounts`              | Out of v1. Interface stub only (`VirtualAccountProvider`); implementation lives in a separate spec                                                                   |
 
 ## 5. Per-feature migration spec
 
@@ -197,17 +209,22 @@ For each feature: current flow, target flow, data model changes, API contract wi
 // users: unchanged on the surface, but now linked by privy_user_id
 // smart_accounts: rename grid_account_id → wallet_address, add provider + provider_user_id
 
-export const walletProviderEnum = pgEnum('wallet_provider', ['privy']);
+export const walletProviderEnum = pgEnum("wallet_provider", ["privy"]);
 // future-proof: keep enum, easy to add 'turnkey' / 'crossmint' later
 
-export const smartAccounts = pgTable('smart_accounts', {
-  id: text('id').primaryKey().$defaultFn(() => createId()),
-  userId: text('user_id').notNull().unique().references(() => users.id),
-  walletAddress: text('wallet_address').notNull().unique(), // Solana pubkey
-  provider: walletProviderEnum('provider').notNull().default('privy'),
-  providerUserId: text('provider_user_id').notNull().unique(), // Privy user ID
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+export const smartAccounts = pgTable("smart_accounts", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => createId()),
+  userId: text("user_id")
+    .notNull()
+    .unique()
+    .references(() => users.id),
+  walletAddress: text("wallet_address").notNull().unique(), // Solana pubkey
+  provider: walletProviderEnum("provider").notNull().default("privy"),
+  providerUserId: text("provider_user_id").notNull().unique(), // Privy user ID
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 ```
 
@@ -219,7 +236,7 @@ const ExchangeRequest = z.object({
   privyIdToken: z.string().min(1),
 });
 const ExchangeResponse = z.object({
-  token: z.string(),               // our JWT
+  token: z.string(), // our JWT
   user: z.object({
     id: z.string(),
     email: z.string().email(),
@@ -268,8 +285,8 @@ const ExchangeResponse = z.object({
 ```ts
 // GET /wallet/me
 const WalletResponse = z.object({
-  walletAddress: z.string(),       // Solana pubkey (base58)
-  provider: z.literal('privy'),    // hint, not required by client
+  walletAddress: z.string(), // Solana pubkey (base58)
+  provider: z.literal("privy"), // hint, not required by client
 });
 ```
 
@@ -280,7 +297,7 @@ const WalletResponse = z.object({
 **Edge cases.**
 
 - SOL receipt (gas) versus SPL token receipt: both land at the wallet, but Balance only sums recognized stablecoin mints (USDC + USDT). Non-stablecoin SPL receives appear under the Investments tab (out of scope, but the activity feed records them).
-- Sending to a Privy address that has no ATA for the mint: the sender's transfer instruction must include the create-ATA instruction. Out of scope as a *receive* concern; covered in 5.4.
+- Sending to a Privy address that has no ATA for the mint: the sender's transfer instruction must include the create-ATA instruction. Out of scope as a _receive_ concern; covered in 5.4.
 
 ### 5.4 Transfers (send)
 
@@ -293,30 +310,37 @@ If the Privy session has expired between prepare and submit, the SDK silently re
 **Data model changes.** Rename `transactions` → `transfers` to match the domain language (Spend / Receive umbrella concepts collapse to a Transfer at the chain layer; the user-facing **Activity** is built on top). Add `intentId` to support idempotent prepare/submit pairing.
 
 ```ts
-export const transferStatusEnum = pgEnum('transfer_status', [
-  'PENDING', 'CONFIRMED', 'FAILED'
+export const transferStatusEnum = pgEnum("transfer_status", [
+  "PENDING",
+  "CONFIRMED",
+  "FAILED",
 ]);
-export const transferDirectionEnum = pgEnum('transfer_direction', [
-  'SEND', 'RECEIVE'
+export const transferDirectionEnum = pgEnum("transfer_direction", [
+  "SEND",
+  "RECEIVE",
 ]);
 
-export const transfers = pgTable('transfers', {
-  id: text('id').primaryKey().$defaultFn(() => createId()),
-  smartAccountId: text('smart_account_id').notNull().references(() => smartAccounts.id),
-  intentId: text('intent_id').unique(),   // null for RECEIVE rows reconciled from chain
-  signature: text('signature').unique(),  // present once submitted
-  direction: transferDirectionEnum('direction').notNull(),
-  mint: text('mint').notNull(),           // SPL mint address (USDC, USDT, etc.)
-  amountRaw: text('amount_raw').notNull(),// integer string at mint decimals (no float)
-  fromAddress: text('from_address').notNull(),
-  toAddress: text('to_address').notNull(),
-  status: transferStatusEnum('status').notNull().default('PENDING'),
-  slot: bigint('slot', { mode: 'bigint' }),
-  memo: text('memo'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  submittedAt: timestamp('submitted_at'),
-  confirmedAt: timestamp('confirmed_at'),
-  failureReason: text('failure_reason'),  // not surfaced to UI today, kept for ops
+export const transfers = pgTable("transfers", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => createId()),
+  smartAccountId: text("smart_account_id")
+    .notNull()
+    .references(() => smartAccounts.id),
+  intentId: text("intent_id").unique(), // null for RECEIVE rows reconciled from chain
+  signature: text("signature").unique(), // present once submitted
+  direction: transferDirectionEnum("direction").notNull(),
+  mint: text("mint").notNull(), // SPL mint address (USDC, USDT, etc.)
+  amountRaw: text("amount_raw").notNull(), // integer string at mint decimals (no float)
+  fromAddress: text("from_address").notNull(),
+  toAddress: text("to_address").notNull(),
+  status: transferStatusEnum("status").notNull().default("PENDING"),
+  slot: bigint("slot", { mode: "bigint" }),
+  memo: text("memo"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  submittedAt: timestamp("submitted_at"),
+  confirmedAt: timestamp("confirmed_at"),
+  failureReason: text("failure_reason"), // not surfaced to UI today, kept for ops
 });
 ```
 
@@ -325,38 +349,38 @@ export const transfers = pgTable('transfers', {
 ```ts
 // POST /transfers/prepare
 const PrepareRequest = z.object({
-  toAddress: z.string(),                         // Solana pubkey or pre-resolved SNS owner
-  mint: z.string(),                              // SPL mint address
-  amountRaw: z.string().regex(/^\d+$/),          // integer at mint decimals
+  toAddress: z.string(), // Solana pubkey or pre-resolved SNS owner
+  mint: z.string(), // SPL mint address
+  amountRaw: z.string().regex(/^\d+$/), // integer at mint decimals
   memo: z.string().max(120).optional(),
 });
 const PrepareResponse = z.object({
   intentId: z.string(),
-  unsignedTxBase64: z.string(),                  // serialized v0 message
+  unsignedTxBase64: z.string(), // serialized v0 message
   feeLamports: z.number().int().nonnegative(),
-  expiresAt: z.string().datetime(),              // blockhash lifetime upper bound
+  expiresAt: z.string().datetime(), // blockhash lifetime upper bound
 });
 
 // POST /transfers/submit
 const SubmitRequest = z.object({
   intentId: z.string(),
-  signedTxBase64: z.string(),                    // mobile-signed via Privy
+  signedTxBase64: z.string(), // mobile-signed via Privy
 });
 const SubmitResponse = z.object({
   transferId: z.string(),
   signature: z.string(),
-  status: z.literal('PENDING'),
+  status: z.literal("PENDING"),
 });
 
 // GET /transfers?cursor=<id>&limit=<n>
 const TransferRow = z.object({
   id: z.string(),
-  direction: z.enum(['SEND', 'RECEIVE']),
+  direction: z.enum(["SEND", "RECEIVE"]),
   mint: z.string(),
   amountRaw: z.string(),
   fromAddress: z.string(),
   toAddress: z.string(),
-  status: z.enum(['PENDING', 'CONFIRMED', 'FAILED']),
+  status: z.enum(["PENDING", "CONFIRMED", "FAILED"]),
   signature: z.string().nullable(),
   memo: z.string().nullable(),
   createdAt: z.string().datetime(),
@@ -402,7 +426,7 @@ const TransferRow = z.object({
 // GET /wallet/me/balances
 const TokenBalance = z.object({
   mint: z.string(),
-  amountRaw: z.string(),       // integer at mint decimals
+  amountRaw: z.string(), // integer at mint decimals
   decimals: z.number().int(),
   symbol: z.string().nullable(),
 });
@@ -461,20 +485,30 @@ The activity feed endpoint reads only from our `transfers` table. There is no li
 **Data model changes.**
 
 ```ts
-export const kycStatusEnum = pgEnum('kyc_status', [
-  'NOT_STARTED', 'IN_PROGRESS', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'EXPIRED'
+export const kycStatusEnum = pgEnum("kyc_status", [
+  "NOT_STARTED",
+  "IN_PROGRESS",
+  "UNDER_REVIEW",
+  "APPROVED",
+  "REJECTED",
+  "EXPIRED",
 ]);
 
-export const kycRecords = pgTable('kyc_records', {
-  id: text('id').primaryKey().$defaultFn(() => createId()),
-  userId: text('user_id').notNull().unique().references(() => users.id),
-  sumsubApplicantId: text('sumsub_applicant_id').notNull().unique(),
-  status: kycStatusEnum('status').notNull().default('NOT_STARTED'),
-  reviewResult: text('review_result'),   // raw Sumsub reasonCode for ops
-  startedAt: timestamp('started_at'),
-  decidedAt: timestamp('decided_at'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+export const kycRecords = pgTable("kyc_records", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => createId()),
+  userId: text("user_id")
+    .notNull()
+    .unique()
+    .references(() => users.id),
+  sumsubApplicantId: text("sumsub_applicant_id").notNull().unique(),
+  status: kycStatusEnum("status").notNull().default("NOT_STARTED"),
+  reviewResult: text("review_result"), // raw Sumsub reasonCode for ops
+  startedAt: timestamp("started_at"),
+  decidedAt: timestamp("decided_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 ```
 
@@ -484,16 +518,30 @@ The KYC link ID moves off the device. `MockDatabase` is deleted; the per-user Su
 
 ```ts
 // POST /kyc/start
-const StartKycRequest = z.object({});  // user identified by JWT
+const StartKycRequest = z.object({}); // user identified by JWT
 const StartKycResponse = z.object({
-  accessToken: z.string(),   // Sumsub WebSDK access token (short-lived)
+  accessToken: z.string(), // Sumsub WebSDK access token (short-lived)
   applicantId: z.string(),
-  status: z.enum(['NOT_STARTED','IN_PROGRESS','UNDER_REVIEW','APPROVED','REJECTED','EXPIRED']),
+  status: z.enum([
+    "NOT_STARTED",
+    "IN_PROGRESS",
+    "UNDER_REVIEW",
+    "APPROVED",
+    "REJECTED",
+    "EXPIRED",
+  ]),
 });
 
 // GET /kyc/me
 const KycStatusResponse = z.object({
-  status: z.enum(['NOT_STARTED','IN_PROGRESS','UNDER_REVIEW','APPROVED','REJECTED','EXPIRED']),
+  status: z.enum([
+    "NOT_STARTED",
+    "IN_PROGRESS",
+    "UNDER_REVIEW",
+    "APPROVED",
+    "REJECTED",
+    "EXPIRED",
+  ]),
   decidedAt: z.string().datetime().nullable(),
 });
 
@@ -531,7 +579,7 @@ These are the anti-lock-in seams. Method signatures only; implementations live i
 ```ts
 // apps/backend/src/wallet/wallet-provider.interface.ts
 
-export type WalletAddress = string;       // Solana pubkey (base58)
+export type WalletAddress = string; // Solana pubkey (base58)
 export type ProviderUserId = string;
 
 export interface WalletProviderUser {
@@ -571,19 +619,22 @@ export interface TokenBalance {
 export interface SignatureStatus {
   signature: string;
   slot: bigint | null;
-  confirmationStatus: 'processed' | 'confirmed' | 'finalized' | null;
+  confirmationStatus: "processed" | "confirmed" | "finalized" | null;
   err: unknown | null;
 }
 
 export interface SolanaRpc {
-  getRecentBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: number }>;
+  getRecentBlockhash(): Promise<{
+    blockhash: string;
+    lastValidBlockHeight: number;
+  }>;
   getTokenBalances(owner: WalletAddress): Promise<TokenBalance[]>;
   sendRawTransaction(signedTxBase64: string): Promise<string>;
   getSignatureStatuses(signatures: string[]): Promise<SignatureStatus[]>;
   /** Async iterator over confirmed transactions for an owner since a slot. */
   streamConfirmedTransfers(
     owner: WalletAddress,
-    sinceSlot: bigint
+    sinceSlot: bigint,
   ): AsyncIterable<{
     signature: string;
     slot: bigint;
@@ -599,8 +650,12 @@ export interface SolanaRpc {
 export type ApplicantId = string;
 
 export type KycStatus =
-  | 'NOT_STARTED' | 'IN_PROGRESS' | 'UNDER_REVIEW'
-  | 'APPROVED'    | 'REJECTED'    | 'EXPIRED';
+  | "NOT_STARTED"
+  | "IN_PROGRESS"
+  | "UNDER_REVIEW"
+  | "APPROVED"
+  | "REJECTED"
+  | "EXPIRED";
 
 export interface KycApplicant {
   applicantId: ApplicantId;
@@ -615,12 +670,18 @@ export interface KycAccessToken {
 }
 
 export interface KycProvider {
-  createApplicant(input: { userId: string; email: string }): Promise<KycApplicant>;
+  createApplicant(input: {
+    userId: string;
+    email: string;
+  }): Promise<KycApplicant>;
   getApplicant(applicantId: ApplicantId): Promise<KycApplicant>;
   issueAccessToken(applicantId: ApplicantId): Promise<KycAccessToken>;
 
   /** Verify a webhook signature; throws on mismatch. */
-  verifyWebhookSignature(rawBody: Buffer, headers: Record<string, string>): void;
+  verifyWebhookSignature(
+    rawBody: Buffer,
+    headers: Record<string, string>,
+  ): void;
 
   /** Parse a verified webhook body into a status update. */
   parseWebhookEvent(rawBody: Buffer): {
@@ -637,7 +698,7 @@ export interface KycProvider {
 
 export interface VirtualAccount {
   id: string;
-  currency: string;             // ISO-4217 (e.g. 'NGN', 'USD')
+  currency: string; // ISO-4217 (e.g. 'NGN', 'USD')
   accountNumber: string;
   bankName: string;
 }
@@ -728,27 +789,27 @@ Closed decisions are recorded here for traceability.
 
 ### Closed
 
-| Decision                          | Resolution                                                                                                                                                                                                                                                                                                                                                                                              |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Wallet provider                   | **Privy.** Trade-off accepted: Privy treats Solana as a secondary chain historically (Ethereum-first), so we monitor SDK feature parity. Mitigated by the `WalletProvider` interface; swapping to Turnkey or Crossmint later is a single adapter swap on the backend plus an SDK swap on the device. Turnkey would give us the most signing control if we later need server-initiated batch operations. |
-| BFF vs backend boundary           | **Backend only.** The expo-router BFF is deleted entirely. Mobile talks to NestJS. Removes the `GRID_API_KEY`-on-device problem and matches "no single provider load-bearing in the app process".                                                                                                                                                                                                       |
-| Existing user / data migration    | **Greenfield.** No live users, no balances, no key handoff.                                                                                                                                                                                                                                                                                                                                             |
-| Activity feed source              | **Hybrid.** Our `transfers` table is canonical; RPC tailer fills RECEIVEs. Send path writes on submit, tailer confirms.                                                                                                                                                                                                                                                                                |
-| Solana RPC strategy               | **Helius primary, public mainnet RPC fallback.** Both behind `SolanaRpc` interface. QuickNode / Triton can be added later as additional adapters.                                                                                                                                                                                                                                                       |
-| Token scope                       | **Polymorphic by mint.** Balance for v1 sums recognized stablecoin mints (USDC, USDT). Non-stablecoin SPL tokens are visible under the Investments tab (out of v1 scope but data path is shared).                                                                                                                                                                                                       |
-| Session lifetime / re-auth        | **Silent re-auth via Privy passkey prompt** when the session expires inside a flow. No force-logout. The current Grid behaviour (logout on `API_KEY_EXPIRED`) is dropped.                                                                                                                                                                                                                              |
-| KYC link ID persistence           | **Backend (`kyc_records` table).** `MockDatabase` deleted.                                                                                                                                                                                                                                                                                                                                              |
-| Virtual account                   | **Deferred to a follow-up spec.** Interface stub in section 6; v1 ships without it.                                                                                                                                                                                                                                                                                                                     |
-| Whether `WalletsController` / `TransactionsController` are dormant scaffolding or real targets | **Real targets.** They are the intended endpoints; mobile being unwired to them is what the migration fixes. They get renamed / reshaped per sections 5.4-5.5 but the modules stay.                                                                                                                                                                                                            |
+| Decision                                                                                       | Resolution                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Wallet provider                                                                                | **Privy.** Trade-off accepted: Privy treats Solana as a secondary chain historically (Ethereum-first), so we monitor SDK feature parity. Mitigated by the `WalletProvider` interface; swapping to Turnkey or Crossmint later is a single adapter swap on the backend plus an SDK swap on the device. Turnkey would give us the most signing control if we later need server-initiated batch operations. |
+| BFF vs backend boundary                                                                        | **Backend only.** The expo-router BFF is deleted entirely. Mobile talks to NestJS. Removes the `GRID_API_KEY`-on-device problem and matches "no single provider load-bearing in the app process".                                                                                                                                                                                                       |
+| Existing user / data migration                                                                 | **Greenfield.** No live users, no balances, no key handoff.                                                                                                                                                                                                                                                                                                                                             |
+| Activity feed source                                                                           | **Hybrid.** Our `transfers` table is canonical; RPC tailer fills RECEIVEs. Send path writes on submit, tailer confirms.                                                                                                                                                                                                                                                                                 |
+| Solana RPC strategy                                                                            | **Helius primary, public mainnet RPC fallback.** Both behind `SolanaRpc` interface. QuickNode / Triton can be added later as additional adapters.                                                                                                                                                                                                                                                       |
+| Token scope                                                                                    | **Polymorphic by mint.** Balance for v1 sums recognized stablecoin mints (USDC, USDT). Non-stablecoin SPL tokens are visible under the Investments tab (out of v1 scope but data path is shared).                                                                                                                                                                                                       |
+| Session lifetime / re-auth                                                                     | **Silent re-auth via Privy passkey prompt** when the session expires inside a flow. No force-logout. The current Grid behaviour (logout on `API_KEY_EXPIRED`) is dropped.                                                                                                                                                                                                                               |
+| KYC link ID persistence                                                                        | **Backend (`kyc_records` table).** `MockDatabase` deleted.                                                                                                                                                                                                                                                                                                                                              |
+| Virtual account                                                                                | **Deferred to a follow-up spec.** Interface stub in section 6; v1 ships without it.                                                                                                                                                                                                                                                                                                                     |
+| Whether `WalletsController` / `TransactionsController` are dormant scaffolding or real targets | **Real targets.** They are the intended endpoints; mobile being unwired to them is what the migration fixes. They get renamed / reshaped per sections 5.4-5.5 but the modules stay.                                                                                                                                                                                                                     |
 
 ### Open (for later, not blocking v1)
 
-| Decision                          | Notes                                                                                                                                                          |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Virtual account provider          | Iron preferred, BVNK alternative. Resolved in the follow-up spec.                                                                                              |
-| Sumsub integration shape          | Native SDK vs WebSDK. Probably WebSDK for v1 simplicity, native SDK if the WebSDK UX feels poor in Expo's `expo-web-browser` shell.                            |
-| Worker process for the RPC tailer | In-process Nest service for v1. Promote to a dedicated worker only if it grows beyond ~1000 wallets watched (Helius webhook limits and Postgres write load).   |
-| Helius primary key hosting        | Out of source. Probably Doppler / AWS Secrets Manager; choice tracked separately from this spec.                                                               |
+| Decision                          | Notes                                                                                                                                                        |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Virtual account provider          | Iron preferred, BVNK alternative. Resolved in the follow-up spec.                                                                                            |
+| Sumsub integration shape          | Native SDK vs WebSDK. Probably WebSDK for v1 simplicity, native SDK if the WebSDK UX feels poor in Expo's `expo-web-browser` shell.                          |
+| Worker process for the RPC tailer | In-process Nest service for v1. Promote to a dedicated worker only if it grows beyond ~1000 wallets watched (Helius webhook limits and Postgres write load). |
+| Helius primary key hosting        | Out of source. Probably Doppler / AWS Secrets Manager; choice tracked separately from this spec.                                                             |
 
 ## 10. Risks
 

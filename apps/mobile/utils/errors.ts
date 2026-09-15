@@ -1,5 +1,8 @@
 import { showToast } from "@/utils/toast";
 
+/** What an entry session is told when it reaches for something that spends. */
+export const ENTRY_SESSION_SEND_MESSAGE = "Sign in with your passkey to send";
+
 export enum ErrorCode {
   // Authentication errors
   AUTH_FAILED = "AUTH_FAILED",

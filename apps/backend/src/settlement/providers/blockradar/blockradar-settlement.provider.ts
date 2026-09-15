@@ -45,6 +45,8 @@ function isUniqueViolation(err: unknown): boolean {
  * to null and are acknowledged without side effects.
  */
 export interface OfframpWebhookEvent {
+  /** The provider's delivery id, or the event name and reference when absent. */
+  eventId: string;
   /** Terminal meaning: 'paid' = naira landed; 'failed' = payout failed. */
   type: 'paid' | 'processing' | 'failed';
   providerRef: string;
@@ -313,6 +315,14 @@ export class BlockradarSettlementProvider
    * Called by the webhook controller BEFORE any DB access.
    */
   verifyWebhookSignature(rawBody: Buffer, signature: string): void {
+    // An empty key would make every forged body verify against an empty
+    // HMAC of itself.
+    if (!this.webhookSecret) {
+      throw new HttpException(
+        'webhook verification is not configured',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
     const expected = createHmac('sha512', this.webhookSecret)
       .update(rawBody)
       .digest('hex');
@@ -329,6 +339,7 @@ export class BlockradarSettlementProvider
   /** Narrow a Blockradar webhook payload to an owned off-ramp event, else null. */
   parseWebhookEvent(payload: unknown): OfframpWebhookEvent | null {
     const body = payload as {
+      id?: string;
       event?: string;
       data?: {
         id?: string;
@@ -353,6 +364,7 @@ export class BlockradarSettlementProvider
 
     return {
       type,
+      eventId: body.id ?? `${event}:${providerRef}`,
       providerRef,
       ngnSettledMinor: data.amountMinor,
       fxRate: data.rate,

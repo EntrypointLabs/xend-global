@@ -38,13 +38,6 @@ export default function SendLayout() {
       }}
     >
       <Stack.Screen
-        name="amount"
-        options={{
-          title: "",
-          headerTitle: () => getHeaderTitle("Send Crypto"),
-        }}
-      />
-      <Stack.Screen
         name="fiatamount"
         options={{
           title: "",
@@ -55,7 +48,7 @@ export default function SendLayout() {
         name="confirm"
         options={{
           title: "",
-          headerTitle: () => getHeaderTitle("Confirm Crypto Transfer"),
+          headerTitle: () => getHeaderTitle("Confirm Send"),
         }}
       />
     </Stack>

@@ -79,7 +79,7 @@ export default function SettingsScreen() {
       title: "General",
       data: [
         {
-          label: "Edit wallet",
+          label: "Edit Account",
           icon: require("@/assets/icons/edit-wallet.png"),
           onPress: () => setShowEditWallet(true),
         },

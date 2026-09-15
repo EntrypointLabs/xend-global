@@ -562,6 +562,7 @@ export class RecoveryService {
     const seed = await this.vault.open({
       ciphertext: signer.sealedKey,
       keyId: signer.sealedKeyId,
+      wrappedDataKey: signer.wrappedDataKey,
     });
     try {
       const keypair = Keypair.fromSeed(seed);
@@ -690,6 +691,7 @@ export class RecoveryService {
       channelValue: email.toLowerCase(),
       sealedKey: sealed.ciphertext,
       sealedKeyId: sealed.keyId,
+      wrappedDataKey: sealed.wrappedDataKey ?? null,
       status,
     });
   }

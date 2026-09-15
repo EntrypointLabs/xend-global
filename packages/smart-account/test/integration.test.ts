@@ -14,15 +14,16 @@ import {
   LAMPORTS_PER_SOL,
   PublicKey,
   SystemProgram,
+  TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
-  type TransactionInstruction,
 } from "@solana/web3.js";
 import { accounts, instructions, utils } from "@sqds/smart-account";
 import { LiteSVM } from "litesvm";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
+  ABOVE_LIMIT_PROGRAM_ALLOWLIST,
   associatedTokenAddress,
   buildAddRecoverySigner,
   buildApproveSettingsChange,
@@ -34,13 +35,17 @@ import {
   buildRejectSettingsChange,
   deriveProposalAddress,
   buildRemoveRecoverySigner,
+  buildRemoveSpendingLimit,
   buildRotateApprovalSigner,
   buildRotatePrimarySigner,
   buildRotateRecoverySigner,
   buildSetTimeLock,
   buildSpend,
+  buildUpdateSpendingLimit,
+  decodeSpendingLimit,
   derivePolicyAddress,
   resolveSpendRoute,
+  SettingsChangeRefusedError,
   type AccountAddresses,
   type SignerSet,
 } from "../src/index.js";
@@ -165,6 +170,8 @@ function settingsOf(h: Harness) {
     signers: unknown[];
     settingsAuthority: PublicKey;
     transactionIndex: { toString(): string };
+    /** The last seed the program assigned a policy. Null before the first. */
+    policySeed: { toString(): string } | null;
   }>(h.svm, h.addresses.settings, accounts.Settings);
 }
 
@@ -953,6 +960,7 @@ describe.skipIf(!HAVE_FIXTURES)("recovery signer changes", () => {
       buildRemoveRecoverySigner({
         addresses: h.addresses,
         oldSigner: added.publicKey,
+        recoverySigners: [h.recovery.publicKey, added.publicKey],
         proposer: h.primary.publicKey,
         rentPayer: h.primary.publicKey,
         transactionIndex: removeIndex,
@@ -1035,25 +1043,47 @@ describe.skipIf(!HAVE_FIXTURES)("recovery signer changes", () => {
     const h = setUp();
     const index = BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
 
-    const result = applySignerChange(
-      h,
+    // Built against the SDK directly, because the builder refuses this. Kept
+    // so the finding it guards against stays demonstrated on the real
+    // program: two signers remain, which satisfies the threshold, so the
+    // program has no objection to an Account that can never recover a lost
+    // phone.
+    const propose = [
+      instructions.createSettingsTransaction({
+        settingsPda: h.addresses.settings,
+        transactionIndex: index,
+        creator: h.primary.publicKey,
+        rentPayer: h.primary.publicKey,
+        actions: [{ __kind: "RemoveSigner", oldSigner: h.recovery.publicKey }],
+      }),
+      instructions.createProposal({
+        settingsPda: h.addresses.settings,
+        transactionIndex: index,
+        creator: h.primary.publicKey,
+        rentPayer: h.primary.publicKey,
+      }),
+    ];
+    const result = applySignerChange(h, propose, index, h.primary);
+
+    expect(failed(result)).toBe(false);
+    expect(signerKeys(h)).toHaveLength(2);
+  });
+
+  it("refuses to build a removal of the only recovery signer", () => {
+    const h = setUp();
+    const index = BigInt(settingsOf(h).transactionIndex.toString()) + 1n;
+
+    expect(() =>
       buildRemoveRecoverySigner({
         addresses: h.addresses,
         oldSigner: h.recovery.publicKey,
+        recoverySigners: [h.recovery.publicKey],
         proposer: h.primary.publicKey,
         rentPayer: h.primary.publicKey,
         transactionIndex: index,
       }),
-      index,
-      h.primary,
-    );
-
-    // Succeeds, and that is the point of the assertion. Two signers remain,
-    // which satisfies the threshold, so the program has no objection to an
-    // Account that can never recover a lost phone. `RecoveryService` is the
-    // only thing standing between a Consumer and that state.
-    expect(failed(result)).toBe(false);
-    expect(signerKeys(h)).toHaveLength(2);
+    ).toThrow(SettingsChangeRefusedError);
+    expect(signerKeys(h)).toHaveLength(3);
   });
 
   it("refuses to add a signer that is already in the set", () => {
@@ -1461,10 +1491,14 @@ describe.skipIf(!HAVE_FIXTURES)("single-transaction provisioning", () => {
    * is still zero until this very change sets it, so there is nothing to
    * wait out between approval and execution.
    */
-  it("proposes, approves twice and executes in one transaction", () => {
-    const h = setUp({ timeLockSeconds: 0 });
-    const index = nextIndex(h);
-
+  function provisionInOne(
+    h: Harness,
+    index: bigint,
+    {
+      payer = h.primary,
+      rentPayer,
+    }: { payer?: Keypair; rentPayer?: Keypair } = {},
+  ) {
     const { propose, policies } = buildProvisionAccount({
       addresses: h.addresses,
       spendingLimitSeed: LIMIT_POLICY_SEED,
@@ -1479,13 +1513,16 @@ describe.skipIf(!HAVE_FIXTURES)("single-transaction provisioning", () => {
       primary: h.primary.publicKey,
       approval: h.approval.publicKey,
       proposer: h.primary.publicKey,
+      rentPayer: rentPayer?.publicKey,
       transactionIndex: index,
       timeLockSeconds: SETTINGS_TIME_LOCK,
     });
 
-    const result = send(
+    const signers = [h.primary, h.approval];
+    if (rentPayer) signers.push(rentPayer);
+    return send(
       h.svm,
-      h.primary,
+      payer,
       [
         ...propose,
         buildApproveSettingsChange({
@@ -1502,13 +1539,15 @@ describe.skipIf(!HAVE_FIXTURES)("single-transaction provisioning", () => {
           addresses: h.addresses,
           transactionIndex: index,
           signer: h.primary.publicKey,
+          rentPayer: rentPayer?.publicKey,
           policies,
         }),
       ],
-      [h.primary, h.approval],
+      signers,
     );
-    expect(failed(result)).toBe(false);
+  }
 
+  function expectProvisioned(h: Harness) {
     const settings = decode<{ timeLock: number }>(
       h.svm,
       h.addresses.settings,
@@ -1531,18 +1570,185 @@ describe.skipIf(!HAVE_FIXTURES)("single-transaction provisioning", () => {
     });
     expect(failed(send(h.svm, h.primary, [tx], [h.primary]))).toBe(false);
     expect(h.svm.getBalance(destination)).toBe(BigInt(LAMPORTS_PER_SOL));
+  }
+
+  it("proposes, approves twice and executes in one transaction", () => {
+    const h = setUp({ timeLockSeconds: 0 });
+    expect(failed(provisionInOne(h, nextIndex(h)))).toBe(false);
+    expectProvisioned(h);
+  });
+
+  it("is refused once the Settings already carries a time lock", () => {
+    // The same bundle against an Account that is already locked. Execute
+    // comes before the lock has elapsed since approval, so the program
+    // refuses it and the whole transaction rolls back: no policies, and the
+    // lock as it was.
+    const h = setUp({ timeLockSeconds: SETTINGS_TIME_LOCK });
+    expect(failed(provisionInOne(h, nextIndex(h)))).toBe(true);
+
+    const settings = decode<{
+      timeLock: number;
+      transactionIndex: { toString(): string };
+    }>(h.svm, h.addresses.settings, accounts.Settings);
+    expect(settings.timeLock).toBe(SETTINGS_TIME_LOCK);
+    expect(settings.transactionIndex.toString()).toBe("0");
+    expect(h.svm.getAccount(h.policy)).toBeNull();
+    expect(h.svm.getAccount(h.abovePolicy)).toBeNull();
+  });
+
+  it("charges every account it creates to a rent payer that is not a signer", () => {
+    // How the backend runs it: its own authority pays the fee and the rent
+    // for the transaction, proposal and both policy accounts, and the
+    // Consumer's primary signer authorises without holding a lamport.
+    const h = setUp({ timeLockSeconds: 0 });
+    const authority = Keypair.generate();
+    h.svm.airdrop(authority.publicKey, BigInt(5 * LAMPORTS_PER_SOL));
+    const primaryBefore = h.svm.getBalance(h.primary.publicKey);
+    const authorityBefore = h.svm.getBalance(authority.publicKey);
+
+    expect(
+      failed(
+        provisionInOne(h, nextIndex(h), {
+          payer: authority,
+          rentPayer: authority,
+        }),
+      ),
+    ).toBe(false);
+
+    expect(h.svm.getBalance(h.primary.publicKey)).toBe(primaryBefore);
+    expect(h.svm.getBalance(authority.publicKey)).toBeLessThan(
+      authorityBefore!,
+    );
+    expectProvisioned(h);
   });
 });
 
-describe.skipIf(!HAVE_FIXTURES)("primary signer rotation", () => {
-  const TERMS = {
-    mint: SOL,
-    maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
-    maxPerPeriod: BigInt(5 * LAMPORTS_PER_SOL),
-    period: "Daily" as const,
-    destinations: [],
-  };
+/*
+ * The above-limit policy lets a two-signature Spend call only the programs on
+ * its allowlist. These pin that the allowlist is written to chain, that a
+ * transfer through a listed program still executes, and that the program
+ * refuses an instruction to anything else.
+ */
+describe.skipIf(!HAVE_FIXTURES)("above-limit program allowlist", () => {
+  const FOREIGN_PROGRAM = new PublicKey(
+    "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+  );
 
+  const errorLogs = (result: unknown): string =>
+    (result as { meta(): { logs(): string[] } }).meta().logs().join("\n");
+
+  /** A two-signature Spend whose inner instruction the builder would refuse. */
+  function spendForeign(h: Harness, constraintIndex: number) {
+    const inner = new TransactionInstruction({
+      programId: FOREIGN_PROGRAM,
+      keys: [{ pubkey: h.addresses.vault, isSigner: true, isWritable: true }],
+      data: Buffer.from("hello"),
+    });
+    const compiled = utils.instructionsToSynchronousTransactionDetails({
+      vaultPda: h.addresses.vault,
+      members: [],
+      transaction_instructions: [inner],
+    });
+    const signerAccounts = [h.primary, h.approval].map((kp) => ({
+      pubkey: kp.publicKey,
+      isSigner: true,
+      isWritable: false,
+    }));
+    return instructions.executePolicyPayloadSync({
+      policy: h.abovePolicy,
+      accountIndex: 0,
+      numSigners: 2,
+      policyPayload: {
+        __kind: "ProgramInteraction",
+        fields: [
+          {
+            instructionConstraintIndices: Uint8Array.from([constraintIndex]),
+            transactionPayload: {
+              __kind: "SyncTransaction",
+              fields: [
+                { accountIndex: 0, instructions: compiled.instructions },
+              ],
+            },
+          },
+        ],
+      },
+      instruction_accounts: [...signerAccounts, ...compiled.accounts],
+    });
+  }
+
+  it("writes one constraint per allowed program onto the policy", () => {
+    const h = provisioned();
+    const policy = decode<{
+      policyState: {
+        __kind: string;
+        fields: [{ instructionsConstraints: { programId: PublicKey }[] }];
+      };
+    }>(h.svm, h.abovePolicy, accounts.Policy);
+
+    expect(policy.policyState.__kind).toBe("ProgramInteraction");
+    expect(
+      policy.policyState.fields[0].instructionsConstraints.map((c) =>
+        c.programId.toBase58(),
+      ),
+    ).toEqual(ABOVE_LIMIT_PROGRAM_ALLOWLIST.map((p) => p.toBase58()));
+  });
+
+  it("settles a transfer through an allowlisted program", () => {
+    const h = provisioned();
+    const destination = Keypair.generate().publicKey;
+    const tx = spend(
+      h,
+      [h.primary.publicKey, h.approval.publicKey],
+      destination,
+      BigInt(3 * LAMPORTS_PER_SOL),
+    );
+    expect(failed(send(h.svm, h.primary, [tx], [h.primary, h.approval]))).toBe(
+      false,
+    );
+    expect(h.svm.getBalance(destination)).toBe(BigInt(3 * LAMPORTS_PER_SOL));
+  });
+
+  it("refuses an instruction to a program outside the allowlist", () => {
+    const h = provisioned();
+
+    // Claiming the System constraint for a Memo instruction: the program
+    // compares the constraint's program to the instruction's and stops.
+    const mismatched = send(
+      h.svm,
+      h.primary,
+      [spendForeign(h, 0)],
+      [h.primary, h.approval],
+    );
+    expect(failed(mismatched)).toBe(true);
+    expect(errorLogs(mismatched)).toContain(
+      "ProgramInteractionProgramIdMismatch",
+    );
+
+    // Claiming a constraint the policy does not have.
+    const outOfBounds = send(
+      h.svm,
+      h.primary,
+      [spendForeign(h, ABOVE_LIMIT_PROGRAM_ALLOWLIST.length)],
+      [h.primary, h.approval],
+    );
+    expect(failed(outOfBounds)).toBe(true);
+    expect(errorLogs(outOfBounds)).toContain(
+      "ProgramInteractionConstraintIndexOutOfBounds",
+    );
+  });
+});
+
+/** The spending limit as the chain holds it, the way a rotation must read it. */
+function liveLimit(h: Harness) {
+  const account = h.svm.getAccount(h.policy);
+  if (!account) throw new Error("no spending-limit policy on the Account");
+  return decodeSpendingLimit(h.policy, {
+    ...account,
+    data: Buffer.from(account.data),
+  });
+}
+
+describe.skipIf(!HAVE_FIXTURES)("primary signer rotation", () => {
   /**
    * The lost-passkey recovery: S1 is gone, so the pair meeting the threshold
    * is the approval signer on the phone and the recovery signer in the vault.
@@ -1559,8 +1765,12 @@ describe.skipIf(!HAVE_FIXTURES)("primary signer rotation", () => {
       oldPrimary: h.primary.publicKey,
       newPrimary: newPrimary.publicKey,
       approval: h.approval.publicKey,
+      signers: settingsOf(h).signers as {
+        key: PublicKey;
+        permissions: { mask: number };
+      }[],
       spendingLimitSeed: LIMIT_POLICY_SEED,
-      terms: TERMS,
+      currentLimit: liveLimit(h),
       aboveLimitSeed: ABOVE_LIMIT_POLICY_SEED,
       proposer: h.approval.publicKey,
       transactionIndex,
@@ -2094,5 +2304,402 @@ describe.skipIf(!HAVE_FIXTURES)("recovery signer rotation", () => {
         transactionIndex: nextIndex(h),
       }),
     ).toThrow();
+  });
+});
+
+/*
+ * Changing the limit after the Account is live. These pin the three facts the
+ * settings screen rests on: a raised limit is what the next Spend is measured
+ * against, a removed limit leaves the two-signature route and nothing else,
+ * and neither lands before the Consumer has had a day to object.
+ */
+describe.skipIf(!HAVE_FIXTURES)("spending limit changes", () => {
+  const RAISED = {
+    mint: SOL,
+    maxPerUse: BigInt(4 * LAMPORTS_PER_SOL),
+    maxPerPeriod: BigInt(9 * LAMPORTS_PER_SOL),
+    period: "Daily" as const,
+    destinations: [],
+  };
+
+  function signerSet(h: Harness) {
+    return settingsOf(h).signers as {
+      key: PublicKey;
+      permissions: { mask: number };
+    }[];
+  }
+
+  function proposeAndApprove(
+    h: Harness,
+    propose: TransactionInstruction[],
+    transactionIndex: bigint,
+  ) {
+    expect(failed(send(h.svm, h.primary, propose, [h.primary]))).toBe(false);
+    for (const signer of [h.primary, h.approval]) {
+      expect(
+        failed(
+          send(
+            h.svm,
+            signer,
+            [
+              buildApproveSettingsChange({
+                addresses: h.addresses,
+                transactionIndex,
+                signer: signer.publicKey,
+              }),
+            ],
+            [signer],
+          ),
+        ),
+      ).toBe(false);
+    }
+  }
+
+  function execute(
+    h: Harness,
+    transactionIndex: bigint,
+    policies: PublicKey[],
+  ) {
+    h.svm.expireBlockhash();
+    return send(
+      h.svm,
+      h.primary,
+      [
+        buildExecuteSettingsChange({
+          addresses: h.addresses,
+          transactionIndex,
+          signer: h.primary.publicKey,
+          policies,
+        }),
+      ],
+      [h.primary],
+    );
+  }
+
+  function warpPastTheLock(h: Harness) {
+    const clock = h.svm.getClock();
+    clock.unixTimestamp = clock.unixTimestamp + BigInt(SETTINGS_TIME_LOCK + 10);
+    h.svm.setClock(clock);
+  }
+
+  function limitSpend(h: Harness, amount: bigint, destination: PublicKey) {
+    return buildSpend({
+      addresses: h.addresses,
+      request: { mint: SOL, amount, destination },
+      route: { kind: "spending-limit", policy: h.policy },
+      signers: [h.primary.publicKey],
+      decimals: 9,
+    });
+  }
+
+  function raiseTheLimit(h: Harness) {
+    const index = nextIndex(h);
+    const { propose, policies } = buildUpdateSpendingLimit({
+      addresses: h.addresses,
+      spendingLimitSeed: LIMIT_POLICY_SEED,
+      currentLimit: liveLimit(h),
+      terms: RAISED,
+      limitSigner: h.primary.publicKey,
+      signers: signerSet(h),
+      proposer: h.primary.publicKey,
+      transactionIndex: index,
+    });
+    proposeAndApprove(h, propose, index);
+    warpPastTheLock(h);
+    return execute(h, index, policies);
+  }
+
+  function removeTheLimit(h: Harness) {
+    const index = nextIndex(h);
+    const { propose, policies } = buildRemoveSpendingLimit({
+      addresses: h.addresses,
+      spendingLimitSeed: LIMIT_POLICY_SEED,
+      currentLimit: liveLimit(h),
+      signers: signerSet(h),
+      proposer: h.primary.publicKey,
+      transactionIndex: index,
+    });
+    proposeAndApprove(h, propose, index);
+    warpPastTheLock(h);
+    return execute(h, index, policies);
+  }
+
+  it("measures a later spend against the raised limit, not the old one", () => {
+    const h = provisioned();
+    const amount = BigInt(3 * LAMPORTS_PER_SOL);
+
+    // Over the $2-equivalent per-use cap the Account was provisioned with, so
+    // the one-signature route is closed to it.
+    const before = Keypair.generate().publicKey;
+    expect(
+      failed(
+        send(h.svm, h.primary, [limitSpend(h, amount, before)], [h.primary]),
+      ),
+    ).toBe(true);
+
+    expect(failed(raiseTheLimit(h))).toBe(false);
+    expect(liveLimit(h).maxPerUse).toBe(RAISED.maxPerUse);
+    expect(liveLimit(h).maxPerPeriod).toBe(RAISED.maxPerPeriod);
+
+    const after = Keypair.generate().publicKey;
+    expect(
+      failed(
+        send(h.svm, h.primary, [limitSpend(h, amount, after)], [h.primary]),
+      ),
+    ).toBe(false);
+    expect(h.svm.getBalance(after)).toBe(amount);
+  });
+
+  it("leaves the same Spend routed two-signature once the limit is removed", () => {
+    const h = provisioned();
+    const amount = BigInt(LAMPORTS_PER_SOL);
+
+    expect(failed(removeTheLimit(h))).toBe(false);
+    expect(h.svm.getAccount(h.policy)).toBeNull();
+
+    // Nothing admits the Spend now, and the route resolver says so without
+    // being told the policy is gone: it is asked with the limits that remain.
+    expect(
+      resolveSpendRoute(
+        { mint: SOL, amount, destination: Keypair.generate().publicKey },
+        [],
+        h.abovePolicy,
+      ),
+    ).toEqual({
+      kind: "two-signature",
+      reason: "no-spending-limit",
+      policy: h.abovePolicy,
+    });
+
+    const closed = Keypair.generate().publicKey;
+    expect(
+      failed(
+        send(h.svm, h.primary, [limitSpend(h, amount, closed)], [h.primary]),
+      ),
+    ).toBe(true);
+    expect(h.svm.getBalance(closed)).toBeNull();
+
+    const open = Keypair.generate().publicKey;
+    const both = spend(
+      h,
+      [h.primary.publicKey, h.approval.publicKey],
+      open,
+      amount,
+    );
+    expect(
+      failed(send(h.svm, h.primary, [both], [h.primary, h.approval])),
+    ).toBe(false);
+    expect(h.svm.getBalance(open)).toBe(amount);
+  });
+
+  it("sets a limit on an Account that has none and measures a later Spend against it", () => {
+    // A fresh Account, so the policy the program assigns is the one at the
+    // spending-limit seed. Nothing admits a Spend until this lands.
+    const h = setUp();
+    const index = nextIndex(h);
+    const { propose, policy } = buildCreateSpendingLimitPolicy({
+      addresses: h.addresses,
+      policySeed: LIMIT_POLICY_SEED,
+      terms: {
+        mint: SOL,
+        maxPerUse: BigInt(2 * LAMPORTS_PER_SOL),
+        maxPerPeriod: BigInt(2 * LAMPORTS_PER_SOL),
+        period: "Daily",
+        destinations: [],
+      },
+      limitSigner: h.primary.publicKey,
+      proposer: h.primary.publicKey,
+      transactionIndex: index,
+    });
+    expect(policy.equals(h.policy)).toBe(true);
+
+    const before = Keypair.generate().publicKey;
+    expect(
+      failed(
+        send(
+          h.svm,
+          h.primary,
+          [limitSpend(h, BigInt(LAMPORTS_PER_SOL), before)],
+          [h.primary],
+        ),
+      ),
+    ).toBe(true);
+
+    proposeAndApprove(h, propose, index);
+    warpPastTheLock(h);
+    expect(failed(execute(h, index, [policy]))).toBe(false);
+    expect(liveLimit(h).maxPerPeriod).toBe(BigInt(2 * LAMPORTS_PER_SOL));
+
+    const paid = Keypair.generate().publicKey;
+    const amount = BigInt(LAMPORTS_PER_SOL);
+    expect(
+      failed(
+        send(h.svm, h.primary, [limitSpend(h, amount, paid)], [h.primary]),
+      ),
+    ).toBe(false);
+    expect(h.svm.getBalance(paid)).toBe(amount);
+
+    const refused = Keypair.generate().publicKey;
+    expect(
+      failed(
+        send(
+          h.svm,
+          h.primary,
+          [limitSpend(h, BigInt(3 * LAMPORTS_PER_SOL), refused)],
+          [h.primary],
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("re-creates a removed limit at the next free seed and spends under it", () => {
+    // The Account provisioning writes: seeds 1 and 2 are spent, so a limit
+    // removed and set again lands at 3 and nothing may look for it at 1.
+    const h = provisioned();
+    expect(failed(removeTheLimit(h))).toBe(false);
+
+    const assigned = settingsOf(h).policySeed;
+    const seed = (assigned === null ? 0n : BigInt(assigned.toString())) + 1n;
+    expect(seed).toBe(3n);
+
+    const index = nextIndex(h);
+    const { propose, policy } = buildCreateSpendingLimitPolicy({
+      addresses: h.addresses,
+      policySeed: seed,
+      terms: {
+        mint: SOL,
+        maxPerUse: BigInt(4 * LAMPORTS_PER_SOL),
+        maxPerPeriod: BigInt(4 * LAMPORTS_PER_SOL),
+        period: "Daily",
+        destinations: [],
+      },
+      limitSigner: h.primary.publicKey,
+      proposer: h.primary.publicKey,
+      transactionIndex: index,
+    });
+    proposeAndApprove(h, propose, index);
+    warpPastTheLock(h);
+    expect(failed(execute(h, index, [policy]))).toBe(false);
+    expect(policy.equals(h.policy)).toBe(false);
+
+    const created = decodeSpendingLimit(policy, {
+      ...h.svm.getAccount(policy)!,
+      data: Buffer.from(h.svm.getAccount(policy)!.data),
+    });
+    expect(created.maxPerPeriod).toBe(BigInt(4 * LAMPORTS_PER_SOL));
+
+    // The new policy is what a later Spend is measured against, on one
+    // signature under it and refused above it.
+    const paid = Keypair.generate().publicKey;
+    const amount = BigInt(3 * LAMPORTS_PER_SOL);
+    const under = buildSpend({
+      addresses: h.addresses,
+      request: { mint: SOL, amount, destination: paid },
+      route: { kind: "spending-limit", policy },
+      signers: [h.primary.publicKey],
+      decimals: 9,
+    });
+    expect(failed(send(h.svm, h.primary, [under], [h.primary]))).toBe(false);
+    expect(h.svm.getBalance(paid)).toBe(amount);
+
+    const over = buildSpend({
+      addresses: h.addresses,
+      request: {
+        mint: SOL,
+        amount: BigInt(5 * LAMPORTS_PER_SOL),
+        destination: Keypair.generate().publicKey,
+      },
+      route: { kind: "spending-limit", policy },
+      signers: [h.primary.publicKey],
+      decimals: 9,
+    });
+    expect(failed(send(h.svm, h.primary, [over], [h.primary]))).toBe(true);
+  });
+
+  /*
+   * The program assigns policy seeds in order from a counter on the Settings,
+   * and a removal does not give one back. So a limit removed from an Account
+   * cannot be put back at the seed it used to occupy: the next create lands at
+   * the next seed, whatever the caller asks for.
+   */
+  it("refuses a policy at any seed but the next one", () => {
+    const h = setUp();
+
+    const first = nextIndex(h);
+    const created = buildCreateSpendingLimitPolicy({
+      addresses: h.addresses,
+      policySeed: LIMIT_POLICY_SEED,
+      terms: {
+        mint: SOL,
+        maxPerUse: BigInt(LAMPORTS_PER_SOL),
+        maxPerPeriod: BigInt(LAMPORTS_PER_SOL),
+        period: "Daily",
+        destinations: [],
+      },
+      limitSigner: h.primary.publicKey,
+      proposer: h.primary.publicKey,
+      transactionIndex: first,
+    });
+    expect(
+      failed(applySettingsChange(h, created.propose, first, created.policy)),
+    ).toBe(false);
+
+    const removal = nextIndex(h);
+    const removed = buildRemoveSpendingLimit({
+      addresses: h.addresses,
+      spendingLimitSeed: LIMIT_POLICY_SEED,
+      currentLimit: liveLimit(h),
+      signers: signerSet(h),
+      proposer: h.primary.publicKey,
+      transactionIndex: removal,
+    });
+    expect(
+      failed(applySettingsChange(h, removed.propose, removal, created.policy)),
+    ).toBe(false);
+    expect(h.svm.getAccount(h.policy)).toBeNull();
+
+    const reuse = nextIndex(h);
+    const again = buildCreateSpendingLimitPolicy({
+      addresses: h.addresses,
+      policySeed: LIMIT_POLICY_SEED,
+      terms: {
+        mint: SOL,
+        maxPerUse: BigInt(LAMPORTS_PER_SOL),
+        maxPerPeriod: BigInt(LAMPORTS_PER_SOL),
+        period: "Daily",
+        destinations: [],
+      },
+      limitSigner: h.primary.publicKey,
+      proposer: h.primary.publicKey,
+      transactionIndex: reuse,
+    });
+    // Refused at execute, after both approvals and the whole wait, which is
+    // why nothing proposes a create the counter will not accept.
+    expect(
+      failed(applySettingsChange(h, again.propose, reuse, again.policy)),
+    ).toBe(true);
+  });
+
+  it("refuses the change until the time lock has run, then takes it", () => {
+    const h = provisioned();
+    const index = nextIndex(h);
+    const { propose, policies } = buildUpdateSpendingLimit({
+      addresses: h.addresses,
+      spendingLimitSeed: LIMIT_POLICY_SEED,
+      currentLimit: liveLimit(h),
+      terms: RAISED,
+      limitSigner: h.primary.publicKey,
+      signers: signerSet(h),
+      proposer: h.primary.publicKey,
+      transactionIndex: index,
+    });
+    proposeAndApprove(h, propose, index);
+
+    expect(failed(execute(h, index, policies))).toBe(true);
+    expect(liveLimit(h).maxPerUse).toBe(BigInt(2 * LAMPORTS_PER_SOL));
+
+    warpPastTheLock(h);
+    expect(failed(execute(h, index, policies))).toBe(false);
+    expect(liveLimit(h).maxPerUse).toBe(RAISED.maxPerUse);
   });
 });

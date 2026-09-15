@@ -4,3 +4,10 @@
 // node test environment.
 process.env.EXPO_PUBLIC_BACKEND_URL ??= "http://backend.test";
 (globalThis as { __DEV__?: boolean }).__DEV__ = false;
+
+// Sentry ships as ESM and pulls in React Native; the modules under test only
+// ever call it to report, so a stub is the whole of what a test needs.
+jest.mock("@sentry/react-native", () => ({
+  captureException: jest.fn(),
+  captureMessage: jest.fn(),
+}));

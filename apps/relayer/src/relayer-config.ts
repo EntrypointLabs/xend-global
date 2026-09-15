@@ -48,6 +48,21 @@ export interface RelayerConfig {
 /** DI token for the assembled, immutable RelayerConfig. */
 export const RELAYER_CONFIG = Symbol("RelayerConfig");
 
+/** Circle's USDC mint on each cluster. The relayer co-signs no other mint. */
+export const USDC_MINT_BY_CLUSTER: Record<RelayerConfig["cluster"], string> = {
+  mainnet: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  devnet: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+};
+
+export class ClusterMintMismatchError extends Error {
+  constructor(cluster: string, usdcMint: string) {
+    super(
+      `USDC_MINT ${usdcMint} is not USDC on ${cluster} (expected ${USDC_MINT_BY_CLUSTER[cluster as RelayerConfig["cluster"]]}); refusing to boot`,
+    );
+    this.name = "ClusterMintMismatchError";
+  }
+}
+
 /** SPL Token program. */
 export const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 /** Associated Token program. */
@@ -67,9 +82,18 @@ export function buildRelayerConfig(
   config: ConfigService,
   feePayerAddress: string,
 ): RelayerConfig {
+  const cluster = config.getOrThrow<"devnet" | "mainnet">("SOLANA_CLUSTER");
+  const usdcMint = config.getOrThrow<string>("USDC_MINT");
+  // A devnet mint on mainnet makes every settlement fail closed; a mainnet
+  // mint on devnet makes the validator accept transactions for a mint the
+  // cluster does not have. Neither is a state to run in.
+  if (usdcMint !== USDC_MINT_BY_CLUSTER[cluster]) {
+    throw new ClusterMintMismatchError(cluster, usdcMint);
+  }
+
   return {
-    cluster: config.getOrThrow<"devnet" | "mainnet">("SOLANA_CLUSTER"),
-    usdcMint: config.getOrThrow<string>("USDC_MINT"),
+    cluster,
+    usdcMint,
     feePayerAddress,
     programAllowlist: [
       COMPUTE_BUDGET_PROGRAM,

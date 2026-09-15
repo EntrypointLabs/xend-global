@@ -6,6 +6,7 @@ import {
 } from '@solana/web3.js';
 
 import type { AccountEventsService } from '../activity/account-events.service';
+import { InMemoryPreparedTxStore } from '../prepared/prepared-tx.memory';
 import type { RecoveryChallengeService } from '../recovery/recovery-challenge.service';
 import type { RecoveryService } from '../recovery/recovery.service';
 import type { RecoverySignerSummary } from '../recovery/recovery.service';
@@ -71,12 +72,25 @@ function fakeStore(row: SquadsAccountRow) {
   return { store, patches, read: () => current };
 }
 
-function fakeChain(proposal?: Partial<ProposalState> | null) {
+function fakeChain(
+  proposal?: Partial<ProposalState> | null,
+  signers: string[] = [PRIMARY, OLD_APPROVAL, RECOVERY_ADDRESS],
+) {
   const submitted: string[] = [];
   const chain: ProvisioningChain = {
     rentPayer: AUTHORITY,
     readSettings: () =>
-      Promise.resolve({ timeLockSeconds: DAY, transactionIndex: 7n }),
+      Promise.resolve({
+        timeLockSeconds: DAY,
+        transactionIndex: 7n,
+        policySeed: null,
+        signers: signers.map((key) => ({
+          key: new PublicKey(key),
+          permissions: { mask: 7 },
+        })),
+      }),
+    readSpendingLimit: () =>
+      Promise.reject(new Error('readSpendingLimit is not exercised here')),
     policyExists: () => Promise.resolve(true),
     readProposal: () =>
       Promise.resolve(
@@ -237,9 +251,11 @@ function setUp({
   grantTarget = CONTACT,
   frozen = false,
   newApproval = NEW_APPROVAL,
+  /** The Settings signer set as the chain reports it. */
+  signers = undefined as string[] | undefined,
 } = {}) {
   const { store, patches, read } = fakeStore(row);
-  const { chain, submitted } = fakeChain(proposal);
+  const { chain, submitted } = fakeChain(proposal, signers);
   const { recovery, signed } = fakeRecovery({ frozen });
   const { challenges, consumed } = fakeChallenges({
     valid: grantValid,
@@ -255,6 +271,7 @@ function setUp({
       challenges,
       fakeTurnkey(newApproval),
       events,
+      new InMemoryPreparedTxStore(),
     ),
     patches,
     read,
@@ -473,6 +490,7 @@ describe('DeviceRotationService', () => {
         pendingApprovalChangeIndex: '8',
       }),
       proposal: { settled: true, status: 'Executed' },
+      signers: [PRIMARY, NEW_APPROVAL, RECOVERY_ADDRESS],
     });
 
     const plan = await service.next(USER, 'grant-1');
@@ -503,5 +521,162 @@ describe('DeviceRotationService', () => {
     expect(read().pendingApprovalSigner).toBeNull();
     expect(recorded).toEqual([]);
     expect(changes).toEqual([`rejected:8:${NEW_APPROVAL}`]);
+  });
+});
+
+describe('DeviceRotationService against a signer set that disagrees', () => {
+  const staged = () =>
+    account({
+      pendingApprovalSigner: NEW_APPROVAL,
+      pendingApprovalSubOrgId: 'suborg-2',
+      pendingApprovalChangeIndex: '8',
+    });
+
+  it('refuses to commit an executed index the signer set does not reflect', async () => {
+    const { service, read, recorded } = setUp({
+      row: staged(),
+      proposal: { settled: true, status: 'Executed' },
+      signers: [PRIMARY, OLD_APPROVAL, RECOVERY_ADDRESS],
+    });
+
+    // Something executed at index 8, but the Account still names the old key.
+    // Naming the new one in the row would hand S2 to a phone the chain never
+    // admitted.
+    await expect(service.next(USER, 'grant-1')).rejects.toThrow(
+      'did not install the staged approval signer',
+    );
+    expect(read().approvalSigner).toBe(OLD_APPROVAL);
+    expect(read().pendingApprovalSigner).toBe(NEW_APPROVAL);
+    expect(recorded).toEqual([]);
+  });
+
+  it('clears a staged index the chain has moved past without a proposal', async () => {
+    const { service, read, changes } = setUp({
+      row: account({
+        pendingApprovalSigner: NEW_APPROVAL,
+        pendingApprovalChangeIndex: '5',
+      }),
+      proposal: null,
+    });
+
+    // Index 5 is behind the chain's 7 and nothing was ever proposed there, so
+    // it can never be proposed now. Left alone, every start would refuse
+    // forever.
+    const plan = await service.next(USER, 'grant-1');
+
+    expect(plan).toEqual({ done: true });
+    expect(read().pendingApprovalSigner).toBeNull();
+    expect(read().pendingApprovalChangeIndex).toBeNull();
+    expect(read().approvalSigner).toBe(OLD_APPROVAL);
+    expect(changes).toEqual([`rejected:5:${NEW_APPROVAL}`]);
+  });
+
+  it('commits a rotation whose proposal is gone but whose key is in place', async () => {
+    const { service, read, recorded } = setUp({
+      row: account({
+        pendingApprovalSigner: NEW_APPROVAL,
+        pendingApprovalSubOrgId: 'suborg-2',
+        pendingApprovalChangeIndex: '5',
+      }),
+      proposal: null,
+      signers: [PRIMARY, NEW_APPROVAL, RECOVERY_ADDRESS],
+    });
+
+    await service.next(USER, 'grant-1');
+
+    expect(read().approvalSigner).toBe(NEW_APPROVAL);
+    expect(read().pendingApprovalSigner).toBeNull();
+    expect(recorded).toEqual([NEW_APPROVAL]);
+  });
+
+  it('keeps re-proposing a staged index that is still the next one', async () => {
+    const { service, read } = setUp({
+      row: staged(),
+      proposal: null,
+    });
+
+    const plan = await service.next(USER, 'grant-1');
+
+    expect(plan.step).toBe('propose');
+    expect(read().pendingApprovalChangeIndex).toBe('8');
+  });
+});
+
+describe('DeviceRotationService.start with a change already staged', () => {
+  const other = Keypair.generate().publicKey.toBase58();
+
+  it('refuses a second phone while the first is still on chain', async () => {
+    const { service, read, patches } = setUp({
+      row: account({
+        pendingApprovalSigner: other,
+        pendingApprovalChangeIndex: '8',
+      }),
+      proposal: { approved: [PRIMARY] },
+    });
+
+    await expect(
+      service.start(USER, 'grant-1', { hardwarePublicKey: 'key' }),
+    ).rejects.toThrow('already in flight');
+    expect(patches).toHaveLength(0);
+    expect(read().pendingApprovalSigner).toBe(other);
+  });
+
+  it('refuses a second phone while the first is staged but not yet proposed', async () => {
+    const { service, read } = setUp({
+      row: account({
+        pendingApprovalSigner: other,
+        pendingApprovalChangeIndex: '8',
+      }),
+      proposal: null,
+    });
+
+    await expect(
+      service.start(USER, 'grant-1', { hardwarePublicKey: 'key' }),
+    ).rejects.toThrow('already in flight');
+    expect(read().pendingApprovalSigner).toBe(other);
+  });
+
+  it('clears a stale index and stages afresh', async () => {
+    const { service, read, changes } = setUp({
+      row: account({
+        pendingApprovalSigner: other,
+        pendingApprovalChangeIndex: '5',
+      }),
+      proposal: null,
+    });
+
+    const plan = await service.start(USER, 'grant-1', {
+      hardwarePublicKey: 'key',
+    });
+
+    expect(plan.step).toBe('propose');
+    expect(read().pendingApprovalSigner).toBe(NEW_APPROVAL);
+    expect(read().pendingApprovalChangeIndex).toBe('8');
+    expect(changes).toEqual([
+      `rejected:5:${other}`,
+      `staged:device:8:${NEW_APPROVAL}`,
+    ]);
+  });
+
+  it('refuses to race a passkey replacement already in flight', async () => {
+    const { service, patches } = setUp({
+      row: account({ pendingPrimaryChangeIndex: '8' }),
+    });
+
+    await expect(
+      service.start(USER, 'grant-1', { hardwarePublicKey: 'key' }),
+    ).rejects.toThrow('already in flight');
+    expect(patches).toHaveLength(0);
+  });
+
+  it('refuses to race a Spending Limit change already holding the index', async () => {
+    const { service, patches } = setUp({
+      row: account({ pendingSpendingLimitChangeIndex: '8' }),
+    });
+
+    await expect(
+      service.start(USER, 'grant-1', { hardwarePublicKey: 'key' }),
+    ).rejects.toThrow('already in flight');
+    expect(patches).toHaveLength(0);
   });
 });

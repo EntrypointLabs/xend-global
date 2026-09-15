@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PaymentModule } from '../payment/payment.module';
 import { FxModule } from '../fx/fx.module';
 import { SettlementModule } from '../settlement/settlement.module';
+import { ApiKeyAdminController } from './api-key-admin.controller';
 import { ApiKeyGuard } from './api-key.guard';
 import { InternalGuard } from './internal.guard';
 import { IdempotencyService } from './idempotency.service';
@@ -25,7 +26,7 @@ import { RefundController } from './refund.controller';
     KeyIssuanceService,
     RefundService,
   ],
-  controllers: [MerchantController, RefundController],
+  controllers: [MerchantController, RefundController, ApiKeyAdminController],
   exports: [KeyIssuanceService, IdempotencyService],
 })
 export class MerchantModule {}

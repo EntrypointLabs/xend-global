@@ -14,6 +14,7 @@ import { TransferService } from './transfer.service';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { ApprovalSignerStore } from '../turnkey/approval-signer.store';
+import { InMemoryPreparedTxStore } from '../prepared/prepared-tx.memory';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { presenceDigest } from './presence-proof';
 import {
@@ -358,6 +359,7 @@ function makeService(opts: {
     {
       listByUser: () => Promise.resolve(opts.enrolledKeys ?? []),
     } as unknown as ApprovalSignerStore,
+    new InMemoryPreparedTxStore(),
   );
   return { service, store, account };
 }
@@ -577,7 +579,10 @@ describe('TransferService.submit', () => {
     const { spends, submit, vaultAddress } = makeVaultSpend();
     const { service, store } = makeService({
       solana,
-      squadsAccount: { settingsAddress: 'settings' },
+      squadsAccount: {
+        settingsAddress: 'settings',
+        approvalSigner: device.address,
+      },
       spends,
       enrolledKeys: [device],
     });
@@ -621,6 +626,8 @@ describe('TransferService.submit', () => {
     const vaultSpend = async (opts: {
       device?: ReturnType<typeof makeDeviceKey>;
       enrolled?: ReturnType<typeof makeDeviceKey>[];
+      /** The device behind the Account's live approval signer. */
+      live?: ReturnType<typeof makeDeviceKey>;
       approvalSigner?: PublicKey;
       signApproval?: boolean;
     }) => {
@@ -628,11 +635,16 @@ describe('TransferService.submit', () => {
       const { spends, submit } = makeVaultSpend({
         approvalSigner: opts.approvalSigner,
       });
+      const enrolled = opts.enrolled ?? (opts.device ? [opts.device] : []);
+      const live = opts.live ?? opts.device ?? enrolled[0];
       const { service } = makeService({
         solana,
-        squadsAccount: { settingsAddress: 'settings' },
+        squadsAccount: {
+          settingsAddress: 'settings',
+          approvalSigner: live?.address ?? 'none',
+        },
         spends,
-        enrolledKeys: opts.enrolled ?? (opts.device ? [opts.device] : []),
+        enrolledKeys: enrolled,
       });
 
       const prep = await service.prepare('u_test', {
@@ -711,16 +723,46 @@ describe('TransferService.submit', () => {
       expect(submit).not.toHaveBeenCalled();
     });
 
-    it('accepts a proof from the second of two enrolled devices', async () => {
+    it('accepts a proof from the device behind the live approval signer', async () => {
       const holding = makeDeviceKey();
       const { send, prep, submit } = await vaultSpend({
         enrolled: [makeDeviceKey(), holding],
+        live: holding,
       });
 
       await expect(
         send(holding.proofFor(prep.unsignedTxBase64)),
       ).resolves.toMatchObject({ signature: 'sig-vault' });
       expect(submit).toHaveBeenCalled();
+    });
+
+    it('refuses a proof from a device rotated out of the signer set', async () => {
+      const retired = makeDeviceKey();
+      const holding = makeDeviceKey();
+      const { send, prep, submit } = await vaultSpend({
+        enrolled: [retired, holding],
+        live: holding,
+      });
+
+      // The old phone's row is still on file after a rotation. Its key is no
+      // longer S2, so it must not go on proving the Consumer was present.
+      await expect(
+        send(retired.proofFor(prep.unsignedTxBase64)),
+      ).rejects.toMatchObject({ code: 'PRESENCE_INVALID' });
+      expect(submit).not.toHaveBeenCalled();
+    });
+
+    it('refuses an approval signature from a device rotated out of the signer set', async () => {
+      const retired = makeDeviceKey();
+      const holding = makeDeviceKey();
+      const { send, submit } = await vaultSpend({
+        enrolled: [retired, holding],
+        live: holding,
+        approvalSigner: new PublicKey(retired.address),
+      });
+
+      await expect(send()).rejects.toMatchObject({ code: 'PRESENCE_INVALID' });
+      expect(submit).not.toHaveBeenCalled();
     });
 
     it('asks no separate proof above the limit, where S2 already signed', async () => {

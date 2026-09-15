@@ -534,5 +534,36 @@ describe('SettlementService', () => {
         'still_settling',
       );
     });
+
+    it('returns failed for a confirmed status that carries a transaction error', async () => {
+      const { intents } = makeIntents({ id: 'pi_1', status: 'settling' });
+      const { provisioning } = makeProvisioning(ENDPOINT);
+      const { spends } = makeSpends();
+      const service = makeService({
+        db: makeDb({
+          attempt: {
+            id: 'att_1',
+            status: 'settling',
+            messageBase64: 'pinned',
+            txSignature: 'sig-live',
+          },
+        }),
+        solana: makeSolana({
+          getSignatureStatuses: jest.fn().mockResolvedValue([
+            {
+              signature: 'sig-live',
+              slot: 9n,
+              confirmationStatus: 'confirmed',
+              err: { InstructionError: [1, 'Custom'] },
+            },
+          ]),
+        }),
+        intents,
+        provisioning,
+        spends,
+      });
+
+      await expect(service.resolveInFlight('pi_1')).resolves.toBe('failed');
+    });
   });
 });

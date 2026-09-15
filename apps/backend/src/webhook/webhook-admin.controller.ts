@@ -8,13 +8,11 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
-import { webhookDeliveries, webhookEndpoints } from '../db/schema';
+import { webhookDeliveries } from '../db/schema';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { assertPublicHttpsUrl, UnsafeUrlError } from '../common/url-safety';
+import { UnsafeUrlError } from '../common/url-safety';
 import { InternalGuard } from '../merchant/internal.guard';
 import { RegisterEndpointBodySchema, type RegisterEndpointBody } from './dtos';
 import {
@@ -22,23 +20,20 @@ import {
   WebhookEndpointNotFoundError,
 } from './webhook.errors';
 import { WebhookDeliveryService } from './webhook-delivery.service';
-
-function mintSecret(): string {
-  return 'whsec_' + randomBytes(24).toString('base64url');
-}
+import { WebhookEndpointService } from './webhook-endpoint.service';
 
 /**
  * Internal ops surfaces for webhook endpoint management. Not a merchant key,
- * not the consumer JWT: guarded by INTERNAL_API_SECRET. Merchants never manage
- * endpoints themselves in v1 (the merchants.xend.global portal is the
- * fast-follow that calls these).
+ * not the consumer JWT: guarded by INTERNAL_API_SECRET. Merchants manage
+ * their own endpoints through /v1/webhook_endpoints; this surface exists for
+ * ops to act on any Merchant's behalf.
  */
 @Controller('internal')
 @UseGuards(InternalGuard)
 export class WebhookAdminController {
   constructor(
     private readonly db: DbService,
-    private readonly config: ConfigService,
+    private readonly endpoints: WebhookEndpointService,
     private readonly delivery: WebhookDeliveryService,
   ) {}
 
@@ -48,27 +43,17 @@ export class WebhookAdminController {
     body: RegisterEndpointBody,
   ) {
     try {
-      const allowPrivate =
-        this.config.get<boolean>('WEBHOOK_ALLOW_PRIVATE_URLS') ?? false;
-      await assertPublicHttpsUrl(body.url, { allowPrivate });
-
-      const secret = mintSecret();
-      const [row] = await this.db.client
-        .insert(webhookEndpoints)
-        .values({
-          merchantId: body.merchant_id,
-          url: body.url,
-          secretPrimary: secret,
-          eventTypes: body.event_types ?? null,
-          mode: body.mode,
-        })
-        .returning();
-
+      const { endpoint, secret } = await this.endpoints.register({
+        merchantId: body.merchant_id,
+        url: body.url,
+        mode: body.mode,
+        eventTypes: body.event_types,
+      });
       return {
-        id: row.id,
-        url: row.url,
-        mode: row.mode,
-        event_types: row.eventTypes,
+        id: endpoint.id,
+        url: endpoint.url,
+        mode: endpoint.mode,
+        event_types: endpoint.eventTypes,
         secret,
       };
     } catch (err) {
@@ -78,43 +63,29 @@ export class WebhookAdminController {
 
   @Get('merchants/:merchantId/webhook_endpoints')
   async list(@Param('merchantId') merchantId: string) {
-    const rows = await this.db.client
-      .select({
-        id: webhookEndpoints.id,
-        url: webhookEndpoints.url,
-        mode: webhookEndpoints.mode,
-        enabled: webhookEndpoints.enabled,
-        eventTypes: webhookEndpoints.eventTypes,
-        createdAt: webhookEndpoints.createdAt,
-      })
-      .from(webhookEndpoints)
-      .where(eq(webhookEndpoints.merchantId, merchantId));
-    return { data: rows };
+    const rows = await this.endpoints.list({ merchantId });
+    return {
+      data: rows.map((row) => ({
+        id: row.id,
+        url: row.url,
+        mode: row.mode,
+        enabled: row.enabled,
+        eventTypes: row.eventTypes,
+        createdAt: row.createdAt,
+      })),
+    };
   }
 
   @Post('webhook_endpoints/:id/rotate_secret')
   async rotateSecret(@Param('id') id: string) {
     try {
-      const [endpoint] = await this.db.client
-        .select()
-        .from(webhookEndpoints)
-        .where(eq(webhookEndpoints.id, id))
-        .limit(1);
-      if (!endpoint) {
-        throw new WebhookEndpointNotFoundError(`endpoint ${id} not found`);
-      }
-      const secret = mintSecret();
-      // Move the current primary to secondary so both verify during the
-      // overlap window, then set the new primary.
-      await this.db.client
-        .update(webhookEndpoints)
-        .set({
-          secretSecondary: endpoint.secretPrimary,
-          secretPrimary: secret,
-          updatedAt: new Date(),
-        })
-        .where(eq(webhookEndpoints.id, id));
-      return { id, secret };
+      const { secret, secondaryExpiresAt } =
+        await this.endpoints.rotateSecret(id);
+      return {
+        id,
+        secret,
+        secondary_expires_at: secondaryExpiresAt.toISOString(),
+      };
     } catch (err) {
       this.mapServiceError(err);
     }

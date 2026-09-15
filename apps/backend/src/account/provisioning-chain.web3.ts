@@ -13,6 +13,8 @@ import {
   derivePolicyAddress,
   deriveProposalAddress,
   fetchSettings,
+  fetchSpendingLimit,
+  type SpendingLimit,
 } from '@xend/smart-account';
 
 import {
@@ -20,10 +22,10 @@ import {
   type SettlementAuthoritySigner,
 } from '../settlement/settlement-authority.interface';
 import { AccountCreationError } from './account.errors';
-import type {
-  ProposalState,
-  ProvisioningChain,
-  SettingsState,
+import {
+  type ProposalState,
+  type ProvisioningChain,
+  type SettingsState,
 } from './account.interface';
 
 /**
@@ -65,6 +67,23 @@ export class Web3ProvisioningChain implements ProvisioningChain, OnModuleInit {
     } catch (cause) {
       throw new AccountCreationError(
         `Could not read the Account settings: ${describe(cause)}`,
+      );
+    }
+  }
+
+  async readSpendingLimit(
+    settingsAddress: string,
+    policySeed: bigint,
+  ): Promise<SpendingLimit> {
+    const policy = derivePolicyAddress(
+      new PublicKey(settingsAddress),
+      policySeed,
+    );
+    try {
+      return await fetchSpendingLimit(this.rpc, policy);
+    } catch (cause) {
+      throw new AccountCreationError(
+        `Could not read the spending limit: ${describe(cause)}`,
       );
     }
   }

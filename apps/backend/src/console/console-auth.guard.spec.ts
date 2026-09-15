@@ -1,6 +1,7 @@
 import { UnauthorizedException } from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
+import type { AdminAuditService } from './admin-audit.service';
 import { ConsoleAuthGuard } from './console-auth.guard';
 
 const USER = 'operator';
@@ -51,6 +52,29 @@ describe('ConsoleAuthGuard', () => {
     );
     const { context } = makeContext(basic(USER, 'wrong'));
     expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+  });
+
+  it('records a wrong password on the audit trail, off the request path', async () => {
+    const authFailed = jest.fn().mockResolvedValue(undefined);
+    const guard = new ConsoleAuthGuard(
+      makeConfig({ CONSOLE_USER: USER, CONSOLE_PASSWORD: PASSWORD }),
+      { authFailed } as unknown as AdminAuditService,
+    );
+    const { context } = makeContext(basic(USER, 'wrong'));
+    expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+    await Promise.resolve();
+    expect(authFailed).toHaveBeenCalledWith('console', 'unknown');
+  });
+
+  it('does not audit a request that carried no credentials at all', () => {
+    const authFailed = jest.fn().mockResolvedValue(undefined);
+    const guard = new ConsoleAuthGuard(
+      makeConfig({ CONSOLE_USER: USER, CONSOLE_PASSWORD: PASSWORD }),
+      { authFailed } as unknown as AdminAuditService,
+    );
+    const { context } = makeContext();
+    expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+    expect(authFailed).not.toHaveBeenCalled();
   });
 
   it('allows correct credentials', () => {

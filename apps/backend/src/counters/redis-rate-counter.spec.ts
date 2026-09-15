@@ -9,6 +9,8 @@ interface PipelineCall {
 interface FakePipeline {
   incr: jest.Mock;
   incrby: jest.Mock;
+  decr: jest.Mock;
+  decrby: jest.Mock;
   expire: jest.Mock;
   exec: jest.Mock;
 }
@@ -18,6 +20,7 @@ function makeFakeRedis(
     incrResult?: number;
     incrbyResult?: string | number;
     mget?: (string | null)[];
+    evalResult?: [number, number, number];
   } = {},
 ) {
   const pipelineCalls: PipelineCall[] = [];
@@ -37,15 +40,20 @@ function makeFakeRedis(
     [null, 1],
   ]);
 
+  pipeline.decr = record('decr');
+  pipeline.decrby = record('decrby');
+
   const mgetMock = jest.fn().mockResolvedValue(opts.mget ?? [null, null]);
   const delMock = jest.fn().mockResolvedValue(1);
+  const evalMock = jest.fn().mockResolvedValue(opts.evalResult ?? [1, 1, 0]);
   const redis = {
     multi: jest.fn(() => pipeline),
     mget: mgetMock,
     del: delMock,
+    eval: evalMock,
   } as unknown as Redis;
 
-  return { redis, pipelineCalls, pipeline, mgetMock, delMock };
+  return { redis, pipelineCalls, pipeline, mgetMock, delMock, evalMock };
 }
 
 describe('RedisRateCounter', () => {
@@ -112,6 +120,58 @@ describe('RedisRateCounter', () => {
       'cap:consumer:c1:day:20260712:count',
       'cap:consumer:c1:day:20260712:amount',
     );
+  });
+
+  it('reserve runs the atomic script over both keys with amount, cap and ttl', async () => {
+    const { redis, evalMock } = makeFakeRedis({ evalResult: [1, 3, 150] });
+    const counter = new RedisRateCounter(redis);
+
+    const result = await counter.reserve(
+      'cap:consumer:c1:day:20260712',
+      '50',
+      '200',
+      93600,
+    );
+
+    expect(result).toEqual({
+      allowed: true,
+      snapshot: { count: 3, totalRaw: '150' },
+    });
+    const [script, numKeys, ...rest] = evalMock.mock.calls[0] as [
+      string,
+      number,
+      ...unknown[],
+    ];
+    expect(script).toContain('INCRBY');
+    expect(script).toContain('DECRBY');
+    expect(numKeys).toBe(2);
+    expect(rest).toEqual([
+      'cap:consumer:c1:day:20260712:count',
+      'cap:consumer:c1:day:20260712:amount',
+      '50',
+      '200',
+      93600,
+    ]);
+  });
+
+  it('reserve reports a refusal with the window left where it was', async () => {
+    const { redis } = makeFakeRedis({ evalResult: [0, 4, 180] });
+    const counter = new RedisRateCounter(redis);
+    const result = await counter.reserve('k', '30', '200', 10);
+    expect(result).toEqual({
+      allowed: false,
+      snapshot: { count: 4, totalRaw: '180' },
+    });
+  });
+
+  it('release decrements the amount and the count', async () => {
+    const { redis, pipelineCalls } = makeFakeRedis();
+    const counter = new RedisRateCounter(redis);
+    await counter.release('cap:consumer:c1:day:20260712', '50');
+    expect(pipelineCalls).toEqual([
+      { cmd: 'decrby', args: ['cap:consumer:c1:day:20260712:amount', '50'] },
+      { cmd: 'decr', args: ['cap:consumer:c1:day:20260712:count'] },
+    ]);
   });
 
   it('clear deletes both keys', async () => {

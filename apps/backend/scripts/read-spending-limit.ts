@@ -19,6 +19,7 @@ import { AppModule } from '../src/app.module';
 import {
   ABOVE_LIMIT_POLICY_SEED,
   SPEND_CHAIN,
+  spendingLimitSeed,
   SQUADS_ACCOUNT_STORE,
 } from '../src/account/account.interface';
 import type {
@@ -46,7 +47,10 @@ async function main(): Promise<void> {
     if (!account) throw new Error(`no Account for ${userId}`);
 
     const addresses = deriveAccountAddresses(account.settingsSeed);
-    const limits = await chain.readSpendingLimits(account.settingsAddress);
+    const limits = await chain.readSpendingLimits(
+      account.settingsAddress,
+      spendingLimitSeed(account),
+    );
     const mint = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS as string;
 
     console.log(`vault           ${addresses.vault.toBase58()}`);

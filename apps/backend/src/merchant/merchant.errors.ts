@@ -14,6 +14,14 @@ export class InvalidApiKeyError extends Error {
   }
 }
 
+export class ApiKeyNotFoundError extends Error {
+  readonly code = 'API_KEY_NOT_FOUND';
+  constructor(message: string) {
+    super(message);
+    this.name = 'ApiKeyNotFoundError';
+  }
+}
+
 export class MerchantSuspendedError extends Error {
   readonly code = 'MERCHANT_SUSPENDED';
   constructor(message: string) {
@@ -27,6 +35,15 @@ export class IdempotencyKeyReuseError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'IdempotencyKeyReuseError';
+  }
+}
+
+/** A write that moves money is refused without an Idempotency-Key. */
+export class IdempotencyKeyRequiredError extends Error {
+  readonly code = 'IDEMPOTENCY_KEY_REQUIRED';
+  constructor(message: string) {
+    super(message);
+    this.name = 'IdempotencyKeyRequiredError';
   }
 }
 

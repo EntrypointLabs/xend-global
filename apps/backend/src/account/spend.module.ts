@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { DbModule } from '../db/db.module';
+import { PreparedModule } from '../prepared/prepared.module';
 import { SettlementAuthorityModule } from '../settlement/settlement-authority.module';
 import { SPEND_CHAIN, SQUADS_ACCOUNT_STORE } from './account.interface';
 import { Web3SpendChain } from './spend-chain.web3';
@@ -18,12 +19,12 @@ import { DrizzleSquadsAccountStore } from './squads-account.store';
  * that happening twice.
  */
 @Module({
-  imports: [DbModule, SettlementAuthorityModule],
+  imports: [DbModule, SettlementAuthorityModule, PreparedModule],
   providers: [
     SpendService,
     { provide: SPEND_CHAIN, useClass: Web3SpendChain },
     { provide: SQUADS_ACCOUNT_STORE, useClass: DrizzleSquadsAccountStore },
   ],
-  exports: [SpendService, SPEND_CHAIN, SQUADS_ACCOUNT_STORE],
+  exports: [SpendService, SPEND_CHAIN, SQUADS_ACCOUNT_STORE, PreparedModule],
 })
 export class SpendModule {}

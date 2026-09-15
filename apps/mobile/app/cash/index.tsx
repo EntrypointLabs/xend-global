@@ -16,6 +16,7 @@ import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useToast } from "@/contexts/ToastContext";
 import BalanceView from "@/components/BalanceView";
 import { useBalances } from "@/hooks/useBalances";
+import { useSendGate } from "@/hooks/useSendGate";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 
 export default function CashScreen() {
@@ -29,6 +30,7 @@ export default function CashScreen() {
     refetch: refetchBalances,
   } = useBalances();
   const address = useWalletAddress();
+  const gateSend = useSendGate();
 
   // Modal State
   const [isSendModalVisible, setIsSendModalVisible] = useState(false);
@@ -46,10 +48,10 @@ export default function CashScreen() {
       })} USDC`;
   const usdcAmount = usdc.toFixed(2);
 
-  // The address is null for a beat on cold start; don't open a blank QR.
+  // Null until the backend has answered with the Account; never a blank QR.
   const handleOpenQRCode = () => {
     if (!address) {
-      showToast("Preparing your address…");
+      showToast("Your Account address is not available yet");
       return;
     }
     qrCodeModalRef.current?.present();
@@ -80,11 +82,11 @@ export default function CashScreen() {
             </Typography>
           </View>
         ),
-        onPress: () => setIsSendModalVisible(true),
+        onPress: () => gateSend(() => setIsSendModalVisible(true)),
         label: "Send",
       },
     ],
-    []
+    [gateSend]
   );
 
   return (
@@ -179,7 +181,7 @@ export default function CashScreen() {
               </View>
               <View className="flex-row items-center">
                 <Typography weight="500" className="mr-1 text-sm text-black/30">
-                  Put USDC into Earn
+                  Put your Cash to work
                 </Typography>
                 <Ionicons name="chevron-forward" size={12} color="#999" />
               </View>

@@ -6,19 +6,39 @@ import {
   type RelayerConfig,
 } from "../relayer-config";
 import { EnvKeySigner } from "./env-key.signer";
+import { KmsKeySigner } from "./kms-key.signer";
+import { AwsKmsClient, KMS_CLIENT, type KmsClient } from "./kms.client";
 import { FEE_PAYER_SIGNER, type FeePayerSigner } from "./signer.interface";
 
+export function selectFeePayerSigner(
+  config: ConfigService,
+  kms: KmsClient,
+): Promise<FeePayerSigner> {
+  const provider = config.get<string>("RELAYER_FEE_PAYER_PROVIDER") ?? "env";
+  switch (provider) {
+    case "env":
+      return Promise.resolve(new EnvKeySigner(config));
+    case "aws-kms":
+      return KmsKeySigner.create(config, kms);
+    default:
+      throw new Error(`unknown RELAYER_FEE_PAYER_PROVIDER: ${provider}`);
+  }
+}
+
 /**
- * Binds the fee-payer signer seam to the env-key adapter and assembles the
- * RELAYER_CONFIG once at boot, pinning the fee-payer address from the
- * signer. Both are exported so the co-sign pipeline (Phase 3.3) depends only
- * on the tokens, never on the concrete signer. Swapping to a Turnkey / KMS
- * signer is a single change here.
+ * Binds the fee-payer signer seam to the adapter RELAYER_FEE_PAYER_PROVIDER
+ * names and assembles the RELAYER_CONFIG once at boot, pinning the fee-payer
+ * address from the signer. Both are exported so the co-sign pipeline depends
+ * only on the tokens, never on the concrete signer.
  */
 @Module({
   providers: [
-    EnvKeySigner,
-    { provide: FEE_PAYER_SIGNER, useExisting: EnvKeySigner },
+    { provide: KMS_CLIENT, useClass: AwsKmsClient },
+    {
+      provide: FEE_PAYER_SIGNER,
+      inject: [ConfigService, KMS_CLIENT],
+      useFactory: selectFeePayerSigner,
+    },
     {
       provide: RELAYER_CONFIG,
       useFactory: (

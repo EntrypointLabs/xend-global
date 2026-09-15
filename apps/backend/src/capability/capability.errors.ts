@@ -25,6 +25,15 @@ export type CapacityExceededReason =
   | 'DAILY_CAP'
   | 'MONTHLY_CAP';
 
+/** A live-mode intent reached the simulated (sandbox) settlement path. */
+export class LiveIntentOnSimulatedPathError extends Error {
+  readonly code = 'LIVE_INTENT_ON_SIMULATED_PATH';
+  constructor(message: string) {
+    super(message);
+    this.name = 'LiveIntentOnSimulatedPathError';
+  }
+}
+
 export class CapacityExceededError extends Error {
   readonly code = 'CAPACITY_EXCEEDED';
   constructor(

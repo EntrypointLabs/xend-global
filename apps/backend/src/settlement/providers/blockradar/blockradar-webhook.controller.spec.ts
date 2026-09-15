@@ -1,5 +1,7 @@
 import { HttpException, Logger } from '@nestjs/common';
+import type { ConfigService } from '@nestjs/config';
 import type { DbService } from '../../../db/db.service';
+import type { InboundWebhookDedupe } from '../../../db/inbound-webhook-dedupe';
 import type { EventPublisher } from '../../../events/event-publisher.interface';
 import type { SettlementConfirmationService } from '../../settlement-confirmation.service';
 import { BlockradarWebhookController } from './blockradar-webhook.controller';
@@ -7,6 +9,26 @@ import type { BlockradarSettlementProvider } from './blockradar-settlement.provi
 import type { OfframpWebhookEvent } from './blockradar-settlement.provider';
 
 const RAW = Buffer.from(JSON.stringify({ event: 'offramp.success' }));
+
+function makeDedupe(opts: { replay?: boolean } = {}): {
+  dedupe: InboundWebhookDedupe;
+  claimed: string[];
+  released: string[];
+} {
+  const claimed: string[] = [];
+  const released: string[] = [];
+  const dedupe = {
+    claim: (_provider: string, eventId: string) => {
+      claimed.push(eventId);
+      return Promise.resolve(!opts.replay);
+    },
+    release: (_provider: string, eventId: string) => {
+      released.push(eventId);
+      return Promise.resolve();
+    },
+  } as unknown as InboundWebhookDedupe;
+  return { dedupe, claimed, released };
+}
 
 function makeDb(opts: {
   updateReturning?: unknown[];
@@ -72,6 +94,13 @@ function makePublisher(): { events: EventPublisher; publish: jest.Mock } {
 
 const req = { rawBody: RAW } as unknown;
 
+function makeConfig(killSwitch = false): ConfigService {
+  return {
+    get: (key: string) =>
+      key === 'SETTLEMENT_WEBHOOK_KILLSWITCH' ? killSwitch : undefined,
+  } as unknown as ConfigService;
+}
+
 describe('BlockradarWebhookController', () => {
   beforeAll(() => {
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
@@ -79,12 +108,9 @@ describe('BlockradarWebhookController', () => {
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
   });
 
-  afterEach(() => {
-    delete process.env.SETTLEMENT_WEBHOOK_KILLSWITCH;
-  });
+  afterEach(() => {});
 
   it('short-circuits on the kill switch before touching the provider', async () => {
-    process.env.SETTLEMENT_WEBHOOK_KILLSWITCH = '1';
     const { db } = makeDb({});
     const { provider, verify } = makeProvider({});
     const { confirmation } = makeConfirmation();
@@ -94,8 +120,10 @@ describe('BlockradarWebhookController', () => {
       provider,
       confirmation,
       events,
+      makeConfig(true),
+      makeDedupe().dedupe,
     );
-    const res = await ctrl.receive(req, 'sig', {});
+    const res = await ctrl.receive(req, 'sig', undefined, {});
     expect(res).toEqual({ ok: true, killSwitched: true });
     expect(verify).not.toHaveBeenCalled();
   });
@@ -110,10 +138,12 @@ describe('BlockradarWebhookController', () => {
       provider,
       confirmation,
       events,
+      makeConfig(),
+      makeDedupe().dedupe,
     );
-    await expect(ctrl.receive(req, 'bad', {})).rejects.toBeInstanceOf(
-      HttpException,
-    );
+    await expect(
+      ctrl.receive(req, 'bad', undefined, {}),
+    ).rejects.toBeInstanceOf(HttpException);
     expect(updateCalled()).toBe(0);
   });
 
@@ -124,6 +154,7 @@ describe('BlockradarWebhookController', () => {
     const { provider } = makeProvider({
       event: {
         type: 'paid',
+        eventId: 'evt_1',
         providerRef: 'SIG_1',
         ngnSettledMinor: '8000000',
         fxRate: '1600',
@@ -138,8 +169,10 @@ describe('BlockradarWebhookController', () => {
       provider,
       confirmation,
       events,
+      makeConfig(),
+      makeDedupe().dedupe,
     );
-    const res = await ctrl.receive(req, 'sig', {});
+    const res = await ctrl.receive(req, 'sig', undefined, {});
     expect(res).toEqual({ ok: true });
     expect(complete).toHaveBeenCalledWith('pay_1', {
       status: 'complete',
@@ -156,7 +189,12 @@ describe('BlockradarWebhookController', () => {
   it('is a no-op on a replayed (already-terminal) paid event', async () => {
     const { db } = makeDb({ updateReturning: [] });
     const { provider } = makeProvider({
-      event: { type: 'paid', providerRef: 'SIG_1', ngnSettledMinor: '8000000' },
+      event: {
+        type: 'paid',
+        eventId: 'evt_1',
+        providerRef: 'SIG_1',
+        ngnSettledMinor: '8000000',
+      },
     });
     const { confirmation, complete } = makeConfirmation();
     const { events, publish } = makePublisher();
@@ -165,8 +203,10 @@ describe('BlockradarWebhookController', () => {
       provider,
       confirmation,
       events,
+      makeConfig(),
+      makeDedupe().dedupe,
     );
-    const res = await ctrl.receive(req, 'sig', {});
+    const res = await ctrl.receive(req, 'sig', undefined, {});
     expect(res).toEqual({ ok: true });
     expect(complete).not.toHaveBeenCalled();
     expect(publish).not.toHaveBeenCalled();
@@ -177,7 +217,7 @@ describe('BlockradarWebhookController', () => {
       updateReturning: [{ id: 'so_1', merchantId: 'm_1', paymentId: 'pay_1' }],
     });
     const { provider } = makeProvider({
-      event: { type: 'failed', providerRef: 'SIG_1' },
+      event: { type: 'failed', eventId: 'evt_1', providerRef: 'SIG_1' },
     });
     const { confirmation, complete } = makeConfirmation();
     const { events, publish } = makePublisher();
@@ -186,8 +226,10 @@ describe('BlockradarWebhookController', () => {
       provider,
       confirmation,
       events,
+      makeConfig(),
+      makeDedupe().dedupe,
     );
-    await ctrl.receive(req, 'sig', {});
+    await ctrl.receive(req, 'sig', undefined, {});
     expect(complete).not.toHaveBeenCalled();
     expect(publish).toHaveBeenCalledTimes(1);
     expect(publish).toHaveBeenCalledWith(
@@ -198,7 +240,12 @@ describe('BlockradarWebhookController', () => {
   it('throws 500 on an owned-event persistence failure so Blockradar redelivers', async () => {
     const { db } = makeDb({ updateThrows: true });
     const { provider } = makeProvider({
-      event: { type: 'paid', providerRef: 'SIG_1', ngnSettledMinor: '8000000' },
+      event: {
+        type: 'paid',
+        eventId: 'evt_1',
+        providerRef: 'SIG_1',
+        ngnSettledMinor: '8000000',
+      },
     });
     const { confirmation } = makeConfirmation();
     const { events } = makePublisher();
@@ -207,10 +254,12 @@ describe('BlockradarWebhookController', () => {
       provider,
       confirmation,
       events,
+      makeConfig(),
+      makeDedupe().dedupe,
     );
-    await expect(ctrl.receive(req, 'sig', {})).rejects.toBeInstanceOf(
-      HttpException,
-    );
+    await expect(
+      ctrl.receive(req, 'sig', undefined, {}),
+    ).rejects.toBeInstanceOf(HttpException);
   });
 
   it('acknowledges and skips an unowned (null-parsed) event', async () => {
@@ -223,9 +272,88 @@ describe('BlockradarWebhookController', () => {
       provider,
       confirmation,
       events,
+      makeConfig(),
+      makeDedupe().dedupe,
     );
-    const res = await ctrl.receive(req, 'sig', {});
+    const res = await ctrl.receive(req, 'sig', undefined, {});
     expect(res).toEqual({ ok: true, skipped: true });
     expect(updateCalled()).toBe(0);
+  });
+
+  it('acknowledges a replayed event id with no side effect', async () => {
+    const { db, updateCalled } = makeDb({
+      updateReturning: [{ id: 'so_1', paymentId: 'pay_1', merchantId: 'm_1' }],
+    });
+    const { provider } = makeProvider({
+      event: { type: 'paid', eventId: 'evt_1', providerRef: 'SIG_1' },
+    });
+    const { confirmation, complete } = makeConfirmation();
+    const { events, publish } = makePublisher();
+    const { dedupe, claimed } = makeDedupe({ replay: true });
+    const ctrl = new BlockradarWebhookController(
+      db,
+      provider,
+      confirmation,
+      events,
+      makeConfig(),
+      dedupe,
+    );
+    const res = await ctrl.receive(req, 'sig', undefined, {});
+    expect(res).toEqual({ ok: true, replayed: true });
+    expect(claimed).toEqual(['evt_1']);
+    expect(updateCalled()).toBe(0);
+    expect(complete).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('releases the claim when handling fails so the redelivery is not dropped', async () => {
+    const { db } = makeDb({ updateThrows: true });
+    const { provider } = makeProvider({
+      event: { type: 'paid', eventId: 'evt_1', providerRef: 'SIG_1' },
+    });
+    const { confirmation } = makeConfirmation();
+    const { events } = makePublisher();
+    const { dedupe, released } = makeDedupe();
+    const ctrl = new BlockradarWebhookController(
+      db,
+      provider,
+      confirmation,
+      events,
+      makeConfig(),
+      dedupe,
+    );
+    await expect(
+      ctrl.receive(req, 'sig', undefined, {}),
+    ).rejects.toBeInstanceOf(HttpException);
+    expect(released).toEqual(['evt_1']);
+  });
+
+  it('rejects a delivery whose timestamp header is older than five minutes', async () => {
+    const { db, updateCalled } = makeDb({});
+    const { provider } = makeProvider({
+      event: { type: 'paid', eventId: 'evt_1', providerRef: 'SIG_1' },
+    });
+    const { confirmation } = makeConfirmation();
+    const { events } = makePublisher();
+    const { dedupe, claimed } = makeDedupe();
+    const ctrl = new BlockradarWebhookController(
+      db,
+      provider,
+      confirmation,
+      events,
+      makeConfig(),
+      dedupe,
+    );
+    const stale = String(Math.floor(Date.now() / 1000) - 6 * 60);
+    await expect(ctrl.receive(req, 'sig', stale, {})).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(claimed).toEqual([]);
+    expect(updateCalled()).toBe(0);
+
+    const fresh = new Date().toISOString();
+    await expect(ctrl.receive(req, 'sig', fresh, {})).resolves.toEqual({
+      ok: true,
+    });
   });
 });

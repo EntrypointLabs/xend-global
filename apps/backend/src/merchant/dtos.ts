@@ -21,9 +21,10 @@ export interface IntentObject {
   object: 'payment_intent';
   status: string;
   /**
-   * What the Consumer is charged in: the Merchant's own currency. A Merchant
-   * pricing in the settlement asset is answered 'USD', because a shopper is
-   * shown dollars and never the token behind them.
+   * The currency and unit the Merchant created the intent in, echoed back
+   * unchanged: NGN in kobo, USDC in its own six decimals. A shopper priced in
+   * USDC is shown dollars at the checkout, but that is a display concern and
+   * never changes what the Merchant reads back.
    */
   currency: string;
   amount: string;
@@ -37,4 +38,5 @@ export interface IntentObject {
   cancel_url: string | null;
   livemode: boolean;
   created: number;
+  metadata: Record<string, string> | null;
 }
