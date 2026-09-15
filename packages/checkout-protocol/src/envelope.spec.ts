@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildReady,
   buildResult,
   buildCancel,
   parseCheckoutMessage,
@@ -62,7 +63,8 @@ describe('parseCheckoutMessage', () => {
       { origin: MERCHANT_ORIGIN, data: cancel },
       EXPECTED,
     );
-    expect(out?.status).toBe('canceled');
+    expect(out?.type).toBe('xend.checkout.cancel');
+    expect(out && 'status' in out && out.status).toBe('canceled');
   });
 
   it('rejects a substring-spoofed origin', () => {
@@ -139,6 +141,70 @@ describe('parseCheckoutMessage', () => {
         EXPECTED,
       ),
     ).toBeNull();
+  });
+
+  it('returns a ready handshake as itself, carrying no reference and no status', () => {
+    const out = parseCheckoutMessage(
+      { origin: MERCHANT_ORIGIN, data: buildReady(NONCE) },
+      EXPECTED,
+    );
+    expect(out).toEqual({
+      xend: 'checkout',
+      v: 1,
+      nonce: NONCE,
+      type: 'xend.checkout.ready',
+    });
+    expect(out && 'status' in out).toBe(false);
+    expect(out && 'reference' in out).toBe(false);
+  });
+
+  it('accepts a ready handshake sent before any intent reference exists', () => {
+    const out = parseCheckoutMessage(
+      { origin: MERCHANT_ORIGIN, data: buildReady(NONCE) },
+      { ...EXPECTED, reference: 'pi_not_yet_created' },
+    );
+    expect(out?.type).toBe('xend.checkout.ready');
+  });
+
+  it('rejects a ready handshake on a nonce mismatch', () => {
+    expect(
+      parseCheckoutMessage(
+        { origin: MERCHANT_ORIGIN, data: buildReady('n_other') },
+        EXPECTED,
+      ),
+    ).toBeNull();
+  });
+
+  it('rejects a ready handshake from a spoofed origin', () => {
+    expect(
+      parseCheckoutMessage(
+        {
+          origin: 'https://shop.example.com.evil.com',
+          data: buildReady(NONCE),
+        },
+        EXPECTED,
+      ),
+    ).toBeNull();
+  });
+
+  it('rejects a ready handshake on an unknown version', () => {
+    expect(
+      parseCheckoutMessage(
+        { origin: MERCHANT_ORIGIN, data: { ...buildReady(NONCE), v: 2 } },
+        EXPECTED,
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('buildReady', () => {
+  it('produces a handshake with the nonce and nothing else', () => {
+    expect(buildReady(NONCE)).toEqual({
+      xend: 'checkout',
+      v: 1,
+      nonce: NONCE,
+      type: 'xend.checkout.ready',
+    });
   });
 });
 

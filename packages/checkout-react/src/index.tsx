@@ -25,21 +25,21 @@ export interface XendPayButtonProps {
   onResult: (result: CheckoutResult) => void;
   onUnresolved?: (u: CheckoutUnresolved) => void;
   onReady?: () => void;
-  /** "modal" (default glass sheet), "popup" or "redirect". Webviews and blocked popups redirect on their own. */
+  /** "iframe" (default: glass sheet, inline ceremony), "modal" (sheet plus a window), "popup" or "redirect". Webviews and blocked popups redirect on their own. */
   presentation?: CheckoutPresentation;
-  /** Origin of the Xend API. The sheet reads the intent summary from it; without one, "modal" degrades to "popup". */
+  /** Origin of the Xend API. The sheet reads the intent summary from it; without one, the sheet presentations degrade to "popup". */
   apiBase?: string;
   /** "auto" (default) follows the viewer's colour scheme; "light" / "dark" pin the material. */
   theme?: ButtonTheme;
 }
 
 /**
- * Thin React wrapper over @xend/checkout-core. All sheet, popup, postMessage,
- * nonce, and brand logic lives in core; this component only mounts the
- * vanilla button into a container ref and forwards callbacks. The latest
+ * Thin React wrapper over @xend/checkout-core. All sheet, frame, popup,
+ * postMessage, nonce, and brand logic lives in core; this component only mounts
+ * the vanilla button into a container ref and forwards callbacks. The latest
  * callbacks are held in a ref so re-rendering with new callback identities
  * does not tear down and rebuild the button (which would drop an in-flight
- * popup handle). The button remounts only when a mount-time option
+ * ceremony handle). The button remounts only when a mount-time option
  * (checkoutOrigin, presentation, theme, apiBase) changes.
  */
 export function XendPayButton(props: XendPayButtonProps): React.JSX.Element {

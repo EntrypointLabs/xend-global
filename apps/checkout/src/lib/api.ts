@@ -1,4 +1,31 @@
 import { API_BASE } from './config';
+import { isFramed } from './frame';
+
+/**
+ * How a framed surface carries its merchant-scoped Session. The cookie is
+ * HttpOnly, host-only and SameSite=Lax, so a third-party frame never sends it
+ * and never gets one back; storage is the only carrier that survives there.
+ * The popup keeps the cookie and touches neither of these.
+ */
+const SESSION_HEADER = 'X-Xend-Checkout-Session';
+const SESSION_STORAGE_KEY = 'xend.checkout.session';
+
+function readStoredSession(): string {
+  try {
+    return window.localStorage.getItem(SESSION_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeStoredSession(token: string): void {
+  try {
+    window.localStorage.setItem(SESSION_STORAGE_KEY, token);
+  } catch {
+    // A browser that refuses storage to a third-party frame costs the shopper
+    // one-tap, not the Payment: the next visit runs the full passkey ceremony.
+  }
+}
 
 /**
  * Payable and terminal intent statuses. The non-payable terminals
@@ -43,7 +70,8 @@ export interface AuthorizeInput {
   reference: string;
   /**
    * Provider-neutral wire name. In v1 the value is the Privy identity token,
-   * present only on the ceremony path. The session path relies on the cookie.
+   * present only on the ceremony path. The session path relies on the carried
+   * Session instead.
    */
   providerToken?: string;
 }
@@ -62,14 +90,18 @@ export interface TerminalResult {
  * which are two different things, so a Payment takes two calls: authorize to
  * be recognised and get the Spend, settle to hand back the signed bytes.
  */
-export type AuthorizeResult =
+export type AuthorizeResult = (
   | {
       status: 'needs_signature';
       unsignedTxBase64: string;
       /** Which of the Consumer's keys the Spend was compiled for. */
       signerAddress: string;
     }
-  | TerminalResult;
+  | TerminalResult
+) & {
+  /** Present only for a header-carried Session; a cookie rotates in place. */
+  sessionToken?: string;
+};
 
 export interface SettleInput {
   reference: string;
@@ -138,10 +170,17 @@ function fixtureIntent(reference: string): IntentView {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+  };
+  // Sent even when empty: it is what tells the backend to hand a rotated or
+  // freshly issued Session back in the body rather than only on a cookie.
+  if (isFramed()) headers[SESSION_HEADER] = readStoredSession();
+
   const res = await fetch(`${API_BASE}${path}`, {
-    credentials: 'include',
-    headers: { 'content-type': 'application/json' },
     ...init,
+    credentials: 'include',
+    headers,
   });
 
   if (!res.ok) {
@@ -175,10 +214,12 @@ export async function authorize(
   input: AuthorizeInput,
 ): Promise<AuthorizeResult> {
   if (useFixture) return { status: 'succeeded' };
-  return request<AuthorizeResult>('/checkout/authorize', {
+  const result = await request<AuthorizeResult>('/checkout/authorize', {
     method: 'POST',
     body: JSON.stringify(input),
   });
+  if (result.sessionToken) writeStoredSession(result.sessionToken);
+  return result;
 }
 
 /** Hands the signed Spend back. This is where the money actually moves. */
