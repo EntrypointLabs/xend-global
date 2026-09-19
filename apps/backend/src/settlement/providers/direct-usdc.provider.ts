@@ -17,6 +17,7 @@ import {
 import { getCreateAccountInstruction } from '@solana-program/system';
 import {
   findAssociatedTokenPda,
+  getCreateAssociatedTokenIdempotentInstruction,
   getInitializeAccount3Instruction,
   getTransferCheckedInstruction,
   TOKEN_PROGRAM_ADDRESS,
@@ -84,28 +85,52 @@ export class DirectUsdcProvider implements SettlementProvider, OnModuleInit {
     // Recorded merchant-own variant: no funds under Xend control, no
     // attribution root, reverse() unsupported. Not the pilot default.
     if (params.merchantAddress) {
-      const exists = await this.solana.accountExists(params.merchantAddress);
-      if (!exists) {
-        throw new SettlementAccountNotProvisionedError(
-          `merchant address ${params.merchantAddress} does not exist on chain`,
-        );
-      }
       const [ata] = await findAssociatedTokenPda({
         owner: address(params.merchantAddress),
         tokenProgram: TOKEN_PROGRAM_ADDRESS,
         mint: usdcMint,
       });
-      // The ATA is a PDA; deriving it does not create it. If the merchant has
-      // never initialized their USDC ATA, settlement would build a
-      // TransferChecked to a nonexistent token account and fail at simulation
-      // for every payment. Fail loud at provisioning instead of returning an
-      // unusable destination. (Auto-creating the ATA under the authority is a
-      // possible future enhancement; the pilot uses the authority-owned variant
-      // below, so this path stays verify-only.)
+      // A newly created Merchant wallet need not hold SOL. The fee payer
+      // initializes its canonical USDC ATA without acquiring ownership.
       const ataExists = await this.solana.accountExists(ata);
       if (!ataExists) {
+        const lifetime = await this.solana.getRecentBlockhash();
+        const payer = createNoopSigner(address(this.authority.address));
+        const message = pipe(
+          createTransactionMessage({ version: 0 }),
+          (m) => setTransactionMessageFeePayer(payer.address, m),
+          (m) =>
+            setTransactionMessageLifetimeUsingBlockhash(
+              {
+                blockhash: lifetime.blockhash as Blockhash,
+                lastValidBlockHeight: BigInt(lifetime.lastValidBlockHeight),
+              },
+              m,
+            ),
+          (m) =>
+            appendTransactionMessageInstructions(
+              [
+                getCreateAssociatedTokenIdempotentInstruction({
+                  payer,
+                  ata,
+                  owner: address(params.merchantAddress!),
+                  mint: usdcMint,
+                }),
+              ],
+              m,
+            ),
+        );
+        await this.authority.signAndSend(
+          getBase64EncodedWireTransaction(compileTransaction(message)),
+        );
+      }
+      // Registration waits for confirmed ownership. A submitted creation that
+      // is not visible yet is safe to retry because ATA creation is idempotent.
+      if (
+        (await this.solana.getTokenAccountOwner(ata)) !== params.merchantAddress
+      ) {
         throw new SettlementAccountNotProvisionedError(
-          `merchant ${params.merchantId} has no USDC token account at ${ata}; create the USDC ATA before provisioning this settlement destination`,
+          `Merchant USDC account ownership is not confirmed at ${ata}`,
         );
       }
       return {

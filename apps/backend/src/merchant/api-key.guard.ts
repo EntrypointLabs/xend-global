@@ -5,7 +5,10 @@ import {
   HttpStatus,
   Injectable,
   Logger,
+  Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { devnetExecutionEnabled } from './devnet-execution';
 import { eq } from 'drizzle-orm';
 import type { Request } from 'express';
 import { DbService } from '../db/db.service';
@@ -41,7 +44,10 @@ export interface MerchantRequest extends Request {
 export class ApiKeyGuard implements CanActivate {
   private readonly logger = new Logger(ApiKeyGuard.name);
 
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    @Optional() private readonly config?: ConfigService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<MerchantRequest>();
@@ -63,6 +69,16 @@ export class ApiKeyGuard implements CanActivate {
       if (!keyRow || keyRow.revokedAt) {
         throw new InvalidApiKeyError('api key not found or revoked');
       }
+      if (
+        keyRow.executionCluster &&
+        keyRow.executionCluster !== this.config?.get('SOLANA_CLUSTER')
+      )
+        throw new InvalidApiKeyError('API key is bound to another network');
+      const devnetExecution =
+        keyRow.executionCluster === 'devnet' &&
+        devnetExecutionEnabled(this.config);
+      if (keyRow.executionCluster === 'devnet' && !devnetExecution)
+        throw new InvalidApiKeyError('Devnet execution is disabled');
 
       const [merchant] = await this.db.client
         .select()
@@ -75,7 +91,11 @@ export class ApiKeyGuard implements CanActivate {
       if (merchant.status !== 'active') {
         throw new MerchantSuspendedError(`merchant is ${merchant.status}`);
       }
-      if (keyRow.mode === 'live' && merchant.kybStatus !== 'verified') {
+      if (
+        keyRow.mode === 'live' &&
+        merchant.kybStatus !== 'verified' &&
+        !devnetExecution
+      ) {
         throw new KybNotVerifiedError(
           `live keys require a verified KYB (merchant is ${merchant.kybStatus})`,
         );

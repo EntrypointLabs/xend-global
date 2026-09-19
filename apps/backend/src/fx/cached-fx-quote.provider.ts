@@ -55,6 +55,14 @@ export class CachedFxQuoteProvider implements FxQuoteProvider {
         );
       }
       const cached = JSON.parse(raw) as CachedQuote;
+      if (
+        this.config.get<string>('SOLANA_CLUSTER') === 'mainnet' &&
+        cached.source.startsWith('pilot-static')
+      ) {
+        throw new FxQuoteUnavailableError(
+          'A static quote cannot price a mainnet Payment',
+        );
+      }
       const quotedAt = new Date(cached.quotedAt);
       const ageSeconds = Math.floor((Date.now() - quotedAt.getTime()) / 1000);
       const cap = this.config.getOrThrow<number>('FX_STALENESS_CAP_SECONDS');

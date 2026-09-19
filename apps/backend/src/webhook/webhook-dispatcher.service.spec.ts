@@ -27,6 +27,8 @@ function intentRow(over: Partial<IntentRow> = {}): IntentRow {
     consumerId: 'c1',
     status: 'succeeded',
     usdcSettlementRaw: '1000000',
+    pricingCurrency: null,
+    executionCluster: 'devnet',
     displayCurrency: 'USD',
     displayAmountMinor: '1000',
     fxRate: null,

@@ -1,3 +1,5 @@
+import { StatusSheet } from './StatusSheet';
+
 interface InsufficientBalanceProps {
   onCancel: () => void;
 }
@@ -8,8 +10,8 @@ interface InsufficientBalanceProps {
  */
 export function InsufficientBalance({ onCancel }: InsufficientBalanceProps) {
   return (
-    <div className="bg-brand-black flex h-full flex-col justify-end">
-      <div className="border-brand-line bg-brand-surface rounded-t-3xl border-t px-6 pb-8 pt-7">
+    <StatusSheet>
+      <div className="payment-actions">
         <h1 className="text-brand-ink text-2xl font-semibold tracking-tight">
           Not enough Cash
         </h1>
@@ -31,6 +33,6 @@ export function InsufficientBalance({ onCancel }: InsufficientBalanceProps) {
           Cancel
         </button>
       </div>
-    </div>
+    </StatusSheet>
   );
 }

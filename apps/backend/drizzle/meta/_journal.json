@@ -288,6 +288,34 @@
       "when": 1788801141424,
       "tag": "0039_spending_limit_staged_change",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789463000000,
+      "tag": "0040_merchant_portal",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1789484000000,
+      "tag": "0041_payment_pricing_currency",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1789488000000,
+      "tag": "0042_api_key_execution_cluster",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1789857000000,
+      "tag": "0043_merchant_business_profile",
+      "breakpoints": true
     }
   ]
 }

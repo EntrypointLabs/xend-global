@@ -13,6 +13,7 @@
     "size": "size-limit"
   },
   "dependencies": {
+    "@solana/kit": "^7.0.0",
     "@privy-io/react-auth": "^3.34.0",
     "@solana-program/memo": "^0.9.0",
     "@xend/checkout-protocol": "*",

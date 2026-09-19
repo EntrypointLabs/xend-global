@@ -28,6 +28,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { apiClient, type AwaitingPayment } from "@/utils/apiClient";
 import { formatMoney } from "@/utils/money";
 import { isUserCanceledSign } from "@/utils/signing";
+import { waitForPaymentOutcome } from "@/utils/paymentConfirmation";
 
 type Flow = {
   step: SpendCheckStep;
@@ -72,7 +73,15 @@ export default function FinishPaymentScreen() {
 
   const approve = async (payment: AwaitingPayment) => {
     setActive(payment);
-    const embeddedWallet = embeddedSolana.wallets?.[0];
+    // Approval runs from a press handler; check expiry at interaction time.
+    // eslint-disable-next-line react-hooks/purity
+    if (Date.parse(payment.expiresAt) <= Date.now()) {
+      showToast("This quote expired. Return to the store for a new quote.");
+      return;
+    }
+    const embeddedWallet = embeddedSolana.wallets?.find(
+      (wallet) => wallet.address === account?.signers.primary
+    );
     if (!embeddedWallet) {
       showToast("Your Account is not ready yet, please try again");
       return;
@@ -89,6 +98,7 @@ export default function FinishPaymentScreen() {
 
     show("reason");
     setPaying(payment.reference);
+    let submitted = false;
     try {
       const prepared = await apiClient.preparePayment(payment.reference);
 
@@ -122,10 +132,25 @@ export default function FinishPaymentScreen() {
         params: { transaction: tx },
       });
 
+      submitted = true;
       await apiClient.submitPayment(
         payment.reference,
         fromByteArray(signedTransaction.serialize())
       );
+
+      const outcome = await waitForPaymentOutcome(() =>
+        apiClient.paymentStatus(payment.reference)
+      );
+      if (outcome !== "succeeded") {
+        setActive(null);
+        hold(
+          outcome === "failed" ? "failed" : "paused",
+          outcome === "failed"
+            ? "The payment failed on the network. Check Activity for details."
+            : "Your payment is still confirming. Check Activity before trying again."
+        );
+        return;
+      }
 
       // The Payment leaves this list and arrives in Activity as a Payment of
       // its own. Balances and the daily allowance moved with it. The transfer
@@ -146,6 +171,14 @@ export default function FinishPaymentScreen() {
       // the thing they are waiting to see and this screen is now empty.
       router.replace("/(tabs)/history" as never);
     } catch (err) {
+      if (submitted) {
+        setActive(null);
+        hold(
+          "paused",
+          "We could not confirm the outcome yet. Check Activity before trying again."
+        );
+        return;
+      }
       if (isUserCanceledSign(err)) {
         // A dismissed prompt is a decision, not a fault. Nothing has been
         // signed, and the Payment is still waiting.
@@ -223,6 +256,11 @@ export default function FinishPaymentScreen() {
                     payment.displayAmountMinor
                   )}
                 </Typography>
+                <Typography weight="500" className="mt-2 text-sm text-black/50">
+                  You pay {formatMoney("USDC", payment.usdcSettlementRaw)}
+                  {"\n"}Quote expires at{" "}
+                  {new Date(payment.expiresAt).toLocaleTimeString()}.
+                </Typography>
                 <HapticPressable
                   onPress={() => void approve(payment)}
                   disabled={paying !== null}
@@ -263,7 +301,7 @@ export default function FinishPaymentScreen() {
             : ""
         }
         counterparty={active?.merchantDisplayName ?? ""}
-        onRetry={retry}
+        onRetry={active ? retry : undefined}
         onDismiss={() => setFlow(null)}
       />
     </ScreenLayout>

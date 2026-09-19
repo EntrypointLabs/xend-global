@@ -12,6 +12,11 @@ type IntentRow = typeof paymentIntents.$inferSelect;
 
 function merchantRow(over: Partial<MerchantRow> = {}): MerchantRow {
   return {
+    businessProfile: {},
+    profileVersion: 0,
+    ownerProviderId: null,
+    receivingWallet: null,
+    settlementTermsAcceptedAt: null,
     id: 'm1',
     name: 'Acme',
     displayName: 'Acme Store',
@@ -35,6 +40,8 @@ function intentRow(over: Partial<IntentRow> = {}): IntentRow {
     consumerId: null,
     status: 'created',
     usdcSettlementRaw: '1000000',
+    pricingCurrency: null,
+    executionCluster: 'devnet',
     displayCurrency: 'USD',
     displayAmountMinor: '1000',
     fxRate: null,
@@ -123,7 +130,9 @@ function makePublisher() {
   return { publisher, events };
 }
 
-const config = { getOrThrow: () => 60 } as unknown as ConfigService;
+const config = {
+  getOrThrow: (key: string) => (key === 'SOLANA_CLUSTER' ? 'devnet' : 60),
+} as unknown as ConfigService;
 
 describe('PaymentIntentService.create', () => {
   it('publishes payment.created with the intent id as key and correlation id', async () => {

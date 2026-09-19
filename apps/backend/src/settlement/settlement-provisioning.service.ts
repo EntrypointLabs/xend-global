@@ -40,6 +40,16 @@ export class SettlementProvisioningService {
       .where(eq(settlementAccounts.merchantId, merchantId))
       .limit(1);
     if (existing?.address && existing.provisionedAt && existing.provider) {
+      if (
+        opts.merchantAddress &&
+        (existing.provider !== 'direct_usdc' ||
+          existing.authorityAddress != null ||
+          existing.providerReference !== opts.merchantAddress)
+      ) {
+        throw new SettlementAccountNotProvisionedError(
+          'Existing settlement destination differs from the requested Merchant-owned account',
+        );
+      }
       // Idempotent: an already-provisioned endpoint is returned as-is.
       return {
         address: existing.address,
@@ -129,10 +139,25 @@ export class SettlementProvisioningService {
         `merchant ${merchantId} has no provisioned settlement endpoint`,
       );
     }
+    // The USDC pilot settles to Merchant-controlled accounts. An endpoint
+    // from the earlier Xend-custody pilot must be explicitly migrated first.
+    if (row.provider === 'direct_usdc' && row.authorityAddress != null) {
+      throw new SettlementAccountNotProvisionedError(
+        'This Merchant needs a Merchant-owned USDC settlement destination',
+      );
+    }
     const owner = row.authorityAddress ?? row.providerReference;
     if (!owner) {
       throw new SettlementAccountNotProvisionedError(
         `merchant ${merchantId} has a settlement endpoint with no recorded owner`,
+      );
+    }
+    if (
+      row.provider === 'direct_usdc' &&
+      (await this.solana.getTokenAccountOwner(row.address)) !== owner
+    ) {
+      throw new SettlementAccountNotProvisionedError(
+        'Merchant settlement account ownership could not be verified',
       );
     }
     return { address: row.address, owner, provider: row.provider };

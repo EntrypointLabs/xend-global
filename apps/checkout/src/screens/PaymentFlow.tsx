@@ -1,8 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { PrivyProvider } from '@privy-io/react-auth';
 import { usePasskeyCeremony } from '../ceremony/passkey';
 import { PRIVY_APP_ID } from '../lib/config';
-import { formatMoney } from '../lib/money';
+import { solanaRpcs } from '../lib/solana';
 import {
   authorize,
   settle,
@@ -10,6 +10,8 @@ import {
   type TerminalResult,
 } from '../lib/api';
 import { ConfirmSheet } from './ConfirmSheet';
+import { PaymentSheet } from './PaymentSheet';
+import { quoteExpired, useQuoteExpired } from '../lib/useQuoteExpired';
 
 export interface PaymentFlowProps {
   intent: IntentView;
@@ -27,6 +29,8 @@ function PaymentFlowInner({
   const { runCeremony, signSpend } = usePasskeyCeremony();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const inFlight = useRef(false);
+  const expired = useQuoteExpired(intent.expiresAt);
 
   /**
    * The whole Payment, in the order the security model requires: prove who the
@@ -38,6 +42,8 @@ function PaymentFlowInner({
    * without one.
    */
   const run = useCallback(() => {
+    if (inFlight.current || quoteExpired(intent.expiresAt)) return;
+    inFlight.current = true;
     setBusy(true);
     setFailed(false);
     // No awaited fetch before the ceremony call, so Safari user activation holds.
@@ -57,6 +63,7 @@ function PaymentFlowInner({
         const signedTxBase64 = await signSpend(
           result.unsignedTxBase64,
           result.signerAddress,
+          result.executionCluster,
         );
         onTerminal(
           await settle({ reference: intent.reference, signedTxBase64 }),
@@ -66,7 +73,10 @@ function PaymentFlowInner({
         setFailed(true);
         onError(err);
       })
-      .finally(() => setBusy(false));
+      .finally(() => {
+        inFlight.current = false;
+        setBusy(false);
+      });
   }, [intent, runCeremony, signSpend, onTerminal, onError]);
 
   if (intent.sessionRecognized) {
@@ -81,50 +91,49 @@ function PaymentFlowInner({
   }
 
   return (
-    <div className="bg-brand-black flex h-full flex-col justify-end">
-      <div className="border-brand-line bg-brand-surface rounded-t-3xl border-t px-6 pb-8 pt-7">
-        <p className="text-brand-muted text-sm">
-          Pay {intent.merchantDisplayName}
+    <PaymentSheet intent={intent}>
+      {expired && !busy && (
+        <p role="status" className="text-brand-muted text-sm">
+          This quote expired. Return to the store for a new quote.
         </p>
-        <p className="text-brand-ink mt-2 text-4xl font-semibold tabular-nums tracking-tight">
-          {formatMoney(intent.displayCurrency, intent.displayAmountMinor)}
-        </p>
-
-        {failed ? (
-          <>
-            <p className="text-brand-muted mt-6 text-sm leading-relaxed">
-              That did not go through. Reload and try again.
-            </p>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="bg-brand-ink text-brand-black mt-4 w-full rounded-2xl py-4 text-base font-semibold"
-            >
-              Try again
-            </button>
-          </>
-        ) : (
+      )}
+      {failed ? (
+        <>
+          <p className="text-brand-muted mt-6 text-sm leading-relaxed">
+            That did not go through. Reload and try again.
+          </p>
           <button
             type="button"
-            onClick={run}
-            disabled={busy}
-            className="bg-brand-ink text-brand-black mt-8 w-full rounded-2xl py-4 text-base font-semibold disabled:opacity-60"
+            onClick={() => window.location.reload()}
+            className="bg-brand-ink text-brand-black mt-4 w-full rounded-2xl py-4 text-base font-semibold"
           >
-            {busy
-              ? 'Waiting for confirmation'
-              : 'Continue with Face ID or fingerprint'}
+            Try again
           </button>
-        )}
-
+        </>
+      ) : (
         <button
           type="button"
-          onClick={onCancel}
-          className="text-brand-muted mt-2 w-full py-3 text-sm"
+          onClick={run}
+          disabled={busy || expired}
+          className="bg-brand-ink text-brand-black mt-8 w-full rounded-2xl py-4 text-base font-semibold disabled:opacity-60"
         >
-          Cancel
+          {busy
+            ? 'Waiting for confirmation'
+            : expired
+              ? 'Quote expired'
+              : 'Pay with passkey'}
         </button>
-      </div>
-    </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={busy}
+        className="text-brand-muted mt-2 w-full py-3 text-sm disabled:opacity-50"
+      >
+        Cancel
+      </button>
+    </PaymentSheet>
   );
 }
 
@@ -139,7 +148,10 @@ function PaymentFlowInner({
  */
 export default function PaymentFlow(props: PaymentFlowProps) {
   return (
-    <PrivyProvider appId={PRIVY_APP_ID}>
+    <PrivyProvider
+      appId={PRIVY_APP_ID}
+      config={{ solana: { rpcs: solanaRpcs } }}
+    >
       <PaymentFlowInner {...props} />
     </PrivyProvider>
   );

@@ -27,6 +27,11 @@ const COOKIE = 'xend_checkout_session';
 
 function merchantRow(over: Partial<MerchantRow> = {}): MerchantRow {
   return {
+    businessProfile: {},
+    profileVersion: 0,
+    ownerProviderId: null,
+    receivingWallet: null,
+    settlementTermsAcceptedAt: null,
     id: 'm1',
     name: 'Acme',
     displayName: 'Acme Store',
@@ -50,6 +55,8 @@ function intentRow(over: Partial<IntentRow> = {}): IntentRow {
     consumerId: null,
     status: 'authorized',
     usdcSettlementRaw: '1000000',
+    pricingCurrency: null,
+    executionCluster: 'devnet',
     displayCurrency: 'NGN',
     displayAmountMinor: '160000',
     fxRate: '1600.00',
@@ -272,7 +279,7 @@ describe('CheckoutController.getSummary', () => {
     intentUpdates.length = 0;
   });
 
-  it('returns exactly the camelCase contract fields, no USDC/FX leakage', async () => {
+  it('returns the pinned USDC debit with the checkout contract', async () => {
     const { controller, intents } = makeController(merchantRow());
     intents.findById.mockResolvedValue(intentRow());
     const summary = await controller.getSummary(makeReq(), 'pi_1');
@@ -285,6 +292,7 @@ describe('CheckoutController.getSummary', () => {
         'merchantOrigin',
         'displayCurrency',
         'displayAmountMinor',
+        'usdcSettlementRaw',
         'reference',
         'sessionRecognized',
         'status',
@@ -293,9 +301,8 @@ describe('CheckoutController.getSummary', () => {
     expect(summary.merchantDisplayName).toBe('Acme Store');
     expect(summary.merchantOrigin).toBe('https://acme.example.com');
     const serialized = JSON.stringify(summary);
-    expect(serialized).not.toContain('usdcSettlementRaw');
+    expect(summary.usdcSettlementRaw).toBe('1000000');
     expect(serialized).not.toContain('fxRate');
-    expect(serialized).not.toContain('1000000');
   });
 
   it('posts to the opener when it is a second allowed origin, and remembers it on the intent', async () => {
@@ -455,6 +462,39 @@ describe('CheckoutController.getSummary', () => {
 });
 
 describe('CheckoutController.authorize', () => {
+  it('returns existing success to the original Consumer without building another Spend', async () => {
+    const f = makeController(merchantRow(), { sessions: liveSessions() });
+    f.intents.findById.mockResolvedValue(
+      intentRow({ status: 'succeeded', consumerId: 'c1' }),
+    );
+    const result = await f.controller.authorize(
+      makeReq('session'),
+      makeRes().res,
+      { reference: 'pi_1' },
+    );
+    expect(result.status).toBe('succeeded');
+    expect(f.settlement.buildSettlement).not.toHaveBeenCalled();
+    expect(f.settlement.pinSettlement).not.toHaveBeenCalled();
+    expect(f.settlement.submitSettlement).not.toHaveBeenCalled();
+    expect(f.auth.authorize).not.toHaveBeenCalled();
+    expect(f.capacity.checkCapacity).not.toHaveBeenCalled();
+  });
+
+  it("does not replay another Consumer's settled Payment", async () => {
+    const f = makeController(merchantRow(), { sessions: liveSessions() });
+    f.intents.findById.mockResolvedValue(
+      intentRow({ status: 'succeeded', consumerId: 'another-consumer' }),
+    );
+    await expectRejectHttp(
+      f.controller.authorize(makeReq('session'), makeRes().res, {
+        reference: 'pi_1',
+      }),
+      404,
+      'INTENT_NOT_FOUND',
+    );
+    expect(f.settlement.buildSettlement).not.toHaveBeenCalled();
+  });
+
   it('session-cookie path authorizes and sets the rotated HttpOnly cookie', async () => {
     const auth = {
       authorize: jest.fn().mockResolvedValue({
@@ -504,6 +544,7 @@ describe('CheckoutController.authorize', () => {
       status: 'needs_signature',
       unsignedTxBase64: 'UNSIGNED_SPEND',
       signerAddress: 'Signer1111',
+      executionCluster: 'devnet',
     });
     expect(settlement.pinSettlement).toHaveBeenCalledWith(
       'pi_1',
@@ -701,6 +742,7 @@ describe('CheckoutController.authorize', () => {
       unsignedTxBase64: 'UNSIGNED_SPEND',
       signerAddress: 'Signer1111',
       sessionToken: 'rotated-token',
+      executionCluster: 'devnet',
     });
     // The cookie still goes out unchanged; a third-party frame just drops it.
     expect(resPair.cookie).toHaveBeenCalledWith(
@@ -851,9 +893,32 @@ describe('CheckoutController.authorize', () => {
 });
 
 describe('CheckoutController.settle', () => {
-  it('submits the signed Spend and returns the signed success redirect', async () => {
+  it('returns saved success when confirmation wins during a retry', async () => {
+    const { controller, intents, settlement } = makeController(merchantRow());
+    intents.findById
+      .mockResolvedValueOnce(intentRow({ status: 'settling' }))
+      .mockResolvedValue(intentRow({ status: 'succeeded' }));
+    settlement.submitSettlement.mockRejectedValue(new Error('no live attempt'));
+    await expect(
+      controller.settle({ reference: 'pi_1', signedTxBase64: 'SIGNED' }),
+    ).resolves.toMatchObject({ status: 'succeeded' });
+    expect(settlement.submitSettlement).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the persisted success on retry without resubmitting a completed Spend', async () => {
     const { controller, intents, settlement } = makeController(merchantRow());
     intents.findById.mockResolvedValue(intentRow({ status: 'succeeded' }));
+    await expect(
+      controller.settle({ reference: 'pi_1', signedTxBase64: 'SIGNED' }),
+    ).resolves.toMatchObject({ status: 'succeeded' });
+    expect(settlement.submitSettlement).not.toHaveBeenCalled();
+  });
+
+  it('submits the signed Spend and returns the signed success redirect', async () => {
+    const { controller, intents, settlement } = makeController(merchantRow());
+    intents.findById
+      .mockResolvedValueOnce(intentRow({ status: 'authorized' }))
+      .mockResolvedValue(intentRow({ status: 'succeeded' }));
 
     const response = await controller.settle({
       reference: 'pi_1',

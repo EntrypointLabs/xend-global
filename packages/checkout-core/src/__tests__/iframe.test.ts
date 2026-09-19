@@ -452,7 +452,7 @@ describe("mountXendButton inline ceremony", () => {
     expect(String(assign.mock.calls[0]![0])).toContain("mode=redirect");
   });
 
-  it("cancels once and drops the listener when the sheet is dismissed mid-ceremony", async () => {
+  it("preserves the frame result when the backdrop is clicked mid-ceremony", async () => {
     vi.spyOn(window, "open");
     stubSummary();
     const onResult = vi.fn();
@@ -470,13 +470,13 @@ describe("mountXendButton inline ceremony", () => {
 
     shadow().querySelector<HTMLElement>("[data-close]")!.click();
 
-    expect(onResult).toHaveBeenCalledTimes(1);
-    expect(onResult).toHaveBeenCalledWith({
-      reference: "pi_frame_cancel",
-      status: "canceled",
-    });
+    expect(onResult).not.toHaveBeenCalled();
 
     postFromFrame(nonce, "pi_frame_cancel");
     expect(onResult).toHaveBeenCalledTimes(1);
+    expect(onResult).toHaveBeenCalledWith({
+      reference: "pi_frame_cancel",
+      status: "succeeded",
+    });
   });
 });

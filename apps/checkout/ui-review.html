@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Xend Checkout responsive review</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #e9e9ed;
+        color: #1d1d1f;
+        font:
+          14px system-ui,
+          sans-serif;
+      }
+      h1 {
+        font-size: 20px;
+      }
+      p {
+        max-width: 640px;
+        line-height: 1.5;
+      }
+      iframe {
+        display: block;
+        width: 390px;
+        max-width: 100%;
+        height: 844px;
+        border: 1px solid #bbb;
+        border-radius: 16px;
+        background: #0a0a0a;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Checkout mobile layout review</h1>
+    <p>
+      The actual Checkout at phone width. Supply the query string from a pilot
+      Checkout URL. This does not simulate passkeys or device behavior. Do not
+      approve a Payment for a layout-only check.
+    </p>
+    <iframe title="Checkout at phone width"></iframe>
+    <script type="module">
+      // Keep the frame on this origin; only launch parameters are forwarded.
+      const target = new URL('/', window.location.origin);
+      target.search = window.location.search;
+      document.querySelector('iframe').src = target.href;
+    </script>
+  </body>
+</html>

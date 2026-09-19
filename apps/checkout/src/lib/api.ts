@@ -54,6 +54,7 @@ export interface IntentView {
   /** ISO 4217, whatever the Merchant priced in. */
   displayCurrency: string;
   displayAmountMinor: string;
+  usdcSettlementRaw: string;
   merchantOrigin: string;
   sessionRecognized: boolean;
   expiresAt: string;
@@ -96,6 +97,7 @@ export type AuthorizeResult = (
       unsignedTxBase64: string;
       /** Which of the Consumer's keys the Spend was compiled for. */
       signerAddress: string;
+      executionCluster: 'devnet' | 'testnet' | 'mainnet-beta';
     }
   | TerminalResult
 ) & {
@@ -158,6 +160,7 @@ function fixtureIntent(reference: string): IntentView {
     merchantDisplayName: 'Sabi Market',
     displayCurrency: 'NGN',
     displayAmountMinor: '4500000',
+    usdcSettlementRaw: '30000000',
     merchantOrigin: window.location.origin,
     // Both fixture states stay reachable: `?recognized=1` demos the one-tap
     // return visit, without it the full passkey ceremony shows.

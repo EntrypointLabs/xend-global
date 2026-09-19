@@ -822,6 +822,14 @@ export const tailerState = pgTable('tailer_state', {
  * populated when the Merchant API lands.
  */
 export const merchants = pgTable('merchants', {
+  businessProfile: jsonb('business_profile')
+    .$type<Record<string, string>>()
+    .notNull()
+    .default({}),
+  profileVersion: integer('profile_version').notNull().default(0),
+  ownerProviderId: text('owner_provider_id').unique(),
+  receivingWallet: text('receiving_wallet'),
+  settlementTermsAcceptedAt: timestamp('settlement_terms_accepted_at'),
   id: text('id')
     .primaryKey()
     .$defaultFn(() => createId()),
@@ -860,6 +868,7 @@ export const apiKeys = pgTable(
       .references(() => merchants.id),
     keyHash: text('key_hash').notNull().unique(),
     keyPrefix: text('key_prefix').notNull(),
+    executionCluster: text('execution_cluster'),
     fingerprint: text('fingerprint').notNull(),
     mode: apiKeyModeEnum('mode').notNull(),
     revokedAt: timestamp('revoked_at'),
@@ -891,6 +900,9 @@ export const paymentIntents = pgTable(
     consumerId: text('consumer_id').references(() => users.id),
     status: paymentIntentStatusEnum('status').notNull().default('created'),
     usdcSettlementRaw: text('usdc_settlement_raw').notNull(),
+    /** Original API denomination; null preserves legacy USD-display USDC intents. */
+    pricingCurrency: text('pricing_currency'),
+    executionCluster: text('execution_cluster'),
     /** What the Merchant priced in, and the figure the Consumer is shown. */
     displayCurrency: text('display_currency').notNull(),
     displayAmountMinor: text('display_amount_minor').notNull(),

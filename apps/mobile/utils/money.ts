@@ -10,6 +10,7 @@
 const CURRENCIES: Record<string, { symbol: string; decimals: number }> = {
   NGN: { symbol: "₦", decimals: 2 },
   USD: { symbol: "$", decimals: 2 },
+  USDC: { symbol: "USDC ", decimals: 6 },
 };
 
 function groupThousands(digits: string): string {

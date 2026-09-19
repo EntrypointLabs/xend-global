@@ -18,12 +18,14 @@ import type { DbService } from '../db/db.service';
 import { paymentAttempts } from '../db/schema';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { PaymentIntentService } from '../payment/payment-intent.service';
+import { IntentExpiredError } from '../payment/payment.errors';
 import type { SpendService } from '../account/spend.service';
 import type { SettlementProvisioningService } from './settlement-provisioning.service';
 import type { SettlementConfirmationService } from './settlement-confirmation.service';
 import { SettlementService } from './settlement.service';
 import {
   IntentNotSettleableError,
+  FiatSettlementDisabledError,
   SettlementAccountNotProvisionedError,
   SettlementMessageMismatchError,
 } from './settlement.errors';
@@ -69,6 +71,7 @@ function makeConfig(): ConfigService {
   return {
     getOrThrow: (key: string): string => {
       if (key === 'EXPO_PUBLIC_USDC_MINT_ADDRESS') return USDC;
+      if (key === 'SOLANA_CLUSTER') return 'devnet';
       throw new Error(`missing config ${key}`);
     },
   } as unknown as ConfigService;
@@ -77,6 +80,7 @@ function makeConfig(): ConfigService {
 function makeDb(cfg: {
   attempt?: AttemptRow;
   updateReturning?: { id: string }[][];
+  stateful?: boolean;
 }): DbService {
   const updates = [...(cfg.updateReturning ?? [])];
   const client = {
@@ -92,18 +96,38 @@ function makeDb(cfg: {
       }),
     }),
     update: () => ({
-      set: () => ({
+      set: (values: Partial<AttemptRow>) => ({
         where: () => ({
-          returning: () => Promise.resolve(updates.shift() ?? []),
+          returning: () => {
+            const result = updates.shift() ?? [];
+            if (cfg.stateful && result.length && cfg.attempt)
+              Object.assign(cfg.attempt, values);
+            return Promise.resolve(result);
+          },
         }),
       }),
     }),
   };
-  return { client } as unknown as DbService;
+  let lockTail = Promise.resolve();
+  const withAdvisoryLock = jest.fn(
+    (_key: string, fn: () => Promise<unknown>) => {
+      const next = lockTail.then(fn);
+      lockTail = next.then(
+        () => undefined,
+        () => undefined,
+      );
+      return next;
+    },
+  );
+  return { client, withAdvisoryLock } as unknown as DbService;
 }
 
 function makeIntents(intent: Record<string, unknown>) {
-  const findById = jest.fn().mockResolvedValue(intent);
+  const findById = jest.fn().mockResolvedValue({
+    executionCluster: 'devnet',
+    expiresAt: new Date(Date.now() + 60000),
+    ...intent,
+  });
   const transition = jest.fn().mockResolvedValue(intent);
   return {
     intents: { findById, transition } as unknown as PaymentIntentService,
@@ -199,11 +223,74 @@ function makeService(deps: {
 }
 
 describe('SettlementService', () => {
+  it.each([null, 'mainnet-beta'])(
+    'rejects a Payment bound to %s before preparing, submitting or reconciling',
+    async (executionCluster) => {
+      const { intents } = makeIntents({
+        id: 'pi_1',
+        status: 'created',
+        executionCluster,
+      });
+      const { spends, prepare, submit } = makeSpends();
+      const { provisioning } = makeProvisioning(ENDPOINT);
+      const solana = makeSolana();
+      const service = makeService({
+        db: makeDb({}),
+        solana,
+        intents,
+        provisioning,
+        spends,
+      });
+      await expect(service.buildSettlement('pi_1', 'u_1')).rejects.toThrow(
+        'Payment network',
+      );
+      await expect(service.submitSettlement('pi_1', 'unused')).rejects.toThrow(
+        'Payment network',
+      );
+      await expect(service.resolveInFlight('pi_1')).rejects.toThrow(
+        'Payment network',
+      );
+      expect(prepare).not.toHaveBeenCalled();
+      expect(submit).not.toHaveBeenCalled();
+    },
+  );
+
   beforeAll(() => {
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
   });
 
   describe('buildSettlement', () => {
+    it('rejects fiat settlement before preparing a Consumer Spend', async () => {
+      const { intents, transition } = makeIntents({
+        id: 'pi_1',
+        status: 'created',
+        merchantId: 'm_1',
+        displayCurrency: 'NGN',
+        usdcSettlementRaw: '1000000',
+      });
+      const { provisioning, getSettlementAddressForSettlement } =
+        makeProvisioning(ENDPOINT);
+      getSettlementAddressForSettlement.mockResolvedValue({
+        address: ENDPOINT,
+        owner: ENDPOINT_OWNER,
+        provider: 'blockradar',
+      });
+      const { spends, prepare, submit } = makeSpends();
+      const service = makeService({
+        db: makeDb({}),
+        solana: makeSolana(),
+        intents,
+        provisioning,
+        spends,
+      });
+      await expect(service.buildSettlement('pi_1', 'u_1')).rejects.toThrow(
+        FiatSettlementDisabledError,
+      );
+      expect(prepare).not.toHaveBeenCalled();
+      expect(submit).not.toHaveBeenCalled();
+      expect(transition).not.toHaveBeenCalled();
+    });
+
     it('builds the Spend out of the vault into the Merchant endpoint and writes nothing', async () => {
       const { intents, transition } = makeIntents({
         id: 'pi_1',
@@ -390,6 +477,114 @@ describe('SettlementService', () => {
   });
 
   describe('submitSettlement', () => {
+    it('serializes concurrent submissions of the same intent before signing and broadcasting', async () => {
+      const { wire, messageBase64 } = buildWireAndMessage();
+      const { intents } = makeIntents({
+        id: 'pi_1',
+        status: 'authorized',
+        consumerId: 'u_1',
+        merchantId: 'm_1',
+      });
+      const { provisioning } = makeProvisioning(ENDPOINT);
+      const { spends, submit } = makeSpends('sig-once');
+      const db = makeDb({
+        attempt: {
+          id: 'att_1',
+          status: 'authorized',
+          messageBase64,
+          txSignature: null,
+        },
+        updateReturning: [[{ id: 'att_1' }]],
+        stateful: true,
+      });
+      const service = makeService({
+        db,
+        solana: makeSolana(),
+        intents,
+        provisioning,
+        spends,
+      });
+      const outcomes = await Promise.allSettled([
+        service.submitSettlement('pi_1', wire),
+        service.submitSettlement('pi_1', wire),
+      ]);
+      expect(submit).toHaveBeenCalledTimes(1);
+      expect(outcomes.every((outcome) => outcome.status === 'fulfilled')).toBe(
+        true,
+      );
+      // This is an assertion on a Jest mock, not an invocation detached from db.
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(db.withAdvisoryLock).toHaveBeenCalledWith(
+        'payment-submit:pi_1',
+        expect.any(Function),
+      );
+    });
+
+    it('does not broadcast when approval outlives the quote', async () => {
+      const { wire, messageBase64 } = buildWireAndMessage();
+      const { intents } = makeIntents({
+        id: 'pi_1',
+        consumerId: 'u_1',
+        merchantId: 'm_1',
+        status: 'authorized',
+        expiresAt: new Date(Date.now() - 1),
+      });
+      const { provisioning } = makeProvisioning(ENDPOINT);
+      const { spends, submit } = makeSpends();
+      const service = makeService({
+        db: makeDb({
+          attempt: {
+            id: 'att_1',
+            status: 'authorized',
+            messageBase64,
+            txSignature: null,
+          },
+        }),
+        solana: makeSolana(),
+        intents,
+        provisioning,
+        spends,
+      });
+      await expect(service.submitSettlement('pi_1', wire)).rejects.toThrow(
+        IntentExpiredError,
+      );
+      expect(submit).not.toHaveBeenCalled();
+    });
+    it('rejects a previously prepared fiat Payment without broadcasting', async () => {
+      const { wire, messageBase64 } = buildWireAndMessage();
+      const { intents } = makeIntents({
+        id: 'pi_1',
+        consumerId: 'u_1',
+        merchantId: 'm_1',
+        status: 'authorized',
+      });
+      const { provisioning, getSettlementAddressForSettlement } =
+        makeProvisioning(ENDPOINT);
+      getSettlementAddressForSettlement.mockResolvedValue({
+        address: ENDPOINT,
+        owner: ENDPOINT_OWNER,
+        provider: 'blockradar',
+      });
+      const { spends, submit } = makeSpends();
+      const service = makeService({
+        db: makeDb({
+          attempt: {
+            id: 'att_1',
+            status: 'authorized',
+            messageBase64,
+            txSignature: null,
+          },
+        }),
+        solana: makeSolana(),
+        intents,
+        provisioning,
+        spends,
+      });
+      await expect(service.submitSettlement('pi_1', wire)).rejects.toThrow(
+        FiatSettlementDisabledError,
+      );
+      expect(submit).not.toHaveBeenCalled();
+    });
     it('rejects a signed tx whose message diverges from the pinned message and never reaches the authority', async () => {
       const { wire } = buildWireAndMessage();
       const { intents } = makeIntents({
@@ -467,38 +662,42 @@ describe('SettlementService', () => {
       );
     });
 
-    it('a second submit for an already-settling attempt resolves in-flight without signing again', async () => {
-      const { wire } = buildWireAndMessage();
-      const { intents } = makeIntents({
-        id: 'pi_1',
-        status: 'settling',
-        consumerId: 'u_1',
-        merchantId: 'm_1',
-        usdcSettlementRaw: '1000000',
-      });
-      const { provisioning } = makeProvisioning(ENDPOINT);
-      const { spends, submit } = makeSpends();
-      const service = makeService({
-        db: makeDb({
-          attempt: {
-            id: 'att_1',
-            status: 'settling',
-            messageBase64: 'pinned',
-            txSignature: 'sig-live',
-          },
-        }),
-        solana: makeSolana(),
-        intents,
-        provisioning,
-        spends,
-      });
+    it.each([60000, -1])(
+      'an already-broadcast retry reconciles without signing again with quote lifetime %s ms',
+      async (remainingMs) => {
+        const { wire } = buildWireAndMessage();
+        const { intents } = makeIntents({
+          id: 'pi_1',
+          status: 'settling',
+          expiresAt: new Date(Date.now() + remainingMs),
+          consumerId: 'u_1',
+          merchantId: 'm_1',
+          usdcSettlementRaw: '1000000',
+        });
+        const { provisioning } = makeProvisioning(ENDPOINT);
+        const { spends, submit } = makeSpends();
+        const service = makeService({
+          db: makeDb({
+            attempt: {
+              id: 'att_1',
+              status: 'settling',
+              messageBase64: 'pinned',
+              txSignature: 'sig-live',
+            },
+          }),
+          solana: makeSolana(),
+          intents,
+          provisioning,
+          spends,
+        });
 
-      const out = await service.submitSettlement('pi_1', wire);
+        const out = await service.submitSettlement('pi_1', wire);
 
-      expect(out.status).toBe('settling');
-      expect(out.signature).toBe('sig-live');
-      expect(submit).not.toHaveBeenCalled();
-    });
+        expect(out.status).toBe('settling');
+        expect(out.signature).toBe('sig-live');
+        expect(submit).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('resolveInFlight', () => {

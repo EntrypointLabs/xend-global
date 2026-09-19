@@ -19,6 +19,7 @@ function makeRedis(initial?: string) {
 }
 
 const config = {
+  get: () => 'devnet',
   getOrThrow: (k: string) => {
     if (k === 'FX_STALENESS_CAP_SECONDS') return 900;
     throw new Error(`unexpected key ${k}`);
@@ -38,6 +39,22 @@ function partnerThrowing(): PartnerFxAdapter {
 }
 
 describe('CachedFxQuoteProvider', () => {
+  it('rejects a fresh static quote left in cache when running on mainnet', async () => {
+    const { redis } = makeRedis(
+      JSON.stringify({
+        ngnPerUsdc: '1500',
+        source: 'pilot-static',
+        quotedAt: new Date().toISOString(),
+      }),
+    );
+    const mainnet = {
+      get: () => 'mainnet',
+      getOrThrow: () => 900,
+    } as unknown as ConfigService;
+    await expect(
+      new CachedFxQuoteProvider(partnerThrowing(), mainnet, redis).getQuote(),
+    ).rejects.toThrow(FxQuoteUnavailableError);
+  });
   it('caches and returns a fresh partner quote', async () => {
     const { redis, store } = makeRedis();
     const quotedAt = new Date();

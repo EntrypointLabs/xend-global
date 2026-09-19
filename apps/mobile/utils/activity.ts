@@ -78,6 +78,15 @@ export interface ActivitySection {
   data: ActivityEntry[];
 }
 
+/** A completed Spend happened at chain confirmation, not at later indexing. */
+export function activityDetailTimestamp(
+  entry: Pick<ActivityEntry, "status" | "createdAt" | "confirmedAt">
+): string {
+  return entry.status === "confirmed"
+    ? (entry.confirmedAt ?? entry.createdAt)
+    : entry.createdAt;
+}
+
 export interface MapTransferContext {
   selfAddress: string;
   decimalsByMint: Record<string, number>;

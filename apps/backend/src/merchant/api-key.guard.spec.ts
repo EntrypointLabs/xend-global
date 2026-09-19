@@ -1,4 +1,5 @@
 import { ExecutionContext, HttpException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { DbService } from '../db/db.service';
 import { apiKeys, merchants } from '../db/schema';
 import { ApiKeyGuard, type MerchantRequest } from './api-key.guard';
@@ -9,6 +10,11 @@ type MerchantRow = typeof merchants.$inferSelect;
 
 function merchantRow(over: Partial<MerchantRow> = {}): MerchantRow {
   return {
+    businessProfile: {},
+    profileVersion: 0,
+    ownerProviderId: null,
+    receivingWallet: null,
+    settlementTermsAcceptedAt: null,
     id: 'm1',
     name: 'Acme',
     displayName: 'Acme Store',
@@ -33,6 +39,7 @@ function apiKeyRow(over: Partial<ApiKeyRow> = {}): ApiKeyRow {
     keyPrefix: 'xnd_test_',
     fingerprint: 'xnd_test_...abcd',
     mode: 'test',
+    executionCluster: null,
     revokedAt: null,
     lastUsedAt: null,
     createdAt: new Date('2026-01-01'),
@@ -94,6 +101,41 @@ async function expectRejectHttp(
 }
 
 describe('ApiKeyGuard', () => {
+  it.each([
+    ['development', 'devnet', true, true],
+    ['development', 'mainnet-beta', true, false],
+    ['production', 'devnet', true, false],
+    ['development', 'devnet', false, false],
+  ])(
+    'gates devnet execution with %s/%s/enabled=%s',
+    async (env, cluster, enabled, accepted) => {
+      const key = generateApiKey('live');
+      const { db } = makeFakeDb({
+        apiKeyRows: [
+          apiKeyRow({
+            keyHash: key.keyHash,
+            mode: 'live',
+            executionCluster: 'devnet',
+          }),
+        ],
+        merchantRows: [merchantRow()],
+      });
+      const guard = new ApiKeyGuard(
+        db,
+        new ConfigService({
+          NODE_ENV: env,
+          SOLANA_CLUSTER: cluster,
+          DEVNET_PAYMENTS_ENABLED: enabled,
+        }),
+      );
+      const result = guard.canActivate(
+        ctx({ authorization: `Bearer ${key.raw}` }).context,
+      );
+      if (accepted) await expect(result).resolves.toBe(true);
+      else await expectRejectHttp(result, 401, 'INVALID_API_KEY');
+    },
+  );
+
   it('attaches { merchantId, apiKeyId, mode } for a valid active-merchant key', async () => {
     const key = generateApiKey('test');
     const { db } = makeFakeDb({

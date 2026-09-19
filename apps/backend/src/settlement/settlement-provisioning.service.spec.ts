@@ -63,6 +63,64 @@ function makeSolana(registerWebhookAddress: jest.Mock): SolanaRpc {
 }
 
 describe('SettlementProvisioningService', () => {
+  it.each([
+    { authorityAddress: AUTHORITY, observed: AUTHORITY },
+    { authorityAddress: null, observed: 'WRONG_OWNER' },
+    { authorityAddress: null, observed: null },
+  ])(
+    'refuses an unverified Merchant-controlled destination: %j',
+    async ({ authorityAddress, observed }) => {
+      const { provider } = fakeUsdcProvider();
+      const service = new SettlementProvisioningService(
+        makeDb({
+          existing: [
+            {
+              address: ENDPOINT,
+              provider: 'direct_usdc',
+              provisionedAt: new Date(),
+              providerReference: 'MERCHANT',
+              authorityAddress,
+            },
+          ],
+        }),
+        {
+          getTokenAccountOwner: jest.fn().mockResolvedValue(observed),
+        } as unknown as SolanaRpc,
+        new SettlementRouter([provider]),
+      );
+      await expect(
+        service.getSettlementAddressForSettlement('m_1'),
+      ).rejects.toThrow(SettlementAccountNotProvisionedError);
+    },
+  );
+
+  it('resolves a confirmed Merchant-owned USDC destination', async () => {
+    const { provider } = fakeUsdcProvider();
+    const service = new SettlementProvisioningService(
+      makeDb({
+        existing: [
+          {
+            address: ENDPOINT,
+            provider: 'direct_usdc',
+            provisionedAt: new Date(),
+            providerReference: 'MERCHANT',
+            authorityAddress: null,
+          },
+        ],
+      }),
+      {
+        getTokenAccountOwner: jest.fn().mockResolvedValue('MERCHANT'),
+      } as unknown as SolanaRpc,
+      new SettlementRouter([provider]),
+    );
+    await expect(
+      service.getSettlementAddressForSettlement('m_1'),
+    ).resolves.toEqual({
+      address: ENDPOINT,
+      owner: 'MERCHANT',
+      provider: 'direct_usdc',
+    });
+  });
   beforeAll(() => {
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
@@ -180,5 +238,31 @@ describe('SettlementProvisioningService', () => {
     await expect(
       service.getSettlementAddressForSettlement('m_missing'),
     ).rejects.toThrow(SettlementAccountNotProvisionedError);
+  });
+
+  it('refuses to silently reuse a Xend-controlled endpoint for Merchant-owned onboarding', async () => {
+    const { provider, provision } = fakeUsdcProvider();
+    const service = new SettlementProvisioningService(
+      makeDb({
+        existing: [
+          {
+            address: ENDPOINT,
+            provider: 'direct_usdc',
+            provisionedAt: new Date(),
+            authorityAddress: AUTHORITY,
+            providerReference: ENDPOINT,
+          },
+        ],
+      }),
+      makeSolana(jest.fn()),
+      new SettlementRouter([provider]),
+    );
+    await expect(
+      service.provisionOrLink('m_1', {
+        currency: 'USDC',
+        merchantAddress: 'MERCHANT',
+      }),
+    ).rejects.toThrow(SettlementAccountNotProvisionedError);
+    expect(provision).not.toHaveBeenCalled();
   });
 });

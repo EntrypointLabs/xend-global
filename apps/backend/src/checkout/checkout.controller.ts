@@ -42,7 +42,10 @@ import { SettlementConfirmationService } from '../settlement/settlement-confirma
 import { SettlementService } from '../settlement/settlement.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { formatDisplayMoney } from '../fx/currency';
-import { SettlementAccountNotProvisionedError } from '../settlement/settlement.errors';
+import {
+  FiatSettlementDisabledError,
+  SettlementAccountNotProvisionedError,
+} from '../settlement/settlement.errors';
 import { signReturnUrl } from './return-url';
 import {
   ApprovalRequiredError,
@@ -157,6 +160,7 @@ export class CheckoutController {
         merchantDisplayName: merchant.displayName,
         displayCurrency: intent.displayCurrency,
         displayAmountMinor: intent.displayAmountMinor,
+        usdcSettlementRaw: intent.usdcSettlementRaw,
         merchantOrigin,
         sessionRecognized,
         expiresAt: intent.expiresAt.toISOString(),
@@ -230,6 +234,15 @@ export class CheckoutController {
           intent.merchantId,
         );
         consumerId = session.consumerId;
+      }
+
+      // A second tab or a retried response must not rebuild a completed Spend.
+      // Authenticate first and bind this replay to the original Consumer.
+      if (intent.status === 'succeeded') {
+        if (intent.consumerId !== consumerId) {
+          throw new IntentNotFoundError(reference);
+        }
+        return await this.terminalResponse(reference);
       }
 
       if (simulated) {
@@ -317,6 +330,17 @@ export class CheckoutController {
       }
 
       if (built) {
+        const executionCluster = intent.executionCluster;
+        if (
+          executionCluster !== 'devnet' &&
+          executionCluster !== 'testnet' &&
+          executionCluster !== 'mainnet-beta'
+        ) {
+          throw new HttpException(
+            'Unsupported Payment execution network',
+            HttpStatus.CONFLICT,
+          );
+        }
         // The Consumer signs at the popup and hands the bytes to /settle. The
         // pin is what makes that safe to complete with the fee payer.
         await this.settlement.pinSettlement(reference, built);
@@ -324,6 +348,7 @@ export class CheckoutController {
           status: 'needs_signature',
           unsignedTxBase64: built.unsignedTxBase64,
           signerAddress: built.signerAddress,
+          executionCluster,
         });
       }
 
@@ -350,10 +375,24 @@ export class CheckoutController {
     @Body(new ZodValidationPipe(SettleBodySchema)) body: SettleBody,
   ): Promise<SettleResponse> {
     try {
-      await this.settlement.submitSettlement(
-        body.reference,
-        body.signedTxBase64,
-      );
+      const existing = await this.intents.findById(body.reference);
+      if (existing.status === 'succeeded' || existing.status === 'failed') {
+        return await this.terminalResponse(body.reference);
+      }
+      try {
+        await this.settlement.submitSettlement(
+          body.reference,
+          body.signedTxBase64,
+        );
+      } catch (error) {
+        // Confirmation can win between the initial read and attempt lookup.
+        // Return only a persisted terminal result, never infer one from errors.
+        const current = await this.intents.findById(body.reference);
+        if (current.status === 'succeeded' || current.status === 'failed') {
+          return await this.terminalResponse(body.reference);
+        }
+        throw error;
+      }
       return await this.terminalResponse(body.reference);
     } catch (err) {
       this.mapServiceError(err);
@@ -500,7 +539,8 @@ export class CheckoutController {
       err instanceof SessionVelocityExceededError ||
       err instanceof InsufficientBalanceError ||
       err instanceof ApprovalRequiredError ||
-      err instanceof SettlementAccountNotProvisionedError
+      err instanceof SettlementAccountNotProvisionedError ||
+      err instanceof FiatSettlementDisabledError
     ) {
       throw new HttpException(
         { code: err.code, message: err.message },

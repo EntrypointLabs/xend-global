@@ -43,7 +43,10 @@ export interface SignatureRequest {
 
 export interface WalletProvider {
   /** Verify a provider-issued ID token (e.g. Privy JWT) and return the user. */
-  verifyIdToken(idToken: string): Promise<WalletProviderUser>;
+  verifyIdToken(
+    idToken: string,
+    options?: { requireWallet: boolean },
+  ): Promise<WalletProviderUser>;
 
   /** Read a user's current wallet (provider-side; may differ from our cache). */
   getUser(providerUserId: ProviderUserId): Promise<WalletProviderUser>;

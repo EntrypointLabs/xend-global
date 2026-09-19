@@ -41,7 +41,7 @@ interface SpendCheckModalProps {
    * row that says why; the check the Consumer performs is the same either way.
    */
   aboveDailyLimit: boolean;
-  onRetry: () => void;
+  onRetry?: () => void;
   onDismiss: () => void;
 }
 
@@ -139,14 +139,16 @@ export function SpendCheckModal({
 
           {settled ? (
             <View className="gap-3">
-              <HapticPressable
-                onPress={onRetry}
-                className="w-full items-center justify-center rounded-full bg-white py-4"
-              >
-                <Typography weight="600" className="text-base text-black">
-                  Try again
-                </Typography>
-              </HapticPressable>
+              {onRetry && (
+                <HapticPressable
+                  onPress={onRetry}
+                  className="w-full items-center justify-center rounded-full bg-white py-4"
+                >
+                  <Typography weight="600" className="text-base text-black">
+                    Try again
+                  </Typography>
+                </HapticPressable>
+              )}
               <HapticPressable
                 onPress={onDismiss}
                 feedback="selection"

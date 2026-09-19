@@ -1,6 +1,7 @@
 import { useEffect, useState, type MouseEvent } from 'react';
 import type { IntentView } from '../lib/api';
-import { formatMoney } from '../lib/money';
+import { PaymentSheet } from './PaymentSheet';
+import { quoteExpired, useQuoteExpired } from '../lib/useQuoteExpired';
 
 interface ConfirmSheetProps {
   intent: IntentView;
@@ -13,8 +14,8 @@ const ARM_DELAY_MS = 500;
 
 /**
  * The Apple-Pay-feel moment. Shows the merchant name from the Xend record and
- * the naira amount from the pinned quote. Never renders an FX rate or a dollar
- * figure. A recognized Session reaches this sheet directly for a one-tap
+ * the price and exact USDC debit from the pinned quote.
+ * A recognized Session reaches this sheet directly for a one-tap
  * confirm.
  *
  * The confirm button arms only after a short delay AND an observed interaction,
@@ -30,6 +31,7 @@ export function ConfirmSheet({
   const [delayPassed, setDelayPassed] = useState(false);
   const [interacted, setInteracted] = useState(false);
   const armed = delayPassed && interacted;
+  const expired = useQuoteExpired(intent.expiresAt);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDelayPassed(true), ARM_DELAY_MS);
@@ -52,36 +54,33 @@ export function ConfirmSheet({
 
   const handleConfirm = (event: MouseEvent<HTMLButtonElement>) => {
     if (!event.isTrusted) return;
-    if (!armed || busy) return;
+    if (!armed || busy || quoteExpired(intent.expiresAt)) return;
     onConfirm();
   };
 
   return (
-    <div className="bg-brand-black flex h-full flex-col justify-end">
-      <div className="border-brand-line bg-brand-surface rounded-t-3xl border-t px-6 pb-8 pt-7">
-        <p className="text-brand-muted text-sm">
-          Pay {intent.merchantDisplayName}
+    <PaymentSheet intent={intent}>
+      {expired && !busy && (
+        <p role="status" className="text-brand-muted text-sm">
+          This quote expired. Return to the store for a new quote.
         </p>
-        <p className="text-brand-ink mt-2 text-4xl font-semibold tabular-nums tracking-tight">
-          {formatMoney(intent.displayCurrency, intent.displayAmountMinor)}
-        </p>
-
-        <button
-          type="button"
-          onClick={handleConfirm}
-          disabled={busy || !armed}
-          className="bg-brand-ink text-brand-black mt-8 w-full rounded-2xl py-4 text-base font-semibold disabled:opacity-60"
-        >
-          {busy ? 'Confirming' : 'Confirm payment'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="text-brand-muted mt-2 w-full py-3 text-sm"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
+      )}
+      <button
+        type="button"
+        onClick={handleConfirm}
+        disabled={busy || !armed || expired}
+        className="bg-brand-ink text-brand-black mt-8 w-full rounded-2xl py-4 text-base font-semibold disabled:opacity-60"
+      >
+        {busy ? 'Confirming' : expired ? 'Quote expired' : 'Confirm payment'}
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={busy}
+        className="text-brand-muted mt-2 w-full py-3 text-sm disabled:opacity-50"
+      >
+        Cancel
+      </button>
+    </PaymentSheet>
   );
 }

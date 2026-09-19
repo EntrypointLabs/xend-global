@@ -27,6 +27,7 @@ function pgErrorCode(err: unknown): string | undefined {
 export interface CreateIntentParams {
   merchantId: string;
   usdcSettlementRaw: string;
+  pricingCurrency?: 'NGN' | 'USD' | 'USDC';
   /** What the Merchant priced in, and the figure the Consumer is shown. */
   displayCurrency: string;
   displayAmountMinor: string;
@@ -108,6 +109,8 @@ export class PaymentIntentService {
         .values({
           merchantId: params.merchantId,
           usdcSettlementRaw: params.usdcSettlementRaw,
+          pricingCurrency: params.pricingCurrency ?? null,
+          executionCluster: this.config.getOrThrow<string>('SOLANA_CLUSTER'),
           displayCurrency: params.displayCurrency,
           displayAmountMinor: params.displayAmountMinor,
           fxRate: params.fxRate ?? null,

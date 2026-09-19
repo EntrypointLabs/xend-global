@@ -7,7 +7,7 @@ import { z } from 'zod';
  */
 export const CreateIntentBodySchema = z.object({
   amount: z.string().regex(/^\d+$/),
-  currency: z.enum(['NGN', 'USDC']),
+  currency: z.enum(['NGN', 'USD', 'USDC']),
   merchant_reference: z.string().max(255).optional(),
   return_url: z.string().url().optional(),
   cancel_url: z.string().url().optional(),
@@ -22,7 +22,7 @@ export interface IntentObject {
   status: string;
   /**
    * The currency and unit the Merchant created the intent in, echoed back
-   * unchanged: NGN in kobo, USDC in its own six decimals. A shopper priced in
+   * unchanged: NGN in kobo, USD in cents, USDC in its own six decimals. A shopper priced in
    * USDC is shown dollars at the checkout, but that is a display concern and
    * never changes what the Merchant reads back.
    */

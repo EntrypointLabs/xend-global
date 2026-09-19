@@ -1,4 +1,5 @@
 import type { DbService } from '../db/db.service';
+import { ConfigService } from '@nestjs/config';
 import { merchants, settlementAccounts } from '../db/schema';
 import { KeyIssuanceService } from './key-issuance.service';
 
@@ -7,6 +8,11 @@ type SettlementRow = typeof settlementAccounts.$inferSelect;
 
 function merchantRow(over: Partial<MerchantRow> = {}): MerchantRow {
   return {
+    businessProfile: {},
+    profileVersion: 0,
+    ownerProviderId: null,
+    receivingWallet: null,
+    settlementTermsAcceptedAt: null,
     id: 'm1',
     name: 'Acme',
     displayName: 'Acme Store',
@@ -80,6 +86,70 @@ function makeFakeDb(cfg: {
 }
 
 describe('KeyIssuanceService.issueKey', () => {
+  it('binds devnet execution to devnet without marking the Merchant verified', async () => {
+    const { db, inserts, updates } = makeFakeDb({
+      merchantRows: [merchantRow()],
+      settlementRows: [settlementRow()],
+    });
+    const service = new KeyIssuanceService(
+      db,
+      new ConfigService({
+        NODE_ENV: 'development',
+        SOLANA_CLUSTER: 'devnet',
+        DEVNET_PAYMENTS_ENABLED: true,
+      }),
+    );
+    await service.issueKey('m1', 'devnet');
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].values).toMatchObject({
+      mode: 'live',
+      executionCluster: 'devnet',
+    });
+    expect(updates).toEqual([]);
+  });
+
+  it.each([
+    ['production', 'devnet', true],
+    ['development', 'mainnet-beta', true],
+    ['development', 'devnet', false],
+  ])(
+    'refuses devnet issuance with %s/%s/enabled=%s',
+    async (env, cluster, enabled) => {
+      const { db, inserts } = makeFakeDb({
+        merchantRows: [merchantRow()],
+        settlementRows: [settlementRow()],
+      });
+      const service = new KeyIssuanceService(
+        db,
+        new ConfigService({
+          NODE_ENV: env,
+          SOLANA_CLUSTER: cluster,
+          DEVNET_PAYMENTS_ENABLED: enabled,
+        }),
+      );
+      await expect(service.issueKey('m1', 'devnet')).rejects.toMatchObject({
+        code: 'KYB_NOT_VERIFIED',
+      });
+      expect(inserts).toEqual([]);
+    },
+  );
+
+  it('requires a provisioned destination for devnet execution', async () => {
+    const { db, inserts } = makeFakeDb({ merchantRows: [merchantRow()] });
+    const service = new KeyIssuanceService(
+      db,
+      new ConfigService({
+        NODE_ENV: 'development',
+        SOLANA_CLUSTER: 'devnet',
+        DEVNET_PAYMENTS_ENABLED: true,
+      }),
+    );
+    await expect(service.issueKey('m1', 'devnet')).rejects.toMatchObject({
+      code: 'SETTLEMENT_DESTINATION_MISSING',
+    });
+    expect(inserts).toEqual([]);
+  });
+
   it('issues a test key instantly for a pending-KYB merchant with no settlement account', async () => {
     const { db, inserts } = makeFakeDb({ merchantRows: [merchantRow()] });
     const service = new KeyIssuanceService(db);
