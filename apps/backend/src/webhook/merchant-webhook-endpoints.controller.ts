@@ -18,7 +18,10 @@ import {
   type CreateMerchantEndpointBody,
   type WebhookEndpointObject,
 } from './dtos';
-import { WebhookEndpointNotFoundError } from './webhook.errors';
+import {
+  WebhookEndpointNotFoundError,
+  WebhookSecretRotationConflictError,
+} from './webhook.errors';
 import {
   WebhookEndpointService,
   type EndpointRow,
@@ -119,6 +122,12 @@ export class MerchantWebhookEndpointsController {
       throw new HttpException(
         { code: err.code, message: err.message },
         HttpStatus.NOT_FOUND,
+      );
+    }
+    if (err instanceof WebhookSecretRotationConflictError) {
+      throw new HttpException(
+        { code: err.code, message: err.message },
+        HttpStatus.CONFLICT,
       );
     }
     throw err as Error;

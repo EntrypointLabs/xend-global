@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Get,
   Headers,
@@ -17,7 +18,10 @@ import { webhookDeliveries } from '../db/schema';
 import { keysetBefore } from './keyset';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { UnsafeUrlError } from '../common/url-safety';
-import { WebhookEndpointNotFoundError } from '../webhook/webhook.errors';
+import {
+  WebhookEndpointNotFoundError,
+  WebhookSecretRotationConflictError,
+} from '../webhook/webhook.errors';
 import { WebhookEndpointService } from '../webhook/webhook-endpoint.service';
 import { MerchantAuditService } from './merchant-audit.service';
 import { MerchantOwnerService } from './merchant-owner.service';
@@ -243,6 +247,10 @@ export class MerchantPortalWebhooksController {
       );
     if (error instanceof WebhookEndpointNotFoundError)
       throw new NotFoundException('Webhook endpoint not found');
+    if (error instanceof WebhookSecretRotationConflictError)
+      throw new ConflictException(
+        'This endpoint was rotated in another session. Reload and try again.',
+      );
     throw error as Error;
   }
 }

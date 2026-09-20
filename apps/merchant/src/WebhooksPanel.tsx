@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { PortalClient } from "./portal";
-import { KeyReveal } from "./KeyReveal";
 
 export type WebhookEndpoint = {
   id: string;
@@ -27,7 +26,18 @@ function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
-export function WebhooksPanel({ client }: { client: PortalClient }) {
+export function WebhooksPanel({
+  client,
+  onSecret,
+}: {
+  client: PortalClient;
+  /**
+   * Surface a one-time signing secret to the workspace shell, which renders it
+   * above the routed content so navigating away does not discard the only copy
+   * the merchant is ever shown.
+   */
+  onSecret: (secret: string, label: string) => void;
+}) {
   const [endpoints, setEndpoints] = useState<WebhookEndpoint[] | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
@@ -36,8 +46,6 @@ export function WebhooksPanel({ client }: { client: PortalClient }) {
   const [url, setUrl] = useState("");
   const [mode, setMode] = useState<"test" | "live">("test");
   const [busy, setBusy] = useState(false);
-  const [secret, setSecret] = useState("");
-  const [secretLabel, setSecretLabel] = useState("");
   const submitting = useRef(false);
 
   async function load() {
@@ -70,8 +78,7 @@ export function WebhooksPanel({ client }: { client: PortalClient }) {
         "webhooks",
         { url, mode },
       );
-      setSecret(created.secret);
-      setSecretLabel("Signing secret");
+      onSecret(created.secret, "Signing secret");
       setUrl("");
       await load();
     } catch (failure) {
@@ -91,8 +98,7 @@ export function WebhooksPanel({ client }: { client: PortalClient }) {
       const rotated = await client.post<{ secret: string }>(
         `webhooks/${encodeURIComponent(id)}/rotate_secret`,
       );
-      setSecret(rotated.secret);
-      setSecretLabel("New signing secret");
+      onSecret(rotated.secret, "New signing secret");
       await load();
     } catch (failure) {
       setError(
@@ -133,15 +139,6 @@ export function WebhooksPanel({ client }: { client: PortalClient }) {
         <p className="error" role="alert">
           {error}
         </p>
-      )}
-
-      {secret && (
-        <KeyReveal
-          key={secret}
-          secret={secret}
-          label={secretLabel}
-          onDismiss={() => setSecret("")}
-        />
       )}
 
       <form className="webhook-create" onSubmit={(e) => void create(e)}>

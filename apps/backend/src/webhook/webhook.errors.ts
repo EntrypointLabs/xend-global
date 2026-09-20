@@ -18,3 +18,12 @@ export class WebhookDeliveryNotFoundError extends Error {
     this.name = 'WebhookDeliveryNotFoundError';
   }
 }
+
+/** A concurrent rotation changed the endpoint's primary secret first; retry. */
+export class WebhookSecretRotationConflictError extends Error {
+  readonly code = 'WEBHOOK_SECRET_ROTATION_CONFLICT';
+  constructor(message: string) {
+    super(message);
+    this.name = 'WebhookSecretRotationConflictError';
+  }
+}

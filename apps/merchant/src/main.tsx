@@ -119,7 +119,13 @@ function MerchantWorkspace() {
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [rawKey, setRawKey] = useState("");
+  // One-time secrets (API keys and webhook signing secrets) are revealed once.
+  // Held at the workspace level and shown above the routed content so switching
+  // pages never discards the only copy the merchant is given.
+  const [secretReveal, setSecretReveal] = useState<{
+    secret: string;
+    label: string;
+  } | null>(null);
   const [keyName, setKeyName] = useState("");
 
   async function run(action: () => Promise<void>) {
@@ -145,7 +151,7 @@ function MerchantWorkspace() {
       mode,
       name: keyName.trim() || undefined,
     });
-    setRawKey(key.raw);
+    setSecretReveal({ secret: key.raw, label: "API key" });
     setKeyName("");
     await refresh();
   }
@@ -153,7 +159,7 @@ function MerchantWorkspace() {
     const key = await client.post<{ raw: string }>(
       `keys/${encodeURIComponent(id)}/rotate`,
     );
-    setRawKey(key.raw);
+    setSecretReveal({ secret: key.raw, label: "New API key" });
     await refresh();
   }
 
@@ -245,7 +251,7 @@ function MerchantWorkspace() {
                       if (profileRef.current && !profileRef.current.canLeave())
                         return;
                       setData(null);
-                      setRawKey("");
+                      setSecretReveal(null);
                       void logout();
                     }}
                   >
@@ -259,6 +265,14 @@ function MerchantWorkspace() {
             <p className="error" role="alert">
               {error}
             </p>
+          )}
+          {secretReveal && (
+            <KeyReveal
+              key={secretReveal.secret}
+              secret={secretReveal.secret}
+              label={secretReveal.label}
+              onDismiss={() => setSecretReveal(null)}
+            />
           )}
           {!authenticated ? (
             <section className="panel">
@@ -364,7 +378,10 @@ function MerchantWorkspace() {
           ) : page === "payment" && route.paymentId ? (
             <PaymentDetail client={client} paymentId={route.paymentId} />
           ) : page === "webhooks" ? (
-            <WebhooksPanel client={client} />
+            <WebhooksPanel
+              client={client}
+              onSecret={(secret, label) => setSecretReveal({ secret, label })}
+            />
           ) : page === "audit" ? (
             <AuditPanel client={client} />
           ) : page === "account" ? (
@@ -614,13 +631,6 @@ function MerchantWorkspace() {
                       {data.devnetExecutionEnabled &&
                         " Devnet execution keys move test USDC only and are rejected on mainnet. They do not complete business verification."}
                     </p>
-                    {rawKey && (
-                      <KeyReveal
-                        key={rawKey}
-                        secret={rawKey}
-                        onDismiss={() => setRawKey("")}
-                      />
-                    )}
                     <div className="key-cards">
                       {data.keys.length === 0 && (
                         <p>
@@ -677,7 +687,7 @@ function MerchantWorkspace() {
                                         }
                                       : current,
                                   );
-                                  setRawKey("");
+                                  setSecretReveal(null);
                                 }}
                               />
                             </div>

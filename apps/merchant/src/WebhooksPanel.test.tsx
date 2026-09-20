@@ -29,14 +29,14 @@ describe("WebhooksPanel", () => {
   it("lists endpoints without ever showing a stored secret", async () => {
     const get = vi.fn().mockResolvedValue({ endpoints: [endpoint()] });
     const client = { get, post: vi.fn() } as unknown as PortalClient;
-    render(<WebhooksPanel client={client} />);
+    render(<WebhooksPanel client={client} onSecret={vi.fn()} />);
     await waitFor(() =>
       expect(screen.getByText("https://example.com/hook")).toBeTruthy(),
     );
     expect(screen.queryByText(/whsec_/)).toBeNull();
   });
 
-  it("creates an endpoint and reveals the signing secret once", async () => {
+  it("hands the one-time signing secret to the workspace shell, not panel state", async () => {
     const get = vi
       .fn()
       .mockResolvedValueOnce({ endpoints: [] })
@@ -44,8 +44,9 @@ describe("WebhooksPanel", () => {
     const post = vi
       .fn()
       .mockResolvedValue({ ...endpoint(), secret: "whsec_new_secret" });
+    const onSecret = vi.fn();
     const client = { get, post } as unknown as PortalClient;
-    render(<WebhooksPanel client={client} />);
+    render(<WebhooksPanel client={client} onSecret={onSecret} />);
     await waitFor(() => expect(get).toHaveBeenCalled());
 
     fireEvent.change(screen.getByLabelText(/Endpoint URL/), {
@@ -54,8 +55,14 @@ describe("WebhooksPanel", () => {
     fireEvent.click(screen.getByText("Add endpoint"));
 
     await waitFor(() =>
-      expect(screen.getByText("whsec_new_secret")).toBeTruthy(),
+      expect(onSecret).toHaveBeenCalledWith(
+        "whsec_new_secret",
+        "Signing secret",
+      ),
     );
+    // The panel itself never renders the secret; the shell owns the reveal so
+    // it survives navigation away from the webhooks page.
+    expect(screen.queryByText("whsec_new_secret")).toBeNull();
     expect(post.mock.calls[0]?.[0]).toBe("webhooks");
   });
 });

@@ -147,7 +147,9 @@ function Review() {
         {panel === "payment" && (
           <PaymentDetail client={stub} paymentId="pi_demo" />
         )}
-        {panel === "webhooks" && <WebhooksPanel client={stub} />}
+        {panel === "webhooks" && (
+          <WebhooksPanel client={stub} onSecret={() => {}} />
+        )}
         {panel === "audit" && <AuditPanel client={stub} />}
       </main>
     </div>

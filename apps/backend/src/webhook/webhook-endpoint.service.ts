@@ -5,7 +5,10 @@ import { and, desc, eq } from 'drizzle-orm';
 import { DbService, type DbExecutor } from '../db/db.service';
 import { webhookEndpoints } from '../db/schema';
 import { assertPublicHttpsUrl } from '../common/url-safety';
-import { WebhookEndpointNotFoundError } from './webhook.errors';
+import {
+  WebhookEndpointNotFoundError,
+  WebhookSecretRotationConflictError,
+} from './webhook.errors';
 
 export type EndpointRow = typeof webhookEndpoints.$inferSelect;
 
@@ -98,6 +101,12 @@ export class WebhookEndpointService {
    * window, then installs the new primary. The old secret stops signing at
    * secondary_expires_at, so a merchant that never rotates their copy is not
    * left verifying against a retired key indefinitely.
+   *
+   * The update is conditional on the primary secret that was read, so two
+   * concurrent rotations cannot both derive a successor from the same primary
+   * and have the loser overwrite the winner's new primary while carrying the
+   * wrong secondary. The second write matches no row and is reported as a
+   * conflict for the caller to retry against the now-current primary.
    */
   async rotateSecret(
     id: string,
@@ -111,7 +120,7 @@ export class WebhookEndpointService {
     const secondaryExpiresAt = new Date(
       Date.now() + graceHours * 60 * 60 * 1000,
     );
-    await db
+    const [updated] = await db
       .update(webhookEndpoints)
       .set({
         secretSecondary: endpoint.secretPrimary,
@@ -119,7 +128,17 @@ export class WebhookEndpointService {
         secretPrimary: secret,
         updatedAt: new Date(),
       })
-      .where(eq(webhookEndpoints.id, id));
+      .where(
+        and(
+          eq(webhookEndpoints.id, id),
+          eq(webhookEndpoints.secretPrimary, endpoint.secretPrimary),
+        ),
+      )
+      .returning({ id: webhookEndpoints.id });
+    if (!updated)
+      throw new WebhookSecretRotationConflictError(
+        `endpoint ${id} secret rotated concurrently; retry`,
+      );
     return { secret, secondaryExpiresAt };
   }
 
