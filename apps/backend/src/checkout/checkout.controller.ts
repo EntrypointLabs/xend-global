@@ -239,7 +239,7 @@ export class CheckoutController {
 
       // A second tab or a retried response must not rebuild a completed Spend.
       // Authenticate first and bind this replay to the original Consumer.
-      if (intent.status === 'succeeded') {
+      if (intent.status === 'succeeded' || intent.status === 'failed') {
         if (intent.consumerId !== consumerId) {
           throw new IntentNotFoundError(reference);
         }

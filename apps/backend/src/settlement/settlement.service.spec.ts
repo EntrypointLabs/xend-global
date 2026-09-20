@@ -8,6 +8,8 @@ import {
   VersionedTransaction,
 } from '@solana/web3.js';
 import type { DbService } from '../db/db.service';
+import type { CapacityService } from '../capability/capacity.service';
+import type { EventPublisher } from '../events/event-publisher.interface';
 import { paymentAttempts } from '../db/schema';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { PaymentIntentService } from '../payment/payment-intent.service';
@@ -115,7 +117,8 @@ function makeDb(cfg: {
       return next;
     },
   );
-  return { client, withAdvisoryLock } as unknown as DbService;
+  const withTransaction = jest.fn((fn: () => Promise<unknown>) => fn());
+  return { client, withAdvisoryLock, withTransaction } as unknown as DbService;
 }
 
 function makeIntents(intent: Record<string, unknown>) {
@@ -204,15 +207,20 @@ function makeService(deps: {
   provisioning: SettlementProvisioningService;
   spends: SpendService;
   confirmation?: SettlementConfirmationService;
+  capacity?: CapacityService;
+  events?: EventPublisher;
 }): SettlementService {
   const service = new SettlementService(
     deps.db,
     makeConfig(),
     deps.solana,
+    deps.capacity ??
+      ({ releaseCapacity: jest.fn() } as unknown as CapacityService),
     deps.intents,
     deps.provisioning,
     deps.spends,
     deps.confirmation ?? makeConfirmation(),
+    deps.events ?? ({ publish: jest.fn() } as unknown as EventPublisher),
   );
   service.onModuleInit();
   return service;
@@ -518,15 +526,18 @@ describe('SettlementService', () => {
 
     it('does not broadcast when approval outlives the quote', async () => {
       const { wire, messageBase64 } = buildWireAndMessage();
-      const { intents } = makeIntents({
+      const { intents, transition } = makeIntents({
         id: 'pi_1',
         consumerId: 'u_1',
         merchantId: 'm_1',
+        usdcSettlementRaw: '1000000',
         status: 'authorized',
         expiresAt: new Date(Date.now() - 1),
       });
       const { provisioning } = makeProvisioning(ENDPOINT);
       const { spends, submit } = makeSpends();
+      const releaseCapacity = jest.fn().mockResolvedValue(undefined);
+      const publish = jest.fn().mockResolvedValue(undefined);
       const service = makeService({
         db: makeDb({
           attempt: {
@@ -535,16 +546,29 @@ describe('SettlementService', () => {
             messageBase64,
             txSignature: null,
           },
+          updateReturning: [[{ id: 'att_1' }]],
         }),
         solana: makeSolana(),
         intents,
         provisioning,
         spends,
+        capacity: { releaseCapacity } as unknown as CapacityService,
+        events: { publish } as unknown as EventPublisher,
       });
       await expect(service.submitSettlement('pi_1', wire)).rejects.toThrow(
         IntentExpiredError,
       );
       expect(submit).not.toHaveBeenCalled();
+      expect(transition).toHaveBeenCalledWith(
+        'pi_1',
+        'authorized',
+        'expired',
+        {},
+      );
+      expect(releaseCapacity).toHaveBeenCalledWith('u_1', '1000000');
+      expect(publish).toHaveBeenCalledWith(
+        expect.objectContaining({ topic: 'payment.expired', key: 'pi_1' }),
+      );
     });
     it('rejects a previously prepared fiat Payment without broadcasting', async () => {
       const { wire, messageBase64 } = buildWireAndMessage();

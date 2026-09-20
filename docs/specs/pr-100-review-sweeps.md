@@ -67,3 +67,16 @@ Implemented:
 - Keep the current Merchant dashboard mounted while a refreshed identity token revalidates, preserving unsaved form drafts through token rotation.
 
 Disagreements: none.
+
+## Sweep 5
+
+Implemented:
+
+- Scope Merchant portal settlement destinations and Payment history to the active Solana cluster.
+- Preserve dirty business-profile drafts when a token refresh or another session delivers a newer profile version; pristine forms still synchronize automatically.
+- Return an authenticated failed Payment as its signed terminal result when Checkout authorization is replayed after a lost response.
+- Atomically retire a pinned, unbroadcast attempt whose quote expires, transition the intent to `expired`, release its capacity reservation, and publish `payment.expired`.
+- Keep the Merchant name and amount visible when mobile submission fails or confirmation times out, while disabling unsafe retries after a signed Payment may have been submitted.
+- Allow owning Merchants to read legacy terminal intents whose pre-migration execution cluster is null.
+
+Disagreements: none.

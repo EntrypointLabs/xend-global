@@ -12,6 +12,8 @@ import type { SpendService } from '../account/spend.service';
 import type { SettlementProvisioningService } from './settlement-provisioning.service';
 import type { SettlementConfirmationService } from './settlement-confirmation.service';
 import { SettlementService } from './settlement.service';
+import type { CapacityService } from '../capability/capacity.service';
+import type { EventPublisher } from '../events/event-publisher.interface';
 
 function harness() {
   const consumer = Keypair.generate();
@@ -43,10 +45,12 @@ function harness() {
     { client: { select: () => query } } as unknown as DbService,
     {} as ConfigService,
     {} as SolanaRpc,
+    {} as CapacityService,
     {} as PaymentIntentService,
     {} as SettlementProvisioningService,
     {} as SpendService,
     {} as SettlementConfirmationService,
+    {} as EventPublisher,
   );
   return { service, tx, consumer, query };
 }

@@ -112,9 +112,9 @@ export const merchantStatusEnum = pgEnum('merchant_status', [
 export const apiKeyModeEnum = pgEnum('api_key_mode', ['test', 'live']);
 
 // Stripe-shaped intent lifecycle. 'created' -> 'authorized' ->
-// 'settling' -> 'succeeded' | 'failed'; 'expired' (TTL before
-// authorization) and 'canceled' (merchant cancel before
-// authorization) are the other terminals.
+// 'settling' -> 'succeeded' | 'failed'; 'expired' covers TTL before
+// authorization or before an authorized Spend is broadcast, and 'canceled'
+// covers merchant cancellation before authorization.
 export const paymentIntentStatusEnum = pgEnum('payment_intent_status', [
   'created',
   'authorized',

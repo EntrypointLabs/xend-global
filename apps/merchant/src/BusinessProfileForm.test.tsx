@@ -186,3 +186,29 @@ it("refreshes fields and the optimistic-lock version when newer Merchant data ar
   await waitFor(() => expect(onSave).toHaveBeenCalled());
   expect(onSave.mock.calls[0]?.[0]).toMatchObject({ expectedVersion: 3 });
 });
+
+it("preserves a dirty draft when refreshed Merchant data arrives", () => {
+  const { rerender } = render(
+    <BusinessProfileForm merchant={merchant} onSave={vi.fn()} />,
+  );
+  fireEvent.click(screen.getByText("Edit business details"));
+  fireEvent.change(screen.getByLabelText("Contact name"), {
+    target: { value: "Unsaved draft" },
+  });
+
+  rerender(
+    <BusinessProfileForm
+      merchant={{
+        ...merchant,
+        displayName: "Remote update",
+        profileVersion: 3,
+        businessProfile: { contactName: "Another session" },
+      }}
+      onSave={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByDisplayValue("Unsaved draft")).toBeTruthy();
+  expect(screen.queryByDisplayValue("Another session")).toBeNull();
+  expect(screen.queryByDisplayValue("Remote update")).toBeNull();
+});

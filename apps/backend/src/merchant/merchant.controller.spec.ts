@@ -192,6 +192,28 @@ describe('MerchantController.createIntent', () => {
     expect(out.livemode).toBe(false);
   });
 
+  it('keeps legacy terminal intents readable when their cluster is null', async () => {
+    const { controller } = makeController(
+      intentRow({
+        status: 'succeeded',
+        mode: 'live',
+        executionCluster: null,
+      }),
+    );
+    await expect(
+      controller.getIntent(
+        {
+          merchant: {
+            ...req.merchant,
+            mode: 'live',
+            executionCluster: 'mainnet',
+          },
+        } as MerchantRequest,
+        'pi_1',
+      ),
+    ).resolves.toMatchObject({ id: 'pi_1', status: 'succeeded' });
+  });
+
   it('echoes an NGN request in kobo', async () => {
     const { controller, intents } = makeController(
       intentRow({

@@ -188,6 +188,7 @@ export class MerchantController {
         intent.merchantId !== req.merchant.merchantId ||
         intent.mode !== req.merchant.mode ||
         (req.merchant.executionCluster !== null &&
+          intent.executionCluster !== null &&
           intent.executionCluster !== req.merchant.executionCluster)
       ) {
         throw new IntentNotFoundError(`intent ${id} not found`);

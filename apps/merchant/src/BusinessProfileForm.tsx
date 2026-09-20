@@ -86,7 +86,8 @@ export function BusinessProfileForm({
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty, busy]);
   useEffect(() => {
-    if (merchant.profileVersion === baseline.profileVersion) return;
+    if (merchant.profileVersion === baseline.profileVersion || dirty || busy)
+      return;
     setBaseline(merchant);
     setDisplayName(merchant.displayName);
     setProfile(
@@ -98,7 +99,7 @@ export function BusinessProfileForm({
     setFieldErrors({});
     setEditing(false);
     setSaved(false);
-  }, [merchant, baseline.profileVersion]);
+  }, [merchant, baseline.profileVersion, dirty, busy]);
   function reset(next: ProfileMerchant) {
     setDisplayName(next.displayName);
     setProfile(

@@ -68,11 +68,13 @@ export default function FinishPaymentScreen() {
   // State rather than a ref: the modal reads it while rendering, and a ref
   // would show the previous Payment's merchant and amount for one frame.
   const [active, setActive] = useState<AwaitingPayment | null>(null);
+  const [retryable, setRetryable] = useState(false);
 
   const waiting = payments ?? [];
 
   const approve = async (payment: AwaitingPayment) => {
     setActive(payment);
+    setRetryable(true);
     // Approval runs from a press handler; check expiry at interaction time.
     // eslint-disable-next-line react-hooks/purity
     if (Date.parse(payment.expiresAt) <= Date.now()) {
@@ -133,6 +135,10 @@ export default function FinishPaymentScreen() {
       });
 
       submitted = true;
+      // From this point a retry could duplicate a Payment whose response was
+      // merely lost. Keep its context visible, but make Activity the recovery
+      // surface until the persisted outcome is known.
+      setRetryable(false);
       await apiClient.submitPayment(
         payment.reference,
         fromByteArray(signedTransaction.serialize())
@@ -142,7 +148,6 @@ export default function FinishPaymentScreen() {
         apiClient.paymentStatus(payment.reference)
       );
       if (outcome !== "succeeded") {
-        setActive(null);
         hold(
           outcome === "failed" ? "failed" : "paused",
           outcome === "failed"
@@ -172,7 +177,6 @@ export default function FinishPaymentScreen() {
       router.replace("/(tabs)/history" as never);
     } catch (err) {
       if (submitted) {
-        setActive(null);
         hold(
           "paused",
           "We could not confirm the outcome yet. Check Activity before trying again."
@@ -301,7 +305,7 @@ export default function FinishPaymentScreen() {
             : ""
         }
         counterparty={active?.merchantDisplayName ?? ""}
-        onRetry={active ? retry : undefined}
+        onRetry={active && retryable ? retry : undefined}
         onDismiss={() => setFlow(null)}
       />
     </ScreenLayout>
