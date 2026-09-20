@@ -1,6 +1,6 @@
 {
   "name": "@xend/checkout-core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Pay with Xend checkout button and result relay. Framework-agnostic, zero runtime dependencies.",
   "license": "MIT",
   "type": "module",
