@@ -280,6 +280,25 @@ describe('KeyIssuanceService.markKybVerified', () => {
       code: 'KYB_SUBMISSION_MISMATCH',
     });
   });
+
+  it('refuses to re-verify a rejected merchant whose submitted version still matches', async () => {
+    // Rejection leaves kyb_submitted_version equal to profile_version, so only
+    // the pending-state guard stops a repeated verify from re-enabling keys.
+    const { db, updates } = makeFakeDb({
+      merchantRows: [
+        merchantRow({
+          kybStatus: 'rejected',
+          profileVersion: 2,
+          kybSubmittedVersion: 2,
+        }),
+      ],
+    });
+    const service = new KeyIssuanceService(db);
+    await expect(service.markKybVerified('m1')).rejects.toMatchObject({
+      code: 'KYB_SUBMISSION_MISMATCH',
+    });
+    expect(updates).toEqual([]);
+  });
 });
 
 describe('KeyIssuanceService.markKybRejected', () => {

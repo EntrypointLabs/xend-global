@@ -117,9 +117,13 @@ async function main(): Promise<void> {
       // Verification is bound to the submitted profile version: stamp verified
       // only when a submission is present and still matches the current
       // profile, so an edit made after review is never verified unreviewed.
+      // Only the currently reviewed submission can be approved: require the
+      // pending state so a delayed or repeated verify cannot overwrite a
+      // rejection (which leaves kyb_submitted_version = profile_version) and
+      // silently re-enable live keys.
       const res = await client.query(
         `UPDATE merchants SET kyb_status = 'verified', kyb_verified_at = now(), updated_at = now()
-         WHERE id = $1 AND kyb_submitted_version IS NOT NULL AND kyb_submitted_version = profile_version RETURNING id`,
+         WHERE id = $1 AND kyb_status = 'pending' AND kyb_submitted_version IS NOT NULL AND kyb_submitted_version = profile_version RETURNING id`,
         [args.markKybVerified],
       );
       if (res.rowCount === 0) {
@@ -131,7 +135,7 @@ async function main(): Promise<void> {
         ).rows;
         throw new Error(
           row
-            ? `merchant ${args.markKybVerified} has no submission matching its current profile; ask them to submit for verification`
+            ? `merchant ${args.markKybVerified} has no pending submission matching its current profile; ask them to submit for verification`
             : `merchant ${args.markKybVerified} not found`,
         );
       }

@@ -230,6 +230,7 @@ export class KeyIssuanceService {
     const [merchant] = await this.db.client
       .select({
         id: merchants.id,
+        kybStatus: merchants.kybStatus,
         profileVersion: merchants.profileVersion,
         kybSubmittedVersion: merchants.kybSubmittedVersion,
       })
@@ -239,12 +240,16 @@ export class KeyIssuanceService {
     if (!merchant) {
       throw new MerchantNotFoundError(`merchant ${merchantId} not found`);
     }
+    // Only the currently reviewed submission can be approved. Requiring the
+    // pending state stops a repeated verify from overwriting a rejection (which
+    // leaves the submitted version matching the profile) and re-enabling keys.
     if (
+      merchant.kybStatus !== 'pending' ||
       merchant.kybSubmittedVersion === null ||
       merchant.kybSubmittedVersion !== merchant.profileVersion
     ) {
       throw new KybSubmissionMismatchError(
-        `merchant ${merchantId} has no submission matching its current profile; ask them to submit for verification`,
+        `merchant ${merchantId} has no pending submission matching its current profile; ask them to submit for verification`,
       );
     }
     await this.db.client
@@ -253,6 +258,7 @@ export class KeyIssuanceService {
       .where(
         and(
           eq(merchants.id, merchantId),
+          eq(merchants.kybStatus, 'pending'),
           eq(merchants.profileVersion, merchant.profileVersion),
         ),
       );
