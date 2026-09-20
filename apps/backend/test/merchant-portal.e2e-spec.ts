@@ -164,7 +164,7 @@ const TEMP_TABLES = [
         expect(me.merchant).not.toHaveProperty('ownerProviderId');
       });
 
-      it('rotates a key: the successor keeps the name and links to its predecessor, the old one is revoked', async () => {
+      it('rotates a key: the successor keeps the name and links to its predecessor, the old one enters a grace window rather than being revoked', async () => {
         const issued = body<{ raw: string }>(
           await issueKey('owner-a', { mode: 'test', name: 'Rotate me' }).expect(
             201,
@@ -175,7 +175,7 @@ const TEMP_TABLES = [
         } = await client.query<{ id: string }>(
           'SELECT id FROM pg_temp.api_keys',
         );
-        const rotated = body<{ raw: string }>(
+        const rotated = body<{ raw: string; previousKeyExpiresAt: string }>(
           await request(server())
             .post(`/merchant-portal/keys/${key.id}/rotate`)
             .set('Authorization', auth('owner-a'))
@@ -183,19 +183,30 @@ const TEMP_TABLES = [
             .expect(201),
         );
         expect(rotated.raw).not.toBe(issued.raw);
+        // The response tells the caller how long the previous key keeps working.
+        expect(Number.isNaN(Date.parse(rotated.previousKeyExpiresAt))).toBe(
+          false,
+        );
         const rows = await client.query<{
           id: string;
           name: string | null;
           rotated_from_id: string | null;
           revoked_at: Date | null;
+          rotation_grace_until: Date | null;
         }>(
-          'SELECT id, name, rotated_from_id, revoked_at FROM pg_temp.api_keys ORDER BY created_at',
+          'SELECT id, name, rotated_from_id, revoked_at, rotation_grace_until FROM pg_temp.api_keys ORDER BY created_at',
         );
         expect(rows.rows).toHaveLength(2);
         const old = rows.rows.find((r) => r.id === key.id);
         const next = rows.rows.find((r) => r.id !== key.id);
-        expect(old?.revoked_at).not.toBeNull();
+        // The old key is not revoked; it stays valid until its grace window.
+        expect(old?.revoked_at).toBeNull();
+        expect(old?.rotation_grace_until).not.toBeNull();
+        expect(old?.rotation_grace_until!.getTime()).toBeGreaterThan(
+          Date.now(),
+        );
         expect(next?.revoked_at).toBeNull();
+        expect(next?.rotation_grace_until).toBeNull();
         expect(next?.name).toBe('Rotate me');
         expect(next?.rotated_from_id).toBe(key.id);
       });
@@ -399,7 +410,7 @@ const TEMP_TABLES = [
     });
 
     describe('Race safety', () => {
-      it('refuses to rotate an already-rotated key and leaves exactly one successor', async () => {
+      it('refuses to re-rotate a key already in its grace window and leaves exactly one successor', async () => {
         await issueKey('owner-a', { mode: 'test', name: 'Once' }).expect(201);
         const {
           rows: [key],
@@ -411,16 +422,24 @@ const TEMP_TABLES = [
           .set('Authorization', auth('owner-a'))
           .send({})
           .expect(201);
-        // The original is now revoked; rotating it again claims nothing.
+        // The original is in its grace window (still valid), not revoked, so a
+        // retried rotation conflicts instead of minting a second successor.
         await request(server())
           .post(`/merchant-portal/keys/${key.id}/rotate`)
           .set('Authorization', auth('owner-a'))
           .send({})
-          .expect(404);
-        const active = await client.query(
-          'SELECT id FROM pg_temp.api_keys WHERE revoked_at IS NULL',
+          .expect(409);
+        const successors = await client.query(
+          'SELECT id FROM pg_temp.api_keys WHERE rotated_from_id = $1',
+          [key.id],
         );
-        expect(active.rows).toHaveLength(1);
+        expect(successors.rows).toHaveLength(1);
+        // Access is preserved: the original key is not revoked.
+        const original = await client.query<{ revoked_at: Date | null }>(
+          'SELECT revoked_at FROM pg_temp.api_keys WHERE id = $1',
+          [key.id],
+        );
+        expect(original.rows[0]?.revoked_at).toBeNull();
       });
 
       it('does not revert a merchant verified between the read and the KYB submit update', async () => {

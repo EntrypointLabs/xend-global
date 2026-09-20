@@ -1,6 +1,6 @@
 import type { DbService } from '../db/db.service';
 import { ConfigService } from '@nestjs/config';
-import { merchants, settlementAccounts } from '../db/schema';
+import { apiKeys, merchants, settlementAccounts } from '../db/schema';
 import { KeyIssuanceService } from './key-issuance.service';
 
 type MerchantRow = typeof merchants.$inferSelect;
@@ -361,6 +361,104 @@ describe('KeyIssuanceService.markKybRejected', () => {
     const service = new KeyIssuanceService(db);
     await expect(service.markKybRejected('ghost', 'x')).rejects.toMatchObject({
       code: 'MERCHANT_NOT_FOUND',
+    });
+  });
+});
+
+describe('KeyIssuanceService.rotateKey', () => {
+  const oldKey = {
+    id: 'ak1',
+    merchantId: 'm1',
+    keyHash: 'h',
+    keyPrefix: 'xnd_test_',
+    fingerprint: 'xnd_test_...old',
+    name: 'Prod key',
+    executionCluster: null,
+    rotatedFromId: null,
+    mode: 'test' as const,
+    revokedAt: null as Date | null,
+    rotationGraceUntil: null as Date | null,
+    lastUsedAt: null,
+    createdAt: new Date('2026-01-01'),
+  };
+
+  function rotateDb(cfg: {
+    claim: boolean;
+    existing?: Partial<typeof oldKey>;
+  }) {
+    const sets: Record<string, unknown>[] = [];
+    const client = {
+      update: () => ({
+        set: (v: Record<string, unknown>) => {
+          sets.push(v);
+          return {
+            where: () => ({
+              returning: () => Promise.resolve(cfg.claim ? [oldKey] : []),
+            }),
+          };
+        },
+      }),
+      select: () => ({
+        from: (tbl: unknown) => ({
+          where: () => ({
+            limit: () =>
+              Promise.resolve(
+                tbl === merchants
+                  ? [merchantRow()]
+                  : tbl === apiKeys && cfg.existing
+                    ? [{ ...oldKey, ...cfg.existing }]
+                    : [],
+              ),
+          }),
+        }),
+      }),
+      insert: () => ({
+        values: () => ({
+          returning: () => Promise.resolve([{ id: 'ak-new' }]),
+        }),
+      }),
+    };
+    return { db: { client } as unknown as DbService, sets };
+  }
+
+  it('opens a grace window on the old key instead of revoking it, and returns its expiry', async () => {
+    const { db, sets } = rotateDb({ claim: true });
+    const service = new KeyIssuanceService(db);
+    const result = await service.rotateKey('ak1', 'm1');
+    expect(result.raw.startsWith('xnd_test_')).toBe(true);
+    expect(result.previousKeyExpiresAt).toBeInstanceOf(Date);
+    // The old key is put into a grace window, never revoked outright.
+    expect(sets[0].rotationGraceUntil).toBeInstanceOf(Date);
+    expect(sets[0]).not.toHaveProperty('revokedAt');
+  });
+
+  it('reports rotation-in-progress on a retry whose grace window is already open', async () => {
+    const { db } = rotateDb({
+      claim: false,
+      existing: { rotationGraceUntil: new Date(Date.now() + 3_600_000) },
+    });
+    const service = new KeyIssuanceService(db);
+    await expect(service.rotateKey('ak1', 'm1')).rejects.toMatchObject({
+      code: 'API_KEY_ROTATION_IN_PROGRESS',
+    });
+  });
+
+  it('rejects rotating an unknown key', async () => {
+    const { db } = rotateDb({ claim: false });
+    const service = new KeyIssuanceService(db);
+    await expect(service.rotateKey('ghost', 'm1')).rejects.toMatchObject({
+      code: 'API_KEY_NOT_FOUND',
+    });
+  });
+
+  it('rejects rotating an already-revoked key', async () => {
+    const { db } = rotateDb({
+      claim: false,
+      existing: { revokedAt: new Date('2026-02-01') },
+    });
+    const service = new KeyIssuanceService(db);
+    await expect(service.rotateKey('ak1', 'm1')).rejects.toMatchObject({
+      code: 'API_KEY_NOT_FOUND',
     });
   });
 });

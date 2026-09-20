@@ -5,7 +5,10 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { DbService, type DbExecutor } from '../db/db.service';
 import { apiKeys, merchants, settlementAccounts } from '../db/schema';
 import { MerchantNotFoundError } from '../payment/payment.errors';
-import { ApiKeyNotFoundError } from './merchant.errors';
+import {
+  ApiKeyNotFoundError,
+  ApiKeyRotationInProgressError,
+} from './merchant.errors';
 import { generateApiKey } from './api-key.util';
 import {
   ExecutionClusterDisabledError,
@@ -161,27 +164,58 @@ export class KeyIssuanceService {
     keyId: string,
     merchantId: string,
     db: DbExecutor = this.db.client,
-  ): Promise<{ id: string; raw: string; fingerprint: string }> {
+  ): Promise<{
+    id: string;
+    raw: string;
+    fingerprint: string;
+    previousKeyExpiresAt: Date;
+  }> {
+    const graceHours =
+      this.config?.get<number>('API_KEY_ROTATION_GRACE_HOURS') ?? 24;
+    const previousKeyExpiresAt = new Date(
+      Date.now() + graceHours * 60 * 60 * 1000,
+    );
+    // Do not revoke the old key: open a grace window instead, so a rotation
+    // whose response is lost leaves the caller working on the old key rather
+    // than locked out. Claim only a key that is neither revoked nor already in
+    // a window, so a retried rotation cannot mint a second successor.
     const [claimed] = await db
       .update(apiKeys)
-      .set({ revokedAt: new Date() })
+      .set({ rotationGraceUntil: previousKeyExpiresAt })
       .where(
         and(
           eq(apiKeys.id, keyId),
           eq(apiKeys.merchantId, merchantId),
           isNull(apiKeys.revokedAt),
+          isNull(apiKeys.rotationGraceUntil),
         ),
       )
       .returning();
-    if (!claimed) throw new ApiKeyNotFoundError(`api key ${keyId} not found`);
+    if (!claimed) {
+      // Distinguish a retry of an already-rotated key (its window is open and
+      // the caller still has working access) from a missing/revoked key, so the
+      // caller is told access is preserved instead of a bare not-found.
+      const [existing] = await db
+        .select()
+        .from(apiKeys)
+        .where(and(eq(apiKeys.id, keyId), eq(apiKeys.merchantId, merchantId)))
+        .limit(1);
+      if (existing && !existing.revokedAt && existing.rotationGraceUntil) {
+        throw new ApiKeyRotationInProgressError(
+          `api key ${keyId} was already rotated; the previous key stays valid until ${existing.rotationGraceUntil.toISOString()}. Create a new key if the replacement secret was not captured.`,
+        );
+      }
+      throw new ApiKeyNotFoundError(`api key ${keyId} not found`);
+    }
     const requestedMode =
       claimed.executionCluster === 'devnet' ? 'devnet' : claimed.mode;
-    return this.issueKey(
+    const issued = await this.issueKey(
       merchantId,
       requestedMode,
       { name: claimed.name, rotatedFromId: claimed.id },
       db,
     );
+    return { ...issued, previousKeyExpiresAt };
   }
 
   /**

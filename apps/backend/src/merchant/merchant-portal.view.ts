@@ -41,6 +41,9 @@ export function toApiKeyView(key: ApiKeyRow) {
     mode: key.mode,
     executionCluster: key.executionCluster,
     rotatedFromId: key.rotatedFromId,
+    // When set, this key was rotated and stays valid only until this instant;
+    // the portal shows it as expiring rather than plainly active.
+    rotationGraceUntil: key.rotationGraceUntil?.toISOString() ?? null,
     lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
     revokedAt: key.revokedAt?.toISOString() ?? null,
     createdAt: key.createdAt.toISOString(),

@@ -17,7 +17,11 @@ import { MerchantPortalController } from './merchant-portal.controller';
 import { MerchantOwnerService } from './merchant-owner.service';
 import type { MerchantAuditService } from './merchant-audit.service';
 import { SettlementAccountNotProvisionedError } from '../settlement/settlement.errors';
-import { ApiKeyNotFoundError, KybNotVerifiedError } from './merchant.errors';
+import {
+  ApiKeyNotFoundError,
+  ApiKeyRotationInProgressError,
+  KybNotVerifiedError,
+} from './merchant.errors';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
 import {
@@ -60,6 +64,7 @@ function setup(
     id: 'ak-next',
     raw: 'next-key',
     fingerprint: 'next…key',
+    previousKeyExpiresAt: new Date('2026-02-01T00:00:00.000Z'),
   });
   const db = {
     client: {
@@ -383,5 +388,23 @@ describe('Merchant portal key rotation', () => {
     await expect(controller.rotate('Bearer token', 'ak-x')).rejects.toThrow(
       ConflictException,
     );
+  });
+  it('maps a retried, already-rotated key to a 409 conflict', async () => {
+    const { controller, rotateKey } = setup();
+    rotateKey.mockRejectedValue(
+      new ApiKeyRotationInProgressError('already rotated; old key still valid'),
+    );
+    await expect(controller.rotate('Bearer token', 'ak-x')).rejects.toThrow(
+      ConflictException,
+    );
+  });
+  it('returns the successor and the previous key grace expiry', async () => {
+    const { controller } = setup();
+    const result = (await controller.rotate('Bearer token', 'ak-x')) as {
+      raw: string;
+      previousKeyExpiresAt: string;
+    };
+    expect(result.raw).toBe('next-key');
+    expect(result.previousKeyExpiresAt).toBe('2026-02-01T00:00:00.000Z');
   });
 });

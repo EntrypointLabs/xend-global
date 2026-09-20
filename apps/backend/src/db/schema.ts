@@ -890,6 +890,15 @@ export const apiKeys = pgTable(
     rotatedFromId: text('rotated_from_id'),
     mode: apiKeyModeEnum('mode').notNull(),
     revokedAt: timestamp('revoked_at'),
+    /**
+     * When a rotation issued this key's successor, the old key stays valid
+     * until this instant instead of being revoked outright, so a rotation whose
+     * HTTP response is lost never takes a live integration offline: the caller
+     * keeps working on the old key through the grace window while it adopts the
+     * replacement. Null for a key that has not been rotated; the guard treats a
+     * key with this set in the past as invalid.
+     */
+    rotationGraceUntil: timestamp('rotation_grace_until'),
     lastUsedAt: timestamp('last_used_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },

@@ -33,6 +33,7 @@ type ApiKey = {
   mode: string;
   executionCluster: string | null;
   rotatedFromId: string | null;
+  rotationGraceUntil: string | null;
   lastUsedAt: string | null;
   revokedAt: string | null;
   createdAt: string;
@@ -651,62 +652,86 @@ function MerchantWorkspace() {
                           integration.
                         </p>
                       )}
-                      {data.keys.map((key) => (
-                        <article className="key-card" key={key.id}>
-                          <div className="section-head">
-                            <h3>{key.name ? key.name : keyKind(key)}</h3>
-                            <span className="badge">
-                              {key.revokedAt ? "Revoked" : "Active"}
-                            </span>
-                          </div>
-                          {key.name && <small>{keyKind(key)}</small>}
-                          <code className="address">{key.fingerprint}</code>
-                          <small>
-                            Created {whenText(key.createdAt)} · Last used{" "}
-                            {whenText(key.lastUsedAt)}
-                            {key.rotatedFromId
-                              ? " · rotated from a prior key"
-                              : ""}
-                          </small>
-                          {!key.revokedAt && (
-                            <div className="key-card-actions actions">
-                              <button
-                                className="secondary"
-                                disabled={busy || secretReveal !== null}
-                                onClick={() => void run(() => rotate(key.id))}
-                              >
-                                Rotate key
-                              </button>
-                              <RevokeKey
-                                fingerprint={key.fingerprint}
-                                disabled={busy || secretReveal !== null}
-                                onRevoke={async () => {
-                                  const revoked = await client.post<{
-                                    revokedAt: string;
-                                  }>(
-                                    `keys/${encodeURIComponent(key.id)}/revoke`,
-                                  );
-                                  setData((current) =>
-                                    current
-                                      ? {
-                                          ...current,
-                                          keys: current.keys.map((item) =>
-                                            item.id === key.id
-                                              ? {
-                                                  ...item,
-                                                  revokedAt: revoked.revokedAt,
-                                                }
-                                              : item,
-                                          ),
-                                        }
-                                      : current,
-                                  );
-                                }}
-                              />
+                      {data.keys.map((key) => {
+                        // A rotated key keeps working until its grace window
+                        // closes; show it as expiring, not plainly active, and
+                        // do not offer to rotate it again (its successor exists).
+                        const graceUntil = key.rotationGraceUntil
+                          ? new Date(key.rotationGraceUntil)
+                          : null;
+                        const isExpiring =
+                          !key.revokedAt &&
+                          graceUntil !== null &&
+                          graceUntil.getTime() > Date.now();
+                        return (
+                          <article className="key-card" key={key.id}>
+                            <div className="section-head">
+                              <h3>{key.name ? key.name : keyKind(key)}</h3>
+                              <span className="badge">
+                                {key.revokedAt
+                                  ? "Revoked"
+                                  : isExpiring
+                                    ? "Expiring"
+                                    : "Active"}
+                              </span>
                             </div>
-                          )}
-                        </article>
-                      ))}
+                            {key.name && <small>{keyKind(key)}</small>}
+                            <code className="address">{key.fingerprint}</code>
+                            <small>
+                              Created {whenText(key.createdAt)} · Last used{" "}
+                              {whenText(key.lastUsedAt)}
+                              {key.rotatedFromId
+                                ? " · rotated from a prior key"
+                                : ""}
+                              {isExpiring && graceUntil
+                                ? ` · replaced; valid until ${graceUntil.toLocaleString()}`
+                                : ""}
+                            </small>
+                            {!key.revokedAt && (
+                              <div className="key-card-actions actions">
+                                {!isExpiring && (
+                                  <button
+                                    className="secondary"
+                                    disabled={busy || secretReveal !== null}
+                                    onClick={() =>
+                                      void run(() => rotate(key.id))
+                                    }
+                                  >
+                                    Rotate key
+                                  </button>
+                                )}
+                                <RevokeKey
+                                  fingerprint={key.fingerprint}
+                                  disabled={busy || secretReveal !== null}
+                                  onRevoke={async () => {
+                                    const revoked = await client.post<{
+                                      revokedAt: string;
+                                    }>(
+                                      `keys/${encodeURIComponent(key.id)}/revoke`,
+                                    );
+                                    setData((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            keys: current.keys.map((item) =>
+                                              item.id === key.id
+                                                ? {
+                                                    ...item,
+                                                    revokedAt:
+                                                      revoked.revokedAt,
+                                                  }
+                                                : item,
+                                            ),
+                                          }
+                                        : current,
+                                    );
+                                  }}
+                                />
+                              </div>
+                            )}
+                          </article>
+                        );
+                      })}
                     </div>
                     <div className="key-security">
                       <strong>Security best practices</strong>

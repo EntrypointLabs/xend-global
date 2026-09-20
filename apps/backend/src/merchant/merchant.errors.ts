@@ -22,6 +22,14 @@ export class ApiKeyNotFoundError extends Error {
   }
 }
 
+export class ApiKeyRotationInProgressError extends Error {
+  readonly code = 'API_KEY_ROTATION_IN_PROGRESS';
+  constructor(message: string) {
+    super(message);
+    this.name = 'ApiKeyRotationInProgressError';
+  }
+}
+
 export class MerchantSuspendedError extends Error {
   readonly code = 'MERCHANT_SUSPENDED';
   constructor(message: string) {

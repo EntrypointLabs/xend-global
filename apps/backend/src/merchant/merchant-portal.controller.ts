@@ -29,6 +29,7 @@ import { SettlementProvisioningService } from '../settlement/settlement-provisio
 import { SettlementAccountNotProvisionedError } from '../settlement/settlement.errors';
 import {
   ApiKeyNotFoundError,
+  ApiKeyRotationInProgressError,
   ExecutionClusterDisabledError,
   KybNotVerifiedError,
   SettlementDestinationMissingError,
@@ -392,11 +393,23 @@ export class MerchantPortalController {
           },
           tx,
         );
-        return issued;
+        // The old key stays valid until previousKeyExpiresAt, so the caller can
+        // finish adopting the successor even if this response is lost.
+        return {
+          id: issued.id,
+          raw: issued.raw,
+          fingerprint: issued.fingerprint,
+          previousKeyExpiresAt: issued.previousKeyExpiresAt.toISOString(),
+        };
       });
     } catch (error) {
       if (error instanceof ApiKeyNotFoundError)
         throw new NotFoundException('API key not found');
+      // A retried rotation whose first response was lost: the successor already
+      // exists and the old key is still valid, so surface a conflict that says
+      // so rather than minting a duplicate.
+      if (error instanceof ApiKeyRotationInProgressError)
+        throw new ConflictException(error.message);
       // A live key can become ineligible to rotate after issuance (KYB
       // regressed, destination incomplete, or the cluster disabled). These are
       // merchant-actionable conflicts, not server errors; the transaction has

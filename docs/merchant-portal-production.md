@@ -48,6 +48,18 @@ Content-Security-Policy, because the Checkout surface owns its own per-merchant
 - Test and live are separated by API key mode and webhook endpoint mode, so a
   sandbox integration never sees or retires a live delivery target.
 
+## API key rotation
+
+Rotating a key issues a successor and reveals its secret once, but does not
+revoke the old key outright: the previous key keeps authenticating for
+`API_KEY_ROTATION_GRACE_HOURS` (default 24), so a rotation whose HTTP response is
+lost never takes a live integration offline. The guard rejects the old key once
+that window closes. A retried rotation of a key already in its window returns a
+409 (`API_KEY_ROTATION_IN_PROGRESS`) rather than minting a second successor; if
+the replacement secret was not captured, create a new key. An explicit revoke is
+still immediate. To cut over instantly, revoke the old key after adopting the
+new one instead of waiting for the window to elapse.
+
 ## Smoke test
 
 After a deploy, run:
