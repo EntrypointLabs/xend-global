@@ -14,6 +14,8 @@ import type { MerchantIdentityService } from './merchant-identity.service';
 import type { SettlementProvisioningService } from '../settlement/settlement-provisioning.service';
 import type { KeyIssuanceService } from './key-issuance.service';
 import { MerchantPortalController } from './merchant-portal.controller';
+import { MerchantOwnerService } from './merchant-owner.service';
+import type { MerchantAuditService } from './merchant-audit.service';
 import { SettlementAccountNotProvisionedError } from '../settlement/settlement.errors';
 
 function setup(
@@ -45,9 +47,14 @@ function setup(
     id: 'ak-owned',
     revokedAt: new Date('2026-09-19T00:00:00Z'),
   });
+  const db = { client: { select } } as unknown as DbService;
+  const owner = new MerchantOwnerService(db, {
+    verifyIdToken,
+  } as unknown as MerchantIdentityService);
+  const record = jest.fn().mockResolvedValue(undefined);
   const controller = new MerchantPortalController(
-    { client: { select } } as unknown as DbService,
-    { verifyIdToken } as unknown as MerchantIdentityService,
+    db,
+    owner,
     { issueKey, revokeKey } as unknown as KeyIssuanceService,
     {
       provisionOrLink,
@@ -61,6 +68,7 @@ function setup(
           DEVNET_PAYMENTS_ENABLED: enabled,
         })[key],
     } as unknown as ConfigService,
+    { record } as unknown as MerchantAuditService,
   );
   return {
     controller,
@@ -148,7 +156,9 @@ describe('Merchant portal ownership', () => {
     const { controller, verifyIdToken, issueKey } = setup();
     await controller.issue('Bearer token', { mode: 'test' });
     expect(verifyIdToken).toHaveBeenCalledWith('token');
-    expect(issueKey).toHaveBeenCalledWith('merchant-owned', 'test');
+    expect(issueKey).toHaveBeenCalledWith('merchant-owned', 'test', {
+      name: undefined,
+    });
   });
   it('cannot issue keys without an owned Merchant record', async () => {
     const { controller, issueKey } = setup(null);
@@ -192,7 +202,9 @@ describe('execution key gates', () => {
     expect(getSettlementAddressForSettlement).toHaveBeenCalledWith(
       'merchant-owned',
     );
-    expect(issueKey).toHaveBeenCalledWith('merchant-owned', 'devnet');
+    expect(issueKey).toHaveBeenCalledWith('merchant-owned', 'devnet', {
+      name: undefined,
+    });
   });
   it('refuses disabled devnet execution', async () => {
     const { controller, issueKey } = setup();

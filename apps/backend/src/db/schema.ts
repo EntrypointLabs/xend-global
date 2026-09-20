@@ -842,6 +842,13 @@ export const merchants = pgTable('merchants', {
   // by the manual stage-2 ops action after off-system checks complete.
   kybStatus: kybStatusEnum('kyb_status').notNull().default('pending'),
   kybVerifiedAt: timestamp('kyb_verified_at'),
+  // When the owner submitted their business details for verification review.
+  // Distinct from settlement_terms: submission is the merchant asking to be
+  // reviewed, and it is cleared to null on a resubmission after a rejection.
+  kybSubmittedAt: timestamp('kyb_submitted_at'),
+  // The reviewer's note stamped on a rejection, shown to the owner so a
+  // resubmission can fix the named problem. Null while pending or verified.
+  kybReviewNote: text('kyb_review_note'),
   // Per-Merchant revenue fields, both zero at pilot. flat_fee_bps is a flat
   // basis-point fee; fx_spread_bps is the spread booked on the naira
   // conversion at settlement. Whether both stack on one naira Payment is an
@@ -870,6 +877,13 @@ export const apiKeys = pgTable(
     keyPrefix: text('key_prefix').notNull(),
     executionCluster: text('execution_cluster'),
     fingerprint: text('fingerprint').notNull(),
+    /** Owner-supplied label so several keys are told apart in the portal. */
+    name: text('name'),
+    /**
+     * The key this one replaced, set when a rotation issues a successor. It
+     * lets the portal show a rotated key's lineage without a separate table.
+     */
+    rotatedFromId: text('rotated_from_id'),
     mode: apiKeyModeEnum('mode').notNull(),
     revokedAt: timestamp('revoked_at'),
     lastUsedAt: timestamp('last_used_at'),
@@ -1325,6 +1339,37 @@ export const adminAuditLog = pgTable(
   },
   (table) => ({
     atIdx: index('admin_audit_log_at_idx').on(table.at),
+  }),
+);
+
+/**
+ * merchant_audit_log — an owner-visible trail of every sensitive self-serve
+ * write a Merchant makes: profile edits, key issuance/rotation/revocation and
+ * webhook endpoint changes. Separate from admin_audit_log (operator actions),
+ * because this one is read back by the owner and is scoped to their Merchant;
+ * an operator trail must never be exposed on the portal. Append-only. The
+ * actor is the owner's provider identity, never a client-supplied id.
+ */
+export const merchantAuditLog = pgTable(
+  'merchant_audit_log',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    merchantId: text('merchant_id')
+      .notNull()
+      .references(() => merchants.id),
+    actor: text('actor').notNull(),
+    action: text('action').notNull(),
+    target: text('target'),
+    metadata: jsonb('metadata').$type<Record<string, string>>(),
+    at: timestamp('at').defaultNow().notNull(),
+  },
+  (table) => ({
+    merchantAtIdx: index('merchant_audit_log_merchant_at_idx').on(
+      table.merchantId,
+      table.at,
+    ),
   }),
 );
 

@@ -1,21 +1,13 @@
 import {
-  BadGatewayException,
-  UnprocessableEntityException,
   Body,
   Controller,
   Get,
   Headers,
   Param,
   Post,
-  UnauthorizedException,
   ConflictException,
   NotFoundException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
-import {
-  PrivyUnavailableError,
-  PrivyUserShapeError,
-} from '../wallet/privy.errors';
 import { ConfigService } from '@nestjs/config';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
@@ -26,14 +18,19 @@ import {
   paymentIntents,
   settlementAccounts,
 } from '../db/schema';
-import { MerchantIdentityService } from './merchant-identity.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { KeyIssuanceService } from './key-issuance.service';
+import { MerchantAuditService } from './merchant-audit.service';
+import {
+  MerchantOwnerService,
+  type OwnedMerchant,
+} from './merchant-owner.service';
 import { SettlementProvisioningService } from '../settlement/settlement-provisioning.service';
 import { SettlementAccountNotProvisionedError } from '../settlement/settlement.errors';
+import { ApiKeyNotFoundError } from './merchant.errors';
 import { devnetExecutionEnabled } from './devnet-execution';
 import { MerchantProfileUpdate } from './profile.dtos';
-import type { WalletProviderUser } from '../wallet/wallet-provider.interface';
+import { toApiKeyView, toMerchantView } from './merchant-portal.view';
 
 const Registration = z.object({
   name: z.string().trim().min(2).max(100),
@@ -51,56 +48,22 @@ const Registration = z.object({
     }, 'Use an HTTPS origin, or localhost for development'),
   acceptUsdcTerms: z.literal(true),
 });
-const KeyRequest = z.object({ mode: z.enum(['test', 'live', 'devnet']) });
-type OwnedMerchant = typeof merchants.$inferSelect & {
-  signInEmail: string | null;
-};
+const KeyRequest = z.object({
+  mode: z.enum(['test', 'live', 'devnet']),
+  name: z.string().trim().max(60).optional(),
+});
 
 /** Owner identity comes from a verified provider token, never a submitted id. */
 @Controller('merchant-portal')
 export class MerchantPortalController {
   constructor(
     private readonly db: DbService,
-    private readonly wallets: MerchantIdentityService,
+    private readonly owner: MerchantOwnerService,
     private readonly keys: KeyIssuanceService,
     private readonly provisioning: SettlementProvisioningService,
     private readonly config: ConfigService,
+    private readonly audit: MerchantAuditService,
   ) {}
-
-  private async identity(authorization?: string) {
-    if (!authorization?.startsWith('Bearer '))
-      throw new UnauthorizedException();
-    try {
-      return await this.wallets.verifyIdToken(authorization.slice(7));
-    } catch (error) {
-      if (error instanceof ServiceUnavailableException) throw error;
-      if (error instanceof PrivyUnavailableError)
-        throw new BadGatewayException(
-          'Merchant sign-in is temporarily unavailable. Please retry.',
-        );
-      if (error instanceof PrivyUserShapeError)
-        throw new UnprocessableEntityException(error.message);
-      throw new UnauthorizedException('Sign in with your Merchant account');
-    }
-  }
-
-  private async owned(authorization?: string) {
-    const identity = await this.identity(authorization);
-    return this.ownedForIdentity(identity);
-  }
-
-  private async ownedForIdentity(
-    identity: WalletProviderUser,
-  ): Promise<OwnedMerchant> {
-    const [merchant] = await this.db.client
-      .select()
-      .from(merchants)
-      .where(eq(merchants.ownerProviderId, identity.providerUserId))
-      .limit(1);
-    if (!merchant)
-      throw new NotFoundException('Create your Merchant account first');
-    return { ...merchant, signInEmail: identity.email ?? null };
-  }
 
   @Post('profile')
   async updateProfile(
@@ -108,7 +71,7 @@ export class MerchantPortalController {
     @Body(new ZodValidationPipe(MerchantProfileUpdate))
     body: z.infer<typeof MerchantProfileUpdate>,
   ) {
-    const merchant = await this.owned(authorization);
+    const merchant = await this.owner.owned(authorization);
     if (
       merchant.kybStatus === 'verified' &&
       body.profile.legalName !== (merchant.businessProfile?.legalName ?? '')
@@ -139,6 +102,13 @@ export class MerchantPortalController {
       throw new ConflictException(
         'This profile changed in another session. Reload the latest profile before saving.',
       );
+    await this.audit.record({
+      merchantId: merchant.id,
+      actor: merchant.ownerProviderId ?? 'unknown',
+      action: 'profile.update',
+      target: merchant.id,
+      metadata: { version: String(updated.profileVersion) },
+    });
     return this.dashboard({
       ...updated,
       signInEmail: merchant.signInEmail,
@@ -151,7 +121,7 @@ export class MerchantPortalController {
     @Body(new ZodValidationPipe(Registration))
     body: z.infer<typeof Registration>,
   ) {
-    const identity = await this.identity(authorization);
+    const identity = await this.owner.identity(authorization);
     // Concurrent signup requests resolve to the same Merchant. No client can
     // attach itself to a pre-existing Merchant by supplying an id or email.
     await this.db.client
@@ -165,13 +135,48 @@ export class MerchantPortalController {
         settlementTermsAcceptedAt: new Date(),
       })
       .onConflictDoNothing({ target: merchants.ownerProviderId });
-    return this.dashboard(await this.ownedForIdentity(identity));
+    return this.dashboard(await this.owner.ownedForIdentity(identity));
   }
 
   @Get('me')
   async me(@Headers('authorization') authorization?: string) {
-    const merchant = await this.owned(authorization);
+    const merchant = await this.owner.owned(authorization);
     return this.dashboard(merchant);
+  }
+
+  /**
+   * Records that the owner is ready for verification review. A first
+   * submission stamps the submitted time; a resubmission after a rejection
+   * clears the rejection back to pending so the review can run again on the
+   * corrected details. It never self-approves: only the off-system review
+   * moves a Merchant to verified.
+   */
+  @Post('kyb/submit')
+  async submitKyb(@Headers('authorization') authorization?: string) {
+    const merchant = await this.owner.owned(authorization);
+    if (merchant.kybStatus === 'verified')
+      throw new ConflictException('Your business is already verified.');
+    const now = new Date();
+    const [updated] = await this.db.client
+      .update(merchants)
+      .set({
+        kybStatus: 'pending',
+        kybSubmittedAt: now,
+        kybReviewNote: null,
+        updatedAt: now,
+      })
+      .where(eq(merchants.id, merchant.id))
+      .returning();
+    await this.audit.record({
+      merchantId: merchant.id,
+      actor: merchant.ownerProviderId ?? 'unknown',
+      action: 'kyb.submit',
+      target: merchant.id,
+    });
+    return this.dashboard({
+      ...(updated ?? merchant),
+      signInEmail: merchant.signInEmail,
+    });
   }
 
   private async dashboard(merchant: OwnedMerchant) {
@@ -181,15 +186,10 @@ export class MerchantPortalController {
       .where(eq(settlementAccounts.merchantId, merchant.id))
       .limit(1);
     const keys = await this.db.client
-      .select({
-        id: apiKeys.id,
-        fingerprint: apiKeys.fingerprint,
-        mode: apiKeys.mode,
-        executionCluster: apiKeys.executionCluster,
-        revokedAt: apiKeys.revokedAt,
-      })
+      .select()
       .from(apiKeys)
-      .where(eq(apiKeys.merchantId, merchant.id));
+      .where(eq(apiKeys.merchantId, merchant.id))
+      .orderBy(desc(apiKeys.createdAt));
     const payments = await this.db.client
       .select({
         id: paymentIntents.id,
@@ -203,10 +203,18 @@ export class MerchantPortalController {
       .orderBy(desc(paymentIntents.createdAt))
       .limit(20);
     return {
-      merchant,
-      destination: destination ?? null,
-      keys,
-      payments,
+      merchant: toMerchantView(merchant),
+      destination: destination
+        ? { address: destination.address, provider: destination.provider }
+        : null,
+      keys: keys.map(toApiKeyView),
+      payments: payments.map((payment) => ({
+        id: payment.id,
+        status: payment.status,
+        amountRaw: payment.amountRaw,
+        mode: payment.mode,
+        createdAt: payment.createdAt.toISOString(),
+      })),
       cluster: this.config.getOrThrow<string>('SOLANA_CLUSTER'),
       devnetExecutionEnabled: devnetExecutionEnabled(this.config),
     };
@@ -214,7 +222,7 @@ export class MerchantPortalController {
 
   @Post('destination')
   async provision(@Headers('authorization') authorization?: string) {
-    const merchant = await this.owned(authorization);
+    const merchant = await this.owner.owned(authorization);
     if (!merchant.receivingWallet || !merchant.settlementTermsAcceptedAt)
       throw new ConflictException(
         'Receiving account and settlement terms are required',
@@ -227,10 +235,17 @@ export class MerchantPortalController {
     )
       throw new ConflictException('Business verification is required');
     try {
-      return await this.provisioning.provisionOrLink(merchant.id, {
+      const result = await this.provisioning.provisionOrLink(merchant.id, {
         currency: 'USDC',
         merchantAddress: merchant.receivingWallet,
       });
+      await this.audit.record({
+        merchantId: merchant.id,
+        actor: merchant.ownerProviderId ?? 'unknown',
+        action: 'destination.provision',
+        target: merchant.id,
+      });
+      return result;
     } catch (error) {
       if (error instanceof SettlementAccountNotProvisionedError)
         throw new ConflictException(
@@ -245,16 +260,40 @@ export class MerchantPortalController {
     @Headers('authorization') authorization: string | undefined,
     @Param('id') id: string,
   ) {
-    const merchant = await this.owned(authorization);
-    const [key] = await this.db.client
-      .select({ id: apiKeys.id, merchantId: apiKeys.merchantId })
-      .from(apiKeys)
-      .where(and(eq(apiKeys.id, id), eq(apiKeys.merchantId, merchant.id)))
-      .limit(1);
-    if (!key || key.merchantId !== merchant.id)
-      throw new NotFoundException('API key not found');
-    const revoked = await this.keys.revokeKey(key.id);
+    const merchant = await this.owner.owned(authorization);
+    await this.ownedKey(merchant.id, id);
+    const revoked = await this.keys.revokeKey(id);
+    await this.audit.record({
+      merchantId: merchant.id,
+      actor: merchant.ownerProviderId ?? 'unknown',
+      action: 'api_key.revoke',
+      target: id,
+    });
     return { id: revoked.id, revokedAt: revoked.revokedAt.toISOString() };
+  }
+
+  @Post('keys/:id/rotate')
+  async rotate(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('id') id: string,
+  ) {
+    const merchant = await this.owner.owned(authorization);
+    await this.ownedKey(merchant.id, id);
+    try {
+      const issued = await this.keys.rotateKey(id, merchant.id);
+      await this.audit.record({
+        merchantId: merchant.id,
+        actor: merchant.ownerProviderId ?? 'unknown',
+        action: 'api_key.rotate',
+        target: issued.id,
+        metadata: { rotatedFrom: id },
+      });
+      return issued;
+    } catch (error) {
+      if (error instanceof ApiKeyNotFoundError)
+        throw new NotFoundException('API key not found');
+      throw error;
+    }
   }
 
   @Post('keys')
@@ -262,7 +301,7 @@ export class MerchantPortalController {
     @Headers('authorization') authorization: string | undefined,
     @Body(new ZodValidationPipe(KeyRequest)) body: z.infer<typeof KeyRequest>,
   ) {
-    const merchant = await this.owned(authorization);
+    const merchant = await this.owner.owned(authorization);
     if (body.mode === 'live') {
       if (merchant.kybStatus !== 'verified')
         throw new ConflictException(
@@ -275,8 +314,29 @@ export class MerchantPortalController {
         throw new ConflictException('Devnet execution is disabled');
       await this.requireDestination(merchant.id);
     }
-    return this.keys.issueKey(merchant.id, body.mode);
+    const issued = await this.keys.issueKey(merchant.id, body.mode, {
+      name: body.name,
+    });
+    await this.audit.record({
+      merchantId: merchant.id,
+      actor: merchant.ownerProviderId ?? 'unknown',
+      action: 'api_key.issue',
+      target: issued.id,
+      metadata: { mode: body.mode },
+    });
+    return issued;
   }
+
+  private async ownedKey(merchantId: string, id: string): Promise<void> {
+    const [key] = await this.db.client
+      .select({ id: apiKeys.id, merchantId: apiKeys.merchantId })
+      .from(apiKeys)
+      .where(and(eq(apiKeys.id, id), eq(apiKeys.merchantId, merchantId)))
+      .limit(1);
+    if (!key || key.merchantId !== merchantId)
+      throw new NotFoundException('API key not found');
+  }
+
   private async requireDestination(merchantId: string): Promise<void> {
     try {
       await this.provisioning.getSettlementAddressForSettlement(merchantId);

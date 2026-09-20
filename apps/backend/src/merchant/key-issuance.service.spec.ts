@@ -21,6 +21,8 @@ function merchantRow(over: Partial<MerchantRow> = {}): MerchantRow {
     allowedOrigins: null,
     kybStatus: 'pending',
     kybVerifiedAt: null,
+    kybSubmittedAt: null,
+    kybReviewNote: null,
     flatFeeBps: 0,
     fxSpreadBps: 0,
     createdAt: new Date('2026-01-01'),
@@ -67,7 +69,9 @@ function makeFakeDb(cfg: {
     insert: () => ({
       values: (v: unknown) => {
         inserts.push({ values: v });
-        return Promise.resolve();
+        return {
+          returning: () => Promise.resolve([{ id: 'ak-new' }]),
+        };
       },
     }),
     update: () => {

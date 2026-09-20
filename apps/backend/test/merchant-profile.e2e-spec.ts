@@ -14,6 +14,8 @@ import type { Server } from 'node:http';
 import { z } from 'zod';
 import { MerchantPortalController } from '../src/merchant/merchant-portal.controller';
 import { MerchantIdentityService } from '../src/merchant/merchant-identity.service';
+import { MerchantOwnerService } from '../src/merchant/merchant-owner.service';
+import { MerchantAuditService } from '../src/merchant/merchant-audit.service';
 import { KeyIssuanceService } from '../src/merchant/key-issuance.service';
 import { SettlementProvisioningService } from '../src/settlement/settlement-provisioning.service';
 import { DbService } from '../src/db/db.service';
@@ -37,7 +39,7 @@ const databaseUrl = process.env.MERCHANT_PROFILE_TEST_DATABASE_URL;
   () => {
     let client: Client;
     let app: INestApplication;
-    let controller: MerchantPortalController;
+    let ownerService: MerchantOwnerService;
     const body = {
       expectedVersion: 0,
       displayName: 'Store A edited',
@@ -66,6 +68,9 @@ const databaseUrl = process.env.MERCHANT_PROFILE_TEST_DATABASE_URL;
       await client.query(
         'CREATE TEMP TABLE api_keys (LIKE public.api_keys INCLUDING ALL)',
       );
+      await client.query(
+        'CREATE TEMP TABLE merchant_audit_log (LIKE public.merchant_audit_log INCLUDING DEFAULTS)',
+      );
       const module = await Test.createTestingModule({
         controllers: [MerchantPortalController, KeyAccessProbe],
         providers: [
@@ -86,6 +91,8 @@ const databaseUrl = process.env.MERCHANT_PROFILE_TEST_DATABASE_URL;
               },
             },
           },
+          MerchantOwnerService,
+          MerchantAuditService,
           KeyIssuanceService,
           ApiKeyGuard,
           { provide: SettlementProvisioningService, useValue: {} },
@@ -95,11 +102,12 @@ const databaseUrl = process.env.MERCHANT_PROFILE_TEST_DATABASE_URL;
           },
         ],
       }).compile();
-      controller = module.get(MerchantPortalController);
+      ownerService = module.get(MerchantOwnerService);
       app = module.createNestApplication();
       await app.init();
     });
     beforeEach(async () => {
+      await client.query('TRUNCATE pg_temp.merchant_audit_log');
       await client.query('TRUNCATE pg_temp.api_keys');
       await client.query('TRUNCATE pg_temp.merchants');
       await client.query(
@@ -184,7 +192,7 @@ const databaseUrl = process.env.MERCHANT_PROFILE_TEST_DATABASE_URL;
     it('rejects a legal-name edit when verification lands after the initial read', async () => {
       // Interpose only the timing boundary. Both the ownership read and final
       // conditional UPDATE still run against PostgreSQL through the real route.
-      const boundary = controller as unknown as {
+      const boundary = ownerService as unknown as {
         owned: (
           authorization?: string,
         ) => Promise<
@@ -192,7 +200,7 @@ const databaseUrl = process.env.MERCHANT_PROFILE_TEST_DATABASE_URL;
         >;
       };
       const readOwned = boundary.owned.bind(
-        controller,
+        ownerService,
       ) as typeof boundary.owned;
       jest
         .spyOn(boundary, 'owned')

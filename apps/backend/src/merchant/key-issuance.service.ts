@@ -75,7 +75,8 @@ export class KeyIssuanceService {
   async issueKey(
     merchantId: string,
     mode: 'test' | 'live' | 'devnet',
-  ): Promise<{ raw: string; fingerprint: string }> {
+    options: { name?: string | null; rotatedFromId?: string | null } = {},
+  ): Promise<{ id: string; raw: string; fingerprint: string }> {
     const [merchant] = await this.db.client
       .select()
       .from(merchants)
@@ -101,16 +102,50 @@ export class KeyIssuanceService {
     }
 
     const key = generateApiKey(mode === 'devnet' ? 'live' : mode);
-    await this.db.client.insert(apiKeys).values({
-      merchantId,
-      keyHash: key.keyHash,
-      keyPrefix: key.keyPrefix,
-      fingerprint: key.fingerprint,
-      mode: key.mode,
-      executionCluster: mode === 'devnet' ? 'devnet' : null,
-    });
+    const [inserted] = await this.db.client
+      .insert(apiKeys)
+      .values({
+        merchantId,
+        keyHash: key.keyHash,
+        keyPrefix: key.keyPrefix,
+        fingerprint: key.fingerprint,
+        mode: key.mode,
+        executionCluster: mode === 'devnet' ? 'devnet' : null,
+        name: normalizeName(options.name),
+        rotatedFromId: options.rotatedFromId ?? null,
+      })
+      .returning({ id: apiKeys.id });
 
-    return { raw: key.raw, fingerprint: key.fingerprint };
+    return { id: inserted.id, raw: key.raw, fingerprint: key.fingerprint };
+  }
+
+  /**
+   * Replaces a key with a fresh secret. A new key is issued under the same
+   * mode, execution cluster and name, linked back to its predecessor, and the
+   * old key is revoked once the successor lands. The eligibility gates run
+   * again through issueKey, so a live rotation still requires verified KYB and
+   * a provisioned destination. The old secret keeps working until the new one
+   * is issued, so a caller that rotates never has a window with no valid key.
+   */
+  async rotateKey(
+    keyId: string,
+    merchantId: string,
+  ): Promise<{ id: string; raw: string; fingerprint: string }> {
+    const [existing] = await this.db.client
+      .select()
+      .from(apiKeys)
+      .where(and(eq(apiKeys.id, keyId), eq(apiKeys.merchantId, merchantId)))
+      .limit(1);
+    if (!existing || existing.revokedAt)
+      throw new ApiKeyNotFoundError(`api key ${keyId} not found`);
+    const requestedMode =
+      existing.executionCluster === 'devnet' ? 'devnet' : existing.mode;
+    const issued = await this.issueKey(merchantId, requestedMode, {
+      name: existing.name,
+      rotatedFromId: existing.id,
+    });
+    await this.revokeKey(existing.id);
+    return issued;
   }
 
   /**
@@ -160,4 +195,9 @@ export class KeyIssuanceService {
       throw new MerchantNotFoundError(`merchant ${merchantId} not found`);
     }
   }
+}
+
+function normalizeName(name: string | null | undefined): string | null {
+  const trimmed = name?.trim();
+  return trimmed ? trimmed.slice(0, 60) : null;
 }
