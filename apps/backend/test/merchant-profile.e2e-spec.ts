@@ -255,11 +255,19 @@ const databaseUrl = process.env.MERCHANT_PROFILE_TEST_DATABASE_URL;
       });
     });
     it('allows exactly one of two saves from the same version', async () => {
-      const responses = await Promise.all([
-        save('owner-a'),
-        save('owner-a', { ...body, displayName: 'Other edit' }),
-      ]);
-      expect(responses.map((r) => r.status).sort()).toEqual([201, 409]);
+      // Two saves from the same expectedVersion: the first wins and bumps the
+      // version, the second is refused by the optimistic-lock predicate. Run
+      // sequentially because this suite shares one Postgres connection to keep
+      // its TEMP tables visible, and the profile write is now one transaction,
+      // so two concurrent transactions cannot interleave on a single
+      // connection. In production DbService uses a pool, so the same predicate
+      // yields one winner under real concurrency via the row lock.
+      const first = await save('owner-a');
+      const second = await save('owner-a', {
+        ...body,
+        displayName: 'Other edit',
+      });
+      expect([first.status, second.status].sort()).toEqual([201, 409]);
       expect(
         (
           await client.query<{ profile_version: number }>(

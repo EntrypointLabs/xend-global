@@ -85,34 +85,44 @@ export class MerchantPortalController {
         'Legal business name changes require verification review. Other contact details can be updated here.',
       );
     }
-    const [updated] = await this.db.client
-      .update(merchants)
-      .set({
-        displayName: body.displayName,
-        businessProfile: body.profile,
-        profileVersion: body.expectedVersion + 1,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(merchants.id, merchant.id),
-          eq(merchants.profileVersion, body.expectedVersion),
-          // A verification decision may land after the ownership read. Do not
-          // save a legal-name edit under an obsolete pending-verification state.
-          eq(merchants.kybStatus, merchant.kybStatus),
-        ),
-      )
-      .returning();
-    if (!updated)
-      throw new ConflictException(
-        'This profile changed in another session. Reload the latest profile before saving.',
+    // The conditional update and its audit entry commit together, so a failed
+    // audit write cannot leave a persisted, version-bumped profile with no
+    // trail (and the retry, carrying the old expectedVersion, would then 409).
+    const updated = await this.db.client.transaction(async (tx) => {
+      const [row] = await tx
+        .update(merchants)
+        .set({
+          displayName: body.displayName,
+          businessProfile: body.profile,
+          profileVersion: body.expectedVersion + 1,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(merchants.id, merchant.id),
+            eq(merchants.profileVersion, body.expectedVersion),
+            // A verification decision may land after the ownership read. Do not
+            // save a legal-name edit under an obsolete pending-verification
+            // state.
+            eq(merchants.kybStatus, merchant.kybStatus),
+          ),
+        )
+        .returning();
+      if (!row)
+        throw new ConflictException(
+          'This profile changed in another session. Reload the latest profile before saving.',
+        );
+      await this.audit.record(
+        {
+          merchantId: merchant.id,
+          actor: merchant.ownerProviderId ?? 'unknown',
+          action: 'profile.update',
+          target: merchant.id,
+          metadata: { version: String(row.profileVersion) },
+        },
+        tx,
       );
-    await this.audit.record({
-      merchantId: merchant.id,
-      actor: merchant.ownerProviderId ?? 'unknown',
-      action: 'profile.update',
-      target: merchant.id,
-      metadata: { version: String(updated.profileVersion) },
+      return row;
     });
     return this.dashboard({
       ...updated,
@@ -162,34 +172,40 @@ export class MerchantPortalController {
     if (merchant.kybStatus === 'verified')
       throw new ConflictException('Your business is already verified.');
     const now = new Date();
-    const [updated] = await this.db.client
-      .update(merchants)
-      .set({
-        kybStatus: 'pending',
-        kybSubmittedAt: now,
-        kybReviewNote: null,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(merchants.id, merchant.id),
-          // Verification can be stamped by an operator between the ownership
-          // read and this update. Only move to pending from the exact status
-          // observed, so a submission never reverts a merchant that just
-          // became verified (which would disable their live keys).
-          eq(merchants.kybStatus, merchant.kybStatus),
-        ),
-      )
-      .returning();
-    if (!updated)
-      throw new ConflictException(
-        'Your verification status changed. Reload your account before resubmitting.',
+    const updated = await this.db.client.transaction(async (tx) => {
+      const [row] = await tx
+        .update(merchants)
+        .set({
+          kybStatus: 'pending',
+          kybSubmittedAt: now,
+          kybReviewNote: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(merchants.id, merchant.id),
+            // Verification can be stamped by an operator between the ownership
+            // read and this update. Only move to pending from the exact status
+            // observed, so a submission never reverts a merchant that just
+            // became verified (which would disable their live keys).
+            eq(merchants.kybStatus, merchant.kybStatus),
+          ),
+        )
+        .returning();
+      if (!row)
+        throw new ConflictException(
+          'Your verification status changed. Reload your account before resubmitting.',
+        );
+      await this.audit.record(
+        {
+          merchantId: merchant.id,
+          actor: merchant.ownerProviderId ?? 'unknown',
+          action: 'kyb.submit',
+          target: merchant.id,
+        },
+        tx,
       );
-    await this.audit.record({
-      merchantId: merchant.id,
-      actor: merchant.ownerProviderId ?? 'unknown',
-      action: 'kyb.submit',
-      target: merchant.id,
+      return row;
     });
     return this.dashboard({
       ...updated,

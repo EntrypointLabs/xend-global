@@ -973,6 +973,15 @@ export const paymentIntents = pgTable(
     expiryIdx: index('payment_intents_expiry_idx')
       .on(table.expiresAt)
       .where(sql`status = 'created'`),
+    // Backs the portal's payment-history page: filter by merchant+cluster and
+    // order by (created_at, id) desc, so a page is an index range scan rather
+    // than a full scan-and-sort of the merchant's whole history.
+    merchantHistoryIdx: index('payment_intents_merchant_history_idx').on(
+      table.merchantId,
+      table.executionCluster,
+      table.createdAt,
+      table.id,
+    ),
   }),
 );
 
@@ -1164,6 +1173,13 @@ export const webhookDeliveries = pgTable(
     correlationIdx: index('webhook_deliveries_correlation_idx').on(
       table.correlationId,
       table.createdAt,
+    ),
+    // Backs the portal's per-endpoint delivery diagnostics, paginated by
+    // (created_at, id) desc for one endpoint.
+    endpointHistoryIdx: index('webhook_deliveries_endpoint_history_idx').on(
+      table.endpointId,
+      table.createdAt,
+      table.id,
     ),
   }),
 );
