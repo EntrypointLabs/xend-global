@@ -21,7 +21,12 @@ export function useMerchantDashboard<T>(token: string | null) {
     if (!token) return;
     const controller = new AbortController();
     let active = true;
-    setState({ token, data: null, status: "loading", error: "" });
+    setState((previous) => ({
+      token,
+      data: previous.data,
+      status: previous.data ? "ready" : "loading",
+      error: "",
+    }));
     async function load() {
       try {
         const response = await fetch("/merchant-portal/me", {
@@ -39,15 +44,15 @@ export function useMerchantDashboard<T>(token: string | null) {
         if (active) setState({ token, data, status: "ready", error: "" });
       } catch (error) {
         if (active)
-          setState({
+          setState((previous) => ({
             token,
-            data: null,
-            status: "error",
+            data: previous.data,
+            status: previous.data ? "ready" : "error",
             error:
               error instanceof Error
                 ? error.message
                 : "Unable to load your account.",
-          });
+          }));
       }
     }
     void load();
@@ -58,9 +63,13 @@ export function useMerchantDashboard<T>(token: string | null) {
   }, [token, attempt]);
 
   const current =
-    state.token === token && token !== null
-      ? state
-      : { data: null, status: "loading" as const, error: "" };
+    token === null
+      ? { data: null, status: "loading" as const, error: "" }
+      : state.token === token
+        ? state
+        : state.data
+          ? { data: state.data, status: "ready" as const, error: "" }
+          : { data: null, status: "loading" as const, error: "" };
   return {
     ...current,
     retry: () => setAttempt((value) => value + 1),

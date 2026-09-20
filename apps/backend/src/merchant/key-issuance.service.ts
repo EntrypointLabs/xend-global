@@ -88,10 +88,19 @@ export class KeyIssuanceService {
     if (mode === 'devnet' && !devnetExecutionEnabled(this.config))
       throw new KybNotVerifiedError('Devnet execution is disabled');
     if (mode === 'live' || mode === 'devnet') {
+      const executionCluster =
+        mode === 'devnet'
+          ? 'devnet'
+          : (this.config?.get<string>('SOLANA_CLUSTER') ?? 'mainnet');
       const [account] = await this.db.client
         .select()
         .from(settlementAccounts)
-        .where(eq(settlementAccounts.merchantId, merchantId))
+        .where(
+          and(
+            eq(settlementAccounts.merchantId, merchantId),
+            eq(settlementAccounts.executionCluster, executionCluster),
+          ),
+        )
         .limit(1);
       if (mode === 'live') assertLiveKeyEligible(merchant, account);
       else if (!account?.providerReference)
@@ -107,7 +116,12 @@ export class KeyIssuanceService {
       keyPrefix: key.keyPrefix,
       fingerprint: key.fingerprint,
       mode: key.mode,
-      executionCluster: mode === 'devnet' ? 'devnet' : null,
+      executionCluster:
+        mode === 'devnet'
+          ? 'devnet'
+          : mode === 'live'
+            ? (this.config?.get<string>('SOLANA_CLUSTER') ?? 'mainnet')
+            : null,
     });
 
     return { raw: key.raw, fingerprint: key.fingerprint };

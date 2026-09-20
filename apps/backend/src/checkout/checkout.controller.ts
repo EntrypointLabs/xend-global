@@ -18,6 +18,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { DbService } from '../db/db.service';
 import { merchants, paymentIntents } from '../db/schema';
 import { PaymentIntentService } from '../payment/payment-intent.service';
+import { isLivePayment } from '../payment/payment-mode';
 import {
   AttemptInFlightError,
   IntentExpiredError,
@@ -164,7 +165,7 @@ export class CheckoutController {
         merchantOrigin,
         sessionRecognized,
         expiresAt: intent.expiresAt.toISOString(),
-        livemode: intent.mode === 'live',
+        livemode: isLivePayment(intent.mode, intent.executionCluster),
       };
 
       // Redirect-mode cancel happens BEFORE any authorize call, so the signed

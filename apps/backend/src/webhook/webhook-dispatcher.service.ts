@@ -11,6 +11,7 @@ import {
 import { EVENT_CONSUMER } from '../events/event-consumer.interface';
 import type { EventConsumer } from '../events/event-consumer.interface';
 import type { PlatformEvent } from '../events/event-publisher.interface';
+import { isLivePayment, paymentDeliveryMode } from '../payment/payment-mode';
 import { WebhookDeliveryService } from './webhook-delivery.service';
 import {
   buildEventId,
@@ -88,7 +89,11 @@ export class WebhookDispatcherService implements OnModuleInit {
 
     const eventId = buildEventId(type, intentId);
     const correlationId = event.correlationId ?? intentId;
-    const livemode = intent.mode === 'live';
+    const livemode = isLivePayment(intent.mode, intent.executionCluster);
+    const deliveryMode = paymentDeliveryMode(
+      intent.mode,
+      intent.executionCluster,
+    );
 
     const [account] = await this.db.client
       .select()
@@ -111,7 +116,7 @@ export class WebhookDispatcherService implements OnModuleInit {
         and(
           eq(webhookEndpoints.merchantId, intent.merchantId),
           eq(webhookEndpoints.enabled, true),
-          eq(webhookEndpoints.mode, intent.mode),
+          eq(webhookEndpoints.mode, deliveryMode),
         ),
       );
 

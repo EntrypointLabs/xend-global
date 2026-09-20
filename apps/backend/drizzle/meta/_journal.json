@@ -323,6 +323,13 @@
       "when": 1789866000000,
       "tag": "0044_transactional_capacity",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1789871635946,
+      "tag": "0046_settlement_account_cluster",
+      "breakpoints": true
     }
   ]
 }

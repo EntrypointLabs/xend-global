@@ -307,6 +307,17 @@ describe('CheckoutController.getSummary', () => {
     expect(serialized).not.toContain('fxRate');
   });
 
+  it('reports real devnet execution as non-live', async () => {
+    const { controller, intents } = makeController(merchantRow());
+    intents.findById.mockResolvedValue(
+      intentRow({ mode: 'live', executionCluster: 'devnet' }),
+    );
+
+    await expect(
+      controller.getSummary(makeReq(), 'pi_1'),
+    ).resolves.toMatchObject({ livemode: false });
+  });
+
   it('posts to the opener when it is a second allowed origin, without mutating the intent', async () => {
     const { controller, intents } = makeController(
       merchantRow({

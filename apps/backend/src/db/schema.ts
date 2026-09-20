@@ -1163,6 +1163,7 @@ export const settlementAccounts = pgTable('settlement_accounts', {
   providerReference: text('provider_reference'),
   payoutConfig: text('payout_config'),
   authorityAddress: text('authority_address'),
+  executionCluster: text('execution_cluster'),
   provisionedAt: timestamp('provisioned_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

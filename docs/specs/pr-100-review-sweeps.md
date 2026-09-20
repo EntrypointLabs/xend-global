@@ -56,3 +56,14 @@ Implemented:
 - Filter settling, claimed-settlement, and authorized-attempt background sweeps by the deployment's Solana cluster before querying chain state or reaping attempts.
 
 Disagreements: none.
+
+## Sweep 4
+
+Implemented:
+
+- Add a bounded, cluster-scoped repair sweep over durable Payment rows that still lack confirmed Activity, so RPC/indexer outages remain repairable after Kafka exhausts and dead-letters the original event.
+- Keep devnet Payments on the real settlement path while reporting `livemode: false` and routing their webhook endpoint management and deliveries through test mode.
+- Bind settlement destinations and newly issued execution keys to the active Solana cluster; mismatched destinations are rejected on settlement and reprovisioned during onboarding.
+- Keep the current Merchant dashboard mounted while a refreshed identity token revalidates, preserving unsaved form drafts through token rotation.
+
+Disagreements: none.
