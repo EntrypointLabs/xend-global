@@ -334,6 +334,22 @@ export class PaymentIntentService implements OnModuleInit {
         ),
       )
       .limit(1);
-    return row;
+    if (row) return row;
+
+    // Terminal intents created before execution-cluster scoping were left
+    // null because their original cluster cannot be inferred safely. They
+    // still own their idempotency key and must win a replay before insertion.
+    const [legacy] = await this.db.client
+      .select()
+      .from(paymentIntents)
+      .where(
+        and(
+          eq(paymentIntents.merchantId, merchantId),
+          isNull(paymentIntents.executionCluster),
+          eq(paymentIntents.idempotencyKey, idempotencyKey),
+        ),
+      )
+      .limit(1);
+    return legacy;
   }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { PrivyProvider } from '@privy-io/react-auth';
 import { usePasskeyCeremony } from '../ceremony/passkey';
 import { PRIVY_APP_ID } from '../lib/config';
@@ -6,6 +6,7 @@ import { solanaRpcs } from '../lib/solana';
 import {
   authorize,
   settle,
+  settleUntilTerminal,
   type IntentView,
   type TerminalResult,
 } from '../lib/api';
@@ -18,6 +19,7 @@ export interface PaymentFlowProps {
   onTerminal: (result: TerminalResult) => void;
   onError: (err: unknown) => void;
   onCancel: () => void;
+  waitForTerminal?: boolean;
 }
 
 function PaymentFlowInner({
@@ -25,12 +27,21 @@ function PaymentFlowInner({
   onTerminal,
   onError,
   onCancel,
+  waitForTerminal = false,
 }: PaymentFlowProps) {
   const { runCeremony, signSpend } = usePasskeyCeremony();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const inFlight = useRef(false);
+  const abort = useRef<AbortController | null>(null);
   const expired = useQuoteExpired(intent.expiresAt);
+
+  useEffect(
+    () => () => {
+      abort.current?.abort();
+    },
+    [],
+  );
 
   /**
    * The whole Payment, in the order the security model requires: prove who the
@@ -44,6 +55,8 @@ function PaymentFlowInner({
   const run = useCallback(() => {
     if (inFlight.current || quoteExpired(intent.expiresAt)) return;
     inFlight.current = true;
+    const controller = new AbortController();
+    abort.current = controller;
     setBusy(true);
     setFailed(false);
     // No awaited fetch before the ceremony call, so Safari user activation holds.
@@ -65,19 +78,24 @@ function PaymentFlowInner({
           result.signerAddress,
           result.executionCluster,
         );
+        const input = { reference: intent.reference, signedTxBase64 };
         onTerminal(
-          await settle({ reference: intent.reference, signedTxBase64 }),
+          waitForTerminal
+            ? await settleUntilTerminal(input, { signal: controller.signal })
+            : await settle(input, controller.signal),
         );
       })
       .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
         setFailed(true);
         onError(err);
       })
       .finally(() => {
+        if (abort.current === controller) abort.current = null;
         inFlight.current = false;
         setBusy(false);
       });
-  }, [intent, runCeremony, signSpend, onTerminal, onError]);
+  }, [intent, runCeremony, signSpend, onTerminal, onError, waitForTerminal]);
 
   if (intent.sessionRecognized) {
     return (

@@ -218,6 +218,7 @@ export function App() {
             }
             onError={(err: unknown) => handleError(phase.intent, err)}
             onCancel={() => deliverCancel(phase.intent)}
+            waitForTerminal={launch?.mode === 'redirect'}
           />
         </Suspense>
       );

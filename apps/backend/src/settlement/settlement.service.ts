@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { createPublicKey, verify } from 'node:crypto';
 import { VersionedTransaction } from '@solana/web3.js';
 import { ConfigService } from '@nestjs/config';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
   getBase64Decoder,
   getBase64Encoder,
@@ -10,9 +10,6 @@ import {
 } from '@solana/kit';
 import { DbService } from '../db/db.service';
 import { paymentAttempts } from '../db/schema';
-import { CapacityService } from '../capability/capacity.service';
-import { EVENT_PUBLISHER } from '../events/event-publisher.interface';
-import type { EventPublisher } from '../events/event-publisher.interface';
 import { SOLANA_RPC, type SolanaRpc } from '../solana/solana-rpc.interface';
 import { PaymentIntentService } from '../payment/payment-intent.service';
 import { IntentExpiredError } from '../payment/payment.errors';
@@ -78,12 +75,10 @@ export class SettlementService implements OnModuleInit {
     private readonly db: DbService,
     private readonly config: ConfigService,
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
-    private readonly capacity: CapacityService,
     private readonly intents: PaymentIntentService,
     private readonly provisioning: SettlementProvisioningService,
     private readonly spends: SpendService,
     private readonly confirmation: SettlementConfirmationService,
-    @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
   ) {}
 
   onModuleInit(): void {
@@ -275,10 +270,13 @@ export class SettlementService implements OnModuleInit {
       };
     }
 
-    // An already-broadcast retry above is reconciled even after expiry. A new
-    // broadcast must still be covered by the price the Consumer approved.
+    // An already-broadcast retry above is reconciled even after expiry. A
+    // pinned authorized attempt with no recorded signature is ambiguous: the
+    // process may have crashed after broadcast but before persisting the
+    // signature. Refuse another broadcast and leave it quarantined for the
+    // orphan-suspected recovery path; expiring it here could release capacity
+    // and report failure for money that already moved.
     if (intent.expiresAt.getTime() <= Date.now()) {
-      await this.expireAuthorizedBeforeBroadcast(intent, attempt.id);
       throw new IntentExpiredError(
         `intent ${intentId} expired; request a new quote`,
       );
@@ -390,60 +388,6 @@ export class SettlementService implements OnModuleInit {
       return 'succeeded';
     }
     return 'still_settling';
-  }
-
-  /**
-   * A pinned Spend that expires before submission is known not to have moved
-   * money: the authority has neither signed nor broadcast it. Retire the
-   * attempt, intent and capacity reservation in one transaction so the
-   * orphan-suspected reaper never has to guess about this deterministic case.
-   */
-  private async expireAuthorizedBeforeBroadcast(
-    intent: Awaited<ReturnType<PaymentIntentService['findById']>>,
-    attemptId: string,
-  ): Promise<void> {
-    if (!intent.consumerId) {
-      throw new IntentNotSettleableError(
-        `intent ${intent.id} has no Consumer capacity to release`,
-      );
-    }
-    const consumerId = intent.consumerId;
-    await this.db.withTransaction(async () => {
-      const retired = await this.db.client
-        .update(paymentAttempts)
-        .set({
-          status: 'failed',
-          failureReason: JSON.stringify({
-            code: 'QUOTE_EXPIRED_PRE_BROADCAST',
-          }),
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(paymentAttempts.id, attemptId),
-            eq(paymentAttempts.status, 'authorized'),
-            isNull(paymentAttempts.txSignature),
-          ),
-        )
-        .returning({ id: paymentAttempts.id });
-      if (retired.length === 0) {
-        throw new AttemptAlreadyLiveError(
-          `attempt ${attemptId} is no longer awaiting broadcast`,
-        );
-      }
-      await this.intents.transition(intent.id, 'authorized', 'expired', {});
-      await this.capacity.releaseCapacity(
-        consumerId,
-        intent.usdcSettlementRaw,
-        intent.authorizedAt ?? intent.updatedAt,
-      );
-    });
-    await this.events.publish({
-      topic: 'payment.expired',
-      key: intent.id,
-      payload: { intentId: intent.id },
-      correlationId: intent.id,
-    });
   }
 
   private assertExecutionCluster(cluster: string | null): void {

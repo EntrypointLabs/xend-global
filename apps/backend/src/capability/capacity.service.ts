@@ -46,6 +46,7 @@ export class CapacityService implements OnModuleInit {
   private tiers!: Record<string, TierBand>;
   private defaultTier!: string;
   private usdcMint!: string;
+  private executionCluster!: string;
 
   constructor(
     private readonly db: DbService,
@@ -56,6 +57,7 @@ export class CapacityService implements OnModuleInit {
 
   onModuleInit() {
     this.defaultTier = this.config.getOrThrow<string>('CAPACITY_DEFAULT_TIER');
+    this.executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     this.tiers = parseTierTable(
       this.config.getOrThrow<string>('CAPACITY_TIERS'),
       this.defaultTier,
@@ -308,12 +310,12 @@ export class CapacityService implements OnModuleInit {
     const y = now.getUTCFullYear();
     const m = String(now.getUTCMonth() + 1).padStart(2, '0');
     const d = String(now.getUTCDate()).padStart(2, '0');
-    return `cap:consumer:${consumerId}:day:${y}${m}${d}`;
+    return `cap:cluster:${this.executionCluster}:consumer:${consumerId}:day:${y}${m}${d}`;
   }
 
   private monthKey(consumerId: string, now: Date): string {
     const y = now.getUTCFullYear();
     const m = String(now.getUTCMonth() + 1).padStart(2, '0');
-    return `cap:consumer:${consumerId}:month:${y}${m}`;
+    return `cap:cluster:${this.executionCluster}:consumer:${consumerId}:month:${y}${m}`;
   }
 }

@@ -30,6 +30,7 @@ function makeConfig(overrides: Record<string, string> = {}): ConfigService {
       '{"tier0":{"perPaymentMaxRaw":"50000000","dailyCapRaw":"200000000","monthlyCapRaw":"1000000000"}}',
     CAPACITY_DEFAULT_TIER: 'tier0',
     EXPO_PUBLIC_USDC_MINT_ADDRESS: USDC,
+    SOLANA_CLUSTER: 'devnet',
     ...overrides,
   };
   return {
@@ -202,8 +203,8 @@ describe('CapacityService.reserveCapacity', () => {
       new Date('2026-01-31T23:59:59.999Z'),
     );
     expect(reservations.map((r) => r.key)).toEqual([
-      'cap:consumer:c1:day:20260131',
-      'cap:consumer:c1:month:202601',
+      'cap:cluster:devnet:consumer:c1:day:20260131',
+      'cap:cluster:devnet:consumer:c1:month:202601',
     ]);
   });
 
@@ -286,8 +287,8 @@ describe('CapacityService.releaseCapacity', () => {
       new Date('2026-01-31T23:59:59.000Z'),
     );
     expect(releases.map((r) => r.key)).toEqual([
-      'cap:consumer:c1:day:20260131',
-      'cap:consumer:c1:month:202601',
+      'cap:cluster:devnet:consumer:c1:day:20260131',
+      'cap:cluster:devnet:consumer:c1:month:202601',
     ]);
   });
 });

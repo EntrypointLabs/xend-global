@@ -91,6 +91,24 @@ export class IdempotencyService {
     executionCluster: string,
     idempotencyKey: string,
   ) {
+    const exact = await this.findExact(
+      merchantId,
+      executionCluster,
+      idempotencyKey,
+    );
+    if (exact || executionCluster === 'legacy') return exact;
+
+    // Rows written before cluster scoping were migrated to `legacy`. Consult
+    // them before producing so deploys cannot turn an old replay into a second
+    // Payment (or bypass the different-body 409).
+    return this.findExact(merchantId, 'legacy', idempotencyKey);
+  }
+
+  private async findExact(
+    merchantId: string,
+    executionCluster: string,
+    idempotencyKey: string,
+  ) {
     const [row] = await this.db.client
       .select()
       .from(idempotencyKeys)

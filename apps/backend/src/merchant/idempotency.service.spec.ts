@@ -112,6 +112,24 @@ describe('IdempotencyService.run', () => {
     });
   });
 
+  it('falls back to a legacy snapshot before producing on a scoped cluster', async () => {
+    const legacy = idemRow();
+    const { db } = makeFakeDb({ selects: [[], [legacy]] });
+    const service = new IdempotencyService(db);
+    const produce = jest.fn();
+
+    const result = await service.run(
+      'm1',
+      'idem-1',
+      'hash-a',
+      produce,
+      'devnet',
+    );
+
+    expect(produce).not.toHaveBeenCalled();
+    expect(result.body).toEqual({ id: 'pi_stored' });
+  });
+
   it('returns the stored winner when the insert loses a 23505 race', async () => {
     const { db } = makeFakeDb({
       // First select: pre-check misses. Second select: post-race re-read.

@@ -102,3 +102,16 @@ Implemented:
 - Scope both Payment-intent uniqueness and Merchant response-snapshot idempotency by execution cluster, with a migration for the new response-cache scope.
 
 Disagreements: none.
+
+## Sweep 8
+
+Implemented:
+
+- Quarantine an expired pinned settlement whose broadcast outcome is ambiguous instead of expiring the intent, releasing capacity, and reporting a false failure after money may already have moved.
+- Retain unacknowledged signed mobile submissions per Payment and keep each one visible, so starting another Payment cannot discard the only safe retry payload.
+- Scope daily and monthly capacity counters by Solana execution cluster, including the migration backfill keys.
+- Backfill response snapshots from known Payment clusters and consult legacy response and intent rows before creating a replay, preserving pre-migration idempotency and different-body conflicts.
+- Keep redirect Checkout alive after a confirmation timeout by resubmitting the same signed transaction until the backend returns a terminal result and signed return URL.
+- Give the intentionally expensive all-address signup limit test a CI-safe timeout; it performs twenty real scrypt operations and still keeps its original assertions.
+
+Disagreements: none.

@@ -37,7 +37,7 @@ type Flow = {
 };
 
 type PendingSubmission = {
-  reference: string;
+  payment: AwaitingPayment;
   signedTransactionBase64: string;
 };
 
@@ -74,10 +74,23 @@ export default function FinishPaymentScreen() {
   // would show the previous Payment's merchant and amount for one frame.
   const [active, setActive] = useState<AwaitingPayment | null>(null);
   const [retryable, setRetryable] = useState(false);
-  const [pendingSubmission, setPendingSubmission] =
-    useState<PendingSubmission | null>(null);
+  const [pendingSubmissions, setPendingSubmissions] = useState<
+    Record<string, PendingSubmission>
+  >({});
 
-  const waiting = payments ?? [];
+  // A submit whose response was lost may disappear from the server's awaiting
+  // query even though this screen still owns the only safe retry payload. Keep
+  // it visible until the backend acknowledges those exact signed bytes.
+  const waiting = [...(payments ?? [])];
+  for (const pending of Object.values(pendingSubmissions)) {
+    if (
+      !waiting.some(
+        (payment) => payment.reference === pending.payment.reference
+      )
+    ) {
+      waiting.push(pending.payment);
+    }
+  }
 
   const submitSignedPayment = async (
     payment: AwaitingPayment,
@@ -89,17 +102,21 @@ export default function FinishPaymentScreen() {
     // Retain the exact signed bytes until the server acknowledges them. A
     // retry must resubmit these bytes rather than re-running prepare against
     // the now-authorized intent.
-    setPendingSubmission({
-      reference: payment.reference,
-      signedTransactionBase64,
-    });
+    setPendingSubmissions((current) => ({
+      ...current,
+      [payment.reference]: { payment, signedTransactionBase64 },
+    }));
     setRetryable(true);
 
     let accepted = false;
     try {
       await apiClient.submitPayment(payment.reference, signedTransactionBase64);
       accepted = true;
-      setPendingSubmission(null);
+      setPendingSubmissions((current) => {
+        const next = { ...current };
+        delete next[payment.reference];
+        return next;
+      });
       setRetryable(false);
 
       // The server accepted the signed transaction, so the intent is no
@@ -161,7 +178,6 @@ export default function FinishPaymentScreen() {
   const approve = async (payment: AwaitingPayment) => {
     setActive(payment);
     setRetryable(true);
-    setPendingSubmission(null);
     // Approval runs from a press handler; check expiry at interaction time.
     // eslint-disable-next-line react-hooks/purity
     if (Date.parse(payment.expiresAt) <= Date.now()) {
@@ -240,22 +256,18 @@ export default function FinishPaymentScreen() {
 
   const retry = () => {
     if (!active) return;
-    if (pendingSubmission?.reference === active.reference) {
-      void submitSignedPayment(
-        active,
-        pendingSubmission.signedTransactionBase64
-      );
+    const pending = pendingSubmissions[active.reference];
+    if (pending) {
+      void submitSignedPayment(active, pending.signedTransactionBase64);
       return;
     }
     void approve(active);
   };
 
   const startPayment = (payment: AwaitingPayment) => {
-    if (pendingSubmission?.reference === payment.reference) {
-      void submitSignedPayment(
-        payment,
-        pendingSubmission.signedTransactionBase64
-      );
+    const pending = pendingSubmissions[payment.reference];
+    if (pending) {
+      void submitSignedPayment(payment, pending.signedTransactionBase64);
       return;
     }
     void approve(payment);
