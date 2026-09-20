@@ -157,6 +157,14 @@ export default function FinishPaymentScreen() {
     setPaying(payment.reference);
     setFlow({ step: "sending", state: "working", message: null });
     if (!user?.id) throw new Error("Authenticated user not loaded");
+    // Keep a screen-lifetime recovery copy even if platform storage is
+    // temporarily unavailable. /prepare already authorized and pinned this
+    // intent, so retrying must reuse these bytes instead of preparing again.
+    setPendingSubmissions((current) => ({
+      ...current,
+      [payment.reference]: { payment, signedTransactionBase64 },
+    }));
+    setRetryable(true);
     // Persist the exact signed bytes before the request. A retry after screen
     // navigation or process restart must resubmit these bytes rather than
     // re-running prepare against the now-authorized intent.
@@ -164,11 +172,6 @@ export default function FinishPaymentScreen() {
       payment,
       signedTransactionBase64,
     });
-    setPendingSubmissions((current) => ({
-      ...current,
-      [payment.reference]: { payment, signedTransactionBase64 },
-    }));
-    setRetryable(true);
 
     let accepted = false;
     try {

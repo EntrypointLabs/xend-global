@@ -136,3 +136,11 @@ Implemented:
 - Protect legacy null-cluster Payment intents with a partial idempotency index in the cluster-scope migration, plus a forward-compatible migration for environments that already applied the earlier form.
 
 Disagreements: none.
+
+## Sweep 11
+
+Implemented:
+
+- Retain a newly signed phone Payment in the screen's per-reference retry map before writing durable storage, so a temporary SecureStore or AsyncStorage failure still retries the exact authorized bytes instead of attempting an invalid second prepare.
+
+Disagreements: none.
