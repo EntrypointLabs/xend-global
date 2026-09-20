@@ -8,3 +8,21 @@ export function formatUsdc(raw: string | bigint, { suffix = false } = {}) {
     .padEnd(2, "0");
   return `${value < 0n ? "-" : ""}${absolute / 1000000n}.${fraction}${suffix ? " USDC" : ""}`;
 }
+
+/**
+ * The Merchant-priced figure, from minor units. Most currencies use two
+ * minor digits; Intl formats the code when it is a real ISO currency and
+ * falls back to a plain "CODE amount" for anything it does not recognise.
+ */
+export function formatDisplayAmount(currency: string, minor: string): string {
+  const amount = Number(minor) / 100;
+  if (!Number.isFinite(amount)) return `${currency} ${minor}`;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`;
+  }
+}

@@ -3,9 +3,11 @@ import { useState } from "react";
 export function KeyReveal({
   secret,
   onDismiss,
+  label,
 }: {
   secret: string;
   onDismiss: () => void;
+  label?: string;
 }) {
   const [status, setStatus] = useState("");
   async function copy() {
@@ -18,7 +20,9 @@ export function KeyReveal({
   }
   return (
     <div className="key-reveal">
-      <strong>Copy this key now. It is shown only once.</strong>
+      <strong>
+        {label ? `${label}. ` : ""}Copy this now. It is shown only once.
+      </strong>
       <code>{secret}</code>
       <p>
         Keep this secret on your server. Never include it in browser code or a
