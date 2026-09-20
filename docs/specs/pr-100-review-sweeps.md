@@ -91,3 +91,14 @@ Implemented:
 - Report confirmation timeouts through the checkout protocol so merchant frames and popups close and the Pay button becomes available again.
 
 Disagreements: none.
+
+## Sweep 7
+
+Implemented:
+
+- Refuse normal live-key issuance on devnet deployments and hide that portal action there; enabled devnet execution continues through its explicit gated key type.
+- Retain the exact signed mobile transaction until `/settle` acknowledges it, allowing an unacknowledged submit to retry the idempotent payload without re-running authorization.
+- Show the exact USDC debit and quote expiry directly in Checkout before the approval action instead of placing them in a collapsed disclosure.
+- Scope both Payment-intent uniqueness and Merchant response-snapshot idempotency by execution cluster, with a migration for the new response-cache scope.
+
+Disagreements: none.

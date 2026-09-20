@@ -36,6 +36,7 @@ function idemRow(over: Partial<IdemRow> = {}): IdemRow {
   return {
     id: 'ik1',
     merchantId: 'm1',
+    executionCluster: 'legacy',
     idempotencyKey: 'idem-1',
     requestHash: 'hash-a',
     responseStatus: 201,
@@ -89,6 +90,25 @@ describe('IdempotencyService.run', () => {
       idempotencyKey: 'idem-1',
       requestHash: 'hash-a',
       responseStatus: 201,
+    });
+  });
+
+  it('stores the execution cluster as part of the idempotency scope', async () => {
+    const { db, inserts } = makeFakeDb({ selects: [[]] });
+    const service = new IdempotencyService(db);
+
+    await service.run(
+      'm1',
+      'idem-1',
+      'hash-a',
+      () => Promise.resolve({ status: 201, body: { id: 'pi_devnet' } }),
+      'devnet',
+    );
+
+    expect(inserts[0]).toMatchObject({
+      merchantId: 'm1',
+      executionCluster: 'devnet',
+      idempotencyKey: 'idem-1',
     });
   });
 

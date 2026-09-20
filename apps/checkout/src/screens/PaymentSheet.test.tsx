@@ -6,7 +6,7 @@ import { PaymentSheet } from './PaymentSheet';
 
 afterEach(cleanup);
 
-it('keeps the pinned debit and expiry in a collapsed native disclosure', () => {
+it('shows the pinned debit and expiry before approval', () => {
   const intent = {
     merchantDisplayName: 'Chowderr',
     displayCurrency: 'NGN',
@@ -19,11 +19,10 @@ it('keeps the pinned debit and expiry in a collapsed native disclosure', () => {
       <button>Approve</button>
     </PaymentSheet>,
   );
-  const details = container.querySelector('details')!;
-  expect(details.open).toBe(false);
-  expect(details.querySelector('summary')?.textContent).toBe('More info');
-  expect(details.textContent).toContain('0.751544 USDC');
-  expect(details.querySelector('time')?.dateTime).toBe(intent.expiresAt);
+  expect(container.querySelector('details')).toBeNull();
+  const quote = container.querySelector('.payment-more-info')!;
+  expect(quote.textContent).toContain('0.751544 USDC');
+  expect(quote.querySelector('time')?.dateTime).toBe(intent.expiresAt);
   expect(screen.queryByText('Pay from')).toBeNull();
   expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy();
 });

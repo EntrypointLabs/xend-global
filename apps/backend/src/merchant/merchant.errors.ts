@@ -64,6 +64,15 @@ export class KybNotVerifiedError extends Error {
   }
 }
 
+/** The requested execution-key kind cannot be used on this deployment. */
+export class ExecutionClusterDisabledError extends Error {
+  readonly code = 'EXECUTION_CLUSTER_DISABLED';
+  constructor(message: string) {
+    super(message);
+    this.name = 'ExecutionClusterDisabledError';
+  }
+}
+
 /** Live-key gate: no provisioned provider settlement endpoint reference. */
 export class SettlementDestinationMissingError extends Error {
   readonly code = 'SETTLEMENT_DESTINATION_MISSING';

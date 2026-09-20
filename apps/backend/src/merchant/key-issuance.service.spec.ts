@@ -151,6 +151,26 @@ describe('KeyIssuanceService.issueKey', () => {
     expect(inserts).toEqual([]);
   });
 
+  it('refuses a normal live key on a devnet deployment', async () => {
+    const { db, inserts } = makeFakeDb({
+      merchantRows: [merchantRow({ kybStatus: 'verified' })],
+      settlementRows: [settlementRow({ executionCluster: 'devnet' })],
+    });
+    const service = new KeyIssuanceService(
+      db,
+      new ConfigService({
+        NODE_ENV: 'development',
+        SOLANA_CLUSTER: 'devnet',
+        DEVNET_PAYMENTS_ENABLED: false,
+      }),
+    );
+
+    await expect(service.issueKey('m1', 'live')).rejects.toMatchObject({
+      code: 'EXECUTION_CLUSTER_DISABLED',
+    });
+    expect(inserts).toEqual([]);
+  });
+
   it('issues a test key instantly for a pending-KYB merchant with no settlement account', async () => {
     const { db, inserts } = makeFakeDb({ merchantRows: [merchantRow()] });
     const service = new KeyIssuanceService(db);

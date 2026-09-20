@@ -36,6 +36,11 @@ type Flow = {
   message: string | null;
 };
 
+type PendingSubmission = {
+  reference: string;
+  signedTransactionBase64: string;
+};
+
 /**
  * How long "Sent" stays up before the Activity feed replaces it.
  *
@@ -69,12 +74,94 @@ export default function FinishPaymentScreen() {
   // would show the previous Payment's merchant and amount for one frame.
   const [active, setActive] = useState<AwaitingPayment | null>(null);
   const [retryable, setRetryable] = useState(false);
+  const [pendingSubmission, setPendingSubmission] =
+    useState<PendingSubmission | null>(null);
 
   const waiting = payments ?? [];
+
+  const submitSignedPayment = async (
+    payment: AwaitingPayment,
+    signedTransactionBase64: string
+  ) => {
+    setActive(payment);
+    setPaying(payment.reference);
+    setFlow({ step: "sending", state: "working", message: null });
+    // Retain the exact signed bytes until the server acknowledges them. A
+    // retry must resubmit these bytes rather than re-running prepare against
+    // the now-authorized intent.
+    setPendingSubmission({
+      reference: payment.reference,
+      signedTransactionBase64,
+    });
+    setRetryable(true);
+
+    let accepted = false;
+    try {
+      await apiClient.submitPayment(payment.reference, signedTransactionBase64);
+      accepted = true;
+      setPendingSubmission(null);
+      setRetryable(false);
+
+      // The server accepted the signed transaction, so the intent is no
+      // longer awaiting authorization even if confirmation takes longer.
+      void queryClient.invalidateQueries({ queryKey: AWAITING_PAYMENTS_KEY });
+
+      const outcome = await waitForPaymentOutcome(() =>
+        apiClient.paymentStatus(payment.reference)
+      );
+      if (outcome !== "succeeded") {
+        setFlow({
+          step: "sending",
+          state: outcome === "failed" ? "failed" : "paused",
+          message:
+            outcome === "failed"
+              ? "The payment failed on the network. Check Activity for details."
+              : "Your payment is still confirming. Check Activity before trying again.",
+        });
+        return;
+      }
+
+      // The Payment leaves this list and arrives in Activity as a Payment of
+      // its own. Balances and the daily allowance moved with it.
+      void queryClient.invalidateQueries({ queryKey: ["transfers"] });
+      void queryClient.invalidateQueries({ queryKey: ["balances"] });
+      void queryClient.invalidateQueries({ queryKey: ACCOUNT_QUERY_KEY });
+
+      setFlow({ step: "sent", state: "done", message: null });
+      await new Promise((resolve) => setTimeout(resolve, SENT_DWELL_MS));
+      setFlow(null);
+      router.replace("/(tabs)/history" as never);
+    } catch (err) {
+      Sentry.captureException(err);
+      if (!accepted) {
+        // The request may not have reached the backend. Resubmitting the same
+        // signed transaction is idempotent, so keep a real retry path.
+        setRetryable(true);
+        setFlow({
+          step: "sending",
+          state: "paused",
+          message:
+            "We could not reach the payment service. Retry to send the same signed payment.",
+        });
+        return;
+      }
+      void queryClient.invalidateQueries({ queryKey: AWAITING_PAYMENTS_KEY });
+      setRetryable(false);
+      setFlow({
+        step: "sending",
+        state: "paused",
+        message:
+          "We could not confirm the outcome yet. Check Activity before trying again.",
+      });
+    } finally {
+      setPaying(null);
+    }
+  };
 
   const approve = async (payment: AwaitingPayment) => {
     setActive(payment);
     setRetryable(true);
+    setPendingSubmission(null);
     // Approval runs from a press handler; check expiry at interaction time.
     // eslint-disable-next-line react-hooks/purity
     if (Date.parse(payment.expiresAt) <= Date.now()) {
@@ -100,7 +187,6 @@ export default function FinishPaymentScreen() {
 
     show("reason");
     setPaying(payment.reference);
-    let submitted = false;
     try {
       const prepared = await apiClient.preparePayment(payment.reference);
 
@@ -134,59 +220,11 @@ export default function FinishPaymentScreen() {
         params: { transaction: tx },
       });
 
-      submitted = true;
-      // From this point a retry could duplicate a Payment whose response was
-      // merely lost. Keep its context visible, but make Activity the recovery
-      // surface until the persisted outcome is known.
-      setRetryable(false);
-      await apiClient.submitPayment(
-        payment.reference,
+      await submitSignedPayment(
+        payment,
         fromByteArray(signedTransaction.serialize())
       );
-      // Submission moves the intent out of awaiting_authorization regardless
-      // of its eventual terminal result. Remove its stale Pay card while the
-      // confirmation poll continues.
-      void queryClient.invalidateQueries({ queryKey: AWAITING_PAYMENTS_KEY });
-
-      const outcome = await waitForPaymentOutcome(() =>
-        apiClient.paymentStatus(payment.reference)
-      );
-      if (outcome !== "succeeded") {
-        hold(
-          outcome === "failed" ? "failed" : "paused",
-          outcome === "failed"
-            ? "The payment failed on the network. Check Activity for details."
-            : "Your payment is still confirming. Check Activity before trying again."
-        );
-        return;
-      }
-
-      // The Payment leaves this list and arrives in Activity as a Payment of
-      // its own. Balances and the daily allowance moved with it. The transfer
-      // row is written when the chain confirms, a moment after this, so the
-      // feed's own head watch is what actually brings it in; these only make
-      // sure nothing stale is sitting in front of it.
-      void queryClient.invalidateQueries({ queryKey: ["transfers"] });
-      void queryClient.invalidateQueries({ queryKey: ["balances"] });
-      void queryClient.invalidateQueries({ queryKey: ACCOUNT_QUERY_KEY });
-
-      setFlow({ step: "sent", state: "done", message: null });
-      await new Promise((resolve) => setTimeout(resolve, SENT_DWELL_MS));
-      // Closed before the push: a modal left open sits over the screen it was
-      // meant to hand off to.
-      setFlow(null);
-      // Landed on Activity rather than back here, because the confirmation is
-      // the thing they are waiting to see and this screen is now empty.
-      router.replace("/(tabs)/history" as never);
     } catch (err) {
-      if (submitted) {
-        void queryClient.invalidateQueries({ queryKey: AWAITING_PAYMENTS_KEY });
-        hold(
-          "paused",
-          "We could not confirm the outcome yet. Check Activity before trying again."
-        );
-        return;
-      }
       if (isUserCanceledSign(err)) {
         // A dismissed prompt is a decision, not a fault. Nothing has been
         // signed, and the Payment is still waiting.
@@ -201,7 +239,26 @@ export default function FinishPaymentScreen() {
   };
 
   const retry = () => {
-    if (active) void approve(active);
+    if (!active) return;
+    if (pendingSubmission?.reference === active.reference) {
+      void submitSignedPayment(
+        active,
+        pendingSubmission.signedTransactionBase64
+      );
+      return;
+    }
+    void approve(active);
+  };
+
+  const startPayment = (payment: AwaitingPayment) => {
+    if (pendingSubmission?.reference === payment.reference) {
+      void submitSignedPayment(
+        payment,
+        pendingSubmission.signedTransactionBase64
+      );
+      return;
+    }
+    void approve(payment);
   };
 
   return (
@@ -270,7 +327,7 @@ export default function FinishPaymentScreen() {
                   {new Date(payment.expiresAt).toLocaleTimeString()}.
                 </Typography>
                 <HapticPressable
-                  onPress={() => void approve(payment)}
+                  onPress={() => startPayment(payment)}
                   disabled={paying !== null}
                   className="mt-4 w-full items-center justify-center rounded-full bg-black py-4"
                 >

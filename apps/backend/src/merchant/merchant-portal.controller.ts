@@ -275,6 +275,10 @@ export class MerchantPortalController {
   ) {
     const merchant = await this.owned(authorization);
     if (body.mode === 'live') {
+      if (this.config.get<string>('SOLANA_CLUSTER') === 'devnet')
+        throw new ConflictException(
+          'Live keys are unavailable on devnet. Create a devnet execution key instead.',
+        );
       if (merchant.kybStatus !== 'verified')
         throw new ConflictException(
           'Business verification is required before live keys',

@@ -8,6 +8,7 @@ import { MerchantNotFoundError } from '../payment/payment.errors';
 import { ApiKeyNotFoundError } from './merchant.errors';
 import { generateApiKey } from './api-key.util';
 import {
+  ExecutionClusterDisabledError,
   KybNotVerifiedError,
   SettlementDestinationMissingError,
 } from './merchant.errors';
@@ -85,13 +86,17 @@ export class KeyIssuanceService {
       throw new MerchantNotFoundError(`merchant ${merchantId} not found`);
     }
 
+    const configuredCluster =
+      this.config?.get<string>('SOLANA_CLUSTER') ?? 'mainnet';
+    if (mode === 'live' && configuredCluster === 'devnet') {
+      throw new ExecutionClusterDisabledError(
+        'live keys cannot be issued on devnet; request a devnet execution key',
+      );
+    }
     if (mode === 'devnet' && !devnetExecutionEnabled(this.config))
       throw new KybNotVerifiedError('Devnet execution is disabled');
     if (mode === 'live' || mode === 'devnet') {
-      const executionCluster =
-        mode === 'devnet'
-          ? 'devnet'
-          : (this.config?.get<string>('SOLANA_CLUSTER') ?? 'mainnet');
+      const executionCluster = mode === 'devnet' ? 'devnet' : configuredCluster;
       const [account] = await this.db.client
         .select()
         .from(settlementAccounts)
@@ -120,7 +125,7 @@ export class KeyIssuanceService {
         mode === 'devnet'
           ? 'devnet'
           : mode === 'live'
-            ? (this.config?.get<string>('SOLANA_CLUSTER') ?? 'mainnet')
+            ? configuredCluster
             : null,
     });
 

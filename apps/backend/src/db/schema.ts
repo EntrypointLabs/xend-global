@@ -943,6 +943,7 @@ export const paymentIntents = pgTable(
     // created without a key are unconstrained).
     merchantIdemIdx: uniqueIndex('payment_intents_merchant_idem_idx').on(
       table.merchantId,
+      table.executionCluster,
       table.idempotencyKey,
     ),
     // Expiry sweep scans only unauthorized intents.
@@ -1196,6 +1197,7 @@ export const idempotencyKeys = pgTable(
     merchantId: text('merchant_id')
       .notNull()
       .references(() => merchants.id),
+    executionCluster: text('execution_cluster').notNull().default('legacy'),
     idempotencyKey: text('idempotency_key').notNull(),
     requestHash: text('request_hash').notNull(),
     responseStatus: integer('response_status').notNull(),
@@ -1205,6 +1207,7 @@ export const idempotencyKeys = pgTable(
   (table) => ({
     merchantKeyIdx: uniqueIndex('idempotency_keys_merchant_key_idx').on(
       table.merchantId,
+      table.executionCluster,
       table.idempotencyKey,
     ),
   }),
