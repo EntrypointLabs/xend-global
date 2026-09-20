@@ -1,15 +1,19 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { devnetExecutionEnabled } from './devnet-execution';
-import { and, eq, isNull } from 'drizzle-orm';
-import { DbService } from '../db/db.service';
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import { DbService, type DbExecutor } from '../db/db.service';
 import { apiKeys, merchants, settlementAccounts } from '../db/schema';
 import { MerchantNotFoundError } from '../payment/payment.errors';
-import { ApiKeyNotFoundError } from './merchant.errors';
+import {
+  ApiKeyNotFoundError,
+  ApiKeyRotationInProgressError,
+} from './merchant.errors';
 import { generateApiKey } from './api-key.util';
 import {
   ExecutionClusterDisabledError,
   KybNotVerifiedError,
+  KybSubmissionMismatchError,
   SettlementDestinationMissingError,
 } from './merchant.errors';
 
@@ -58,6 +62,12 @@ export interface RevokedKey {
   fingerprint: string;
   mode: 'test' | 'live';
   revokedAt: Date;
+  /**
+   * Whether this call performed the revocation. False when the key was already
+   * revoked, so a retry stays idempotent but callers can avoid logging a second
+   * audit entry for a transition that did not happen.
+   */
+  claimed: boolean;
 }
 
 /**
@@ -76,8 +86,10 @@ export class KeyIssuanceService {
   async issueKey(
     merchantId: string,
     mode: 'test' | 'live' | 'devnet',
-  ): Promise<{ raw: string; fingerprint: string }> {
-    const [merchant] = await this.db.client
+    options: { name?: string | null; rotatedFromId?: string | null } = {},
+    db: DbExecutor = this.db.client,
+  ): Promise<{ id: string; raw: string; fingerprint: string }> {
+    const [merchant] = await db
       .select()
       .from(merchants)
       .where(eq(merchants.id, merchantId))
@@ -97,7 +109,7 @@ export class KeyIssuanceService {
       throw new KybNotVerifiedError('Devnet execution is disabled');
     if (mode === 'live' || mode === 'devnet') {
       const executionCluster = mode === 'devnet' ? 'devnet' : configuredCluster;
-      const [account] = await this.db.client
+      const [account] = await db
         .select()
         .from(settlementAccounts)
         .where(
@@ -115,29 +127,106 @@ export class KeyIssuanceService {
     }
 
     const key = generateApiKey(mode === 'devnet' ? 'live' : mode);
-    await this.db.client.insert(apiKeys).values({
-      merchantId,
-      keyHash: key.keyHash,
-      keyPrefix: key.keyPrefix,
-      fingerprint: key.fingerprint,
-      mode: key.mode,
-      executionCluster:
-        mode === 'devnet'
-          ? 'devnet'
-          : mode === 'live'
-            ? configuredCluster
-            : null,
-    });
+    const [inserted] = await db
+      .insert(apiKeys)
+      .values({
+        merchantId,
+        keyHash: key.keyHash,
+        keyPrefix: key.keyPrefix,
+        fingerprint: key.fingerprint,
+        mode: key.mode,
+        executionCluster:
+          mode === 'devnet'
+            ? 'devnet'
+            : mode === 'live'
+              ? configuredCluster
+              : null,
+        name: normalizeName(options.name),
+        rotatedFromId: options.rotatedFromId ?? null,
+      })
+      .returning({ id: apiKeys.id });
 
-    return { raw: key.raw, fingerprint: key.fingerprint };
+    return { id: inserted.id, raw: key.raw, fingerprint: key.fingerprint };
+  }
+
+  /**
+   * Replaces a key with a fresh secret. Runs inside the caller's transaction so
+   * the whole rotation is atomic: an audit-record or issuance failure rolls the
+   * revocation back and the old key keeps working. The old key is claimed with
+   * a conditional revoke (WHERE revoked_at IS NULL) that also serialises
+   * concurrent rotations: the row lock lets exactly one request claim it, and a
+   * second concurrent request re-reads a now-revoked row, matches nothing, and
+   * is refused rather than minting a second successor. The successor is issued
+   * under the same mode, execution cluster and name, linked to its predecessor,
+   * and the eligibility gates run again through issueKey.
+   */
+  async rotateKey(
+    keyId: string,
+    merchantId: string,
+    db: DbExecutor = this.db.client,
+  ): Promise<{
+    id: string;
+    raw: string;
+    fingerprint: string;
+    previousKeyExpiresAt: Date;
+  }> {
+    const graceHours =
+      this.config?.get<number>('API_KEY_ROTATION_GRACE_HOURS') ?? 24;
+    const previousKeyExpiresAt = new Date(
+      Date.now() + graceHours * 60 * 60 * 1000,
+    );
+    // Do not revoke the old key: open a grace window instead, so a rotation
+    // whose response is lost leaves the caller working on the old key rather
+    // than locked out. Claim only a key that is neither revoked nor already in
+    // a window, so a retried rotation cannot mint a second successor.
+    const [claimed] = await db
+      .update(apiKeys)
+      .set({ rotationGraceUntil: previousKeyExpiresAt })
+      .where(
+        and(
+          eq(apiKeys.id, keyId),
+          eq(apiKeys.merchantId, merchantId),
+          isNull(apiKeys.revokedAt),
+          isNull(apiKeys.rotationGraceUntil),
+        ),
+      )
+      .returning();
+    if (!claimed) {
+      // Distinguish a retry of an already-rotated key (its window is open and
+      // the caller still has working access) from a missing/revoked key, so the
+      // caller is told access is preserved instead of a bare not-found.
+      const [existing] = await db
+        .select()
+        .from(apiKeys)
+        .where(and(eq(apiKeys.id, keyId), eq(apiKeys.merchantId, merchantId)))
+        .limit(1);
+      if (existing && !existing.revokedAt && existing.rotationGraceUntil) {
+        throw new ApiKeyRotationInProgressError(
+          `api key ${keyId} was already rotated; the previous key stays valid until ${existing.rotationGraceUntil.toISOString()}. Create a new key if the replacement secret was not captured.`,
+        );
+      }
+      throw new ApiKeyNotFoundError(`api key ${keyId} not found`);
+    }
+    const requestedMode =
+      claimed.executionCluster === 'devnet' ? 'devnet' : claimed.mode;
+    const issued = await this.issueKey(
+      merchantId,
+      requestedMode,
+      { name: claimed.name, rotatedFromId: claimed.id },
+      db,
+    );
+    return { ...issued, previousKeyExpiresAt };
   }
 
   /**
    * Retires a key. The guard refuses a revoked key on its next use; a key
    * already revoked keeps its original timestamp so the call is safe to repeat.
    */
-  async revokeKey(keyId: string): Promise<RevokedKey> {
-    const [revoked] = await this.db.client
+  async revokeKey(
+    keyId: string,
+    db: DbExecutor = this.db.client,
+  ): Promise<RevokedKey> {
+    const [revoked] = await db
       .update(apiKeys)
       .set({ revokedAt: new Date() })
       .where(and(eq(apiKeys.id, keyId), isNull(apiKeys.revokedAt)))
@@ -145,11 +234,7 @@ export class KeyIssuanceService {
     const row =
       revoked ??
       (
-        await this.db.client
-          .select()
-          .from(apiKeys)
-          .where(eq(apiKeys.id, keyId))
-          .limit(1)
+        await db.select().from(apiKeys).where(eq(apiKeys.id, keyId)).limit(1)
       )[0];
     if (!row?.revokedAt) {
       throw new ApiKeyNotFoundError(`api key ${keyId} not found`);
@@ -160,23 +245,138 @@ export class KeyIssuanceService {
       fingerprint: row.fingerprint,
       mode: row.mode,
       revokedAt: row.revokedAt,
+      // A row came back from the conditional update only when this call flipped
+      // it; a retry against an already-revoked key falls through to the select.
+      claimed: Boolean(revoked),
     };
   }
 
   /**
    * The manual stage-2 ops action: stamp kyb_status + kyb_verified_at after
    * registration, beneficial ownership, and sanctions checks are done
-   * off-system.
+   * off-system. Verification is bound to the submitted profile version, so an
+   * operator can only stamp the exact details that were reviewed: if the owner
+   * edited the profile after submitting (which clears the submission) or never
+   * submitted, the update is refused and they must (re)submit.
    */
   async markKybVerified(merchantId: string): Promise<void> {
     const now = new Date();
-    const [updated] = await this.db.client
+    const [merchant] = await this.db.client
+      .select({
+        id: merchants.id,
+        kybStatus: merchants.kybStatus,
+        profileVersion: merchants.profileVersion,
+        kybSubmittedVersion: merchants.kybSubmittedVersion,
+      })
+      .from(merchants)
+      .where(eq(merchants.id, merchantId))
+      .limit(1);
+    if (!merchant) {
+      throw new MerchantNotFoundError(`merchant ${merchantId} not found`);
+    }
+    // Only the currently reviewed submission can be approved. Requiring the
+    // pending state stops a repeated verify from overwriting a rejection (which
+    // leaves the submitted version matching the profile) and re-enabling keys.
+    if (
+      merchant.kybStatus !== 'pending' ||
+      merchant.kybSubmittedVersion === null ||
+      merchant.kybSubmittedVersion !== merchant.profileVersion
+    ) {
+      throw new KybSubmissionMismatchError(
+        `merchant ${merchantId} has no pending submission matching its current profile; ask them to submit for verification`,
+      );
+    }
+    await this.db.client
       .update(merchants)
       .set({ kybStatus: 'verified', kybVerifiedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(merchants.id, merchantId),
+          eq(merchants.kybStatus, 'pending'),
+          eq(merchants.profileVersion, merchant.profileVersion),
+        ),
+      );
+  }
+
+  /**
+   * The manual stage-2 ops action for a failed review: stamp kyb_status
+   * 'rejected' and the reviewer's note, which the portal surfaces to the owner
+   * so a resubmission can fix the named problem. The counterpart to
+   * markKybVerified; only the off-system review reaches either.
+   */
+  async markKybRejected(merchantId: string, reviewNote: string): Promise<void> {
+    const now = new Date();
+    const [merchant] = await this.db.client
+      .select({
+        id: merchants.id,
+        kybStatus: merchants.kybStatus,
+        profileVersion: merchants.profileVersion,
+        kybSubmittedVersion: merchants.kybSubmittedVersion,
+      })
+      .from(merchants)
+      .where(eq(merchants.id, merchantId))
+      .limit(1);
+    if (!merchant) {
+      throw new MerchantNotFoundError(`merchant ${merchantId} not found`);
+    }
+    // Only reject an active submission the review actually looked at: a delayed
+    // result must not reject a profile the owner has since edited, and a
+    // stray reject must not clear a merchant that is already verified (which
+    // would start returning 403 for every live key). Both are caught by
+    // requiring the pending state and a submitted version that still matches
+    // the current profile.
+    if (
+      merchant.kybStatus !== 'pending' ||
+      merchant.kybSubmittedVersion === null ||
+      merchant.kybSubmittedVersion !== merchant.profileVersion
+    ) {
+      throw new KybSubmissionMismatchError(
+        `merchant ${merchantId} has no pending submission matching its current profile; nothing to reject`,
+      );
+    }
+    await this.db.client
+      .update(merchants)
+      .set({
+        kybStatus: 'rejected',
+        kybReviewNote: reviewNote,
+        kybVerifiedAt: null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(merchants.id, merchantId),
+          eq(merchants.kybStatus, 'pending'),
+          eq(merchants.profileVersion, merchant.profileVersion),
+        ),
+      );
+  }
+
+  /**
+   * Local test tool only: stamp a submission at the current profile version so
+   * the dev dashboard's one-click "mark verified" can then satisfy the
+   * version-bound markKybVerified without a real review flow. Never wired into
+   * production; the real submission goes through the owner-authenticated portal.
+   */
+  async markKybSubmittedForTest(merchantId: string): Promise<void> {
+    const now = new Date();
+    const [updated] = await this.db.client
+      .update(merchants)
+      .set({
+        kybStatus: 'pending',
+        kybSubmittedAt: now,
+        kybSubmittedVersion: sql`${merchants.profileVersion}`,
+        kybReviewNote: null,
+        updatedAt: now,
+      })
       .where(eq(merchants.id, merchantId))
       .returning({ id: merchants.id });
     if (!updated) {
       throw new MerchantNotFoundError(`merchant ${merchantId} not found`);
     }
   }
+}
+
+function normalizeName(name: string | null | undefined): string | null {
+  const trimmed = name?.trim();
+  return trimmed ? trimmed.slice(0, 60) : null;
 }

@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, eq } from 'drizzle-orm';
-import { DbService } from '../db/db.service';
+import { DbService, type DbExecutor } from '../db/db.service';
 import { settlementAccounts } from '../db/schema';
 import { SOLANA_RPC, type SolanaRpc } from '../solana/solana-rpc.interface';
 import { SettlementRouter } from './settlement-router';
@@ -31,6 +31,7 @@ export class SettlementProvisioningService {
   async provisionOrLink(
     merchantId: string,
     opts: { currency: string; merchantAddress?: string },
+    onProvisioned?: (tx: DbExecutor) => Promise<void>,
   ): Promise<{
     address: string;
     provider: SettlementProviderName;
@@ -90,26 +91,33 @@ export class SettlementProvisioningService {
       provisionedAt: new Date(),
       updatedAt: new Date(),
     };
-    await this.db.client
-      .insert(settlementAccounts)
-      .values(row)
-      .onConflictDoUpdate({
-        target: [
-          settlementAccounts.merchantId,
-          settlementAccounts.executionCluster,
-        ],
-        set: {
-          address: row.address,
-          provider: row.provider,
-          currency: row.currency,
-          providerReference: row.providerReference,
-          payoutConfig: row.payoutConfig,
-          authorityAddress: row.authorityAddress,
-          executionCluster: row.executionCluster,
-          provisionedAt: row.provisionedAt,
-          updatedAt: row.updatedAt,
-        },
-      });
+    // Persist the destination and its audit entry together: the external
+    // provider.provision above already ran, so a failed audit write must not
+    // leave a live destination the trail never recorded. The upsert stays
+    // idempotent, so a retry after a mid-transaction failure is safe.
+    await this.db.client.transaction(async (tx) => {
+      await tx
+        .insert(settlementAccounts)
+        .values(row)
+        .onConflictDoUpdate({
+          target: [
+            settlementAccounts.merchantId,
+            settlementAccounts.executionCluster,
+          ],
+          set: {
+            address: row.address,
+            provider: row.provider,
+            currency: row.currency,
+            providerReference: row.providerReference,
+            payoutConfig: row.payoutConfig,
+            authorityAddress: row.authorityAddress,
+            executionCluster: row.executionCluster,
+            provisionedAt: row.provisionedAt,
+            updatedAt: row.updatedAt,
+          },
+        });
+      if (onProvisioned) await onProvisioned(tx);
+    });
 
     // Best-effort: the reconciler is the safety net if webhook registration
     // fails, so a failure here must not fail provisioning.

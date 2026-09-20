@@ -761,3 +761,222 @@ nav button.selected {
     min-height: 44px;
   }
 }
+
+/* ---- Fixed global navigation ---- */
+/* The top bar is global navigation and must not move between pages; sticking it
+   to the top keeps it in place while a long payments or activity list scrolls. */
+.workspace > aside {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: #fafafa;
+}
+
+/* ---- Key creation + rotation ---- */
+.key-create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+  margin: 8px 0 4px;
+}
+.key-create label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #555;
+}
+.key-create input {
+  min-width: 240px;
+  padding: 9px 12px;
+  border: 1px solid #dcdce1;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.key-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* ---- Webhooks ---- */
+.webhooks-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.webhook-create {
+  border: 1px solid #e8e8e8;
+  border-radius: 10px;
+  padding: 18px;
+  background: white;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.webhook-create-fields {
+  display: grid;
+  grid-template-columns: 1fr 160px;
+  gap: 16px;
+}
+.webhook-create label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #555;
+}
+.webhook-create input,
+.webhook-create select {
+  padding: 10px 12px;
+  border: 1px solid #dcdce1;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.webhook-card .webhook-url {
+  font-size: 14px;
+  word-break: break-all;
+}
+.webhook-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.webhook-deliveries {
+  margin-top: 14px;
+  overflow-x: auto;
+}
+.webhook-deliveries table,
+.payment-detail table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.webhook-deliveries th,
+.payment-detail th {
+  text-align: left;
+  color: #707070;
+  background: #f3f3f5;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.webhook-deliveries td,
+.webhook-deliveries th,
+.payment-detail td,
+.payment-detail th {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e8e8e8;
+}
+@media (max-width: 650px) {
+  .webhook-create-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Payments list filters + clickable rows ---- */
+.payments-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.payments-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #555;
+}
+.payments-filters select,
+.payments-filters input {
+  padding: 9px 12px;
+  border: 1px solid #dcdce1;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.payment-row {
+  cursor: pointer;
+}
+.payment-row:focus-visible {
+  outline: 2px solid #7264df;
+  outline-offset: -2px;
+}
+.payment-ref {
+  display: block;
+  margin-top: 3px;
+  color: #8a8a8a;
+  font-size: 11px;
+}
+
+/* ---- Payment detail ---- */
+.payment-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.back-link {
+  align-self: start;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px 28px;
+  margin: 0;
+}
+.detail-grid dt {
+  color: #8a8a8a;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.detail-grid dd {
+  margin: 4px 0 0;
+  font-size: 14px;
+  word-break: break-word;
+}
+.detail-section {
+  border-top: 1px solid #ececec;
+  padding-top: 18px;
+}
+.detail-section h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+/* ---- Activity log ---- */
+.audit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.audit-entry {
+  padding: 14px 2px;
+  border-bottom: 1px solid #ececec;
+}
+.audit-entry-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+.audit-entry-main time {
+  color: #8a8a8a;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.audit-entry-detail {
+  display: block;
+  margin-top: 4px;
+  color: #707070;
+  font-size: 12px;
+}

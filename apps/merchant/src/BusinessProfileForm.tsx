@@ -36,7 +36,11 @@ export type ProfileMerchant = {
   businessProfile: Partial<BusinessProfile>;
   kybStatus: string;
 };
-export type BusinessProfileHandle = { canLeave: () => boolean };
+export type BusinessProfileHandle = {
+  canLeave: () => boolean;
+  /** True when the form holds edits not yet persisted. */
+  isDirty: () => boolean;
+};
 
 export function BusinessProfileForm({
   merchant,
@@ -73,6 +77,7 @@ export function BusinessProfileForm({
       canLeave: () =>
         !busy &&
         (!dirty || window.confirm("Discard unsaved business details?")),
+      isDirty: () => dirty,
     }),
     [busy, dirty],
   );

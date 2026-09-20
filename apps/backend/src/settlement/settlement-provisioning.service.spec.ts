@@ -49,18 +49,22 @@ function makeDb(opts: {
   onInsert?: (values: Record<string, unknown>) => void;
 }): DbService {
   const rows = opts.existing ?? [];
-  const client = {
-    select: () => ({
-      from: () => ({
-        where: () => ({ limit: () => Promise.resolve(rows) }),
-      }),
-    }),
+  const executor = {
     insert: () => ({
       values: (values: Record<string, unknown>) => {
         opts.onInsert?.(values);
         return { onConflictDoUpdate: () => Promise.resolve(undefined) };
       },
     }),
+  };
+  const client = {
+    select: () => ({
+      from: () => ({
+        where: () => ({ limit: () => Promise.resolve(rows) }),
+      }),
+    }),
+    ...executor,
+    transaction: <T>(fn: (tx: typeof executor) => Promise<T>) => fn(executor),
   };
   return { client } as unknown as DbService;
 }
@@ -173,6 +177,60 @@ describe('SettlementProvisioningService', () => {
     });
     expect(inserted?.provisionedAt).toBeInstanceOf(Date);
     expect(register).toHaveBeenCalledWith(ENDPOINT);
+  });
+
+  it('runs the onProvisioned callback in the same transaction as the destination upsert, only when it provisions', async () => {
+    const { provider } = fakeUsdcProvider();
+    const inserts: Record<string, unknown>[] = [];
+    const audited: unknown[] = [];
+    const service = new SettlementProvisioningService(
+      makeDb({ existing: [], onInsert: (v) => inserts.push(v) }),
+      makeConfig(),
+      makeSolana(jest.fn().mockResolvedValue(undefined)),
+      new SettlementRouter([provider]),
+    );
+
+    await service.provisionOrLink('m_1', { currency: 'USDC' }, (tx) => {
+      // The callback receives the transaction handle, not the pooled client.
+      expect(typeof tx.insert).toBe('function');
+      audited.push('destination.provision');
+      return Promise.resolve();
+    });
+
+    expect(inserts).toHaveLength(1);
+    expect(audited).toEqual(['destination.provision']);
+  });
+
+  it('does not run onProvisioned on the idempotent path', async () => {
+    const { provider } = fakeUsdcProvider();
+    const audited: unknown[] = [];
+    const service = new SettlementProvisioningService(
+      makeDb({
+        existing: [
+          {
+            address: ENDPOINT,
+            provider: 'direct_usdc',
+            provisionedAt: new Date(),
+            executionCluster: 'devnet',
+          },
+        ],
+      }),
+      makeConfig(),
+      makeSolana(jest.fn()),
+      new SettlementRouter([provider]),
+    );
+
+    const result = await service.provisionOrLink(
+      'm_1',
+      { currency: 'USDC' },
+      () => {
+        audited.push('destination.provision');
+        return Promise.resolve();
+      },
+    );
+
+    expect(result.provisioned).toBe(false);
+    expect(audited).toEqual([]);
   });
 
   it('is idempotent: an already-provisioned merchant returns the existing row without re-provisioning', async () => {

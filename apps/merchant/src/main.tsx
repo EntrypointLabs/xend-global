@@ -1,5 +1,4 @@
-import { formatUsdc } from "./money";
-import React, { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   PrivyProvider,
@@ -20,6 +19,25 @@ import {
   type ProfileMerchant,
   type BusinessProfileHandle,
 } from "./BusinessProfileForm";
+import { createPortalClient } from "./portal";
+import { navigate, normalizePath, pagePath, useRoute } from "./router";
+import { WebhooksPanel } from "./WebhooksPanel";
+import { PaymentsPanel } from "./PaymentsPanel";
+import { PaymentDetail } from "./PaymentDetail";
+import { AuditPanel } from "./AuditPanel";
+
+type ApiKey = {
+  id: string;
+  name: string | null;
+  fingerprint: string;
+  mode: string;
+  executionCluster: string | null;
+  rotatedFromId: string | null;
+  rotationGraceUntil: string | null;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+};
 
 type Dashboard = {
   cluster: string;
@@ -28,17 +46,19 @@ type Dashboard = {
     id: string;
     displayName: string;
     kybStatus: string;
+    kybSubmittedAt: string | null;
+    kybReviewNote: string | null;
     receivingWallet: string;
   };
-  destination: { address: string } | null;
-  keys: {
+  destination: { address: string | null } | null;
+  keys: ApiKey[];
+  payments: {
     id: string;
-    fingerprint: string;
+    status: string;
+    amountRaw: string;
     mode: string;
-    executionCluster: string | null;
-    revokedAt: string | null;
+    createdAt: string;
   }[];
-  payments: { id: string; status: string; amountRaw: string; mode: string }[];
 };
 
 function DashboardApp() {
@@ -46,61 +66,132 @@ function DashboardApp() {
   return <MerchantWorkspace key={user?.id ?? "signed-out"} />;
 }
 
+function keyKind(key: ApiKey): string {
+  if (key.executionCluster === "devnet") return "Devnet execution key";
+  return key.mode === "test" ? "Simulation key" : "Live execution key";
+}
+
+function whenText(iso: string | null): string {
+  return iso ? new Date(iso).toLocaleString() : "Never";
+}
+
 function MerchantWorkspace() {
   const profileRef = useRef<BusinessProfileHandle>(null);
-  const [page, setPage] = useState<
-    "overview" | "account" | "keys" | "payments"
-  >("overview");
+  const route = useRoute();
   const [developerTab, setDeveloperTab] = useState<"keys" | "guide">("keys");
   const { ready, authenticated, login, logout } = usePrivy();
   const { identityToken } = useIdentityToken();
+  const client = useMemo(
+    () => createPortalClient(authenticated ? identityToken : null),
+    [authenticated, identityToken],
+  );
   const account = useMerchantDashboard<Dashboard>(
     authenticated ? identityToken : null,
   );
   const { data, setData } = account;
+  // Track the path we are on so the browser-history guard below can tell what
+  // page a back/forward is leaving.
+  const currentPathRef = useRef(pagePath("overview"));
+  useEffect(() => {
+    // Normalize so a page opened as `/account/` still matches the canonical
+    // `/account` the history guard compares against.
+    currentPathRef.current = normalizePath(window.location.pathname);
+  });
+  useEffect(() => {
+    // Back/forward fire popstate directly, bypassing the click guard. If it
+    // leaves the account page with unsaved edits and the owner declines to
+    // discard, re-push the account path to cancel the transition.
+    const onPopState = () => {
+      const wasAccount = currentPathRef.current === pagePath("account");
+      const now = normalizePath(window.location.pathname);
+      if (
+        wasAccount &&
+        now !== pagePath("account") &&
+        profileRef.current &&
+        !profileRef.current.canLeave()
+      ) {
+        window.history.pushState(null, "", pagePath("account"));
+        window.dispatchEvent(new Event("locationchange"));
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
   const [name, setName] = useState("");
   const [origin, setOrigin] = useState("http://localhost:5174");
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [rawKey, setRawKey] = useState("");
+  // One-time secrets (API keys and webhook signing secrets) are revealed once.
+  // Held at the workspace level and shown above the routed content so switching
+  // pages never discards the only copy the merchant is given.
+  const [secretReveal, setSecretReveal] = useState<{
+    secret: string;
+    label: string;
+  } | null>(null);
+  const [keyName, setKeyName] = useState("");
 
-  async function request(path: string, body?: unknown) {
-    if (!identityToken)
-      throw new Error(
-        "Your Merchant identity token is unavailable. Refresh this page. If this continues, enable ‘Return user data in an identity token’ in the Merchant Privy app’s Authentication settings.",
-      );
-    const response = await fetch(`/merchant-portal/${path}`, {
-      method: body === undefined ? "GET" : "POST",
-      headers: {
-        Authorization: `Bearer ${identityToken}`,
-        "Content-Type": "application/json",
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new PortalRequestError(result);
-    return result;
-  }
   async function run(action: () => Promise<void>) {
     setBusy(true);
     setError("");
     try {
       await action();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Request failed");
+      setError(
+        e instanceof PortalRequestError || e instanceof Error
+          ? e.message
+          : "Request failed",
+      );
     } finally {
       setBusy(false);
     }
   }
   async function refresh() {
-    setData(await request("me"));
+    setData(await client.get<Dashboard>("me"));
   }
   async function issue(mode: "test" | "live" | "devnet") {
-    const key = await request("keys", { mode });
-    setRawKey(key.raw);
+    const key = await client.post<{ raw: string }>("keys", {
+      mode,
+      name: keyName.trim() || undefined,
+    });
+    setSecretReveal({ secret: key.raw, label: "API key" });
+    setKeyName("");
     await refresh();
   }
+  async function rotate(id: string) {
+    const key = await client.post<{ raw: string }>(
+      `keys/${encodeURIComponent(id)}/rotate`,
+    );
+    setSecretReveal({ secret: key.raw, label: "New API key" });
+    await refresh();
+  }
+
+  const page = route.page;
+  // History-API navigation does not fire the form's beforeunload warning, and
+  // routing away unmounts the account form with its draft. Guard every in-app
+  // navigation so leaving the account page with unsaved edits asks first.
+  function go(to: string) {
+    if (
+      route.page === "account" &&
+      profileRef.current &&
+      !profileRef.current.canLeave()
+    )
+      return;
+    navigate(to);
+  }
+  const navItem = (
+    target: Parameters<typeof pagePath>[0],
+    label: string,
+    active: boolean,
+  ) => (
+    <button
+      className={active ? "selected" : ""}
+      aria-current={active ? "page" : undefined}
+      onClick={() => go(pagePath(target))}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <MerchantSessionBoundary
@@ -115,7 +206,14 @@ function MerchantWorkspace() {
         {!data && <MerchantEntryStory />}
         {data && (
           <aside>
-            <a className="wordmark" href="/">
+            <a
+              className="wordmark"
+              href={pagePath("overview")}
+              onClick={(e) => {
+                e.preventDefault();
+                go(pagePath("overview"));
+              }}
+            >
               <span className="version-pill">v1</span>
               <span className="brand-symbol" aria-hidden="true">
                 ↗
@@ -123,40 +221,17 @@ function MerchantWorkspace() {
               xend
             </a>
             <nav aria-label="Merchant workspace">
-              <button
-                className={page === "overview" ? "selected" : ""}
-                aria-current={page === "overview" ? "page" : undefined}
-                onClick={() => setPage("overview")}
-              >
-                Home
-              </button>
-              {data && (
-                <button
-                  className={page === "payments" ? "selected" : ""}
-                  aria-current={page === "payments" ? "page" : undefined}
-                  onClick={() => setPage("payments")}
-                >
-                  Payments
-                </button>
+              {navItem("overview", "Home", page === "overview")}
+              {navItem(
+                "payments",
+                "Payments",
+                page === "payments" || page === "payment",
               )}
-              {data && (
-                <button
-                  className={page === "keys" ? "selected" : ""}
-                  aria-current={page === "keys" ? "page" : undefined}
-                  onClick={() => setPage("keys")}
-                >
-                  Developers
-                </button>
-              )}
-              {authenticated && (
-                <button
-                  className={page === "account" ? "selected" : ""}
-                  aria-current={page === "account" ? "page" : undefined}
-                  onClick={() => setPage("account")}
-                >
-                  Account
-                </button>
-              )}
+              {navItem("developers", "Developers", page === "developers")}
+              {navItem("webhooks", "Webhooks", page === "webhooks")}
+              {navItem("audit", "Activity", page === "audit")}
+              {authenticated &&
+                navItem("account", "Account", page === "account")}
             </nav>
             <div className="sidebar-note">
               Your business.
@@ -179,7 +254,7 @@ function MerchantWorkspace() {
                       if (profileRef.current && !profileRef.current.canLeave())
                         return;
                       setData(null);
-                      setRawKey("");
+                      setSecretReveal(null);
                       void logout();
                     }}
                   >
@@ -193,6 +268,14 @@ function MerchantWorkspace() {
             <p className="error" role="alert">
               {error}
             </p>
+          )}
+          {secretReveal && (
+            <KeyReveal
+              key={secretReveal.secret}
+              secret={secretReveal.secret}
+              label={secretReveal.label}
+              onDismiss={() => setSecretReveal(null)}
+            />
           )}
           {!authenticated ? (
             <section className="panel">
@@ -225,7 +308,7 @@ function MerchantWorkspace() {
                   e.preventDefault();
                   void run(async () => {
                     setData(
-                      await request("register", {
+                      await client.post<Dashboard>("register", {
                         name,
                         origin,
                         acceptUsdcTerms: accepted,
@@ -284,367 +367,395 @@ function MerchantWorkspace() {
                 </div>
               </form>
             </section>
-          ) : (
-            <>
-              {page === "overview" && (
-                <OverviewDashboard
-                  payments={data.payments}
-                  activeKeys={data.keys.filter((key) => !key.revokedAt).length}
-                  cluster={data.cluster}
-                  name={data.merchant.displayName}
-                  onPayments={() => setPage("payments")}
-                  onAccount={() => setPage("account")}
-                />
-              )}
-              <section
-                className="account-workspace"
-                id="setup"
-                hidden={page !== "account"}
-              >
-                <div className="workspace-page-title">
-                  <h1>Merchant Account</h1>
+          ) : page === "overview" ? (
+            <OverviewDashboard
+              payments={data.payments}
+              activeKeys={data.keys.filter((key) => !key.revokedAt).length}
+              cluster={data.cluster}
+              name={data.merchant.displayName}
+              onPayments={() => navigate(pagePath("payments"))}
+              onAccount={() => navigate(pagePath("account"))}
+            />
+          ) : page === "payments" ? (
+            <PaymentsPanel client={client} />
+          ) : page === "payment" && route.paymentId ? (
+            <PaymentDetail client={client} paymentId={route.paymentId} />
+          ) : page === "webhooks" ? (
+            <WebhooksPanel
+              client={client}
+              onSecret={(secret, label) => setSecretReveal({ secret, label })}
+              revealActive={secretReveal !== null}
+              cluster={data.cluster}
+            />
+          ) : page === "audit" ? (
+            <AuditPanel client={client} />
+          ) : page === "account" ? (
+            <section className="account-workspace" id="setup">
+              <div className="workspace-page-title">
+                <h1>Merchant Account</h1>
+                <p>
+                  Receiving details and business verification for{" "}
+                  {data.merchant.displayName}
+                </p>
+              </div>
+              <div className="grid">
+                <section className="panel">
+                  <p className="eyebrow">01 / RECEIVING ACCOUNT</p>
+                  <h2>
+                    {data.destination
+                      ? "Receiving account connected."
+                      : "Give payments a home."}
+                  </h2>
                   <p>
-                    Receiving details and business verification for{" "}
-                    {data.merchant.displayName}
+                    Merchant-controlled USDC on Solana. Network: {data.cluster}.
                   </p>
-                </div>
-                <div className="grid">
-                  <section className="panel">
-                    <p className="eyebrow">01 / RECEIVING ACCOUNT</p>
-                    <h2>
-                      {data.destination
-                        ? "Receiving account connected."
-                        : "Give payments a home."}
-                    </h2>
-                    <p>
-                      Merchant-controlled USDC on Solana. Network:{" "}
-                      {data.cluster}.
-                    </p>
-                    <code className="address">
-                      {data.destination?.address ??
-                        data.merchant.receivingWallet}
-                    </code>
-                    {!data.destination && (
+                  <code className="address">
+                    {data.destination?.address ?? data.merchant.receivingWallet}
+                  </code>
+                  {!data.destination && (
+                    <button
+                      disabled={busy}
+                      onClick={() =>
+                        void run(async () => {
+                          await client.post("destination");
+                          await refresh();
+                        })
+                      }
+                    >
+                      Initialize USDC account ↗
+                    </button>
+                  )}
+                </section>
+                <section className="panel">
+                  <p className="eyebrow">02 / BUSINESS VERIFICATION</p>
+                  <h2>
+                    {data.merchant.kybStatus === "verified"
+                      ? "Verified."
+                      : data.merchant.kybStatus === "rejected"
+                        ? "Verification not approved."
+                        : data.merchant.kybSubmittedAt
+                          ? "Verification in review."
+                          : "Verification pending."}
+                  </h2>
+                  <p>
+                    Test keys are available now. Live keys require business
+                    verification and a confirmed receiving account.
+                  </p>
+                  {data.merchant.kybStatus === "rejected" &&
+                    data.merchant.kybReviewNote && (
+                      <p className="error" role="status">
+                        {data.merchant.kybReviewNote}
+                      </p>
+                    )}
+                  {data.merchant.kybStatus !== "verified" && (
+                    <>
+                      {data.merchant.kybSubmittedAt &&
+                        data.merchant.kybStatus === "pending" && (
+                          <p className="subtle">
+                            Submitted for review on{" "}
+                            {whenText(data.merchant.kybSubmittedAt)}.
+                          </p>
+                        )}
                       <button
+                        className="secondary"
                         disabled={busy}
                         onClick={() =>
                           void run(async () => {
-                            await request("destination", {});
-                            await refresh();
+                            // The draft lives in the profile form; submitting
+                            // while it is dirty would send the old persisted
+                            // profile for review while the owner sees unsaved
+                            // values. Require a save first.
+                            if (profileRef.current?.isDirty()) {
+                              throw new Error(
+                                "Save your business details before submitting them for verification.",
+                              );
+                            }
+                            setData(await client.post<Dashboard>("kyb/submit"));
                           })
                         }
                       >
-                        Initialize USDC account ↗
+                        {data.merchant.kybStatus === "rejected"
+                          ? "Resubmit for verification"
+                          : data.merchant.kybSubmittedAt
+                            ? "Resubmit business details"
+                            : "Submit business details for verification"}
                       </button>
-                    )}
-                  </section>
-                  <section className="panel">
-                    <p className="eyebrow">02 / BUSINESS VERIFICATION</p>
-                    <h2>
-                      {data.merchant.kybStatus === "verified"
-                        ? "Verified."
-                        : data.merchant.kybStatus === "rejected"
-                          ? "Verification not approved."
-                          : "Verification pending."}
-                    </h2>
-                    <p>
-                      Test keys are available now. Live keys require business
-                      verification and a confirmed receiving account.
-                    </p>
-                    <p className="subtle">
-                      Devnet setup does not represent completed business
-                      verification.
-                    </p>
-                  </section>
+                    </>
+                  )}
+                  <p className="subtle">
+                    Devnet setup does not represent completed business
+                    verification.
+                  </p>
+                </section>
+              </div>
+              <p className="account-settlement-note">
+                Payments settle in USDC when confirmed on Solana. No automatic
+                currency conversion or bank payout.
+              </p>
+              <BusinessProfileForm
+                ref={profileRef}
+                key={data.merchant.id}
+                merchant={data.merchant}
+                onSave={async (update) => {
+                  const next = await client.post<Dashboard>("profile", update);
+                  setData(next);
+                  return next.merchant;
+                }}
+              />
+            </section>
+          ) : (
+            <section className="panel developer-workspace" id="keys">
+              <div className="developer-sidebar">
+                <h2>Settings</h2>
+                <p>MERCHANT SETTINGS</p>
+                <button onClick={() => navigate(pagePath("account"))}>
+                  Receiving account
+                </button>
+                <button onClick={() => navigate(pagePath("account"))}>
+                  Business verification
+                </button>
+                <p>INTEGRATION</p>
+                <button
+                  className={developerTab === "keys" ? "selected" : ""}
+                  aria-current={developerTab === "keys" ? "page" : undefined}
+                  onClick={() => setDeveloperTab("keys")}
+                >
+                  API keys & SDKs
+                </button>
+                <button
+                  className={developerTab === "guide" ? "selected" : ""}
+                  aria-current={developerTab === "guide" ? "page" : undefined}
+                  onClick={() => setDeveloperTab("guide")}
+                >
+                  Integration guide
+                </button>
+                <p>EVENTS</p>
+                <button onClick={() => navigate(pagePath("webhooks"))}>
+                  Webhooks
+                </button>
+              </div>
+              <div className="developer-main">
+                <div className="developer-breadcrumb">
+                  Settings <span>/</span>{" "}
+                  {developerTab === "guide"
+                    ? "Integration guide"
+                    : "API keys & SDKs"}
                 </div>
-                <p className="account-settlement-note">
-                  Payments settle in USDC when confirmed on Solana. No automatic
-                  currency conversion or bank payout.
-                </p>
-                <BusinessProfileForm
-                  ref={profileRef}
-                  key={data.merchant.id}
-                  merchant={data.merchant}
-                  onSave={async (update) => {
-                    const next: Dashboard = await request("profile", update);
-                    setData(next);
-                    return next.merchant;
-                  }}
-                />
-              </section>
-              <section
-                className="panel developer-workspace"
-                id="keys"
-                hidden={page !== "keys"}
-              >
-                <div className="developer-sidebar">
-                  <h2>Settings</h2>
-                  <p>MERCHANT SETTINGS</p>
-                  <button onClick={() => setPage("account")}>
-                    Receiving account
-                  </button>
-                  <button onClick={() => setPage("account")}>
-                    Business verification
-                  </button>
-                  <p>INTEGRATION</p>
+                <div className="developer-tabs">
                   <button
                     className={developerTab === "keys" ? "selected" : ""}
-                    aria-current={developerTab === "keys" ? "page" : undefined}
+                    aria-pressed={developerTab === "keys"}
                     onClick={() => setDeveloperTab("keys")}
                   >
-                    API keys & SDKs
+                    API keys
                   </button>
                   <button
                     className={developerTab === "guide" ? "selected" : ""}
-                    aria-current={developerTab === "guide" ? "page" : undefined}
+                    aria-pressed={developerTab === "guide"}
                     onClick={() => setDeveloperTab("guide")}
                   >
                     Integration guide
                   </button>
                 </div>
-                <div className="developer-main">
-                  <div className="developer-breadcrumb">
-                    Settings <span>/</span> API keys & SDKs
+                {developerTab === "guide" ? (
+                  <div className="integration-guide">
+                    <h2>Connect your Checkout</h2>
+                    <p>
+                      Create an API key for your environment. Keep the secret on
+                      your server.
+                    </p>
+                    <ol>
+                      <li>
+                        Your server creates a Payment intent with the Merchant
+                        API.
+                      </li>
+                      <li>
+                        Pass the returned reference to the Xend Checkout SDK.
+                      </li>
+                      <li>
+                        Verify the signed webhook before fulfilling the order. A
+                        browser redirect alone is not proof of payment.
+                      </li>
+                    </ol>
+                    <p>
+                      Test keys simulate Payments. Devnet execution keys move
+                      test USDC. Neither proves mainnet readiness.
+                    </p>
                   </div>
-                  <div className="developer-tabs">
-                    <button
-                      className={developerTab === "keys" ? "selected" : ""}
-                      aria-pressed={developerTab === "keys"}
-                      onClick={() => setDeveloperTab("keys")}
-                    >
-                      API keys
-                    </button>
-                    <button
-                      className={developerTab === "guide" ? "selected" : ""}
-                      aria-pressed={developerTab === "guide"}
-                      onClick={() => setDeveloperTab("guide")}
-                    >
-                      Integration guide
-                    </button>
-                  </div>
-                  {developerTab === "guide" ? (
-                    <div className="integration-guide">
-                      <h2>Connect your Checkout</h2>
-                      <p>
-                        Create an API key for your environment. Keep the secret
-                        on your server.
-                      </p>
-                      <ol>
-                        <li>
-                          Your server creates a Payment intent with the Merchant
-                          API.
-                        </li>
-                        <li>
-                          Pass the returned reference to the Xend Checkout SDK.
-                        </li>
-                        <li>
-                          Verify the signed webhook before fulfilling the order.
-                          A browser redirect alone is not proof of payment.
-                        </li>
-                      </ol>
-                      <p>
-                        Test keys simulate Payments. Devnet execution keys move
-                        test USDC. Neither proves mainnet readiness.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="section-head">
-                        <div>
-                          <p className="eyebrow">03 / INTEGRATE</p>
-                          <h2>API keys & SDKs</h2>
-                        </div>
-                        <div className="actions">
-                          <button
-                            disabled={busy}
-                            onClick={() => void run(() => issue("test"))}
-                          >
-                            Create simulation key
-                          </button>
-                          {data.cluster !== "devnet" && (
-                            <button
-                              className="secondary"
-                              disabled={
-                                busy ||
-                                data.merchant.kybStatus !== "verified" ||
-                                !data.destination
-                              }
-                              onClick={() => void run(() => issue("live"))}
-                            >
-                              Create live key
-                            </button>
-                          )}
-                          {data.devnetExecutionEnabled && (
-                            <button
-                              disabled={busy || !data.destination}
-                              onClick={() => void run(() => issue("devnet"))}
-                            >
-                              Create devnet execution key
-                            </button>
-                          )}
-                        </div>
+                ) : (
+                  <>
+                    <div className="section-head">
+                      <div>
+                        <p className="eyebrow">03 / INTEGRATE</p>
+                        <h2>API keys & SDKs</h2>
                       </div>
-                      <p>
-                        Simulation keys test Payments without moving USDC. Live
-                        keys use the configured network shown above.
-                        {data.devnetExecutionEnabled &&
-                          " Devnet execution keys move test USDC only and are rejected on mainnet. They do not complete business verification."}
-                      </p>
-                      {rawKey && (
-                        <KeyReveal
-                          key={rawKey}
-                          secret={rawKey}
-                          onDismiss={() => setRawKey("")}
+                    </div>
+                    <div className="key-create">
+                      <label>
+                        Key name (optional)
+                        <input
+                          value={keyName}
+                          maxLength={60}
+                          placeholder="Storefront, staging, mobile app…"
+                          onChange={(e) => setKeyName(e.target.value)}
                         />
-                      )}
-                      <div className="key-cards">
-                        {data.keys.length === 0 && (
-                          <p>
-                            No API keys yet. Create a simulation key to start
-                            your integration.
-                          </p>
+                      </label>
+                      <div className="actions">
+                        <button
+                          disabled={busy || secretReveal !== null}
+                          onClick={() => void run(() => issue("test"))}
+                        >
+                          Create simulation key
+                        </button>
+                        {data.cluster !== "devnet" && (
+                          <button
+                            className="secondary"
+                            disabled={
+                              busy ||
+                              secretReveal !== null ||
+                              data.merchant.kybStatus !== "verified" ||
+                              !data.destination
+                            }
+                            onClick={() => void run(() => issue("live"))}
+                          >
+                            Create live key
+                          </button>
                         )}
-                        {data.keys.map((key) => (
+                        {data.devnetExecutionEnabled && (
+                          <button
+                            disabled={
+                              busy || secretReveal !== null || !data.destination
+                            }
+                            onClick={() => void run(() => issue("devnet"))}
+                          >
+                            Create devnet execution key
+                          </button>
+                        )}
+                      </div>
+                      {secretReveal !== null && (
+                        <small>
+                          Copy and dismiss the secret above before creating,
+                          rotating or revoking another key.
+                        </small>
+                      )}
+                    </div>
+                    <p>
+                      Simulation keys test Payments without moving USDC. Live
+                      keys use the configured network shown above.
+                      {data.devnetExecutionEnabled &&
+                        " Devnet execution keys move test USDC only and are rejected on mainnet. They do not complete business verification."}
+                    </p>
+                    <div className="key-cards">
+                      {data.keys.length === 0 && (
+                        <p>
+                          No API keys yet. Create a simulation key to start your
+                          integration.
+                        </p>
+                      )}
+                      {data.keys.map((key) => {
+                        // A rotated key keeps working until its grace window
+                        // closes; show it as expiring, not plainly active, and
+                        // do not offer to rotate it again (its successor exists).
+                        const graceUntil = key.rotationGraceUntil
+                          ? new Date(key.rotationGraceUntil)
+                          : null;
+                        const isExpiring =
+                          !key.revokedAt &&
+                          graceUntil !== null &&
+                          graceUntil.getTime() > Date.now();
+                        return (
                           <article className="key-card" key={key.id}>
                             <div className="section-head">
-                              <h3>
-                                {key.executionCluster === "devnet"
-                                  ? "Devnet execution key"
-                                  : key.mode === "test"
-                                    ? "Simulation key"
-                                    : "Live execution key"}
-                              </h3>
+                              <h3>{key.name ? key.name : keyKind(key)}</h3>
                               <span className="badge">
-                                {key.revokedAt ? "Revoked" : "Active"}
+                                {key.revokedAt
+                                  ? "Revoked"
+                                  : isExpiring
+                                    ? "Expiring"
+                                    : "Active"}
                               </span>
                             </div>
+                            {key.name && <small>{keyKind(key)}</small>}
                             <code className="address">{key.fingerprint}</code>
                             <small>
-                              Fingerprint only. Full secrets are shown once,
-                              when created.
+                              Created {whenText(key.createdAt)} · Last used{" "}
+                              {whenText(key.lastUsedAt)}
+                              {key.rotatedFromId
+                                ? " · rotated from a prior key"
+                                : ""}
+                              {isExpiring && graceUntil
+                                ? ` · replaced; valid until ${graceUntil.toLocaleString()}`
+                                : ""}
                             </small>
                             {!key.revokedAt && (
-                              <RevokeKey
-                                fingerprint={key.fingerprint}
-                                onRevoke={async () => {
-                                  const revoked = await request(
-                                    `keys/${encodeURIComponent(key.id)}/revoke`,
-                                    {},
-                                  );
-                                  setData((current) =>
-                                    current
-                                      ? {
-                                          ...current,
-                                          keys: current.keys.map((item) =>
-                                            item.id === key.id
-                                              ? {
-                                                  ...item,
-                                                  revokedAt: revoked.revokedAt,
-                                                }
-                                              : item,
-                                          ),
-                                        }
-                                      : current,
-                                  );
-                                  setRawKey("");
-                                }}
-                              />
+                              <div className="key-card-actions actions">
+                                {!isExpiring && (
+                                  <button
+                                    className="secondary"
+                                    disabled={busy || secretReveal !== null}
+                                    onClick={() =>
+                                      void run(() => rotate(key.id))
+                                    }
+                                  >
+                                    Rotate key
+                                  </button>
+                                )}
+                                <RevokeKey
+                                  fingerprint={key.fingerprint}
+                                  disabled={busy || secretReveal !== null}
+                                  onRevoke={async () => {
+                                    const revoked = await client.post<{
+                                      revokedAt: string;
+                                    }>(
+                                      `keys/${encodeURIComponent(key.id)}/revoke`,
+                                    );
+                                    setData((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            keys: current.keys.map((item) =>
+                                              item.id === key.id
+                                                ? {
+                                                    ...item,
+                                                    revokedAt:
+                                                      revoked.revokedAt,
+                                                  }
+                                                : item,
+                                            ),
+                                          }
+                                        : current,
+                                    );
+                                  }}
+                                />
+                              </div>
                             )}
                           </article>
-                        ))}
-                      </div>
-                      <div className="key-security">
-                        <strong>Security best practices</strong>
-                        <ul>
-                          <li>
-                            Never share API keys publicly or commit them to
-                            version control.
-                          </li>
-                          <li>
-                            Store secrets on your server, not in browser or
-                            mobile code.
-                          </li>
-                          <li>
-                            Verify webhook signatures before fulfilling
-                            Payments.
-                          </li>
-                          <li>
-                            Use a separate key for each integration environment.
-                          </li>
-                        </ul>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </section>
-              <section
-                className="panel payments-workspace"
-                id="payments"
-                hidden={page !== "payments"}
-              >
-                <div className="section-head">
-                  <div className="workspace-page-title">
-                    <h1>Payments</h1>
-                    <p>Recent Checkout attempts and their confirmed outcomes</p>
-                  </div>
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => void run(refresh)}
-                  >
-                    Refresh
-                  </button>
-                </div>
-                {data.payments.length === 0 ? (
-                  <p>No Payments yet. Your first one will appear here.</p>
-                ) : (
-                  <div
-                    className="table-wrap"
-                    role="region"
-                    aria-label="Recent Payments"
-                    tabIndex={0}
-                  >
-                    <table>
-                      <thead>
-                        <tr>
-                          <th scope="col">Reference</th>
-                          <th scope="col">USDC</th>
-                          <th scope="col">Status</th>
-                          <th scope="col">Mode</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.payments.map((p) => (
-                          <tr key={p.id}>
-                            <td>
-                              <code>{p.id}</code>
-                            </td>
-                            <td>{formatUsdc(p.amountRaw, { suffix: true })}</td>
-                            <td>
-                              <span
-                                className="payment-status"
-                                data-status={p.status}
-                              >
-                                {p.status === "succeeded"
-                                  ? "Confirmed"
-                                  : p.status === "created"
-                                    ? "Not paid"
-                                    : p.status}
-                              </span>
-                            </td>
-                            <td>
-                              {p.mode === "test"
-                                ? "Simulation"
-                                : "On-chain execution"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        );
+                      })}
+                    </div>
+                    <div className="key-security">
+                      <strong>Security best practices</strong>
+                      <ul>
+                        <li>
+                          Never share API keys publicly or commit them to
+                          version control.
+                        </li>
+                        <li>
+                          Store secrets on your server, not in browser or mobile
+                          code.
+                        </li>
+                        <li>
+                          Verify webhook signatures before fulfilling Payments.
+                        </li>
+                        <li>
+                          Use a separate key for each integration environment.
+                        </li>
+                      </ul>
+                    </div>
+                  </>
                 )}
-              </section>
-            </>
+              </div>
+            </section>
           )}
           {data && (
             <footer>

@@ -842,6 +842,17 @@ export const merchants = pgTable('merchants', {
   // by the manual stage-2 ops action after off-system checks complete.
   kybStatus: kybStatusEnum('kyb_status').notNull().default('pending'),
   kybVerifiedAt: timestamp('kyb_verified_at'),
+  // When the owner submitted their business details for verification review.
+  // Distinct from settlement_terms: submission is the merchant asking to be
+  // reviewed, and it is cleared to null on a resubmission after a rejection.
+  kybSubmittedAt: timestamp('kyb_submitted_at'),
+  // The profile_version that was submitted for review. Verification is bound to
+  // it, and any profile edit clears it, so an operator can never stamp a
+  // profile the owner changed after the reviewer read it.
+  kybSubmittedVersion: integer('kyb_submitted_version'),
+  // The reviewer's note stamped on a rejection, shown to the owner so a
+  // resubmission can fix the named problem. Null while pending or verified.
+  kybReviewNote: text('kyb_review_note'),
   // Per-Merchant revenue fields, both zero at pilot. flat_fee_bps is a flat
   // basis-point fee; fx_spread_bps is the spread booked on the naira
   // conversion at settlement. Whether both stack on one naira Payment is an
@@ -870,8 +881,24 @@ export const apiKeys = pgTable(
     keyPrefix: text('key_prefix').notNull(),
     executionCluster: text('execution_cluster'),
     fingerprint: text('fingerprint').notNull(),
+    /** Owner-supplied label so several keys are told apart in the portal. */
+    name: text('name'),
+    /**
+     * The key this one replaced, set when a rotation issues a successor. It
+     * lets the portal show a rotated key's lineage without a separate table.
+     */
+    rotatedFromId: text('rotated_from_id'),
     mode: apiKeyModeEnum('mode').notNull(),
     revokedAt: timestamp('revoked_at'),
+    /**
+     * When a rotation issued this key's successor, the old key stays valid
+     * until this instant instead of being revoked outright, so a rotation whose
+     * HTTP response is lost never takes a live integration offline: the caller
+     * keeps working on the old key through the grace window while it adopts the
+     * replacement. Null for a key that has not been rotated; the guard treats a
+     * key with this set in the past as invalid.
+     */
+    rotationGraceUntil: timestamp('rotation_grace_until'),
     lastUsedAt: timestamp('last_used_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
@@ -959,6 +986,15 @@ export const paymentIntents = pgTable(
     expiryIdx: index('payment_intents_expiry_idx')
       .on(table.expiresAt)
       .where(sql`status = 'created'`),
+    // Backs the portal's payment-history page: filter by merchant+cluster and
+    // order by (created_at, id) desc, so a page is an index range scan rather
+    // than a full scan-and-sort of the merchant's whole history.
+    merchantHistoryIdx: index('payment_intents_merchant_history_idx').on(
+      table.merchantId,
+      table.executionCluster,
+      table.createdAt,
+      table.id,
+    ),
   }),
 );
 
@@ -991,6 +1027,13 @@ export const paymentAttempts = pgTable(
       .on(table.intentId)
       .where(sql`status IN ('authorized', 'settling')`),
     statusIdx: index('payment_attempts_status_idx').on(table.status),
+    // The portal's payment-detail read finds the newest attempt for an intent
+    // regardless of status; the partial live index cannot serve that, so index
+    // (intent_id, created_at) to make it a lookup rather than a scan.
+    intentIdx: index('payment_attempts_intent_idx').on(
+      table.intentId,
+      table.createdAt,
+    ),
   }),
 );
 
@@ -1143,6 +1186,20 @@ export const webhookDeliveries = pgTable(
     retryIdx: index('webhook_deliveries_retry_idx').on(
       table.status,
       table.nextRetryAt,
+    ),
+    // The portal's payment-detail read filters deliveries by the intent's
+    // correlation id and orders them newest-first; index both so it is a lookup
+    // rather than a scan of the whole delivery table as history grows.
+    correlationIdx: index('webhook_deliveries_correlation_idx').on(
+      table.correlationId,
+      table.createdAt,
+    ),
+    // Backs the portal's per-endpoint delivery diagnostics, paginated by
+    // (created_at, id) desc for one endpoint.
+    endpointHistoryIdx: index('webhook_deliveries_endpoint_history_idx').on(
+      table.endpointId,
+      table.createdAt,
+      table.id,
     ),
   }),
 );
@@ -1348,6 +1405,37 @@ export const adminAuditLog = pgTable(
   },
   (table) => ({
     atIdx: index('admin_audit_log_at_idx').on(table.at),
+  }),
+);
+
+/**
+ * merchant_audit_log — an owner-visible trail of every sensitive self-serve
+ * write a Merchant makes: profile edits, key issuance/rotation/revocation and
+ * webhook endpoint changes. Separate from admin_audit_log (operator actions),
+ * because this one is read back by the owner and is scoped to their Merchant;
+ * an operator trail must never be exposed on the portal. Append-only. The
+ * actor is the owner's provider identity, never a client-supplied id.
+ */
+export const merchantAuditLog = pgTable(
+  'merchant_audit_log',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    merchantId: text('merchant_id')
+      .notNull()
+      .references(() => merchants.id),
+    actor: text('actor').notNull(),
+    action: text('action').notNull(),
+    target: text('target'),
+    metadata: jsonb('metadata').$type<Record<string, string>>(),
+    at: timestamp('at').defaultNow().notNull(),
+  },
+  (table) => ({
+    merchantAtIdx: index('merchant_audit_log_merchant_at_idx').on(
+      table.merchantId,
+      table.at,
+    ),
   }),
 );
 

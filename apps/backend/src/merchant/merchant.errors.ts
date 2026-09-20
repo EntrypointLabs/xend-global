@@ -22,6 +22,14 @@ export class ApiKeyNotFoundError extends Error {
   }
 }
 
+export class ApiKeyRotationInProgressError extends Error {
+  readonly code = 'API_KEY_ROTATION_IN_PROGRESS';
+  constructor(message: string) {
+    super(message);
+    this.name = 'ApiKeyRotationInProgressError';
+  }
+}
+
 export class MerchantSuspendedError extends Error {
   readonly code = 'MERCHANT_SUSPENDED';
   constructor(message: string) {
@@ -61,6 +69,19 @@ export class KybNotVerifiedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'KybNotVerifiedError';
+  }
+}
+
+/**
+ * Verification was attempted against a profile version that is not the one
+ * currently submitted for review (no active submission, or the profile changed
+ * after submission). The reviewed details must match what gets verified.
+ */
+export class KybSubmissionMismatchError extends Error {
+  readonly code = 'KYB_SUBMISSION_MISMATCH';
+  constructor(message: string) {
+    super(message);
+    this.name = 'KybSubmissionMismatchError';
   }
 }
 

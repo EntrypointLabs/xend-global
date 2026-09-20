@@ -23,6 +23,9 @@ function merchantRow(over: Partial<MerchantRow> = {}): MerchantRow {
     allowedOrigins: null,
     kybStatus: 'pending',
     kybVerifiedAt: null,
+    kybSubmittedAt: null,
+    kybSubmittedVersion: null,
+    kybReviewNote: null,
     flatFeeBps: 0,
     fxSpreadBps: 0,
     createdAt: new Date('2026-01-01'),
@@ -40,7 +43,10 @@ function apiKeyRow(over: Partial<ApiKeyRow> = {}): ApiKeyRow {
     fingerprint: 'xnd_test_...abcd',
     mode: 'test',
     executionCluster: null,
+    name: null,
+    rotatedFromId: null,
     revokedAt: null,
+    rotationGraceUntil: null,
     lastUsedAt: null,
     createdAt: new Date('2026-01-01'),
     ...over,
@@ -242,6 +248,42 @@ describe('ApiKeyGuard', () => {
     const key = generateApiKey('test');
     const { db } = makeFakeDb({
       apiKeyRows: [apiKeyRow({ keyHash: key.keyHash, revokedAt: new Date() })],
+      merchantRows: [merchantRow()],
+    });
+    const guard = new ApiKeyGuard(db);
+    await expectRejectHttp(
+      guard.canActivate(ctx({ authorization: `Bearer ${key.raw}` }).context),
+      401,
+      'INVALID_API_KEY',
+    );
+  });
+
+  it('accepts a rotated key while its grace window is still open', async () => {
+    const key = generateApiKey('test');
+    const { db } = makeFakeDb({
+      apiKeyRows: [
+        apiKeyRow({
+          keyHash: key.keyHash,
+          rotationGraceUntil: new Date(Date.now() + 60 * 60 * 1000),
+        }),
+      ],
+      merchantRows: [merchantRow()],
+    });
+    const guard = new ApiKeyGuard(db);
+    await expect(
+      guard.canActivate(ctx({ authorization: `Bearer ${key.raw}` }).context),
+    ).resolves.toBe(true);
+  });
+
+  it('rejects a rotated key once its grace window has closed', async () => {
+    const key = generateApiKey('test');
+    const { db } = makeFakeDb({
+      apiKeyRows: [
+        apiKeyRow({
+          keyHash: key.keyHash,
+          rotationGraceUntil: new Date(Date.now() - 1000),
+        }),
+      ],
       merchantRows: [merchantRow()],
     });
     const guard = new ApiKeyGuard(db);

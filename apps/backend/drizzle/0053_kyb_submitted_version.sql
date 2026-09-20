@@ -1,0 +1,1 @@
+ALTER TABLE "merchants" ADD COLUMN "kyb_submitted_version" integer;

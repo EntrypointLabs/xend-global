@@ -69,7 +69,13 @@ export class ApiKeyGuard implements CanActivate {
         .from(apiKeys)
         .where(eq(apiKeys.keyHash, keyHash))
         .limit(1);
-      if (!keyRow || keyRow.revokedAt) {
+      // A rotated key stays valid only until its grace window closes: revoked
+      // outright, or grace elapsed, is dead. A future grace instant is a key
+      // still in its rotation window and remains usable.
+      const graceExpired =
+        keyRow?.rotationGraceUntil != null &&
+        keyRow.rotationGraceUntil.getTime() <= Date.now();
+      if (!keyRow || keyRow.revokedAt || graceExpired) {
         throw new InvalidApiKeyError('api key not found or revoked');
       }
       const configuredCluster = this.config?.get<string>('SOLANA_CLUSTER');

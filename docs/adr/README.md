@@ -81,8 +81,11 @@ You do **not** need an ADR for routine choices like file naming, single-feature 
 | [0031](./0031-lost-passkey-primary-rotation.md)                          | A lost passkey is replaced by rotating S1, approved by the phone and the recovery signer                                            | Accepted                             | Mobile / Wallet          |
 | [0032](./0032-daily-spending-ceiling.md)                                 | Every Account is provisioned with a US $100 daily one-signature ceiling                                                             | Accepted                             | Backend / Wallet         |
 | [0033](./0033-provisioning-idempotency-and-prepared-transaction-pins.md) | Provisioning derives its step from chain state, pins prepared transactions in a shared store, one-transaction shortcut at lock zero | Accepted                             | Backend / Wallet         |
+| [0034](./0034-merchant-portal-routing.md)                                | Merchant portal uses a dependency-free history router with a fixed top nav                                                          | Accepted                             | Frontend / Merchant      |
+| [0035](./0035-merchant-portal-owner-surface-and-audit.md)                | Owner-authenticated merchant portal surface, audit trail and least-privilege reads                                                  | Accepted                             | Backend / Security       |
+| [0036](./0036-checkout-cancel-dismisses-the-attempt.md)                  | Checkout Cancel dismisses the attempt, it does not terminally cancel the intent                                                     | Accepted                             | Frontend / Checkout      |
 
-> 0014 is reserved for a conditional relayer decision (a Kora reversal, see the 0012 update) and remains an intentional gap. The next free number is 0034.
+> 0014 is reserved for a conditional relayer decision (a Kora reversal, see the 0012 update) and remains an intentional gap. The next free number is 0037.
 
 ## Generating new ADR numbers
 

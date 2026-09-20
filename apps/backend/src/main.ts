@@ -13,6 +13,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { correlationIdMiddleware } from './common/correlation-id.middleware';
 import { noStoreMiddleware } from './common/no-store.middleware';
+import { securityHeadersMiddleware } from './common/security-headers.middleware';
 
 const BODY_LIMIT = '1mb';
 
@@ -37,6 +38,13 @@ async function bootstrap() {
   // cannot read or another Consumer's cached body.
   app.set('etag', false);
   app.use(noStoreMiddleware);
+  // Baseline hardening for every API response. HSTS only where TLS terminates
+  // in front of the app, which is production.
+  app.use(
+    securityHeadersMiddleware({
+      hsts: config.get<string>('NODE_ENV') === 'production',
+    }),
+  );
   const allowedOrigins = config
     .getOrThrow<string>('CORS_ALLOWED_ORIGINS')
     .split(',')

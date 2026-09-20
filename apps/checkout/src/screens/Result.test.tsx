@@ -28,4 +28,16 @@ describe('Checkout result disclosure', () => {
       expect(html).toContain('Xend');
     },
   );
+
+  it('invites a retry when this attempt was dismissed', () => {
+    const html = renderToStaticMarkup(<Result status="canceled" />);
+    expect(html).toContain('This attempt was canceled');
+    expect(html).toContain('try again');
+  });
+
+  it('does not promise a retry when the merchant canceled the intent', () => {
+    const html = renderToStaticMarkup(<Result status="canceled" terminal />);
+    expect(html).toContain('This order was canceled');
+    expect(html).not.toContain('try again');
+  });
 });

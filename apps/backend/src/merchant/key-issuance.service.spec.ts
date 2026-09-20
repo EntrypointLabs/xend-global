@@ -1,6 +1,6 @@
 import type { DbService } from '../db/db.service';
 import { ConfigService } from '@nestjs/config';
-import { merchants, settlementAccounts } from '../db/schema';
+import { apiKeys, merchants, settlementAccounts } from '../db/schema';
 import { KeyIssuanceService } from './key-issuance.service';
 
 type MerchantRow = typeof merchants.$inferSelect;
@@ -21,6 +21,9 @@ function merchantRow(over: Partial<MerchantRow> = {}): MerchantRow {
     allowedOrigins: null,
     kybStatus: 'pending',
     kybVerifiedAt: null,
+    kybSubmittedAt: null,
+    kybSubmittedVersion: null,
+    kybReviewNote: null,
     flatFeeBps: 0,
     fxSpreadBps: 0,
     createdAt: new Date('2026-01-01'),
@@ -68,7 +71,9 @@ function makeFakeDb(cfg: {
     insert: () => ({
       values: (v: unknown) => {
         inserts.push({ values: v });
-        return Promise.resolve();
+        return {
+          returning: () => Promise.resolve([{ id: 'ak-new' }]),
+        };
       },
     }),
     update: () => {
@@ -238,8 +243,12 @@ describe('KeyIssuanceService.issueKey', () => {
 });
 
 describe('KeyIssuanceService.markKybVerified', () => {
-  it('stamps kyb_status verified and a kyb_verified_at timestamp', async () => {
-    const { db, updates } = makeFakeDb({ merchantRows: [merchantRow()] });
+  it('stamps verified when the submitted version matches the current profile', async () => {
+    const { db, updates } = makeFakeDb({
+      merchantRows: [
+        merchantRow({ profileVersion: 2, kybSubmittedVersion: 2 }),
+      ],
+    });
     const service = new KeyIssuanceService(db);
     await service.markKybVerified('m1');
     expect(updates).toHaveLength(1);
@@ -247,6 +256,210 @@ describe('KeyIssuanceService.markKybVerified', () => {
     expect(
       (updates[0] as { kybVerifiedAt: Date }).kybVerifiedAt,
     ).toBeInstanceOf(Date);
+  });
+
+  it('refuses to verify a profile changed since it was submitted', async () => {
+    const { db, updates } = makeFakeDb({
+      merchantRows: [
+        merchantRow({ profileVersion: 3, kybSubmittedVersion: 2 }),
+      ],
+    });
+    const service = new KeyIssuanceService(db);
+    await expect(service.markKybVerified('m1')).rejects.toMatchObject({
+      code: 'KYB_SUBMISSION_MISMATCH',
+    });
+    expect(updates).toEqual([]);
+  });
+
+  it('refuses to verify a merchant that never submitted', async () => {
+    const { db } = makeFakeDb({
+      merchantRows: [merchantRow({ kybSubmittedVersion: null })],
+    });
+    const service = new KeyIssuanceService(db);
+    await expect(service.markKybVerified('m1')).rejects.toMatchObject({
+      code: 'KYB_SUBMISSION_MISMATCH',
+    });
+  });
+
+  it('refuses to re-verify a rejected merchant whose submitted version still matches', async () => {
+    // Rejection leaves kyb_submitted_version equal to profile_version, so only
+    // the pending-state guard stops a repeated verify from re-enabling keys.
+    const { db, updates } = makeFakeDb({
+      merchantRows: [
+        merchantRow({
+          kybStatus: 'rejected',
+          profileVersion: 2,
+          kybSubmittedVersion: 2,
+        }),
+      ],
+    });
+    const service = new KeyIssuanceService(db);
+    await expect(service.markKybVerified('m1')).rejects.toMatchObject({
+      code: 'KYB_SUBMISSION_MISMATCH',
+    });
+    expect(updates).toEqual([]);
+  });
+});
+
+describe('KeyIssuanceService.markKybRejected', () => {
+  it('stamps kyb_status rejected with the reviewer note and clears verification', async () => {
+    const { db, updates } = makeFakeDb({
+      merchantRows: [
+        merchantRow({
+          kybStatus: 'pending',
+          profileVersion: 2,
+          kybSubmittedVersion: 2,
+        }),
+      ],
+    });
+    const service = new KeyIssuanceService(db);
+    await service.markKybRejected('m1', 'Address does not match documents');
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({
+      kybStatus: 'rejected',
+      kybReviewNote: 'Address does not match documents',
+      kybVerifiedAt: null,
+    });
+  });
+
+  it('refuses to reject a profile changed since it was submitted', async () => {
+    const { db, updates } = makeFakeDb({
+      merchantRows: [
+        merchantRow({
+          kybStatus: 'pending',
+          profileVersion: 3,
+          kybSubmittedVersion: 2,
+        }),
+      ],
+    });
+    const service = new KeyIssuanceService(db);
+    await expect(service.markKybRejected('m1', 'stale')).rejects.toMatchObject({
+      code: 'KYB_SUBMISSION_MISMATCH',
+    });
+    expect(updates).toEqual([]);
+  });
+
+  it('refuses to reject a merchant that is not pending review', async () => {
+    const { db, updates } = makeFakeDb({
+      merchantRows: [
+        merchantRow({
+          kybStatus: 'verified',
+          profileVersion: 2,
+          kybSubmittedVersion: 2,
+        }),
+      ],
+    });
+    const service = new KeyIssuanceService(db);
+    await expect(service.markKybRejected('m1', 'oops')).rejects.toMatchObject({
+      code: 'KYB_SUBMISSION_MISMATCH',
+    });
+    expect(updates).toEqual([]);
+  });
+
+  it('rejects an unknown merchant', async () => {
+    const { db } = makeFakeDb({ merchantRows: [] });
+    const service = new KeyIssuanceService(db);
+    await expect(service.markKybRejected('ghost', 'x')).rejects.toMatchObject({
+      code: 'MERCHANT_NOT_FOUND',
+    });
+  });
+});
+
+describe('KeyIssuanceService.rotateKey', () => {
+  const oldKey = {
+    id: 'ak1',
+    merchantId: 'm1',
+    keyHash: 'h',
+    keyPrefix: 'xnd_test_',
+    fingerprint: 'xnd_test_...old',
+    name: 'Prod key',
+    executionCluster: null,
+    rotatedFromId: null,
+    mode: 'test' as const,
+    revokedAt: null as Date | null,
+    rotationGraceUntil: null as Date | null,
+    lastUsedAt: null,
+    createdAt: new Date('2026-01-01'),
+  };
+
+  function rotateDb(cfg: {
+    claim: boolean;
+    existing?: Partial<typeof oldKey>;
+  }) {
+    const sets: Record<string, unknown>[] = [];
+    const client = {
+      update: () => ({
+        set: (v: Record<string, unknown>) => {
+          sets.push(v);
+          return {
+            where: () => ({
+              returning: () => Promise.resolve(cfg.claim ? [oldKey] : []),
+            }),
+          };
+        },
+      }),
+      select: () => ({
+        from: (tbl: unknown) => ({
+          where: () => ({
+            limit: () =>
+              Promise.resolve(
+                tbl === merchants
+                  ? [merchantRow()]
+                  : tbl === apiKeys && cfg.existing
+                    ? [{ ...oldKey, ...cfg.existing }]
+                    : [],
+              ),
+          }),
+        }),
+      }),
+      insert: () => ({
+        values: () => ({
+          returning: () => Promise.resolve([{ id: 'ak-new' }]),
+        }),
+      }),
+    };
+    return { db: { client } as unknown as DbService, sets };
+  }
+
+  it('opens a grace window on the old key instead of revoking it, and returns its expiry', async () => {
+    const { db, sets } = rotateDb({ claim: true });
+    const service = new KeyIssuanceService(db);
+    const result = await service.rotateKey('ak1', 'm1');
+    expect(result.raw.startsWith('xnd_test_')).toBe(true);
+    expect(result.previousKeyExpiresAt).toBeInstanceOf(Date);
+    // The old key is put into a grace window, never revoked outright.
+    expect(sets[0].rotationGraceUntil).toBeInstanceOf(Date);
+    expect(sets[0]).not.toHaveProperty('revokedAt');
+  });
+
+  it('reports rotation-in-progress on a retry whose grace window is already open', async () => {
+    const { db } = rotateDb({
+      claim: false,
+      existing: { rotationGraceUntil: new Date(Date.now() + 3_600_000) },
+    });
+    const service = new KeyIssuanceService(db);
+    await expect(service.rotateKey('ak1', 'm1')).rejects.toMatchObject({
+      code: 'API_KEY_ROTATION_IN_PROGRESS',
+    });
+  });
+
+  it('rejects rotating an unknown key', async () => {
+    const { db } = rotateDb({ claim: false });
+    const service = new KeyIssuanceService(db);
+    await expect(service.rotateKey('ghost', 'm1')).rejects.toMatchObject({
+      code: 'API_KEY_NOT_FOUND',
+    });
+  });
+
+  it('rejects rotating an already-revoked key', async () => {
+    const { db } = rotateDb({
+      claim: false,
+      existing: { revokedAt: new Date('2026-02-01') },
+    });
+    const service = new KeyIssuanceService(db);
+    await expect(service.rotateKey('ak1', 'm1')).rejects.toMatchObject({
+      code: 'API_KEY_NOT_FOUND',
+    });
   });
 });
 
@@ -290,13 +503,17 @@ describe('KeyIssuanceService.revokeKey', () => {
       id: 'ak1',
       fingerprint: 'xnd_live_...abcd',
       revokedAt,
+      claimed: true,
     });
   });
 
-  it('is safe to repeat: an already revoked key keeps its first timestamp', async () => {
+  it('is safe to repeat: an already revoked key keeps its first timestamp and is not re-claimed', async () => {
     const { db, revokedAt } = revokeDb({ unrevoked: false, existing: true });
     const svc = new KeyIssuanceService(db);
-    await expect(svc.revokeKey('ak1')).resolves.toMatchObject({ revokedAt });
+    await expect(svc.revokeKey('ak1')).resolves.toMatchObject({
+      revokedAt,
+      claimed: false,
+    });
   });
 
   it('refuses an unknown key', async () => {

@@ -351,6 +351,48 @@
       "when": 1789879905111,
       "tag": "0049_numerous_namora",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789897867916,
+      "tag": "0050_merchant_portal_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1789899581229,
+      "tag": "0051_webhook_delivery_correlation_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1789901054790,
+      "tag": "0052_portal_pagination_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1789903542765,
+      "tag": "0053_kyb_submitted_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1789904367532,
+      "tag": "0054_payment_attempts_intent_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1789924471326,
+      "tag": "0055_api_key_rotation_grace",
+      "breakpoints": true
     }
   ]
 }

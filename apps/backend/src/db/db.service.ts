@@ -12,6 +12,16 @@ import * as schema from './schema';
 
 const PING_TIMEOUT_MS = 5000;
 
+/**
+ * The query surface shared by the pooled client and a transaction handle, so a
+ * service method can run either standalone or inside a caller's transaction by
+ * taking one of these. A transaction handle satisfies it structurally.
+ */
+export type DbExecutor = Pick<
+  NodePgDatabase<typeof schema>,
+  'select' | 'insert' | 'update' | 'delete'
+>;
+
 @Injectable()
 export class DbService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DbService.name);

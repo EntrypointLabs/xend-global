@@ -14,7 +14,14 @@ import type { MerchantIdentityService } from './merchant-identity.service';
 import type { SettlementProvisioningService } from '../settlement/settlement-provisioning.service';
 import type { KeyIssuanceService } from './key-issuance.service';
 import { MerchantPortalController } from './merchant-portal.controller';
+import { MerchantOwnerService } from './merchant-owner.service';
+import type { MerchantAuditService } from './merchant-audit.service';
 import { SettlementAccountNotProvisionedError } from '../settlement/settlement.errors';
+import {
+  ApiKeyNotFoundError,
+  ApiKeyRotationInProgressError,
+  KybNotVerifiedError,
+} from './merchant.errors';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
 import {
@@ -53,10 +60,28 @@ function setup(
     id: 'ak-owned',
     revokedAt: new Date('2026-09-19T00:00:00Z'),
   });
+  const rotateKey = jest.fn().mockResolvedValue({
+    id: 'ak-next',
+    raw: 'next-key',
+    fingerprint: 'next…key',
+    previousKeyExpiresAt: new Date('2026-02-01T00:00:00.000Z'),
+  });
+  const db = {
+    client: {
+      select,
+      // Key issue/revoke/rotate run inside a transaction; the mocked services
+      // ignore the handle, so invoking the callback with a stub is enough.
+      transaction: (cb: (tx: unknown) => unknown) => cb({}),
+    },
+  } as unknown as DbService;
+  const owner = new MerchantOwnerService(db, {
+    verifyIdToken,
+  } as unknown as MerchantIdentityService);
+  const record = jest.fn().mockResolvedValue(undefined);
   const controller = new MerchantPortalController(
-    { client: { select } } as unknown as DbService,
-    { verifyIdToken } as unknown as MerchantIdentityService,
-    { issueKey, revokeKey } as unknown as KeyIssuanceService,
+    db,
+    owner,
+    { issueKey, revokeKey, rotateKey } as unknown as KeyIssuanceService,
     {
       provisionOrLink,
       getSettlementAddressForSettlement,
@@ -69,6 +94,7 @@ function setup(
           DEVNET_PAYMENTS_ENABLED: enabled,
         })[key],
     } as unknown as ConfigService,
+    { record } as unknown as MerchantAuditService,
   );
   return {
     controller,
@@ -76,7 +102,9 @@ function setup(
     verifyIdToken,
     issueKey,
     revokeKey,
+    rotateKey,
     provisionOrLink,
+    record,
     select,
   };
 }
@@ -133,7 +161,7 @@ describe('Merchant portal ownership', () => {
       id: 'ak-owned',
       revokedAt: '2026-09-19T00:00:00.000Z',
     });
-    expect(revokeKey).toHaveBeenCalledWith('ak-owned');
+    expect(revokeKey).toHaveBeenCalledWith('ak-owned', expect.anything());
   });
   it('reports unconfirmed receiving-account ownership as a retryable conflict', async () => {
     const { controller, provisionOrLink } = setup();
@@ -156,7 +184,12 @@ describe('Merchant portal ownership', () => {
     const { controller, verifyIdToken, issueKey } = setup();
     await controller.issue('Bearer token', { mode: 'test' });
     expect(verifyIdToken).toHaveBeenCalledWith('token');
-    expect(issueKey).toHaveBeenCalledWith('merchant-owned', 'test');
+    expect(issueKey).toHaveBeenCalledWith(
+      'merchant-owned',
+      'test',
+      { name: undefined },
+      expect.anything(),
+    );
   });
   it('cannot issue keys without an owned Merchant record', async () => {
     const { controller, issueKey } = setup(null);
@@ -173,12 +206,30 @@ describe('Merchant portal ownership', () => {
     expect(issueKey).not.toHaveBeenCalled();
   });
   it('permits devnet ATA creation for the stored Merchant wallet', async () => {
-    const { controller, provisionOrLink } = setup();
+    const { controller, provisionOrLink, record } = setup();
+    const tx = { insert: jest.fn() };
+    provisionOrLink.mockImplementation(
+      async (
+        _merchantId: string,
+        _opts: unknown,
+        onProvisioned?: (tx: unknown) => Promise<void>,
+      ) => {
+        await onProvisioned?.(tx);
+        return { address: 'ata', provider: 'direct_usdc', provisioned: true };
+      },
+    );
     await controller.provision('Bearer token');
-    expect(provisionOrLink).toHaveBeenCalledWith('merchant-owned', {
-      currency: 'USDC',
-      merchantAddress: 'owner-wallet',
-    });
+    expect(provisionOrLink).toHaveBeenCalledWith(
+      'merchant-owned',
+      { currency: 'USDC', merchantAddress: 'owner-wallet' },
+      expect.any(Function),
+    );
+    // The audit entry is written through the transaction handle the callback
+    // receives, so it commits with the destination row.
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'destination.provision' }),
+      tx,
+    );
   });
   it('blocks unverified mainnet provisioning', async () => {
     const { controller, provisionOrLink } = setup(undefined, 'mainnet');
@@ -200,7 +251,12 @@ describe('execution key gates', () => {
     expect(getSettlementAddressForSettlement).toHaveBeenCalledWith(
       'merchant-owned',
     );
-    expect(issueKey).toHaveBeenCalledWith('merchant-owned', 'devnet');
+    expect(issueKey).toHaveBeenCalledWith(
+      'merchant-owned',
+      'devnet',
+      { name: undefined },
+      expect.anything(),
+    );
   });
   it('refuses disabled devnet execution', async () => {
     const { controller, issueKey } = setup();
@@ -246,7 +302,21 @@ describe('Merchant portal cluster scope', () => {
     const merchant = {
       id: 'merchant-owned',
       ownerProviderId: 'verified-owner',
+      name: 'Store',
+      displayName: 'Store',
+      status: 'active',
+      receivingWallet: 'owner-wallet',
+      allowedOrigins: null,
       kybStatus: 'pending',
+      kybVerifiedAt: null,
+      kybSubmittedAt: null,
+      kybReviewNote: null,
+      settlementTermsAcceptedAt: null,
+      flatFeeBps: 0,
+      fxSpreadBps: 0,
+      profileVersion: 0,
+      businessProfile: {},
+      createdAt: new Date('2026-01-01'),
     };
     const client = {
       select: jest.fn().mockReturnValue({
@@ -259,7 +329,8 @@ describe('Merchant portal cluster scope', () => {
               captured.destination = condition;
               return { limit: () => Promise.resolve([]) };
             }
-            if (table === apiKeys) return Promise.resolve([]);
+            if (table === apiKeys)
+              return { orderBy: () => Promise.resolve([]) };
             captured.payments = condition;
             expect(table).toBe(paymentIntents);
             return {
@@ -274,17 +345,22 @@ describe('Merchant portal cluster scope', () => {
         ({ SOLANA_CLUSTER: 'devnet', DEVNET_PAYMENTS_ENABLED: true })[key],
       getOrThrow: () => 'devnet',
     } as unknown as ConfigService;
+    const db = { client } as unknown as DbService;
+    const owner = new MerchantOwnerService(db, {
+      verifyIdToken: jest.fn().mockResolvedValue({
+        providerUserId: 'verified-owner',
+        walletAddress: 'owner-wallet',
+      }),
+    } as unknown as MerchantIdentityService);
     const controller = new MerchantPortalController(
-      { client } as unknown as DbService,
-      {
-        verifyIdToken: jest.fn().mockResolvedValue({
-          providerUserId: 'verified-owner',
-          walletAddress: 'owner-wallet',
-        }),
-      } as unknown as MerchantIdentityService,
+      db,
+      owner,
       {} as KeyIssuanceService,
       {} as SettlementProvisioningService,
       config,
+      {
+        record: jest.fn().mockResolvedValue(undefined),
+      } as unknown as MerchantAuditService,
     );
 
     await controller.me('Bearer token');
@@ -295,5 +371,40 @@ describe('Merchant portal cluster scope', () => {
         expect.arrayContaining(['merchant-owned', 'devnet']),
       );
     }
+  });
+});
+
+describe('Merchant portal key rotation', () => {
+  it('maps a missing key to 404', async () => {
+    const { controller, rotateKey } = setup();
+    rotateKey.mockRejectedValue(new ApiKeyNotFoundError('gone'));
+    await expect(controller.rotate('Bearer token', 'ak-x')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+  it('maps a rotation eligibility failure to a 409 conflict', async () => {
+    const { controller, rotateKey } = setup();
+    rotateKey.mockRejectedValue(new KybNotVerifiedError('kyb regressed'));
+    await expect(controller.rotate('Bearer token', 'ak-x')).rejects.toThrow(
+      ConflictException,
+    );
+  });
+  it('maps a retried, already-rotated key to a 409 conflict', async () => {
+    const { controller, rotateKey } = setup();
+    rotateKey.mockRejectedValue(
+      new ApiKeyRotationInProgressError('already rotated; old key still valid'),
+    );
+    await expect(controller.rotate('Bearer token', 'ak-x')).rejects.toThrow(
+      ConflictException,
+    );
+  });
+  it('returns the successor and the previous key grace expiry', async () => {
+    const { controller } = setup();
+    const result = (await controller.rotate('Bearer token', 'ak-x')) as {
+      raw: string;
+      previousKeyExpiresAt: string;
+    };
+    expect(result.raw).toBe('next-key');
+    expect(result.previousKeyExpiresAt).toBe('2026-02-01T00:00:00.000Z');
   });
 });
