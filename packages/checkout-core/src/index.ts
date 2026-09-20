@@ -230,6 +230,7 @@ export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
               onResult(result);
             },
             onUnresolved: (u) => {
+              if (!win.closed) win.close();
               button.setState("ready");
               onUnresolved?.(u);
             },
@@ -330,6 +331,7 @@ export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
           dropListener();
           sheet?.close();
           button.setState("ready");
+          if (popup && !popup.closed) popup.close();
           onUnresolved?.(u);
         },
       });
@@ -368,6 +370,14 @@ export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
         nonce,
         onAlive: disarmFrame,
         onResult: (result) => finish(result.status),
+        onUnresolved: (u) => {
+          settled = true;
+          disarmFrame();
+          dropListener();
+          sheet?.close();
+          button.setState("ready");
+          onUnresolved?.(u);
+        },
       });
     }
 

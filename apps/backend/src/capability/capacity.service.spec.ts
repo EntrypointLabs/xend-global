@@ -20,6 +20,7 @@ function makeFakeDb(accounts: { vaultAddress: string }[]): DbService {
   };
   const client = {
     select: () => ({ from: () => chain }),
+    execute: jest.fn().mockResolvedValue({ rows: [] }),
   };
   return { client } as unknown as DbService;
 }
@@ -30,6 +31,7 @@ function makeConfig(overrides: Record<string, string> = {}): ConfigService {
       '{"tier0":{"perPaymentMaxRaw":"50000000","dailyCapRaw":"200000000","monthlyCapRaw":"1000000000"}}',
     CAPACITY_DEFAULT_TIER: 'tier0',
     EXPO_PUBLIC_USDC_MINT_ADDRESS: USDC,
+    SOLANA_CLUSTER: 'devnet',
     ...overrides,
   };
   return {
@@ -54,12 +56,24 @@ function makeSolana(balances: TokenBalance[]): SolanaRpc {
  * script: add, compare against the cap, roll back on overshoot. Windows are
  * seeded from `day` and `month` and then move with every reservation.
  */
-function makeCounter(day: CounterSnapshot, month: CounterSnapshot) {
+function makeCounter(
+  day: CounterSnapshot,
+  month: CounterSnapshot,
+  legacyDay: CounterSnapshot,
+  legacyMonth: CounterSnapshot,
+) {
   const totals = new Map<string, bigint>();
   const counts = new Map<string, number>();
   const seed = (key: string) => {
     if (!totals.has(key)) {
-      const snap = key.includes(':day:') ? day : month;
+      const legacy = key.includes(':cluster:legacy:');
+      const snap = key.includes(':day:')
+        ? legacy
+          ? legacyDay
+          : day
+        : legacy
+          ? legacyMonth
+          : month;
       totals.set(key, BigInt(snap.totalRaw));
       counts.set(key, snap.count);
     }
@@ -105,6 +119,8 @@ function makeService(
     balances?: TokenBalance[];
     day?: CounterSnapshot;
     month?: CounterSnapshot;
+    legacyDay?: CounterSnapshot;
+    legacyMonth?: CounterSnapshot;
     config?: Record<string, string>;
   } = {},
 ) {
@@ -119,6 +135,8 @@ function makeService(
   const { counter, reservations, releases, snapshot } = makeCounter(
     opts.day ?? { count: 0, totalRaw: '0' },
     opts.month ?? { count: 0, totalRaw: '0' },
+    opts.legacyDay ?? { count: 0, totalRaw: '0' },
+    opts.legacyMonth ?? { count: 0, totalRaw: '0' },
   );
   const service = new CapacityService(db, config, solana, counter);
   service.onModuleInit();
@@ -162,6 +180,15 @@ describe('CapacityService.checkCapacity', () => {
     );
   });
 
+  it('counts pre-cluster migration usage toward the active cluster caps', async () => {
+    const { service } = makeService({
+      legacyDay: { count: 4, totalRaw: '180000000' },
+    });
+    await expect(service.checkCapacity('c1', '30000000')).rejects.toMatchObject(
+      { code: 'CAPACITY_EXCEEDED', reason: 'DAILY_CAP' },
+    );
+  });
+
   it('rejects when the amount exceeds live balance', async () => {
     const { service } = makeService({
       balances: [{ mint: USDC, amountRaw: 10_000_000n, decimals: 6 }],
@@ -194,6 +221,19 @@ describe('CapacityService.reserveCapacity', () => {
     expect(cap.usedThisMonthRaw).toBe('50000000');
   });
 
+  it('uses one supplied instant for reads and reservations at a UTC boundary', async () => {
+    const { service, reservations } = makeService();
+    await service.reserveCapacity(
+      'c1',
+      '50000000',
+      new Date('2026-01-31T23:59:59.999Z'),
+    );
+    expect(reservations.map((r) => r.key)).toEqual([
+      'cap:cluster:devnet:consumer:c1:day:20260131',
+      'cap:cluster:devnet:consumer:c1:month:202601',
+    ]);
+  });
+
   it('refuses at the daily cap and leaves both windows untouched', async () => {
     const { service, reservations, releases } = makeService({
       day: { count: 4, totalRaw: '180000000' },
@@ -219,6 +259,16 @@ describe('CapacityService.reserveCapacity', () => {
     expect(releases).toHaveLength(1);
     expect(releases[0].key).toBe(reservations[0].key);
     expect(snapshot(reservations[0].key).totalRaw).toBe('0');
+  });
+
+  it('subtracts legacy usage from the atomic reservation headroom', async () => {
+    const { service, reservations } = makeService({
+      legacyDay: { count: 4, totalRaw: '180000000' },
+    });
+    await expect(
+      service.reserveCapacity('c1', '30000000'),
+    ).rejects.toMatchObject({ reason: 'DAILY_CAP' });
+    expect(reservations).toHaveLength(0);
   });
 
   it('never lets concurrent reservations add up past the daily cap', async () => {
@@ -263,6 +313,19 @@ describe('CapacityService.releaseCapacity', () => {
     await service.releaseCapacity('c1', '50000000');
     expect(releases.map((r) => r.key)).toEqual(reservations.map((r) => r.key));
     expect(snapshot(reservations[0].key)).toEqual({ count: 0, totalRaw: '0' });
+  });
+
+  it('releases the original UTC windows after the clock crosses a boundary', async () => {
+    const { service, releases } = makeService();
+    await service.releaseCapacity(
+      'c1',
+      '50000000',
+      new Date('2026-01-31T23:59:59.000Z'),
+    );
+    expect(releases.map((r) => r.key)).toEqual([
+      'cap:cluster:devnet:consumer:c1:day:20260131',
+      'cap:cluster:devnet:consumer:c1:month:202601',
+    ]);
   });
 });
 

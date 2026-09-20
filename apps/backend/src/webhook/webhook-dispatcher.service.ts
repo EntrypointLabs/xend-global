@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import {
   paymentIntents,
@@ -98,7 +98,14 @@ export class WebhookDispatcherService implements OnModuleInit {
     const [account] = await this.db.client
       .select()
       .from(settlementAccounts)
-      .where(eq(settlementAccounts.merchantId, intent.merchantId))
+      .where(
+        and(
+          eq(settlementAccounts.merchantId, intent.merchantId),
+          intent.executionCluster === null
+            ? isNull(settlementAccounts.executionCluster)
+            : eq(settlementAccounts.executionCluster, intent.executionCluster),
+        ),
+      )
       .limit(1);
     const settlement: EventSettlement = {
       provider: account?.provider ?? null,

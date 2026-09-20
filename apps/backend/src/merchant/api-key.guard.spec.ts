@@ -140,6 +140,34 @@ describe('ApiKeyGuard', () => {
     },
   );
 
+  it('applies the disabled-devnet gate to a legacy live key', async () => {
+    const key = generateApiKey('live');
+    const { db } = makeFakeDb({
+      apiKeyRows: [
+        apiKeyRow({
+          keyHash: key.keyHash,
+          mode: 'live',
+          executionCluster: null,
+        }),
+      ],
+      merchantRows: [merchantRow({ kybStatus: 'verified' })],
+    });
+    const guard = new ApiKeyGuard(
+      db,
+      new ConfigService({
+        NODE_ENV: 'development',
+        SOLANA_CLUSTER: 'devnet',
+        DEVNET_PAYMENTS_ENABLED: false,
+      }),
+    );
+
+    await expectRejectHttp(
+      guard.canActivate(ctx({ authorization: `Bearer ${key.raw}` }).context),
+      401,
+      'INVALID_API_KEY',
+    );
+  });
+
   it('attaches execution and delivery modes for a valid active-merchant key', async () => {
     const key = generateApiKey('test');
     const { db } = makeFakeDb({

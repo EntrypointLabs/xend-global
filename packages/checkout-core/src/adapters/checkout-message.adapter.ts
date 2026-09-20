@@ -1,4 +1,4 @@
-import type { CheckoutResult } from "../types";
+import type { CheckoutResult, CheckoutUnresolved } from "../types";
 // Types-only imports from Phase 5's protocol package, via the zod-free
 // `/types` subpath (Phase 5's recorded consumption model): erased at
 // build, so checkout-core stays zero-runtime-dependency while the
@@ -8,6 +8,8 @@ import type {
   CheckoutEnvelope,
   CheckoutStatus,
   CheckoutMessageTypeValue,
+  CheckoutUnresolvedEnvelope,
+  CheckoutUnresolvedReason,
 } from "@xend/checkout-protocol/types";
 
 // SEAM owned by Phase 5 (checkout surface). RECONCILED against the
@@ -40,6 +42,11 @@ const STATUSES = [
   "expired",
 ] as const satisfies readonly CheckoutStatus[];
 const READY_TYPE = "xend.checkout.ready" satisfies CheckoutMessageTypeValue;
+const UNRESOLVED_TYPE =
+  "xend.checkout.unresolved" satisfies CheckoutMessageTypeValue;
+const UNRESOLVED_REASONS = [
+  "confirmation_timeout",
+] as const satisfies readonly CheckoutUnresolvedReason[];
 
 /**
  * Whether an already-origin-validated payload is the surface's mount
@@ -92,5 +99,30 @@ export function parseCheckoutEnvelope(
   return {
     reference: expected.reference,
     status: status as CheckoutResult["status"],
+  };
+}
+
+export function parseCheckoutUnresolvedEnvelope(
+  data: unknown,
+  expected: { reference: string; nonce: string },
+): CheckoutUnresolved | null {
+  if (typeof data !== "object" || data === null) return null;
+  const env = data as Partial<CheckoutUnresolvedEnvelope> &
+    Record<string, unknown>;
+  if (env["xend"] !== "checkout" || env["v"] !== 1) return null;
+  if (env["type"] !== UNRESOLVED_TYPE) return null;
+  if (env["reference"] !== expected.reference) return null;
+  if (env["nonce"] !== expected.nonce) return null;
+  const reason = env["reason"];
+  if (
+    typeof reason !== "string" ||
+    !(UNRESOLVED_REASONS as readonly string[]).includes(reason)
+  ) {
+    return null;
+  }
+  return {
+    reference: expected.reference,
+    status: "unresolved",
+    reason: reason as CheckoutUnresolved["reason"],
   };
 }

@@ -146,9 +146,10 @@ deferred and are not simulated.
 - Cancellation semantics: Checkout Cancel dismisses this attempt and says so;
   it does not terminally cancel the intent, which stays a separate merchant-side
   capability (ADR 0036).
-- Checkout disclosure: the More info disclosure is a native `<summary>`, so it is
-  keyboard and screen-reader operable; a toggle test covers it. Mobile-browser
-  lifecycle acceptance still needs a physical device.
+- Checkout disclosure: the pinned USDC debit and expiry are shown inline (no
+  collapsible control to operate), so the keyboard and mobile acceptance concern
+  no longer applies; a component test pins that there is no `<details>` and the
+  debit and expiry are present.
 - Production serving: the API sets baseline security headers, environment
   separation is documented, the API base is configurable for split-origin
   serving, and `scripts/smoke-merchant-production.mjs` checks a real deployment.

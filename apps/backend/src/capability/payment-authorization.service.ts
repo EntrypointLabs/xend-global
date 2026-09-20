@@ -164,10 +164,15 @@ export class PaymentAuthorizationService {
     // counter uses this same PostgreSQL transaction, so a crash or a rejected
     // attempt insert cannot consume headroom or strand an authorized intent.
     const attemptId = await this.db.withTransaction(async () => {
-      await this.capacity.reserveCapacity(consumerId, intent.usdcSettlementRaw);
+      const authorizedAt = new Date();
+      await this.capacity.reserveCapacity(
+        consumerId,
+        intent.usdcSettlementRaw,
+        authorizedAt,
+      );
       await this.intents.transition(intentId, 'created', 'authorized', {
         consumerId,
-        authorizedAt: new Date(),
+        authorizedAt,
       });
       return this.insertAttempt(intentId);
     });

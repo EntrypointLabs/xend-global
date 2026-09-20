@@ -86,6 +86,7 @@ export class MerchantController {
   ): Promise<IntentObject> {
     const { merchantId, mode } = req.merchant;
     try {
+      const executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
       const allowPrivate =
         this.config.get<boolean>('WEBHOOK_ALLOW_PRIVATE_URLS') ?? false;
       if (body.return_url) {
@@ -168,6 +169,7 @@ export class MerchantController {
           }
           return { status: HttpStatus.CREATED, body: this.toObject(intent) };
         },
+        executionCluster,
       );
       return result.body;
     } catch (err) {

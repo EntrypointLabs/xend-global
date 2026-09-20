@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, isNull, ne } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import {
   paymentIntents,
@@ -98,7 +98,11 @@ export class RefundService {
     params: RefundParams,
   ): Promise<{ status: number; body: RefundObject }> {
     const [intent] = await this.db.client
-      .select({ status: paymentIntents.status, mode: paymentIntents.mode })
+      .select({
+        status: paymentIntents.status,
+        mode: paymentIntents.mode,
+        executionCluster: paymentIntents.executionCluster,
+      })
       .from(paymentIntents)
       .where(eq(paymentIntents.id, payment.intentId))
       .limit(1);
@@ -162,7 +166,14 @@ export class RefundService {
     const [account] = await this.db.client
       .select()
       .from(settlementAccounts)
-      .where(eq(settlementAccounts.merchantId, payment.merchantId))
+      .where(
+        and(
+          eq(settlementAccounts.merchantId, payment.merchantId),
+          intent.executionCluster === null
+            ? isNull(settlementAccounts.executionCluster)
+            : eq(settlementAccounts.executionCluster, intent.executionCluster),
+        ),
+      )
       .limit(1);
     if (!account || !account.address || !account.provider) {
       throw new RefundNotSupportedError(

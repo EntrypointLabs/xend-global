@@ -86,6 +86,7 @@ function makeFakeDb(cfg: FakeDbConfig): DbService {
   const selectChain = (rows: unknown[]) => {
     const chain = {
       where: () => chain,
+      orderBy: () => chain,
       limit: () => Promise.resolve(rows),
     };
     return chain;
@@ -230,9 +231,9 @@ describe('PaymentIntentService.create', () => {
     const winner = intentRow({ id: 'pi_winner', idempotencyKey: 'idem-1' });
     const db = makeFakeDb({
       merchants: [merchantRow()],
-      // First select: idempotency pre-check misses. Second select: the
-      // post-race re-read returns the winning intent.
-      intentSelects: [[], [winner]],
+      // Exact and legacy pre-checks miss. The post-race exact re-read returns
+      // the winning intent.
+      intentSelects: [[], [], [winner]],
       intentInsertError: pgError('23505'),
     });
     const { publisher, events } = makePublisher();
@@ -247,6 +248,32 @@ describe('PaymentIntentService.create', () => {
     });
 
     expect(result.id).toBe('pi_winner');
+    expect(events).toHaveLength(0);
+  });
+
+  it('returns a legacy null-cluster intent before inserting a replay', async () => {
+    const legacy = intentRow({
+      id: 'pi_legacy',
+      executionCluster: null,
+      idempotencyKey: 'idem-1',
+      status: 'succeeded',
+    });
+    const db = makeFakeDb({
+      merchants: [merchantRow()],
+      intentSelects: [[], [legacy]],
+    });
+    const { publisher, events } = makePublisher();
+    const service = new PaymentIntentService(db, config, publisher);
+
+    const result = await service.create({
+      merchantId: 'm1',
+      usdcSettlementRaw: '1000000',
+      displayCurrency: 'USD',
+      displayAmountMinor: '1000',
+      idempotencyKey: 'idem-1',
+    });
+
+    expect(result.id).toBe('pi_legacy');
     expect(events).toHaveLength(0);
   });
 });
@@ -316,6 +343,24 @@ describe('PaymentIntentService.findById', () => {
     await expect(service.findById('pi_x')).rejects.toMatchObject({
       code: 'INTENT_NOT_FOUND',
     });
+  });
+});
+
+describe('PaymentIntentService.listAwaitingApproval', () => {
+  it('reads the deployment cluster before listing phone approvals', async () => {
+    const getOrThrow = jest.fn((key: string) =>
+      key === 'SOLANA_CLUSTER' ? 'devnet' : 60,
+    );
+    const db = makeFakeDb({ intentSelects: [[intentRow()]] });
+    const { publisher } = makePublisher();
+    const service = new PaymentIntentService(
+      db,
+      { getOrThrow } as unknown as ConfigService,
+      publisher,
+    );
+
+    await expect(service.listAwaitingApproval('u_1')).resolves.toHaveLength(1);
+    expect(getOrThrow).toHaveBeenCalledWith('SOLANA_CLUSTER');
   });
 });
 

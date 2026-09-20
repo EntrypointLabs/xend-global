@@ -45,7 +45,8 @@ export interface CreateIntentParams {
 
 /**
  * Durable Payment intents. Every read and write hits Postgres; there is no
- * in-memory intent state. Replaying the same (merchant, idempotency key)
+ * in-memory intent state. Replaying the same (merchant, execution cluster,
+ * idempotency key)
  * returns the existing intent instead of creating a second one, and status
  * only ever changes through the conditional {@link transition}, which is the
  * race arbiter for concurrent confirmers.
@@ -85,6 +86,7 @@ export class PaymentIntentService implements OnModuleInit {
   }
 
   async create(params: CreateIntentParams): Promise<IntentRow> {
+    const executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     const [merchant] = await this.db.client
       .select()
       .from(merchants)
@@ -117,6 +119,7 @@ export class PaymentIntentService implements OnModuleInit {
       const existing = await this.findByIdempotency(
         params.merchantId,
         params.idempotencyKey,
+        executionCluster,
       );
       if (existing) return existing;
     }
@@ -134,7 +137,7 @@ export class PaymentIntentService implements OnModuleInit {
           merchantId: params.merchantId,
           usdcSettlementRaw: params.usdcSettlementRaw,
           pricingCurrency: params.pricingCurrency ?? null,
-          executionCluster: this.config.getOrThrow<string>('SOLANA_CLUSTER'),
+          executionCluster,
           displayCurrency: params.displayCurrency,
           displayAmountMinor: params.displayAmountMinor,
           fxRate: params.fxRate ?? null,
@@ -155,6 +158,7 @@ export class PaymentIntentService implements OnModuleInit {
         const winner = await this.findByIdempotency(
           params.merchantId,
           params.idempotencyKey,
+          executionCluster,
         );
         if (winner) return winner;
       }
@@ -282,12 +286,14 @@ export class PaymentIntentService implements OnModuleInit {
    * the app should find it at the top.
    */
   async listAwaitingApproval(consumerId: string): Promise<IntentRow[]> {
+    const executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     return this.db.client
       .select()
       .from(paymentIntents)
       .where(
         and(
           eq(paymentIntents.consumerId, consumerId),
+          eq(paymentIntents.executionCluster, executionCluster),
           eq(paymentIntents.status, 'created'),
           isNotNull(paymentIntents.approvalDeferredAt),
           gt(paymentIntents.expiresAt, new Date()),
@@ -317,6 +323,7 @@ export class PaymentIntentService implements OnModuleInit {
   private async findByIdempotency(
     merchantId: string,
     idempotencyKey: string,
+    executionCluster: string,
   ): Promise<IntentRow | undefined> {
     const [row] = await this.db.client
       .select()
@@ -324,10 +331,27 @@ export class PaymentIntentService implements OnModuleInit {
       .where(
         and(
           eq(paymentIntents.merchantId, merchantId),
+          eq(paymentIntents.executionCluster, executionCluster),
           eq(paymentIntents.idempotencyKey, idempotencyKey),
         ),
       )
       .limit(1);
-    return row;
+    if (row) return row;
+
+    // Terminal intents created before execution-cluster scoping were left
+    // null because their original cluster cannot be inferred safely. They
+    // still own their idempotency key and must win a replay before insertion.
+    const [legacy] = await this.db.client
+      .select()
+      .from(paymentIntents)
+      .where(
+        and(
+          eq(paymentIntents.merchantId, merchantId),
+          isNull(paymentIntents.executionCluster),
+          eq(paymentIntents.idempotencyKey, idempotencyKey),
+        ),
+      )
+      .limit(1);
+    return legacy;
   }
 }

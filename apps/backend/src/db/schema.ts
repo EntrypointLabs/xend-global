@@ -957,8 +957,18 @@ export const paymentIntents = pgTable(
     // created without a key are unconstrained).
     merchantIdemIdx: uniqueIndex('payment_intents_merchant_idem_idx').on(
       table.merchantId,
+      table.executionCluster,
       table.idempotencyKey,
     ),
+    // Old writers leave execution_cluster null during a rolling deploy. Keep
+    // their idempotency domain unique until that compatibility path is retired.
+    merchantLegacyIdemIdx: uniqueIndex(
+      'payment_intents_merchant_legacy_idem_idx',
+    )
+      .on(table.merchantId, table.idempotencyKey)
+      .where(
+        sql`${table.executionCluster} IS NULL AND ${table.idempotencyKey} IS NOT NULL`,
+      ),
     // Expiry sweep scans only unauthorized intents.
     expiryIdx: index('payment_intents_expiry_idx')
       .on(table.expiresAt)
@@ -1163,25 +1173,35 @@ export const webhookDeliveries = pgTable(
  * direct-USDC, the Blockradar master wallet in Phase 8, null for a recorded
  * merchant-own address). Columns are nullable until provisioning completes.
  */
-export const settlementAccounts = pgTable('settlement_accounts', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => createId()),
-  merchantId: text('merchant_id')
-    .notNull()
-    .unique()
-    .references(() => merchants.id),
-  address: text('address').unique(),
-  provider: settlementProviderEnum('provider'),
-  currency: text('currency'),
-  providerReference: text('provider_reference'),
-  payoutConfig: text('payout_config'),
-  authorityAddress: text('authority_address'),
-  executionCluster: text('execution_cluster'),
-  provisionedAt: timestamp('provisioned_at'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+export const settlementAccounts = pgTable(
+  'settlement_accounts',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    merchantId: text('merchant_id')
+      .notNull()
+      .references(() => merchants.id),
+    address: text('address'),
+    provider: settlementProviderEnum('provider'),
+    currency: text('currency'),
+    providerReference: text('provider_reference'),
+    payoutConfig: text('payout_config'),
+    authorityAddress: text('authority_address'),
+    executionCluster: text('execution_cluster'),
+    provisionedAt: timestamp('provisioned_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    merchantClusterIdx: uniqueIndex(
+      'settlement_accounts_merchant_cluster_idx',
+    ).on(table.merchantId, table.executionCluster),
+    addressClusterIdx: uniqueIndex(
+      'settlement_accounts_address_cluster_idx',
+    ).on(table.address, table.executionCluster),
+  }),
+);
 
 /**
  * idempotency_keys — Stripe-semantics response snapshot for merchant-facing
@@ -1200,6 +1220,7 @@ export const idempotencyKeys = pgTable(
     merchantId: text('merchant_id')
       .notNull()
       .references(() => merchants.id),
+    executionCluster: text('execution_cluster').notNull().default('legacy'),
     idempotencyKey: text('idempotency_key').notNull(),
     requestHash: text('request_hash').notNull(),
     responseStatus: integer('response_status').notNull(),
@@ -1209,6 +1230,7 @@ export const idempotencyKeys = pgTable(
   (table) => ({
     merchantKeyIdx: uniqueIndex('idempotency_keys_merchant_key_idx').on(
       table.merchantId,
+      table.executionCluster,
       table.idempotencyKey,
     ),
   }),
@@ -1412,15 +1434,12 @@ export const transfersRelations = relations(transfers, ({ one }) => ({
   }),
 }));
 
-export const merchantsRelations = relations(merchants, ({ one, many }) => ({
+export const merchantsRelations = relations(merchants, ({ many }) => ({
   apiKeys: many(apiKeys),
   paymentIntents: many(paymentIntents),
   sessions: many(sessions),
   webhookEndpoints: many(webhookEndpoints),
-  settlementAccount: one(settlementAccounts, {
-    fields: [merchants.id],
-    references: [settlementAccounts.merchantId],
-  }),
+  settlementAccounts: many(settlementAccounts),
 }));
 
 export const paymentIntentsRelations = relations(
@@ -1495,9 +1514,15 @@ export const refundsRelations = relations(refunds, ({ one }) => ({
 }));
 
 /** Transactional authorization headroom, keyed by Consumer and UTC window. */
-export const capacityCounters = pgTable('capacity_counters', {
-  key: text('key').primaryKey(),
-  count: integer('count').notNull(),
-  totalRaw: numeric('total_raw', { precision: 78, scale: 0 }).notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-});
+export const capacityCounters = pgTable(
+  'capacity_counters',
+  {
+    key: text('key').primaryKey(),
+    count: integer('count').notNull(),
+    totalRaw: numeric('total_raw', { precision: 78, scale: 0 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    expiresAtIdx: index('capacity_counters_expires_at_idx').on(table.expiresAt),
+  }),
+);

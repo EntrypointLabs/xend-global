@@ -4,6 +4,7 @@ import {
   buildReady,
   buildResult,
   buildCancel,
+  buildUnresolved,
 } from '@xend/checkout-protocol/build';
 import type { CheckoutStatus } from '@xend/checkout-protocol';
 import { isFramed } from '../lib/frame';
@@ -71,5 +72,20 @@ export function postCancelToMerchant(
   const target = merchantWindow();
   if (!target) return false;
   target.postMessage(buildCancel(nonce, reference), merchantOrigin);
+  return true;
+}
+
+/** Tell the embedder confirmation is still pending so it can restore its UI. */
+export function postUnresolvedToMerchant(
+  merchantOrigin: string,
+  nonce: string,
+  reference: string,
+): boolean {
+  const target = merchantWindow();
+  if (!target) return false;
+  target.postMessage(
+    buildUnresolved(nonce, reference, 'confirmation_timeout'),
+    merchantOrigin,
+  );
   return true;
 }

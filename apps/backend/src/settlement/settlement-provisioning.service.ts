@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { settlementAccounts } from '../db/schema';
 import { SOLANA_RPC, type SolanaRpc } from '../solana/solana-rpc.interface';
@@ -40,7 +40,12 @@ export class SettlementProvisioningService {
     const [existing] = await this.db.client
       .select()
       .from(settlementAccounts)
-      .where(eq(settlementAccounts.merchantId, merchantId))
+      .where(
+        and(
+          eq(settlementAccounts.merchantId, merchantId),
+          eq(settlementAccounts.executionCluster, executionCluster),
+        ),
+      )
       .limit(1);
     if (
       existing?.address &&
@@ -89,7 +94,10 @@ export class SettlementProvisioningService {
       .insert(settlementAccounts)
       .values(row)
       .onConflictDoUpdate({
-        target: settlementAccounts.merchantId,
+        target: [
+          settlementAccounts.merchantId,
+          settlementAccounts.executionCluster,
+        ],
         set: {
           address: row.address,
           provider: row.provider,
@@ -143,7 +151,12 @@ export class SettlementProvisioningService {
     const [row] = await this.db.client
       .select()
       .from(settlementAccounts)
-      .where(eq(settlementAccounts.merchantId, merchantId))
+      .where(
+        and(
+          eq(settlementAccounts.merchantId, merchantId),
+          eq(settlementAccounts.executionCluster, executionCluster),
+        ),
+      )
       .limit(1);
     if (
       !row?.address ||

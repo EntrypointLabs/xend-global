@@ -80,3 +80,67 @@ Implemented:
 - Allow owning Merchants to read legacy terminal intents whose pre-migration execution cluster is null.
 
 Disagreements: none.
+
+## Sweep 6
+
+Implemented:
+
+- Release expired authorization capacity from the original UTC day and month windows rather than the current windows.
+- Store and resolve one Merchant settlement destination per execution cluster, including webhook and refund routing.
+- Remove a submitted mobile Payment from the awaiting list for succeeded, failed, timed-out, and uncertain outcomes.
+- Report confirmation timeouts through the checkout protocol so merchant frames and popups close and the Pay button becomes available again.
+
+Disagreements: none.
+
+## Sweep 7
+
+Implemented:
+
+- Refuse normal live-key issuance on devnet deployments and hide that portal action there; enabled devnet execution continues through its explicit gated key type.
+- Retain the exact signed mobile transaction until `/settle` acknowledges it, allowing an unacknowledged submit to retry the idempotent payload without re-running authorization.
+- Show the exact USDC debit and quote expiry directly in Checkout before the approval action instead of placing them in a collapsed disclosure.
+- Scope both Payment-intent uniqueness and Merchant response-snapshot idempotency by execution cluster, with a migration for the new response-cache scope.
+
+Disagreements: none.
+
+## Sweep 8
+
+Implemented:
+
+- Quarantine an expired pinned settlement whose broadcast outcome is ambiguous instead of expiring the intent, releasing capacity, and reporting a false failure after money may already have moved.
+- Retain unacknowledged signed mobile submissions per Payment and keep each one visible, so starting another Payment cannot discard the only safe retry payload.
+- Scope daily and monthly capacity counters by Solana execution cluster, including the migration backfill keys.
+- Backfill response snapshots from known Payment clusters and consult legacy response and intent rows before creating a replay, preserving pre-migration idempotency and different-body conflicts.
+- Keep redirect Checkout alive after a confirmation timeout by resubmitting the same signed transaction until the backend returns a terminal result and signed return URL.
+- Give the intentionally expensive all-address signup limit test a CI-safe timeout; it performs twenty real scrypt operations and still keeps its original assertions.
+
+Disagreements: none.
+
+## Sweep 9
+
+Implemented:
+
+- Count pre-cluster capacity backfill rows against every active cluster until their day or month window expires, and subtract that legacy usage from each cluster's atomic reservation headroom.
+- Reconcile an unacknowledged mobile submit with the authenticated Payment status before offering another retry, retiring the retained payload when the first request already reached a terminal outcome.
+- Filter phone approval queues by the deployment's Solana cluster so another network's deferred Payments never appear as unusable cards.
+- Derive a migrated live key's effective execution cluster before applying the disabled-devnet gate.
+
+Disagreements: none.
+
+## Sweep 10
+
+Implemented:
+
+- Persist every unacknowledged signed phone Payment in platform secure storage before submission, restore it across navigation and process restarts, and retire it only after acknowledgement or a terminal Payment status.
+- Purge expired PostgreSQL capacity windows on a daily schedule and index `expires_at` so retention cleanup stays efficient as the table grows.
+- Protect legacy null-cluster Payment intents with a partial idempotency index in the cluster-scope migration, plus a forward-compatible migration for environments that already applied the earlier form.
+
+Disagreements: none.
+
+## Sweep 11
+
+Implemented:
+
+- Retain a newly signed phone Payment in the screen's per-reference retry map before writing durable storage, so a temporary SecureStore or AsyncStorage failure still retries the exact authorized bytes instead of attempting an invalid second prepare.
+
+Disagreements: none.

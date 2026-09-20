@@ -72,6 +72,7 @@ function makeController(created: IntentRow) {
     get: () => undefined,
     getOrThrow: (k: string) => {
       if (k === 'FX_RATE_DECIMALS') return 2;
+      if (k === 'SOLANA_CLUSTER') return 'devnet';
       throw new Error(`unexpected key ${k}`);
     },
   } as unknown as ConfigService;

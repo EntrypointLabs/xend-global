@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import type {
@@ -10,7 +11,20 @@ import type {
 /** Capacity lives in the same transaction as the Payment it authorizes. */
 @Injectable()
 export class PostgresCapacityCounter implements ReservingRateCounter {
+  private readonly logger = new Logger(PostgresCapacityCounter.name);
+
   constructor(private readonly db: DbService) {}
+
+  /** Delete expired date-keyed windows so the counter table stays bounded. */
+  @Cron('17 3 * * *')
+  async purgeExpired(): Promise<void> {
+    const result = await this.db.client.execute(
+      sql`DELETE FROM capacity_counters WHERE expires_at <= NOW()`,
+    );
+    if (result.rowCount) {
+      this.logger.log(`capacity.counter.purged count=${result.rowCount}`);
+    }
+  }
 
   async reserve(
     key: string,

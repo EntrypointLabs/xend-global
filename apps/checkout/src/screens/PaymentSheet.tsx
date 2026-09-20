@@ -27,10 +27,9 @@ export function PaymentSheet({
             {formatMoney(intent.displayCurrency, intent.displayAmountMinor)}
           </p>
         </div>
-        <details className="payment-more-info">
-          <summary>More info</summary>
+        <div className="payment-more-info">
           <PaymentQuote intent={intent} />
-        </details>
+        </div>
         <div className="payment-actions">{children}</div>
       </section>
     </main>

@@ -72,15 +72,19 @@ export class ApiKeyGuard implements CanActivate {
       if (!keyRow || keyRow.revokedAt) {
         throw new InvalidApiKeyError('api key not found or revoked');
       }
+      const configuredCluster = this.config?.get<string>('SOLANA_CLUSTER');
+      const executionCluster =
+        keyRow.executionCluster ??
+        (keyRow.mode === 'live' ? (configuredCluster ?? null) : null);
       if (
-        keyRow.executionCluster &&
-        keyRow.executionCluster !== this.config?.get('SOLANA_CLUSTER')
+        executionCluster &&
+        configuredCluster &&
+        executionCluster !== configuredCluster
       )
         throw new InvalidApiKeyError('API key is bound to another network');
       const devnetExecution =
-        keyRow.executionCluster === 'devnet' &&
-        devnetExecutionEnabled(this.config);
-      if (keyRow.executionCluster === 'devnet' && !devnetExecution)
+        executionCluster === 'devnet' && devnetExecutionEnabled(this.config);
+      if (executionCluster === 'devnet' && !devnetExecution)
         throw new InvalidApiKeyError('Devnet execution is disabled');
 
       const [merchant] = await this.db.client
@@ -104,11 +108,6 @@ export class ApiKeyGuard implements CanActivate {
         );
       }
 
-      const executionCluster =
-        keyRow.executionCluster ??
-        (keyRow.mode === 'live'
-          ? (this.config?.get<string>('SOLANA_CLUSTER') ?? null)
-          : null);
       request.merchant = {
         merchantId: keyRow.merchantId,
         apiKeyId: keyRow.id,

@@ -104,16 +104,6 @@ body {
   margin: 0 1.5rem 1rem;
   font-size: 0.8125rem;
 }
-.payment-more-info summary {
-  min-height: 2.75rem;
-  align-content: center;
-  cursor: pointer;
-}
-.payment-more-info summary:focus-visible {
-  outline: 3px solid #90bfff;
-  outline-offset: 4px;
-  border-radius: 4px;
-}
 .payment-actions {
   padding: 0 1.5rem 1rem;
 }

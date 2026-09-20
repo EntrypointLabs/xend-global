@@ -334,8 +334,29 @@
     {
       "idx": 47,
       "version": "7",
-      "when": 1789874580937,
-      "tag": "0047_merchant_portal_hardening",
+      "when": 1789874743338,
+      "tag": "0047_settlement_account_cluster_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1789876407764,
+      "tag": "0048_idempotency_cluster_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1789879905111,
+      "tag": "0049_numerous_namora",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789897867916,
+      "tag": "0050_merchant_portal_hardening",
       "breakpoints": true
     }
   ]

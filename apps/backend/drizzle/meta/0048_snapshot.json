@@ -1,6 +1,6 @@
 {
-  "id": "7ec55b42-c672-4478-b4ad-403e018db058",
-  "prevId": "61957ccd-2fbb-4de9-956a-1e77f19db64d",
+  "id": "1ffabee9-2a4c-4bb0-929a-8bd7b4f3f02f",
+  "prevId": "7ec55b42-c672-4478-b4ad-403e018db058",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -617,6 +617,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "execution_cluster": {
+          "name": "execution_cluster",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'legacy'"
+        },
         "idempotency_key": {
           "name": "idempotency_key",
           "type": "text",
@@ -655,6 +662,12 @@
           "columns": [
             {
               "expression": "merchant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "execution_cluster",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1273,6 +1286,12 @@
           "columns": [
             {
               "expression": "merchant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "execution_cluster",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

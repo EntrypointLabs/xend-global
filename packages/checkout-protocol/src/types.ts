@@ -8,7 +8,10 @@ export type CheckoutTerminalMessageTypeValue =
 
 export type CheckoutMessageTypeValue =
   | 'xend.checkout.ready'
+  | 'xend.checkout.unresolved'
   | CheckoutTerminalMessageTypeValue;
+
+export type CheckoutUnresolvedReason = 'confirmation_timeout';
 
 /**
  * Surface-to-merchant envelope. Carries a reference and a status only:
@@ -38,4 +41,14 @@ export interface CheckoutReadyEnvelope {
   v: 1;
   nonce: string;
   type: 'xend.checkout.ready';
+}
+
+/** The surface could not confirm a terminal result while its channel is live. */
+export interface CheckoutUnresolvedEnvelope {
+  xend: 'checkout';
+  v: 1;
+  nonce: string;
+  reference: string;
+  type: 'xend.checkout.unresolved';
+  reason: CheckoutUnresolvedReason;
 }

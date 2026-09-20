@@ -8,8 +8,6 @@ import {
   VersionedTransaction,
 } from '@solana/web3.js';
 import type { DbService } from '../db/db.service';
-import type { CapacityService } from '../capability/capacity.service';
-import type { EventPublisher } from '../events/event-publisher.interface';
 import { paymentAttempts } from '../db/schema';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { PaymentIntentService } from '../payment/payment-intent.service';
@@ -78,6 +76,18 @@ function makeDb(cfg: {
   stateful?: boolean;
 }): DbService {
   const updates = [...(cfg.updateReturning ?? [])];
+  const update = jest.fn(() => ({
+    set: (values: Partial<AttemptRow>) => ({
+      where: () => ({
+        returning: () => {
+          const result = updates.shift() ?? [];
+          if (cfg.stateful && result.length && cfg.attempt)
+            Object.assign(cfg.attempt, values);
+          return Promise.resolve(result);
+        },
+      }),
+    }),
+  }));
   const client = {
     select: () => ({
       from: (tbl: unknown) => ({
@@ -93,18 +103,7 @@ function makeDb(cfg: {
         }),
       }),
     }),
-    update: () => ({
-      set: (values: Partial<AttemptRow>) => ({
-        where: () => ({
-          returning: () => {
-            const result = updates.shift() ?? [];
-            if (cfg.stateful && result.length && cfg.attempt)
-              Object.assign(cfg.attempt, values);
-            return Promise.resolve(result);
-          },
-        }),
-      }),
-    }),
+    update,
   };
   let lockTail = Promise.resolve();
   const withAdvisoryLock = jest.fn(
@@ -207,20 +206,15 @@ function makeService(deps: {
   provisioning: SettlementProvisioningService;
   spends: SpendService;
   confirmation?: SettlementConfirmationService;
-  capacity?: CapacityService;
-  events?: EventPublisher;
 }): SettlementService {
   const service = new SettlementService(
     deps.db,
     makeConfig(),
     deps.solana,
-    deps.capacity ??
-      ({ releaseCapacity: jest.fn() } as unknown as CapacityService),
     deps.intents,
     deps.provisioning,
     deps.spends,
     deps.confirmation ?? makeConfirmation(),
-    deps.events ?? ({ publish: jest.fn() } as unknown as EventPublisher),
   );
   service.onModuleInit();
   return service;
@@ -524,7 +518,7 @@ describe('SettlementService', () => {
       );
     });
 
-    it('does not broadcast when approval outlives the quote', async () => {
+    it('quarantines an expired pinned attempt whose broadcast outcome is unknown', async () => {
       const { wire, messageBase64 } = buildWireAndMessage();
       const { intents, transition } = makeIntents({
         id: 'pi_1',
@@ -536,39 +530,29 @@ describe('SettlementService', () => {
       });
       const { provisioning } = makeProvisioning(ENDPOINT);
       const { spends, submit } = makeSpends();
-      const releaseCapacity = jest.fn().mockResolvedValue(undefined);
-      const publish = jest.fn().mockResolvedValue(undefined);
+      const db = makeDb({
+        attempt: {
+          id: 'att_1',
+          status: 'authorized',
+          messageBase64,
+          txSignature: null,
+        },
+      });
       const service = makeService({
-        db: makeDb({
-          attempt: {
-            id: 'att_1',
-            status: 'authorized',
-            messageBase64,
-            txSignature: null,
-          },
-          updateReturning: [[{ id: 'att_1' }]],
-        }),
+        db,
         solana: makeSolana(),
         intents,
         provisioning,
         spends,
-        capacity: { releaseCapacity } as unknown as CapacityService,
-        events: { publish } as unknown as EventPublisher,
       });
       await expect(service.submitSettlement('pi_1', wire)).rejects.toThrow(
         IntentExpiredError,
       );
       expect(submit).not.toHaveBeenCalled();
-      expect(transition).toHaveBeenCalledWith(
-        'pi_1',
-        'authorized',
-        'expired',
-        {},
-      );
-      expect(releaseCapacity).toHaveBeenCalledWith('u_1', '1000000');
-      expect(publish).toHaveBeenCalledWith(
-        expect.objectContaining({ topic: 'payment.expired', key: 'pi_1' }),
-      );
+      expect(transition).not.toHaveBeenCalled();
+      // This is an assertion on the fake DB's Jest mock.
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(db.client.update).not.toHaveBeenCalled();
     });
     it('rejects a previously prepared fiat Payment without broadcasting', async () => {
       const { wire, messageBase64 } = buildWireAndMessage();

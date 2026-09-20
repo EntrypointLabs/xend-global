@@ -1,6 +1,6 @@
 {
-  "id": "7ec55b42-c672-4478-b4ad-403e018db058",
-  "prevId": "61957ccd-2fbb-4de9-956a-1e77f19db64d",
+  "id": "9c7e069c-b42b-408e-a396-880f07ef676f",
+  "prevId": "1ffabee9-2a4c-4bb0-929a-8bd7b4f3f02f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -511,7 +511,23 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "capacity_counters_expires_at_idx": {
+          "name": "capacity_counters_expires_at_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -617,6 +633,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "execution_cluster": {
+          "name": "execution_cluster",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'legacy'"
+        },
         "idempotency_key": {
           "name": "idempotency_key",
           "type": "text",
@@ -655,6 +678,12 @@
           "columns": [
             {
               "expression": "merchant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "execution_cluster",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1278,6 +1307,12 @@
               "nulls": "last"
             },
             {
+              "expression": "execution_cluster",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
               "expression": "idempotency_key",
               "isExpression": false,
               "asc": true,
@@ -1285,6 +1320,28 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payment_intents_merchant_legacy_idem_idx": {
+          "name": "payment_intents_merchant_legacy_idem_idx",
+          "columns": [
+            {
+              "expression": "merchant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"payment_intents\".\"execution_cluster\" IS NULL AND \"payment_intents\".\"idempotency_key\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

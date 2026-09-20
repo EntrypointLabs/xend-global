@@ -538,17 +538,19 @@ function MerchantWorkspace() {
                         >
                           Create simulation key
                         </button>
-                        <button
-                          className="secondary"
-                          disabled={
-                            busy ||
-                            data.merchant.kybStatus !== "verified" ||
-                            !data.destination
-                          }
-                          onClick={() => void run(() => issue("live"))}
-                        >
-                          Create live key
-                        </button>
+                        {data.cluster !== "devnet" && (
+                          <button
+                            className="secondary"
+                            disabled={
+                              busy ||
+                              data.merchant.kybStatus !== "verified" ||
+                              !data.destination
+                            }
+                            onClick={() => void run(() => issue("live"))}
+                          >
+                            Create live key
+                          </button>
+                        )}
                         {data.devnetExecutionEnabled && (
                           <button
                             disabled={busy || !data.destination}
