@@ -40,6 +40,20 @@ async function main() {
       Boolean(health.headers.get("referrer-policy")),
     );
     check(
+      "API sets X-Frame-Options: DENY",
+      health.headers.get("x-frame-options") === "DENY",
+    );
+    check(
+      "API sets Cross-Origin-Opener-Policy: same-origin",
+      health.headers.get("cross-origin-opener-policy") === "same-origin",
+    );
+    // The guide advertises production HSTS; a deployment served without it (or
+    // behind a proxy that strips it) is a real regression this must catch.
+    check(
+      "API sets Strict-Transport-Security (production HSTS)",
+      Boolean(health.headers.get("strict-transport-security")),
+    );
+    check(
       "API is not cacheable",
       (health.headers.get("cache-control") ?? "").includes("no-store"),
     );

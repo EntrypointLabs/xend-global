@@ -3,9 +3,11 @@ import { useRef, useState } from "react";
 export function RevokeKey({
   fingerprint,
   onRevoke,
+  disabled = false,
 }: {
   fingerprint: string;
   onRevoke: () => Promise<void>;
+  disabled?: boolean;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -62,6 +64,7 @@ export function RevokeKey({
           type="button"
           className="secondary"
           aria-label={`Revoke key ${fingerprint}`}
+          disabled={disabled}
           onClick={() => setConfirming(true)}
         >
           Revoke key

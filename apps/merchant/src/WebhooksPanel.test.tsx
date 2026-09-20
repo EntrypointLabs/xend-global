@@ -43,6 +43,24 @@ describe("WebhooksPanel", () => {
     expect(screen.queryByText(/whsec_/)).toBeNull();
   });
 
+  it("tells merchants to fulfill only on a payment.succeeded event", async () => {
+    const get = vi.fn().mockResolvedValue({ endpoints: [] });
+    const client = { get, post: vi.fn() } as unknown as PortalClient;
+    render(
+      <WebhooksPanel
+        client={client}
+        onSecret={vi.fn()}
+        revealActive={false}
+        cluster="test"
+      />,
+    );
+    const guidance = await screen.findByText(/before fulfilling an order/);
+    // Failed and expired events are signed too, so the copy must name the one
+    // event that means the money arrived.
+    expect(guidance.textContent).toContain("payment.succeeded");
+    expect(guidance.textContent).toContain("payment.failed");
+  });
+
   it("hands the one-time signing secret to the workspace shell, not panel state", async () => {
     const get = vi
       .fn()

@@ -284,7 +284,15 @@ describe('KeyIssuanceService.markKybVerified', () => {
 
 describe('KeyIssuanceService.markKybRejected', () => {
   it('stamps kyb_status rejected with the reviewer note and clears verification', async () => {
-    const { db, updates } = makeFakeDb({ merchantRows: [merchantRow()] });
+    const { db, updates } = makeFakeDb({
+      merchantRows: [
+        merchantRow({
+          kybStatus: 'pending',
+          profileVersion: 2,
+          kybSubmittedVersion: 2,
+        }),
+      ],
+    });
     const service = new KeyIssuanceService(db);
     await service.markKybRejected('m1', 'Address does not match documents');
     expect(updates).toHaveLength(1);
@@ -292,6 +300,48 @@ describe('KeyIssuanceService.markKybRejected', () => {
       kybStatus: 'rejected',
       kybReviewNote: 'Address does not match documents',
       kybVerifiedAt: null,
+    });
+  });
+
+  it('refuses to reject a profile changed since it was submitted', async () => {
+    const { db, updates } = makeFakeDb({
+      merchantRows: [
+        merchantRow({
+          kybStatus: 'pending',
+          profileVersion: 3,
+          kybSubmittedVersion: 2,
+        }),
+      ],
+    });
+    const service = new KeyIssuanceService(db);
+    await expect(service.markKybRejected('m1', 'stale')).rejects.toMatchObject({
+      code: 'KYB_SUBMISSION_MISMATCH',
+    });
+    expect(updates).toEqual([]);
+  });
+
+  it('refuses to reject a merchant that is not pending review', async () => {
+    const { db, updates } = makeFakeDb({
+      merchantRows: [
+        merchantRow({
+          kybStatus: 'verified',
+          profileVersion: 2,
+          kybSubmittedVersion: 2,
+        }),
+      ],
+    });
+    const service = new KeyIssuanceService(db);
+    await expect(service.markKybRejected('m1', 'oops')).rejects.toMatchObject({
+      code: 'KYB_SUBMISSION_MISMATCH',
+    });
+    expect(updates).toEqual([]);
+  });
+
+  it('rejects an unknown merchant', async () => {
+    const { db } = makeFakeDb({ merchantRows: [] });
+    const service = new KeyIssuanceService(db);
+    await expect(service.markKybRejected('ghost', 'x')).rejects.toMatchObject({
+      code: 'MERCHANT_NOT_FOUND',
     });
   });
 });

@@ -266,7 +266,35 @@ export class KeyIssuanceService {
    */
   async markKybRejected(merchantId: string, reviewNote: string): Promise<void> {
     const now = new Date();
-    const [updated] = await this.db.client
+    const [merchant] = await this.db.client
+      .select({
+        id: merchants.id,
+        kybStatus: merchants.kybStatus,
+        profileVersion: merchants.profileVersion,
+        kybSubmittedVersion: merchants.kybSubmittedVersion,
+      })
+      .from(merchants)
+      .where(eq(merchants.id, merchantId))
+      .limit(1);
+    if (!merchant) {
+      throw new MerchantNotFoundError(`merchant ${merchantId} not found`);
+    }
+    // Only reject an active submission the review actually looked at: a delayed
+    // result must not reject a profile the owner has since edited, and a
+    // stray reject must not clear a merchant that is already verified (which
+    // would start returning 403 for every live key). Both are caught by
+    // requiring the pending state and a submitted version that still matches
+    // the current profile.
+    if (
+      merchant.kybStatus !== 'pending' ||
+      merchant.kybSubmittedVersion === null ||
+      merchant.kybSubmittedVersion !== merchant.profileVersion
+    ) {
+      throw new KybSubmissionMismatchError(
+        `merchant ${merchantId} has no pending submission matching its current profile; nothing to reject`,
+      );
+    }
+    await this.db.client
       .update(merchants)
       .set({
         kybStatus: 'rejected',
@@ -274,11 +302,13 @@ export class KeyIssuanceService {
         kybVerifiedAt: null,
         updatedAt: now,
       })
-      .where(eq(merchants.id, merchantId))
-      .returning({ id: merchants.id });
-    if (!updated) {
-      throw new MerchantNotFoundError(`merchant ${merchantId} not found`);
-    }
+      .where(
+        and(
+          eq(merchants.id, merchantId),
+          eq(merchants.kybStatus, 'pending'),
+          eq(merchants.profileVersion, merchant.profileVersion),
+        ),
+      );
   }
 
   /**

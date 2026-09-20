@@ -22,6 +22,20 @@ it("requires confirmation and allows cancellation without revoking", () => {
   expect(onRevoke).not.toHaveBeenCalled();
 });
 
+it("cannot start a revocation while a one-time secret is still revealed", () => {
+  const onRevoke = vi.fn();
+  render(
+    <RevokeKey fingerprint="test…123" onRevoke={onRevoke} disabled={true} />,
+  );
+  const trigger = screen.getByRole("button", {
+    name: "Revoke key test…123",
+  }) as HTMLButtonElement;
+  expect(trigger.disabled).toBe(true);
+  fireEvent.click(trigger);
+  expect(screen.queryByText(/Existing Payments are not cancelled/)).toBeNull();
+  expect(onRevoke).not.toHaveBeenCalled();
+});
+
 it("prevents duplicate submissions while the request is pending", async () => {
   let finish!: () => void;
   const onRevoke = vi.fn(

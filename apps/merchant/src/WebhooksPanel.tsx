@@ -144,9 +144,12 @@ export function WebhooksPanel({
       <div className="workspace-page-title">
         <h1>Webhooks</h1>
         <p>
-          Xend posts a signed event to your endpoint when a Payment is
-          confirmed. Verify the signature before fulfilling an order; a browser
-          redirect alone is not proof of payment.
+          Xend posts a signed event to your endpoint for each Payment outcome,
+          including <code>payment.succeeded</code>, <code>payment.failed</code>{" "}
+          and <code>payment.expired</code>. Verify the signature and confirm the
+          type is <code>payment.succeeded</code> before fulfilling an order; a
+          failed or expired event is signed too, and a browser redirect alone is
+          not proof of payment.
         </p>
       </div>
 

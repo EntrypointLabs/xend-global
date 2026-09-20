@@ -631,8 +631,8 @@ function MerchantWorkspace() {
                       </div>
                       {secretReveal !== null && (
                         <small>
-                          Copy and dismiss the secret above before creating or
-                          rotating another key.
+                          Copy and dismiss the secret above before creating,
+                          rotating or revoking another key.
                         </small>
                       )}
                     </div>
@@ -677,6 +677,7 @@ function MerchantWorkspace() {
                               </button>
                               <RevokeKey
                                 fingerprint={key.fingerprint}
+                                disabled={busy || secretReveal !== null}
                                 onRevoke={async () => {
                                   const revoked = await client.post<{
                                     revokedAt: string;
@@ -698,7 +699,6 @@ function MerchantWorkspace() {
                                         }
                                       : current,
                                   );
-                                  setSecretReveal(null);
                                 }}
                               />
                             </div>

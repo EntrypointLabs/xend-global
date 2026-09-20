@@ -215,6 +215,11 @@ export class MerchantPortalController {
             // observed, so a submission never reverts a merchant that just
             // became verified (which would disable their live keys).
             eq(merchants.kybStatus, merchant.kybStatus),
+            // Bind to the observed profile version too: a concurrent profile
+            // save bumps it without touching kybStatus, and storing this stale
+            // version would leave the merchant "in review" but unverifiable
+            // (the operator path refuses a submitted/current version mismatch).
+            eq(merchants.profileVersion, merchant.profileVersion),
           ),
         )
         .returning();
