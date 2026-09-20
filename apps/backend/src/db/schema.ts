@@ -946,6 +946,15 @@ export const paymentIntents = pgTable(
       table.executionCluster,
       table.idempotencyKey,
     ),
+    // Old writers leave execution_cluster null during a rolling deploy. Keep
+    // their idempotency domain unique until that compatibility path is retired.
+    merchantLegacyIdemIdx: uniqueIndex(
+      'payment_intents_merchant_legacy_idem_idx',
+    )
+      .on(table.merchantId, table.idempotencyKey)
+      .where(
+        sql`${table.executionCluster} IS NULL AND ${table.idempotencyKey} IS NOT NULL`,
+      ),
     // Expiry sweep scans only unauthorized intents.
     expiryIdx: index('payment_intents_expiry_idx')
       .on(table.expiresAt)
@@ -1460,9 +1469,15 @@ export const refundsRelations = relations(refunds, ({ one }) => ({
 }));
 
 /** Transactional authorization headroom, keyed by Consumer and UTC window. */
-export const capacityCounters = pgTable('capacity_counters', {
-  key: text('key').primaryKey(),
-  count: integer('count').notNull(),
-  totalRaw: numeric('total_raw', { precision: 78, scale: 0 }).notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-});
+export const capacityCounters = pgTable(
+  'capacity_counters',
+  {
+    key: text('key').primaryKey(),
+    count: integer('count').notNull(),
+    totalRaw: numeric('total_raw', { precision: 78, scale: 0 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    expiresAtIdx: index('capacity_counters_expires_at_idx').on(table.expiresAt),
+  }),
+);

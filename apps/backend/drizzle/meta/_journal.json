@@ -344,6 +344,13 @@
       "when": 1789876407764,
       "tag": "0048_idempotency_cluster_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1789879905111,
+      "tag": "0049_numerous_namora",
+      "breakpoints": true
     }
   ]
 }

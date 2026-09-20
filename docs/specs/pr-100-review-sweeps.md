@@ -126,3 +126,13 @@ Implemented:
 - Derive a migrated live key's effective execution cluster before applying the disabled-devnet gate.
 
 Disagreements: none.
+
+## Sweep 10
+
+Implemented:
+
+- Persist every unacknowledged signed phone Payment in platform secure storage before submission, restore it across navigation and process restarts, and retire it only after acknowledgement or a terminal Payment status.
+- Purge expired PostgreSQL capacity windows on a daily schedule and index `expires_at` so retention cleanup stays efficient as the table grows.
+- Protect legacy null-cluster Payment intents with a partial idempotency index in the cluster-scope migration, plus a forward-compatible migration for environments that already applied the earlier form.
+
+Disagreements: none.

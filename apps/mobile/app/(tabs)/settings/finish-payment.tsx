@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { router } from "expo-router";
 import { Buffer } from "buffer";
@@ -25,20 +25,22 @@ import {
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
 import { useToast } from "@/contexts/ToastContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { apiClient, type AwaitingPayment } from "@/utils/apiClient";
 import { formatMoney } from "@/utils/money";
 import { isUserCanceledSign } from "@/utils/signing";
 import { waitForPaymentOutcome } from "@/utils/paymentConfirmation";
+import {
+  deletePendingPaymentSubmission,
+  loadPendingPaymentSubmissions,
+  savePendingPaymentSubmission,
+  type PendingPaymentSubmission,
+} from "@/utils/pendingPaymentSubmissions";
 
 type Flow = {
   step: SpendCheckStep;
   state: SpendCheckState;
   message: string | null;
-};
-
-type PendingSubmission = {
-  payment: AwaitingPayment;
-  signedTransactionBase64: string;
 };
 
 /**
@@ -48,6 +50,12 @@ type PendingSubmission = {
  * legible after two prompts, which is the point of showing the steps at all.
  */
 const SENT_DWELL_MS = 700;
+const TERMINAL_PAYMENT_STATUSES = new Set([
+  "succeeded",
+  "failed",
+  "expired",
+  "canceled",
+]);
 
 /**
  * Finishing a Payment a checkout could not.
@@ -67,6 +75,7 @@ export default function FinishPaymentScreen() {
   const embeddedSolana = useEmbeddedSolanaWallet();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { user } = useAuth();
 
   const [flow, setFlow] = useState<Flow | null>(null);
   const [paying, setPaying] = useState<string | null>(null);
@@ -75,8 +84,56 @@ export default function FinishPaymentScreen() {
   const [active, setActive] = useState<AwaitingPayment | null>(null);
   const [retryable, setRetryable] = useState(false);
   const [pendingSubmissions, setPendingSubmissions] = useState<
-    Record<string, PendingSubmission>
+    Record<string, PendingPaymentSubmission>
   >({});
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+
+    const restorePendingSubmissions = async () => {
+      try {
+        const restored = await loadPendingPaymentSubmissions(user.id);
+        if (cancelled) return;
+        setPendingSubmissions((current) => ({ ...restored, ...current }));
+
+        await Promise.all(
+          Object.keys(restored).map(async (reference) => {
+            try {
+              const status = await apiClient.paymentStatus(reference);
+              if (!TERMINAL_PAYMENT_STATUSES.has(status)) return;
+              await deletePendingPaymentSubmission(user.id, reference);
+              if (cancelled) return;
+              setPendingSubmissions((current) => {
+                const next = { ...current };
+                delete next[reference];
+                return next;
+              });
+              void queryClient.invalidateQueries({
+                queryKey: AWAITING_PAYMENTS_KEY,
+              });
+              if (status === "succeeded") {
+                void queryClient.invalidateQueries({ queryKey: ["transfers"] });
+                void queryClient.invalidateQueries({ queryKey: ["balances"] });
+                void queryClient.invalidateQueries({
+                  queryKey: ACCOUNT_QUERY_KEY,
+                });
+              }
+            } catch {
+              // An unreachable status endpoint leaves the durable retry intact.
+            }
+          })
+        );
+      } catch (err) {
+        Sentry.captureException(err);
+      }
+    };
+
+    void restorePendingSubmissions();
+    return () => {
+      cancelled = true;
+    };
+  }, [queryClient, user?.id]);
 
   // A submit whose response was lost may disappear from the server's awaiting
   // query even though this screen still owns the only safe retry payload. Keep
@@ -99,9 +156,14 @@ export default function FinishPaymentScreen() {
     setActive(payment);
     setPaying(payment.reference);
     setFlow({ step: "sending", state: "working", message: null });
-    // Retain the exact signed bytes until the server acknowledges them. A
-    // retry must resubmit these bytes rather than re-running prepare against
-    // the now-authorized intent.
+    if (!user?.id) throw new Error("Authenticated user not loaded");
+    // Persist the exact signed bytes before the request. A retry after screen
+    // navigation or process restart must resubmit these bytes rather than
+    // re-running prepare against the now-authorized intent.
+    await savePendingPaymentSubmission(user.id, {
+      payment,
+      signedTransactionBase64,
+    });
     setPendingSubmissions((current) => ({
       ...current,
       [payment.reference]: { payment, signedTransactionBase64 },
@@ -112,6 +174,7 @@ export default function FinishPaymentScreen() {
     try {
       await apiClient.submitPayment(payment.reference, signedTransactionBase64);
       accepted = true;
+      await deletePendingPaymentSubmission(user.id, payment.reference);
       setPendingSubmissions((current) => {
         const next = { ...current };
         delete next[payment.reference];
@@ -157,7 +220,8 @@ export default function FinishPaymentScreen() {
         // terminal attempt can no longer accept.
         try {
           const status = await apiClient.paymentStatus(payment.reference);
-          if (status === "succeeded" || status === "failed") {
+          if (TERMINAL_PAYMENT_STATUSES.has(status)) {
+            await deletePendingPaymentSubmission(user.id, payment.reference);
             setPendingSubmissions((current) => {
               const next = { ...current };
               delete next[payment.reference];
@@ -167,12 +231,16 @@ export default function FinishPaymentScreen() {
             void queryClient.invalidateQueries({
               queryKey: AWAITING_PAYMENTS_KEY,
             });
-            if (status === "failed") {
+            if (status !== "succeeded") {
               setFlow({
                 step: "sending",
                 state: "failed",
                 message:
-                  "The payment failed on the network. Check Activity for details.",
+                  status === "expired"
+                    ? "This payment expired. Return to the store for a new quote."
+                    : status === "canceled"
+                      ? "This payment was cancelled."
+                      : "The payment failed on the network. Check Activity for details.",
               });
               return;
             }
