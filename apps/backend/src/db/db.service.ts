@@ -20,6 +20,7 @@ export class DbService implements OnModuleInit, OnModuleDestroy {
   private readonly connectionScope = new AsyncLocalStorage<{
     client: NodePgDatabase<typeof schema>;
     active: boolean;
+    afterCommit?: Array<() => void>;
   }>();
 
   get client(): NodePgDatabase<typeof schema> {
@@ -75,10 +76,13 @@ export class DbService implements OnModuleInit, OnModuleDestroy {
 
   /** Share one transaction across services using this DbService. */
   async withTransaction<T>(fn: () => Promise<T>): Promise<T> {
-    return this.client.transaction(async (tx) => {
+    const parentScope = this.connectionScope.getStore();
+    const afterCommit: Array<() => void> = [];
+    const result = await this.client.transaction(async (tx) => {
       const scope = {
         client: tx as NodePgDatabase<typeof schema>,
         active: true,
+        afterCommit,
       };
       try {
         return await this.connectionScope.run(scope, fn);
@@ -86,6 +90,29 @@ export class DbService implements OnModuleInit, OnModuleDestroy {
         scope.active = false;
       }
     });
+    if (parentScope?.active && parentScope.afterCommit) {
+      // A nested transaction is a savepoint. Its callbacks must wait for the
+      // outer transaction too, and are only promoted after the savepoint
+      // itself commits successfully.
+      parentScope.afterCommit.push(...afterCommit);
+    } else {
+      for (const callback of afterCommit) callback();
+    }
+    return result;
+  }
+
+  /**
+   * Run a synchronous side effect after the surrounding transaction commits.
+   * Outside a transaction it runs immediately. Metrics use this so a rolled
+   * back database transition cannot be counted as durable state.
+   */
+  afterCommit(callback: () => void): void {
+    const scope = this.connectionScope.getStore();
+    if (scope?.active && scope.afterCommit) {
+      scope.afterCommit.push(callback);
+      return;
+    }
+    callback();
   }
 
   /**

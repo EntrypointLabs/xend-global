@@ -116,7 +116,10 @@ function makeFakeDb(cfg: FakeDbConfig): DbService {
       return chain;
     },
   };
-  return { client } as unknown as DbService;
+  return {
+    client,
+    afterCommit: (callback: () => void) => callback(),
+  } as unknown as DbService;
 }
 
 function makePublisher() {

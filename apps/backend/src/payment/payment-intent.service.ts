@@ -200,7 +200,7 @@ export class PaymentIntentService implements OnModuleInit {
       )
       .returning();
     if (updated) {
-      paymentIntentTransitions.inc({ from, to });
+      this.db.afterCommit(() => paymentIntentTransitions.inc({ from, to }));
       return updated;
     }
 

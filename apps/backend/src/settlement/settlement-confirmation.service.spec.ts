@@ -31,11 +31,12 @@ const PAYMENT_ROW = {
   createdAt: new Date(),
 };
 
-function makeConfig(budgetMs = 15): ConfigService {
+function makeConfig(budgetMs = 15, cluster = 'devnet'): ConfigService {
   return {
-    getOrThrow: (key: string): number => {
+    getOrThrow: (key: string): number | string => {
       if (key === 'SETTLEMENT_CONFIRM_POLL_INTERVAL_MS') return 1;
       if (key === 'SETTLEMENT_CONFIRM_BUDGET_MS') return budgetMs;
+      if (key === 'SOLANA_CLUSTER') return cluster;
       throw new Error(`missing config ${key}`);
     },
   } as unknown as ConfigService;
@@ -427,6 +428,27 @@ describe('SettlementConfirmationService', () => {
   });
 
   describe('reconcileSettling (the sweep)', () => {
+    it('scopes every background sweep query to the deployment cluster', async () => {
+      const { provider } = makeProvider({ status: 'complete' });
+      const { intents } = makeIntents();
+      const { publisher } = makePublisher();
+      const captured: string[] = [];
+      const service = makeService({
+        db: makeExecDb({ captured }),
+        intents,
+        provider,
+        publisher,
+      });
+
+      await service.reconcileSettling();
+
+      expect(captured).toHaveLength(3);
+      for (const query of captured) {
+        expect(query).toContain('execution_cluster');
+        expect(query).toContain('devnet');
+      }
+    });
+
     it('settling leg force-fails a null-status attempt past blockhash expiry with BLOCKHASH_EXPIRED', async () => {
       const { provider } = makeProvider({ status: 'complete' });
       const { intents } = makeIntents();

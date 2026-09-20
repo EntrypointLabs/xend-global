@@ -46,3 +46,13 @@ Implemented:
 - Reject Merchant-owned USDC refunds before inserting a refund row, route reversals by the recorded provider, and map the provider-layer unsupported-refund error to 409.
 
 Disagreements: none. The bot's suggestion to restore opener persistence was not used because that would reintroduce an unauthenticated write on GET; forwarding the opener to the existing backend allowlist check preserves the required CSP behavior without the side effect.
+
+## Sweep 3
+
+Implemented:
+
+- Include the Kafka consumer group in process-local retry keys so webhook and Activity subscriptions cannot reset or combine each other's attempts for the same topic offset.
+- Defer Payment intent transition metrics until the surrounding PostgreSQL transaction commits; rolled-back transitions no longer increment durable-state metrics.
+- Filter settling, claimed-settlement, and authorized-attempt background sweeps by the deployment's Solana cluster before querying chain state or reaping attempts.
+
+Disagreements: none.

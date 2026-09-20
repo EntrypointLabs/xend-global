@@ -13,16 +13,18 @@ type EachMessage = (arg: {
 }) => Promise<void>;
 
 const captured: { eachMessage?: EachMessage } = {};
+const capturedByGroup = new Map<string, EachMessage>();
 const producerSend = jest.fn().mockResolvedValue(undefined);
 const producerConnect = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('kafkajs', () => ({
   Kafka: jest.fn().mockImplementation(() => ({
-    consumer: () => ({
+    consumer: ({ groupId }: { groupId: string }) => ({
       connect: jest.fn().mockResolvedValue(undefined),
       subscribe: jest.fn().mockResolvedValue(undefined),
       run: jest.fn().mockImplementation((arg: { eachMessage: EachMessage }) => {
         captured.eachMessage = arg.eachMessage;
+        capturedByGroup.set(groupId, arg.eachMessage);
         return Promise.resolve();
       }),
       disconnect: jest.fn().mockResolvedValue(undefined),
@@ -74,6 +76,8 @@ describe('KafkaEventConsumer', () => {
   beforeEach(() => {
     producerSend.mockClear();
     producerConnect.mockClear();
+    captured.eachMessage = undefined;
+    capturedByGroup.clear();
   });
 
   it('wires eachMessage and maps a message into a PlatformEvent', async () => {
@@ -159,6 +163,29 @@ describe('KafkaEventConsumer', () => {
     await expect(
       captured.eachMessage!(msg({ value: '{}', offset: '43' })),
     ).rejects.toThrow('still broken');
+    expect(producerSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps retry accounting independent for consumer groups at the same offset', async () => {
+    const consumer = new KafkaEventConsumer(makeConfig(2));
+    const failing = jest.fn().mockRejectedValue(new Error('activity failed'));
+    const succeeding = jest.fn().mockResolvedValue(undefined);
+    await consumer.subscribe(['payment.succeeded'], 'activity', failing);
+    await consumer.subscribe(['payment.succeeded'], 'webhooks', succeeding);
+    const delivery = msg({ value: '{"intentId":"pi_9"}', offset: '42' });
+
+    await expect(capturedByGroup.get('activity')!(delivery)).rejects.toThrow(
+      'activity failed',
+    );
+    await expect(
+      capturedByGroup.get('webhooks')!(delivery),
+    ).resolves.toBeUndefined();
+    await expect(
+      capturedByGroup.get('activity')!(delivery),
+    ).resolves.toBeUndefined();
+
+    expect(failing).toHaveBeenCalledTimes(2);
+    expect(succeeding).toHaveBeenCalledTimes(1);
     expect(producerSend).toHaveBeenCalledTimes(1);
   });
 });

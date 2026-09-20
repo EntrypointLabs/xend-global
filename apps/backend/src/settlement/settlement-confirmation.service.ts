@@ -57,6 +57,7 @@ export class SettlementConfirmationService implements OnModuleInit {
   private readonly logger = new Logger(SettlementConfirmationService.name);
   private pollIntervalMs!: number;
   private budgetMs!: number;
+  private executionCluster!: string;
 
   constructor(
     private readonly db: DbService,
@@ -75,6 +76,7 @@ export class SettlementConfirmationService implements OnModuleInit {
     this.budgetMs = this.config.getOrThrow<number>(
       'SETTLEMENT_CONFIRM_BUDGET_MS',
     );
+    this.executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
   }
 
   /**
@@ -436,6 +438,7 @@ export class SettlementConfirmationService implements OnModuleInit {
         ON o.signature = pa.tx_signature AND o.direction = 'settlement'
       WHERE pa.status = 'succeeded'
         AND pi.status = 'settling'
+        AND pi.execution_cluster = ${this.executionCluster}
         AND (p.id IS NULL OR o.id IS NULL)
         AND pa.tx_signature IS NOT NULL
         AND pa.updated_at < (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${CLAIM_RESUME_AFTER_SECONDS}`)} seconds'
@@ -467,7 +470,10 @@ export class SettlementConfirmationService implements OnModuleInit {
         pa.updated_at < (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${BLOCKHASH_EXPIRY_SECONDS}`)} seconds'
           AS "expired"
       FROM payment_attempts pa
-      WHERE pa.status = 'settling' AND pa.tx_signature IS NOT NULL
+      JOIN payment_intents pi ON pi.id = pa.intent_id
+      WHERE pa.status = 'settling'
+        AND pi.execution_cluster = ${this.executionCluster}
+        AND pa.tx_signature IS NOT NULL
       ORDER BY pa.updated_at ASC
       LIMIT ${sql.raw(`${REAP_BATCH}`)}
     `)) as unknown as {
@@ -506,6 +512,7 @@ export class SettlementConfirmationService implements OnModuleInit {
       FROM payment_attempts pa
       JOIN payment_intents pi ON pi.id = pa.intent_id
       WHERE pa.status = 'authorized'
+        AND pi.execution_cluster = ${this.executionCluster}
         AND pa.updated_at < (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${BLOCKHASH_EXPIRY_SECONDS}`)} seconds'
       ORDER BY pa.updated_at ASC
       LIMIT ${sql.raw(`${REAP_BATCH}`)}
