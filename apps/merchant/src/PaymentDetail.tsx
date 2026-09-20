@@ -192,8 +192,10 @@ export function PaymentDetail({
             <h2>Webhook delivery</h2>
             {payment.webhookDeliveries.length === 0 ? (
               <p>
-                No webhook deliveries recorded. A webhook fires only when a
-                Payment is confirmed on-chain.
+                No webhook deliveries recorded. Xend posts a signed event for
+                each outcome, including <code>payment.succeeded</code>,{" "}
+                <code>payment.failed</code> and <code>payment.expired</code>, to
+                the endpoints configured for this mode.
               </p>
             ) : (
               <table>

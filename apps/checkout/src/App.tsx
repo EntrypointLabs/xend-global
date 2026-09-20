@@ -44,7 +44,15 @@ type Phase =
   | { kind: 'insufficient'; intent: IntentView }
   | { kind: 'approval'; intent: IntentView }
   | { kind: 'pending' }
-  | { kind: 'result'; status: CheckoutStatus; severed?: boolean }
+  | {
+      kind: 'result';
+      status: CheckoutStatus;
+      severed?: boolean;
+      /** The status is the intent's own backend outcome, not a dismissed
+       * attempt: a canceled intent was voided by the merchant and cannot be
+       * paid by returning to the store. */
+      terminal?: boolean;
+    }
   | { kind: 'fatal' };
 
 export function App() {
@@ -82,7 +90,7 @@ export function App() {
           completeByRedirect(redirectUrl);
           return;
         }
-        setPhase({ kind: 'result', status });
+        setPhase({ kind: 'result', status, terminal: true });
         return;
       }
       const posted = postResultToMerchant(
@@ -91,7 +99,7 @@ export function App() {
         intent.reference,
         status,
       );
-      setPhase({ kind: 'result', status, severed: !posted });
+      setPhase({ kind: 'result', status, severed: !posted, terminal: true });
     },
     [launch],
   );
@@ -196,7 +204,13 @@ export function App() {
     case 'pending':
       return <Result status="succeeded" pending />;
     case 'result':
-      return <Result status={phase.status} severed={phase.severed} />;
+      return (
+        <Result
+          status={phase.status}
+          severed={phase.severed}
+          terminal={phase.terminal}
+        />
+      );
     case 'insufficient':
       return (
         <InsufficientBalance onCancel={() => deliverCancel(phase.intent)} />
