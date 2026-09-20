@@ -91,11 +91,13 @@ export class PaymentAuthorizationService {
       throw new IntentExpiredError(`intent ${intentId} expired`);
     }
 
-    await this.intents.transition(intentId, 'created', 'authorized', {
-      consumerId,
-      authorizedAt: new Date(),
+    const attemptId = await this.db.withTransaction(async () => {
+      await this.intents.transition(intentId, 'created', 'authorized', {
+        consumerId,
+        authorizedAt: new Date(),
+      });
+      return this.insertAttempt(intentId);
     });
-    const attemptId = await this.insertAttempt(intentId);
 
     await this.events.publish({
       topic: 'payment.authorized',
@@ -158,26 +160,17 @@ export class PaymentAuthorizationService {
       consumerId = params.consumerId as string;
     }
 
-    // Reserve capacity BEFORE the authorizing transition. Reserving first means
-    // a counter-write failure throws while the intent is still `created` (clean
-    // and retryable) instead of leaving it authorized-but-uncounted, which would
-    // let the amount bypass the daily/monthly caps. The reservation is atomic
-    // against the caps, so two concurrent authorizations cannot both pass.
-    await this.capacity.reserveCapacity(consumerId, intent.usdcSettlementRaw);
-
-    // The conditional transition is the race arbiter; a lost race gives the
-    // reservation back so the loser's amount is not held against the caps.
-    try {
+    // Capacity and both authorization rows commit together. The capacity
+    // counter uses this same PostgreSQL transaction, so a crash or a rejected
+    // attempt insert cannot consume headroom or strand an authorized intent.
+    const attemptId = await this.db.withTransaction(async () => {
+      await this.capacity.reserveCapacity(consumerId, intent.usdcSettlementRaw);
       await this.intents.transition(intentId, 'created', 'authorized', {
         consumerId,
         authorizedAt: new Date(),
       });
-    } catch (err) {
-      await this.capacity.releaseCapacity(consumerId, intent.usdcSettlementRaw);
-      throw err;
-    }
-
-    const attemptId = await this.insertAttempt(intentId);
+      return this.insertAttempt(intentId);
+    });
 
     // Record velocity + rotate only after the authorization has committed: a
     // rejected Payment must neither burn a session's daily slot nor invalidate

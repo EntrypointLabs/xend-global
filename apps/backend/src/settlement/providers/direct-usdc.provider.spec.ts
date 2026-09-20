@@ -30,6 +30,9 @@ function makeSolana(overrides: Partial<SolanaRpc> = {}): SolanaRpc {
       blockhash: BLOCKHASH,
       lastValidBlockHeight: 1_000,
     }),
+    getSignatureStatuses: jest
+      .fn()
+      .mockResolvedValue([{ confirmationStatus: 'confirmed', err: null }]),
     accountExists: jest.fn().mockResolvedValue(true),
     getTokenAccountOwner: jest.fn().mockResolvedValue(AUTHORITY),
     getTokenAccountBalanceRaw: jest.fn().mockResolvedValue('0'),

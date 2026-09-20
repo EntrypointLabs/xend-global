@@ -15,7 +15,7 @@ function harness(signature = 'confirmed-chain-signature') {
   };
   const db = { client: { select: jest.fn().mockReturnValue(query) } };
   const consumer = { subscribe: jest.fn().mockResolvedValue(undefined) };
-  const reconciler = { replayWallet: jest.fn().mockResolvedValue(1) };
+  const reconciler = { replayPayment: jest.fn().mockResolvedValue(1) };
   const service = new PaymentActivityService(
     consumer as unknown as EventConsumer,
     db as unknown as DbService,
@@ -42,9 +42,10 @@ describe('confirmed Payment Activity indexing', () => {
       key: 'pi_1',
       payload: { vaultAddress: 'untrusted' },
     });
-    expect(reconciler.replayWallet).toHaveBeenCalledWith(
+    expect(reconciler.replayPayment).toHaveBeenCalledWith(
       'sa_consumer',
       'consumer-vault',
+      'confirmed-chain-signature',
     );
   });
 
@@ -57,13 +58,13 @@ describe('confirmed Payment Activity indexing', () => {
         key: 'pi_1',
         payload: {},
       });
-      expect(reconciler.replayWallet).not.toHaveBeenCalled();
+      expect(reconciler.replayPayment).not.toHaveBeenCalled();
     },
   );
 
   it('leaves transient indexing failures retryable by the event consumer', async () => {
     const { service, reconciler } = harness();
-    reconciler.replayWallet.mockRejectedValue(
+    reconciler.replayPayment.mockRejectedValue(
       new Error('RPC temporarily unavailable'),
     );
     await expect(
@@ -79,7 +80,7 @@ describe('confirmed Payment Activity indexing', () => {
       key: 'missing',
       payload: {},
     });
-    expect(reconciler.replayWallet).not.toHaveBeenCalled();
+    expect(reconciler.replayPayment).not.toHaveBeenCalled();
   });
 
   it('retries when RPC replay returns before the confirmed leg is visible', async () => {

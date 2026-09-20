@@ -67,7 +67,13 @@ function makeDb(opts: { attemptId?: string; insertError?: Error } = {}) {
       },
     }),
   };
-  return { db: { client } as unknown as DbService, insertValues };
+  return {
+    db: {
+      client,
+      withTransaction: <T>(fn: () => Promise<T>) => fn(),
+    } as unknown as DbService,
+    insertValues,
+  };
 }
 
 function makePublisher() {
@@ -177,7 +183,7 @@ describe('PaymentAuthorizationService.authorize (consumer path)', () => {
     expect(events).toHaveLength(0);
   });
 
-  it('gives the reservation back when the authorizing transition loses its race', async () => {
+  it('lets the transaction roll back when the authorizing transition loses its race', async () => {
     const intent = intentRow({ usdcSettlementRaw: '2000000' });
     const { intents, transition } = makeIntents(intent);
     transition.mockRejectedValue(new IntentStateConflictError('lost race'));
@@ -198,7 +204,7 @@ describe('PaymentAuthorizationService.authorize (consumer path)', () => {
     ).rejects.toBeInstanceOf(IntentStateConflictError);
 
     expect(reserveCapacity).toHaveBeenCalledWith('c1', '2000000');
-    expect(releaseCapacity).toHaveBeenCalledWith('c1', '2000000');
+    expect(releaseCapacity).not.toHaveBeenCalled();
     expect(insertValues).not.toHaveBeenCalled();
     expect(events).toHaveLength(0);
   });

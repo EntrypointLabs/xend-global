@@ -111,7 +111,10 @@ function makeExecDb(cfg: {
     }
     return Promise.resolve({ rows: [], rowCount: 0 });
   });
-  return { client: { execute } } as unknown as DbService;
+  return {
+    client: { execute },
+    withAdvisoryLock: <T>(_key: string, fn: () => Promise<T>) => fn(),
+  } as unknown as DbService;
 }
 
 function makeProvider(completion: SettlementCompletion): {
@@ -672,41 +675,44 @@ describe('SettlementConfirmationService', () => {
       ).toBeUndefined();
     });
 
-    it('reaps a pinned attempt with a confirmed inbound of the exact amount as ATTEMPT_ORPHAN_SUSPECTED', async () => {
-      const { provider } = makeProvider({ status: 'complete' });
-      const { intents, transition } = makeIntents();
-      const { publisher, publish } = makePublisher();
-      const captured: string[] = [];
-      const service = makeService({
-        db: makeExecDb({
-          authorized: [
-            {
-              id: 'att_1',
-              intentId: 'pi_1',
-              messageBase64: 'pinned',
-              merchantId: 'm_1',
-              usdcSettlementRaw: '1000000',
-            },
-          ],
-          orphanHit: true,
-          captured,
-        }),
-        intents,
-        provider,
-        publisher,
-      });
+    it.each([true, false])(
+      'quarantines pinned attempts regardless of indexed inbound evidence (%s)',
+      async (orphanHit) => {
+        const { provider } = makeProvider({ status: 'complete' });
+        const { intents, transition } = makeIntents();
+        const { publisher, publish } = makePublisher();
+        const captured: string[] = [];
+        const service = makeService({
+          db: makeExecDb({
+            authorized: [
+              {
+                id: 'att_1',
+                intentId: 'pi_1',
+                messageBase64: 'pinned',
+                merchantId: 'm_1',
+                usdcSettlementRaw: '1000000',
+              },
+            ],
+            orphanHit,
+            captured,
+          }),
+          intents,
+          provider,
+          publisher,
+        });
 
-      await service.reconcileSettling();
+        await service.reconcileSettling();
 
-      const reapUpdate = captured.find((s) =>
-        s.includes('UPDATE payment_attempts'),
-      );
-      expect(reapUpdate).toContain('ATTEMPT_ORPHAN_SUSPECTED');
-      // Money may have landed: the intent stays authorized for ops. No
-      // auto-fail transition, no merchant-facing failure event.
-      expect(transition).not.toHaveBeenCalled();
-      expect(publish).not.toHaveBeenCalled();
-    });
+        const reapUpdate = captured.find((s) =>
+          s.includes('UPDATE payment_attempts'),
+        );
+        expect(reapUpdate).toContain('ATTEMPT_ORPHAN_SUSPECTED');
+        // Money may have landed: the intent stays authorized for ops. No
+        // auto-fail transition, no merchant-facing failure event.
+        expect(transition).not.toHaveBeenCalled();
+        expect(publish).not.toHaveBeenCalled();
+      },
+    );
   });
 });
 

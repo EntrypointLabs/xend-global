@@ -1,3 +1,8 @@
+import { ServiceUnavailableException } from '@nestjs/common';
+import {
+  PrivyUnavailableError,
+  PrivyUserShapeError,
+} from '../wallet/privy.errors';
 import {
   ConflictException,
   NotFoundException,
@@ -19,6 +24,7 @@ function setup(
     settlementTermsAcceptedAt: new Date(),
   },
   cluster = 'devnet',
+  enabled = false,
 ) {
   const where = jest.fn().mockReturnValue({
     limit: () => Promise.resolve(merchant ? [merchant] : []),
@@ -32,6 +38,9 @@ function setup(
     .fn()
     .mockResolvedValue({ raw: 'test-key', fingerprint: 'test…key' });
   const provisionOrLink = jest.fn().mockResolvedValue({ address: 'ata' });
+  const getSettlementAddressForSettlement = jest
+    .fn()
+    .mockResolvedValue({ address: 'ata' });
   const revokeKey = jest.fn().mockResolvedValue({
     id: 'ak-owned',
     revokedAt: new Date('2026-09-19T00:00:00Z'),
@@ -40,11 +49,22 @@ function setup(
     { client: { select } } as unknown as DbService,
     { verifyIdToken } as unknown as MerchantIdentityService,
     { issueKey, revokeKey } as unknown as KeyIssuanceService,
-    { provisionOrLink } as unknown as SettlementProvisioningService,
-    { get: () => cluster } as unknown as ConfigService,
+    {
+      provisionOrLink,
+      getSettlementAddressForSettlement,
+    } as unknown as SettlementProvisioningService,
+    {
+      get: (key: string) =>
+        ({
+          SOLANA_CLUSTER: cluster,
+          NODE_ENV: 'development',
+          DEVNET_PAYMENTS_ENABLED: enabled,
+        })[key],
+    } as unknown as ConfigService,
   );
   return {
     controller,
+    getSettlementAddressForSettlement,
     verifyIdToken,
     issueKey,
     revokeKey,
@@ -158,5 +178,56 @@ describe('Merchant portal ownership', () => {
       ConflictException,
     );
     expect(provisionOrLink).not.toHaveBeenCalled();
+  });
+});
+
+describe('execution key gates', () => {
+  it('issues enabled devnet keys after verifying the destination', async () => {
+    const { controller, issueKey, getSettlementAddressForSettlement } = setup(
+      undefined,
+      'devnet',
+      true,
+    );
+    await controller.issue('Bearer token', { mode: 'devnet' });
+    expect(getSettlementAddressForSettlement).toHaveBeenCalledWith(
+      'merchant-owned',
+    );
+    expect(issueKey).toHaveBeenCalledWith('merchant-owned', 'devnet');
+  });
+  it('refuses disabled devnet execution', async () => {
+    const { controller, issueKey } = setup();
+    await expect(
+      controller.issue('Bearer token', { mode: 'devnet' }),
+    ).rejects.toThrow(ConflictException);
+    expect(issueKey).not.toHaveBeenCalled();
+  });
+  it('maps missing destination ownership to 409', async () => {
+    const { controller, issueKey, getSettlementAddressForSettlement } = setup(
+      undefined,
+      'devnet',
+      true,
+    );
+    getSettlementAddressForSettlement.mockRejectedValue(
+      new SettlementAccountNotProvisionedError('pending'),
+    );
+    await expect(
+      controller.issue('Bearer token', { mode: 'devnet' }),
+    ).rejects.toThrow(ConflictException);
+    expect(issueKey).not.toHaveBeenCalled();
+  });
+});
+
+describe('Merchant identity error mapping', () => {
+  it.each([
+    [new PrivyUnavailableError('provider down'), 502],
+    [new PrivyUserShapeError('missing wallet'), 422],
+    [new ServiceUnavailableException('not configured'), 503],
+  ])('preserves provider failure %s as HTTP %s', async (error, status) => {
+    const { controller, verifyIdToken, select } = setup();
+    verifyIdToken.mockRejectedValue(error);
+    await expect(
+      controller.issue('Bearer token', { mode: 'test' }),
+    ).rejects.toMatchObject({ status });
+    expect(select).not.toHaveBeenCalled();
   });
 });

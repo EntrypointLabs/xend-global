@@ -51,9 +51,13 @@ export class PaymentActivityService implements OnModuleInit {
     if (!payment?.signature || /^(test_|devtest_)/.test(payment.signature))
       return;
 
-    // Replay from the durable bookmark, not just this signature: skipping
-    // earlier legs would advance the shared bookmark past unseen activity.
-    await this.reconciler.replayWallet(payment.accountId, payment.vaultAddress);
+    // Rewind to the recorded signature when a newer webhook has already
+    // advanced the bookmark. Still replay intervening legs in order.
+    await this.reconciler.replayPayment(
+      payment.accountId,
+      payment.vaultAddress,
+      payment.signature,
+    );
     const [indexed] = await this.db.client
       .select({ id: transfers.id })
       .from(transfers)

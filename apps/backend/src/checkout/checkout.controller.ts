@@ -143,7 +143,7 @@ export class CheckoutController {
         throw new IntentNotFoundError(`intent ${reference} not found`);
       }
 
-      const merchantOrigin = await this.resolveMerchantOrigin(
+      const merchantOrigin = this.resolveMerchantOrigin(
         intent,
         merchant,
         opener,
@@ -304,6 +304,25 @@ export class CheckoutController {
         );
       }
 
+      // Validate the wire network before authorization consumes capacity or
+      // issues a Session. Configuration calls mainnet `mainnet`; Solana clients
+      // call the same network `mainnet-beta`.
+      const executionCluster =
+        intent.executionCluster === 'mainnet'
+          ? 'mainnet-beta'
+          : intent.executionCluster;
+      if (
+        built &&
+        executionCluster !== 'devnet' &&
+        executionCluster !== 'testnet' &&
+        executionCluster !== 'mainnet-beta'
+      ) {
+        throw new HttpException(
+          'Unsupported Payment execution network',
+          HttpStatus.CONFLICT,
+        );
+      }
+
       if (body.providerToken) {
         // First-payment path: authorize, issue a Session, and set the fresh raw
         // token as the HttpOnly cookie (the one place the raw token crosses to
@@ -330,17 +349,6 @@ export class CheckoutController {
       }
 
       if (built) {
-        const executionCluster = intent.executionCluster;
-        if (
-          executionCluster !== 'devnet' &&
-          executionCluster !== 'testnet' &&
-          executionCluster !== 'mainnet-beta'
-        ) {
-          throw new HttpException(
-            'Unsupported Payment execution network',
-            HttpStatus.CONFLICT,
-          );
-        }
         // The Consumer signs at the popup and hands the bytes to /settle. The
         // pin is what makes that safe to complete with the fee payer.
         await this.settlement.pinSettlement(reference, built);
@@ -348,7 +356,10 @@ export class CheckoutController {
           status: 'needs_signature',
           unsignedTxBase64: built.unsignedTxBase64,
           signerAddress: built.signerAddress,
-          executionCluster,
+          executionCluster: executionCluster as
+            | 'devnet'
+            | 'testnet'
+            | 'mainnet-beta',
         });
       }
 
@@ -377,6 +388,10 @@ export class CheckoutController {
     try {
       const existing = await this.intents.findById(body.reference);
       if (existing.status === 'succeeded' || existing.status === 'failed') {
+        await this.settlement.verifySettlementProof(
+          body.reference,
+          body.signedTxBase64,
+        );
         return await this.terminalResponse(body.reference);
       }
       try {
@@ -389,6 +404,10 @@ export class CheckoutController {
         // Return only a persisted terminal result, never infer one from errors.
         const current = await this.intents.findById(body.reference);
         if (current.status === 'succeeded' || current.status === 'failed') {
+          await this.settlement.verifySettlementProof(
+            body.reference,
+            body.signedTxBase64,
+          );
           return await this.terminalResponse(body.reference);
         }
         throw error;
@@ -427,23 +446,16 @@ export class CheckoutController {
   /**
    * Where the popup posts the result. The page that opened the checkout names
    * itself on the launch URL; it is honoured only if it is one of the
-   * Merchant's registered origins, and then remembered on the intent so a
-   * later load (the redirect return, a reload) still answers with it. With
+   * Merchant's registered origins. GET does not persist the caller's choice. With
    * nothing usable the first registered origin stands, as it always has.
    */
-  private async resolveMerchantOrigin(
+  private resolveMerchantOrigin(
     intent: IntentRow,
     merchant: MerchantRow,
     requested: string | undefined,
-  ): Promise<string | null> {
+  ): string | null {
     const allowed = merchant.allowedOrigins ?? [];
     if (requested && allowed.includes(requested)) {
-      if (intent.openerOrigin !== requested) {
-        await this.db.client
-          .update(paymentIntents)
-          .set({ openerOrigin: requested, updatedAt: new Date() })
-          .where(eq(paymentIntents.id, intent.id));
-      }
       return requested;
     }
     if (requested) {

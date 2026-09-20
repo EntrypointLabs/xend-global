@@ -1,4 +1,6 @@
 import {
+  BadGatewayException,
+  UnprocessableEntityException,
   Body,
   Controller,
   Get,
@@ -10,6 +12,10 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import {
+  PrivyUnavailableError,
+  PrivyUserShapeError,
+} from '../wallet/privy.errors';
 import { ConfigService } from '@nestjs/config';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
@@ -64,6 +70,12 @@ export class MerchantPortalController {
       return await this.wallets.verifyIdToken(authorization.slice(7));
     } catch (error) {
       if (error instanceof ServiceUnavailableException) throw error;
+      if (error instanceof PrivyUnavailableError)
+        throw new BadGatewayException(
+          'Merchant sign-in is temporarily unavailable. Please retry.',
+        );
+      if (error instanceof PrivyUserShapeError)
+        throw new UnprocessableEntityException(error.message);
       throw new UnauthorizedException('Sign in with your Merchant account');
     }
   }
@@ -239,13 +251,24 @@ export class MerchantPortalController {
         throw new ConflictException(
           'Business verification is required before live keys',
         );
-      await this.provisioning.getSettlementAddressForSettlement(merchant.id);
+      await this.requireDestination(merchant.id);
     }
     if (body.mode === 'devnet') {
       if (!devnetExecutionEnabled(this.config))
         throw new ConflictException('Devnet execution is disabled');
-      await this.provisioning.getSettlementAddressForSettlement(merchant.id);
+      await this.requireDestination(merchant.id);
     }
     return this.keys.issueKey(merchant.id, body.mode);
+  }
+  private async requireDestination(merchantId: string): Promise<void> {
+    try {
+      await this.provisioning.getSettlementAddressForSettlement(merchantId);
+    } catch (error) {
+      if (error instanceof SettlementAccountNotProvisionedError)
+        throw new ConflictException(
+          'Initialize and confirm your receiving account before creating an execution key.',
+        );
+      throw error;
+    }
   }
 }

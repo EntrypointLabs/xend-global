@@ -6,7 +6,7 @@ import { z } from 'zod';
  * and cancel_url are SSRF-validated by the controller before use.
  */
 export const CreateIntentBodySchema = z.object({
-  amount: z.string().regex(/^\d+$/),
+  amount: z.string().regex(/^[1-9]\d*$/),
   currency: z.enum(['NGN', 'USD', 'USDC']),
   merchant_reference: z.string().max(255).optional(),
   return_url: z.string().url().optional(),

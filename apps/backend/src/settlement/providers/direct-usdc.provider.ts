@@ -120,9 +120,10 @@ export class DirectUsdcProvider implements SettlementProvider, OnModuleInit {
               m,
             ),
         );
-        await this.authority.signAndSend(
+        const signature = await this.authority.signAndSend(
           getBase64EncodedWireTransaction(compileTransaction(message)),
         );
+        await this.confirmCreation(signature);
       }
       // Registration waits for confirmed ownership. A submitted creation that
       // is not visible yet is safe to retry because ATA creation is idempotent.
@@ -192,6 +193,24 @@ export class DirectUsdcProvider implements SettlementProvider, OnModuleInit {
       attributionRef: this.authority.address,
       payoutConfig: null,
     };
+  }
+
+  private async confirmCreation(signature: string): Promise<void> {
+    // Bound the request; a timeout remains safe to retry because creation is
+    // idempotent. Never treat broadcast acceptance as confirmed account state.
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const [status] = await this.solana.getSignatureStatuses([signature]);
+      if (status?.err) break;
+      if (
+        status?.confirmationStatus === 'confirmed' ||
+        status?.confirmationStatus === 'finalized'
+      )
+        return;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    throw new SettlementAccountNotProvisionedError(
+      'Receiving account creation is not confirmed yet; retry initialization',
+    );
   }
 
   /**

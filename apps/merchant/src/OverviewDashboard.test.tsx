@@ -45,7 +45,7 @@ describe("Merchant overview", () => {
           },
           {
             id: "unpaid",
-            status: "created",
+            status: "settling",
             amountRaw: "7000000",
             mode: "devnet",
           },

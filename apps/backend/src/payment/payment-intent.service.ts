@@ -1,7 +1,7 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { and, desc, eq, gt, isNotNull, lt } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lt } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { merchants, paymentIntents } from '../db/schema';
 import { EVENT_PUBLISHER } from '../events/event-publisher.interface';
@@ -51,7 +51,7 @@ export interface CreateIntentParams {
  * race arbiter for concurrent confirmers.
  */
 @Injectable()
-export class PaymentIntentService {
+export class PaymentIntentService implements OnModuleInit {
   private readonly logger = new Logger(PaymentIntentService.name);
 
   constructor(
@@ -59,6 +59,30 @@ export class PaymentIntentService {
     private readonly config: ConfigService,
     @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
   ) {}
+
+  /**
+   * Migration 0042 could add the execution-cluster column but could not know
+   * which network each deployment uses. Backfill only nonterminal work here,
+   * where the validated SOLANA_CLUSTER is available, before traffic starts.
+   */
+  async onModuleInit(): Promise<void> {
+    const cluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
+    const backfilled = await this.db.client
+      .update(paymentIntents)
+      .set({ executionCluster: cluster, updatedAt: new Date() })
+      .where(
+        and(
+          isNull(paymentIntents.executionCluster),
+          inArray(paymentIntents.status, ['created', 'authorized', 'settling']),
+        ),
+      )
+      .returning({ id: paymentIntents.id });
+    if (backfilled.length > 0) {
+      this.logger.warn(
+        `payment_intent.execution_cluster_backfilled cluster=${cluster} count=${backfilled.length}`,
+      );
+    }
+  }
 
   async create(params: CreateIntentParams): Promise<IntentRow> {
     const [merchant] = await this.db.client

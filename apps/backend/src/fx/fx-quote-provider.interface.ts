@@ -1,4 +1,5 @@
 /** DI token for the active checkout pricing provider. */
+export const UPSTREAM_FX_QUOTE_PROVIDER = Symbol('UpstreamFxQuoteProvider');
 export const FX_QUOTE_PROVIDER = Symbol('FxQuoteProvider');
 
 export interface FxQuote {

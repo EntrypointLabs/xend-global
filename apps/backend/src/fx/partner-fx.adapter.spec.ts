@@ -1,4 +1,5 @@
 import type { ConfigService } from '@nestjs/config';
+import { BlockradarFxAdapter } from './blockradar-fx.adapter';
 import { PartnerFxAdapter } from './partner-fx.adapter';
 import { FxQuoteUnavailableError } from './fx.errors';
 
@@ -23,7 +24,7 @@ describe('PartnerFxAdapter mainnet pricing', () => {
           JSON.stringify({ statusCode: 200, data: { USDC: { NGN: 1500.25 } } }),
         ),
       );
-    const quote = await new PartnerFxAdapter(
+    const quote = await new BlockradarFxAdapter(
       blockradarConfig('test-key'),
     ).getQuote();
     expect(quote).toMatchObject({
@@ -43,6 +44,8 @@ describe('PartnerFxAdapter mainnet pricing', () => {
   it.each([
     { statusCode: 200, data: { USDC: { USD: 1 } } },
     { statusCode: 200, data: { USDC: { NGN: 0 } } },
+    { statusCode: 200, data: { USDC: { NGN: 0.0006 } } },
+    { statusCode: 200, data: { USDC: { NGN: 1500000 } } },
     { statusCode: 200, data: { USDC: { NGN: -1 } } },
     { statusCode: 500, data: { USDC: { NGN: 1500 } } },
   ])('refuses an invalid pair or rate: %j', async (body) => {
@@ -50,14 +53,14 @@ describe('PartnerFxAdapter mainnet pricing', () => {
       .spyOn(global, 'fetch')
       .mockResolvedValue(new Response(JSON.stringify(body)));
     await expect(
-      new PartnerFxAdapter(blockradarConfig('test-key')).getQuote(),
+      new BlockradarFxAdapter(blockradarConfig('test-key')).getQuote(),
     ).rejects.toThrow(FxQuoteUnavailableError);
   });
 
   it('refuses missing credentials without making a request', async () => {
     const fetcher = jest.spyOn(global, 'fetch');
     await expect(
-      new PartnerFxAdapter(blockradarConfig()).getQuote(),
+      new BlockradarFxAdapter(blockradarConfig()).getQuote(),
     ).rejects.toThrow(FxQuoteUnavailableError);
     expect(fetcher).not.toHaveBeenCalled();
   });

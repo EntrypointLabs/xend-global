@@ -1,3 +1,4 @@
+import { formatUsdc } from "./money";
 import React, { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -39,11 +40,6 @@ type Dashboard = {
   }[];
   payments: { id: string; status: string; amountRaw: string; mode: string }[];
 };
-
-function usdc(raw: string) {
-  const value = BigInt(raw);
-  return `${value / 1000000n}.${(value % 1000000n).toString().padStart(6, "0")} USDC`;
-}
 
 function DashboardApp() {
   const { user } = usePrivy();
@@ -621,7 +617,7 @@ function MerchantWorkspace() {
                             <td>
                               <code>{p.id}</code>
                             </td>
-                            <td>{usdc(p.amountRaw)}</td>
+                            <td>{formatUsdc(p.amountRaw, { suffix: true })}</td>
                             <td>
                               <span
                                 className="payment-status"

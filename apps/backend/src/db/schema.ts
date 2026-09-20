@@ -1447,3 +1447,11 @@ export const refundsRelations = relations(refunds, ({ one }) => ({
     references: [merchants.id],
   }),
 }));
+
+/** Transactional authorization headroom, keyed by Consumer and UTC window. */
+export const capacityCounters = pgTable('capacity_counters', {
+  key: text('key').primaryKey(),
+  count: integer('count').notNull(),
+  totalRaw: numeric('total_raw', { precision: 78, scale: 0 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});

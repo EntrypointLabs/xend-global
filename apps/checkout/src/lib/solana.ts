@@ -8,6 +8,7 @@ export function checkoutChain(cluster: string) {
       return 'solana:devnet' as const;
     case 'testnet':
       return 'solana:testnet' as const;
+    case 'mainnet':
     case 'mainnet-beta':
       return 'solana:mainnet' as const;
     default:

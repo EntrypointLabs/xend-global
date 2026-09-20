@@ -111,3 +111,16 @@ describe('CachedFxQuoteProvider', () => {
     });
   });
 });
+
+it('coalesces concurrent quotes and reuses a recent positive quote', async () => {
+  const { redis } = makeRedis();
+  const getQuote = jest.fn().mockResolvedValue({
+    ngnPerUsdc: '1500',
+    source: 'partner',
+    quotedAt: new Date(),
+  });
+  const provider = new CachedFxQuoteProvider({ getQuote }, config, redis);
+  await Promise.all(Array.from({ length: 20 }, () => provider.getQuote()));
+  await provider.getQuote();
+  expect(getQuote).toHaveBeenCalledTimes(1);
+});

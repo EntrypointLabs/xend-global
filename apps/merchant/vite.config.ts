@@ -6,6 +6,7 @@ export default defineConfig(({ mode }) => ({
     react(),
     devPilot(loadEnv(mode, process.cwd(), "").PILOT_DEVNET_API_KEY ?? ""),
   ],
+  resolve: { dedupe: ["react", "react-dom"] },
   server: {
     port: 5174,
     host: "127.0.0.1",

@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import type { FxQuote, FxQuoteProvider } from './fx-quote-provider.interface';
-import { PartnerFxAdapter } from './partner-fx.adapter';
+import { UPSTREAM_FX_QUOTE_PROVIDER } from './fx-quote-provider.interface';
 import { FxQuoteUnavailableError } from './fx.errors';
 
 const CACHE_KEY = 'fx:quote:ngn_usdc';
@@ -26,13 +26,38 @@ interface CachedQuote {
 export class CachedFxQuoteProvider implements FxQuoteProvider {
   private readonly logger = new Logger(CachedFxQuoteProvider.name);
 
+  private inFlight?: Promise<FxQuote>;
+  private recent?: FxQuote;
+
   constructor(
-    private readonly partner: PartnerFxAdapter,
+    @Inject(UPSTREAM_FX_QUOTE_PROVIDER)
+    private readonly partner: FxQuoteProvider,
     private readonly config: ConfigService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
   async getQuote(): Promise<FxQuote> {
+    const ttl =
+      Math.min(5, this.config.getOrThrow<number>('FX_STALENESS_CAP_SECONDS')) *
+      1000;
+    if (
+      this.recent &&
+      Date.now() - this.recent.quotedAt.getTime() >= 0 &&
+      Date.now() - this.recent.quotedAt.getTime() < ttl
+    )
+      return this.recent;
+    if (this.inFlight) return this.inFlight;
+    this.inFlight = this.refresh();
+    try {
+      const quote = await this.inFlight;
+      this.recent = quote;
+      return quote;
+    } finally {
+      this.inFlight = undefined;
+    }
+  }
+
+  private async refresh(): Promise<FxQuote> {
     try {
       const fresh = await this.partner.getQuote();
       const cached: CachedQuote = {

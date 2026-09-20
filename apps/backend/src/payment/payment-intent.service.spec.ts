@@ -313,3 +313,40 @@ describe('PaymentIntentService.findById', () => {
     });
   });
 });
+
+describe('PaymentIntentService.onModuleInit', () => {
+  it('backfills pre-migration nonterminal intents from the deployment cluster', async () => {
+    const set = jest.fn<void, [unknown]>();
+    const where = jest.fn();
+    const returning = jest.fn().mockResolvedValue([{ id: 'pi_old' }]);
+    const chain = {
+      set: (values: unknown) => {
+        set(values);
+        return chain;
+      },
+      where: (condition: unknown) => {
+        where(condition);
+        return chain;
+      },
+      returning,
+    };
+    const db = {
+      client: { update: jest.fn().mockReturnValue(chain) },
+    } as unknown as DbService;
+    const { publisher } = makePublisher();
+    const mainnetConfig = {
+      getOrThrow: () => 'mainnet',
+    } as unknown as ConfigService;
+
+    await new PaymentIntentService(db, mainnetConfig, publisher).onModuleInit();
+
+    const written = set.mock.calls[0][0] as {
+      executionCluster: string;
+      updatedAt: unknown;
+    };
+    expect(written.executionCluster).toBe('mainnet');
+    expect(written.updatedAt).toBeInstanceOf(Date);
+    expect(where).toHaveBeenCalledTimes(1);
+    expect(returning).toHaveBeenCalledWith({ id: paymentIntents.id });
+  });
+});

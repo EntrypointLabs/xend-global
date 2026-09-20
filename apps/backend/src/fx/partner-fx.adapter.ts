@@ -14,19 +14,7 @@ export class PartnerFxAdapter implements FxQuoteProvider {
   constructor(private readonly config: ConfigService) {}
 
   async getQuote(): Promise<FxQuote> {
-    const blockradar =
-      this.config.get<string>('FX_QUOTE_SOURCE') === 'blockradar';
-    const apiKey = blockradar
-      ? this.config.get<string>('BLOCKRADAR_API_KEY')
-      : undefined;
-    if (blockradar && !apiKey) {
-      throw new FxQuoteUnavailableError(
-        'Blockradar pricing access is not configured',
-      );
-    }
-    const url = blockradar
-      ? 'https://api.blockradar.co/v1/assets/rates?currency=NGN&assets=USDC'
-      : this.config.get<string>('FX_PARTNER_QUOTE_URL');
+    const url = this.config.get<string>('FX_PARTNER_QUOTE_URL');
     if (!url) {
       if (this.config.get<string>('SOLANA_CLUSTER') === 'mainnet') {
         throw new FxQuoteUnavailableError(
@@ -45,7 +33,6 @@ export class PartnerFxAdapter implements FxQuoteProvider {
     try {
       const res = await fetch(url, {
         redirect: 'error',
-        headers: apiKey ? { 'x-api-key': apiKey } : undefined,
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (!res.ok) {
@@ -61,27 +48,13 @@ export class PartnerFxAdapter implements FxQuoteProvider {
       );
     }
 
-    // Require the exact pair. A USD result must never be interpreted as NGN.
-    const response = body as {
-      statusCode?: number;
-      data?: { USDC?: { NGN?: unknown } };
-    } | null;
-    const rate = this.extractRate(
-      blockradar
-        ? {
-            ngnPerUsdc:
-              response?.statusCode === 200
-                ? response.data?.USDC?.NGN
-                : undefined,
-          }
-        : body,
-    );
+    const rate = this.extractRate(body);
     if (!rate) {
       throw new FxQuoteUnavailableError('partner quote missing a valid rate');
     }
     return {
       ngnPerUsdc: rate,
-      source: blockradar ? 'blockradar-reference' : 'partner',
+      source: 'partner',
       quotedAt: new Date(),
     };
   }

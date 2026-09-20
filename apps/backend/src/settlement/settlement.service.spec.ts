@@ -1,19 +1,12 @@
 import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
-import { Keypair } from '@solana/web3.js';
 import {
-  address,
-  appendTransactionMessageInstructions,
-  type Blockhash,
-  compileTransaction,
-  createTransactionMessage,
-  getBase64Decoder,
-  getBase64EncodedWireTransaction,
-  pipe,
-  setTransactionMessageFeePayer,
-  setTransactionMessageLifetimeUsingBlockhash,
-} from '@solana/kit';
-import { getSetComputeUnitLimitInstruction } from '@solana-program/compute-budget';
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  TransactionMessage,
+  VersionedTransaction,
+} from '@solana/web3.js';
 import type { DbService } from '../db/db.service';
 import { paymentAttempts } from '../db/schema';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
@@ -35,28 +28,28 @@ const FEE_PAYER = Keypair.generate().publicKey.toBase58();
 const VAULT = Keypair.generate().publicKey.toBase58();
 const ENDPOINT = Keypair.generate().publicKey.toBase58();
 const ENDPOINT_OWNER = Keypair.generate().publicKey.toBase58();
-const PRIMARY_SIGNER = Keypair.generate().publicKey.toBase58();
+const PRIMARY_KEY = Keypair.generate();
+const PRIMARY_SIGNER = PRIMARY_KEY.publicKey.toBase58();
 const BLOCKHASH = Keypair.generate().publicKey.toBase58();
 
 function buildWireAndMessage(): { wire: string; messageBase64: string } {
-  const message = pipe(
-    createTransactionMessage({ version: 0 }),
-    (m) => setTransactionMessageFeePayer(address(FEE_PAYER), m),
-    (m) =>
-      setTransactionMessageLifetimeUsingBlockhash(
-        { blockhash: BLOCKHASH as Blockhash, lastValidBlockHeight: 1_000n },
-        m,
-      ),
-    (m) =>
-      appendTransactionMessageInstructions(
-        [getSetComputeUnitLimitInstruction({ units: 60_000 })],
-        m,
-      ),
+  const tx = new VersionedTransaction(
+    new TransactionMessage({
+      payerKey: new PublicKey(FEE_PAYER),
+      recentBlockhash: BLOCKHASH,
+      instructions: [
+        SystemProgram.transfer({
+          fromPubkey: PRIMARY_KEY.publicKey,
+          toPubkey: new PublicKey(ENDPOINT),
+          lamports: 1,
+        }),
+      ],
+    }).compileToV0Message(),
   );
-  const compiled = compileTransaction(message);
+  tx.sign([PRIMARY_KEY]);
   return {
-    wire: getBase64EncodedWireTransaction(compiled),
-    messageBase64: getBase64Decoder().decode(compiled.messageBytes),
+    wire: Buffer.from(tx.serialize()).toString('base64'),
+    messageBase64: Buffer.from(tx.message.serialize()).toString('base64'),
   };
 }
 
@@ -87,6 +80,9 @@ function makeDb(cfg: {
     select: () => ({
       from: (tbl: unknown) => ({
         where: () => ({
+          orderBy: () => ({
+            limit: () => Promise.resolve(cfg.attempt ? [cfg.attempt] : []),
+          }),
           limit: () => {
             if (tbl === paymentAttempts)
               return Promise.resolve(cfg.attempt ? [cfg.attempt] : []);
@@ -665,7 +661,7 @@ describe('SettlementService', () => {
     it.each([60000, -1])(
       'an already-broadcast retry reconciles without signing again with quote lifetime %s ms',
       async (remainingMs) => {
-        const { wire } = buildWireAndMessage();
+        const { wire, messageBase64 } = buildWireAndMessage();
         const { intents } = makeIntents({
           id: 'pi_1',
           status: 'settling',
@@ -681,7 +677,7 @@ describe('SettlementService', () => {
             attempt: {
               id: 'att_1',
               status: 'settling',
-              messageBase64: 'pinned',
+              messageBase64,
               txSignature: 'sig-live',
             },
           }),

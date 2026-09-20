@@ -1,6 +1,8 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { createPublicKey, verify } from 'node:crypto';
+import { VersionedTransaction } from '@solana/web3.js';
 import { ConfigService } from '@nestjs/config';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
   getBase64Decoder,
   getBase64Encoder,
@@ -183,6 +185,51 @@ export class SettlementService implements OnModuleInit {
     return { attemptId: attempt.id };
   }
 
+  /** Terminal retries must prove possession of the Consumer's signed Spend.
+   * References and arbitrary bytes cannot mint a signed Merchant redirect.
+   * Verify the pinned message and every non-fee-payer signer without rebroadcast.
+   */
+  async verifySettlementProof(
+    intentId: string,
+    signedTxBase64: string,
+  ): Promise<void> {
+    const [attempt] = await this.db.client
+      .select()
+      .from(paymentAttempts)
+      .where(eq(paymentAttempts.intentId, intentId))
+      .orderBy(desc(paymentAttempts.createdAt))
+      .limit(1);
+    try {
+      const tx = VersionedTransaction.deserialize(
+        Buffer.from(signedTxBase64, 'base64'),
+      );
+      const message = tx.message.serialize();
+      const count = tx.message.header.numRequiredSignatures;
+      if (
+        !attempt?.messageBase64 ||
+        Buffer.from(message).toString('base64') !== attempt.messageBase64 ||
+        count < 2
+      )
+        throw new Error('No matching signed Spend');
+      for (let index = 1; index < count; index++) {
+        const key = createPublicKey({
+          key: Buffer.concat([
+            Buffer.from('302a300506032b6570032100', 'hex'),
+            tx.message.staticAccountKeys[index].toBuffer(),
+          ]),
+          format: 'der',
+          type: 'spki',
+        });
+        if (!verify(null, message, key, tx.signatures[index]))
+          throw new Error('Invalid Consumer signature');
+      }
+    } catch {
+      throw new SettlementMessageMismatchError(
+        'A valid Consumer-signed Payment is required',
+      );
+    }
+  }
+
   async submitSettlement(
     intentId: string,
     consumerSignedTxBase64: string,
@@ -214,6 +261,7 @@ export class SettlementService implements OnModuleInit {
     // Signature-first retry: an already-live settling attempt with a
     // recorded signature is resolved, never re-cosigned or rebuilt.
     if (attempt.status === 'settling' && attempt.txSignature) {
+      await this.verifySettlementProof(intentId, consumerSignedTxBase64);
       await this.resolveInFlight(intentId);
       return {
         attemptId: attempt.id,

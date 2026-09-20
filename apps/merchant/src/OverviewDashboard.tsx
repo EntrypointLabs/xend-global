@@ -1,8 +1,5 @@
+import { formatUsdc as money } from "./money";
 type Payment = { id: string; status: string; amountRaw: string; mode: string };
-
-function money(raw: bigint) {
-  return `${raw / 1000000n}.${(raw % 1000000n).toString().padStart(6, "0").replace(/0+$/, "") || "00"}`;
-}
 
 export function OverviewDashboard({
   payments,
@@ -24,7 +21,7 @@ export function OverviewDashboard({
   );
   const volume = confirmed.reduce((sum, p) => sum + BigInt(p.amountRaw), 0n);
   const awaiting = payments.filter((p) =>
-    ["created", "authorized", "processing"].includes(p.status),
+    ["created", "authorized", "settling"].includes(p.status),
   ).length;
   const ordered = [...confirmed].reverse();
   const highest = ordered.reduce(
