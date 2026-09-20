@@ -254,6 +254,20 @@ describe('KeyIssuanceService.markKybVerified', () => {
   });
 });
 
+describe('KeyIssuanceService.markKybRejected', () => {
+  it('stamps kyb_status rejected with the reviewer note and clears verification', async () => {
+    const { db, updates } = makeFakeDb({ merchantRows: [merchantRow()] });
+    const service = new KeyIssuanceService(db);
+    await service.markKybRejected('m1', 'Address does not match documents');
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({
+      kybStatus: 'rejected',
+      kybReviewNote: 'Address does not match documents',
+      kybVerifiedAt: null,
+    });
+  });
+});
+
 describe('KeyIssuanceService.revokeKey', () => {
   function revokeDb(cfg: { unrevoked: boolean; existing: boolean }) {
     const revokedAt = new Date('2026-02-01');

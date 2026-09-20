@@ -223,6 +223,29 @@ export class KeyIssuanceService {
       throw new MerchantNotFoundError(`merchant ${merchantId} not found`);
     }
   }
+
+  /**
+   * The manual stage-2 ops action for a failed review: stamp kyb_status
+   * 'rejected' and the reviewer's note, which the portal surfaces to the owner
+   * so a resubmission can fix the named problem. The counterpart to
+   * markKybVerified; only the off-system review reaches either.
+   */
+  async markKybRejected(merchantId: string, reviewNote: string): Promise<void> {
+    const now = new Date();
+    const [updated] = await this.db.client
+      .update(merchants)
+      .set({
+        kybStatus: 'rejected',
+        kybReviewNote: reviewNote,
+        kybVerifiedAt: null,
+        updatedAt: now,
+      })
+      .where(eq(merchants.id, merchantId))
+      .returning({ id: merchants.id });
+    if (!updated) {
+      throw new MerchantNotFoundError(`merchant ${merchantId} not found`);
+    }
+  }
 }
 
 function normalizeName(name: string | null | undefined): string | null {

@@ -17,6 +17,7 @@ import { MerchantPortalController } from './merchant-portal.controller';
 import { MerchantOwnerService } from './merchant-owner.service';
 import type { MerchantAuditService } from './merchant-audit.service';
 import { SettlementAccountNotProvisionedError } from '../settlement/settlement.errors';
+import { ApiKeyNotFoundError, KybNotVerifiedError } from './merchant.errors';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
 import {
@@ -55,6 +56,11 @@ function setup(
     id: 'ak-owned',
     revokedAt: new Date('2026-09-19T00:00:00Z'),
   });
+  const rotateKey = jest.fn().mockResolvedValue({
+    id: 'ak-next',
+    raw: 'next-key',
+    fingerprint: 'next…key',
+  });
   const db = {
     client: {
       select,
@@ -70,7 +76,7 @@ function setup(
   const controller = new MerchantPortalController(
     db,
     owner,
-    { issueKey, revokeKey } as unknown as KeyIssuanceService,
+    { issueKey, revokeKey, rotateKey } as unknown as KeyIssuanceService,
     {
       provisionOrLink,
       getSettlementAddressForSettlement,
@@ -91,6 +97,7 @@ function setup(
     verifyIdToken,
     issueKey,
     revokeKey,
+    rotateKey,
     provisionOrLink,
     select,
   };
@@ -340,5 +347,22 @@ describe('Merchant portal cluster scope', () => {
         expect.arrayContaining(['merchant-owned', 'devnet']),
       );
     }
+  });
+});
+
+describe('Merchant portal key rotation', () => {
+  it('maps a missing key to 404', async () => {
+    const { controller, rotateKey } = setup();
+    rotateKey.mockRejectedValue(new ApiKeyNotFoundError('gone'));
+    await expect(controller.rotate('Bearer token', 'ak-x')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+  it('maps a rotation eligibility failure to a 409 conflict', async () => {
+    const { controller, rotateKey } = setup();
+    rotateKey.mockRejectedValue(new KybNotVerifiedError('kyb regressed'));
+    await expect(controller.rotate('Bearer token', 'ak-x')).rejects.toThrow(
+      ConflictException,
+    );
   });
 });

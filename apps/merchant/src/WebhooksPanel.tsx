@@ -221,9 +221,11 @@ function WebhookCard({
   const [deliveries, setDeliveries] = useState<Delivery[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingDeliveries, setLoadingDeliveries] = useState(false);
+  const [deliveryError, setDeliveryError] = useState("");
 
   async function loadDeliveries(reset: boolean) {
     setLoadingDeliveries(true);
+    setDeliveryError("");
     try {
       const params = new URLSearchParams({ limit: "20" });
       if (!reset && cursor) params.set("cursor", cursor);
@@ -237,6 +239,12 @@ function WebhookCard({
         reset || !current ? data.deliveries : [...current, ...data.deliveries],
       );
       setCursor(data.nextCursor);
+    } catch (failure) {
+      setDeliveryError(
+        failure instanceof Error
+          ? failure.message
+          : "Could not load deliveries.",
+      );
     } finally {
       setLoadingDeliveries(false);
     }
@@ -285,6 +293,11 @@ function WebhookCard({
           </button>
         )}
       </div>
+      {deliveryError && (
+        <p className="error" role="alert">
+          {deliveryError}
+        </p>
+      )}
       {deliveries && (
         <div className="webhook-deliveries">
           {deliveries.length === 0 ? (

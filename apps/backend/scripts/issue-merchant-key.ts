@@ -30,6 +30,8 @@ interface Args {
   mode: 'test' | 'live';
   merchantId?: string;
   markKybVerified?: string;
+  markKybRejected?: string;
+  reason?: string;
   origins: string[];
 }
 
@@ -90,6 +92,12 @@ function parseArgs(argv: string[]): Args {
       case '--mark-kyb-verified':
         args.markKybVerified = next();
         break;
+      case '--mark-kyb-rejected':
+        args.markKybRejected = next();
+        break;
+      case '--reason':
+        args.reason = next();
+        break;
       default:
         throw new Error(`unknown flag: ${flag}`);
     }
@@ -114,6 +122,21 @@ async function main(): Promise<void> {
         throw new Error(`merchant ${args.markKybVerified} not found`);
       }
       console.log(`KYB verified for merchant ${args.markKybVerified}`);
+      return;
+    }
+
+    if (args.markKybRejected) {
+      if (!args.reason) {
+        throw new Error('--mark-kyb-rejected requires --reason "<note>"');
+      }
+      const res = await client.query(
+        `UPDATE merchants SET kyb_status = 'rejected', kyb_review_note = $2, kyb_verified_at = NULL, updated_at = now() WHERE id = $1 RETURNING id`,
+        [args.markKybRejected, args.reason],
+      );
+      if (res.rowCount === 0) {
+        throw new Error(`merchant ${args.markKybRejected} not found`);
+      }
+      console.log(`KYB rejected for merchant ${args.markKybRejected}`);
       return;
     }
 

@@ -51,7 +51,12 @@ function setup(over: Partial<Record<string, jest.Mock>> = {}) {
     find: over.find ?? jest.fn().mockResolvedValue(endpointRow()),
     disable: over.disable ?? jest.fn().mockResolvedValue(endpointRow()),
   };
-  const client = { select: jest.fn() };
+  const client = {
+    select: jest.fn(),
+    // create/rotate/delete run inside a transaction; the mocked endpoint
+    // service ignores the handle, so invoking the callback is enough.
+    transaction: (cb: (tx: unknown) => unknown) => cb({}),
+  };
   const controller = new MerchantPortalWebhooksController(
     { client } as unknown as DbService,
     owner,
@@ -69,15 +74,19 @@ describe('MerchantPortalWebhooksController', () => {
       mode: 'test',
       eventTypes: null,
     });
-    expect(register).toHaveBeenCalledWith({
-      merchantId: 'm1',
-      mode: 'test',
-      url: 'https://example.com/hook',
-      eventTypes: null,
-    });
+    expect(register).toHaveBeenCalledWith(
+      {
+        merchantId: 'm1',
+        mode: 'test',
+        url: 'https://example.com/hook',
+        eventTypes: null,
+      },
+      expect.anything(),
+    );
     expect(result.secret).toBe('whsec_new');
     expect(record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'webhook.create', merchantId: 'm1' }),
+      expect.anything(),
     );
   });
 
@@ -108,6 +117,7 @@ describe('MerchantPortalWebhooksController', () => {
     expect(result.previousSecretExpiresAt).toBe('2026-02-01T00:00:00.000Z');
     expect(record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'webhook.rotate_secret' }),
+      expect.anything(),
     );
   });
 

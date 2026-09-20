@@ -1158,6 +1158,13 @@ export const webhookDeliveries = pgTable(
       table.status,
       table.nextRetryAt,
     ),
+    // The portal's payment-detail read filters deliveries by the intent's
+    // correlation id and orders them newest-first; index both so it is a lookup
+    // rather than a scan of the whole delivery table as history grows.
+    correlationIdx: index('webhook_deliveries_correlation_idx').on(
+      table.correlationId,
+      table.createdAt,
+    ),
   }),
 );
 

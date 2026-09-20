@@ -27,7 +27,12 @@ import {
 } from './merchant-owner.service';
 import { SettlementProvisioningService } from '../settlement/settlement-provisioning.service';
 import { SettlementAccountNotProvisionedError } from '../settlement/settlement.errors';
-import { ApiKeyNotFoundError } from './merchant.errors';
+import {
+  ApiKeyNotFoundError,
+  ExecutionClusterDisabledError,
+  KybNotVerifiedError,
+  SettlementDestinationMissingError,
+} from './merchant.errors';
 import { devnetExecutionEnabled } from './devnet-execution';
 import { MerchantProfileUpdate } from './profile.dtos';
 import { toApiKeyView, toMerchantView } from './merchant-portal.view';
@@ -333,6 +338,16 @@ export class MerchantPortalController {
     } catch (error) {
       if (error instanceof ApiKeyNotFoundError)
         throw new NotFoundException('API key not found');
+      // A live key can become ineligible to rotate after issuance (KYB
+      // regressed, destination incomplete, or the cluster disabled). These are
+      // merchant-actionable conflicts, not server errors; the transaction has
+      // already rolled the claim back, so the old key still works.
+      if (
+        error instanceof KybNotVerifiedError ||
+        error instanceof SettlementDestinationMissingError ||
+        error instanceof ExecutionClusterDisabledError
+      )
+        throw new ConflictException(error.message);
       throw error;
     }
   }

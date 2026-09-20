@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
-import { DbService } from '../db/db.service';
+import { DbService, type DbExecutor } from '../db/db.service';
 import { webhookEndpoints } from '../db/schema';
 import { assertPublicHttpsUrl } from '../common/url-safety';
 import { WebhookEndpointNotFoundError } from './webhook.errors';
@@ -36,13 +36,14 @@ export class WebhookEndpointService {
 
   async register(
     params: RegisterEndpointParams,
+    db: DbExecutor = this.db.client,
   ): Promise<{ endpoint: EndpointRow; secret: string }> {
     const allowPrivate =
       this.config.get<boolean>('WEBHOOK_ALLOW_PRIVATE_URLS') ?? false;
     await assertPublicHttpsUrl(params.url, { allowPrivate });
 
     const secret = mintSecret();
-    const [endpoint] = await this.db.client
+    const [endpoint] = await db
       .insert(webhookEndpoints)
       .values({
         merchantId: params.merchantId,
@@ -70,8 +71,12 @@ export class WebhookEndpointService {
       .orderBy(desc(webhookEndpoints.createdAt));
   }
 
-  async find(id: string, scope?: EndpointScope): Promise<EndpointRow> {
-    const [endpoint] = await this.db.client
+  async find(
+    id: string,
+    scope?: EndpointScope,
+    db: DbExecutor = this.db.client,
+  ): Promise<EndpointRow> {
+    const [endpoint] = await db
       .select()
       .from(webhookEndpoints)
       .where(eq(webhookEndpoints.id, id))
@@ -97,15 +102,16 @@ export class WebhookEndpointService {
   async rotateSecret(
     id: string,
     scope?: EndpointScope,
+    db: DbExecutor = this.db.client,
   ): Promise<{ secret: string; secondaryExpiresAt: Date }> {
-    const endpoint = await this.find(id, scope);
+    const endpoint = await this.find(id, scope, db);
     const secret = mintSecret();
     const graceHours =
       this.config.get<number>('WEBHOOK_SECRET_ROTATION_GRACE_HOURS') ?? 24;
     const secondaryExpiresAt = new Date(
       Date.now() + graceHours * 60 * 60 * 1000,
     );
-    await this.db.client
+    await db
       .update(webhookEndpoints)
       .set({
         secretSecondary: endpoint.secretPrimary,
@@ -121,9 +127,13 @@ export class WebhookEndpointService {
    * Retires an endpoint. Its delivery history references it, so the row
    * stays and is disabled: the dispatcher skips it and every read hides it.
    */
-  async disable(id: string, scope?: EndpointScope): Promise<EndpointRow> {
-    const endpoint = await this.find(id, scope);
-    const [updated] = await this.db.client
+  async disable(
+    id: string,
+    scope?: EndpointScope,
+    db: DbExecutor = this.db.client,
+  ): Promise<EndpointRow> {
+    const endpoint = await this.find(id, scope, db);
+    const [updated] = await db
       .update(webhookEndpoints)
       .set({ enabled: false, updatedAt: new Date() })
       .where(eq(webhookEndpoints.id, endpoint.id))

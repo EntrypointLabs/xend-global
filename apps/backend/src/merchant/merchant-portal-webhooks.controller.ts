@@ -59,19 +59,36 @@ export class MerchantPortalWebhooksController {
   ) {
     const merchant = await this.owner.owned(authorization);
     try {
-      const { endpoint, secret } = await this.endpoints.register({
-        merchantId: merchant.id,
-        mode: body.mode,
-        url: body.url,
-        eventTypes: body.eventTypes ?? null,
-      });
-      await this.audit.record({
-        merchantId: merchant.id,
-        actor: merchant.ownerProviderId ?? 'unknown',
-        action: 'webhook.create',
-        target: endpoint.id,
-        metadata: { url: endpoint.url, mode: endpoint.mode },
-      });
+      // Create and audit commit together: a failed audit write must not leave a
+      // live endpoint receiving deliveries signed with a secret the merchant
+      // never obtained (reads omit it, so a retry would only orphan another).
+      const { endpoint, secret } = await this.db.client.transaction(
+        async (tx) => {
+          const created = await this.endpoints.register(
+            {
+              merchantId: merchant.id,
+              mode: body.mode,
+              url: body.url,
+              eventTypes: body.eventTypes ?? null,
+            },
+            tx,
+          );
+          await this.audit.record(
+            {
+              merchantId: merchant.id,
+              actor: merchant.ownerProviderId ?? 'unknown',
+              action: 'webhook.create',
+              target: created.endpoint.id,
+              metadata: {
+                url: created.endpoint.url,
+                mode: created.endpoint.mode,
+              },
+            },
+            tx,
+          );
+          return created;
+        },
+      );
       return { ...toWebhookEndpointView(endpoint), secret };
     } catch (error) {
       this.mapServiceError(error);
@@ -85,19 +102,29 @@ export class MerchantPortalWebhooksController {
   ) {
     const merchant = await this.owner.owned(authorization);
     try {
-      const { secret, secondaryExpiresAt } = await this.endpoints.rotateSecret(
-        id,
-        { merchantId: merchant.id },
-      );
-      const endpoint = await this.endpoints.find(id, {
-        merchantId: merchant.id,
-      });
-      await this.audit.record({
-        merchantId: merchant.id,
-        actor: merchant.ownerProviderId ?? 'unknown',
-        action: 'webhook.rotate_secret',
-        target: id,
-      });
+      const { endpoint, secret, secondaryExpiresAt } =
+        await this.db.client.transaction(async (tx) => {
+          const rotated = await this.endpoints.rotateSecret(
+            id,
+            { merchantId: merchant.id },
+            tx,
+          );
+          const found = await this.endpoints.find(
+            id,
+            { merchantId: merchant.id },
+            tx,
+          );
+          await this.audit.record(
+            {
+              merchantId: merchant.id,
+              actor: merchant.ownerProviderId ?? 'unknown',
+              action: 'webhook.rotate_secret',
+              target: id,
+            },
+            tx,
+          );
+          return { endpoint: found, ...rotated };
+        });
       return {
         ...toWebhookEndpointView(endpoint),
         secret,
@@ -115,14 +142,22 @@ export class MerchantPortalWebhooksController {
   ) {
     const merchant = await this.owner.owned(authorization);
     try {
-      const endpoint = await this.endpoints.disable(id, {
-        merchantId: merchant.id,
-      });
-      await this.audit.record({
-        merchantId: merchant.id,
-        actor: merchant.ownerProviderId ?? 'unknown',
-        action: 'webhook.delete',
-        target: id,
+      const endpoint = await this.db.client.transaction(async (tx) => {
+        const disabled = await this.endpoints.disable(
+          id,
+          { merchantId: merchant.id },
+          tx,
+        );
+        await this.audit.record(
+          {
+            merchantId: merchant.id,
+            actor: merchant.ownerProviderId ?? 'unknown',
+            action: 'webhook.delete',
+            target: id,
+          },
+          tx,
+        );
+        return disabled;
       });
       return { id: endpoint.id, deleted: true };
     } catch (error) {
