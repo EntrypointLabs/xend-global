@@ -94,6 +94,13 @@ function walk(dir: string): string[] {
   });
 }
 
+const backendUrl = process.env.XEND_BACKEND_URL ?? 'http://localhost:8008';
+const proxy = {
+  '/pilot/webhook': 'http://127.0.0.1:5175',
+  '/checkout': backendUrl,
+  '/v1': backendUrl,
+};
+
 export default defineConfig(({ mode }) => ({
   // Allow a user-owned cache when an earlier privileged dev server owned it.
   cacheDir: process.env.XEND_VITE_CACHE_DIR ?? 'node_modules/.vite',
@@ -111,6 +118,7 @@ export default defineConfig(({ mode }) => ({
     ? {
         host: true,
         port: active.port,
+        strictPort: true,
         allowedHosts: [active.host],
         https: {
           cert: fs.readFileSync(`certs/${active.host}.pem`),
@@ -118,13 +126,9 @@ export default defineConfig(({ mode }) => ({
         },
         // The HTTPS checkout proxies API calls to the plain-HTTP backend so the
         // browser never sees mixed content (Vite -> backend is server-side).
-        proxy: {
-          '/pilot/webhook': 'http://127.0.0.1:5175',
-          '/checkout': 'http://localhost:8008',
-          '/v1': 'http://localhost:8008',
-        },
+        proxy,
       }
-    : undefined,
+    : { port: 5173, strictPort: true, proxy },
   build: {
     target: 'es2022',
     rollupOptions: {
