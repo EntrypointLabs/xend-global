@@ -17,8 +17,8 @@
     "@privy-io/react-auth": "^3.34.0",
     "@solana-program/memo": "^0.9.0",
     "@xend/checkout-protocol": "*",
-    "react": "19.2.0",
-    "react-dom": "19.2.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {

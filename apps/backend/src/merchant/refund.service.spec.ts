@@ -16,7 +16,12 @@ interface DbCfg {
   intentStatus?: string | null;
   intentMode?: 'test' | 'live';
   priorRefunds?: { amountUsdcRaw: string; status: string }[];
-  account?: { address: string | null; currency: string | null } | null;
+  account?: {
+    address: string | null;
+    currency: string | null;
+    provider: 'direct_usdc' | 'blockradar' | null;
+    authorityAddress: string | null;
+  } | null;
   consumerAccount?: { vaultAddress: string } | null;
 }
 
@@ -103,7 +108,7 @@ function makeProvider(refundSupport: boolean) {
     },
     reverse,
   } as unknown as SettlementProvider;
-  const router = { forMerchant: () => provider } as unknown as SettlementRouter;
+  const router = { forProvider: () => provider } as unknown as SettlementRouter;
   return { router, reverse };
 }
 
@@ -140,7 +145,12 @@ function payment(over: Record<string, unknown> = {}) {
   };
 }
 
-const account = { address: 'EndpointAddr', currency: 'USDC' };
+const account = {
+  address: 'EndpointAddr',
+  currency: 'USDC',
+  provider: 'direct_usdc' as const,
+  authorityAddress: 'AuthorityAddr',
+};
 const consumerAccount = { vaultAddress: 'VaultAddr' };
 
 describe('RefundService.refund', () => {
@@ -222,7 +232,12 @@ describe('RefundService.refund', () => {
       payment: payment(),
       intentStatus: 'succeeded',
       priorRefunds: [],
-      account: { address: 'A', currency: 'NGN' },
+      account: {
+        address: 'A',
+        currency: 'NGN',
+        provider: 'blockradar',
+        authorityAddress: 'ProviderRoot',
+      },
       consumerAccount,
     });
     const { router, reverse } = makeProvider(false);
@@ -232,6 +247,24 @@ describe('RefundService.refund', () => {
     ).rejects.toMatchObject({
       code: 'REFUND_NOT_SUPPORTED',
     });
+    expect(reverse).not.toHaveBeenCalled();
+  });
+
+  it('rejects a Merchant-owned endpoint before inserting a refund row', async () => {
+    const { db, inserts } = makeDb({
+      payment: payment(),
+      intentStatus: 'succeeded',
+      priorRefunds: [],
+      account: { ...account, authorityAddress: null },
+      consumerAccount,
+    });
+    const { router, reverse } = makeProvider(true);
+    const svc = new RefundService(db, router, makeIdempotency());
+
+    await expect(
+      svc.refund({ paymentId: 'pay_1', idempotencyKey: 'k' }),
+    ).rejects.toMatchObject({ code: 'REFUND_NOT_SUPPORTED' });
+    expect(inserts).toEqual([]);
     expect(reverse).not.toHaveBeenCalled();
   });
 

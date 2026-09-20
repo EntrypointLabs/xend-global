@@ -4,7 +4,7 @@
  * Prints only price metadata, never credentials. Does not create an order.
  */
 import { ConfigService } from '@nestjs/config';
-import { PartnerFxAdapter } from '../src/fx/partner-fx.adapter';
+import { BlockradarFxAdapter } from '../src/fx/blockradar-fx.adapter';
 import { localMinorToUsdcRaw } from '../src/fx/fx-math';
 
 async function main() {
@@ -19,7 +19,7 @@ async function main() {
     SOLANA_CLUSTER: 'mainnet',
     FX_QUOTE_TIMEOUT_MS: 5000,
   });
-  const quote = await new PartnerFxAdapter(config).getQuote();
+  const quote = await new BlockradarFxAdapter(config).getQuote();
   const scale = Math.max(6, quote.ngnPerUsdc.split('.')[1]?.length ?? 0);
   console.log(
     JSON.stringify(

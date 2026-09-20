@@ -32,3 +32,17 @@ Migration 0044 changes capacity storage from Redis to PostgreSQL so daily/monthl
 Stop old authorization writers before applying 0044, then start only the new backend. A rolling mixture of old Redis-based writers and new PostgreSQL-based writers is unsupported. Do not clear old counters or restart the old backend after the cutover without reconciling usage. No production migration is executed by this review task.
 
 Pinned attempts marked ATTEMPT_ORPHAN_SUSPECTED require investigation of the actual chain outcome. Missing Activity or elapsed time alone must never be treated as proof that payment failed.
+
+## Sweep 2
+
+Implemented:
+
+- Align Merchant and Checkout with the root React 19.2.3 runtime, removing the workspace-local React copies that caused invalid hook calls after a clean `npm ci`.
+- Forward the requested opener through the Cloudflare CSP lookup and cache by intent plus opener, preserving multi-origin embeds while keeping the public summary GET read-only.
+- Reuse the already verified Merchant identity and committed profile row when returning registration and profile-update dashboards.
+- Synchronize the business profile form when a newer profile version arrives.
+- Add the final Drizzle schema snapshot and verify that a subsequent generation reports no schema changes.
+- Run the Blockradar readiness probe through `BlockradarFxAdapter`.
+- Reject Merchant-owned USDC refunds before inserting a refund row, route reversals by the recorded provider, and map the provider-layer unsupported-refund error to 409.
+
+Disagreements: none. The bot's suggestion to restore opener persistence was not used because that would reintroduce an unauthenticated write on GET; forwarding the opener to the existing backend allowlist check preserves the required CSP behavior without the side effect.

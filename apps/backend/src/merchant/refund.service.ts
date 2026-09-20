@@ -164,16 +164,24 @@ export class RefundService {
       .from(settlementAccounts)
       .where(eq(settlementAccounts.merchantId, payment.merchantId))
       .limit(1);
-    if (!account || !account.address) {
+    if (!account || !account.address || !account.provider) {
       throw new RefundNotSupportedError(
         `merchant ${payment.merchantId} has no provisioned settlement endpoint`,
       );
     }
 
-    const provider = this.router.forMerchant(account.currency);
+    const provider = this.router.forProvider(account.provider);
     if (!provider.capabilities.refundSupport) {
       throw new RefundNotSupportedError(
         `settlement provider does not advertise reverse support yet`,
+      );
+    }
+    if (
+      account.provider === 'direct_usdc' &&
+      account.authorityAddress == null
+    ) {
+      throw new RefundNotSupportedError(
+        'Merchant-owned USDC settlement endpoints require a manual refund',
       );
     }
 

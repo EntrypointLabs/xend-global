@@ -85,6 +85,20 @@ export function BusinessProfileForm({
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty, busy]);
+  useEffect(() => {
+    if (merchant.profileVersion === baseline.profileVersion) return;
+    setBaseline(merchant);
+    setDisplayName(merchant.displayName);
+    setProfile(
+      Object.fromEntries(
+        fields.map(([key]) => [key, merchant.businessProfile?.[key] ?? ""]),
+      ) as BusinessProfile,
+    );
+    setError("");
+    setFieldErrors({});
+    setEditing(false);
+    setSaved(false);
+  }, [merchant, baseline.profileVersion]);
   function reset(next: ProfileMerchant) {
     setDisplayName(next.displayName);
     setProfile(

@@ -33,6 +33,7 @@ import { SettlementProvisioningService } from '../settlement/settlement-provisio
 import { SettlementAccountNotProvisionedError } from '../settlement/settlement.errors';
 import { devnetExecutionEnabled } from './devnet-execution';
 import { MerchantProfileUpdate } from './profile.dtos';
+import type { WalletProviderUser } from '../wallet/wallet-provider.interface';
 
 const Registration = z.object({
   name: z.string().trim().min(2).max(100),
@@ -51,6 +52,9 @@ const Registration = z.object({
   acceptUsdcTerms: z.literal(true),
 });
 const KeyRequest = z.object({ mode: z.enum(['test', 'live', 'devnet']) });
+type OwnedMerchant = typeof merchants.$inferSelect & {
+  signInEmail: string | null;
+};
 
 /** Owner identity comes from a verified provider token, never a submitted id. */
 @Controller('merchant-portal')
@@ -82,6 +86,12 @@ export class MerchantPortalController {
 
   private async owned(authorization?: string) {
     const identity = await this.identity(authorization);
+    return this.ownedForIdentity(identity);
+  }
+
+  private async ownedForIdentity(
+    identity: WalletProviderUser,
+  ): Promise<OwnedMerchant> {
     const [merchant] = await this.db.client
       .select()
       .from(merchants)
@@ -107,7 +117,7 @@ export class MerchantPortalController {
         'Legal business name changes require verification review. Other contact details can be updated here.',
       );
     }
-    const updated = await this.db.client
+    const [updated] = await this.db.client
       .update(merchants)
       .set({
         displayName: body.displayName,
@@ -124,12 +134,15 @@ export class MerchantPortalController {
           eq(merchants.kybStatus, merchant.kybStatus),
         ),
       )
-      .returning({ id: merchants.id });
-    if (!updated.length)
+      .returning();
+    if (!updated)
       throw new ConflictException(
         'This profile changed in another session. Reload the latest profile before saving.',
       );
-    return this.me(authorization);
+    return this.dashboard({
+      ...updated,
+      signInEmail: merchant.signInEmail,
+    });
   }
 
   @Post('register')
@@ -152,12 +165,16 @@ export class MerchantPortalController {
         settlementTermsAcceptedAt: new Date(),
       })
       .onConflictDoNothing({ target: merchants.ownerProviderId });
-    return this.me(authorization);
+    return this.dashboard(await this.ownedForIdentity(identity));
   }
 
   @Get('me')
   async me(@Headers('authorization') authorization?: string) {
     const merchant = await this.owned(authorization);
+    return this.dashboard(merchant);
+  }
+
+  private async dashboard(merchant: OwnedMerchant) {
     const [destination] = await this.db.client
       .select()
       .from(settlementAccounts)

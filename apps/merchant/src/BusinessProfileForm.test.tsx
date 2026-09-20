@@ -155,3 +155,34 @@ it("retains unsaved input and shows the server error after a rejected save", asy
   fireEvent.click(screen.getByText("Cancel"));
   expect(screen.queryByDisplayValue("Kenny")).toBeNull();
 });
+
+it("refreshes fields and the optimistic-lock version when newer Merchant data arrives", async () => {
+  const onSave = vi.fn().mockImplementation(async (update) => ({
+    ...merchant,
+    ...update,
+    businessProfile: update.profile,
+    profileVersion: 4,
+  }));
+  const { rerender } = render(
+    <BusinessProfileForm merchant={merchant} onSave={onSave} />,
+  );
+
+  rerender(
+    <BusinessProfileForm
+      merchant={{
+        ...merchant,
+        displayName: "Chowdeck Europe",
+        profileVersion: 3,
+        businessProfile: { contactName: "Ada" },
+      }}
+      onSave={onSave}
+    />,
+  );
+
+  expect(await screen.findByDisplayValue("Chowdeck Europe")).toBeTruthy();
+  expect(screen.getByDisplayValue("Ada")).toBeTruthy();
+  fireEvent.click(screen.getByText("Edit business details"));
+  fireEvent.click(screen.getByText("Save changes"));
+  await waitFor(() => expect(onSave).toHaveBeenCalled());
+  expect(onSave.mock.calls[0]?.[0]).toMatchObject({ expectedVersion: 3 });
+});
