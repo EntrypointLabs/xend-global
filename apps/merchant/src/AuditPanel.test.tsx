@@ -33,7 +33,9 @@ describe("AuditPanel", () => {
       expect(screen.getByText("API key created")).toBeTruthy(),
     );
     expect(screen.getByText("Verification submitted")).toBeTruthy();
-    expect(screen.getByText("mode: test")).toBeTruthy();
+    expect(screen.getByText("Mode: test")).toBeTruthy();
+    // An entry without metadata still names the object it touched.
+    expect(screen.getByText("m1")).toBeTruthy();
   });
 
   it("shows an empty state when there is no activity", async () => {

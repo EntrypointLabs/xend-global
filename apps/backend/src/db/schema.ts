@@ -1018,6 +1018,13 @@ export const paymentAttempts = pgTable(
       .on(table.intentId)
       .where(sql`status IN ('authorized', 'settling')`),
     statusIdx: index('payment_attempts_status_idx').on(table.status),
+    // The portal's payment-detail read finds the newest attempt for an intent
+    // regardless of status; the partial live index cannot serve that, so index
+    // (intent_id, created_at) to make it a lookup rather than a scan.
+    intentIdx: index('payment_attempts_intent_idx').on(
+      table.intentId,
+      table.createdAt,
+    ),
   }),
 );
 

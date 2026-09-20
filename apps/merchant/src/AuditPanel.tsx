@@ -21,6 +21,13 @@ const ACTION_LABELS: Record<string, string> = {
   "kyb.submit": "Verification submitted",
 };
 
+const METADATA_LABELS: Record<string, string> = {
+  url: "URL",
+  mode: "Mode",
+  fingerprint: "Key",
+  rotatedFrom: "Replaced key",
+};
+
 function label(action: string): string {
   return ACTION_LABELS[action] ?? action;
 }
@@ -29,7 +36,10 @@ function describe(entry: AuditEntry): string {
   const parts: string[] = [];
   if (entry.metadata)
     for (const [key, value] of Object.entries(entry.metadata))
-      parts.push(`${key}: ${value}`);
+      parts.push(`${METADATA_LABELS[key] ?? key}: ${value}`);
+  // Fall back to the raw target so every row still names the object it touched
+  // when an older entry predates the enriched metadata.
+  if (parts.length === 0 && entry.target) parts.push(entry.target);
   return parts.join(" · ");
 }
 

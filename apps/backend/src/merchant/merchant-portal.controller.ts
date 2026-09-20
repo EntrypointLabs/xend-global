@@ -306,20 +306,23 @@ export class MerchantPortalController {
     )
       throw new ConflictException('Business verification is required');
     try {
-      const result = await this.provisioning.provisionOrLink(merchant.id, {
-        currency: 'USDC',
-        merchantAddress: merchant.receivingWallet,
-      });
       // A lost-response retry returns the existing destination with
-      // provisioned=false; record the audit entry only for the call that
-      // actually provisioned, so the trail does not show a repeat change.
-      if (result.provisioned)
-        await this.audit.record({
-          merchantId: merchant.id,
-          actor: merchant.ownerProviderId ?? 'unknown',
-          action: 'destination.provision',
-          target: merchant.id,
-        });
+      // provisioned=false and never runs this callback, so the destination row
+      // and its audit entry commit together and the trail shows one change.
+      const result = await this.provisioning.provisionOrLink(
+        merchant.id,
+        { currency: 'USDC', merchantAddress: merchant.receivingWallet },
+        (tx) =>
+          this.audit.record(
+            {
+              merchantId: merchant.id,
+              actor: merchant.ownerProviderId ?? 'unknown',
+              action: 'destination.provision',
+              target: merchant.id,
+            },
+            tx,
+          ),
+      );
       return result;
     } catch (error) {
       if (error instanceof SettlementAccountNotProvisionedError)
@@ -351,6 +354,7 @@ export class MerchantPortalController {
             actor: merchant.ownerProviderId ?? 'unknown',
             action: 'api_key.revoke',
             target: id,
+            metadata: { fingerprint: result.fingerprint },
           },
           tx,
         );
@@ -379,7 +383,7 @@ export class MerchantPortalController {
             actor: merchant.ownerProviderId ?? 'unknown',
             action: 'api_key.rotate',
             target: issued.id,
-            metadata: { rotatedFrom: id },
+            metadata: { fingerprint: issued.fingerprint, rotatedFrom: id },
           },
           tx,
         );
@@ -437,7 +441,7 @@ export class MerchantPortalController {
           actor: merchant.ownerProviderId ?? 'unknown',
           action: 'api_key.issue',
           target: issued.id,
-          metadata: { mode: body.mode },
+          metadata: { mode: body.mode, fingerprint: issued.fingerprint },
         },
         tx,
       );

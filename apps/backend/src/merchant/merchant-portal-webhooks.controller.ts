@@ -129,6 +129,7 @@ export class MerchantPortalWebhooksController {
               actor: merchant.ownerProviderId ?? 'unknown',
               action: 'webhook.rotate_secret',
               target: id,
+              metadata: { url: found.url },
             },
             tx,
           );
@@ -166,6 +167,7 @@ export class MerchantPortalWebhooksController {
               actor: merchant.ownerProviderId ?? 'unknown',
               action: 'webhook.delete',
               target: id,
+              metadata: { url: disabled.endpoint.url },
             },
             tx,
           );

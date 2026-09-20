@@ -99,6 +99,7 @@ function setup(
     revokeKey,
     rotateKey,
     provisionOrLink,
+    record,
     select,
   };
 }
@@ -200,12 +201,30 @@ describe('Merchant portal ownership', () => {
     expect(issueKey).not.toHaveBeenCalled();
   });
   it('permits devnet ATA creation for the stored Merchant wallet', async () => {
-    const { controller, provisionOrLink } = setup();
+    const { controller, provisionOrLink, record } = setup();
+    const tx = { insert: jest.fn() };
+    provisionOrLink.mockImplementation(
+      async (
+        _merchantId: string,
+        _opts: unknown,
+        onProvisioned?: (tx: unknown) => Promise<void>,
+      ) => {
+        await onProvisioned?.(tx);
+        return { address: 'ata', provider: 'direct_usdc', provisioned: true };
+      },
+    );
     await controller.provision('Bearer token');
-    expect(provisionOrLink).toHaveBeenCalledWith('merchant-owned', {
-      currency: 'USDC',
-      merchantAddress: 'owner-wallet',
-    });
+    expect(provisionOrLink).toHaveBeenCalledWith(
+      'merchant-owned',
+      { currency: 'USDC', merchantAddress: 'owner-wallet' },
+      expect.any(Function),
+    );
+    // The audit entry is written through the transaction handle the callback
+    // receives, so it commits with the destination row.
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'destination.provision' }),
+      tx,
+    );
   });
   it('blocks unverified mainnet provisioning', async () => {
     const { controller, provisionOrLink } = setup(undefined, 'mainnet');
