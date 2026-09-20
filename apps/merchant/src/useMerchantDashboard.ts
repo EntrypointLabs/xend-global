@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiUrl } from "./portal";
 
 type AccountState<T> = {
   token: string | null;
@@ -24,7 +25,7 @@ export function useMerchantDashboard<T>(token: string | null) {
     setState({ token, data: null, status: "loading", error: "" });
     async function load() {
       try {
-        const response = await fetch("/merchant-portal/me", {
+        const response = await fetch(apiUrl("merchant-portal/me"), {
           headers: { Authorization: `Bearer ${token}` },
           signal: controller.signal,
         });
