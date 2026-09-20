@@ -12,6 +12,7 @@ import {
   postReadyToMerchant,
   postResultToMerchant,
   postCancelToMerchant,
+  postUnresolvedToMerchant,
 } from './messaging/postMessage';
 import { completeByRedirect } from './messaging/redirect';
 import { LoadingShell } from './screens/LoadingShell';
@@ -164,13 +165,20 @@ export function App() {
           return;
         }
         if (err.code === 'PAYMENT_PROCESSING') {
+          if (launch && launch.mode !== 'redirect') {
+            postUnresolvedToMerchant(
+              intent.merchantOrigin,
+              launch.nonce,
+              intent.reference,
+            );
+          }
           setPhase({ kind: 'pending' });
           return;
         }
       }
       deliverResult(intent, 'failed');
     },
-    [deliverResult],
+    [deliverResult, launch],
   );
 
   const handleTerminal = useCallback(

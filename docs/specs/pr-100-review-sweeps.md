@@ -80,3 +80,14 @@ Implemented:
 - Allow owning Merchants to read legacy terminal intents whose pre-migration execution cluster is null.
 
 Disagreements: none.
+
+## Sweep 6
+
+Implemented:
+
+- Release expired authorization capacity from the original UTC day and month windows rather than the current windows.
+- Store and resolve one Merchant settlement destination per execution cluster, including webhook and refund routing.
+- Remove a submitted mobile Payment from the awaiting list for succeeded, failed, timed-out, and uncertain outcomes.
+- Report confirmation timeouts through the checkout protocol so merchant frames and popups close and the Pay button becomes available again.
+
+Disagreements: none.

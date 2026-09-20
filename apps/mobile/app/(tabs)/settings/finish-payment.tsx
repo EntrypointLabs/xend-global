@@ -143,6 +143,10 @@ export default function FinishPaymentScreen() {
         payment.reference,
         fromByteArray(signedTransaction.serialize())
       );
+      // Submission moves the intent out of awaiting_authorization regardless
+      // of its eventual terminal result. Remove its stale Pay card while the
+      // confirmation poll continues.
+      void queryClient.invalidateQueries({ queryKey: AWAITING_PAYMENTS_KEY });
 
       const outcome = await waitForPaymentOutcome(() =>
         apiClient.paymentStatus(payment.reference)
@@ -162,7 +166,6 @@ export default function FinishPaymentScreen() {
       // row is written when the chain confirms, a moment after this, so the
       // feed's own head watch is what actually brings it in; these only make
       // sure nothing stale is sitting in front of it.
-      void queryClient.invalidateQueries({ queryKey: AWAITING_PAYMENTS_KEY });
       void queryClient.invalidateQueries({ queryKey: ["transfers"] });
       void queryClient.invalidateQueries({ queryKey: ["balances"] });
       void queryClient.invalidateQueries({ queryKey: ACCOUNT_QUERY_KEY });
@@ -177,6 +180,7 @@ export default function FinishPaymentScreen() {
       router.replace("/(tabs)/history" as never);
     } catch (err) {
       if (submitted) {
+        void queryClient.invalidateQueries({ queryKey: AWAITING_PAYMENTS_KEY });
         hold(
           "paused",
           "We could not confirm the outcome yet. Check Activity before trying again."

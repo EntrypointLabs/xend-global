@@ -13,11 +13,16 @@ export interface CheckoutResult {
   status: CheckoutStatus;
 }
 
-/** The popup could not deliver a result (closed, COOP-severed, blocked). */
+/** The checkout channel could not deliver a terminal result. */
 export interface CheckoutUnresolved {
   reference: string;
   status: "unresolved";
-  reason: "popup_closed" | "popup_blocked" | "redirected" | "channel_lost";
+  reason:
+    | "popup_closed"
+    | "popup_blocked"
+    | "redirected"
+    | "channel_lost"
+    | "confirmation_timeout";
 }
 
 /**

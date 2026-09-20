@@ -3,6 +3,7 @@ export {
   CHECKOUT_ORIGIN,
   CheckoutMessageType,
   buildReady,
+  buildUnresolved,
   buildResult,
   buildCancel,
 } from './build';
@@ -11,6 +12,7 @@ export {
   CheckoutStatusSchema,
   CheckoutEnvelopeSchema,
   CheckoutReadyEnvelopeSchema,
+  CheckoutUnresolvedEnvelopeSchema,
   parseCheckoutMessage,
 } from './envelope';
 
@@ -20,4 +22,6 @@ export type {
   CheckoutTerminalMessageTypeValue,
   CheckoutEnvelope,
   CheckoutReadyEnvelope,
+  CheckoutUnresolvedEnvelope,
+  CheckoutUnresolvedReason,
 } from './types';

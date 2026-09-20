@@ -526,6 +526,7 @@ describe('SettlementService', () => {
 
     it('does not broadcast when approval outlives the quote', async () => {
       const { wire, messageBase64 } = buildWireAndMessage();
+      const authorizedAt = new Date('2026-01-31T23:59:59.000Z');
       const { intents, transition } = makeIntents({
         id: 'pi_1',
         consumerId: 'u_1',
@@ -533,6 +534,7 @@ describe('SettlementService', () => {
         usdcSettlementRaw: '1000000',
         status: 'authorized',
         expiresAt: new Date(Date.now() - 1),
+        authorizedAt,
       });
       const { provisioning } = makeProvisioning(ENDPOINT);
       const { spends, submit } = makeSpends();
@@ -565,7 +567,11 @@ describe('SettlementService', () => {
         'expired',
         {},
       );
-      expect(releaseCapacity).toHaveBeenCalledWith('u_1', '1000000');
+      expect(releaseCapacity).toHaveBeenCalledWith(
+        'u_1',
+        '1000000',
+        authorizedAt,
+      );
       expect(publish).toHaveBeenCalledWith(
         expect.objectContaining({ topic: 'payment.expired', key: 'pi_1' }),
       );

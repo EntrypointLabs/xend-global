@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildReady,
+  buildUnresolved,
   buildResult,
   buildCancel,
   parseCheckoutMessage,
@@ -46,6 +47,19 @@ describe('buildCancel', () => {
   });
 });
 
+describe('buildUnresolved', () => {
+  it('carries the correlated confirmation timeout', () => {
+    expect(buildUnresolved(NONCE, REFERENCE, 'confirmation_timeout')).toEqual({
+      xend: 'checkout',
+      v: 1,
+      nonce: NONCE,
+      reference: REFERENCE,
+      type: 'xend.checkout.unresolved',
+      reason: 'confirmation_timeout',
+    });
+  });
+});
+
 describe('parseCheckoutMessage', () => {
   const valid = buildResult(NONCE, REFERENCE, 'succeeded');
 
@@ -65,6 +79,32 @@ describe('parseCheckoutMessage', () => {
     );
     expect(out?.type).toBe('xend.checkout.cancel');
     expect(out && 'status' in out && out.status).toBe('canceled');
+  });
+
+  it('accepts a correlated unresolved message', () => {
+    const unresolved = buildUnresolved(
+      NONCE,
+      REFERENCE,
+      'confirmation_timeout',
+    );
+    expect(
+      parseCheckoutMessage(
+        { origin: MERCHANT_ORIGIN, data: unresolved },
+        EXPECTED,
+      ),
+    ).toEqual(unresolved);
+  });
+
+  it('rejects an unresolved message with a mismatched reference', () => {
+    expect(
+      parseCheckoutMessage(
+        {
+          origin: MERCHANT_ORIGIN,
+          data: buildUnresolved(NONCE, 'pi_other', 'confirmation_timeout'),
+        },
+        EXPECTED,
+      ),
+    ).toBeNull();
   });
 
   it('rejects a substring-spoofed origin', () => {

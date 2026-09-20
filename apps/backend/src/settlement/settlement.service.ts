@@ -432,7 +432,11 @@ export class SettlementService implements OnModuleInit {
         );
       }
       await this.intents.transition(intent.id, 'authorized', 'expired', {});
-      await this.capacity.releaseCapacity(consumerId, intent.usdcSettlementRaw);
+      await this.capacity.releaseCapacity(
+        consumerId,
+        intent.usdcSettlementRaw,
+        intent.authorizedAt ?? intent.updatedAt,
+      );
     });
     await this.events.publish({
       topic: 'payment.expired',

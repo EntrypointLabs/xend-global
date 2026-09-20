@@ -4,6 +4,7 @@ import {
   postReadyToMerchant,
   postResultToMerchant,
   postCancelToMerchant,
+  postUnresolvedToMerchant,
 } from './postMessage';
 
 const MERCHANT_ORIGIN = 'https://shop.example.com';
@@ -163,5 +164,25 @@ describe('postCancelToMerchant', () => {
   it('returns false when the opener is gone', () => {
     clearOpener();
     expect(postCancelToMerchant(MERCHANT_ORIGIN, NONCE, REFERENCE)).toBe(false);
+  });
+});
+
+describe('postUnresolvedToMerchant', () => {
+  it('posts a correlated confirmation timeout to exactly the merchant origin', () => {
+    const postMessage = stubOpener();
+    expect(postUnresolvedToMerchant(MERCHANT_ORIGIN, NONCE, REFERENCE)).toBe(
+      true,
+    );
+    expect(postMessage).toHaveBeenCalledWith(
+      {
+        xend: 'checkout',
+        v: 1,
+        nonce: NONCE,
+        reference: REFERENCE,
+        type: 'xend.checkout.unresolved',
+        reason: 'confirmation_timeout',
+      },
+      MERCHANT_ORIGIN,
+    );
   });
 });

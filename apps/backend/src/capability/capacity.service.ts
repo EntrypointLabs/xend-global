@@ -85,7 +85,10 @@ export class CapacityService implements OnModuleInit {
     return this.defaultTier;
   }
 
-  async getCapability(consumerId: string): Promise<CapabilitySnapshot> {
+  async getCapability(
+    consumerId: string,
+    windowAt = new Date(),
+  ): Promise<CapabilitySnapshot> {
     const accountAddress = await this.accountAddress(consumerId);
 
     const balances = await this.solana.getTokenBalances(accountAddress);
@@ -94,15 +97,14 @@ export class CapacityService implements OnModuleInit {
       if (b.mint === this.usdcMint) balance += b.amountRaw;
     }
 
-    const now = new Date();
     const tier = this.getTierForConsumer(consumerId);
     const limits = this.tiers[tier];
     if (!limits) {
       throw new Error(`tier '${tier}' missing from tier table`);
     }
 
-    const day = await this.counter.peek(this.dayKey(consumerId, now));
-    const month = await this.counter.peek(this.monthKey(consumerId, now));
+    const day = await this.counter.peek(this.dayKey(consumerId, windowAt));
+    const month = await this.counter.peek(this.monthKey(consumerId, windowAt));
 
     return {
       consumerId,
@@ -167,9 +169,10 @@ export class CapacityService implements OnModuleInit {
   async reserveCapacity(
     consumerId: string,
     amountRaw: string,
+    reservedAt = new Date(),
   ): Promise<CapabilitySnapshot> {
     try {
-      return await this.reserve(consumerId, amountRaw);
+      return await this.reserve(consumerId, amountRaw, reservedAt);
     } catch (err) {
       if (err instanceof CapacityExceededError) {
         capacityReservationsRefused.inc({ reason: err.reason.toLowerCase() });
@@ -183,8 +186,9 @@ export class CapacityService implements OnModuleInit {
   private async reserve(
     consumerId: string,
     amountRaw: string,
+    reservedAt: Date,
   ): Promise<CapabilitySnapshot> {
-    const capability = await this.getCapability(consumerId);
+    const capability = await this.getCapability(consumerId, reservedAt);
     const amount = BigInt(amountRaw);
     const { limits } = capability;
     const log = (allowed: boolean) =>
@@ -194,9 +198,8 @@ export class CapacityService implements OnModuleInit {
 
     this.assertPerPaymentAndBalance(capability, amount, amountRaw, log);
 
-    const now = new Date();
-    const dayKey = this.dayKey(consumerId, now);
-    const monthKey = this.monthKey(consumerId, now);
+    const dayKey = this.dayKey(consumerId, reservedAt);
+    const monthKey = this.monthKey(consumerId, reservedAt);
     const day = await this.counter.reserve(
       dayKey,
       amountRaw,
@@ -233,11 +236,17 @@ export class CapacityService implements OnModuleInit {
     };
   }
 
-  /** Undoes reserveCapacity for a Payment that did not get authorized. */
-  async releaseCapacity(consumerId: string, amountRaw: string): Promise<void> {
-    const now = new Date();
-    await this.counter.release(this.dayKey(consumerId, now), amountRaw);
-    await this.counter.release(this.monthKey(consumerId, now), amountRaw);
+  /** Undoes reserveCapacity in the same UTC windows where it was reserved. */
+  async releaseCapacity(
+    consumerId: string,
+    amountRaw: string,
+    reservedAt = new Date(),
+  ): Promise<void> {
+    await this.counter.release(this.dayKey(consumerId, reservedAt), amountRaw);
+    await this.counter.release(
+      this.monthKey(consumerId, reservedAt),
+      amountRaw,
+    );
   }
 
   private assertPerPaymentAndBalance(

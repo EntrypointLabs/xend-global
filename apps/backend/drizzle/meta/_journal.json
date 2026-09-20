@@ -330,6 +330,13 @@
       "when": 1789871635946,
       "tag": "0046_settlement_account_cluster",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1789874743338,
+      "tag": "0047_settlement_account_cluster_key",
+      "breakpoints": true
     }
   ]
 }

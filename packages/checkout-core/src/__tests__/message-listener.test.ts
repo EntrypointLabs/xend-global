@@ -122,4 +122,31 @@ describe("listenForResult", () => {
     });
     handle.teardown();
   });
+
+  it("resolves a correlated confirmation timeout from the checkout surface", () => {
+    const onResult = vi.fn();
+    const onUnresolved = vi.fn();
+    const handle = listenForResult({
+      checkoutOrigin: ORIGIN,
+      reference: REFERENCE,
+      nonce: NONCE,
+      onResult,
+      onUnresolved,
+    });
+    post(
+      envelope({
+        type: "xend.checkout.unresolved",
+        status: undefined,
+        reason: "confirmation_timeout",
+      }),
+      ORIGIN,
+    );
+    expect(onResult).not.toHaveBeenCalled();
+    expect(onUnresolved).toHaveBeenCalledWith({
+      reference: REFERENCE,
+      status: "unresolved",
+      reason: "confirmation_timeout",
+    });
+    handle.teardown();
+  });
 });

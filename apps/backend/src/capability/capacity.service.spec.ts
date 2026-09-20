@@ -194,6 +194,19 @@ describe('CapacityService.reserveCapacity', () => {
     expect(cap.usedThisMonthRaw).toBe('50000000');
   });
 
+  it('uses one supplied instant for reads and reservations at a UTC boundary', async () => {
+    const { service, reservations } = makeService();
+    await service.reserveCapacity(
+      'c1',
+      '50000000',
+      new Date('2026-01-31T23:59:59.999Z'),
+    );
+    expect(reservations.map((r) => r.key)).toEqual([
+      'cap:consumer:c1:day:20260131',
+      'cap:consumer:c1:month:202601',
+    ]);
+  });
+
   it('refuses at the daily cap and leaves both windows untouched', async () => {
     const { service, reservations, releases } = makeService({
       day: { count: 4, totalRaw: '180000000' },
@@ -263,6 +276,19 @@ describe('CapacityService.releaseCapacity', () => {
     await service.releaseCapacity('c1', '50000000');
     expect(releases.map((r) => r.key)).toEqual(reservations.map((r) => r.key));
     expect(snapshot(reservations[0].key)).toEqual({ count: 0, totalRaw: '0' });
+  });
+
+  it('releases the original UTC windows after the clock crosses a boundary', async () => {
+    const { service, releases } = makeService();
+    await service.releaseCapacity(
+      'c1',
+      '50000000',
+      new Date('2026-01-31T23:59:59.000Z'),
+    );
+    expect(releases.map((r) => r.key)).toEqual([
+      'cap:consumer:c1:day:20260131',
+      'cap:consumer:c1:month:202601',
+    ]);
   });
 });
 
