@@ -65,9 +65,13 @@ function copyFor(
         detail: 'Head back to the store to start again.',
       };
     case 'canceled':
+      // Cancel dismisses this checkout attempt; it does not permanently void
+      // the intent (a Consumer holds no credential to do that). Say so, so the
+      // Consumer knows returning to the store lets them try the same order again.
       return {
-        title: 'Payment canceled',
-        detail: 'You can head back to the store.',
+        title: 'Checkout canceled',
+        detail:
+          'This attempt was canceled. Head back to the store to try again.',
       };
     case 'failed':
     default:
