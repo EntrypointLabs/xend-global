@@ -64,6 +64,9 @@ export class MerchantPortalWebhooksController {
   ) {
     const merchant = await this.owner.owned(authorization);
     try {
+      // Resolve/validate the URL before opening the transaction: the DNS lookup
+      // is unbounded and must not hold a pooled connection open.
+      await this.endpoints.assertUrlSafe(body.url);
       // Create and audit commit together: a failed audit write must not leave a
       // live endpoint receiving deliveries signed with a secret the merchant
       // never obtained (reads omit it, so a retry would only orphan another).
@@ -77,6 +80,7 @@ export class MerchantPortalWebhooksController {
               eventTypes: body.eventTypes ?? null,
             },
             tx,
+            { skipUrlCheck: true },
           );
           await this.audit.record(
             {
@@ -153,16 +157,19 @@ export class MerchantPortalWebhooksController {
           { merchantId: merchant.id },
           tx,
         );
-        await this.audit.record(
-          {
-            merchantId: merchant.id,
-            actor: merchant.ownerProviderId ?? 'unknown',
-            action: 'webhook.delete',
-            target: id,
-          },
-          tx,
-        );
-        return disabled;
+        // Only the request that actually disabled the endpoint records the
+        // audit entry, so a concurrent double-delete does not log twice.
+        if (disabled.claimed)
+          await this.audit.record(
+            {
+              merchantId: merchant.id,
+              actor: merchant.ownerProviderId ?? 'unknown',
+              action: 'webhook.delete',
+              target: id,
+            },
+            tx,
+          );
+        return disabled.endpoint;
       });
       return { id: endpoint.id, deleted: true };
     } catch (error) {

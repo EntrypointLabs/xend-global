@@ -26,6 +26,7 @@ function merchantRow(over: Partial<MerchantRow> = {}): MerchantRow {
     kybStatus: 'pending',
     kybVerifiedAt: null,
     kybSubmittedAt: null,
+    kybSubmittedVersion: null,
     kybReviewNote: null,
     flatFeeBps: 0,
     fxSpreadBps: 0,

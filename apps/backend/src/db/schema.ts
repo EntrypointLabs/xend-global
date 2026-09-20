@@ -846,6 +846,10 @@ export const merchants = pgTable('merchants', {
   // Distinct from settlement_terms: submission is the merchant asking to be
   // reviewed, and it is cleared to null on a resubmission after a rejection.
   kybSubmittedAt: timestamp('kyb_submitted_at'),
+  // The profile_version that was submitted for review. Verification is bound to
+  // it, and any profile edit clears it, so an operator can never stamp a
+  // profile the owner changed after the reviewer read it.
+  kybSubmittedVersion: integer('kyb_submitted_version'),
   // The reviewer's note stamped on a rejection, shown to the owner so a
   // resubmission can fix the named problem. Null while pending or verified.
   kybReviewNote: text('kyb_review_note'),

@@ -30,7 +30,12 @@ describe("WebhooksPanel", () => {
     const get = vi.fn().mockResolvedValue({ endpoints: [endpoint()] });
     const client = { get, post: vi.fn() } as unknown as PortalClient;
     render(
-      <WebhooksPanel client={client} onSecret={vi.fn()} revealActive={false} />,
+      <WebhooksPanel
+        client={client}
+        onSecret={vi.fn()}
+        revealActive={false}
+        cluster="devnet"
+      />,
     );
     await waitFor(() =>
       expect(screen.getByText("https://example.com/hook")).toBeTruthy(),
@@ -53,6 +58,7 @@ describe("WebhooksPanel", () => {
         client={client}
         onSecret={onSecret}
         revealActive={false}
+        cluster="test"
       />,
     );
     await waitFor(() => expect(get).toHaveBeenCalled());

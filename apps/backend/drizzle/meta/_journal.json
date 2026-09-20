@@ -372,6 +372,13 @@
       "when": 1789901054790,
       "tag": "0052_portal_pagination_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1789903542765,
+      "tag": "0053_kyb_submitted_version",
+      "breakpoints": true
     }
   ]
 }

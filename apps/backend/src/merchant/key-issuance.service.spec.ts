@@ -22,6 +22,7 @@ function merchantRow(over: Partial<MerchantRow> = {}): MerchantRow {
     kybStatus: 'pending',
     kybVerifiedAt: null,
     kybSubmittedAt: null,
+    kybSubmittedVersion: null,
     kybReviewNote: null,
     flatFeeBps: 0,
     fxSpreadBps: 0,
@@ -242,8 +243,12 @@ describe('KeyIssuanceService.issueKey', () => {
 });
 
 describe('KeyIssuanceService.markKybVerified', () => {
-  it('stamps kyb_status verified and a kyb_verified_at timestamp', async () => {
-    const { db, updates } = makeFakeDb({ merchantRows: [merchantRow()] });
+  it('stamps verified when the submitted version matches the current profile', async () => {
+    const { db, updates } = makeFakeDb({
+      merchantRows: [
+        merchantRow({ profileVersion: 2, kybSubmittedVersion: 2 }),
+      ],
+    });
     const service = new KeyIssuanceService(db);
     await service.markKybVerified('m1');
     expect(updates).toHaveLength(1);
@@ -251,6 +256,29 @@ describe('KeyIssuanceService.markKybVerified', () => {
     expect(
       (updates[0] as { kybVerifiedAt: Date }).kybVerifiedAt,
     ).toBeInstanceOf(Date);
+  });
+
+  it('refuses to verify a profile changed since it was submitted', async () => {
+    const { db, updates } = makeFakeDb({
+      merchantRows: [
+        merchantRow({ profileVersion: 3, kybSubmittedVersion: 2 }),
+      ],
+    });
+    const service = new KeyIssuanceService(db);
+    await expect(service.markKybVerified('m1')).rejects.toMatchObject({
+      code: 'KYB_SUBMISSION_MISMATCH',
+    });
+    expect(updates).toEqual([]);
+  });
+
+  it('refuses to verify a merchant that never submitted', async () => {
+    const { db } = makeFakeDb({
+      merchantRows: [merchantRow({ kybSubmittedVersion: null })],
+    });
+    const service = new KeyIssuanceService(db);
+    await expect(service.markKybVerified('m1')).rejects.toMatchObject({
+      code: 'KYB_SUBMISSION_MISMATCH',
+    });
   });
 });
 

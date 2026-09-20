@@ -64,6 +64,19 @@ export class KybNotVerifiedError extends Error {
   }
 }
 
+/**
+ * Verification was attempted against a profile version that is not the one
+ * currently submitted for review (no active submission, or the profile changed
+ * after submission). The reviewed details must match what gets verified.
+ */
+export class KybSubmissionMismatchError extends Error {
+  readonly code = 'KYB_SUBMISSION_MISMATCH';
+  constructor(message: string) {
+    super(message);
+    this.name = 'KybSubmissionMismatchError';
+  }
+}
+
 /** The requested execution-key kind cannot be used on this deployment. */
 export class ExecutionClusterDisabledError extends Error {
   readonly code = 'EXECUTION_CLUSTER_DISABLED';

@@ -382,6 +382,7 @@ function MerchantWorkspace() {
               client={client}
               onSecret={(secret, label) => setSecretReveal({ secret, label })}
               revealActive={secretReveal !== null}
+              cluster={data.cluster}
             />
           ) : page === "audit" ? (
             <AuditPanel client={client} />

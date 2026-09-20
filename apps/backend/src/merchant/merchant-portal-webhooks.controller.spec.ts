@@ -36,6 +36,7 @@ function setup(over: Partial<Record<string, jest.Mock>> = {}) {
     owned: jest.fn().mockResolvedValue(merchant),
   } as unknown as MerchantOwnerService;
   const mocks = {
+    assertUrlSafe: over.assertUrlSafe ?? jest.fn().mockResolvedValue(undefined),
     list: over.list ?? jest.fn().mockResolvedValue([endpointRow()]),
     register:
       over.register ??
@@ -49,7 +50,9 @@ function setup(over: Partial<Record<string, jest.Mock>> = {}) {
         secondaryExpiresAt: new Date('2026-02-01'),
       }),
     find: over.find ?? jest.fn().mockResolvedValue(endpointRow()),
-    disable: over.disable ?? jest.fn().mockResolvedValue(endpointRow()),
+    disable:
+      over.disable ??
+      jest.fn().mockResolvedValue({ endpoint: endpointRow(), claimed: true }),
   };
   const client = {
     select: jest.fn(),
@@ -82,6 +85,7 @@ describe('MerchantPortalWebhooksController', () => {
         eventTypes: null,
       },
       expect.anything(),
+      { skipUrlCheck: true },
     );
     expect(result.secret).toBe('whsec_new');
     expect(record).toHaveBeenCalledWith(
@@ -99,7 +103,7 @@ describe('MerchantPortalWebhooksController', () => {
 
   it('maps an unsafe URL to 422', async () => {
     const { controller } = setup({
-      register: jest.fn().mockRejectedValue(new UnsafeUrlError('private')),
+      assertUrlSafe: jest.fn().mockRejectedValue(new UnsafeUrlError('private')),
     });
     await expect(
       controller.create('Bearer t', {

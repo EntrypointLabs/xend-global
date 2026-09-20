@@ -1,7 +1,7 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { devnetExecutionEnabled } from './devnet-execution';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { DbService, type DbExecutor } from '../db/db.service';
 import { apiKeys, merchants, settlementAccounts } from '../db/schema';
 import { MerchantNotFoundError } from '../payment/payment.errors';
@@ -10,6 +10,7 @@ import { generateApiKey } from './api-key.util';
 import {
   ExecutionClusterDisabledError,
   KybNotVerifiedError,
+  KybSubmissionMismatchError,
   SettlementDestinationMissingError,
 } from './merchant.errors';
 
@@ -219,18 +220,42 @@ export class KeyIssuanceService {
   /**
    * The manual stage-2 ops action: stamp kyb_status + kyb_verified_at after
    * registration, beneficial ownership, and sanctions checks are done
-   * off-system.
+   * off-system. Verification is bound to the submitted profile version, so an
+   * operator can only stamp the exact details that were reviewed: if the owner
+   * edited the profile after submitting (which clears the submission) or never
+   * submitted, the update is refused and they must (re)submit.
    */
   async markKybVerified(merchantId: string): Promise<void> {
     const now = new Date();
-    const [updated] = await this.db.client
-      .update(merchants)
-      .set({ kybStatus: 'verified', kybVerifiedAt: now, updatedAt: now })
+    const [merchant] = await this.db.client
+      .select({
+        id: merchants.id,
+        profileVersion: merchants.profileVersion,
+        kybSubmittedVersion: merchants.kybSubmittedVersion,
+      })
+      .from(merchants)
       .where(eq(merchants.id, merchantId))
-      .returning({ id: merchants.id });
-    if (!updated) {
+      .limit(1);
+    if (!merchant) {
       throw new MerchantNotFoundError(`merchant ${merchantId} not found`);
     }
+    if (
+      merchant.kybSubmittedVersion === null ||
+      merchant.kybSubmittedVersion !== merchant.profileVersion
+    ) {
+      throw new KybSubmissionMismatchError(
+        `merchant ${merchantId} has no submission matching its current profile; ask them to submit for verification`,
+      );
+    }
+    await this.db.client
+      .update(merchants)
+      .set({ kybStatus: 'verified', kybVerifiedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(merchants.id, merchantId),
+          eq(merchants.profileVersion, merchant.profileVersion),
+        ),
+      );
   }
 
   /**
@@ -247,6 +272,30 @@ export class KeyIssuanceService {
         kybStatus: 'rejected',
         kybReviewNote: reviewNote,
         kybVerifiedAt: null,
+        updatedAt: now,
+      })
+      .where(eq(merchants.id, merchantId))
+      .returning({ id: merchants.id });
+    if (!updated) {
+      throw new MerchantNotFoundError(`merchant ${merchantId} not found`);
+    }
+  }
+
+  /**
+   * Local test tool only: stamp a submission at the current profile version so
+   * the dev dashboard's one-click "mark verified" can then satisfy the
+   * version-bound markKybVerified without a real review flow. Never wired into
+   * production; the real submission goes through the owner-authenticated portal.
+   */
+  async markKybSubmittedForTest(merchantId: string): Promise<void> {
+    const now = new Date();
+    const [updated] = await this.db.client
+      .update(merchants)
+      .set({
+        kybStatus: 'pending',
+        kybSubmittedAt: now,
+        kybSubmittedVersion: sql`${merchants.profileVersion}`,
+        kybReviewNote: null,
         updatedAt: now,
       })
       .where(eq(merchants.id, merchantId))

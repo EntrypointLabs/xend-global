@@ -30,8 +30,12 @@ export function WebhooksPanel({
   client,
   onSecret,
   revealActive,
+  cluster,
 }: {
   client: PortalClient;
+  /** Active Solana cluster; on devnet, execution webhooks are delivered in test
+   * mode, so a live endpoint here would never be selected by the dispatcher. */
+  cluster: string;
   /**
    * Surface a one-time signing secret to the workspace shell, which renders it
    * above the routed content so navigating away does not discard the only copy
@@ -87,7 +91,7 @@ export function WebhooksPanel({
     try {
       const created = await client.post<WebhookEndpoint & { secret: string }>(
         "webhooks",
-        { url, mode },
+        { url, mode: cluster === "devnet" ? "test" : mode },
       );
       onSecret(created.secret, "Signing secret");
       setUrl("");
@@ -172,13 +176,22 @@ export function WebhooksPanel({
           </label>
           <label>
             Mode
-            <select
-              value={mode}
-              onChange={(e) => setMode(e.target.value as "test" | "live")}
-            >
-              <option value="test">Test</option>
-              <option value="live">Live</option>
-            </select>
+            {cluster === "devnet" ? (
+              <>
+                <input type="text" value="Test" readOnly />
+                <small>
+                  On devnet, execution webhooks are delivered to test endpoints.
+                </small>
+              </>
+            ) : (
+              <select
+                value={mode}
+                onChange={(e) => setMode(e.target.value as "test" | "live")}
+              >
+                <option value="test">Test</option>
+                <option value="live">Live</option>
+              </select>
+            )}
           </label>
         </div>
         <div className="actions">

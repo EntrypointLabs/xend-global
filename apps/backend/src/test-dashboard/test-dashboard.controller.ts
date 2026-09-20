@@ -84,6 +84,9 @@ export class TestDashboardController {
     @Res() res: Response,
   ): Promise<void> {
     try {
+      // Local stub: stamp a submission at the current version so the
+      // version-bound verify accepts it, then verify.
+      await this.keyIssuance.markKybSubmittedForTest(id);
       await this.keyIssuance.markKybVerified(id);
     } catch (err) {
       if (err instanceof MerchantNotFoundError) {

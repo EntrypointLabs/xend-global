@@ -152,6 +152,7 @@ function Review() {
             client={stub}
             onSecret={() => {}}
             revealActive={false}
+            cluster="devnet"
           />
         )}
         {panel === "audit" && <AuditPanel client={stub} />}

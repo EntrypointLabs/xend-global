@@ -101,7 +101,7 @@ export class MerchantWebhookEndpointsController {
     @Param('id') id: string,
   ): Promise<{ id: string; object: 'webhook_endpoint'; deleted: true }> {
     try {
-      const endpoint = await this.endpoints.disable(id, {
+      const { endpoint } = await this.endpoints.disable(id, {
         merchantId: req.merchant.merchantId,
         mode: req.merchant.deliveryMode,
       });

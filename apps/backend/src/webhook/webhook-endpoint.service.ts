@@ -37,13 +37,24 @@ export class WebhookEndpointService {
     private readonly config: ConfigService,
   ) {}
 
+  /**
+   * SSRF validation, including the DNS resolve. Exposed so a caller wrapping
+   * the insert in a transaction can run this BEFORE opening it: the resolve is
+   * unbounded, and holding a pooled connection open across it would let one
+   * merchant's slow host starve the pool.
+   */
+  async assertUrlSafe(url: string): Promise<void> {
+    const allowPrivate =
+      this.config.get<boolean>('WEBHOOK_ALLOW_PRIVATE_URLS') ?? false;
+    await assertPublicHttpsUrl(url, { allowPrivate });
+  }
+
   async register(
     params: RegisterEndpointParams,
     db: DbExecutor = this.db.client,
+    options: { skipUrlCheck?: boolean } = {},
   ): Promise<{ endpoint: EndpointRow; secret: string }> {
-    const allowPrivate =
-      this.config.get<boolean>('WEBHOOK_ALLOW_PRIVATE_URLS') ?? false;
-    await assertPublicHttpsUrl(params.url, { allowPrivate });
+    if (!options.skipUrlCheck) await this.assertUrlSafe(params.url);
 
     const secret = mintSecret();
     const [endpoint] = await db
@@ -143,21 +154,32 @@ export class WebhookEndpointService {
   }
 
   /**
-   * Retires an endpoint. Its delivery history references it, so the row
-   * stays and is disabled: the dispatcher skips it and every read hides it.
+   * Retires an endpoint. Its delivery history references it, so the row stays
+   * and is disabled: the dispatcher skips it and every read hides it. The
+   * update is conditional on the row still being enabled and reports whether
+   * this call performed the transition, so two concurrent deletes do not both
+   * record a delete in the audit trail.
    */
   async disable(
     id: string,
     scope?: EndpointScope,
     db: DbExecutor = this.db.client,
-  ): Promise<EndpointRow> {
+  ): Promise<{ endpoint: EndpointRow; claimed: boolean }> {
     const endpoint = await this.find(id, scope, db);
     const [updated] = await db
       .update(webhookEndpoints)
       .set({ enabled: false, updatedAt: new Date() })
-      .where(eq(webhookEndpoints.id, endpoint.id))
+      .where(
+        and(
+          eq(webhookEndpoints.id, endpoint.id),
+          eq(webhookEndpoints.enabled, true),
+        ),
+      )
       .returning();
-    return updated ?? { ...endpoint, enabled: false };
+    return {
+      endpoint: updated ?? { ...endpoint, enabled: false },
+      claimed: Boolean(updated),
+    };
   }
 }
 

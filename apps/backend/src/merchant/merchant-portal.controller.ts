@@ -95,6 +95,11 @@ export class MerchantPortalController {
           displayName: body.displayName,
           businessProfile: body.profile,
           profileVersion: body.expectedVersion + 1,
+          // Editing the profile withdraws any pending submission: the reviewer
+          // must see the changed details, so verification cannot be stamped
+          // against the version they already read.
+          kybSubmittedAt: null,
+          kybSubmittedVersion: null,
           updatedAt: new Date(),
         })
         .where(
@@ -197,6 +202,8 @@ export class MerchantPortalController {
         .set({
           kybStatus: 'pending',
           kybSubmittedAt: now,
+          // Bind the review to the exact profile version being submitted.
+          kybSubmittedVersion: merchant.profileVersion,
           kybReviewNote: null,
           updatedAt: now,
         })
