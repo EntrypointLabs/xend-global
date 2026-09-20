@@ -68,8 +68,19 @@ export function routeFor(pathname: string): Route {
   const path = pathname.replace(/\/+$/, "") || "/";
   if (path === "/") return { page: "overview" };
   const paymentDetail = path.match(/^\/payments\/(.+)$/);
-  if (paymentDetail?.[1])
-    return { page: "payment", paymentId: decodeURIComponent(paymentDetail[1]) };
+  if (paymentDetail?.[1]) {
+    // Pathnames are user-controlled; a malformed escape like /payments/%
+    // makes decodeURIComponent throw. Fall back to the payments list rather
+    // than letting the render crash the whole portal.
+    try {
+      return {
+        page: "payment",
+        paymentId: decodeURIComponent(paymentDetail[1]),
+      };
+    } catch {
+      return { page: "payments" };
+    }
+  }
   if (path === "/payments") return { page: "payments" };
   if (path === "/developers") return { page: "developers" };
   if (path === "/webhooks") return { page: "webhooks" };

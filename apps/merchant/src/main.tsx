@@ -132,6 +132,18 @@ function MerchantWorkspace() {
   }
 
   const page = route.page;
+  // History-API navigation does not fire the form's beforeunload warning, and
+  // routing away unmounts the account form with its draft. Guard every in-app
+  // navigation so leaving the account page with unsaved edits asks first.
+  function go(to: string) {
+    if (
+      route.page === "account" &&
+      profileRef.current &&
+      !profileRef.current.canLeave()
+    )
+      return;
+    navigate(to);
+  }
   const navItem = (
     target: Parameters<typeof pagePath>[0],
     label: string,
@@ -140,7 +152,7 @@ function MerchantWorkspace() {
     <button
       className={active ? "selected" : ""}
       aria-current={active ? "page" : undefined}
-      onClick={() => navigate(pagePath(target))}
+      onClick={() => go(pagePath(target))}
     >
       {label}
     </button>
@@ -164,7 +176,7 @@ function MerchantWorkspace() {
               href={pagePath("overview")}
               onClick={(e) => {
                 e.preventDefault();
-                navigate(pagePath("overview"));
+                go(pagePath("overview"));
               }}
             >
               <span className="version-pill">v1</span>

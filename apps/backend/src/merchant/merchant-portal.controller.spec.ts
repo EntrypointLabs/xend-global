@@ -55,7 +55,14 @@ function setup(
     id: 'ak-owned',
     revokedAt: new Date('2026-09-19T00:00:00Z'),
   });
-  const db = { client: { select } } as unknown as DbService;
+  const db = {
+    client: {
+      select,
+      // Key issue/revoke/rotate run inside a transaction; the mocked services
+      // ignore the handle, so invoking the callback with a stub is enough.
+      transaction: (cb: (tx: unknown) => unknown) => cb({}),
+    },
+  } as unknown as DbService;
   const owner = new MerchantOwnerService(db, {
     verifyIdToken,
   } as unknown as MerchantIdentityService);
@@ -141,7 +148,7 @@ describe('Merchant portal ownership', () => {
       id: 'ak-owned',
       revokedAt: '2026-09-19T00:00:00.000Z',
     });
-    expect(revokeKey).toHaveBeenCalledWith('ak-owned');
+    expect(revokeKey).toHaveBeenCalledWith('ak-owned', expect.anything());
   });
   it('reports unconfirmed receiving-account ownership as a retryable conflict', async () => {
     const { controller, provisionOrLink } = setup();
@@ -164,9 +171,12 @@ describe('Merchant portal ownership', () => {
     const { controller, verifyIdToken, issueKey } = setup();
     await controller.issue('Bearer token', { mode: 'test' });
     expect(verifyIdToken).toHaveBeenCalledWith('token');
-    expect(issueKey).toHaveBeenCalledWith('merchant-owned', 'test', {
-      name: undefined,
-    });
+    expect(issueKey).toHaveBeenCalledWith(
+      'merchant-owned',
+      'test',
+      { name: undefined },
+      expect.anything(),
+    );
   });
   it('cannot issue keys without an owned Merchant record', async () => {
     const { controller, issueKey } = setup(null);
@@ -210,9 +220,12 @@ describe('execution key gates', () => {
     expect(getSettlementAddressForSettlement).toHaveBeenCalledWith(
       'merchant-owned',
     );
-    expect(issueKey).toHaveBeenCalledWith('merchant-owned', 'devnet', {
-      name: undefined,
-    });
+    expect(issueKey).toHaveBeenCalledWith(
+      'merchant-owned',
+      'devnet',
+      { name: undefined },
+      expect.anything(),
+    );
   });
   it('refuses disabled devnet execution', async () => {
     const { controller, issueKey } = setup();

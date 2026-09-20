@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { and, desc, eq, lt, or } from 'drizzle-orm';
-import { DbService } from '../db/db.service';
+import { DbService, type DbExecutor } from '../db/db.service';
 import { merchantAuditLog } from '../db/schema';
 
 export type MerchantAuditAction =
@@ -36,14 +36,18 @@ export interface MerchantAuditPage {
 export class MerchantAuditService {
   constructor(private readonly db: DbService) {}
 
-  async record(input: {
-    merchantId: string;
-    actor: string;
-    action: MerchantAuditAction;
-    target?: string | null;
-    metadata?: Record<string, string> | null;
-  }): Promise<void> {
-    await this.db.client.insert(merchantAuditLog).values({
+  async record(
+    input: {
+      merchantId: string;
+      actor: string;
+      action: MerchantAuditAction;
+      target?: string | null;
+      metadata?: Record<string, string> | null;
+    },
+    /** Pass a transaction handle to record atomically with the caller's write. */
+    db: DbExecutor = this.db.client,
+  ): Promise<void> {
+    await db.insert(merchantAuditLog).values({
       merchantId: input.merchantId,
       actor: input.actor,
       action: input.action,

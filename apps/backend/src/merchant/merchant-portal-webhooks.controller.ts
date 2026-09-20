@@ -10,7 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, lt, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { DbService } from '../db/db.service';
 import { webhookDeliveries } from '../db/schema';
@@ -133,12 +133,15 @@ export class MerchantPortalWebhooksController {
   /**
    * Delivery diagnostics for one endpoint. Ownership is proven through find()
    * before any delivery row is read, so an owner can only ever see their own
-   * endpoint's history. Newest first, keyset-paginated by createdAt+id.
+   * endpoint's history. Newest first, keyset-paginated on (createdAt desc, id
+   * desc) with a cursor, so an endpoint with more than a page of attempts still
+   * exposes its older failures rather than truncating them silently.
    */
   @Get(':id/deliveries')
   async deliveries(
     @Headers('authorization') authorization: string | undefined,
     @Param('id') id: string,
+    @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
     const merchant = await this.owner.owned(authorization);
@@ -148,6 +151,7 @@ export class MerchantPortalWebhooksController {
       this.mapServiceError(error);
     }
     const take = clampLimit(limit, 20, 100);
+    const after = cursor ? await this.deliveryCursor(id, cursor) : null;
     const rows = await this.db.client
       .select({
         id: webhookDeliveries.id,
@@ -161,11 +165,27 @@ export class MerchantPortalWebhooksController {
         createdAt: webhookDeliveries.createdAt,
       })
       .from(webhookDeliveries)
-      .where(eq(webhookDeliveries.endpointId, id))
-      .orderBy(desc(webhookDeliveries.createdAt))
-      .limit(take);
+      .where(
+        and(
+          eq(webhookDeliveries.endpointId, id),
+          ...(after
+            ? [
+                or(
+                  lt(webhookDeliveries.createdAt, after.createdAt),
+                  and(
+                    eq(webhookDeliveries.createdAt, after.createdAt),
+                    lt(webhookDeliveries.id, after.id),
+                  ),
+                ),
+              ]
+            : []),
+        ),
+      )
+      .orderBy(desc(webhookDeliveries.createdAt), desc(webhookDeliveries.id))
+      .limit(take + 1);
+    const page = rows.slice(0, take);
     return {
-      deliveries: rows.map((row) => ({
+      deliveries: page.map((row) => ({
         id: row.id,
         eventId: row.eventId,
         eventType: row.eventType,
@@ -176,7 +196,25 @@ export class MerchantPortalWebhooksController {
         nextRetryAt: row.nextRetryAt?.toISOString() ?? null,
         createdAt: row.createdAt.toISOString(),
       })),
+      nextCursor: rows.length > take ? page[page.length - 1].id : null,
     };
+  }
+
+  private async deliveryCursor(endpointId: string, cursor: string) {
+    const [row] = await this.db.client
+      .select({
+        id: webhookDeliveries.id,
+        createdAt: webhookDeliveries.createdAt,
+      })
+      .from(webhookDeliveries)
+      .where(
+        and(
+          eq(webhookDeliveries.id, cursor),
+          eq(webhookDeliveries.endpointId, endpointId),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
   }
 
   private mapServiceError(error: unknown): never {

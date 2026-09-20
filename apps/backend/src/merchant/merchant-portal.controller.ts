@@ -165,8 +165,21 @@ export class MerchantPortalController {
         kybReviewNote: null,
         updatedAt: now,
       })
-      .where(eq(merchants.id, merchant.id))
+      .where(
+        and(
+          eq(merchants.id, merchant.id),
+          // Verification can be stamped by an operator between the ownership
+          // read and this update. Only move to pending from the exact status
+          // observed, so a submission never reverts a merchant that just
+          // became verified (which would disable their live keys).
+          eq(merchants.kybStatus, merchant.kybStatus),
+        ),
+      )
       .returning();
+    if (!updated)
+      throw new ConflictException(
+        'Your verification status changed. Reload your account before resubmitting.',
+      );
     await this.audit.record({
       merchantId: merchant.id,
       actor: merchant.ownerProviderId ?? 'unknown',
@@ -174,7 +187,7 @@ export class MerchantPortalController {
       target: merchant.id,
     });
     return this.dashboard({
-      ...(updated ?? merchant),
+      ...updated,
       signInEmail: merchant.signInEmail,
     });
   }
@@ -273,12 +286,20 @@ export class MerchantPortalController {
   ) {
     const merchant = await this.owner.owned(authorization);
     await this.ownedKey(merchant.id, id);
-    const revoked = await this.keys.revokeKey(id);
-    await this.audit.record({
-      merchantId: merchant.id,
-      actor: merchant.ownerProviderId ?? 'unknown',
-      action: 'api_key.revoke',
-      target: id,
+    // Revoke and its audit entry commit together: a failed audit write must not
+    // leave a revocation that no trail records.
+    const revoked = await this.db.client.transaction(async (tx) => {
+      const result = await this.keys.revokeKey(id, tx);
+      await this.audit.record(
+        {
+          merchantId: merchant.id,
+          actor: merchant.ownerProviderId ?? 'unknown',
+          action: 'api_key.revoke',
+          target: id,
+        },
+        tx,
+      );
+      return result;
     });
     return { id: revoked.id, revokedAt: revoked.revokedAt.toISOString() };
   }
@@ -289,17 +310,26 @@ export class MerchantPortalController {
     @Param('id') id: string,
   ) {
     const merchant = await this.owner.owned(authorization);
-    await this.ownedKey(merchant.id, id);
     try {
-      const issued = await this.keys.rotateKey(id, merchant.id);
-      await this.audit.record({
-        merchantId: merchant.id,
-        actor: merchant.ownerProviderId ?? 'unknown',
-        action: 'api_key.rotate',
-        target: issued.id,
-        metadata: { rotatedFrom: id },
+      // The whole rotation is one transaction: claiming the old key, issuing
+      // the successor and recording the audit entry commit together, so an
+      // audit or issuance failure rolls the revocation back and the old key
+      // keeps working. The claim inside rotateKey also serialises concurrent
+      // rotations and enforces ownership.
+      return await this.db.client.transaction(async (tx) => {
+        const issued = await this.keys.rotateKey(id, merchant.id, tx);
+        await this.audit.record(
+          {
+            merchantId: merchant.id,
+            actor: merchant.ownerProviderId ?? 'unknown',
+            action: 'api_key.rotate',
+            target: issued.id,
+            metadata: { rotatedFrom: id },
+          },
+          tx,
+        );
+        return issued;
       });
-      return issued;
     } catch (error) {
       if (error instanceof ApiKeyNotFoundError)
         throw new NotFoundException('API key not found');
@@ -329,17 +359,25 @@ export class MerchantPortalController {
         throw new ConflictException('Devnet execution is disabled');
       await this.requireDestination(merchant.id);
     }
-    const issued = await this.keys.issueKey(merchant.id, body.mode, {
-      name: body.name,
+    return this.db.client.transaction(async (tx) => {
+      const issued = await this.keys.issueKey(
+        merchant.id,
+        body.mode,
+        { name: body.name },
+        tx,
+      );
+      await this.audit.record(
+        {
+          merchantId: merchant.id,
+          actor: merchant.ownerProviderId ?? 'unknown',
+          action: 'api_key.issue',
+          target: issued.id,
+          metadata: { mode: body.mode },
+        },
+        tx,
+      );
+      return issued;
     });
-    await this.audit.record({
-      merchantId: merchant.id,
-      actor: merchant.ownerProviderId ?? 'unknown',
-      action: 'api_key.issue',
-      target: issued.id,
-      metadata: { mode: body.mode },
-    });
-    return issued;
   }
 
   private async ownedKey(merchantId: string, id: string): Promise<void> {

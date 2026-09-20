@@ -34,6 +34,11 @@ describe("routeFor", () => {
   it("falls back to the overview for an unknown path", () => {
     expect(routeFor("/nope")).toEqual({ page: "overview" });
   });
+
+  it("does not throw on a malformed payment path, falling back to the list", () => {
+    expect(() => routeFor("/payments/%")).not.toThrow();
+    expect(routeFor("/payments/%")).toEqual({ page: "payments" });
+  });
 });
 
 describe("navigate", () => {

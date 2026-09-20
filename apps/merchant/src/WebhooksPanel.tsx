@@ -219,15 +219,24 @@ function WebhookCard({
 }) {
   const [confirming, setConfirming] = useState(false);
   const [deliveries, setDeliveries] = useState<Delivery[] | null>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
   const [loadingDeliveries, setLoadingDeliveries] = useState(false);
 
-  async function loadDeliveries() {
+  async function loadDeliveries(reset: boolean) {
     setLoadingDeliveries(true);
     try {
-      const data = await client.get<{ deliveries: Delivery[] }>(
-        `webhooks/${encodeURIComponent(endpoint.id)}/deliveries`,
+      const params = new URLSearchParams({ limit: "20" });
+      if (!reset && cursor) params.set("cursor", cursor);
+      const data = await client.get<{
+        deliveries: Delivery[];
+        nextCursor: string | null;
+      }>(
+        `webhooks/${encodeURIComponent(endpoint.id)}/deliveries?${params.toString()}`,
       );
-      setDeliveries(data.deliveries);
+      setDeliveries((current) =>
+        reset || !current ? data.deliveries : [...current, ...data.deliveries],
+      );
+      setCursor(data.nextCursor);
     } finally {
       setLoadingDeliveries(false);
     }
@@ -257,7 +266,7 @@ function WebhookCard({
         <button
           className="secondary"
           disabled={loadingDeliveries}
-          onClick={() => void loadDeliveries()}
+          onClick={() => void loadDeliveries(true)}
         >
           {loadingDeliveries ? "Loading…" : "Recent deliveries"}
         </button>
@@ -310,6 +319,15 @@ function WebhookCard({
                 ))}
               </tbody>
             </table>
+          )}
+          {cursor && (
+            <button
+              className="secondary"
+              disabled={loadingDeliveries}
+              onClick={() => void loadDeliveries(false)}
+            >
+              {loadingDeliveries ? "Loading…" : "Load more"}
+            </button>
           )}
         </div>
       )}

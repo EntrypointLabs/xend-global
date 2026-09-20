@@ -56,6 +56,7 @@ const TEMP_TABLES = [
   () => {
     let client: Client;
     let app: INestApplication;
+    let ownerService: MerchantOwnerService;
 
     const auth = (token: string) => `Bearer ${token}`;
     const server = () => app.getHttpServer() as Server;
@@ -109,9 +110,12 @@ const TEMP_TABLES = [
           },
         ],
       }).compile();
+      ownerService = module.get(MerchantOwnerService);
       app = module.createNestApplication();
       await app.init();
     });
+
+    afterEach(() => jest.restoreAllMocks());
 
     beforeEach(async () => {
       for (const table of [...TEMP_TABLES].reverse())
@@ -377,6 +381,104 @@ const TEMP_TABLES = [
             .expect(200),
         );
         expect(other.entries).toHaveLength(0);
+      });
+    });
+
+    describe('Race safety', () => {
+      it('refuses to rotate an already-rotated key and leaves exactly one successor', async () => {
+        await issueKey('owner-a', { mode: 'test', name: 'Once' }).expect(201);
+        const {
+          rows: [key],
+        } = await client.query<{ id: string }>(
+          'SELECT id FROM pg_temp.api_keys',
+        );
+        await request(server())
+          .post(`/merchant-portal/keys/${key.id}/rotate`)
+          .set('Authorization', auth('owner-a'))
+          .send({})
+          .expect(201);
+        // The original is now revoked; rotating it again claims nothing.
+        await request(server())
+          .post(`/merchant-portal/keys/${key.id}/rotate`)
+          .set('Authorization', auth('owner-a'))
+          .send({})
+          .expect(404);
+        const active = await client.query(
+          'SELECT id FROM pg_temp.api_keys WHERE revoked_at IS NULL',
+        );
+        expect(active.rows).toHaveLength(1);
+      });
+
+      it('does not revert a merchant verified between the read and the KYB submit update', async () => {
+        const boundary = ownerService as unknown as {
+          owned: (authorization?: string) => Promise<
+            typeof schema.merchants.$inferSelect & {
+              signInEmail: string | null;
+            }
+          >;
+        };
+        const readOwned = boundary.owned.bind(
+          ownerService,
+        ) as typeof boundary.owned;
+        jest
+          .spyOn(boundary, 'owned')
+          .mockImplementationOnce(async (authorization) => {
+            const merchant = await readOwned(authorization);
+            await client.query(
+              "UPDATE pg_temp.merchants SET kyb_status = 'verified' WHERE id = 'm-a'",
+            );
+            return merchant;
+          });
+        await request(server())
+          .post('/merchant-portal/kyb/submit')
+          .set('Authorization', auth('owner-a'))
+          .expect(409);
+        const {
+          rows: [row],
+        } = await client.query<{ kyb_status: string }>(
+          "SELECT kyb_status FROM pg_temp.merchants WHERE id = 'm-a'",
+        );
+        expect(row.kyb_status).toBe('verified');
+      });
+    });
+
+    describe('Webhook delivery pagination', () => {
+      it('pages through more deliveries than one page and never truncates silently', async () => {
+        const created = await request(server())
+          .post('/merchant-portal/webhooks')
+          .set('Authorization', auth('owner-a'))
+          .send({ url: 'https://example.com/hook', mode: 'test' })
+          .expect(201);
+        const endpointId = (created.body as { id: string }).id;
+        for (let i = 0; i < 25; i++)
+          await client.query(
+            `INSERT INTO pg_temp.webhook_deliveries
+             (id, endpoint_id, event_id, event_type, payload, correlation_id, created_at)
+             VALUES ($1, $2, $3, 'payment.succeeded', '{}', $4, now() + ($5 || ' seconds')::interval)`,
+            [`wd_${i}`, endpointId, `evt_${i}`, `pi_${i}`, String(i)],
+          );
+        const first = await request(server())
+          .get(`/merchant-portal/webhooks/${endpointId}/deliveries?limit=20`)
+          .set('Authorization', auth('owner-a'))
+          .expect(200);
+        const firstBody = first.body as {
+          deliveries: unknown[];
+          nextCursor: string | null;
+        };
+        expect(firstBody.deliveries).toHaveLength(20);
+        expect(firstBody.nextCursor).toBeTruthy();
+        const second = await request(server())
+          .get(
+            `/merchant-portal/webhooks/${endpointId}/deliveries?limit=20&cursor=${firstBody.nextCursor ?? ''}`,
+          )
+          .set('Authorization', auth('owner-a'))
+          .expect(200);
+        const secondBody = second.body as {
+          deliveries: unknown[];
+          nextCursor: string | null;
+        };
+        expect(secondBody.deliveries).toHaveLength(5);
+        expect(secondBody.nextCursor).toBeNull();
       });
     });
   },

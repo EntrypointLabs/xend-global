@@ -2,7 +2,7 @@ import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { devnetExecutionEnabled } from './devnet-execution';
 import { and, eq, isNull } from 'drizzle-orm';
-import { DbService } from '../db/db.service';
+import { DbService, type DbExecutor } from '../db/db.service';
 import { apiKeys, merchants, settlementAccounts } from '../db/schema';
 import { MerchantNotFoundError } from '../payment/payment.errors';
 import { ApiKeyNotFoundError } from './merchant.errors';
@@ -77,8 +77,9 @@ export class KeyIssuanceService {
     merchantId: string,
     mode: 'test' | 'live' | 'devnet',
     options: { name?: string | null; rotatedFromId?: string | null } = {},
+    db: DbExecutor = this.db.client,
   ): Promise<{ id: string; raw: string; fingerprint: string }> {
-    const [merchant] = await this.db.client
+    const [merchant] = await db
       .select()
       .from(merchants)
       .where(eq(merchants.id, merchantId))
@@ -98,7 +99,7 @@ export class KeyIssuanceService {
       throw new KybNotVerifiedError('Devnet execution is disabled');
     if (mode === 'live' || mode === 'devnet') {
       const executionCluster = mode === 'devnet' ? 'devnet' : configuredCluster;
-      const [account] = await this.db.client
+      const [account] = await db
         .select()
         .from(settlementAccounts)
         .where(
@@ -116,7 +117,7 @@ export class KeyIssuanceService {
     }
 
     const key = generateApiKey(mode === 'devnet' ? 'live' : mode);
-    const [inserted] = await this.db.client
+    const [inserted] = await db
       .insert(apiKeys)
       .values({
         merchantId,
@@ -139,40 +140,52 @@ export class KeyIssuanceService {
   }
 
   /**
-   * Replaces a key with a fresh secret. A new key is issued under the same
-   * mode, execution cluster and name, linked back to its predecessor, and the
-   * old key is revoked once the successor lands. The eligibility gates run
-   * again through issueKey, so a live rotation still requires verified KYB and
-   * a provisioned destination. The old secret keeps working until the new one
-   * is issued, so a caller that rotates never has a window with no valid key.
+   * Replaces a key with a fresh secret. Runs inside the caller's transaction so
+   * the whole rotation is atomic: an audit-record or issuance failure rolls the
+   * revocation back and the old key keeps working. The old key is claimed with
+   * a conditional revoke (WHERE revoked_at IS NULL) that also serialises
+   * concurrent rotations: the row lock lets exactly one request claim it, and a
+   * second concurrent request re-reads a now-revoked row, matches nothing, and
+   * is refused rather than minting a second successor. The successor is issued
+   * under the same mode, execution cluster and name, linked to its predecessor,
+   * and the eligibility gates run again through issueKey.
    */
   async rotateKey(
     keyId: string,
     merchantId: string,
+    db: DbExecutor = this.db.client,
   ): Promise<{ id: string; raw: string; fingerprint: string }> {
-    const [existing] = await this.db.client
-      .select()
-      .from(apiKeys)
-      .where(and(eq(apiKeys.id, keyId), eq(apiKeys.merchantId, merchantId)))
-      .limit(1);
-    if (!existing || existing.revokedAt)
-      throw new ApiKeyNotFoundError(`api key ${keyId} not found`);
+    const [claimed] = await db
+      .update(apiKeys)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(apiKeys.id, keyId),
+          eq(apiKeys.merchantId, merchantId),
+          isNull(apiKeys.revokedAt),
+        ),
+      )
+      .returning();
+    if (!claimed) throw new ApiKeyNotFoundError(`api key ${keyId} not found`);
     const requestedMode =
-      existing.executionCluster === 'devnet' ? 'devnet' : existing.mode;
-    const issued = await this.issueKey(merchantId, requestedMode, {
-      name: existing.name,
-      rotatedFromId: existing.id,
-    });
-    await this.revokeKey(existing.id);
-    return issued;
+      claimed.executionCluster === 'devnet' ? 'devnet' : claimed.mode;
+    return this.issueKey(
+      merchantId,
+      requestedMode,
+      { name: claimed.name, rotatedFromId: claimed.id },
+      db,
+    );
   }
 
   /**
    * Retires a key. The guard refuses a revoked key on its next use; a key
    * already revoked keeps its original timestamp so the call is safe to repeat.
    */
-  async revokeKey(keyId: string): Promise<RevokedKey> {
-    const [revoked] = await this.db.client
+  async revokeKey(
+    keyId: string,
+    db: DbExecutor = this.db.client,
+  ): Promise<RevokedKey> {
+    const [revoked] = await db
       .update(apiKeys)
       .set({ revokedAt: new Date() })
       .where(and(eq(apiKeys.id, keyId), isNull(apiKeys.revokedAt)))
@@ -180,11 +193,7 @@ export class KeyIssuanceService {
     const row =
       revoked ??
       (
-        await this.db.client
-          .select()
-          .from(apiKeys)
-          .where(eq(apiKeys.id, keyId))
-          .limit(1)
+        await db.select().from(apiKeys).where(eq(apiKeys.id, keyId)).limit(1)
       )[0];
     if (!row?.revokedAt) {
       throw new ApiKeyNotFoundError(`api key ${keyId} not found`);
