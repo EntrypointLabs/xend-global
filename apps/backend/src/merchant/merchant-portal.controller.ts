@@ -171,6 +171,25 @@ export class MerchantPortalController {
     const merchant = await this.owner.owned(authorization);
     if (merchant.kybStatus === 'verified')
       throw new ConflictException('Your business is already verified.');
+    // A review needs something to review: refuse a submission until the minimum
+    // legal, contact and address details are present, so a merchant cannot land
+    // in the queue (and see "in review") having supplied nothing.
+    const profile = merchant.businessProfile ?? {};
+    const requiredFields: Array<[keyof typeof profile, string]> = [
+      ['legalName', 'legal business name'],
+      ['contactName', 'contact name'],
+      ['contactEmail', 'business contact email'],
+      ['addressLine1', 'address'],
+      ['city', 'city'],
+      ['country', 'country'],
+    ];
+    const missing = requiredFields.filter(
+      ([key]) => !(profile[key] ?? '').trim(),
+    );
+    if (missing.length > 0)
+      throw new ConflictException(
+        `Add your ${missing.map(([, label]) => label).join(', ')} before submitting for verification.`,
+      );
     const now = new Date();
     const updated = await this.db.client.transaction(async (tx) => {
       const [row] = await tx
@@ -284,12 +303,16 @@ export class MerchantPortalController {
         currency: 'USDC',
         merchantAddress: merchant.receivingWallet,
       });
-      await this.audit.record({
-        merchantId: merchant.id,
-        actor: merchant.ownerProviderId ?? 'unknown',
-        action: 'destination.provision',
-        target: merchant.id,
-      });
+      // A lost-response retry returns the existing destination with
+      // provisioned=false; record the audit entry only for the call that
+      // actually provisioned, so the trail does not show a repeat change.
+      if (result.provisioned)
+        await this.audit.record({
+          merchantId: merchant.id,
+          actor: merchant.ownerProviderId ?? 'unknown',
+          action: 'destination.provision',
+          target: merchant.id,
+        });
       return result;
     } catch (error) {
       if (error instanceof SettlementAccountNotProvisionedError)

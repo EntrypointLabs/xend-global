@@ -29,7 +29,9 @@ describe("WebhooksPanel", () => {
   it("lists endpoints without ever showing a stored secret", async () => {
     const get = vi.fn().mockResolvedValue({ endpoints: [endpoint()] });
     const client = { get, post: vi.fn() } as unknown as PortalClient;
-    render(<WebhooksPanel client={client} onSecret={vi.fn()} />);
+    render(
+      <WebhooksPanel client={client} onSecret={vi.fn()} revealActive={false} />,
+    );
     await waitFor(() =>
       expect(screen.getByText("https://example.com/hook")).toBeTruthy(),
     );
@@ -46,7 +48,13 @@ describe("WebhooksPanel", () => {
       .mockResolvedValue({ ...endpoint(), secret: "whsec_new_secret" });
     const onSecret = vi.fn();
     const client = { get, post } as unknown as PortalClient;
-    render(<WebhooksPanel client={client} onSecret={onSecret} />);
+    render(
+      <WebhooksPanel
+        client={client}
+        onSecret={onSecret}
+        revealActive={false}
+      />,
+    );
     await waitFor(() => expect(get).toHaveBeenCalled());
 
     fireEvent.change(screen.getByLabelText(/Endpoint URL/), {

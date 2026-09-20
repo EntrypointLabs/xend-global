@@ -36,6 +36,16 @@ type PaymentSummary = { id: string; merchantReference: string | null };
 type PaymentPage = { payments: PaymentSummary[]; nextCursor: string | null };
 type AuditPage = { entries: { action: string }[] };
 
+// The minimum business details a KYB submission now requires.
+const COMPLETE_PROFILE = JSON.stringify({
+  legalName: 'Acme LLC',
+  contactName: 'Ada Owner',
+  contactEmail: 'ada@acme.example',
+  addressLine1: '1 Main Street',
+  city: 'Lagos',
+  country: 'NG',
+});
+
 // Explicit opt-in only. TEMP tables shadow the real Merchant data on this one
 // connection; no real row is inserted, edited or deleted by these tests.
 const databaseUrl = process.env.MERCHANT_PROFILE_TEST_DATABASE_URL;
@@ -361,6 +371,10 @@ const TEMP_TABLES = [
         await issueKey('owner-a', { mode: 'test', name: 'Audit key' }).expect(
           201,
         );
+        await client.query(
+          `UPDATE pg_temp.merchants SET business_profile = $1 WHERE id = 'm-a'`,
+          [COMPLETE_PROFILE],
+        );
         await request(server())
           .post('/merchant-portal/kyb/submit')
           .set('Authorization', auth('owner-a'))
@@ -410,6 +424,12 @@ const TEMP_TABLES = [
       });
 
       it('does not revert a merchant verified between the read and the KYB submit update', async () => {
+        // A complete profile so the submission passes the minimum-details gate
+        // and reaches the conditional update this test is about.
+        await client.query(
+          `UPDATE pg_temp.merchants SET business_profile = $1 WHERE id = 'm-a'`,
+          [COMPLETE_PROFILE],
+        );
         const boundary = ownerService as unknown as {
           owned: (authorization?: string) => Promise<
             typeof schema.merchants.$inferSelect & {
@@ -439,6 +459,23 @@ const TEMP_TABLES = [
           "SELECT kyb_status FROM pg_temp.merchants WHERE id = 'm-a'",
         );
         expect(row.kyb_status).toBe('verified');
+      });
+
+      it('refuses a KYB submission with no business details and leaves the status untouched', async () => {
+        await request(server())
+          .post('/merchant-portal/kyb/submit')
+          .set('Authorization', auth('owner-a'))
+          .expect(409);
+        const {
+          rows: [row],
+        } = await client.query<{
+          kyb_status: string;
+          kyb_submitted_at: Date | null;
+        }>(
+          "SELECT kyb_status, kyb_submitted_at FROM pg_temp.merchants WHERE id = 'm-a'",
+        );
+        expect(row.kyb_status).toBe('pending');
+        expect(row.kyb_submitted_at).toBeNull();
       });
     });
 

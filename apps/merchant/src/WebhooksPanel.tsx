@@ -29,6 +29,7 @@ function formatWhen(iso: string): string {
 export function WebhooksPanel({
   client,
   onSecret,
+  revealActive,
 }: {
   client: PortalClient;
   /**
@@ -37,6 +38,9 @@ export function WebhooksPanel({
    * the merchant is ever shown.
    */
   onSecret: (secret: string, label: string) => void;
+  /** A one-time secret is currently on screen; block new secret-minting until
+   * it is dismissed so a second create/rotate cannot overwrite it. */
+  revealActive: boolean;
 }) {
   const [endpoints, setEndpoints] = useState<WebhookEndpoint[] | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
@@ -47,16 +51,23 @@ export function WebhooksPanel({
   const [mode, setMode] = useState<"test" | "live">("test");
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
+  // A slow initial list load must not overwrite the refreshed list that a
+  // create/rotate/delete produced; each load takes a generation and a stale
+  // one is discarded.
+  const loadGeneration = useRef(0);
 
   async function load() {
+    const generation = ++loadGeneration.current;
     setStatus("loading");
     try {
       const data = await client.get<{ endpoints: WebhookEndpoint[] }>(
         "webhooks",
       );
+      if (generation !== loadGeneration.current) return;
       setEndpoints(data.endpoints);
       setStatus("ready");
     } catch (failure) {
+      if (generation !== loadGeneration.current) return;
       setError(failure instanceof Error ? failure.message : "Could not load.");
       setStatus("error");
     }
@@ -171,7 +182,7 @@ export function WebhooksPanel({
           </label>
         </div>
         <div className="actions">
-          <button disabled={busy}>Add endpoint</button>
+          <button disabled={busy || revealActive}>Add endpoint</button>
         </div>
       </form>
 
@@ -191,7 +202,7 @@ export function WebhooksPanel({
             key={endpoint.id}
             endpoint={endpoint}
             client={client}
-            busy={busy}
+            busy={busy || revealActive}
             onRotate={() => void rotate(endpoint.id)}
             onDelete={() => void remove(endpoint.id)}
           />

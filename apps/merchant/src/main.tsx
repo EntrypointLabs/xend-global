@@ -381,6 +381,7 @@ function MerchantWorkspace() {
             <WebhooksPanel
               client={client}
               onSecret={(secret, label) => setSecretReveal({ secret, label })}
+              revealActive={secretReveal !== null}
             />
           ) : page === "audit" ? (
             <AuditPanel client={client} />
@@ -597,7 +598,7 @@ function MerchantWorkspace() {
                       </label>
                       <div className="actions">
                         <button
-                          disabled={busy}
+                          disabled={busy || secretReveal !== null}
                           onClick={() => void run(() => issue("test"))}
                         >
                           Create simulation key
@@ -607,6 +608,7 @@ function MerchantWorkspace() {
                             className="secondary"
                             disabled={
                               busy ||
+                              secretReveal !== null ||
                               data.merchant.kybStatus !== "verified" ||
                               !data.destination
                             }
@@ -617,13 +619,21 @@ function MerchantWorkspace() {
                         )}
                         {data.devnetExecutionEnabled && (
                           <button
-                            disabled={busy || !data.destination}
+                            disabled={
+                              busy || secretReveal !== null || !data.destination
+                            }
                             onClick={() => void run(() => issue("devnet"))}
                           >
                             Create devnet execution key
                           </button>
                         )}
                       </div>
+                      {secretReveal !== null && (
+                        <small>
+                          Copy and dismiss the secret above before creating or
+                          rotating another key.
+                        </small>
+                      )}
                     </div>
                     <p>
                       Simulation keys test Payments without moving USDC. Live
@@ -659,7 +669,7 @@ function MerchantWorkspace() {
                             <div className="key-card-actions actions">
                               <button
                                 className="secondary"
-                                disabled={busy}
+                                disabled={busy || secretReveal !== null}
                                 onClick={() => void run(() => rotate(key.id))}
                               >
                                 Rotate key

@@ -149,6 +149,10 @@ export class MerchantPortalPaymentsController {
       .limit(1);
     // The intent id is the correlation id carried on every webhook for this
     // Payment, so its deliveries surface the merchant's own delivery status.
+    // Manual redeliveries are unbounded, so cap this summary at the most recent
+    // attempts rather than loading an arbitrarily large set into one response;
+    // the per-endpoint diagnostics route offers the full paginated history.
+    const DETAIL_DELIVERY_CAP = 50;
     const deliveries = await this.db.client
       .select({
         id: webhookDeliveries.id,
@@ -160,7 +164,8 @@ export class MerchantPortalPaymentsController {
       })
       .from(webhookDeliveries)
       .where(eq(webhookDeliveries.correlationId, intent.id))
-      .orderBy(desc(webhookDeliveries.createdAt));
+      .orderBy(desc(webhookDeliveries.createdAt), desc(webhookDeliveries.id))
+      .limit(DETAIL_DELIVERY_CAP);
 
     const confirmationReference =
       payment?.txSignature ?? latestAttempt?.txSignature ?? null;
