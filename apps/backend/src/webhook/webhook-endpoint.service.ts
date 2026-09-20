@@ -143,6 +143,11 @@ export class WebhookEndpointService {
         and(
           eq(webhookEndpoints.id, id),
           eq(webhookEndpoints.secretPrimary, endpoint.secretPrimary),
+          // Stay conditional on the endpoint still being live: a delete that
+          // commits between find() and this update would otherwise mint a new
+          // one-time secret and audit a rotation for an endpoint that can no
+          // longer receive deliveries.
+          eq(webhookEndpoints.enabled, true),
         ),
       )
       .returning({ id: webhookEndpoints.id });

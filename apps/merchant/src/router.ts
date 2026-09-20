@@ -71,9 +71,16 @@ export function paymentPath(id: string): string {
   return `/payments/${encodeURIComponent(id)}`;
 }
 
+/** Strip trailing slashes so `/account/` and `/account` resolve and compare
+ * identically. Anyone comparing a raw `window.location.pathname` to a canonical
+ * page path must normalize first, or a trailing slash silently misses. */
+export function normalizePath(pathname: string): string {
+  return pathname.replace(/\/+$/, "") || "/";
+}
+
 /** Resolve a pathname to a page. An unknown path falls back to the overview. */
 export function routeFor(pathname: string): Route {
-  const path = pathname.replace(/\/+$/, "") || "/";
+  const path = normalizePath(pathname);
   if (path === "/") return { page: "overview" };
   const paymentDetail = path.match(/^\/payments\/(.+)$/);
   if (paymentDetail?.[1]) {

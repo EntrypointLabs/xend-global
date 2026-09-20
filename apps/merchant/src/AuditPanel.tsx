@@ -4,6 +4,7 @@ import type { PortalClient } from "./portal";
 type AuditEntry = {
   id: string;
   action: string;
+  actor: string;
   target: string | null;
   metadata: Record<string, string> | null;
   at: string;
@@ -109,9 +110,10 @@ export function AuditPanel({ client }: { client: PortalClient }) {
                   {new Date(entry.at).toLocaleString()}
                 </time>
               </div>
-              {describe(entry) && (
-                <span className="audit-entry-detail">{describe(entry)}</span>
-              )}
+              <span className="audit-entry-detail">
+                {`By ${entry.actor}`}
+                {describe(entry) ? ` · ${describe(entry)}` : ""}
+              </span>
             </li>
           ))}
         </ol>

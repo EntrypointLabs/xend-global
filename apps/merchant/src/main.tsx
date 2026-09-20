@@ -20,7 +20,7 @@ import {
   type BusinessProfileHandle,
 } from "./BusinessProfileForm";
 import { createPortalClient } from "./portal";
-import { navigate, pagePath, useRoute } from "./router";
+import { navigate, normalizePath, pagePath, useRoute } from "./router";
 import { WebhooksPanel } from "./WebhooksPanel";
 import { PaymentsPanel } from "./PaymentsPanel";
 import { PaymentDetail } from "./PaymentDetail";
@@ -92,7 +92,9 @@ function MerchantWorkspace() {
   // page a back/forward is leaving.
   const currentPathRef = useRef(pagePath("overview"));
   useEffect(() => {
-    currentPathRef.current = window.location.pathname;
+    // Normalize so a page opened as `/account/` still matches the canonical
+    // `/account` the history guard compares against.
+    currentPathRef.current = normalizePath(window.location.pathname);
   });
   useEffect(() => {
     // Back/forward fire popstate directly, bypassing the click guard. If it
@@ -100,7 +102,7 @@ function MerchantWorkspace() {
     // discard, re-push the account path to cancel the transition.
     const onPopState = () => {
       const wasAccount = currentPathRef.current === pagePath("account");
-      const now = window.location.pathname;
+      const now = normalizePath(window.location.pathname);
       if (
         wasAccount &&
         now !== pagePath("account") &&

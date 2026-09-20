@@ -47,6 +47,7 @@ describe('MerchantAuditService', () => {
     const rows = Array.from({ length: 3 }, (_, i) => ({
       id: `a${i}`,
       action: 'api_key.issue',
+      actor: 'owner-1',
       target: `k${i}`,
       metadata: null,
       at: new Date(`2026-01-0${i + 1}`),
@@ -59,12 +60,42 @@ describe('MerchantAuditService', () => {
     expect(page.entries[0].at).toBe('2026-01-01T00:00:00.000Z');
   });
 
+  it('maps the stored actor to a safe label, never the raw provider id', async () => {
+    const { db } = makeDb([
+      [
+        {
+          id: 'a0',
+          action: 'profile.update',
+          actor: 'did:privy:owner-secret',
+          target: 'm1',
+          metadata: null,
+          at: new Date('2026-01-02'),
+        },
+        {
+          id: 'a1',
+          action: 'webhook.create',
+          actor: 'api_key:ak_123',
+          target: 'wh1',
+          metadata: null,
+          at: new Date('2026-01-01'),
+        },
+      ],
+    ]);
+    const service = new MerchantAuditService(db);
+    const page = await service.list('m1', { limit: 25 });
+    expect(page.entries[0].actor).toBe('Owner');
+    expect(page.entries[1].actor).toBe('API key');
+    // The raw Privy provider id never reaches the feed.
+    expect(JSON.stringify(page.entries)).not.toContain('owner-secret');
+  });
+
   it('returns a null cursor when the page is not full', async () => {
     const { db } = makeDb([
       [
         {
           id: 'a0',
           action: 'kyb.submit',
+          actor: 'owner-1',
           target: 'm1',
           metadata: null,
           at: new Date('2026-01-01'),

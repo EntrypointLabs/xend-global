@@ -69,7 +69,7 @@ describe('MerchantWebhookEndpointsController audit trail', () => {
     const { controller, register, record } = setup();
     const result = await controller.create(req(), {
       url: 'https://example.com/hook',
-      event_types: null,
+      event_types: undefined,
     });
     expect(register).toHaveBeenCalledWith(
       expect.objectContaining({ merchantId: 'm1', mode: 'test' }),
