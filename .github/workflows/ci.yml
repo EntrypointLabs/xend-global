@@ -51,6 +51,12 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/xend_ci
         run: npx drizzle-kit migrate
 
+      - name: Verify payment transaction rollback and saturated-pool retries
+        working-directory: apps/backend
+        env:
+          PAYMENT_ATOMICITY_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/xend_ci
+        run: npm run test:e2e -- --runInBand payment-atomicity
+
   sdk:
     runs-on: ubuntu-latest
     steps:

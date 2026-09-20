@@ -1,0 +1,1 @@
+ALTER TABLE "settlement_accounts" ADD COLUMN "execution_cluster" text;

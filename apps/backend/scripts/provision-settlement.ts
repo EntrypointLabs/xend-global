@@ -2,17 +2,15 @@
  * Provisions a Merchant's settlement endpoint: the stage of onboarding that
  * gives them somewhere to be paid into.
  *
- * Manual, like the rest of merchant onboarding, and separate from key issuance
- * because it moves lamports: the direct-USDC provider creates a per-Merchant
- * token account owned by the settlement authority, and the authority pays its
- * rent. Nothing else calls it, so a Merchant with keys and no endpoint takes
- * payments right up to the moment one has to settle.
+ * Manual pilot onboarding. Requires the Merchant's verified receiving wallet.
+ * The authority pays rent to initialize the Merchant-owned USDC token account;
+ * it does not acquire ownership. This command can spend SOL, so run only once
+ * the intended Merchant, network and receiving wallet have been verified.
  *
  * Usage:
- *   npx ts-node scripts/provision-settlement.ts --merchant-id m_123
- *   npx ts-node scripts/provision-settlement.ts --merchant-id m_123 --currency NGN
+ *   npx ts-node scripts/provision-settlement.ts --merchant-id m_123 --merchant-address PUBLIC_KEY
  *
- * Idempotent: an already-provisioned endpoint is returned unchanged.
+ * Idempotent for the same destination; conflicting existing destinations fail.
  */
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
@@ -29,13 +27,22 @@ async function main(): Promise<void> {
     throw new Error('--merchant-id is required');
   }
   const currency = arg('currency') ?? 'USDC';
+  const merchantAddress = arg('merchant-address');
+  if (currency !== 'USDC' || !merchantAddress) {
+    throw new Error(
+      'The USDC pilot requires --merchant-address and currency USDC',
+    );
+  }
 
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
   try {
     const provisioning = app.get(SettlementProvisioningService);
-    const result = await provisioning.provisionOrLink(merchantId, { currency });
+    const result = await provisioning.provisionOrLink(merchantId, {
+      currency,
+      merchantAddress,
+    });
     console.log(
       `merchant=${merchantId} provider=${result.provider} address=${result.address} newly_provisioned=${result.provisioned}`,
     );

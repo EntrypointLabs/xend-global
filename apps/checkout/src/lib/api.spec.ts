@@ -121,3 +121,42 @@ describe('the Session carrier', () => {
     vi.restoreAllMocks();
   });
 });
+
+describe('redirect settlement polling', () => {
+  it('retries the same signed payload until the backend returns a terminal result', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: () =>
+          Promise.resolve({
+            code: 'PAYMENT_PROCESSING',
+            message: 'still confirming',
+          }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            status: 'succeeded',
+            redirectUrl: 'https://merchant.test/return?signed=1',
+          }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    const { settleUntilTerminal } = await loadApi();
+    const input = { reference: 'pi_1', signedTxBase64: 'signed-bytes' };
+
+    await expect(
+      settleUntilTerminal(input, { pollIntervalMs: 0 }),
+    ).resolves.toEqual({
+      status: 'succeeded',
+      redirectUrl: 'https://merchant.test/return?signed=1',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map((call) => call[1]?.body)).toEqual([
+      JSON.stringify(input),
+      JSON.stringify(input),
+    ]);
+  });
+});

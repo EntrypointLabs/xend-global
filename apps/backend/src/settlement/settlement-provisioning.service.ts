@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { ConfigService } from '@nestjs/config';
+import { and, eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { settlementAccounts } from '../db/schema';
 import { SOLANA_RPC, type SolanaRpc } from '../solana/solana-rpc.interface';
@@ -22,6 +23,7 @@ export class SettlementProvisioningService {
 
   constructor(
     private readonly db: DbService,
+    private readonly config: ConfigService,
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
     private readonly router: SettlementRouter,
   ) {}
@@ -34,12 +36,33 @@ export class SettlementProvisioningService {
     provider: SettlementProviderName;
     provisioned: boolean;
   }> {
+    const executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     const [existing] = await this.db.client
       .select()
       .from(settlementAccounts)
-      .where(eq(settlementAccounts.merchantId, merchantId))
+      .where(
+        and(
+          eq(settlementAccounts.merchantId, merchantId),
+          eq(settlementAccounts.executionCluster, executionCluster),
+        ),
+      )
       .limit(1);
-    if (existing?.address && existing.provisionedAt && existing.provider) {
+    if (
+      existing?.address &&
+      existing.provisionedAt &&
+      existing.provider &&
+      existing.executionCluster === executionCluster
+    ) {
+      if (
+        opts.merchantAddress &&
+        (existing.provider !== 'direct_usdc' ||
+          existing.authorityAddress != null ||
+          existing.providerReference !== opts.merchantAddress)
+      ) {
+        throw new SettlementAccountNotProvisionedError(
+          'Existing settlement destination differs from the requested Merchant-owned account',
+        );
+      }
       // Idempotent: an already-provisioned endpoint is returned as-is.
       return {
         address: existing.address,
@@ -63,6 +86,7 @@ export class SettlementProvisioningService {
       providerReference: endpoint.providerReference,
       payoutConfig: endpoint.payoutConfig,
       authorityAddress: endpoint.attributionRef,
+      executionCluster,
       provisionedAt: new Date(),
       updatedAt: new Date(),
     };
@@ -70,7 +94,10 @@ export class SettlementProvisioningService {
       .insert(settlementAccounts)
       .values(row)
       .onConflictDoUpdate({
-        target: settlementAccounts.merchantId,
+        target: [
+          settlementAccounts.merchantId,
+          settlementAccounts.executionCluster,
+        ],
         set: {
           address: row.address,
           provider: row.provider,
@@ -78,6 +105,7 @@ export class SettlementProvisioningService {
           providerReference: row.providerReference,
           payoutConfig: row.payoutConfig,
           authorityAddress: row.authorityAddress,
+          executionCluster: row.executionCluster,
           provisionedAt: row.provisionedAt,
           updatedAt: row.updatedAt,
         },
@@ -119,20 +147,46 @@ export class SettlementProvisioningService {
     owner: string;
     provider: SettlementProviderName;
   }> {
+    const executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     const [row] = await this.db.client
       .select()
       .from(settlementAccounts)
-      .where(eq(settlementAccounts.merchantId, merchantId))
+      .where(
+        and(
+          eq(settlementAccounts.merchantId, merchantId),
+          eq(settlementAccounts.executionCluster, executionCluster),
+        ),
+      )
       .limit(1);
-    if (!row?.address || !row.provisionedAt || !row.provider) {
+    if (
+      !row?.address ||
+      !row.provisionedAt ||
+      !row.provider ||
+      row.executionCluster !== executionCluster
+    ) {
       throw new SettlementAccountNotProvisionedError(
-        `merchant ${merchantId} has no provisioned settlement endpoint`,
+        `merchant ${merchantId} has no settlement endpoint on ${executionCluster}`,
+      );
+    }
+    // The USDC pilot settles to Merchant-controlled accounts. An endpoint
+    // from the earlier Xend-custody pilot must be explicitly migrated first.
+    if (row.provider === 'direct_usdc' && row.authorityAddress != null) {
+      throw new SettlementAccountNotProvisionedError(
+        'This Merchant needs a Merchant-owned USDC settlement destination',
       );
     }
     const owner = row.authorityAddress ?? row.providerReference;
     if (!owner) {
       throw new SettlementAccountNotProvisionedError(
         `merchant ${merchantId} has a settlement endpoint with no recorded owner`,
+      );
+    }
+    if (
+      row.provider === 'direct_usdc' &&
+      (await this.solana.getTokenAccountOwner(row.address)) !== owner
+    ) {
+      throw new SettlementAccountNotProvisionedError(
+        'Merchant settlement account ownership could not be verified',
       );
     }
     return { address: row.address, owner, provider: row.provider };

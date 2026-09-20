@@ -47,6 +47,10 @@ export const USDC_MINT_BY_CLUSTER = {
         // Privy — server-side ID token verification.
         PRIVY_APP_ID: Joi.string().required(),
         PRIVY_APP_SECRET: Joi.string().required(),
+        // Separate Merchant app. Missing configuration disables only the portal.
+        MERCHANT_PRIVY_APP_ID: Joi.string().optional().allow(''),
+        MERCHANT_PRIVY_APP_SECRET: Joi.string().optional().allow(''),
+        DEVNET_PAYMENTS_ENABLED: Joi.boolean().default(false),
         // PRIVY_VERIFICATION_KEY is optional: the SDK can fetch it from
         // Privy's JWKS endpoint on demand. Pin it for prod to avoid the
         // round-trip and to make verification offline-deterministic.
@@ -274,6 +278,9 @@ export const USDC_MINT_BY_CLUSTER = {
         // (devnet). Staleness cap: reject creation if no fresh-or-cached
         // quote inside the window rather than misprice.
         FX_PARTNER_QUOTE_URL: Joi.string().uri().optional().allow(''),
+        FX_QUOTE_SOURCE: Joi.string()
+          .valid('partner', 'blockradar')
+          .default('partner'),
         FX_PILOT_STATIC_RATE: Joi.string()
           .pattern(/^\d+(\.\d+)?$/)
           .default('1600.00'),

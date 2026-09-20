@@ -30,7 +30,7 @@ export class KafkaEventConsumer
   private readonly consumers: Consumer[] = [];
   private readonly deadLetterTopic: string;
   private readonly maxAttempts: number;
-  /** Failed deliveries seen by this process, keyed topic:partition:offset. */
+  /** Failed deliveries seen by this process, keyed group:topic:partition:offset. */
   private readonly attempts = new Map<string, number>();
   private producer: Producer | undefined;
 
@@ -68,7 +68,7 @@ export class KafkaEventConsumer
     await consumer.subscribe({ topics, fromBeginning: false });
     await consumer.run({
       eachMessage: async ({ topic, partition, message }) => {
-        const ref = `${topic}:${partition}:${message.offset}`;
+        const ref = `${groupId}:${topic}:${partition}:${message.offset}`;
         const event = this.decode(topic, message);
         if (!event) {
           await this.deadLetter(topic, message, 'unparseable payload');

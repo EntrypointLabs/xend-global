@@ -70,6 +70,24 @@ describe('onRequest', () => {
     );
   });
 
+  it('has the API validate the opener used for a multi-origin embed', async () => {
+    const secondOrigin = 'https://eu.shop.example.com';
+    const fetchMock = stubSummary({ merchantOrigin: secondOrigin });
+    const ref = reference();
+    const res = await onRequest(
+      context(
+        `https://pay.xend.global/?intent=${ref}&opener=${encodeURIComponent(secondOrigin)}`,
+      ),
+    );
+
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      `${API_BASE}/checkout/intents/${ref}?opener=${encodeURIComponent(secondOrigin)}`,
+    );
+    expect(res.headers.get('content-security-policy')).toBe(
+      `frame-ancestors ${secondOrigin}`,
+    );
+  });
+
   it('keeps the static deny when the URL carries no intent', async () => {
     const fetchMock = stubSummary({ merchantOrigin: MERCHANT });
     const res = await onRequest(
@@ -134,14 +152,18 @@ describe('onRequest', () => {
     expect(res.headers.get('x-frame-options')).toBe('DENY');
   });
 
-  it('never reads the merchant origin from the query string', async () => {
-    stubSummary({ merchantOrigin: null });
+  it('never trusts the merchant origin from the query string', async () => {
+    const fetchMock = stubSummary({ merchantOrigin: null });
+    const ref = reference();
     const res = await onRequest(
       context(
-        `https://pay.xend.global/?intent=${reference()}&opener=${encodeURIComponent(
+        `https://pay.xend.global/?intent=${ref}&opener=${encodeURIComponent(
           'https://evil.example.com',
         )}`,
       ),
+    );
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      `${API_BASE}/checkout/intents/${ref}?opener=${encodeURIComponent('https://evil.example.com')}`,
     );
     expect(res.headers.get('content-security-policy')).toBe(
       "frame-ancestors 'none'",
@@ -197,6 +219,39 @@ describe('onRequest', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(second.headers.get('content-security-policy')).toBe(
       first.headers.get('content-security-policy'),
+    );
+  });
+
+  it('caches each allowed opener separately for the same intent', async () => {
+    const firstOrigin = 'https://shop.example.com';
+    const secondOrigin = 'https://eu.shop.example.com';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ merchantOrigin: firstOrigin }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ merchantOrigin: secondOrigin }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    const ref = reference();
+
+    await onRequest(
+      context(
+        `https://pay.xend.global/?intent=${ref}&opener=${encodeURIComponent(firstOrigin)}`,
+      ),
+    );
+    const second = await onRequest(
+      context(
+        `https://pay.xend.global/?intent=${ref}&opener=${encodeURIComponent(secondOrigin)}`,
+      ),
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(second.headers.get('content-security-policy')).toBe(
+      `frame-ancestors ${secondOrigin}`,
     );
   });
 

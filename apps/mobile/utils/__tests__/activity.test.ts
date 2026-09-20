@@ -2,6 +2,7 @@
 import type { AwaitingPayment, TransferRow } from "@/utils/apiClient";
 import {
   arrivalLabel,
+  activityDetailTimestamp,
   awaitingPaymentActivityEntry,
   securityActivityEntry,
   mapAccountEventToActivityEntry,
@@ -24,6 +25,27 @@ const SELF = "SelfWallet1111111111111111111111111111111111";
 const OTHER = "OtherWallet22222222222222222222222222222222";
 const USDC_MINT = "UsdcMint00000000000000000000000000000000000";
 const USDT_MINT = "UsdtMint11111111111111111111111111111111111";
+
+describe("activityDetailTimestamp", () => {
+  it("shows chain confirmation time rather than a delayed indexer's insertion time", () => {
+    expect(
+      activityDetailTimestamp({
+        status: "confirmed",
+        createdAt: "2026-09-19T16:50:09.878Z",
+        confirmedAt: "2026-09-19T15:46:49.000Z",
+      })
+    ).toBe("2026-09-19T15:46:49.000Z");
+  });
+  it("keeps creation time when confirmation is unavailable", () => {
+    expect(
+      activityDetailTimestamp({
+        status: "pending",
+        createdAt: "2026-09-19T15:46:49.000Z",
+        confirmedAt: null,
+      })
+    ).toBe("2026-09-19T15:46:49.000Z");
+  });
+});
 
 function makeRow(overrides: Partial<TransferRow> = {}): TransferRow {
   return {
@@ -670,6 +692,7 @@ describe("awaitingPaymentActivityEntry", () => {
     merchantDisplayName: "Sabi Market",
     displayCurrency: "NGN",
     displayAmountMinor: "4500000",
+    usdcSettlementRaw: "30000000",
     deferredAt: "2026-08-29T10:00:00.000Z",
     expiresAt: "2026-08-29T11:00:00.000Z",
   };

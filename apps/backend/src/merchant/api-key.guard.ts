@@ -5,12 +5,16 @@ import {
   HttpStatus,
   Injectable,
   Logger,
+  Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { devnetExecutionEnabled } from './devnet-execution';
 import { eq } from 'drizzle-orm';
 import type { Request } from 'express';
 import { DbService } from '../db/db.service';
 import { apiKeys, merchants } from '../db/schema';
 import { hashApiKey, LIVE_PREFIX, TEST_PREFIX } from './api-key.util';
+import { paymentDeliveryMode } from '../payment/payment-mode';
 import {
   InvalidApiKeyError,
   KybNotVerifiedError,
@@ -22,6 +26,8 @@ export interface MerchantContext {
   merchantId: string;
   apiKeyId: string;
   mode: 'test' | 'live';
+  executionCluster: string | null;
+  deliveryMode: 'test' | 'live';
 }
 
 export interface MerchantRequest extends Request {
@@ -41,7 +47,10 @@ export interface MerchantRequest extends Request {
 export class ApiKeyGuard implements CanActivate {
   private readonly logger = new Logger(ApiKeyGuard.name);
 
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    @Optional() private readonly config?: ConfigService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<MerchantRequest>();
@@ -63,6 +72,20 @@ export class ApiKeyGuard implements CanActivate {
       if (!keyRow || keyRow.revokedAt) {
         throw new InvalidApiKeyError('api key not found or revoked');
       }
+      const configuredCluster = this.config?.get<string>('SOLANA_CLUSTER');
+      const executionCluster =
+        keyRow.executionCluster ??
+        (keyRow.mode === 'live' ? (configuredCluster ?? null) : null);
+      if (
+        executionCluster &&
+        configuredCluster &&
+        executionCluster !== configuredCluster
+      )
+        throw new InvalidApiKeyError('API key is bound to another network');
+      const devnetExecution =
+        executionCluster === 'devnet' && devnetExecutionEnabled(this.config);
+      if (executionCluster === 'devnet' && !devnetExecution)
+        throw new InvalidApiKeyError('Devnet execution is disabled');
 
       const [merchant] = await this.db.client
         .select()
@@ -75,7 +98,11 @@ export class ApiKeyGuard implements CanActivate {
       if (merchant.status !== 'active') {
         throw new MerchantSuspendedError(`merchant is ${merchant.status}`);
       }
-      if (keyRow.mode === 'live' && merchant.kybStatus !== 'verified') {
+      if (
+        keyRow.mode === 'live' &&
+        merchant.kybStatus !== 'verified' &&
+        !devnetExecution
+      ) {
         throw new KybNotVerifiedError(
           `live keys require a verified KYB (merchant is ${merchant.kybStatus})`,
         );
@@ -85,6 +112,8 @@ export class ApiKeyGuard implements CanActivate {
         merchantId: keyRow.merchantId,
         apiKeyId: keyRow.id,
         mode: keyRow.mode,
+        executionCluster,
+        deliveryMode: paymentDeliveryMode(keyRow.mode, executionCluster),
       };
 
       // Fire-and-forget: last_used_at is telemetry, not correctness. Never

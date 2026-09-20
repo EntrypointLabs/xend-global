@@ -764,3 +764,40 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
     expect(calls.filter((c) => c.kind === 'execute')).toHaveLength(3);
   });
 });
+
+describe('Payment replay behind an advanced bookmark', () => {
+  it('rewinds to the recorded signature slot and includes intervening transfers', async () => {
+    const { db } = makeFakeDb({
+      bookmark: { walletAddress: 'vault', lastIndexedSlot: 900n },
+    });
+    const stream = jest.fn().mockImplementation(async function* () {
+      yield { signature: 'payment', slot: 100n };
+    });
+    const solana = makeFakeSolana({
+      streamConfirmedTransfers: stream,
+      getSignatureStatuses: jest.fn().mockResolvedValue([
+        {
+          signature: 'payment',
+          slot: 100n,
+          confirmationStatus: 'confirmed',
+          err: null,
+        },
+      ]),
+    });
+    const tailer = {
+      upsertConfirmedTransfer: jest.fn().mockResolvedValue('SEND'),
+    };
+    const service = new ReconcilerService(
+      db,
+      solana,
+      tailer as unknown as TailerService,
+    );
+    await service.replayPayment('account', 'vault', 'payment');
+    expect(stream).toHaveBeenCalledWith('vault', 100n);
+    expect(tailer.upsertConfirmedTransfer).toHaveBeenCalledWith(
+      expect.objectContaining({ signature: 'payment' }),
+      'account',
+      'vault',
+    );
+  });
+});

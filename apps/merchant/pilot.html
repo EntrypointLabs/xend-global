@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Chowderr devnet Payment pilot</title>
+<h1>Chowderr devnet Payment pilot</h1>
+<p>Test USDC only. No bank conversion or payouts.</p>
+<p>Test presentation: <a href="/pilot">Popup</a> | <a href="/pilot?presentation=redirect">Full-page redirect</a></p>
+<label>Purchase <select id="order"><option value="usd-one">USD 1.00</option><option value="ngn-small">NGN 1,000.00</option><option value="insufficient">USD 10.00: insufficient Balance test</option></select></label>
+<div id="pay"></div>
+<pre id="result">Ready. Checkout will show the quoted USDC debit before approval.</pre>
+<script src="/pilot-sdk.js"></script>
+<script>
+const output = document.querySelector('#result');
+let idempotencyKey = crypto.randomUUID();
+document.querySelector('#order').addEventListener('change', () => { idempotencyKey = crypto.randomUUID(); });
+XendCheckout.mountXendButton({
+  checkoutOrigin: 'https://xend.global',
+  apiBase: location.origin,
+  presentation: new URLSearchParams(location.search).get('presentation') === 'redirect' ? 'redirect' : 'popup',
+  mount: document.querySelector('#pay'),
+  createIntent: async () => {
+    const response = await fetch('/pilot/intents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: document.querySelector('#order').value, idempotencyKey }) });
+    const result = await response.json();
+    if (!response.ok) { output.textContent = result.message || JSON.stringify(result); throw new Error(output.textContent); }
+    output.textContent = 'Payment reference: ' + result.id + '\nAwaiting Consumer approval.';
+    return { reference: result.id };
+  },
+  onResult: result => { output.textContent = 'Browser result (verify on-chain and server-side):\n' + JSON.stringify(result, null, 2); },
+  onUnresolved: result => { output.textContent = 'Unresolved. Do not treat this as paid:\n' + JSON.stringify(result, null, 2); },
+});
+</script>
+</html>

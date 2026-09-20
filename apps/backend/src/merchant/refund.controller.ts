@@ -8,7 +8,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { SettlementProviderUnavailableError } from '../settlement/settlement.errors';
+import {
+  RefundNotSupportedError as SettlementRefundNotSupportedError,
+  SettlementProviderUnavailableError,
+} from '../settlement/settlement.errors';
 import { InternalGuard } from './internal.guard';
 import { RefundService } from './refund.service';
 import {
@@ -74,6 +77,7 @@ export class RefundController {
     }
     if (
       err instanceof RefundNotSupportedError ||
+      err instanceof SettlementRefundNotSupportedError ||
       err instanceof PaymentNotRefundableError ||
       err instanceof SettlementProviderUnavailableError ||
       err instanceof IdempotencyKeyReuseError

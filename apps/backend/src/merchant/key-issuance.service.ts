@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { devnetExecutionEnabled } from './devnet-execution';
 import { and, eq, isNull } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { apiKeys, merchants, settlementAccounts } from '../db/schema';
@@ -6,6 +8,7 @@ import { MerchantNotFoundError } from '../payment/payment.errors';
 import { ApiKeyNotFoundError } from './merchant.errors';
 import { generateApiKey } from './api-key.util';
 import {
+  ExecutionClusterDisabledError,
   KybNotVerifiedError,
   SettlementDestinationMissingError,
 } from './merchant.errors';
@@ -65,11 +68,14 @@ export interface RevokedKey {
  */
 @Injectable()
 export class KeyIssuanceService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    @Optional() private readonly config?: ConfigService,
+  ) {}
 
   async issueKey(
     merchantId: string,
-    mode: 'test' | 'live',
+    mode: 'test' | 'live' | 'devnet',
   ): Promise<{ raw: string; fingerprint: string }> {
     const [merchant] = await this.db.client
       .select()
@@ -80,22 +86,47 @@ export class KeyIssuanceService {
       throw new MerchantNotFoundError(`merchant ${merchantId} not found`);
     }
 
-    if (mode === 'live') {
+    const configuredCluster =
+      this.config?.get<string>('SOLANA_CLUSTER') ?? 'mainnet';
+    if (mode === 'live' && configuredCluster === 'devnet') {
+      throw new ExecutionClusterDisabledError(
+        'live keys cannot be issued on devnet; request a devnet execution key',
+      );
+    }
+    if (mode === 'devnet' && !devnetExecutionEnabled(this.config))
+      throw new KybNotVerifiedError('Devnet execution is disabled');
+    if (mode === 'live' || mode === 'devnet') {
+      const executionCluster = mode === 'devnet' ? 'devnet' : configuredCluster;
       const [account] = await this.db.client
         .select()
         .from(settlementAccounts)
-        .where(eq(settlementAccounts.merchantId, merchantId))
+        .where(
+          and(
+            eq(settlementAccounts.merchantId, merchantId),
+            eq(settlementAccounts.executionCluster, executionCluster),
+          ),
+        )
         .limit(1);
-      assertLiveKeyEligible(merchant, account);
+      if (mode === 'live') assertLiveKeyEligible(merchant, account);
+      else if (!account?.providerReference)
+        throw new SettlementDestinationMissingError(
+          'A confirmed devnet destination is required',
+        );
     }
 
-    const key = generateApiKey(mode);
+    const key = generateApiKey(mode === 'devnet' ? 'live' : mode);
     await this.db.client.insert(apiKeys).values({
       merchantId,
       keyHash: key.keyHash,
       keyPrefix: key.keyPrefix,
       fingerprint: key.fingerprint,
       mode: key.mode,
+      executionCluster:
+        mode === 'devnet'
+          ? 'devnet'
+          : mode === 'live'
+            ? configuredCluster
+            : null,
     });
 
     return { raw: key.raw, fingerprint: key.fingerprint };

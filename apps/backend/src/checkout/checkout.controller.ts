@@ -18,6 +18,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { DbService } from '../db/db.service';
 import { merchants, paymentIntents } from '../db/schema';
 import { PaymentIntentService } from '../payment/payment-intent.service';
+import { isLivePayment } from '../payment/payment-mode';
 import {
   AttemptInFlightError,
   IntentExpiredError,
@@ -42,7 +43,10 @@ import { SettlementConfirmationService } from '../settlement/settlement-confirma
 import { SettlementService } from '../settlement/settlement.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { formatDisplayMoney } from '../fx/currency';
-import { SettlementAccountNotProvisionedError } from '../settlement/settlement.errors';
+import {
+  FiatSettlementDisabledError,
+  SettlementAccountNotProvisionedError,
+} from '../settlement/settlement.errors';
 import { signReturnUrl } from './return-url';
 import {
   ApprovalRequiredError,
@@ -140,7 +144,7 @@ export class CheckoutController {
         throw new IntentNotFoundError(`intent ${reference} not found`);
       }
 
-      const merchantOrigin = await this.resolveMerchantOrigin(
+      const merchantOrigin = this.resolveMerchantOrigin(
         intent,
         merchant,
         opener,
@@ -157,10 +161,11 @@ export class CheckoutController {
         merchantDisplayName: merchant.displayName,
         displayCurrency: intent.displayCurrency,
         displayAmountMinor: intent.displayAmountMinor,
+        usdcSettlementRaw: intent.usdcSettlementRaw,
         merchantOrigin,
         sessionRecognized,
         expiresAt: intent.expiresAt.toISOString(),
-        livemode: intent.mode === 'live',
+        livemode: isLivePayment(intent.mode, intent.executionCluster),
       };
 
       // Redirect-mode cancel happens BEFORE any authorize call, so the signed
@@ -232,6 +237,15 @@ export class CheckoutController {
         consumerId = session.consumerId;
       }
 
+      // A second tab or a retried response must not rebuild a completed Spend.
+      // Authenticate first and bind this replay to the original Consumer.
+      if (intent.status === 'succeeded' || intent.status === 'failed') {
+        if (intent.consumerId !== consumerId) {
+          throw new IntentNotFoundError(reference);
+        }
+        return await this.terminalResponse(reference);
+      }
+
       if (simulated) {
         await this.auth.authorizeSimulated({ intentId: reference, consumerId });
         if (body.providerToken) {
@@ -291,6 +305,25 @@ export class CheckoutController {
         );
       }
 
+      // Validate the wire network before authorization consumes capacity or
+      // issues a Session. Configuration calls mainnet `mainnet`; Solana clients
+      // call the same network `mainnet-beta`.
+      const executionCluster =
+        intent.executionCluster === 'mainnet'
+          ? 'mainnet-beta'
+          : intent.executionCluster;
+      if (
+        built &&
+        executionCluster !== 'devnet' &&
+        executionCluster !== 'testnet' &&
+        executionCluster !== 'mainnet-beta'
+      ) {
+        throw new HttpException(
+          'Unsupported Payment execution network',
+          HttpStatus.CONFLICT,
+        );
+      }
+
       if (body.providerToken) {
         // First-payment path: authorize, issue a Session, and set the fresh raw
         // token as the HttpOnly cookie (the one place the raw token crosses to
@@ -324,6 +357,10 @@ export class CheckoutController {
           status: 'needs_signature',
           unsignedTxBase64: built.unsignedTxBase64,
           signerAddress: built.signerAddress,
+          executionCluster: executionCluster as
+            | 'devnet'
+            | 'testnet'
+            | 'mainnet-beta',
         });
       }
 
@@ -350,10 +387,32 @@ export class CheckoutController {
     @Body(new ZodValidationPipe(SettleBodySchema)) body: SettleBody,
   ): Promise<SettleResponse> {
     try {
-      await this.settlement.submitSettlement(
-        body.reference,
-        body.signedTxBase64,
-      );
+      const existing = await this.intents.findById(body.reference);
+      if (existing.status === 'succeeded' || existing.status === 'failed') {
+        await this.settlement.verifySettlementProof(
+          body.reference,
+          body.signedTxBase64,
+        );
+        return await this.terminalResponse(body.reference);
+      }
+      try {
+        await this.settlement.submitSettlement(
+          body.reference,
+          body.signedTxBase64,
+        );
+      } catch (error) {
+        // Confirmation can win between the initial read and attempt lookup.
+        // Return only a persisted terminal result, never infer one from errors.
+        const current = await this.intents.findById(body.reference);
+        if (current.status === 'succeeded' || current.status === 'failed') {
+          await this.settlement.verifySettlementProof(
+            body.reference,
+            body.signedTxBase64,
+          );
+          return await this.terminalResponse(body.reference);
+        }
+        throw error;
+      }
       return await this.terminalResponse(body.reference);
     } catch (err) {
       this.mapServiceError(err);
@@ -388,23 +447,16 @@ export class CheckoutController {
   /**
    * Where the popup posts the result. The page that opened the checkout names
    * itself on the launch URL; it is honoured only if it is one of the
-   * Merchant's registered origins, and then remembered on the intent so a
-   * later load (the redirect return, a reload) still answers with it. With
+   * Merchant's registered origins. GET does not persist the caller's choice. With
    * nothing usable the first registered origin stands, as it always has.
    */
-  private async resolveMerchantOrigin(
+  private resolveMerchantOrigin(
     intent: IntentRow,
     merchant: MerchantRow,
     requested: string | undefined,
-  ): Promise<string | null> {
+  ): string | null {
     const allowed = merchant.allowedOrigins ?? [];
     if (requested && allowed.includes(requested)) {
-      if (intent.openerOrigin !== requested) {
-        await this.db.client
-          .update(paymentIntents)
-          .set({ openerOrigin: requested, updatedAt: new Date() })
-          .where(eq(paymentIntents.id, intent.id));
-      }
       return requested;
     }
     if (requested) {
@@ -500,7 +552,8 @@ export class CheckoutController {
       err instanceof SessionVelocityExceededError ||
       err instanceof InsufficientBalanceError ||
       err instanceof ApprovalRequiredError ||
-      err instanceof SettlementAccountNotProvisionedError
+      err instanceof SettlementAccountNotProvisionedError ||
+      err instanceof FiatSettlementDisabledError
     ) {
       throw new HttpException(
         { code: err.code, message: err.message },

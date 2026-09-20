@@ -36,6 +36,7 @@ function idemRow(over: Partial<IdemRow> = {}): IdemRow {
   return {
     id: 'ik1',
     merchantId: 'm1',
+    executionCluster: 'legacy',
     idempotencyKey: 'idem-1',
     requestHash: 'hash-a',
     responseStatus: 201,
@@ -90,6 +91,43 @@ describe('IdempotencyService.run', () => {
       requestHash: 'hash-a',
       responseStatus: 201,
     });
+  });
+
+  it('stores the execution cluster as part of the idempotency scope', async () => {
+    const { db, inserts } = makeFakeDb({ selects: [[]] });
+    const service = new IdempotencyService(db);
+
+    await service.run(
+      'm1',
+      'idem-1',
+      'hash-a',
+      () => Promise.resolve({ status: 201, body: { id: 'pi_devnet' } }),
+      'devnet',
+    );
+
+    expect(inserts[0]).toMatchObject({
+      merchantId: 'm1',
+      executionCluster: 'devnet',
+      idempotencyKey: 'idem-1',
+    });
+  });
+
+  it('falls back to a legacy snapshot before producing on a scoped cluster', async () => {
+    const legacy = idemRow();
+    const { db } = makeFakeDb({ selects: [[], [legacy]] });
+    const service = new IdempotencyService(db);
+    const produce = jest.fn();
+
+    const result = await service.run(
+      'm1',
+      'idem-1',
+      'hash-a',
+      produce,
+      'devnet',
+    );
+
+    expect(produce).not.toHaveBeenCalled();
+    expect(result.body).toEqual({ id: 'pi_stored' });
   });
 
   it('returns the stored winner when the insert loses a 23505 race', async () => {

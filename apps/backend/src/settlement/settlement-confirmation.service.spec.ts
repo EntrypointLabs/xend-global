@@ -31,11 +31,12 @@ const PAYMENT_ROW = {
   createdAt: new Date(),
 };
 
-function makeConfig(budgetMs = 15): ConfigService {
+function makeConfig(budgetMs = 15, cluster = 'devnet'): ConfigService {
   return {
-    getOrThrow: (key: string): number => {
+    getOrThrow: (key: string): number | string => {
       if (key === 'SETTLEMENT_CONFIRM_POLL_INTERVAL_MS') return 1;
       if (key === 'SETTLEMENT_CONFIRM_BUDGET_MS') return budgetMs;
+      if (key === 'SOLANA_CLUSTER') return cluster;
       throw new Error(`missing config ${key}`);
     },
   } as unknown as ConfigService;
@@ -111,7 +112,10 @@ function makeExecDb(cfg: {
     }
     return Promise.resolve({ rows: [], rowCount: 0 });
   });
-  return { client: { execute } } as unknown as DbService;
+  return {
+    client: { execute },
+    withAdvisoryLock: <T>(_key: string, fn: () => Promise<T>) => fn(),
+  } as unknown as DbService;
 }
 
 function makeProvider(completion: SettlementCompletion): {
@@ -424,6 +428,27 @@ describe('SettlementConfirmationService', () => {
   });
 
   describe('reconcileSettling (the sweep)', () => {
+    it('scopes every background sweep query to the deployment cluster', async () => {
+      const { provider } = makeProvider({ status: 'complete' });
+      const { intents } = makeIntents();
+      const { publisher } = makePublisher();
+      const captured: string[] = [];
+      const service = makeService({
+        db: makeExecDb({ captured }),
+        intents,
+        provider,
+        publisher,
+      });
+
+      await service.reconcileSettling();
+
+      expect(captured).toHaveLength(3);
+      for (const query of captured) {
+        expect(query).toContain('execution_cluster');
+        expect(query).toContain('devnet');
+      }
+    });
+
     it('settling leg force-fails a null-status attempt past blockhash expiry with BLOCKHASH_EXPIRED', async () => {
       const { provider } = makeProvider({ status: 'complete' });
       const { intents } = makeIntents();
@@ -672,41 +697,44 @@ describe('SettlementConfirmationService', () => {
       ).toBeUndefined();
     });
 
-    it('reaps a pinned attempt with a confirmed inbound of the exact amount as ATTEMPT_ORPHAN_SUSPECTED', async () => {
-      const { provider } = makeProvider({ status: 'complete' });
-      const { intents, transition } = makeIntents();
-      const { publisher, publish } = makePublisher();
-      const captured: string[] = [];
-      const service = makeService({
-        db: makeExecDb({
-          authorized: [
-            {
-              id: 'att_1',
-              intentId: 'pi_1',
-              messageBase64: 'pinned',
-              merchantId: 'm_1',
-              usdcSettlementRaw: '1000000',
-            },
-          ],
-          orphanHit: true,
-          captured,
-        }),
-        intents,
-        provider,
-        publisher,
-      });
+    it.each([true, false])(
+      'quarantines pinned attempts regardless of indexed inbound evidence (%s)',
+      async (orphanHit) => {
+        const { provider } = makeProvider({ status: 'complete' });
+        const { intents, transition } = makeIntents();
+        const { publisher, publish } = makePublisher();
+        const captured: string[] = [];
+        const service = makeService({
+          db: makeExecDb({
+            authorized: [
+              {
+                id: 'att_1',
+                intentId: 'pi_1',
+                messageBase64: 'pinned',
+                merchantId: 'm_1',
+                usdcSettlementRaw: '1000000',
+              },
+            ],
+            orphanHit,
+            captured,
+          }),
+          intents,
+          provider,
+          publisher,
+        });
 
-      await service.reconcileSettling();
+        await service.reconcileSettling();
 
-      const reapUpdate = captured.find((s) =>
-        s.includes('UPDATE payment_attempts'),
-      );
-      expect(reapUpdate).toContain('ATTEMPT_ORPHAN_SUSPECTED');
-      // Money may have landed: the intent stays authorized for ops. No
-      // auto-fail transition, no merchant-facing failure event.
-      expect(transition).not.toHaveBeenCalled();
-      expect(publish).not.toHaveBeenCalled();
-    });
+        const reapUpdate = captured.find((s) =>
+          s.includes('UPDATE payment_attempts'),
+        );
+        expect(reapUpdate).toContain('ATTEMPT_ORPHAN_SUSPECTED');
+        // Money may have landed: the intent stays authorized for ops. No
+        // auto-fail transition, no merchant-facing failure event.
+        expect(transition).not.toHaveBeenCalled();
+        expect(publish).not.toHaveBeenCalled();
+      },
+    );
   });
 });
 

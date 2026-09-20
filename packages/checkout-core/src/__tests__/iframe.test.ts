@@ -91,6 +91,22 @@ function postReady(nonce: string, origin = ORIGIN): void {
   );
 }
 
+function postUnresolved(nonce: string, reference: string): void {
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      origin: ORIGIN,
+      data: {
+        xend: "checkout",
+        v: 1,
+        nonce,
+        reference,
+        type: "xend.checkout.unresolved",
+        reason: "confirmation_timeout",
+      },
+    }),
+  );
+}
+
 function stubLocationAssign(): ReturnType<typeof vi.fn> {
   const assign = vi.fn();
   Object.defineProperty(window, "location", {
@@ -211,6 +227,37 @@ describe("mountXendButton inline ceremony", () => {
       }),
     );
     expect(shadow().textContent).toContain("Done");
+  });
+
+  it("closes the frame and restores the button when confirmation times out", async () => {
+    vi.spyOn(window, "open");
+    stubSummary();
+    const onUnresolved = vi.fn();
+
+    handle = mountXendButton({
+      mount: container(),
+      checkoutOrigin: ORIGIN,
+      apiBase: API,
+      createIntent: () => Promise.resolve({ reference: "pi_frame_timeout" }),
+      onResult: () => {},
+      onUnresolved,
+    });
+    const payButton = document.querySelector<HTMLButtonElement>("button")!;
+    payButton.click();
+    (await armedConfirm()).click();
+
+    const nonce = new URL(frame()!.src).searchParams.get("nonce")!;
+    postUnresolved(nonce, "pi_frame_timeout");
+
+    expect(onUnresolved).toHaveBeenCalledWith({
+      reference: "pi_frame_timeout",
+      status: "unresolved",
+      reason: "confirmation_timeout",
+    });
+    expect(payButton.disabled).toBe(false);
+    await vi.waitFor(() =>
+      expect(document.querySelector("[data-xend-checkout]")).toBeNull(),
+    );
   });
 
   it("ignores a forged result posted from another origin", async () => {
@@ -452,7 +499,7 @@ describe("mountXendButton inline ceremony", () => {
     expect(String(assign.mock.calls[0]![0])).toContain("mode=redirect");
   });
 
-  it("cancels once and drops the listener when the sheet is dismissed mid-ceremony", async () => {
+  it("preserves the frame result when the backdrop is clicked mid-ceremony", async () => {
     vi.spyOn(window, "open");
     stubSummary();
     const onResult = vi.fn();
@@ -470,13 +517,13 @@ describe("mountXendButton inline ceremony", () => {
 
     shadow().querySelector<HTMLElement>("[data-close]")!.click();
 
-    expect(onResult).toHaveBeenCalledTimes(1);
-    expect(onResult).toHaveBeenCalledWith({
-      reference: "pi_frame_cancel",
-      status: "canceled",
-    });
+    expect(onResult).not.toHaveBeenCalled();
 
     postFromFrame(nonce, "pi_frame_cancel");
     expect(onResult).toHaveBeenCalledTimes(1);
+    expect(onResult).toHaveBeenCalledWith({
+      reference: "pi_frame_cancel",
+      status: "succeeded",
+    });
   });
 });

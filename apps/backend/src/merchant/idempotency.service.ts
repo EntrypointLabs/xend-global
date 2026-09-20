@@ -18,8 +18,9 @@ function pgErrorCode(err: unknown): string | undefined {
 /**
  * The general merchant-write idempotency layer (Stripe semantics). With no
  * key, the write runs unguarded. With a key, a replay of the same request
- * body returns the byte-identical stored response and never re-runs the
- * write; a reuse of the same key with a different body is a 409. The
+ * body in the same execution cluster returns the byte-identical stored
+ * response and never re-runs the write; a reuse of the same key with a
+ * different body is a 409. The
  * per-intent unique index from Phase 2 stays as the DB backstop.
  */
 @Injectable()
@@ -31,10 +32,15 @@ export class IdempotencyService {
     idempotencyKey: string | undefined,
     requestHash: string,
     produce: () => Promise<IdempotentResult<T>>,
+    executionCluster = 'legacy',
   ): Promise<IdempotentResult<T>> {
     if (!idempotencyKey) return produce();
 
-    const existing = await this.find(merchantId, idempotencyKey);
+    const existing = await this.find(
+      merchantId,
+      executionCluster,
+      idempotencyKey,
+    );
     if (existing) {
       return this.assertMatchAndReturn<T>(existing, requestHash);
     }
@@ -43,6 +49,7 @@ export class IdempotencyService {
     try {
       await this.db.client.insert(idempotencyKeys).values({
         merchantId,
+        executionCluster,
         idempotencyKey,
         requestHash,
         responseStatus: result.status,
@@ -50,10 +57,14 @@ export class IdempotencyService {
       });
       return result;
     } catch (err) {
-      // Lost the race on the (merchant, key) unique index: return the stored
-      // winner so concurrent replays converge on one response.
+      // Lost the race on the (merchant, cluster, key) unique index: return the
+      // stored winner so concurrent replays converge on one response.
       if (pgErrorCode(err) === '23505') {
-        const winner = await this.find(merchantId, idempotencyKey);
+        const winner = await this.find(
+          merchantId,
+          executionCluster,
+          idempotencyKey,
+        );
         if (winner) return this.assertMatchAndReturn<T>(winner, requestHash);
       }
       throw err;
@@ -75,13 +86,36 @@ export class IdempotencyService {
     };
   }
 
-  private async find(merchantId: string, idempotencyKey: string) {
+  private async find(
+    merchantId: string,
+    executionCluster: string,
+    idempotencyKey: string,
+  ) {
+    const exact = await this.findExact(
+      merchantId,
+      executionCluster,
+      idempotencyKey,
+    );
+    if (exact || executionCluster === 'legacy') return exact;
+
+    // Rows written before cluster scoping were migrated to `legacy`. Consult
+    // them before producing so deploys cannot turn an old replay into a second
+    // Payment (or bypass the different-body 409).
+    return this.findExact(merchantId, 'legacy', idempotencyKey);
+  }
+
+  private async findExact(
+    merchantId: string,
+    executionCluster: string,
+    idempotencyKey: string,
+  ) {
     const [row] = await this.db.client
       .select()
       .from(idempotencyKeys)
       .where(
         and(
           eq(idempotencyKeys.merchantId, merchantId),
+          eq(idempotencyKeys.executionCluster, executionCluster),
           eq(idempotencyKeys.idempotencyKey, idempotencyKey),
         ),
       )

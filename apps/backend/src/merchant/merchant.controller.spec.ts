@@ -6,6 +6,7 @@ import type { PaymentIntentService } from '../payment/payment-intent.service';
 import type { MerchantRequest } from './api-key.guard';
 import type { IdempotencyService } from './idempotency.service';
 import { MerchantController } from './merchant.controller';
+import { CreateIntentBodySchema } from './dtos';
 
 type IntentRow = typeof paymentIntents.$inferSelect;
 
@@ -16,6 +17,8 @@ function intentRow(over: Partial<IntentRow> = {}): IntentRow {
     consumerId: null,
     status: 'created',
     usdcSettlementRaw: '25000000',
+    pricingCurrency: null,
+    executionCluster: 'devnet',
     displayCurrency: 'USD',
     displayAmountMinor: '2500',
     fxRate: null,
@@ -69,6 +72,7 @@ function makeController(created: IntentRow) {
     get: () => undefined,
     getOrThrow: (k: string) => {
       if (k === 'FX_RATE_DECIMALS') return 2;
+      if (k === 'SOLANA_CLUSTER') return 'devnet';
       throw new Error(`unexpected key ${k}`);
     },
   } as unknown as ConfigService;
@@ -86,14 +90,80 @@ function makeController(created: IntentRow) {
     db,
     fx,
   );
-  return { controller, intents, updates };
+  return { controller, intents, updates, fx };
 }
 
 const req = {
-  merchant: { merchantId: 'm1', apiKeyId: 'ak1', mode: 'test' },
+  merchant: {
+    merchantId: 'm1',
+    apiKeyId: 'ak1',
+    mode: 'test',
+    executionCluster: 'devnet',
+    deliveryMode: 'test',
+  },
 } as unknown as MerchantRequest;
 
 describe('MerchantController.createIntent', () => {
+  it('preserves the observed Blockradar rate precision through NGN calculation', async () => {
+    const { controller, intents, fx } = makeController(
+      intentRow({ displayCurrency: 'NGN' }),
+    );
+    (fx.getQuote as jest.Mock).mockResolvedValue({
+      ngnPerUsdc: '1325.2060785171939',
+      source: 'blockradar-reference',
+      quotedAt: new Date('2026-09-15T09:44:07Z'),
+    });
+    await controller.createIntent(req, { currency: 'NGN', amount: '800000' });
+    expect(intents.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fxRate: '1325.2060785171939',
+        fxSource: 'blockradar-reference',
+        usdcSettlementRaw: '6036797',
+      }),
+    );
+  });
+  it('accepts USD cents and preserves the denomination on subsequent reads', async () => {
+    const body = CreateIntentBodySchema.parse({
+      currency: 'USD',
+      amount: '2500',
+    });
+    const { controller, intents } = makeController(
+      intentRow({ pricingCurrency: 'USD' }),
+    );
+    const out = await controller.createIntent(req, body, 'usd-order');
+    expect(intents.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pricingCurrency: 'USD',
+        displayCurrency: 'USD',
+        displayAmountMinor: '2500',
+        usdcSettlementRaw: '25000000',
+        idempotencyKey: 'usd-order',
+      }),
+    );
+    expect(out).toMatchObject({
+      currency: 'USD',
+      amount: '2500',
+      usdc_settlement_raw: '25000000',
+    });
+    expect(await controller.getIntent(req, 'pi_1')).toMatchObject({
+      currency: 'USD',
+      amount: '2500',
+    });
+  });
+
+  it('converts a single USD cent exactly without changing USDC raw-unit semantics', async () => {
+    const { controller, intents } = makeController(
+      intentRow({
+        pricingCurrency: 'USD',
+        displayAmountMinor: '1',
+        usdcSettlementRaw: '10000',
+      }),
+    );
+    await controller.createIntent(req, { currency: 'USD', amount: '1' });
+    expect(intents.create).toHaveBeenCalledWith(
+      expect.objectContaining({ usdcSettlementRaw: '10000' }),
+    );
+  });
   it('echoes a USDC request in USDC raw units, not the dollars shown to the shopper', async () => {
     const { controller } = makeController(intentRow());
     const out = await controller.createIntent(req, {
@@ -104,6 +174,45 @@ describe('MerchantController.createIntent', () => {
     expect(out.amount).toBe('25000000');
     expect(out.usdc_settlement_raw).toBe('25000000');
     expect(out.metadata).toBeNull();
+  });
+
+  it('reports real devnet execution as non-live', async () => {
+    const { controller } = makeController(
+      intentRow({ mode: 'live', executionCluster: 'devnet' }),
+    );
+    const out = await controller.createIntent(
+      {
+        merchant: {
+          ...req.merchant,
+          mode: 'live',
+          executionCluster: 'devnet',
+        },
+      } as MerchantRequest,
+      { amount: '25000000', currency: 'USDC' },
+    );
+    expect(out.livemode).toBe(false);
+  });
+
+  it('keeps legacy terminal intents readable when their cluster is null', async () => {
+    const { controller } = makeController(
+      intentRow({
+        status: 'succeeded',
+        mode: 'live',
+        executionCluster: null,
+      }),
+    );
+    await expect(
+      controller.getIntent(
+        {
+          merchant: {
+            ...req.merchant,
+            mode: 'live',
+            executionCluster: 'mainnet',
+          },
+        } as MerchantRequest,
+        'pi_1',
+      ),
+    ).resolves.toMatchObject({ id: 'pi_1', status: 'succeeded' });
   });
 
   it('echoes an NGN request in kobo', async () => {

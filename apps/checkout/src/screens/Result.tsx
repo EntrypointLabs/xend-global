@@ -1,4 +1,5 @@
 import type { CheckoutStatus } from '@xend/checkout-protocol';
+import { StatusSheet } from './StatusSheet';
 
 interface ResultProps {
   status: CheckoutStatus;
@@ -47,8 +48,9 @@ function copyFor(
 } {
   if (pending) {
     return {
-      title: 'Payment is processing',
-      detail: 'Your receipt is on its way.',
+      title: 'Waiting for confirmation',
+      detail:
+        'Your Payment is still being confirmed. Check Activity in Xend before trying again.',
     };
   }
   switch (status) {
@@ -90,12 +92,16 @@ export function Result({
   const detail = severed ? 'You can head back to the store.' : base.detail;
 
   return (
-    <div className="bg-brand-black flex h-full flex-col items-center justify-center px-8 text-center">
-      {isSuccess ? <SuccessCheck /> : <NeutralDot />}
-      <h1 className="text-brand-ink mt-6 text-xl font-semibold tracking-tight">
-        {base.title}
-      </h1>
-      <p className="text-brand-muted mt-2 text-sm leading-relaxed">{detail}</p>
-    </div>
+    <StatusSheet>
+      <div className="payment-result" role="status" aria-live="polite">
+        {isSuccess ? <SuccessCheck /> : <NeutralDot />}
+        <h1 className="text-brand-ink mt-6 text-xl font-semibold tracking-tight">
+          {base.title}
+        </h1>
+        <p className="text-brand-muted mt-2 text-sm leading-relaxed">
+          {detail}
+        </p>
+      </div>
+    </StatusSheet>
   );
 }

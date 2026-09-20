@@ -61,6 +61,7 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /transfers/prepare',
   'POST /transfers/submit',
   'GET /payments/pending',
+  'GET /payments/pending/:reference/status',
   'POST /payments/pending/:reference/prepare',
   'POST /payments/pending/:reference/submit',
   'GET /account/sweep',
@@ -109,6 +110,14 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /checkout/settle',
   'POST /v1/payment_intents',
   'GET /v1/payment_intents/:id',
+  'GET /merchant-portal/me',
+  'POST /merchant-portal/register',
+  // Profile writes require the separate Merchant provider identity, not a
+  // Consumer entry token obtained through email verification.
+  'POST /merchant-portal/profile',
+  'POST /merchant-portal/keys/:id/revoke',
+  'POST /merchant-portal/destination',
+  'POST /merchant-portal/keys',
   'POST /internal/refunds',
   'POST /internal/webhook_endpoints',
   'GET /internal/merchants/:merchantId/webhook_endpoints',

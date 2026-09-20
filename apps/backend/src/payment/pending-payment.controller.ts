@@ -22,6 +22,10 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { DbService } from '../db/db.service';
 import { merchants } from '../db/schema';
 import { SettlementService } from '../settlement/settlement.service';
+import {
+  FiatSettlementDisabledError,
+  SettlementAccountNotProvisionedError,
+} from '../settlement/settlement.errors';
 import { PaymentIntentService } from './payment-intent.service';
 import {
   AttemptInFlightError,
@@ -42,6 +46,7 @@ export interface PendingPaymentView {
   merchantDisplayName: string;
   displayCurrency: string;
   displayAmountMinor: string;
+  usdcSettlementRaw: string;
   /** When Checkout handed this over, which is when the Consumer was asked. */
   deferredAt: string;
   expiresAt: string;
@@ -87,6 +92,7 @@ export class PendingPaymentController {
           merchantDisplayName: merchant?.displayName ?? 'Merchant',
           displayCurrency: intent.displayCurrency,
           displayAmountMinor: intent.displayAmountMinor,
+          usdcSettlementRaw: intent.usdcSettlementRaw,
           deferredAt: (
             intent.approvalDeferredAt ?? intent.createdAt
           ).toISOString(),
@@ -123,6 +129,20 @@ export class PendingPaymentController {
         unsignedTxBase64: built.unsignedTxBase64,
         needsApprovalSignature: built.needsApprovalSignature,
       };
+    } catch (err) {
+      this.mapServiceError(err);
+    }
+  }
+
+  @Get(':reference/status')
+  async status(
+    @Req() req: AuthenticatedRequest,
+    @Param('reference') reference: string,
+  ): Promise<{ status: string }> {
+    try {
+      await this.assertOwned(req.user.userId, reference);
+      const intent = await this.intents.findById(reference);
+      return { status: intent.status };
     } catch (err) {
       this.mapServiceError(err);
     }
@@ -175,7 +195,9 @@ export class PendingPaymentController {
       err instanceof IntentStateConflictError ||
       err instanceof AttemptInFlightError ||
       err instanceof CapacityExceededError ||
-      err instanceof InsufficientBalanceError
+      err instanceof InsufficientBalanceError ||
+      err instanceof FiatSettlementDisabledError ||
+      err instanceof SettlementAccountNotProvisionedError
     ) {
       throw new HttpException(
         { code: err.code, message: err.message },

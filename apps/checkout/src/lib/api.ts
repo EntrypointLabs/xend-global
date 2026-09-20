@@ -54,6 +54,7 @@ export interface IntentView {
   /** ISO 4217, whatever the Merchant priced in. */
   displayCurrency: string;
   displayAmountMinor: string;
+  usdcSettlementRaw: string;
   merchantOrigin: string;
   sessionRecognized: boolean;
   expiresAt: string;
@@ -96,6 +97,7 @@ export type AuthorizeResult = (
       unsignedTxBase64: string;
       /** Which of the Consumer's keys the Spend was compiled for. */
       signerAddress: string;
+      executionCluster: 'devnet' | 'testnet' | 'mainnet-beta';
     }
   | TerminalResult
 ) & {
@@ -106,6 +108,11 @@ export type AuthorizeResult = (
 export interface SettleInput {
   reference: string;
   signedTxBase64: string;
+}
+
+export interface SettlementPollingOptions {
+  signal?: AbortSignal;
+  pollIntervalMs?: number;
 }
 
 export const NON_PAYABLE_STATUSES: ReadonlySet<IntentStatus> = new Set([
@@ -158,6 +165,7 @@ function fixtureIntent(reference: string): IntentView {
     merchantDisplayName: 'Sabi Market',
     displayCurrency: 'NGN',
     displayAmountMinor: '4500000',
+    usdcSettlementRaw: '30000000',
     merchantOrigin: window.location.origin,
     // Both fixture states stay reachable: `?recognized=1` demos the one-tap
     // return visit, without it the full passkey ceremony shows.
@@ -223,10 +231,60 @@ export async function authorize(
 }
 
 /** Hands the signed Spend back. This is where the money actually moves. */
-export async function settle(input: SettleInput): Promise<TerminalResult> {
+export async function settle(
+  input: SettleInput,
+  signal?: AbortSignal,
+): Promise<TerminalResult> {
   if (useFixture) return { status: 'succeeded' };
   return request<TerminalResult>('/checkout/settle', {
     method: 'POST',
     body: JSON.stringify(input),
+    signal,
   });
+}
+
+function waitForNextSettlementPoll(
+  delayMs: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(signal?.reason ?? new DOMException('Aborted', 'AbortError'));
+    };
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/**
+ * Redirect checkout has no merchant window to notify when submission wins the
+ * timeout race. Re-submit the same signed bytes until the backend can return
+ * the terminal result and its signed return URL.
+ */
+export async function settleUntilTerminal(
+  input: SettleInput,
+  options: SettlementPollingOptions = {},
+): Promise<TerminalResult> {
+  const { signal, pollIntervalMs = 1_000 } = options;
+  for (;;) {
+    try {
+      return await settle(input, signal);
+    } catch (err) {
+      if (
+        !(err instanceof CheckoutApiError) ||
+        err.code !== 'PAYMENT_PROCESSING'
+      ) {
+        throw err;
+      }
+      await waitForNextSettlementPoll(pollIntervalMs, signal);
+    }
+  }
 }

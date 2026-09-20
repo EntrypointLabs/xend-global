@@ -1,6 +1,7 @@
 import {
   isCheckoutReady,
   parseCheckoutEnvelope,
+  parseCheckoutUnresolvedEnvelope,
 } from "./adapters/checkout-message.adapter";
 import type { CheckoutResult, CheckoutUnresolved } from "./types";
 
@@ -56,6 +57,16 @@ export function listenForResult(config: ListenConfig): ListenHandle {
     if (event.origin !== checkoutOrigin) return;
     if (isCheckoutReady(event.data, { nonce })) {
       onAlive?.();
+      return;
+    }
+    const unresolved = parseCheckoutUnresolvedEnvelope(event.data, {
+      reference,
+      nonce,
+    });
+    if (unresolved) {
+      settled = true;
+      teardown();
+      onUnresolved?.(unresolved);
       return;
     }
     const result = parseCheckoutEnvelope(event.data, { reference, nonce });

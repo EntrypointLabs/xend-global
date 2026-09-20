@@ -5,9 +5,8 @@
  * `X-Frame-Options: DENY`, which is what any response this function leaves
  * alone keeps serving. A document load that names an intent is the one case
  * that can be relaxed, and only as far as the single origin the API reports for
- * that intent. That origin has already been checked against the Merchant's
- * registered allowedOrigins server-side, which is why it is nameable at all;
- * the query string's own `opener` parameter is unchecked and is never read here.
+ * that intent. The requested `opener` is forwarded to the API, which checks it
+ * against the Merchant's registered allowedOrigins before returning it.
  */
 
 interface PagesContext {
@@ -56,7 +55,10 @@ function parseOrigin(raw: unknown): string | null {
   return url.origin === raw ? raw : null;
 }
 
-function readReference(requestUrl: string): string | null {
+function readLaunch(requestUrl: string): {
+  reference: string;
+  opener: string | null;
+} | null {
   let url: URL;
   try {
     url = new URL(requestUrl);
@@ -65,20 +67,23 @@ function readReference(requestUrl: string): string | null {
   }
   const intent = url.searchParams.get('intent');
   if (!intent || !REFERENCE_PATTERN.test(intent)) return null;
-  return intent;
+  return { reference: intent, opener: url.searchParams.get('opener') };
 }
 
 async function fetchMerchantOrigin(
   apiBase: string,
   reference: string,
+  opener: string | null,
 ): Promise<string | null> {
-  const res = await fetch(
-    `${apiBase}/checkout/intents/${encodeURIComponent(reference)}`,
-    {
-      headers: { accept: 'application/json' },
-      signal: AbortSignal.timeout(SUMMARY_TIMEOUT_MS),
-    },
+  const summaryUrl = new URL(
+    `/checkout/intents/${encodeURIComponent(reference)}`,
+    `${apiBase}/`,
   );
+  if (opener) summaryUrl.searchParams.set('opener', opener);
+  const res = await fetch(summaryUrl.toString(), {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(SUMMARY_TIMEOUT_MS),
+  });
   if (!res.ok) return null;
   const summary = (await res.json()) as IntentSummary;
   return parseOrigin(summary.merchantOrigin);
@@ -87,21 +92,23 @@ async function fetchMerchantOrigin(
 async function merchantOriginFor(
   apiBase: string,
   reference: string,
+  opener: string | null,
 ): Promise<string | null> {
   const now = Date.now();
-  const hit = originCache.get(reference);
+  const cacheKey = `${reference}\u0000${opener ?? ''}`;
+  const hit = originCache.get(cacheKey);
   if (hit && hit.expiresAt > now) return hit.origin;
 
   let origin: string | null = null;
   try {
-    origin = await fetchMerchantOrigin(apiBase, reference);
+    origin = await fetchMerchantOrigin(apiBase, reference, opener);
   } catch {
     // An API that is slow, down or unreachable leaves the static deny standing.
     return null;
   }
 
   if (originCache.size >= CACHE_MAX_ENTRIES) originCache.clear();
-  originCache.set(reference, { origin, expiresAt: now + SUMMARY_TTL_MS });
+  originCache.set(cacheKey, { origin, expiresAt: now + SUMMARY_TTL_MS });
   return origin;
 }
 
@@ -135,12 +142,16 @@ export async function onRequest(context: PagesContext): Promise<Response> {
 
   if (!isDocumentRequest(context.request)) return response;
 
-  const reference = readReference(context.request.url);
-  if (!reference) return response;
+  const launch = readLaunch(context.request.url);
+  if (!launch) return response;
 
   const apiBase =
     context.env.CHECKOUT_API_BASE ?? new URL(context.request.url).origin;
-  const merchantOrigin = await merchantOriginFor(apiBase, reference);
+  const merchantOrigin = await merchantOriginFor(
+    apiBase,
+    launch.reference,
+    launch.opener,
+  );
   if (!merchantOrigin) return response;
 
   const headers = new Headers(response.headers);

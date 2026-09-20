@@ -10,6 +10,8 @@ import { KeyIssuanceService } from './key-issuance.service';
 import { MerchantController } from './merchant.controller';
 import { RefundService } from './refund.service';
 import { RefundController } from './refund.controller';
+import { MerchantIdentityService } from './merchant-identity.service';
+import { MerchantPortalController } from './merchant-portal.controller';
 
 /**
  * The Merchant API surface. Consumes Phase 2's PaymentIntentService, the FX
@@ -20,13 +22,19 @@ import { RefundController } from './refund.controller';
 @Module({
   imports: [PaymentModule, FxModule, SettlementModule],
   providers: [
+    MerchantIdentityService,
     ApiKeyGuard,
     InternalGuard,
     IdempotencyService,
     KeyIssuanceService,
     RefundService,
   ],
-  controllers: [MerchantController, RefundController, ApiKeyAdminController],
+  controllers: [
+    MerchantController,
+    RefundController,
+    ApiKeyAdminController,
+    MerchantPortalController,
+  ],
   exports: [KeyIssuanceService, IdempotencyService],
 })
 export class MerchantModule {}

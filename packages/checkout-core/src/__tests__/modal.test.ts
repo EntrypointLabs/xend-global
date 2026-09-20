@@ -348,7 +348,7 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
     expect((window as unknown as { __xss?: number }).__xss).toBeUndefined();
   });
 
-  it("cancels cleanly when the sheet is dismissed, and reports it once", async () => {
+  it("ignores backdrop dismissal after handoff and preserves the real result", async () => {
     const fakeWin = makeFakeWindow();
     vi.spyOn(window, "open").mockImplementation(
       () => fakeWin as unknown as Window,
@@ -373,21 +373,17 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
 
     shadow().querySelector<HTMLElement>("[data-close]")!.click();
 
-    expect(onResult).toHaveBeenCalledTimes(1);
-    expect(onResult).toHaveBeenCalledWith({
-      reference: "pi_cancel",
-      status: "canceled",
-    });
-    expect(fakeWin.close).toHaveBeenCalled();
+    expect(onResult).not.toHaveBeenCalled();
+    expect(fakeWin.close).not.toHaveBeenCalled();
 
-    // The listener is gone: a late result cannot reopen a settled payment.
+    // Backdrop dismissal must not suppress the actual on-chain result.
     window.dispatchEvent(
       new MessageEvent("message", {
         origin: ORIGIN,
         data: {
           xend: "checkout",
           v: 1,
-          nonce: "n",
+          nonce: new URL(fakeWin.location.href).searchParams.get("nonce"),
           reference: "pi_cancel",
           type: "xend.checkout.result",
           status: "succeeded",
@@ -395,6 +391,10 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
       }),
     );
     expect(onResult).toHaveBeenCalledTimes(1);
+    expect(onResult).toHaveBeenCalledWith({
+      reference: "pi_cancel",
+      status: "succeeded",
+    });
   });
 
   it("shows the sheet's loading state, not an error, while the intent is being created", async () => {

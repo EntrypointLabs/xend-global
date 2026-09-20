@@ -1,6 +1,8 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { createPublicKey, verify } from 'node:crypto';
+import { VersionedTransaction } from '@solana/web3.js';
 import { ConfigService } from '@nestjs/config';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
   getBase64Decoder,
   getBase64Encoder,
@@ -10,11 +12,13 @@ import { DbService } from '../db/db.service';
 import { paymentAttempts } from '../db/schema';
 import { SOLANA_RPC, type SolanaRpc } from '../solana/solana-rpc.interface';
 import { PaymentIntentService } from '../payment/payment-intent.service';
+import { IntentExpiredError } from '../payment/payment.errors';
 import { SpendService } from '../account/spend.service';
 import { SettlementProvisioningService } from './settlement-provisioning.service';
 import { SettlementConfirmationService } from './settlement-confirmation.service';
 import {
   AttemptAlreadyLiveError,
+  FiatSettlementDisabledError,
   IntentNotSettleableError,
   SettlementMessageMismatchError,
 } from './settlement.errors';
@@ -99,15 +103,24 @@ export class SettlementService implements OnModuleInit {
     consumerId: string,
   ): Promise<BuiltSettlement> {
     const intent = await this.intents.findById(intentId);
+    this.assertExecutionCluster(intent.executionCluster);
     if (intent.status !== 'created' && intent.status !== 'authorized') {
       throw new IntentNotSettleableError(
         `intent ${intentId} is ${intent.status}, not settleable`,
+      );
+    }
+    if (intent.expiresAt.getTime() <= Date.now()) {
+      throw new IntentExpiredError(
+        `intent ${intentId} expired; request a new quote`,
       );
     }
 
     const endpoint = await this.provisioning.getSettlementAddressForSettlement(
       intent.merchantId,
     );
+    if (endpoint.provider !== 'direct_usdc') {
+      throw new FiatSettlementDisabledError();
+    }
 
     const spend = await this.spends.prepare({
       userId: consumerId,
@@ -172,11 +185,69 @@ export class SettlementService implements OnModuleInit {
     return { attemptId: attempt.id };
   }
 
+  /** Terminal retries must prove possession of the Consumer's signed Spend.
+   * References and arbitrary bytes cannot mint a signed Merchant redirect.
+   * Verify the pinned message and every non-fee-payer signer without rebroadcast.
+   */
+  async verifySettlementProof(
+    intentId: string,
+    signedTxBase64: string,
+  ): Promise<void> {
+    const [attempt] = await this.db.client
+      .select()
+      .from(paymentAttempts)
+      .where(eq(paymentAttempts.intentId, intentId))
+      .orderBy(desc(paymentAttempts.createdAt))
+      .limit(1);
+    try {
+      const tx = VersionedTransaction.deserialize(
+        Buffer.from(signedTxBase64, 'base64'),
+      );
+      const message = tx.message.serialize();
+      const count = tx.message.header.numRequiredSignatures;
+      if (
+        !attempt?.messageBase64 ||
+        Buffer.from(message).toString('base64') !== attempt.messageBase64 ||
+        count < 2
+      )
+        throw new Error('No matching signed Spend');
+      for (let index = 1; index < count; index++) {
+        const key = createPublicKey({
+          key: Buffer.concat([
+            Buffer.from('302a300506032b6570032100', 'hex'),
+            tx.message.staticAccountKeys[index].toBuffer(),
+          ]),
+          format: 'der',
+          type: 'spki',
+        });
+        if (!verify(null, message, key, tx.signatures[index]))
+          throw new Error('Invalid Consumer signature');
+      }
+    } catch {
+      throw new SettlementMessageMismatchError(
+        'A valid Consumer-signed Payment is required',
+      );
+    }
+  }
+
   async submitSettlement(
     intentId: string,
     consumerSignedTxBase64: string,
   ): Promise<{ attemptId: string; signature: string; status: 'settling' }> {
+    // Cross-process serialization, before reading the attempt or signing.
+    // A concurrent retry observes the first caller's recorded signature and
+    // reconciles it instead of racing another authority-sign/broadcast call.
+    return this.db.withAdvisoryLock(`payment-submit:${intentId}`, () =>
+      this.submitSettlementLocked(intentId, consumerSignedTxBase64),
+    );
+  }
+
+  private async submitSettlementLocked(
+    intentId: string,
+    consumerSignedTxBase64: string,
+  ): Promise<{ attemptId: string; signature: string; status: 'settling' }> {
     const intent = await this.intents.findById(intentId);
+    this.assertExecutionCluster(intent.executionCluster);
     const attempt = await this.loadLiveAttempt(intentId, [
       'authorized',
       'settling',
@@ -190,12 +261,25 @@ export class SettlementService implements OnModuleInit {
     // Signature-first retry: an already-live settling attempt with a
     // recorded signature is resolved, never re-cosigned or rebuilt.
     if (attempt.status === 'settling' && attempt.txSignature) {
+      await this.verifySettlementProof(intentId, consumerSignedTxBase64);
       await this.resolveInFlight(intentId);
       return {
         attemptId: attempt.id,
         signature: attempt.txSignature,
         status: 'settling',
       };
+    }
+
+    // An already-broadcast retry above is reconciled even after expiry. A
+    // pinned authorized attempt with no recorded signature is ambiguous: the
+    // process may have crashed after broadcast but before persisting the
+    // signature. Refuse another broadcast and leave it quarantined for the
+    // orphan-suspected recovery path; expiring it here could release capacity
+    // and report failure for money that already moved.
+    if (intent.expiresAt.getTime() <= Date.now()) {
+      throw new IntentExpiredError(
+        `intent ${intentId} expired; request a new quote`,
+      );
     }
 
     // Byte-equality: the signed tx's compiled message must equal the pinned
@@ -220,6 +304,14 @@ export class SettlementService implements OnModuleInit {
     // Spend one signature short, and the byte check above is what makes it safe
     // for the authority to complete: it only ever signs the message this
     // service built and pinned.
+    // Recheck at submission, including transactions prepared before the pilot
+    // gate shipped. Already-broadcast attempts above still reconcile normally.
+    const endpoint = await this.provisioning.getSettlementAddressForSettlement(
+      intent.merchantId,
+    );
+    if (endpoint.provider !== 'direct_usdc') {
+      throw new FiatSettlementDisabledError();
+    }
     const signature = await this.spends.submit(consumerSignedTxBase64);
 
     // Record the signature and move the attempt live, then transition the
@@ -274,6 +366,8 @@ export class SettlementService implements OnModuleInit {
   async resolveInFlight(
     intentId: string,
   ): Promise<'succeeded' | 'failed' | 'still_settling'> {
+    const intent = await this.intents.findById(intentId);
+    this.assertExecutionCluster(intent.executionCluster);
     const attempt = await this.loadLiveAttempt(intentId, [
       'authorized',
       'settling',
@@ -294,6 +388,17 @@ export class SettlementService implements OnModuleInit {
       return 'succeeded';
     }
     return 'still_settling';
+  }
+
+  private assertExecutionCluster(cluster: string | null): void {
+    if (
+      !cluster ||
+      cluster !== this.config.getOrThrow<string>('SOLANA_CLUSTER')
+    ) {
+      throw new IntentNotSettleableError(
+        'Payment network is missing or does not match this deployment',
+      );
+    }
   }
 
   private async loadLiveAttempt(

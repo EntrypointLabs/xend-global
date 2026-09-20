@@ -112,9 +112,9 @@ export const merchantStatusEnum = pgEnum('merchant_status', [
 export const apiKeyModeEnum = pgEnum('api_key_mode', ['test', 'live']);
 
 // Stripe-shaped intent lifecycle. 'created' -> 'authorized' ->
-// 'settling' -> 'succeeded' | 'failed'; 'expired' (TTL before
-// authorization) and 'canceled' (merchant cancel before
-// authorization) are the other terminals.
+// 'settling' -> 'succeeded' | 'failed'; 'expired' covers TTL before
+// authorization or before an authorized Spend is broadcast, and 'canceled'
+// covers merchant cancellation before authorization.
 export const paymentIntentStatusEnum = pgEnum('payment_intent_status', [
   'created',
   'authorized',
@@ -822,6 +822,14 @@ export const tailerState = pgTable('tailer_state', {
  * populated when the Merchant API lands.
  */
 export const merchants = pgTable('merchants', {
+  businessProfile: jsonb('business_profile')
+    .$type<Record<string, string>>()
+    .notNull()
+    .default({}),
+  profileVersion: integer('profile_version').notNull().default(0),
+  ownerProviderId: text('owner_provider_id').unique(),
+  receivingWallet: text('receiving_wallet'),
+  settlementTermsAcceptedAt: timestamp('settlement_terms_accepted_at'),
   id: text('id')
     .primaryKey()
     .$defaultFn(() => createId()),
@@ -860,6 +868,7 @@ export const apiKeys = pgTable(
       .references(() => merchants.id),
     keyHash: text('key_hash').notNull().unique(),
     keyPrefix: text('key_prefix').notNull(),
+    executionCluster: text('execution_cluster'),
     fingerprint: text('fingerprint').notNull(),
     mode: apiKeyModeEnum('mode').notNull(),
     revokedAt: timestamp('revoked_at'),
@@ -891,6 +900,9 @@ export const paymentIntents = pgTable(
     consumerId: text('consumer_id').references(() => users.id),
     status: paymentIntentStatusEnum('status').notNull().default('created'),
     usdcSettlementRaw: text('usdc_settlement_raw').notNull(),
+    /** Original API denomination; null preserves legacy USD-display USDC intents. */
+    pricingCurrency: text('pricing_currency'),
+    executionCluster: text('execution_cluster'),
     /** What the Merchant priced in, and the figure the Consumer is shown. */
     displayCurrency: text('display_currency').notNull(),
     displayAmountMinor: text('display_amount_minor').notNull(),
@@ -931,8 +943,18 @@ export const paymentIntents = pgTable(
     // created without a key are unconstrained).
     merchantIdemIdx: uniqueIndex('payment_intents_merchant_idem_idx').on(
       table.merchantId,
+      table.executionCluster,
       table.idempotencyKey,
     ),
+    // Old writers leave execution_cluster null during a rolling deploy. Keep
+    // their idempotency domain unique until that compatibility path is retired.
+    merchantLegacyIdemIdx: uniqueIndex(
+      'payment_intents_merchant_legacy_idem_idx',
+    )
+      .on(table.merchantId, table.idempotencyKey)
+      .where(
+        sql`${table.executionCluster} IS NULL AND ${table.idempotencyKey} IS NOT NULL`,
+      ),
     // Expiry sweep scans only unauthorized intents.
     expiryIdx: index('payment_intents_expiry_idx')
       .on(table.expiresAt)
@@ -1137,24 +1159,35 @@ export const webhookDeliveries = pgTable(
  * direct-USDC, the Blockradar master wallet in Phase 8, null for a recorded
  * merchant-own address). Columns are nullable until provisioning completes.
  */
-export const settlementAccounts = pgTable('settlement_accounts', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => createId()),
-  merchantId: text('merchant_id')
-    .notNull()
-    .unique()
-    .references(() => merchants.id),
-  address: text('address').unique(),
-  provider: settlementProviderEnum('provider'),
-  currency: text('currency'),
-  providerReference: text('provider_reference'),
-  payoutConfig: text('payout_config'),
-  authorityAddress: text('authority_address'),
-  provisionedAt: timestamp('provisioned_at'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+export const settlementAccounts = pgTable(
+  'settlement_accounts',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    merchantId: text('merchant_id')
+      .notNull()
+      .references(() => merchants.id),
+    address: text('address'),
+    provider: settlementProviderEnum('provider'),
+    currency: text('currency'),
+    providerReference: text('provider_reference'),
+    payoutConfig: text('payout_config'),
+    authorityAddress: text('authority_address'),
+    executionCluster: text('execution_cluster'),
+    provisionedAt: timestamp('provisioned_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    merchantClusterIdx: uniqueIndex(
+      'settlement_accounts_merchant_cluster_idx',
+    ).on(table.merchantId, table.executionCluster),
+    addressClusterIdx: uniqueIndex(
+      'settlement_accounts_address_cluster_idx',
+    ).on(table.address, table.executionCluster),
+  }),
+);
 
 /**
  * idempotency_keys — Stripe-semantics response snapshot for merchant-facing
@@ -1173,6 +1206,7 @@ export const idempotencyKeys = pgTable(
     merchantId: text('merchant_id')
       .notNull()
       .references(() => merchants.id),
+    executionCluster: text('execution_cluster').notNull().default('legacy'),
     idempotencyKey: text('idempotency_key').notNull(),
     requestHash: text('request_hash').notNull(),
     responseStatus: integer('response_status').notNull(),
@@ -1182,6 +1216,7 @@ export const idempotencyKeys = pgTable(
   (table) => ({
     merchantKeyIdx: uniqueIndex('idempotency_keys_merchant_key_idx').on(
       table.merchantId,
+      table.executionCluster,
       table.idempotencyKey,
     ),
   }),
@@ -1354,15 +1389,12 @@ export const transfersRelations = relations(transfers, ({ one }) => ({
   }),
 }));
 
-export const merchantsRelations = relations(merchants, ({ one, many }) => ({
+export const merchantsRelations = relations(merchants, ({ many }) => ({
   apiKeys: many(apiKeys),
   paymentIntents: many(paymentIntents),
   sessions: many(sessions),
   webhookEndpoints: many(webhookEndpoints),
-  settlementAccount: one(settlementAccounts, {
-    fields: [merchants.id],
-    references: [settlementAccounts.merchantId],
-  }),
+  settlementAccounts: many(settlementAccounts),
 }));
 
 export const paymentIntentsRelations = relations(
@@ -1435,3 +1467,17 @@ export const refundsRelations = relations(refunds, ({ one }) => ({
     references: [merchants.id],
   }),
 }));
+
+/** Transactional authorization headroom, keyed by Consumer and UTC window. */
+export const capacityCounters = pgTable(
+  'capacity_counters',
+  {
+    key: text('key').primaryKey(),
+    count: integer('count').notNull(),
+    totalRaw: numeric('total_raw', { precision: 78, scale: 0 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    expiresAtIdx: index('capacity_counters_expires_at_idx').on(table.expiresAt),
+  }),
+);
