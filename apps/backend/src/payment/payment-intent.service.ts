@@ -286,12 +286,14 @@ export class PaymentIntentService implements OnModuleInit {
    * the app should find it at the top.
    */
   async listAwaitingApproval(consumerId: string): Promise<IntentRow[]> {
+    const executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     return this.db.client
       .select()
       .from(paymentIntents)
       .where(
         and(
           eq(paymentIntents.consumerId, consumerId),
+          eq(paymentIntents.executionCluster, executionCluster),
           eq(paymentIntents.status, 'created'),
           isNotNull(paymentIntents.approvalDeferredAt),
           gt(paymentIntents.expiresAt, new Date()),

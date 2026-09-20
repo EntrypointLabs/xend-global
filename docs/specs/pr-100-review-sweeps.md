@@ -115,3 +115,14 @@ Implemented:
 - Give the intentionally expensive all-address signup limit test a CI-safe timeout; it performs twenty real scrypt operations and still keeps its original assertions.
 
 Disagreements: none.
+
+## Sweep 9
+
+Implemented:
+
+- Count pre-cluster capacity backfill rows against every active cluster until their day or month window expires, and subtract that legacy usage from each cluster's atomic reservation headroom.
+- Reconcile an unacknowledged mobile submit with the authenticated Payment status before offering another retry, retiring the retained payload when the first request already reached a terminal outcome.
+- Filter phone approval queues by the deployment's Solana cluster so another network's deferred Payments never appear as unusable cards.
+- Derive a migrated live key's effective execution cluster before applying the disabled-devnet gate.
+
+Disagreements: none.

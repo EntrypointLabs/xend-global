@@ -55,7 +55,7 @@ export class CapacityService implements OnModuleInit {
     @Inject(CAPACITY_COUNTER) private readonly counter: ReservingRateCounter,
   ) {}
 
-  onModuleInit() {
+  onModuleInit(): void {
     this.defaultTier = this.config.getOrThrow<string>('CAPACITY_DEFAULT_TIER');
     this.executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     this.tiers = parseTierTable(
@@ -105,8 +105,12 @@ export class CapacityService implements OnModuleInit {
       throw new Error(`tier '${tier}' missing from tier table`);
     }
 
-    const day = await this.counter.peek(this.dayKey(consumerId, windowAt));
-    const month = await this.counter.peek(this.monthKey(consumerId, windowAt));
+    const [day, month, legacyDay, legacyMonth] = await Promise.all([
+      this.counter.peek(this.dayKey(consumerId, windowAt)),
+      this.counter.peek(this.monthKey(consumerId, windowAt)),
+      this.counter.peek(this.legacyDayKey(consumerId, windowAt)),
+      this.counter.peek(this.legacyMonthKey(consumerId, windowAt)),
+    ]);
 
     return {
       consumerId,
@@ -114,8 +118,16 @@ export class CapacityService implements OnModuleInit {
       balanceRaw: balance.toString(),
       tier,
       limits,
-      usedTodayRaw: day.totalRaw,
-      usedThisMonthRaw: month.totalRaw,
+      // Migration 0044 cannot infer a cluster for pre-0042 authorizations.
+      // Count that legacy usage on every cluster until its short-lived window
+      // expires, so a shared database cannot make already-spent allowance
+      // disappear on either deployment.
+      usedTodayRaw: (
+        BigInt(day.totalRaw) + BigInt(legacyDay.totalRaw)
+      ).toString(),
+      usedThisMonthRaw: (
+        BigInt(month.totalRaw) + BigInt(legacyMonth.totalRaw)
+      ).toString(),
       riskFlags: [],
       // Reserved: credit capability slots in here later; the field exists so
       // the response shape does not break when it does.
@@ -202,10 +214,22 @@ export class CapacityService implements OnModuleInit {
 
     const dayKey = this.dayKey(consumerId, reservedAt);
     const monthKey = this.monthKey(consumerId, reservedAt);
+    const [legacyDay, legacyMonth] = await Promise.all([
+      this.counter.peek(this.legacyDayKey(consumerId, reservedAt)),
+      this.counter.peek(this.legacyMonthKey(consumerId, reservedAt)),
+    ]);
+    const dailyCapForCluster = this.remainingClusterCap(
+      limits.dailyCapRaw,
+      legacyDay.totalRaw,
+    );
+    const monthlyCapForCluster = this.remainingClusterCap(
+      limits.monthlyCapRaw,
+      legacyMonth.totalRaw,
+    );
     const day = await this.counter.reserve(
       dayKey,
       amountRaw,
-      limits.dailyCapRaw,
+      dailyCapForCluster,
       DAY_COUNTER_TTL_SECONDS,
     );
     if (!day.allowed) {
@@ -218,7 +242,7 @@ export class CapacityService implements OnModuleInit {
     const month = await this.counter.reserve(
       monthKey,
       amountRaw,
-      limits.monthlyCapRaw,
+      monthlyCapForCluster,
       MONTH_COUNTER_TTL_SECONDS,
     );
     if (!month.allowed) {
@@ -233,8 +257,12 @@ export class CapacityService implements OnModuleInit {
     log(true);
     return {
       ...capability,
-      usedTodayRaw: day.snapshot.totalRaw,
-      usedThisMonthRaw: month.snapshot.totalRaw,
+      usedTodayRaw: (
+        BigInt(day.snapshot.totalRaw) + BigInt(legacyDay.totalRaw)
+      ).toString(),
+      usedThisMonthRaw: (
+        BigInt(month.snapshot.totalRaw) + BigInt(legacyMonth.totalRaw)
+      ).toString(),
     };
   }
 
@@ -317,5 +345,23 @@ export class CapacityService implements OnModuleInit {
     const y = now.getUTCFullYear();
     const m = String(now.getUTCMonth() + 1).padStart(2, '0');
     return `cap:cluster:${this.executionCluster}:consumer:${consumerId}:month:${y}${m}`;
+  }
+
+  private legacyDayKey(consumerId: string, now: Date): string {
+    const y = now.getUTCFullYear();
+    const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(now.getUTCDate()).padStart(2, '0');
+    return `cap:cluster:legacy:consumer:${consumerId}:day:${y}${m}${d}`;
+  }
+
+  private legacyMonthKey(consumerId: string, now: Date): string {
+    const y = now.getUTCFullYear();
+    const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+    return `cap:cluster:legacy:consumer:${consumerId}:month:${y}${m}`;
+  }
+
+  private remainingClusterCap(capRaw: string, legacyUsedRaw: string): string {
+    const remaining = BigInt(capRaw) - BigInt(legacyUsedRaw);
+    return (remaining > 0n ? remaining : 0n).toString();
   }
 }

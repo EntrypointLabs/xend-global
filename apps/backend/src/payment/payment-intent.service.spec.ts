@@ -84,6 +84,7 @@ function makeFakeDb(cfg: FakeDbConfig): DbService {
   const selectChain = (rows: unknown[]) => {
     const chain = {
       where: () => chain,
+      orderBy: () => chain,
       limit: () => Promise.resolve(rows),
     };
     return chain;
@@ -340,6 +341,24 @@ describe('PaymentIntentService.findById', () => {
     await expect(service.findById('pi_x')).rejects.toMatchObject({
       code: 'INTENT_NOT_FOUND',
     });
+  });
+});
+
+describe('PaymentIntentService.listAwaitingApproval', () => {
+  it('reads the deployment cluster before listing phone approvals', async () => {
+    const getOrThrow = jest.fn((key: string) =>
+      key === 'SOLANA_CLUSTER' ? 'devnet' : 60,
+    );
+    const db = makeFakeDb({ intentSelects: [[intentRow()]] });
+    const { publisher } = makePublisher();
+    const service = new PaymentIntentService(
+      db,
+      { getOrThrow } as unknown as ConfigService,
+      publisher,
+    );
+
+    await expect(service.listAwaitingApproval('u_1')).resolves.toHaveLength(1);
+    expect(getOrThrow).toHaveBeenCalledWith('SOLANA_CLUSTER');
   });
 });
 

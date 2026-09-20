@@ -151,6 +151,44 @@ export default function FinishPaymentScreen() {
     } catch (err) {
       Sentry.captureException(err);
       if (!accepted) {
+        // The submit response may have been lost after the backend accepted
+        // the transaction. If confirmation already made the Payment terminal,
+        // retire this retry payload instead of offering a resubmit that the
+        // terminal attempt can no longer accept.
+        try {
+          const status = await apiClient.paymentStatus(payment.reference);
+          if (status === "succeeded" || status === "failed") {
+            setPendingSubmissions((current) => {
+              const next = { ...current };
+              delete next[payment.reference];
+              return next;
+            });
+            setRetryable(false);
+            void queryClient.invalidateQueries({
+              queryKey: AWAITING_PAYMENTS_KEY,
+            });
+            if (status === "failed") {
+              setFlow({
+                step: "sending",
+                state: "failed",
+                message:
+                  "The payment failed on the network. Check Activity for details.",
+              });
+              return;
+            }
+            void queryClient.invalidateQueries({ queryKey: ["transfers"] });
+            void queryClient.invalidateQueries({ queryKey: ["balances"] });
+            void queryClient.invalidateQueries({ queryKey: ACCOUNT_QUERY_KEY });
+            setFlow({ step: "sent", state: "done", message: null });
+            await new Promise((resolve) => setTimeout(resolve, SENT_DWELL_MS));
+            setFlow(null);
+            router.replace("/(tabs)/history" as never);
+            return;
+          }
+        } catch {
+          // The status check is best effort. Keep the signed bytes when both
+          // requests are unreachable so the Consumer can retry safely.
+        }
         // The request may not have reached the backend. Resubmitting the same
         // signed transaction is idempotent, so keep a real retry path.
         setRetryable(true);

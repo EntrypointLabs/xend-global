@@ -20,6 +20,7 @@ function makeFakeDb(accounts: { vaultAddress: string }[]): DbService {
   };
   const client = {
     select: () => ({ from: () => chain }),
+    execute: jest.fn().mockResolvedValue({ rows: [] }),
   };
   return { client } as unknown as DbService;
 }
@@ -55,12 +56,24 @@ function makeSolana(balances: TokenBalance[]): SolanaRpc {
  * script: add, compare against the cap, roll back on overshoot. Windows are
  * seeded from `day` and `month` and then move with every reservation.
  */
-function makeCounter(day: CounterSnapshot, month: CounterSnapshot) {
+function makeCounter(
+  day: CounterSnapshot,
+  month: CounterSnapshot,
+  legacyDay: CounterSnapshot,
+  legacyMonth: CounterSnapshot,
+) {
   const totals = new Map<string, bigint>();
   const counts = new Map<string, number>();
   const seed = (key: string) => {
     if (!totals.has(key)) {
-      const snap = key.includes(':day:') ? day : month;
+      const legacy = key.includes(':cluster:legacy:');
+      const snap = key.includes(':day:')
+        ? legacy
+          ? legacyDay
+          : day
+        : legacy
+          ? legacyMonth
+          : month;
       totals.set(key, BigInt(snap.totalRaw));
       counts.set(key, snap.count);
     }
@@ -106,6 +119,8 @@ function makeService(
     balances?: TokenBalance[];
     day?: CounterSnapshot;
     month?: CounterSnapshot;
+    legacyDay?: CounterSnapshot;
+    legacyMonth?: CounterSnapshot;
     config?: Record<string, string>;
   } = {},
 ) {
@@ -120,6 +135,8 @@ function makeService(
   const { counter, reservations, releases, snapshot } = makeCounter(
     opts.day ?? { count: 0, totalRaw: '0' },
     opts.month ?? { count: 0, totalRaw: '0' },
+    opts.legacyDay ?? { count: 0, totalRaw: '0' },
+    opts.legacyMonth ?? { count: 0, totalRaw: '0' },
   );
   const service = new CapacityService(db, config, solana, counter);
   service.onModuleInit();
@@ -160,6 +177,15 @@ describe('CapacityService.checkCapacity', () => {
     });
     await expect(service.checkCapacity('c1', '30000000')).rejects.toMatchObject(
       { code: 'CAPACITY_EXCEEDED', reason: 'MONTHLY_CAP' },
+    );
+  });
+
+  it('counts pre-cluster migration usage toward the active cluster caps', async () => {
+    const { service } = makeService({
+      legacyDay: { count: 4, totalRaw: '180000000' },
+    });
+    await expect(service.checkCapacity('c1', '30000000')).rejects.toMatchObject(
+      { code: 'CAPACITY_EXCEEDED', reason: 'DAILY_CAP' },
     );
   });
 
@@ -233,6 +259,16 @@ describe('CapacityService.reserveCapacity', () => {
     expect(releases).toHaveLength(1);
     expect(releases[0].key).toBe(reservations[0].key);
     expect(snapshot(reservations[0].key).totalRaw).toBe('0');
+  });
+
+  it('subtracts legacy usage from the atomic reservation headroom', async () => {
+    const { service, reservations } = makeService({
+      legacyDay: { count: 4, totalRaw: '180000000' },
+    });
+    await expect(
+      service.reserveCapacity('c1', '30000000'),
+    ).rejects.toMatchObject({ reason: 'DAILY_CAP' });
+    expect(reservations).toHaveLength(0);
   });
 
   it('never lets concurrent reservations add up past the daily cap', async () => {
