@@ -6,6 +6,7 @@ import {
   Param,
   Query,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { and, desc, eq, ilike, lt, or } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import {
@@ -38,6 +39,7 @@ export class MerchantPortalPaymentsController {
   constructor(
     private readonly db: DbService,
     private readonly owner: MerchantOwnerService,
+    private readonly config: ConfigService,
   ) {}
 
   @Get()
@@ -49,6 +51,7 @@ export class MerchantPortalPaymentsController {
     @Query('limit') limit?: string,
   ) {
     const merchant = await this.owner.owned(authorization);
+    const cluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     const take = clampLimit(limit, 20, 100);
     const statusFilter = INTENT_STATUSES.includes(status as IntentStatus)
       ? (status as IntentStatus)
@@ -71,6 +74,7 @@ export class MerchantPortalPaymentsController {
       .where(
         and(
           eq(paymentIntents.merchantId, merchant.id),
+          eq(paymentIntents.executionCluster, cluster),
           ...(statusFilter ? [eq(paymentIntents.status, statusFilter)] : []),
           ...(search
             ? [
@@ -118,6 +122,7 @@ export class MerchantPortalPaymentsController {
     @Param('id') id: string,
   ) {
     const merchant = await this.owner.owned(authorization);
+    const cluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     const [intent] = await this.db.client
       .select()
       .from(paymentIntents)
@@ -125,6 +130,7 @@ export class MerchantPortalPaymentsController {
         and(
           eq(paymentIntents.id, id),
           eq(paymentIntents.merchantId, merchant.id),
+          eq(paymentIntents.executionCluster, cluster),
         ),
       )
       .limit(1);

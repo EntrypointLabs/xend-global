@@ -40,6 +40,7 @@ import {
   type IntentObject,
 } from './dtos';
 import { IdempotencyKeyReuseError } from './merchant.errors';
+import { isLivePayment } from '../payment/payment-mode';
 
 type IntentRow = typeof paymentIntents.$inferSelect;
 
@@ -185,7 +186,10 @@ export class MerchantController {
       // existence.
       if (
         intent.merchantId !== req.merchant.merchantId ||
-        intent.mode !== req.merchant.mode
+        intent.mode !== req.merchant.mode ||
+        (req.merchant.executionCluster !== null &&
+          intent.executionCluster !== null &&
+          intent.executionCluster !== req.merchant.executionCluster)
       ) {
         throw new IntentNotFoundError(`intent ${id} not found`);
       }
@@ -231,7 +235,7 @@ export class MerchantController {
       merchant_reference: intent.merchantReference,
       return_url: intent.returnUrl,
       cancel_url: intent.cancelUrl,
-      livemode: intent.mode === 'live',
+      livemode: isLivePayment(intent.mode, intent.executionCluster),
       created: Math.floor(intent.createdAt.getTime() / 1000),
       metadata: intent.metadata ?? null,
     };

@@ -275,8 +275,8 @@ const TEMP_TABLES = [
         for (let i = 0; i < 3; i++)
           await client.query(
             `INSERT INTO pg_temp.payment_intents
-             (id, merchant_id, usdc_settlement_raw, display_currency, display_amount_minor, expires_at, status, merchant_reference, created_at)
-             VALUES ($1, 'm-a', '1000000', 'USD', '100', now() + interval '1 hour', $2, $3, now() + ($4 || ' seconds')::interval)`,
+             (id, merchant_id, usdc_settlement_raw, display_currency, display_amount_minor, expires_at, status, merchant_reference, execution_cluster, created_at)
+             VALUES ($1, 'm-a', '1000000', 'USD', '100', now() + interval '1 hour', $2, $3, 'devnet', now() + ($4 || ' seconds')::interval)`,
             [
               `pi_a${i}`,
               i === 0 ? 'succeeded' : 'created',
@@ -286,8 +286,8 @@ const TEMP_TABLES = [
           );
         await client.query(
           `INSERT INTO pg_temp.payment_intents
-           (id, merchant_id, usdc_settlement_raw, display_currency, display_amount_minor, expires_at, status, created_at)
-           VALUES ('pi_b0', 'm-b', '1000000', 'USD', '100', now() + interval '1 hour', 'created', now())`,
+           (id, merchant_id, usdc_settlement_raw, display_currency, display_amount_minor, expires_at, status, execution_cluster, created_at)
+           VALUES ('pi_b0', 'm-b', '1000000', 'USD', '100', now() + interval '1 hour', 'created', 'devnet', now())`,
         );
       });
 

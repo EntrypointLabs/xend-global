@@ -180,10 +180,16 @@ export class MerchantPortalController {
   }
 
   private async dashboard(merchant: OwnedMerchant) {
+    const cluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     const [destination] = await this.db.client
       .select()
       .from(settlementAccounts)
-      .where(eq(settlementAccounts.merchantId, merchant.id))
+      .where(
+        and(
+          eq(settlementAccounts.merchantId, merchant.id),
+          eq(settlementAccounts.executionCluster, cluster),
+        ),
+      )
       .limit(1);
     const keys = await this.db.client
       .select()
@@ -199,7 +205,12 @@ export class MerchantPortalController {
         createdAt: paymentIntents.createdAt,
       })
       .from(paymentIntents)
-      .where(eq(paymentIntents.merchantId, merchant.id))
+      .where(
+        and(
+          eq(paymentIntents.merchantId, merchant.id),
+          eq(paymentIntents.executionCluster, cluster),
+        ),
+      )
       .orderBy(desc(paymentIntents.createdAt))
       .limit(20);
     return {
@@ -215,7 +226,7 @@ export class MerchantPortalController {
         mode: payment.mode,
         createdAt: payment.createdAt.toISOString(),
       })),
-      cluster: this.config.getOrThrow<string>('SOLANA_CLUSTER'),
+      cluster,
       devnetExecutionEnabled: devnetExecutionEnabled(this.config),
     };
   }

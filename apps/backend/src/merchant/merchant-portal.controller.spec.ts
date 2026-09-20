@@ -17,6 +17,14 @@ import { MerchantPortalController } from './merchant-portal.controller';
 import { MerchantOwnerService } from './merchant-owner.service';
 import type { MerchantAuditService } from './merchant-audit.service';
 import { SettlementAccountNotProvisionedError } from '../settlement/settlement.errors';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
+import {
+  apiKeys,
+  merchants,
+  paymentIntents,
+  settlementAccounts,
+} from '../db/schema';
 
 function setup(
   merchant: Record<string, unknown> | null = {
@@ -241,5 +249,83 @@ describe('Merchant identity error mapping', () => {
       controller.issue('Bearer token', { mode: 'test' }),
     ).rejects.toMatchObject({ status });
     expect(select).not.toHaveBeenCalled();
+  });
+});
+
+describe('Merchant portal cluster scope', () => {
+  it('loads the destination and Payments only for the active cluster', async () => {
+    const captured: { destination?: SQL; payments?: SQL } = {};
+    const merchant = {
+      id: 'merchant-owned',
+      ownerProviderId: 'verified-owner',
+      name: 'Store',
+      displayName: 'Store',
+      status: 'active',
+      receivingWallet: 'owner-wallet',
+      allowedOrigins: null,
+      kybStatus: 'pending',
+      kybVerifiedAt: null,
+      kybSubmittedAt: null,
+      kybReviewNote: null,
+      settlementTermsAcceptedAt: null,
+      flatFeeBps: 0,
+      fxSpreadBps: 0,
+      profileVersion: 0,
+      businessProfile: {},
+      createdAt: new Date('2026-01-01'),
+    };
+    const client = {
+      select: jest.fn().mockReturnValue({
+        from: (table: unknown) => ({
+          where: (condition: SQL) => {
+            if (table === merchants) {
+              return { limit: () => Promise.resolve([merchant]) };
+            }
+            if (table === settlementAccounts) {
+              captured.destination = condition;
+              return { limit: () => Promise.resolve([]) };
+            }
+            if (table === apiKeys)
+              return { orderBy: () => Promise.resolve([]) };
+            captured.payments = condition;
+            expect(table).toBe(paymentIntents);
+            return {
+              orderBy: () => ({ limit: () => Promise.resolve([]) }),
+            };
+          },
+        }),
+      }),
+    };
+    const config = {
+      get: (key: string) =>
+        ({ SOLANA_CLUSTER: 'devnet', DEVNET_PAYMENTS_ENABLED: true })[key],
+      getOrThrow: () => 'devnet',
+    } as unknown as ConfigService;
+    const db = { client } as unknown as DbService;
+    const owner = new MerchantOwnerService(db, {
+      verifyIdToken: jest.fn().mockResolvedValue({
+        providerUserId: 'verified-owner',
+        walletAddress: 'owner-wallet',
+      }),
+    } as unknown as MerchantIdentityService);
+    const controller = new MerchantPortalController(
+      db,
+      owner,
+      {} as KeyIssuanceService,
+      {} as SettlementProvisioningService,
+      config,
+      {
+        record: jest.fn().mockResolvedValue(undefined),
+      } as unknown as MerchantAuditService,
+    );
+
+    await controller.me('Bearer token');
+
+    for (const condition of [captured.destination, captured.payments]) {
+      const query = new PgDialect().sqlToQuery(condition as SQL);
+      expect(query.params).toEqual(
+        expect.arrayContaining(['merchant-owned', 'devnet']),
+      );
+    }
   });
 });

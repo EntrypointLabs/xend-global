@@ -15,6 +15,7 @@ import { SettlementProvisioningService } from './settlement-provisioning.service
 import { RelayerClient } from './relayer.client';
 import { SettlementService } from './settlement.service';
 import { SettlementConfirmationService } from './settlement-confirmation.service';
+import { CapabilityModule } from '../capability/capability.module';
 
 /**
  * Read from the raw environment because module metadata is evaluated at
@@ -41,6 +42,7 @@ const blockradarWebhookEnabled = /^(true|1|yes)$/i.test(
     BlockradarSettlementModule,
     SettlementAuthorityModule,
     SpendModule,
+    CapabilityModule,
   ],
   controllers: blockradarWebhookEnabled ? [BlockradarWebhookController] : [],
   providers: [

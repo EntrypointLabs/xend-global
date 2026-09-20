@@ -56,4 +56,38 @@ describe("Merchant account loading", () => {
     rerender({ token: null });
     expect(result.current.data).toBeNull();
   });
+
+  it("keeps the mounted dashboard while a refreshed identity token revalidates", async () => {
+    let resolveRefresh!: (value: unknown) => void;
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ name: "Draft Merchant", profileVersion: 1 }),
+      })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveRefresh = resolve;
+        }),
+      );
+    vi.stubGlobal("fetch", fetcher);
+    const { result, rerender } = renderHook(
+      ({ token }) =>
+        useMerchantDashboard<{ name: string; profileVersion: number }>(token),
+      { initialProps: { token: "token-1" } },
+    );
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    rerender({ token: "token-2" });
+
+    expect(result.current.status).toBe("ready");
+    expect(result.current.data?.name).toBe("Draft Merchant");
+    resolveRefresh({
+      ok: true,
+      status: 200,
+      json: async () => ({ name: "Draft Merchant", profileVersion: 2 }),
+    });
+    await waitFor(() => expect(result.current.data?.profileVersion).toBe(2));
+  });
 });

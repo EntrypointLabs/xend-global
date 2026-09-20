@@ -309,6 +309,17 @@ describe('CheckoutController.getSummary', () => {
     expect(serialized).not.toContain('fxRate');
   });
 
+  it('reports real devnet execution as non-live', async () => {
+    const { controller, intents } = makeController(merchantRow());
+    intents.findById.mockResolvedValue(
+      intentRow({ mode: 'live', executionCluster: 'devnet' }),
+    );
+
+    await expect(
+      controller.getSummary(makeReq(), 'pi_1'),
+    ).resolves.toMatchObject({ livemode: false });
+  });
+
   it('posts to the opener when it is a second allowed origin, without mutating the intent', async () => {
     const { controller, intents } = makeController(
       merchantRow({
@@ -464,23 +475,26 @@ describe('CheckoutController.getSummary', () => {
 });
 
 describe('CheckoutController.authorize', () => {
-  it('returns existing success to the original Consumer without building another Spend', async () => {
-    const f = makeController(merchantRow(), { sessions: liveSessions() });
-    f.intents.findById.mockResolvedValue(
-      intentRow({ status: 'succeeded', consumerId: 'c1' }),
-    );
-    const result = await f.controller.authorize(
-      makeReq('session'),
-      makeRes().res,
-      { reference: 'pi_1' },
-    );
-    expect(result.status).toBe('succeeded');
-    expect(f.settlement.buildSettlement).not.toHaveBeenCalled();
-    expect(f.settlement.pinSettlement).not.toHaveBeenCalled();
-    expect(f.settlement.submitSettlement).not.toHaveBeenCalled();
-    expect(f.auth.authorize).not.toHaveBeenCalled();
-    expect(f.capacity.checkCapacity).not.toHaveBeenCalled();
-  });
+  it.each(['succeeded', 'failed'] as const)(
+    'returns existing %s to the original Consumer without building another Spend',
+    async (status) => {
+      const f = makeController(merchantRow(), { sessions: liveSessions() });
+      f.intents.findById.mockResolvedValue(
+        intentRow({ status, consumerId: 'c1' }),
+      );
+      const result = await f.controller.authorize(
+        makeReq('session'),
+        makeRes().res,
+        { reference: 'pi_1' },
+      );
+      expect(result.status).toBe(status);
+      expect(f.settlement.buildSettlement).not.toHaveBeenCalled();
+      expect(f.settlement.pinSettlement).not.toHaveBeenCalled();
+      expect(f.settlement.submitSettlement).not.toHaveBeenCalled();
+      expect(f.auth.authorize).not.toHaveBeenCalled();
+      expect(f.capacity.checkCapacity).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not replay another Consumer's settled Payment", async () => {
     const f = makeController(merchantRow(), { sessions: liveSessions() });

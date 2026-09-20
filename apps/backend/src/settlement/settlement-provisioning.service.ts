@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { settlementAccounts } from '../db/schema';
@@ -22,6 +23,7 @@ export class SettlementProvisioningService {
 
   constructor(
     private readonly db: DbService,
+    private readonly config: ConfigService,
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
     private readonly router: SettlementRouter,
   ) {}
@@ -34,12 +36,18 @@ export class SettlementProvisioningService {
     provider: SettlementProviderName;
     provisioned: boolean;
   }> {
+    const executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     const [existing] = await this.db.client
       .select()
       .from(settlementAccounts)
       .where(eq(settlementAccounts.merchantId, merchantId))
       .limit(1);
-    if (existing?.address && existing.provisionedAt && existing.provider) {
+    if (
+      existing?.address &&
+      existing.provisionedAt &&
+      existing.provider &&
+      existing.executionCluster === executionCluster
+    ) {
       if (
         opts.merchantAddress &&
         (existing.provider !== 'direct_usdc' ||
@@ -73,6 +81,7 @@ export class SettlementProvisioningService {
       providerReference: endpoint.providerReference,
       payoutConfig: endpoint.payoutConfig,
       authorityAddress: endpoint.attributionRef,
+      executionCluster,
       provisionedAt: new Date(),
       updatedAt: new Date(),
     };
@@ -88,6 +97,7 @@ export class SettlementProvisioningService {
           providerReference: row.providerReference,
           payoutConfig: row.payoutConfig,
           authorityAddress: row.authorityAddress,
+          executionCluster: row.executionCluster,
           provisionedAt: row.provisionedAt,
           updatedAt: row.updatedAt,
         },
@@ -129,14 +139,20 @@ export class SettlementProvisioningService {
     owner: string;
     provider: SettlementProviderName;
   }> {
+    const executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     const [row] = await this.db.client
       .select()
       .from(settlementAccounts)
       .where(eq(settlementAccounts.merchantId, merchantId))
       .limit(1);
-    if (!row?.address || !row.provisionedAt || !row.provider) {
+    if (
+      !row?.address ||
+      !row.provisionedAt ||
+      !row.provider ||
+      row.executionCluster !== executionCluster
+    ) {
       throw new SettlementAccountNotProvisionedError(
-        `merchant ${merchantId} has no provisioned settlement endpoint`,
+        `merchant ${merchantId} has no settlement endpoint on ${executionCluster}`,
       );
     }
     // The USDC pilot settles to Merchant-controlled accounts. An endpoint

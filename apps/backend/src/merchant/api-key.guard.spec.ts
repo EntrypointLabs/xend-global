@@ -140,7 +140,7 @@ describe('ApiKeyGuard', () => {
     },
   );
 
-  it('attaches { merchantId, apiKeyId, mode } for a valid active-merchant key', async () => {
+  it('attaches execution and delivery modes for a valid active-merchant key', async () => {
     const key = generateApiKey('test');
     const { db } = makeFakeDb({
       apiKeyRows: [apiKeyRow({ keyHash: key.keyHash })],
@@ -154,6 +154,8 @@ describe('ApiKeyGuard', () => {
       merchantId: 'm1',
       apiKeyId: 'ak1',
       mode: 'test',
+      executionCluster: null,
+      deliveryMode: 'test',
     });
   });
 

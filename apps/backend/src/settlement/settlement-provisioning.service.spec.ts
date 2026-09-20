@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import type { ConfigService } from '@nestjs/config';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import { SettlementProvisioningService } from './settlement-provisioning.service';
@@ -11,6 +12,12 @@ import type { SettlementProvider } from './settlement-provider.interface';
 
 const ENDPOINT = 'ENDPOINT_TOKEN_ACCOUNT';
 const AUTHORITY = 'AUTHORITY_ATTRIBUTION_ROOT';
+
+function makeConfig(cluster = 'devnet'): ConfigService {
+  return {
+    getOrThrow: () => cluster,
+  } as unknown as ConfigService;
+}
 
 function fakeUsdcProvider(): {
   provider: SettlementProvider;
@@ -80,9 +87,11 @@ describe('SettlementProvisioningService', () => {
               provisionedAt: new Date(),
               providerReference: 'MERCHANT',
               authorityAddress,
+              executionCluster: 'devnet',
             },
           ],
         }),
+        makeConfig(),
         {
           getTokenAccountOwner: jest.fn().mockResolvedValue(observed),
         } as unknown as SolanaRpc,
@@ -105,9 +114,11 @@ describe('SettlementProvisioningService', () => {
             provisionedAt: new Date(),
             providerReference: 'MERCHANT',
             authorityAddress: null,
+            executionCluster: 'devnet',
           },
         ],
       }),
+      makeConfig(),
       {
         getTokenAccountOwner: jest.fn().mockResolvedValue('MERCHANT'),
       } as unknown as SolanaRpc,
@@ -134,6 +145,7 @@ describe('SettlementProvisioningService', () => {
     const register = jest.fn().mockResolvedValue(undefined);
     const service = new SettlementProvisioningService(
       db,
+      makeConfig(),
       makeSolana(register),
       router,
     );
@@ -157,6 +169,7 @@ describe('SettlementProvisioningService', () => {
       providerReference: ENDPOINT,
       payoutConfig: null,
       authorityAddress: AUTHORITY,
+      executionCluster: 'devnet',
     });
     expect(inserted?.provisionedAt).toBeInstanceOf(Date);
     expect(register).toHaveBeenCalledWith(ENDPOINT);
@@ -171,12 +184,14 @@ describe('SettlementProvisioningService', () => {
           address: ENDPOINT,
           provider: 'direct_usdc',
           provisionedAt: new Date(),
+          executionCluster: 'devnet',
         },
       ],
     });
     const register = jest.fn();
     const service = new SettlementProvisioningService(
       db,
+      makeConfig(),
       makeSolana(register),
       router,
     );
@@ -192,12 +207,63 @@ describe('SettlementProvisioningService', () => {
     expect(register).not.toHaveBeenCalled();
   });
 
+  it('reprovisions instead of reusing a destination from another cluster', async () => {
+    const { provider, provision } = fakeUsdcProvider();
+    let inserted: Record<string, unknown> | undefined;
+    const service = new SettlementProvisioningService(
+      makeDb({
+        existing: [
+          {
+            address: 'DEVNET_ENDPOINT',
+            provider: 'direct_usdc',
+            provisionedAt: new Date(),
+            executionCluster: 'devnet',
+          },
+        ],
+        onInsert: (values) => (inserted = values),
+      }),
+      makeConfig('mainnet'),
+      makeSolana(jest.fn()),
+      new SettlementRouter([provider]),
+    );
+
+    await expect(
+      service.provisionOrLink('m_1', { currency: 'USDC' }),
+    ).resolves.toMatchObject({ provisioned: true, address: ENDPOINT });
+    expect(provision).toHaveBeenCalledTimes(1);
+    expect(inserted).toMatchObject({ executionCluster: 'mainnet' });
+  });
+
+  it('rejects a settlement destination from another cluster', async () => {
+    const { provider } = fakeUsdcProvider();
+    const service = new SettlementProvisioningService(
+      makeDb({
+        existing: [
+          {
+            address: ENDPOINT,
+            provider: 'direct_usdc',
+            provisionedAt: new Date(),
+            executionCluster: 'devnet',
+          },
+        ],
+      }),
+      makeConfig('mainnet'),
+      makeSolana(jest.fn()),
+      new SettlementRouter([provider]),
+    );
+
+    await expect(
+      service.getSettlementAddressForSettlement('m_1'),
+    ).rejects.toThrow(SettlementAccountNotProvisionedError);
+  });
+
   it('routes NGN to the unregistered Blockradar slot and throws SETTLEMENT_PROVIDER_UNAVAILABLE', async () => {
     const { provider } = fakeUsdcProvider();
     const router = new SettlementRouter([provider]);
     const db = makeDb({ existing: [] });
     const service = new SettlementProvisioningService(
       db,
+      makeConfig(),
       makeSolana(jest.fn()),
       router,
     );
@@ -216,6 +282,7 @@ describe('SettlementProvisioningService', () => {
       .mockRejectedValue(new Error('helius webhook down'));
     const service = new SettlementProvisioningService(
       db,
+      makeConfig(),
       makeSolana(register),
       router,
     );
@@ -231,6 +298,7 @@ describe('SettlementProvisioningService', () => {
     const db = makeDb({ existing: [] });
     const service = new SettlementProvisioningService(
       db,
+      makeConfig(),
       makeSolana(jest.fn()),
       router,
     );
@@ -251,9 +319,11 @@ describe('SettlementProvisioningService', () => {
             provisionedAt: new Date(),
             authorityAddress: AUTHORITY,
             providerReference: ENDPOINT,
+            executionCluster: 'devnet',
           },
         ],
       }),
+      makeConfig(),
       makeSolana(jest.fn()),
       new SettlementRouter([provider]),
     );

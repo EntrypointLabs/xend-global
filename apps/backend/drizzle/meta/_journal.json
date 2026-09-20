@@ -327,8 +327,15 @@
     {
       "idx": 46,
       "version": "7",
-      "when": 1789871930555,
-      "tag": "0046_merchant_portal_hardening",
+      "when": 1789871635946,
+      "tag": "0046_settlement_account_cluster",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1789874580937,
+      "tag": "0047_merchant_portal_hardening",
       "breakpoints": true
     }
   ]

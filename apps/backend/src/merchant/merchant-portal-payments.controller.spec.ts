@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import type { ConfigService } from '@nestjs/config';
 import type { DbService } from '../db/db.service';
 import type { MerchantOwnerService } from './merchant-owner.service';
 import { MerchantPortalPaymentsController } from './merchant-portal-payments.controller';
@@ -30,7 +31,10 @@ function controllerWith(db: DbService) {
   const owner = {
     owned: jest.fn().mockResolvedValue(merchant),
   } as unknown as MerchantOwnerService;
-  return new MerchantPortalPaymentsController(db, owner);
+  const config = {
+    getOrThrow: () => 'devnet',
+  } as unknown as ConfigService;
+  return new MerchantPortalPaymentsController(db, owner, config);
 }
 
 describe('MerchantPortalPaymentsController', () => {

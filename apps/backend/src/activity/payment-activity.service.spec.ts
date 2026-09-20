@@ -1,11 +1,17 @@
 import type { DbService } from '../db/db.service';
+import type { ConfigService } from '@nestjs/config';
 import type { EventConsumer } from '../events/event-consumer.interface';
 import type { ReconcilerService } from './reconciler.service';
 import { PaymentActivityService } from './payment-activity.service';
 
 function harness(signature = 'confirmed-chain-signature') {
   const rows = [
-    { accountId: 'sa_consumer', vaultAddress: 'consumer-vault', signature },
+    {
+      accountId: 'sa_consumer',
+      vaultAddress: 'consumer-vault',
+      signature,
+      executionCluster: 'devnet',
+    },
   ];
   const query = {
     from: jest.fn().mockReturnThis(),
@@ -13,15 +19,21 @@ function harness(signature = 'confirmed-chain-signature') {
     where: jest.fn().mockReturnThis(),
     limit: jest.fn().mockResolvedValue(rows),
   };
-  const db = { client: { select: jest.fn().mockReturnValue(query) } };
+  const execute = jest.fn().mockResolvedValue({ rows: [] });
+  const db = {
+    client: { select: jest.fn().mockReturnValue(query), execute },
+  };
   const consumer = { subscribe: jest.fn().mockResolvedValue(undefined) };
   const reconciler = { replayPayment: jest.fn().mockResolvedValue(1) };
   const service = new PaymentActivityService(
     consumer as unknown as EventConsumer,
     db as unknown as DbService,
     reconciler as unknown as ReconcilerService,
+    {
+      getOrThrow: () => 'devnet',
+    } as unknown as ConfigService,
   );
-  return { service, consumer, reconciler, query };
+  return { service, consumer, reconciler, query, execute };
 }
 
 describe('confirmed Payment Activity indexing', () => {
@@ -30,7 +42,7 @@ describe('confirmed Payment Activity indexing', () => {
     await service.onModuleInit();
     expect(consumer.subscribe).toHaveBeenCalledWith(
       ['payment.succeeded'],
-      'payment-activity-indexer',
+      'payment-activity-indexer-devnet',
       expect.any(Function),
     );
   });
@@ -91,11 +103,40 @@ describe('confirmed Payment Activity indexing', () => {
           accountId: 'sa_consumer',
           vaultAddress: 'consumer-vault',
           signature: 'confirmed-chain-signature',
+          executionCluster: 'devnet',
         },
       ])
       .mockResolvedValueOnce([]);
     await expect(
       service.handle({ topic: 'payment.succeeded', key: 'pi_1', payload: {} }),
     ).rejects.toThrow('not yet indexed');
+  });
+
+  it('periodically retries durable missing Payments after event retries are exhausted', async () => {
+    const { service, reconciler, execute } = harness();
+    execute.mockResolvedValue({
+      rows: [
+        {
+          intentId: 'pi_1',
+          accountId: 'sa_consumer',
+          vaultAddress: 'consumer-vault',
+          signature: 'confirmed-chain-signature',
+        },
+      ],
+    });
+    reconciler.replayPayment
+      .mockRejectedValueOnce(new Error('RPC still unavailable'))
+      .mockResolvedValueOnce(1);
+
+    await expect(service.repairMissingPayments()).resolves.toBeUndefined();
+    await expect(service.repairMissingPayments()).resolves.toBeUndefined();
+
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(reconciler.replayPayment).toHaveBeenCalledTimes(2);
+    expect(reconciler.replayPayment).toHaveBeenLastCalledWith(
+      'sa_consumer',
+      'consumer-vault',
+      'confirmed-chain-signature',
+    );
   });
 });

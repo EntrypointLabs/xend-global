@@ -93,7 +93,13 @@ function makeController(created: IntentRow) {
 }
 
 const req = {
-  merchant: { merchantId: 'm1', apiKeyId: 'ak1', mode: 'test' },
+  merchant: {
+    merchantId: 'm1',
+    apiKeyId: 'ak1',
+    mode: 'test',
+    executionCluster: 'devnet',
+    deliveryMode: 'test',
+  },
 } as unknown as MerchantRequest;
 
 describe('MerchantController.createIntent', () => {
@@ -167,6 +173,45 @@ describe('MerchantController.createIntent', () => {
     expect(out.amount).toBe('25000000');
     expect(out.usdc_settlement_raw).toBe('25000000');
     expect(out.metadata).toBeNull();
+  });
+
+  it('reports real devnet execution as non-live', async () => {
+    const { controller } = makeController(
+      intentRow({ mode: 'live', executionCluster: 'devnet' }),
+    );
+    const out = await controller.createIntent(
+      {
+        merchant: {
+          ...req.merchant,
+          mode: 'live',
+          executionCluster: 'devnet',
+        },
+      } as MerchantRequest,
+      { amount: '25000000', currency: 'USDC' },
+    );
+    expect(out.livemode).toBe(false);
+  });
+
+  it('keeps legacy terminal intents readable when their cluster is null', async () => {
+    const { controller } = makeController(
+      intentRow({
+        status: 'succeeded',
+        mode: 'live',
+        executionCluster: null,
+      }),
+    );
+    await expect(
+      controller.getIntent(
+        {
+          merchant: {
+            ...req.merchant,
+            mode: 'live',
+            executionCluster: 'mainnet',
+          },
+        } as MerchantRequest,
+        'pi_1',
+      ),
+    ).resolves.toMatchObject({ id: 'pi_1', status: 'succeeded' });
   });
 
   it('echoes an NGN request in kobo', async () => {

@@ -1,6 +1,6 @@
 {
-  "id": "61957ccd-2fbb-4de9-956a-1e77f19db64d",
-  "prevId": "0d81753a-f3fe-410d-8069-fa50e0cf6308",
+  "id": "5fff5c0c-bb0e-4ba4-bec4-b72083dab83f",
+  "prevId": "61957ccd-2fbb-4de9-956a-1e77f19db64d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -296,6 +296,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rotated_from_id": {
+          "name": "rotated_from_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "mode": {
           "name": "mode",
@@ -758,6 +770,94 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.merchant_audit_log": {
+      "name": "merchant_audit_log",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "merchant_id": {
+          "name": "merchant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor": {
+          "name": "actor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target": {
+          "name": "target",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "merchant_audit_log_merchant_at_idx": {
+          "name": "merchant_audit_log_merchant_at_idx",
+          "columns": [
+            {
+              "expression": "merchant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "merchant_audit_log_merchant_id_merchants_id_fk": {
+          "name": "merchant_audit_log_merchant_id_merchants_id_fk",
+          "tableFrom": "merchant_audit_log",
+          "tableTo": "merchants",
+          "columnsFrom": ["merchant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.merchants": {
       "name": "merchants",
       "schema": "",
@@ -843,6 +943,18 @@
         "kyb_verified_at": {
           "name": "kyb_verified_at",
           "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kyb_submitted_at": {
+          "name": "kyb_submitted_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kyb_review_note": {
+          "name": "kyb_review_note",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

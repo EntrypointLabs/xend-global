@@ -39,7 +39,10 @@ export class MerchantWebhookEndpointsController {
   async list(
     @Req() req: MerchantRequest,
   ): Promise<{ object: 'list'; data: WebhookEndpointObject[] }> {
-    const rows = await this.endpoints.list(req.merchant);
+    const rows = await this.endpoints.list({
+      merchantId: req.merchant.merchantId,
+      mode: req.merchant.deliveryMode,
+    });
     return { object: 'list', data: rows.map(toObject) };
   }
 
@@ -52,7 +55,7 @@ export class MerchantWebhookEndpointsController {
     try {
       const { endpoint, secret } = await this.endpoints.register({
         merchantId: req.merchant.merchantId,
-        mode: req.merchant.mode,
+        mode: req.merchant.deliveryMode,
         url: body.url,
         eventTypes: body.event_types,
       });
@@ -70,9 +73,15 @@ export class MerchantWebhookEndpointsController {
     try {
       const { secret, secondaryExpiresAt } = await this.endpoints.rotateSecret(
         id,
-        req.merchant,
+        {
+          merchantId: req.merchant.merchantId,
+          mode: req.merchant.deliveryMode,
+        },
       );
-      const endpoint = await this.endpoints.find(id, req.merchant);
+      const endpoint = await this.endpoints.find(id, {
+        merchantId: req.merchant.merchantId,
+        mode: req.merchant.deliveryMode,
+      });
       return {
         ...toObject(endpoint),
         secret,
@@ -89,7 +98,10 @@ export class MerchantWebhookEndpointsController {
     @Param('id') id: string,
   ): Promise<{ id: string; object: 'webhook_endpoint'; deleted: true }> {
     try {
-      const endpoint = await this.endpoints.disable(id, req.merchant);
+      const endpoint = await this.endpoints.disable(id, {
+        merchantId: req.merchant.merchantId,
+        mode: req.merchant.deliveryMode,
+      });
       return { id: endpoint.id, object: 'webhook_endpoint', deleted: true };
     } catch (err) {
       this.mapServiceError(err);

@@ -41,6 +41,7 @@ function settlementRow(over: Partial<SettlementRow> = {}): SettlementRow {
     providerReference: 'ref-123',
     payoutConfig: null,
     authorityAddress: null,
+    executionCluster: 'mainnet',
     provisionedAt: new Date('2026-01-01'),
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
@@ -205,6 +206,10 @@ describe('KeyIssuanceService.issueKey', () => {
     const result = await service.issueKey('m1', 'live');
     expect(result.raw.startsWith('xnd_live_')).toBe(true);
     expect(inserts).toHaveLength(1);
+    expect(inserts[0].values).toMatchObject({
+      mode: 'live',
+      executionCluster: 'mainnet',
+    });
   });
 
   it('rejects an unknown merchant', async () => {

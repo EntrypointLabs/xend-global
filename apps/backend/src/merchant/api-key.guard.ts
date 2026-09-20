@@ -14,6 +14,7 @@ import type { Request } from 'express';
 import { DbService } from '../db/db.service';
 import { apiKeys, merchants } from '../db/schema';
 import { hashApiKey, LIVE_PREFIX, TEST_PREFIX } from './api-key.util';
+import { paymentDeliveryMode } from '../payment/payment-mode';
 import {
   InvalidApiKeyError,
   KybNotVerifiedError,
@@ -25,6 +26,8 @@ export interface MerchantContext {
   merchantId: string;
   apiKeyId: string;
   mode: 'test' | 'live';
+  executionCluster: string | null;
+  deliveryMode: 'test' | 'live';
 }
 
 export interface MerchantRequest extends Request {
@@ -101,10 +104,17 @@ export class ApiKeyGuard implements CanActivate {
         );
       }
 
+      const executionCluster =
+        keyRow.executionCluster ??
+        (keyRow.mode === 'live'
+          ? (this.config?.get<string>('SOLANA_CLUSTER') ?? null)
+          : null);
       request.merchant = {
         merchantId: keyRow.merchantId,
         apiKeyId: keyRow.id,
         mode: keyRow.mode,
+        executionCluster,
+        deliveryMode: paymentDeliveryMode(keyRow.mode, executionCluster),
       };
 
       // Fire-and-forget: last_used_at is telemetry, not correctness. Never
