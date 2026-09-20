@@ -61,7 +61,7 @@ export function devPilot(key: string): Plugin {
           )
             throw new Error("Invalid pilot order");
           const upstream = await fetch(
-            "http://127.0.0.1:8008/v1/payment_intents",
+            `${process.env.XEND_BACKEND_URL ?? "http://127.0.0.1:8008"}/v1/payment_intents`,
             {
               method: "POST",
               headers: {

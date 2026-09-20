@@ -8,7 +8,7 @@
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "dev": "NO_COLOR=1 FORCE_COLOR=0 npm run start:debug 2>&1 | tee /tmp/xend-backend.log",
+    "dev": "node ../../scripts/dev-backend.mjs",
     "start:debug": "nest start --debug --watch",
     "start": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
@@ -20,7 +20,8 @@
     "check-types": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "dev:standalone": "NO_COLOR=1 FORCE_COLOR=0 npm run start:debug 2>&1 | tee /tmp/xend-backend.log"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.1127.0",
