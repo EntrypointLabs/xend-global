@@ -116,3 +116,46 @@ Merchant. Every visible action has a real authenticated backend operation or
 an explicit unavailable explanation. No placeholder success, invented metrics,
 editable verification status, or frontend-only profile saves. The full pilot
 and its mainnet proof remain separate, unfinished acceptance gates.
+
+## Portal hardening sweep, 2026-09-20
+
+This sweep closed the code-side backlog above, except the two exclusions
+(mainnet execution and above-limit physical-device acceptance), which stay
+deferred and are not simulated.
+
+- Navigation: the portal now has stable routes with refresh, deep-link and
+  back/forward support, and a fixed global top navigation (ADR 0034). A static
+  host must serve `index.html` for non-asset paths; `apps/merchant/vercel.json`
+  and `docs/merchant-portal-production.md` cover this.
+- Audit trail and least-privilege: a `merchant_audit_log`, separate from the
+  operator log, records profile, key, webhook and KYB writes and is read back
+  through an owner-scoped route; dashboard responses drop the owner provider id
+  and every server-only column (ADR 0035).
+- API key lifecycle: keys can be named, carry creation and last-use metadata,
+  and can be rotated (a successor under the same mode and name, linked to its
+  predecessor, then the old key revoked).
+- Webhooks: an owner-authenticated dashboard manages endpoints (create, list,
+  rotate secret, delete) and reads delivery diagnostics, reusing the existing
+  SSRF validation and secret lifecycle (ADR 0017).
+- Payments: cursor pagination, status and reference filters, and a detail view
+  with the USDC quote, exchange-rate fields when present, the confirmation
+  reference (settlement transaction signature) and webhook delivery status.
+- Business verification: an owner can submit or resubmit for review, which
+  records a submitted time and clears a prior rejection reason; verification is
+  never self-approved.
+- Cancellation semantics: Checkout Cancel dismisses this attempt and says so;
+  it does not terminally cancel the intent, which stays a separate merchant-side
+  capability (ADR 0036).
+- Checkout disclosure: the More info disclosure is a native `<summary>`, so it is
+  keyboard and screen-reader operable; a toggle test covers it. Mobile-browser
+  lifecycle acceptance still needs a physical device.
+- Production serving: the API sets baseline security headers, environment
+  separation is documented, the API base is configurable for split-origin
+  serving, and `scripts/smoke-merchant-production.mjs` checks a real deployment.
+
+Verification: backend 1024 unit tests plus opt-in HTTP/PostgreSQL portal
+integration tests (profile, keys, key rotation, webhooks, payments pagination
+and detail, audit) pass against real PostgreSQL; merchant 41 component and
+router tests and checkout 72 tests pass; merchant and checkout production builds
+pass. New panels were visually reviewed on desktop and at 375px. Mainnet and
+physical-device acceptance remain the two open gates.
