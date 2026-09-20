@@ -13,6 +13,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
+    "db:migrate": "npm --workspace @xend/backend run db:migrate",
+    "db:generate": "npm --workspace @xend/backend run db:generate",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "turbo run build --filter=@xend/checkout-* && changeset publish",
