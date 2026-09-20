@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, lt, or } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { DbService, type DbExecutor } from '../db/db.service';
 import { merchantAuditLog } from '../db/schema';
+import { keysetBefore } from './keyset';
 
 export type MerchantAuditAction =
   | 'profile.update'
@@ -66,24 +67,21 @@ export class MerchantAuditService {
     options: { limit: number; cursor?: string | null },
   ): Promise<MerchantAuditPage> {
     const limit = Math.min(Math.max(options.limit, 1), 100);
-    const after = options.cursor
-      ? await this.cursorRow(merchantId, options.cursor)
-      : null;
     const rows = await this.db.client
       .select()
       .from(merchantAuditLog)
       .where(
         and(
           eq(merchantAuditLog.merchantId, merchantId),
-          ...(after
+          ...(options.cursor
             ? [
-                or(
-                  lt(merchantAuditLog.at, after.at),
-                  and(
-                    eq(merchantAuditLog.at, after.at),
-                    lt(merchantAuditLog.id, after.id),
-                  ),
-                ),
+                keysetBefore({
+                  createdAt: merchantAuditLog.at,
+                  id: merchantAuditLog.id,
+                  table: merchantAuditLog,
+                  cursor: options.cursor,
+                  scope: eq(merchantAuditLog.merchantId, merchantId),
+                }),
               ]
             : []),
         ),
@@ -101,19 +99,5 @@ export class MerchantAuditService {
       })),
       nextCursor: rows.length > limit ? page[page.length - 1].id : null,
     };
-  }
-
-  private async cursorRow(merchantId: string, cursor: string) {
-    const [row] = await this.db.client
-      .select({ id: merchantAuditLog.id, at: merchantAuditLog.at })
-      .from(merchantAuditLog)
-      .where(
-        and(
-          eq(merchantAuditLog.id, cursor),
-          eq(merchantAuditLog.merchantId, merchantId),
-        ),
-      )
-      .limit(1);
-    return row ?? null;
   }
 }

@@ -308,13 +308,17 @@ describe('KeyIssuanceService.revokeKey', () => {
       id: 'ak1',
       fingerprint: 'xnd_live_...abcd',
       revokedAt,
+      claimed: true,
     });
   });
 
-  it('is safe to repeat: an already revoked key keeps its first timestamp', async () => {
+  it('is safe to repeat: an already revoked key keeps its first timestamp and is not re-claimed', async () => {
     const { db, revokedAt } = revokeDb({ unrevoked: false, existing: true });
     const svc = new KeyIssuanceService(db);
-    await expect(svc.revokeKey('ak1')).resolves.toMatchObject({ revokedAt });
+    await expect(svc.revokeKey('ak1')).resolves.toMatchObject({
+      revokedAt,
+      claimed: false,
+    });
   });
 
   it('refuses an unknown key', async () => {

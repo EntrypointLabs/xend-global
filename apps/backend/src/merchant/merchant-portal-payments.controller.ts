@@ -7,8 +7,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, desc, eq, ilike, lt, or } from 'drizzle-orm';
+import { and, desc, eq, ilike, or } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
+import { keysetBefore } from './keyset';
 import {
   paymentAttempts,
   paymentIntents,
@@ -57,7 +58,6 @@ export class MerchantPortalPaymentsController {
       ? (status as IntentStatus)
       : undefined;
     const search = q?.trim();
-    const after = cursor ? await this.cursorRow(merchant.id, cursor) : null;
 
     const rows = await this.db.client
       .select({
@@ -84,15 +84,15 @@ export class MerchantPortalPaymentsController {
                 ),
               ]
             : []),
-          ...(after
+          ...(cursor
             ? [
-                or(
-                  lt(paymentIntents.createdAt, after.createdAt),
-                  and(
-                    eq(paymentIntents.createdAt, after.createdAt),
-                    lt(paymentIntents.id, after.id),
-                  ),
-                ),
+                keysetBefore({
+                  createdAt: paymentIntents.createdAt,
+                  id: paymentIntents.id,
+                  table: paymentIntents,
+                  cursor,
+                  scope: eq(paymentIntents.merchantId, merchant.id),
+                }),
               ]
             : []),
         ),
@@ -193,23 +193,6 @@ export class MerchantPortalPaymentsController {
         createdAt: row.createdAt.toISOString(),
       })),
     };
-  }
-
-  private async cursorRow(merchantId: string, cursor: string) {
-    const [row] = await this.db.client
-      .select({
-        id: paymentIntents.id,
-        createdAt: paymentIntents.createdAt,
-      })
-      .from(paymentIntents)
-      .where(
-        and(
-          eq(paymentIntents.id, cursor),
-          eq(paymentIntents.merchantId, merchantId),
-        ),
-      )
-      .limit(1);
-    return row ?? null;
   }
 }
 

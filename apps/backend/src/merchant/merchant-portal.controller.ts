@@ -295,15 +295,19 @@ export class MerchantPortalController {
     // leave a revocation that no trail records.
     const revoked = await this.db.client.transaction(async (tx) => {
       const result = await this.keys.revokeKey(id, tx);
-      await this.audit.record(
-        {
-          merchantId: merchant.id,
-          actor: merchant.ownerProviderId ?? 'unknown',
-          action: 'api_key.revoke',
-          target: id,
-        },
-        tx,
-      );
+      // A retry of a lost response re-revokes idempotently; only record the
+      // audit entry for the call that actually performed the transition, so the
+      // append-only trail does not show a second revocation that never happened.
+      if (result.claimed)
+        await this.audit.record(
+          {
+            merchantId: merchant.id,
+            actor: merchant.ownerProviderId ?? 'unknown',
+            action: 'api_key.revoke',
+            target: id,
+          },
+          tx,
+        );
       return result;
     });
     return { id: revoked.id, revokedAt: revoked.revokedAt.toISOString() };

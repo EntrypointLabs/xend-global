@@ -7,9 +7,17 @@ import { useCallback, useSyncExternalStore } from "react";
  * back/forward all land on the right page.
  */
 
+// Browser back/forward fire "popstate"; programmatic navigate() fires a
+// distinct "locationchange" so a guard can tell the two apart (the account
+// draft guard must intercept only real history transitions, since click
+// navigations are already guarded before they push).
 function subscribe(callback: () => void) {
   window.addEventListener("popstate", callback);
-  return () => window.removeEventListener("popstate", callback);
+  window.addEventListener("locationchange", callback);
+  return () => {
+    window.removeEventListener("popstate", callback);
+    window.removeEventListener("locationchange", callback);
+  };
 }
 
 export function usePathname(): string {
@@ -24,7 +32,7 @@ export function usePathname(): string {
 export function navigate(to: string): void {
   if (to === window.location.pathname + window.location.search) return;
   window.history.pushState(null, "", to);
-  window.dispatchEvent(new PopStateEvent("popstate"));
+  window.dispatchEvent(new Event("locationchange"));
 }
 
 export function useNavigate() {

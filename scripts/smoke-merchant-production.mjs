@@ -60,26 +60,16 @@ async function main() {
     check("Portal /me reachable", false, String(error));
   }
 
-  // 3b. The path the BROWSER actually reaches. In the same-origin topology the
-  //     portal calls /merchant-portal/* on MERCHANT_URL, so a missing reverse
-  //     proxy leaves the portal unusable even when API_URL works. Assert the
-  //     merchant origin routes that path to the API (401, not the SPA shell).
-  //     When MERCHANT_URL === API_URL this is the split-origin case; we instead
-  //     confirm the API answers a cross-origin preflight for the portal origin.
-  const sameOrigin = MERCHANT_URL !== API_URL;
-  if (sameOrigin) {
-    try {
-      const proxied = await fetch(`${MERCHANT_URL}/merchant-portal/me`);
-      const body = await proxied.text();
-      check(
-        "Merchant-origin /merchant-portal/me routes to the API (not the SPA)",
-        proxied.status === 401 && !body.includes('<div id="root">'),
-        `status ${proxied.status}`,
-      );
-    } catch (error) {
-      check("Merchant-origin portal API reachable", false, String(error));
-    }
-  } else {
+  // 3b. Check the path the BROWSER actually reaches, per the deployed topology.
+  //     Same-origin (API_URL === MERCHANT_URL): the reverse proxy forwards
+  //     /merchant-portal/* to the API on the one origin, and check 3 above
+  //     already exercised exactly that path, so no CORS entry is expected.
+  //     Split-origin (URLs differ): the portal calls the API cross-origin, and
+  //     the static merchant host intentionally does NOT proxy /merchant-portal,
+  //     so confirm the API answers a cross-origin preflight for the portal
+  //     origin instead of expecting a proxy.
+  const splitOrigin = MERCHANT_URL !== API_URL;
+  if (splitOrigin) {
     try {
       const preflight = await fetch(`${API_URL}/merchant-portal/me`, {
         method: "OPTIONS",
@@ -98,6 +88,11 @@ async function main() {
     } catch (error) {
       check("API CORS preflight reachable", false, String(error));
     }
+  } else {
+    check(
+      "Same-origin: /merchant-portal is served by the reverse proxy (checked above)",
+      true,
+    );
   }
 
   // 4. A deep link into the SPA returns the app shell (history fallback), so a

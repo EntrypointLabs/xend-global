@@ -10,10 +10,11 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { and, desc, eq, lt, or } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { DbService } from '../db/db.service';
 import { webhookDeliveries } from '../db/schema';
+import { keysetBefore } from './keyset';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { UnsafeUrlError } from '../common/url-safety';
 import { WebhookEndpointNotFoundError } from '../webhook/webhook.errors';
@@ -186,7 +187,6 @@ export class MerchantPortalWebhooksController {
       this.mapServiceError(error);
     }
     const take = clampLimit(limit, 20, 100);
-    const after = cursor ? await this.deliveryCursor(id, cursor) : null;
     const rows = await this.db.client
       .select({
         id: webhookDeliveries.id,
@@ -203,15 +203,15 @@ export class MerchantPortalWebhooksController {
       .where(
         and(
           eq(webhookDeliveries.endpointId, id),
-          ...(after
+          ...(cursor
             ? [
-                or(
-                  lt(webhookDeliveries.createdAt, after.createdAt),
-                  and(
-                    eq(webhookDeliveries.createdAt, after.createdAt),
-                    lt(webhookDeliveries.id, after.id),
-                  ),
-                ),
+                keysetBefore({
+                  createdAt: webhookDeliveries.createdAt,
+                  id: webhookDeliveries.id,
+                  table: webhookDeliveries,
+                  cursor,
+                  scope: eq(webhookDeliveries.endpointId, id),
+                }),
               ]
             : []),
         ),
@@ -233,23 +233,6 @@ export class MerchantPortalWebhooksController {
       })),
       nextCursor: rows.length > take ? page[page.length - 1].id : null,
     };
-  }
-
-  private async deliveryCursor(endpointId: string, cursor: string) {
-    const [row] = await this.db.client
-      .select({
-        id: webhookDeliveries.id,
-        createdAt: webhookDeliveries.createdAt,
-      })
-      .from(webhookDeliveries)
-      .where(
-        and(
-          eq(webhookDeliveries.id, cursor),
-          eq(webhookDeliveries.endpointId, endpointId),
-        ),
-      )
-      .limit(1);
-    return row ?? null;
   }
 
   private mapServiceError(error: unknown): never {

@@ -58,6 +58,12 @@ export interface RevokedKey {
   fingerprint: string;
   mode: 'test' | 'live';
   revokedAt: Date;
+  /**
+   * Whether this call performed the revocation. False when the key was already
+   * revoked, so a retry stays idempotent but callers can avoid logging a second
+   * audit entry for a transition that did not happen.
+   */
+  claimed: boolean;
 }
 
 /**
@@ -204,6 +210,9 @@ export class KeyIssuanceService {
       fingerprint: row.fingerprint,
       mode: row.mode,
       revokedAt: row.revokedAt,
+      // A row came back from the conditional update only when this call flipped
+      // it; a retry against an already-revoked key falls through to the select.
+      claimed: Boolean(revoked),
     };
   }
 

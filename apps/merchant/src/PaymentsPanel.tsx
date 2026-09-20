@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import type { PortalClient } from "./portal";
 import { formatUsdc, formatDisplayAmount } from "./money";
 import { navigate, paymentPath } from "./router";
@@ -44,9 +50,14 @@ export function PaymentsPanel({ client }: { client: PortalClient }) {
   const [statusFilter, setStatusFilter] = useState("");
   const [query, setQuery] = useState("");
   const [applied, setApplied] = useState({ status: "", q: "" });
+  // Each request takes a generation; a filter change or a new load bumps it, so
+  // a slower earlier response (e.g. a "Load more" for the previous filters that
+  // resolves after the filter changed) is discarded instead of mixing rows.
+  const generationRef = useRef(0);
 
   const load = useCallback(
     async (reset: boolean, filters: { status: string; q: string }) => {
+      const generation = ++generationRef.current;
       setStatus(reset ? "loading" : "more");
       setError("");
       try {
@@ -58,12 +69,14 @@ export function PaymentsPanel({ client }: { client: PortalClient }) {
           payments: PaymentSummary[];
           nextCursor: string | null;
         }>(`payments?${params.toString()}`);
+        if (generation !== generationRef.current) return;
         setRows((current) =>
           reset ? page.payments : [...current, ...page.payments],
         );
         setCursor(page.nextCursor);
         setStatus("ready");
       } catch (failure) {
+        if (generation !== generationRef.current) return;
         setError(
           failure instanceof Error ? failure.message : "Could not load.",
         );

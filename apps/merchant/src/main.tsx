@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   PrivyProvider,
@@ -88,6 +88,32 @@ function MerchantWorkspace() {
     authenticated ? identityToken : null,
   );
   const { data, setData } = account;
+  // Track the path we are on so the browser-history guard below can tell what
+  // page a back/forward is leaving.
+  const currentPathRef = useRef(pagePath("overview"));
+  useEffect(() => {
+    currentPathRef.current = window.location.pathname;
+  });
+  useEffect(() => {
+    // Back/forward fire popstate directly, bypassing the click guard. If it
+    // leaves the account page with unsaved edits and the owner declines to
+    // discard, re-push the account path to cancel the transition.
+    const onPopState = () => {
+      const wasAccount = currentPathRef.current === pagePath("account");
+      const now = window.location.pathname;
+      if (
+        wasAccount &&
+        now !== pagePath("account") &&
+        profileRef.current &&
+        !profileRef.current.canLeave()
+      ) {
+        window.history.pushState(null, "", pagePath("account"));
+        window.dispatchEvent(new Event("locationchange"));
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
   const [name, setName] = useState("");
   const [origin, setOrigin] = useState("http://localhost:5174");
   const [accepted, setAccepted] = useState(false);
@@ -413,6 +439,15 @@ function MerchantWorkspace() {
                         disabled={busy}
                         onClick={() =>
                           void run(async () => {
+                            // The draft lives in the profile form; submitting
+                            // while it is dirty would send the old persisted
+                            // profile for review while the owner sees unsaved
+                            // values. Require a save first.
+                            if (profileRef.current?.isDirty()) {
+                              throw new Error(
+                                "Save your business details before submitting them for verification.",
+                              );
+                            }
                             setData(await client.post<Dashboard>("kyb/submit"));
                           })
                         }
