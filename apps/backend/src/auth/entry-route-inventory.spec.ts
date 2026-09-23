@@ -12,6 +12,7 @@ import { applyAppModuleTestEnv } from '../app.module.test-env';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { ALLOW_ENTRY } from './allow-entry.decorator';
 import { ConsumerAuthGuard } from './consumer-auth.guard';
+import { UnifiedLocalGuard } from '../fiat/unified/unified-local.guard';
 
 /**
  * Every route the backend serves, and what an entry session may do with it.
@@ -99,6 +100,39 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'DELETE /notifications/devices',
   'GET /notifications/preferences',
   'PUT /notifications/preferences',
+  // Fiat sandbox pilot uses full Consumer sessions, including its read paths.
+  'GET /fiat/balances',
+  'GET /fiat/banking/accounts',
+  'GET /fiat/banking/capabilities',
+  'GET /fiat/banking/transfers',
+  'GET /fiat/orders',
+  'GET /fiat/orders/:id',
+  'GET /fiat/routes',
+  'GET /fiat/unified',
+  'POST /fiat/banking/accounts',
+  'POST /fiat/banking/accounts/reconcile',
+  'POST /fiat/banking/transfers',
+  'POST /fiat/banking/transfers/quotes',
+  'POST /fiat/orders',
+  'POST /fiat/orders/:id/simulate',
+  'POST /fiat/quotes',
+  'POST /fiat/unified/orders',
+  'POST /fiat/unified/orders/:id/advance',
+  'POST /fiat/unified/quotes',
+  'POST /fiat/unified/receive',
+  // A fixed local development identity, never authenticated by an entry token.
+  'GET /dev/fiat/balances',
+  'GET /dev/fiat/banking/accounts',
+  'GET /dev/fiat/banking/transfers',
+  'GET /dev/fiat/unified',
+  'POST /dev/fiat/banking/accounts',
+  'POST /dev/fiat/banking/accounts/reconcile',
+  'POST /dev/fiat/banking/transfers',
+  'POST /dev/fiat/banking/transfers/quotes',
+  'POST /dev/fiat/unified/orders',
+  'POST /dev/fiat/unified/orders/:id/advance',
+  'POST /dev/fiat/unified/quotes',
+  'POST /dev/fiat/unified/receive',
   // Not Consumer routes at all: no session of either tier reaches these.
   'GET /',
   'POST /auth/exchange',
@@ -124,6 +158,8 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /console/accounts/:userId/recovery/unfreeze',
   'POST /internal/api_keys/:id/revoke',
   'POST /webhooks/helius',
+  // Nomba HMAC authenticates this receiver, never a Consumer session.
+  'POST /webhooks/nomba/sandbox',
   'GET /health',
   'GET /metrics',
   'GET /v1/webhook_endpoints',
@@ -265,6 +301,26 @@ describe('entry session route inventory', () => {
       .filter((r) => r.guards.includes(AuthGuard('jwt')))
       .map((r) => r.route);
     expect(raw).toEqual([]);
+  });
+
+  it('requires the tier-aware Consumer guard on every fiat API route', () => {
+    const fiat = routes.filter((r) => /^[A-Z]+ \/fiat\//.test(r.route));
+    expect(fiat.length).toBeGreaterThan(0);
+    expect(
+      fiat
+        .filter((r) => !r.guards.includes(ConsumerAuthGuard))
+        .map((r) => r.route),
+    ).toEqual([]);
+  });
+
+  it('requires the local-only guard on every development fiat route', () => {
+    const local = routes.filter((r) => /^[A-Z]+ \/dev\/fiat\//.test(r.route));
+    expect(local.length).toBeGreaterThan(0);
+    expect(
+      local
+        .filter((r) => !r.guards.includes(UnifiedLocalGuard))
+        .map((r) => r.route),
+    ).toEqual([]);
   });
 
   it('closes each route the capability table names, by name', () => {

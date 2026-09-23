@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { asProviderRecord, parseExactProviderJson } from '../provider-http';
 import type {
   BankAccount,
   BankAccountProvider,
@@ -35,9 +36,10 @@ export class NombaError extends Error {
   }
 }
 function object(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new NombaError('NOMBA_INVALID_RESPONSE');
-  return value as Record<string, unknown>;
+  return asProviderRecord(
+    value,
+    () => new NombaError('NOMBA_INVALID_RESPONSE'),
+  );
 }
 function text(value: unknown): string {
   if (typeof value !== 'string' || !value.trim())
@@ -137,7 +139,12 @@ export class NombaAdapter
       );
     let payload: Record<string, unknown>;
     try {
-      payload = object(await response.json());
+      payload = object(
+        parseExactProviderJson(
+          await response.text(),
+          () => new NombaError('NOMBA_INVALID_RESPONSE'),
+        ),
+      );
     } catch {
       throw new NombaError(
         body === undefined

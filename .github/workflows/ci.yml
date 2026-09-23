@@ -50,6 +50,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/xend_ci
         run: npx drizzle-kit migrate
+      - name: Fiat HTTP and PostgreSQL integration tests
+        working-directory: apps/backend
+        env:
+          FIAT_PG_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/xend_ci
+        run: npm test -- --runInBand src/fiat
 
   sdk:
     runs-on: ubuntu-latest

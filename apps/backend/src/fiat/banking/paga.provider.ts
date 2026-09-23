@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { parseExactProviderJson } from '../provider-http';
 import type {
   BankAccount,
   BankAccountProvider,
@@ -50,12 +51,9 @@ function toMinor(value: unknown): string {
 }
 function parse(raw: string): Record<string, unknown> {
   try {
-    // Tokenize strings before numbers so digits inside JSON strings remain untouched.
-    const exact = raw.replace(
-      /"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g,
-      (token) => (token.startsWith('"') ? token : JSON.stringify(token)),
+    return object.parse(
+      parseExactProviderJson(raw, () => new PagaError('INVALID_RESPONSE')),
     );
-    return object.parse(JSON.parse(exact));
   } catch {
     throw new PagaError('INVALID_RESPONSE');
   }
