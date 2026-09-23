@@ -213,6 +213,7 @@ describePg('per-user naira accounts HTTP + PostgreSQL', () => {
     await pool.query(
       "UPDATE fiat_bank_accounts SET status = 'creating', account = NULL, created_at = now() - interval '3 minutes'",
     );
+    await app.get(NairaAccountsService).sweepStale('alice');
     const accounts = (await http().get(path).expect(200)).body.accounts;
     expect(accounts[0]).toMatchObject({
       id: created.id,

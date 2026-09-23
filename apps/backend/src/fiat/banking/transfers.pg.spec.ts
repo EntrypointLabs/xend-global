@@ -320,6 +320,7 @@ describePg('Paga account transfers HTTP + PostgreSQL', () => {
       `UPDATE fiat_bank_transfers SET record = jsonb_set(jsonb_set(record, '{status}', '"submitting"'::jsonb), '{updatedAt}', to_jsonb((now() - interval '3 minutes')::text)) WHERE id = $1`,
       [first.id],
     );
+    await app.get(NairaTransfersService).sweepStale('alice');
     const state = (await http().get(path).expect(200)).body
       .transfers as NairaTransferRecord[];
     expect(state.find((row) => row.id === first.id)?.status).toBe(
