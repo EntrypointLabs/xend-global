@@ -44,6 +44,11 @@ import {
   seedSessions,
   seedTransfers,
   seedWallet,
+  seedBankAccounts,
+  seedObservedFiatBalances,
+  seedNairaTransfers,
+  seedFiatRoutes,
+  seedFiatQuote,
 } from "@/utils/devSeed";
 
 /**
@@ -672,19 +677,25 @@ class BackendClient {
   }
 
   async nairaTransfers() {
+    if (SEED_DEMO) return seedNairaTransfers();
     return NairaTransfersSchema.parse(
       await this.request<unknown>("/fiat/banking/transfers", { auth: true })
     );
   }
   async quoteNairaTransfer(
     destinationAccountNumber: string,
-    amountMinor: string
+    amountMinor: string,
+    idempotencyKey: string
   ) {
     return NairaTransferSchema.parse(
       await this.request<unknown>("/fiat/banking/transfers/quotes", {
         auth: true,
         method: "POST",
-        body: JSON.stringify({ destinationAccountNumber, amountMinor }),
+        body: JSON.stringify({
+          destinationAccountNumber,
+          amountMinor,
+          idempotencyKey,
+        }),
       })
     );
   }
@@ -698,11 +709,13 @@ class BackendClient {
     );
   }
   async observedBalances() {
+    if (SEED_DEMO) return seedObservedFiatBalances();
     return ObservedBalancesSchema.parse(
       await this.request<unknown>("/fiat/balances", { auth: true })
     );
   }
   async bankAccounts() {
+    if (SEED_DEMO) return seedBankAccounts();
     return BankAccountsSchema.parse(
       await this.request<unknown>("/fiat/banking/accounts", { auth: true })
     );
@@ -783,11 +796,13 @@ class BackendClient {
     );
   }
   async fiatRoutes() {
+    if (SEED_DEMO) return { routes: seedFiatRoutes() };
     return z
       .object({ routes: z.array(FiatRouteSchema) })
       .parse(await this.request<unknown>("/fiat/routes", { auth: true }));
   }
   async fiatQuote(routeId: string, amountMinor: string) {
+    if (SEED_DEMO) return seedFiatQuote(routeId, amountMinor);
     return FiatQuoteSchema.parse(
       await this.request<unknown>("/fiat/quotes", {
         auth: true,
@@ -810,6 +825,7 @@ class BackendClient {
     );
   }
   async fiatOrders() {
+    if (SEED_DEMO) return { orders: [] };
     return z
       .object({ orders: z.array(FiatOrderSchema) })
       .parse(await this.request<unknown>("/fiat/orders", { auth: true }));

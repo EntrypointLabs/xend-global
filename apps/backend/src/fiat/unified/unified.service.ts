@@ -342,6 +342,11 @@ export class UnifiedFiatService {
             BigInt(order.plan.recipientMinor) +
             BigInt(order.plan.payoutFeeMinor);
           if (input.action === 'fail') {
+            if (order.status === 'sending') {
+              throw new ConflictException(
+                'A started payout requires reconciled non-debit evidence.',
+              );
+            }
             if (record.converted) {
               destination.reservedMinor = (
                 BigInt(destination.reservedMinor) - payout

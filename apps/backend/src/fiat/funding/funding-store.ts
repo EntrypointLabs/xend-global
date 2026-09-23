@@ -100,6 +100,14 @@ function canonical(value: unknown): string {
     .join(',')}}`;
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    (error as Error & { code?: unknown }).code === '23505'
+  );
+}
+
 /** No provider calls, balance ingestion, automatic schema creation, or spend authority.
  * A trusted reconciler owns settled holdings. All writers must lock the owner row.
  * Reserve and intent insert commit together. Unknown provider outcomes must not
@@ -241,29 +249,36 @@ export class PgFundingStore {
             }
           : undefined,
       });
-      const inserted = await client.query<IntentRow>(
-        `INSERT INTO ${this.intentsTable}
+      const inserted = await client
+        .query<IntentRow>(
+          `INSERT INTO ${this.intentsTable}
          (id, owner_id, idempotency_key, request_hash, plan, execution_binding,
           payout_action_reference, conversion_action_reference,
           holdings_reconciliation_reference, holdings_reconciled_at,
           conversion_provider, conversion_quote_reference, state)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-        [
-          id,
-          input.ownerId,
-          input.idempotencyKey,
-          hash,
-          JSON.stringify(plan),
-          JSON.stringify(input.executionBinding),
-          payoutReference,
-          conversionReference,
-          holdings.reconciliation_reference,
-          holdings.reconciled_at,
-          plan.conversion ? input.executionBinding.conversionProvider : null,
-          plan.conversion?.reference ?? null,
-          JSON.stringify(state),
-        ],
-      );
+          [
+            id,
+            input.ownerId,
+            input.idempotencyKey,
+            hash,
+            JSON.stringify(plan),
+            JSON.stringify(input.executionBinding),
+            payoutReference,
+            conversionReference,
+            holdings.reconciliation_reference,
+            holdings.reconciled_at,
+            plan.conversion ? input.executionBinding.conversionProvider : null,
+            plan.conversion?.reference ?? null,
+            JSON.stringify(state),
+          ],
+        )
+        .catch((error: unknown) => {
+          if (plan.conversion && isUniqueViolation(error)) {
+            throw new Error('CONVERSION_QUOTE_ALREADY_RESERVED');
+          }
+          throw error;
+        });
       return mapIntent(inserted.rows[0]);
     });
   }

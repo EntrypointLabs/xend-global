@@ -161,7 +161,11 @@ describePg('Paga account transfers HTTP + PostgreSQL', () => {
   const quote = () =>
     http()
       .post(`${path}/quotes`)
-      .send({ destinationAccountNumber: '0987654321', amountMinor: '1000' })
+      .send({
+        destinationAccountNumber: '0987654321',
+        amountMinor: '1000',
+        idempotencyKey: randomUUID(),
+      })
       .expect(201);
   const send = (quoteId: string, idempotencyKey = 'test-transfer-key') =>
     http().post(path).send({ quoteId, idempotencyKey });
@@ -199,6 +203,27 @@ describePg('Paga account transfers HTTP + PostgreSQL', () => {
     await Promise.all([send(q.id).expect(201), send(q.id).expect(201)]);
     await send(q.id, 'different-key').expect(409);
     expect(transfer).toHaveBeenCalledTimes(1);
+  });
+  it('deduplicates quote previews and excludes unused quotes from history', async () => {
+    const idempotencyKey = randomUUID();
+    const payload = {
+      destinationAccountNumber: '0987654321',
+      amountMinor: '1000',
+      idempotencyKey,
+    };
+    const first = (
+      await http().post(`${path}/quotes`).send(payload).expect(201)
+    ).body as NairaTransferRecord;
+    const replay = (
+      await http().post(`${path}/quotes`).send(payload).expect(201)
+    ).body as NairaTransferRecord;
+    expect(replay.id).toBe(first.id);
+    expect(retrieve).toHaveBeenCalledTimes(1);
+    expect((await http().get(path).expect(200)).body.transfers).toEqual([]);
+    await http()
+      .post(`${path}/quotes`)
+      .send({ ...payload, amountMinor: '2000' })
+      .expect(409);
   });
   it('blocks unknown transfers from replay and future outgoing sends', async () => {
     transfer.mockRejectedValueOnce(new Error('timeout'));
@@ -238,13 +263,18 @@ describePg('Paga account transfers HTTP + PostgreSQL', () => {
     ).toEqual([]);
     await http()
       .post(`${path}/quotes`)
-      .send({ destinationAccountNumber: '1234567890', amountMinor: '1' })
+      .send({
+        destinationAccountNumber: '1234567890',
+        amountMinor: '1',
+        idempotencyKey: randomUUID(),
+      })
       .expect(404);
     await http()
       .post(`${path}/quotes`)
       .send({
         destinationAccountNumber: '0987654321',
         amountMinor: '1',
+        idempotencyKey: randomUUID(),
         sourceAccountNumber: '0987654321',
       })
       .expect(400);
@@ -256,7 +286,11 @@ describePg('Paga account transfers HTTP + PostgreSQL', () => {
     });
     await http()
       .post(`${path}/quotes`)
-      .send({ destinationAccountNumber: '0987654321', amountMinor: '1' })
+      .send({
+        destinationAccountNumber: '0987654321',
+        amountMinor: '1',
+        idempotencyKey: randomUUID(),
+      })
       .expect(503);
     await pool.query(
       "UPDATE fiat_bank_accounts SET status = 'needs_attention' WHERE id = 'bob'",

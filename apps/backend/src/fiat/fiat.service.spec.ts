@@ -320,6 +320,7 @@ describe('fiat decimal boundaries', () => {
     expect(decimalToMinor(value, 6)).toBe('9007199254740993123456');
     expect(minorToDecimal('9007199254740993123456', 6)).toBe(value);
     expect(minorToDecimal('1', 2)).toBe('0.01');
+    expect(minorToDecimal('500', 0)).toBe('500');
   });
   it('rejects precision loss and malformed monetary values', () => {
     for (const value of ['1.001', '-1', '1e3', 'NaN'])

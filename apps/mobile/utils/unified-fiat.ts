@@ -73,5 +73,13 @@ export function unifiedMoney(
 ): string {
   const decimals = currency === "USDC" ? 6 : 2;
   const digits = amountMinor.padStart(decimals + 1, "0");
-  return `${digits.slice(0, -decimals)}.${digits.slice(-decimals)} ${currency}`;
+  const whole = digits
+    .slice(0, -decimals)
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const rawFraction = digits.slice(-decimals);
+  const fraction =
+    currency === "USDC"
+      ? rawFraction.replace(/0+$/, "").padEnd(2, "0")
+      : rawFraction;
+  return `${whole}.${fraction} ${currency}`;
 }

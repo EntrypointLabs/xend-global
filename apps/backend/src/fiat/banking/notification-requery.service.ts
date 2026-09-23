@@ -4,6 +4,7 @@ import { Interval } from '@nestjs/schedule';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { DbService } from '../../db/db.service';
+import { retryBackoff } from '../../common/retry-backoff';
 import { BankingRegistry } from './banking.registry';
 import type { BankNotification } from './notification-inbox';
 import type { BankTransactionObservation } from './banking-provider.interface';
@@ -31,7 +32,7 @@ export function assessBankNotification(
     observed.type !== notification.transactionType ||
     !Number.isFinite(created) ||
     !Number.isFinite(notified) ||
-    Math.floor(created / 1000) !== Math.floor(notified / 1000)
+    Math.abs(created - notified) > 1000
   )
     return 'TRANSACTION_IDENTITY_MISMATCH';
   // Completion needs account attribution, monetary reconciliation and the
@@ -97,7 +98,7 @@ export class BankNotificationRequeryService {
       );
     } catch {
       const exhausted = claim.query_attempts >= 6;
-      const delay = Math.min(300, 5 * 2 ** Math.min(claim.query_attempts, 6));
+      const delay = retryBackoff(claim.query_attempts, 5, 300);
       await this.db.client.execute(sql`
         UPDATE fiat_bank_notifications SET
           query_claim = NULL, queried_at = now(),

@@ -3,14 +3,18 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
-  TextInput,
-  View,
 } from "react-native";
 import { router, Stack, type Href } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { ThemedScreen } from "@/components/ui/layout";
+import { ScreenLayout } from "@/components/ui/layout";
+import {
+  FiatCard,
+  FiatHeader,
+  FiatLink,
+  FiatNotice,
+  FiatTextInput,
+} from "@/components/fiat/FiatUI";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ThemedButton } from "@/components/ui/molecules/ThemedButton";
 import { useAuth } from "@/contexts/AuthContext";
@@ -92,36 +96,35 @@ export default function NairaAccountScreen() {
     }
   }
   return (
-    <ThemedScreen>
+    <ScreenLayout>
       <Stack.Screen options={{ headerShown: false }} />
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
-          contentContainerClassName="gap-5 px-6 pt-4 pb-12"
+          contentContainerClassName="gap-5 pb-12"
           keyboardShouldPersistTaps="handled"
         >
-          <Pressable accessibilityRole="button" onPress={() => router.back()}>
-            <Typography className="py-2">← Back</Typography>
-          </Pressable>
-          <Typography weight="600" className="text-3xl">
-            Naira account
-          </Typography>
-          <Typography className="rounded-2xl bg-amber-50 p-4">
-            Provider sandbox. Account details come from the provider’s test API.
-            Use provider-approved test details; do not send real money. These
-            accounts do not fund the unified simulator.
-          </Typography>
-          <ThemedButton
-            variant="quiet"
-            title="Read account balances"
+          <FiatHeader
+            title="Naira account"
+            subtitle="Receive naira with account details assigned to you."
+          />
+          <FiatNotice>
+            This account is connected to the provider sandbox. Use only
+            provider-approved test details and never send real money.
+          </FiatNotice>
+          <FiatLink
+            icon="wallet-outline"
+            title="View balances"
+            subtitle="See observed bank and onchain balances"
             onPress={() => router.push("/(fiat)/balances" as Href)}
           />
           {accounts.data?.provider === "paga" && (
-            <ThemedButton
-              variant="quiet"
-              title="Send to another Xend Paga account"
+            <FiatLink
+              icon="paper-plane-outline"
+              title="Send naira"
+              subtitle="To another Xend Paga account"
               onPress={() => router.push("/(fiat)/naira-send" as Href)}
             />
           )}
@@ -149,10 +152,7 @@ export default function NairaAccountScreen() {
                 </Typography>
               )}
               {accounts.data.accounts.map((account) => (
-                <View
-                  key={account.id}
-                  className="gap-3 rounded-2xl border border-black/20 p-4"
-                >
+                <FiatCard key={account.id} className="gap-3">
                   <Typography weight="600">
                     {account.provider} · {account.status.replace(/_/g, " ")}
                   </Typography>
@@ -193,7 +193,7 @@ export default function NairaAccountScreen() {
                         )}
                     </>
                   )}
-                </View>
+                </FiatCard>
               ))}
               {!selected && accounts.data.available && (
                 <>
@@ -206,7 +206,7 @@ export default function NairaAccountScreen() {
                       ["bvn", "Test BVN (if required by provider)"],
                     ] as const
                   ).map(([name, label]) => (
-                    <TextInput
+                    <FiatTextInput
                       key={name}
                       accessibilityLabel={label}
                       placeholder={label}
@@ -215,7 +215,6 @@ export default function NairaAccountScreen() {
                       onChangeText={(value) =>
                         setForm((f) => ({ ...f, [name]: value }))
                       }
-                      className="rounded-xl border border-black/20 px-4 py-3 text-base text-black"
                       autoCapitalize={name === "email" ? "none" : "words"}
                       keyboardType={
                         name === "email"
@@ -248,6 +247,6 @@ export default function NairaAccountScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
-    </ThemedScreen>
+    </ScreenLayout>
   );
 }

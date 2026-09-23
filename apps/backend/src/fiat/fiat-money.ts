@@ -12,6 +12,7 @@ export function decimalToMinor(value: string, decimals: number): string {
 }
 export function minorToDecimal(value: string, decimals: number): string {
   if (!/^\d+$/.test(value)) throw new Error('Invalid minor amount');
+  if (decimals === 0) return value;
   const padded = value.padStart(decimals + 1, '0');
   return `${padded.slice(0, -decimals)}.${padded.slice(-decimals)}`;
 }

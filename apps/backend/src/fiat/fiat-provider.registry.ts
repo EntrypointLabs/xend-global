@@ -34,7 +34,14 @@ export class FiatProviderRegistry {
     return results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
   }
   async route(id: string): Promise<FiatRoute> {
-    const route = (await this.routes()).find((r) => r.id === id);
+    const separator = id.indexOf(':');
+    const owner = separator > 0 ? id.slice(0, separator) : '';
+    const provider = this.enabled().find(
+      (candidate) => candidate.name === owner,
+    );
+    const route = provider
+      ? (await provider.routes()).find((candidate) => candidate.id === id)
+      : undefined;
     if (!route)
       throw new FiatError(
         'ROUTE_UNAVAILABLE',

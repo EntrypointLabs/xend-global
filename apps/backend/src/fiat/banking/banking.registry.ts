@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NombaAdapter } from './nomba.adapter';
 import { NombaSandboxAuth } from './nomba-auth';
@@ -127,7 +127,8 @@ export class BankingRegistry {
   }
   get(name: string): BankProvider {
     const provider = this.providers.get(name);
-    if (!provider) throw new Error('BANK_PROVIDER_UNAVAILABLE');
+    if (!provider)
+      throw new ServiceUnavailableException('BANK_PROVIDER_UNAVAILABLE');
     return provider;
   }
 }

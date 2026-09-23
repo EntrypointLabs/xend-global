@@ -4,6 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Interval } from '@nestjs/schedule';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { DbService } from '../../db/db.service';
@@ -57,14 +58,16 @@ export class NairaAccountsService {
     );
   }
 
-  async list(ownerId: string) {
-    // A process may have died after provider submission. Preserve the claim and
-    // flag it for reconciliation; creating a second account is never the retry.
+  @Interval(60_000)
+  async sweepStale(ownerId?: string) {
     await this.db.client.execute(sql`
       UPDATE fiat_bank_accounts SET status = 'needs_attention', updated_at = now()
-      WHERE owner_id = ${ownerId} AND environment = 'sandbox' AND status = 'creating'
+      WHERE ${ownerId ? sql`owner_id = ${ownerId} AND` : sql``} environment = 'sandbox' AND status = 'creating'
         AND created_at < now() - interval '2 minutes'
     `);
+  }
+
+  async list(ownerId: string) {
     const result = await this.db.client.execute(sql`
       SELECT * FROM fiat_bank_accounts WHERE owner_id = ${ownerId}
         AND environment = 'sandbox' ORDER BY created_at ASC
@@ -82,7 +85,7 @@ export class NairaAccountsService {
 
   /** Requery the retained claim only. A failed creation is never resubmitted here. */
   async reconcile(ownerId: string, accountId: string) {
-    await this.list(ownerId);
+    await this.sweepStale(ownerId);
     const result = await this.db.client.execute(sql`
       SELECT * FROM fiat_bank_accounts WHERE id = ${accountId} AND owner_id = ${ownerId}
         AND environment = 'sandbox'

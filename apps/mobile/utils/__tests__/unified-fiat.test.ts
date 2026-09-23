@@ -27,8 +27,9 @@ describe("unified test balance contracts", () => {
     );
     expect(unifiedMoney("1", "USDC")).toBe("0.000001 USDC");
     expect(unifiedMoney("123456789012345678", "NGN")).toBe(
-      "1234567890123456.78 NGN"
+      "1,234,567,890,123,456.78 NGN"
     );
+    expect(unifiedMoney("2847500000", "USDC")).toBe("2,847.50 USDC");
   });
   it("rejects live evidence and inexact accounting units", () => {
     expect(

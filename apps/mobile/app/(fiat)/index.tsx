@@ -5,19 +5,24 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  TextInput,
   View,
 } from "react-native";
 import { router, Stack, useLocalSearchParams, type Href } from "expo-router";
 import { randomUUID } from "expo-crypto";
-import { ThemedScreen } from "@/components/ui/layout";
+import { ScreenLayout } from "@/components/ui/layout";
+import {
+  FiatCard,
+  FiatHeader,
+  FiatLink,
+  FiatNotice,
+  FiatTextInput,
+} from "@/components/fiat/FiatUI";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ThemedButton } from "@/components/ui/molecules/ThemedButton";
 import { useFiatOrder, useFiatOrders, useFiatRoutes } from "@/hooks/useFiat";
 import { apiClient } from "@/utils/apiClient";
 import {
   FiatQuote,
-  FiatSimulationEvent,
   fiatAmountMinor,
   fiatFieldsValid,
   fiatMoneyLabel,
@@ -39,13 +44,14 @@ export default function FiatScreen() {
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const createKey = useRef<string | null>(null);
-  const eventKeys = useRef<Record<string, string>>({});
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
   const available =
-    routes.data?.routes.filter((r) => r.direction === direction) ?? [];
+    routes.data?.routes.filter(
+      (r) => r.direction === direction && r.environment !== "simulation"
+    ) ?? [];
   const selected = available.find((r) => r.id === routeId) ?? available[0];
   const decimals = selected?.sourceCurrency === "USDC" ? 6 : 2;
   const minor = fiatAmountMinor(amount, decimals);
@@ -81,30 +87,9 @@ export default function FiatScreen() {
     !expired &&
     fiatFieldsValid(quote, fields)
   );
-  async function simulate(event: FiatSimulationEvent) {
-    if (!current?.simulation || current.instructions.kind !== "simulation")
-      return;
-    await run(async () => {
-      const action = `${current.id}:${event}`;
-      eventKeys.current[action] ??= randomUUID();
-      await apiClient.fiatSimulate(
-        current.id,
-        event,
-        eventKeys.current[action]
-      );
-      await Promise.all([order.refetch(), orders.refetch()]);
-    });
-  }
-  const simulationEvents: Record<string, FiatSimulationEvent[]> = {
-    awaiting_payment: ["payment_received", "fail", "expire"],
-    processing: ["complete", "fail"],
-    expired: ["payment_received"],
-    return_pending: ["return"],
-    needs_attention: ["return"],
-  };
   const statusLabel = (status: string) => status.replace(/_/g, " ");
   return (
-    <ThemedScreen>
+    <ScreenLayout>
       <Stack.Screen options={{ headerShown: false }} />
       <KeyboardAvoidingView
         className="flex-1"
@@ -112,37 +97,31 @@ export default function FiatScreen() {
       >
         <ScrollView
           className="flex-1"
-          contentContainerClassName="gap-5 px-6 pb-12 pt-4"
+          contentContainerClassName="gap-5 pb-12"
           keyboardShouldPersistTaps="handled"
         >
-          <Pressable accessibilityRole="button" onPress={() => router.back()}>
-            <Typography className="py-2">← Back</Typography>
-          </Pressable>
-          <Typography weight="600" className="text-3xl">
-            {direction === "receive" ? "Receive naira" : "Send to a bank"}
-          </Typography>
-          <Typography className="text-base text-black/50">
-            {direction === "receive"
-              ? "Convert a bank transfer into USDC in your Account."
-              : "Convert USDC from your Account into naira."}
-          </Typography>
-          {__DEV__ && (
-            <ThemedButton
-              variant="quiet"
-              title="Test unified NGN + USDC balance"
-              onPress={() => router.push("/(fiat)/unified" as Href)}
+          <FiatHeader
+            title={direction === "receive" ? "Receive naira" : "Send to a bank"}
+            subtitle={
+              direction === "receive"
+                ? "Convert a bank transfer into USDC in your Account."
+                : "Convert USDC from your Account into naira."
+            }
+          />
+          <View className="gap-3">
+            <FiatLink
+              icon="business-outline"
+              title="Naira account"
+              subtitle="View your provider account details"
+              onPress={() => router.push("/(fiat)/accounts" as Href)}
             />
-          )}
-          <ThemedButton
-            variant="quiet"
-            title="Naira account (provider sandbox)"
-            onPress={() => router.push("/(fiat)/accounts" as Href)}
-          />
-          <ThemedButton
-            variant="quiet"
-            title="Read account balances"
-            onPress={() => router.push("/(fiat)/balances" as Href)}
-          />
+            <FiatLink
+              icon="wallet-outline"
+              title="Balances"
+              subtitle="View bank and onchain balances"
+              onPress={() => router.push("/(fiat)/balances" as Href)}
+            />
+          </View>
           {routes.isLoading && <ActivityIndicator />}
           {routes.isError && (
             <ThemedButton
@@ -174,11 +153,9 @@ export default function FiatScreen() {
                   {route.sourceCurrency} → {route.destinationCurrency}
                 </Typography>
                 <Typography className="mt-1 text-black/50">
-                  {route.environment === "simulation"
-                    ? "Test mode · No real money"
-                    : route.environment === "sandbox"
-                      ? "Provider sandbox · Test only"
-                      : "Rate preview"}
+                  {route.environment === "sandbox"
+                    ? "Provider sandbox · Test only"
+                    : "Rate preview"}
                 </Typography>
                 {!route.orderAvailable && (
                   <Typography className="mt-1">
@@ -189,16 +166,10 @@ export default function FiatScreen() {
             ))}
           {!orderId && selected && (
             <>
-              {selected.environment === "simulation" && (
-                <Typography className="rounded-2xl bg-amber-50 p-4">
-                  Test mode. This flow simulates money movement. Your Account
-                  balance will not change. Use test details only.
-                </Typography>
-              )}
               <Typography weight="600">
                 Amount in {selected.sourceCurrency}
               </Typography>
-              <TextInput
+              <FiatTextInput
                 accessibilityLabel={`Amount in ${selected.sourceCurrency}`}
                 value={amount}
                 editable={!busy}
@@ -208,7 +179,7 @@ export default function FiatScreen() {
                 }}
                 keyboardType="decimal-pad"
                 placeholder="0.00"
-                className="rounded-2xl border border-black/10 p-4 text-3xl text-black"
+                className="py-5 text-3xl"
               />
               {amount.length > 0 && !minor && (
                 <Typography>
@@ -231,7 +202,7 @@ export default function FiatScreen() {
                 }}
               />
               {quote && (
-                <View className="gap-4 rounded-3xl bg-black/5 p-5">
+                <FiatCard className="gap-4 bg-black/[0.025]">
                   <Typography weight="600" className="text-xl">
                     Review conversion
                   </Typography>
@@ -274,7 +245,7 @@ export default function FiatScreen() {
                           </Pressable>
                         ))
                       ) : (
-                        <TextInput
+                        <FiatTextInput
                           accessibilityLabel={f.label}
                           editable={!busy}
                           value={fields[f.key] ?? ""}
@@ -282,7 +253,6 @@ export default function FiatScreen() {
                             setFields((v) => ({ ...v, [f.key]: value }))
                           }
                           autoCapitalize="none"
-                          className="rounded-xl border border-black/10 bg-white p-3 text-black"
                         />
                       )}
                     </View>
@@ -292,9 +262,7 @@ export default function FiatScreen() {
                     title={
                       !quote.route.orderAvailable
                         ? "Transfers not available yet"
-                        : quote.paymentStep === "simulation"
-                          ? "Start test transfer"
-                          : "Continue"
+                        : "Continue"
                     }
                     disabled={busy || !canCreate}
                     onPress={() => {
@@ -317,23 +285,18 @@ export default function FiatScreen() {
                       });
                     }}
                   />
-                </View>
+                </FiatCard>
               )}
             </>
           )}
           {orderId && (
-            <View className="gap-4 rounded-3xl bg-black/5 p-5">
+            <FiatCard className="gap-4 bg-black/[0.025]">
               <Typography weight="600" className="text-xl">
                 Transfer status
               </Typography>
               {order.isLoading && <ActivityIndicator />}
               {current && (
                 <>
-                  {current.simulation && (
-                    <Typography weight="600">
-                      Test mode · No real money
-                    </Typography>
-                  )}
                   <Typography className="capitalize">
                     {statusLabel(current.status)}
                   </Typography>
@@ -348,25 +311,6 @@ export default function FiatScreen() {
                       {current.instructions.accountNumber}
                     </Typography>
                   )}
-                  {current.simulation &&
-                    current.instructions.kind === "simulation" && (
-                      <>
-                        <Typography>Test controls</Typography>
-                        {(simulationEvents[current.status] ?? []).map(
-                          (event) => (
-                            <ThemedButton
-                              key={event}
-                              variant="quiet"
-                              title={`Simulate ${statusLabel(event)}`}
-                              disabled={busy}
-                              onPress={() => {
-                                void simulate(event);
-                              }}
-                            />
-                          )
-                        )}
-                      </>
-                    )}
                 </>
               )}
               <ThemedButton
@@ -386,26 +330,18 @@ export default function FiatScreen() {
                   resetQuote();
                 }}
               />
-            </View>
+            </FiatCard>
           )}
           {(error || order.isError) && (
             <Typography accessibilityRole="alert" className="text-red-700">
               {error ?? "Could not refresh this transfer. Try again."}
             </Typography>
           )}
-          <View className="gap-2 rounded-2xl border border-black/10 p-4">
-            <Typography weight="600">Account options</Typography>
-            <Typography className="text-black/50">
-              Permanent naira accounts, automatic conversion settings and
-              naira-to-naira transfers are not available yet.
-            </Typography>
-            {direction === "receive" && (
-              <Typography className="text-black/50">
-                Verification and temporary bank details depend on the available
-                provider. No no-KYC account is currently offered.
-              </Typography>
-            )}
-          </View>
+          <FiatNotice>
+            {selected?.environment === "sandbox"
+              ? "Quotes use provider sandbox rates. A real transfer is only offered when the provider supports verified execution."
+              : "Quotes are estimates until the provider confirms the exact amount and execution details."}
+          </FiatNotice>
           <Typography weight="600" className="text-xl">
             Recent transfers
           </Typography>
@@ -419,7 +355,11 @@ export default function FiatScreen() {
             />
           )}
           {orders.data?.orders
-            .filter((o) => o.route.direction === direction)
+            .filter(
+              (o) =>
+                o.route.direction === direction &&
+                o.route.environment !== "simulation"
+            )
             .map((o) => (
               <Pressable
                 key={o.id}
@@ -435,13 +375,12 @@ export default function FiatScreen() {
                   {fiatMoneyLabel(o.quote.debit)} · {statusLabel(o.status)}
                 </Typography>
                 <Typography className="text-black/50">
-                  {o.simulation ? "Test transfer · " : ""}
                   {new Date(o.createdAt).toLocaleString()}
                 </Typography>
               </Pressable>
             ))}
         </ScrollView>
       </KeyboardAvoidingView>
-    </ThemedScreen>
+    </ScreenLayout>
   );
 }

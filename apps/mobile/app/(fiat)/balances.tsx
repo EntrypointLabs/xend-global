@@ -1,8 +1,14 @@
 import React from "react";
-import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
+import { ActivityIndicator, ScrollView } from "react-native";
 import { router, Stack, type Href } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { ThemedScreen } from "@/components/ui/layout";
+import { ScreenLayout } from "@/components/ui/layout";
+import {
+  FiatCard,
+  FiatHeader,
+  FiatLink,
+  FiatNotice,
+} from "@/components/fiat/FiatUI";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ThemedButton } from "@/components/ui/molecules/ThemedButton";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,19 +31,20 @@ export default function ObservedBalancesScreen() {
     refetchInterval: 30000,
   });
   return (
-    <ThemedScreen>
+    <ScreenLayout>
       <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView contentContainerClassName="gap-5 px-6 pt-4 pb-12">
-        <Pressable accessibilityRole="button" onPress={() => router.back()}>
-          <Typography className="py-2">← Back</Typography>
-        </Pressable>
-        <Typography weight="600" className="text-3xl">
-          Account balances
-        </Typography>
-        <Typography className="rounded-2xl bg-amber-50 p-4">
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerClassName="gap-5 pb-12"
+      >
+        <FiatHeader
+          title="Balances"
+          subtitle="Your bank and onchain money, observed independently."
+        />
+        <FiatNotice>
           These amounts are read from your provider sandbox and owned Solana
-          account. They are separate from manually added simulator funds.
-        </Typography>
+          account. They are never treated as spendable without reconciliation.
+        </FiatNotice>
         {balances.isLoading && <ActivityIndicator />}
         {balances.isError && (
           <Typography accessibilityRole="alert">
@@ -46,7 +53,7 @@ export default function ObservedBalancesScreen() {
         )}
         {balances.data && (
           <>
-            <Typography weight="600" className="text-3xl">
+            <Typography weight="700" className="text-[36px] tracking-[-1px]">
               {balances.data.total
                 ? unifiedMoney(balances.data.total.amountMinor, "USD")
                 : "Total unavailable"}
@@ -61,10 +68,7 @@ export default function ObservedBalancesScreen() {
               {balances.data.network ?? "not configured"}
             </Typography>
             {balances.data.holdings.map((h) => (
-              <View
-                key={h.currency}
-                className="gap-3 rounded-2xl border border-black/20 p-4"
-              >
+              <FiatCard key={h.currency} className="gap-3">
                 <Typography weight="600" className="text-xl">
                   {h.amountMinor === null
                     ? `${h.currency} unavailable`
@@ -85,7 +89,7 @@ export default function ObservedBalancesScreen() {
                 {__DEV__ && h.reason && (
                   <Typography>{h.reason.replace(/_/g, " ")}</Typography>
                 )}
-              </View>
+              </FiatCard>
             ))}
             {__DEV__ && balances.data.valuationReason && (
               <Typography>
@@ -101,12 +105,13 @@ export default function ObservedBalancesScreen() {
             void balances.refetch();
           }}
         />
-        <ThemedButton
-          variant="quiet"
+        <FiatLink
+          icon="business-outline"
           title="Naira account"
+          subtitle="View account number and provider status"
           onPress={() => router.push("/(fiat)/accounts" as Href)}
         />
       </ScrollView>
-    </ThemedScreen>
+    </ScreenLayout>
   );
 }

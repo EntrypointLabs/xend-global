@@ -242,19 +242,20 @@ describePg('unified fiat HTTP + PostgreSQL simulation', () => {
       await advance(o.id, key);
     expect((await snapshot()).body.total.totalMinor).toBe('0');
   });
-  it('failure after conversion retains converted funds and releases every reservation', async () => {
+  it('refuses to release funds after payout submission without reconciliation', async () => {
     await seed();
     const q = (await quote('USDC', '150000000')).body;
     const o = (await order(q.id)).body;
     await advance(o.id, 'convert-fail-001');
     await advance(o.id, 'send-fail-001');
-    expect((await advance(o.id, 'fail-fail-001', 'fail')).body.status).toBe(
-      'failed',
-    );
+    await http()
+      .post(`/fiat/unified/orders/${o.id}/advance`)
+      .send({ action: 'fail', idempotencyKey: 'fail-fail-001' })
+      .expect(409);
     const final = (await snapshot()).body.holdings;
     expect(final.USDC).toEqual({
       settledMinor: '150000000',
-      reservedMinor: '0',
+      reservedMinor: '150000000',
     });
     expect(final.NGN.reservedMinor).toBe('0');
     expect(BigInt(final.NGN.settledMinor)).toBeLessThan(50000000n);

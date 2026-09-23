@@ -75,14 +75,22 @@ export class FiatService {
     const orders = await this.store.list(userId);
     return {
       orders: await Promise.all(
-        orders.map((order) => this.order(userId, order.id)),
+        orders.map(async (order) => {
+          try {
+            return await this.refreshStale(userId, order);
+          } catch {
+            return order;
+          }
+        }),
       ),
     };
   }
   async order(userId: string, id: string) {
     const row = await this.store.order(userId, id);
     if (!row) throw new FiatError('ORDER_NOT_FOUND', 'Order not found.', 404);
-    const order = row.order;
+    return this.refreshStale(userId, row.order);
+  }
+  private async refreshStale(userId: string, order: StoredFiatOrder['order']) {
     const staleCreation =
       order.status === 'creating' &&
       Date.parse(order.createdAt) + 30_000 <= Date.now();
@@ -96,7 +104,7 @@ export class FiatService {
         : 'instructions_expired';
       return this.store.event(
         userId,
-        id,
+        order.id,
         `system:${event}`,
         hash(event),
         (current) => {

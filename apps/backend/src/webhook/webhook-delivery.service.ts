@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { retryBackoff } from '../common/retry-backoff';
 import { ConfigService } from '@nestjs/config';
 import { eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
@@ -178,10 +179,7 @@ export class WebhookDeliveryService {
   backoff(attemptNo: number): number {
     const base = this.config.getOrThrow<number>('WEBHOOK_RETRY_BASE_SECONDS');
     const max = this.config.getOrThrow<number>('WEBHOOK_RETRY_MAX_SECONDS');
-    const raw = base * 2 ** (attemptNo - 1);
-    const capped = Math.min(raw, max);
-    const jitter = capped * (Math.random() * 0.4 - 0.2);
-    return Math.max(1, Math.round(capped + jitter));
+    return retryBackoff(attemptNo, base, max);
   }
 
   private log(

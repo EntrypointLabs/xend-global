@@ -3,15 +3,18 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
-  TextInput,
-  View,
 } from "react-native";
-import { router, Stack } from "expo-router";
+import { Stack } from "expo-router";
 import { randomUUID } from "expo-crypto";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ThemedScreen } from "@/components/ui/layout";
+import { ScreenLayout } from "@/components/ui/layout";
+import {
+  FiatCard,
+  FiatHeader,
+  FiatNotice,
+  FiatTextInput,
+} from "@/components/fiat/FiatUI";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ThemedButton } from "@/components/ui/molecules/ThemedButton";
 import { useAuth } from "@/contexts/AuthContext";
@@ -42,6 +45,7 @@ export default function NairaSendScreen() {
   const [error, setError] = useState<string | null>(null);
   const locked = useRef(false);
   const keys = useRef<Record<string, string>>({});
+  const requestKey = (name: string) => (keys.current[name] ??= randomUUID());
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -67,27 +71,24 @@ export default function NairaSendScreen() {
     }
   }
   return (
-    <ThemedScreen>
+    <ScreenLayout>
       <Stack.Screen options={{ headerShown: false }} />
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
-          contentContainerClassName="gap-5 px-6 pt-4 pb-12"
+          contentContainerClassName="gap-5 pb-12"
           keyboardShouldPersistTaps="handled"
         >
-          <Pressable accessibilityRole="button" onPress={() => router.back()}>
-            <Typography className="py-2">← Back</Typography>
-          </Pressable>
-          <Typography weight="600" className="text-3xl">
-            Send naira
-          </Typography>
-          <Typography className="rounded-2xl bg-amber-50 p-4">
+          <FiatHeader
+            title="Send naira"
+            subtitle="Send to another Xend account securely."
+          />
+          <FiatNotice>
             Paga sandbox transfer. Both accounts must belong to Xend users in
-            this sandbox. The provider moves test funds; this does not spend the
-            unified simulator balance.
-          </Typography>
+            this sandbox. Never use real funds or account details here.
+          </FiatNotice>
           {transfers.isLoading && <ActivityIndicator />}
           {transfers.isError && (
             <>
@@ -108,7 +109,7 @@ export default function NairaSendScreen() {
           )}
           {transfers.data?.available && (
             <>
-              <TextInput
+              <FiatTextInput
                 accessibilityLabel="Recipient Paga account number"
                 placeholder="Recipient Paga account number"
                 value={account}
@@ -119,9 +120,8 @@ export default function NairaSendScreen() {
                   setAccount(v);
                   setQuote(null);
                 }}
-                className="rounded-xl border border-black/20 px-4 py-3 text-base text-black"
               />
-              <TextInput
+              <FiatTextInput
                 accessibilityLabel="Naira amount"
                 placeholder="Amount in naira"
                 value={amount}
@@ -131,7 +131,6 @@ export default function NairaSendScreen() {
                   setAmount(v);
                   setQuote(null);
                 }}
-                className="rounded-xl border border-black/20 px-4 py-3 text-base text-black"
               />
               <ThemedButton
                 title="Check recipient and preview"
@@ -144,7 +143,11 @@ export default function NairaSendScreen() {
                 onPress={() => {
                   void run(async () => {
                     setQuote(
-                      await apiClient.quoteNairaTransfer(account, minor!)
+                      await apiClient.quoteNairaTransfer(
+                        account,
+                        minor!,
+                        requestKey(`quote:${account}:${minor}`)
+                      )
                     );
                   });
                 }}
@@ -152,7 +155,7 @@ export default function NairaSendScreen() {
             </>
           )}
           {quote && (
-            <View className="gap-3 rounded-2xl border border-black/20 p-4">
+            <FiatCard className="gap-3 bg-black/[0.025]">
               <Typography weight="600">
                 {quote.destination.accountName}
               </Typography>
@@ -181,7 +184,7 @@ export default function NairaSendScreen() {
                   });
                 }}
               />
-            </View>
+            </FiatCard>
           )}
           <Typography weight="600" className="text-xl">
             Transfers
@@ -189,10 +192,7 @@ export default function NairaSendScreen() {
           {transfers.data?.transfers
             .filter((t) => t.status !== "quoted")
             .map((t) => (
-              <View
-                key={t.id}
-                className="gap-3 rounded-2xl border border-black/20 p-4"
-              >
+              <FiatCard key={t.id} className="gap-3">
                 <Typography>
                   {unifiedMoney(t.amountMinor, "NGN")} ·{" "}
                   {t.status.replace(/_/g, " ")}
@@ -207,7 +207,7 @@ export default function NairaSendScreen() {
                     submitted again automatically.
                   </Typography>
                 )}
-              </View>
+              </FiatCard>
             ))}
           {error && (
             <Typography accessibilityRole="alert" className="text-red-700">
@@ -216,6 +216,6 @@ export default function NairaSendScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
-    </ThemedScreen>
+    </ScreenLayout>
   );
 }

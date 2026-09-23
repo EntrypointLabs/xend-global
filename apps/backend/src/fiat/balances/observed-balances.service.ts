@@ -38,6 +38,10 @@ const unavailable = (
 /** Observational read path only. Never credits the ledger or reserves funds. */
 @Injectable()
 export class ObservedBalancesService {
+  private readonly cache = new Map<
+    string,
+    { expiresAt: number; value: Promise<ObservedBalances> }
+  >();
   constructor(
     private readonly db: DbService,
     private readonly config: ConfigService,
@@ -46,6 +50,21 @@ export class ObservedBalancesService {
   ) {}
 
   async get(ownerId: string): Promise<ObservedBalances> {
+    const cached = this.cache.get(ownerId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return structuredClone(await cached.value);
+    }
+    const value = this.load(ownerId);
+    this.cache.set(ownerId, { expiresAt: Date.now() + 15_000, value });
+    try {
+      return structuredClone(await value);
+    } catch (error) {
+      this.cache.delete(ownerId);
+      throw error;
+    }
+  }
+
+  private async load(ownerId: string): Promise<ObservedBalances> {
     const cluster = this.config.get<string>('SOLANA_CLUSTER');
     const network =
       cluster === 'mainnet' || cluster === 'devnet' ? cluster : null;

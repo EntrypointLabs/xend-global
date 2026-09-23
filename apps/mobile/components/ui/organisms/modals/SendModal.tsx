@@ -28,6 +28,15 @@ export function SendModal({
 
   const sendOptions: ActionOption[] = [
     {
+      key: "crypto",
+      title: "To an address",
+      description: "Send to a Solana address or .sol name",
+      icon: walletIcon,
+      onPress: handleSendToWallet,
+    },
+  ];
+  if (__DEV__) {
+    sendOptions.unshift({
       key: "fiat",
       title: "To a bank account",
       description: "Convert USDC to naira",
@@ -36,15 +45,8 @@ export function SendModal({
         onClose();
         router.push("/(fiat)?direction=send" as Href);
       },
-    },
-    {
-      key: "crypto",
-      title: "To an address",
-      description: "Send to a Solana address or .sol name",
-      icon: walletIcon,
-      onPress: handleSendToWallet,
-    },
-  ];
+    });
+  }
 
   return (
     <ActionModal visible={visible} onClose={onClose}>

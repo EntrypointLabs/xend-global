@@ -5,6 +5,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Interval } from '@nestjs/schedule';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { DbService } from '../../db/db.service';
@@ -55,15 +56,21 @@ export class NairaTransfersService {
       );
     return provider;
   }
-  async list(ownerId: string) {
-    // A crashed submission cannot be restarted from an unconfirmed local status.
+  @Interval(60_000)
+  async sweepStale(ownerId?: string) {
     await this.db.client.execute(sql`UPDATE fiat_bank_transfers
       SET record = jsonb_set(jsonb_set(record, '{status}', '"needs_attention"'::jsonb), '{updatedAt}', to_jsonb(${new Date().toISOString()}::text))
-      WHERE owner_id = ${ownerId} AND record->>'status' = 'submitting'
+      WHERE ${ownerId ? sql`owner_id = ${ownerId} AND` : sql``} record->>'status' = 'submitting'
         AND (record->>'updatedAt')::timestamptz < now() - interval '2 minutes'`);
+    await this.db.client.execute(sql`DELETE FROM fiat_bank_transfers
+      WHERE ${ownerId ? sql`owner_id = ${ownerId} AND` : sql``} record->>'status' = 'quoted'
+        AND (record->>'expiresAt')::timestamptz < now() - interval '1 hour'`);
+  }
+  async list(ownerId: string) {
     const rows = await this.db.client
       .execute(sql`SELECT * FROM fiat_bank_transfers
-      WHERE owner_id = ${ownerId} ORDER BY created_at DESC LIMIT 100`);
+      WHERE owner_id = ${ownerId} AND record->>'status' <> 'quoted'
+      ORDER BY created_at DESC LIMIT 100`);
     return {
       environment: 'sandbox' as const,
       available: this.available(),
@@ -74,6 +81,28 @@ export class NairaTransfersService {
   async quote(ownerId: string, raw: NairaTransferQuoteInput) {
     const input = NairaTransferQuoteBody.parse(raw);
     const provider = this.provider();
+    const replay = await this.db.client
+      .execute(sql`SELECT record FROM fiat_bank_transfers
+      WHERE owner_id = ${ownerId} AND record->>'quoteRequestKey' = ${input.idempotencyKey}
+      ORDER BY created_at DESC LIMIT 1`);
+    if (replay.rows[0]) {
+      const record = (replay.rows[0] as { record: NairaTransferRecord }).record;
+      if (
+        record.destination.accountNumber !== input.destinationAccountNumber ||
+        record.amountMinor !== input.amountMinor ||
+        record.narration !== input.narration
+      )
+        throw new ConflictException('Quote key belongs to another request.');
+      return record;
+    }
+    const active = await this.db.client
+      .execute(sql`SELECT count(*)::int AS count
+      FROM fiat_bank_transfers WHERE owner_id = ${ownerId} AND record->>'status' = 'quoted'
+      AND (record->>'expiresAt')::timestamptz > now()`);
+    if (Number((active.rows[0] as { count: number }).count) >= 10)
+      throw new ConflictException(
+        'Too many active quotes. Wait for one to expire.',
+      );
     const sourceResult = await this.db.client
       .execute(sql`SELECT id, owner_id, account FROM fiat_bank_accounts
       WHERE owner_id = ${ownerId} AND provider = 'paga' AND environment = 'sandbox' AND status = 'active'`);
@@ -126,6 +155,7 @@ export class NairaTransfersService {
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
       providerReference: null,
+      quoteRequestKey: input.idempotencyKey,
     };
     await this.db.client
       .execute(sql`INSERT INTO fiat_bank_transfers (id, owner_id, source_account_id, destination_account_id, record)
@@ -135,6 +165,41 @@ export class NairaTransfersService {
   async send(ownerId: string, raw: NairaTransferInput) {
     const input = NairaTransferBody.parse(raw);
     const provider = this.provider();
+    const prior = await this.db.client.execute(
+      sql`SELECT * FROM fiat_bank_transfers WHERE owner_id = ${ownerId} AND idempotency_key = ${input.idempotencyKey}`,
+    );
+    if (prior.rows[0]) {
+      const row = prior.rows[0] as TransferRow;
+      if (row.id !== input.quoteId)
+        throw new ConflictException(
+          'Idempotency key belongs to another transfer.',
+        );
+      return row.record;
+    }
+    const sourceResult = await this.db.client
+      .execute(sql`SELECT id, owner_id, account FROM fiat_bank_accounts
+      WHERE owner_id = ${ownerId} AND provider = 'paga' AND environment = 'sandbox' AND status = 'active'`);
+    const observedSource = sourceResult.rows[0] as AccountRow | undefined;
+    if (!observedSource)
+      throw new ConflictException('Active source account required.');
+    let balance: Awaited<ReturnType<PagaProvider['getBalance']>>;
+    try {
+      balance = await provider.getBalance(
+        observedSource.account.accountNumber,
+        randomUUID(),
+      );
+    } catch {
+      throw new ServiceUnavailableException(
+        'Provider source balance is unavailable.',
+      );
+    }
+    const balanceAge = Date.now() - Date.parse(balance.observedAt);
+    if (
+      !Number.isFinite(balanceAge) ||
+      balanceAge < -30000 ||
+      balanceAge > 60000
+    )
+      throw new ServiceUnavailableException('Provider balance is stale.');
     const claim = await this.db.client.transaction(async (tx) => {
       // All outgoing sends serialize on the user's bank account, even across processes.
       const accountResult =
@@ -143,6 +208,11 @@ export class NairaTransfersService {
       const source = accountResult.rows[0] as AccountRow | undefined;
       if (!source)
         throw new ConflictException('Active source account required.');
+      if (
+        source.id !== observedSource.id ||
+        source.account.accountNumber !== observedSource.account.accountNumber
+      )
+        throw new ConflictException('Source account changed; retry transfer.');
       const replay = await tx.execute(
         sql`SELECT * FROM fiat_bank_transfers WHERE owner_id = ${ownerId} AND idempotency_key = ${input.idempotencyKey}`,
       );
@@ -178,20 +248,6 @@ export class NairaTransfersService {
         AND account->>'accountNumber' = ${row.record.destination.accountNumber}`);
       if (!recipient.rows.length)
         throw new ConflictException('Recipient account is no longer active.');
-      let balance: Awaited<ReturnType<PagaProvider['getBalance']>>;
-      try {
-        balance = await provider.getBalance(
-          source.account.accountNumber,
-          randomUUID(),
-        );
-      } catch {
-        throw new ServiceUnavailableException(
-          'Provider source balance is unavailable.',
-        );
-      }
-      const age = Date.now() - Date.parse(balance.observedAt);
-      if (!Number.isFinite(age) || age < -30000 || age > 60000)
-        throw new ServiceUnavailableException('Provider balance is stale.');
       if (BigInt(balance.amountMinor) < BigInt(row.record.amountMinor))
         throw new ConflictException('Insufficient naira balance.');
       const record: NairaTransferRecord = {

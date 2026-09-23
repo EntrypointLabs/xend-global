@@ -4,6 +4,7 @@ export const NairaTransferQuoteBody = z
     destinationAccountNumber: z.string().regex(/^\d{10}$/),
     amountMinor: z.string().regex(/^[1-9]\d{0,14}$/),
     narration: z.string().trim().max(200).default('Xend transfer'),
+    idempotencyKey: z.string().min(8).max(100),
   })
   .strict();
 export const NairaTransferBody = z
@@ -29,4 +30,5 @@ export interface NairaTransferRecord {
   createdAt: string;
   updatedAt: string;
   providerReference: string | null;
+  quoteRequestKey?: string;
 }

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'node:crypto';
 import { FiatError } from '../fiat.errors';
 import { decimalToMinor, minorToDecimal } from '../fiat-money';
+import { asProviderRecord, parseExactProviderJson } from '../provider-http';
 import type {
   FiatField,
   FiatMoney,
@@ -28,9 +29,7 @@ const USDC = {
 type RecordValue = Record<string, unknown>;
 
 function record(value: unknown): RecordValue {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw invalidResponse();
-  return value as RecordValue;
+  return asProviderRecord(value, invalidResponse);
 }
 
 function invalidResponse(): FiatError {
@@ -39,17 +38,6 @@ function invalidResponse(): FiatError {
     'The provider returned an invalid quote or route.',
     502,
   );
-}
-
-/** Preserve every JSON numeric lexeme before JSON.parse can round it. */
-function parseExactJson(text: string): unknown {
-  if (text.length > 1_000_000) throw invalidResponse();
-  return JSON.parse(
-    text.replace(
-      /"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g,
-      (token) => (token.startsWith('"') ? token : JSON.stringify(token)),
-    ),
-  ) as unknown;
 }
 
 function decimal(value: unknown): string {
@@ -78,13 +66,19 @@ function money(currency: 'NGN' | 'USDC', value: unknown): FiatMoney {
 @Injectable()
 export class FonbnkFiatProvider implements FiatProvider {
   readonly name = 'fonbnk';
+  private routeCache: { expiresAt: number; routes: FiatRoute[] } | null = null;
 
   constructor(private readonly config: ConfigService) {}
 
   async routes(): Promise<FiatRoute[]> {
     if (!this.enabled()) return [];
+    if (this.routeCache && this.routeCache.expiresAt > Date.now()) {
+      return structuredClone(this.routeCache.routes);
+    }
     const response = await this.request('/api/v2/currencies');
-    return this.discoveredRoutes(response);
+    const routes = this.discoveredRoutes(response);
+    this.routeCache = { expiresAt: Date.now() + 30_000, routes };
+    return structuredClone(routes);
   }
 
   async quote(
@@ -217,7 +211,7 @@ export class FonbnkFiatProvider implements FiatProvider {
           503,
         );
       }
-      return parseExactJson(await response.text());
+      return parseExactProviderJson(await response.text(), invalidResponse);
     } catch (error) {
       if (error instanceof FiatError) throw error;
       // Provider bodies, URLs and transport errors may contain sensitive details.
