@@ -1,4 +1,3 @@
-import { router, type Href } from "expo-router";
 import React from "react";
 import { ActionModal } from "../ActionModal";
 import {
@@ -8,18 +7,24 @@ import {
 import { Image, View } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 
+const bankIcon = require("@/assets/icons/bank.png");
 const walletIcon = require("@/assets/icons/wallet.png");
 
 interface SendModalProps {
   visible: boolean;
   onClose: () => void;
   onSendToWallet: () => void;
+  onSendToBank?: () => void;
+  /** For balances only a Solana address can take, such as non-USDC assets. */
+  cryptoOnly?: boolean;
 }
 
 export function SendModal({
   visible,
   onClose,
   onSendToWallet,
+  onSendToBank,
+  cryptoOnly = false,
 }: SendModalProps) {
   const handleSendToWallet = () => {
     onClose();
@@ -29,21 +34,21 @@ export function SendModal({
   const sendOptions: ActionOption[] = [
     {
       key: "crypto",
-      title: "To an address",
-      description: "Send to a Solana address or .sol name",
+      title: "To crypto wallet",
+      description: "Send assets to a Solana address",
       icon: walletIcon,
       onPress: handleSendToWallet,
     },
   ];
-  if (__DEV__) {
+  if (!cryptoOnly && onSendToBank) {
     sendOptions.unshift({
       key: "fiat",
-      title: "To a bank account",
-      description: "Convert USDC to naira",
-      icon: walletIcon,
+      title: "To bank account",
+      description: "Send naira to any Nigerian bank account",
+      icon: bankIcon,
       onPress: () => {
         onClose();
-        router.push("/(fiat)?direction=send" as Href);
+        onSendToBank();
       },
     });
   }

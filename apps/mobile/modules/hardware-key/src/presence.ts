@@ -51,6 +51,33 @@ export async function signPresenceProof(
   );
 }
 
+const BANK_SEND_PRESENCE_DOMAIN = "xend:bank-send-presence:v1";
+
+/**
+ * Puts the same face or fingerprint in front of a bank send, bound to the
+ * quote it pays out.
+ *
+ * The backend does not verify this proof yet, so it is not sent anywhere: the
+ * point today is that the prompt cannot be skipped. Once the backend checks it,
+ * it travels with the order the same way the Spend proof travels with a submit.
+ */
+export async function signBankSendPresence(
+  quoteId: string,
+  prompt: SignPrompt
+): Promise<string> {
+  const digest = await Crypto.digest(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    concat(
+      new TextEncoder().encode(BANK_SEND_PRESENCE_DOMAIN),
+      new TextEncoder().encode(quoteId)
+    )
+  );
+
+  return normaliseLowS(
+    await hardwareKey.sign(toHex(digest), prompt.title, prompt.reason)
+  );
+}
+
 // Backed by an explicit ArrayBuffer: expo-crypto's BufferSource will not accept
 // a view that TypeScript thinks might sit on a SharedArrayBuffer.
 function concat(a: Uint8Array, b: Uint8Array): Uint8Array<ArrayBuffer> {

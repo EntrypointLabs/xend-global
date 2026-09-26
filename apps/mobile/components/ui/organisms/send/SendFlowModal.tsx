@@ -18,8 +18,10 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import RecipientStep from "./RecipientStep";
+import BankRecipientStep from "./BankRecipientStep";
 import AmountStep from "./AmountStep";
 import { QRScannerModal } from "./QRScannerModal";
+import type { BankRecipient, SendMode } from "./bankAccount";
 
 export interface SendFlowModalRef {
   present: () => void;
@@ -27,6 +29,7 @@ export interface SendFlowModalRef {
 }
 
 interface SendFlowModalProps {
+  mode?: SendMode;
   onClose?: () => void;
 }
 
@@ -37,12 +40,15 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 const springConfig = {};
 
 export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
-  ({ onClose }, ref) => {
+  ({ mode = "crypto", onClose }, ref) => {
     const snapPoints = useMemo(() => ["94%"], []);
     const scannerRef = useRef<BottomSheetModal>(null);
 
     const [, setStep] = useState<Step>("Recipient");
     const [recipient, setRecipient] = useState<string>("");
+    const [bankRecipient, setBankRecipient] = useState<BankRecipient | null>(
+      null
+    );
 
     const translateX = useSharedValue(0);
 
@@ -58,6 +64,7 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
           setTimeout(() => {
             setStep("Recipient");
             setRecipient("");
+            setBankRecipient(null);
             translateX.value = 0;
           }, 300);
         }
@@ -65,12 +72,20 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
       [onClose, translateX]
     );
 
-    const handleNext = (selectedRecipient: string) => {
-      setRecipient(selectedRecipient);
+    const showAmount = () => {
       setStep("Amount");
-
       Keyboard.dismiss();
       translateX.value = withSpring(-SCREEN_WIDTH, springConfig);
+    };
+
+    const handleNext = (selectedRecipient: string) => {
+      setRecipient(selectedRecipient);
+      showAmount();
+    };
+
+    const handleBankNext = (selected: BankRecipient) => {
+      setBankRecipient(selected);
+      showAmount();
     };
 
     const handleBack = () => {
@@ -123,26 +138,42 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
               style={requestLayout}
             >
               <View className="w-full flex-1">
-                <RecipientStep
-                  onClose={handleClose}
-                  onNext={handleNext}
-                  onScanPress={handleScanPress}
-                  recipient={recipient}
-                  setRecipient={setRecipient}
-                />
+                {mode === "bank" ? (
+                  <BankRecipientStep onNext={handleBankNext} />
+                ) : (
+                  <RecipientStep
+                    onClose={handleClose}
+                    onNext={handleNext}
+                    onScanPress={handleScanPress}
+                    recipient={recipient}
+                    setRecipient={setRecipient}
+                  />
+                )}
               </View>
               <View className="w-full flex-1">
-                <AmountStep
-                  recipient={recipient}
-                  onBack={handleBack}
-                  onClose={handleClose}
-                />
+                {mode === "bank" ? (
+                  <AmountStep
+                    mode="bank"
+                    recipient={bankRecipient}
+                    onBack={handleBack}
+                    onClose={handleClose}
+                  />
+                ) : (
+                  <AmountStep
+                    mode="crypto"
+                    recipient={recipient}
+                    onBack={handleBack}
+                    onClose={handleClose}
+                  />
+                )}
               </View>
             </Animated.View>
           </BottomSheetView>
         </BottomSheetModal>
 
-        <QRScannerModal ref={scannerRef} onScan={handleScan} />
+        {mode === "crypto" && (
+          <QRScannerModal ref={scannerRef} onScan={handleScan} />
+        )}
       </>
     );
   }

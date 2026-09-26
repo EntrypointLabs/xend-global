@@ -44,13 +44,6 @@ export default function SendLayout() {
           headerTitle: () => getHeaderTitle("Send Fiat"),
         }}
       />
-      <Stack.Screen
-        name="confirm"
-        options={{
-          title: "",
-          headerTitle: () => getHeaderTitle("Confirm Send"),
-        }}
-      />
     </Stack>
   );
 }

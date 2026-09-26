@@ -41,6 +41,13 @@ interface SpendCheckModalProps {
    * row that says why; the check the Consumer performs is the same either way.
    */
   aboveDailyLimit: boolean;
+  /**
+   * False when nothing on this phone is asked of the Consumer (a bank payout
+   * settled by Xend), so the screen does not claim a check that never ran.
+   */
+  checksIdentity?: boolean;
+  /** Replaces the sending step's line, e.g. where the money is headed. */
+  sendingBody?: string;
   onRetry: () => void;
   onDismiss: () => void;
 }
@@ -74,10 +81,12 @@ export function SpendCheckModal({
   counterparty,
   message,
   aboveDailyLimit,
+  checksIdentity = true,
+  sendingBody,
   onRetry,
   onDismiss,
 }: SpendCheckModalProps) {
-  const steps = stepsFor(aboveDailyLimit);
+  const steps = stepsFor(aboveDailyLimit, checksIdentity, sendingBody);
   const settled = state === "paused" || state === "failed";
   const finished = step === "sent";
   // Located in the rendered rows rather than in a fixed order, because the
@@ -260,7 +269,16 @@ type StepCopy = { key: SpendCheckStep; title: string; body: string };
  * costs them nothing extra to do, so it is stated as a fact about the amount
  * rather than as a step they are about to be asked for.
  */
-function stepsFor(aboveDailyLimit: boolean): StepCopy[] {
+function stepsFor(
+  aboveDailyLimit: boolean,
+  checksIdentity: boolean,
+  sendingBody: string | undefined
+): StepCopy[] {
+  const checks = CHECK_STEPS.filter(
+    (row) => checksIdentity || row.key !== "identity"
+  ).map((row) =>
+    row.key === "sending" && sendingBody ? { ...row, body: sendingBody } : row
+  );
   return aboveDailyLimit
     ? [
         {
@@ -268,9 +286,9 @@ function stepsFor(aboveDailyLimit: boolean): StepCopy[] {
           title: "Above your daily limit",
           body: "Your Account approves larger amounts as well as you.",
         },
-        ...CHECK_STEPS,
+        ...checks,
       ]
-    : CHECK_STEPS;
+    : checks;
 }
 
 const CHECK_STEPS: StepCopy[] = [

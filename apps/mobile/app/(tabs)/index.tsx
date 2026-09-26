@@ -2,7 +2,7 @@ import { View } from "react-native";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useMemo, useRef } from "react";
+import React, { useMemo, useRef, useState } from "react";
 
 import { ActionCard } from "@/components/ui/molecules";
 import { ScreenLayout } from "@/components/ui/layout";
@@ -25,6 +25,7 @@ import { useRouter } from "expo-router";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { SendFlowModal } from "@/components/ui/organisms/send/SendFlowModal";
+import type { SendMode } from "@/components/ui/organisms/send/bankAccount";
 import BalanceView from "@/components/BalanceView";
 import { cn } from "@/utils/cn";
 import type { BalanceDelta } from "@/utils/balanceDelta";
@@ -79,6 +80,7 @@ function HomeScreenContent() {
   const address = useWalletAddress();
   const { name: walletName } = useWalletName();
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
+  const [sendMode, setSendMode] = useState<SendMode>("crypto");
   const qrCodeModalRef = useRef<BottomSheetModal>(null);
 
   const usdcMint = getUsdcMint();
@@ -288,11 +290,21 @@ function HomeScreenContent() {
         onClose={hideAllModals}
         onSendToWallet={() => {
           hideAllModals();
+          setSendMode("crypto");
+          sendFlowModalRef.current?.present();
+        }}
+        onSendToBank={() => {
+          hideAllModals();
+          setSendMode("bank");
           sendFlowModalRef.current?.present();
         }}
       />
 
-      <SendFlowModal ref={sendFlowModalRef} onClose={() => {}} />
+      <SendFlowModal
+        ref={sendFlowModalRef}
+        mode={sendMode}
+        onClose={() => {}}
+      />
 
       <ReceiveModal
         visible={isReceiveModalVisible}
