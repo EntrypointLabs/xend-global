@@ -8,6 +8,11 @@ import {
   BankAccountRecordSchema,
   type BankAccountInput,
 } from "@/utils/bank-accounts";
+import {
+  BankAccountNotFoundError,
+  BankListSchema,
+  ResolvedBankRecipientSchema,
+} from "@/utils/bank-directory";
 import { localFiatDemo } from "@/utils/local-fiat-demo";
 import {
   UnifiedSnapshotSchema,
@@ -44,12 +49,8 @@ import {
   seedSessions,
   seedTransfers,
   seedWallet,
-  seedBankAccounts,
-  seedObservedFiatBalances,
-  seedNairaTransfers,
-  seedFiatRoutes,
-  seedFiatQuote,
 } from "@/utils/devSeed";
+import { demoFiat } from "@/utils/devSeedFiat";
 
 /**
  * /auth/exchange request + response. Mirrors `ExchangeRequestSchema` and
@@ -677,7 +678,7 @@ class BackendClient {
   }
 
   async nairaTransfers() {
-    if (SEED_DEMO) return seedNairaTransfers();
+    if (SEED_DEMO) return demoFiat.nairaTransfers();
     return NairaTransfersSchema.parse(
       await this.request<unknown>("/fiat/banking/transfers", { auth: true })
     );
@@ -687,6 +688,8 @@ class BackendClient {
     amountMinor: string,
     idempotencyKey: string
   ) {
+    if (SEED_DEMO)
+      return demoFiat.quoteNairaTransfer(destinationAccountNumber, amountMinor);
     return NairaTransferSchema.parse(
       await this.request<unknown>("/fiat/banking/transfers/quotes", {
         auth: true,
@@ -700,6 +703,7 @@ class BackendClient {
     );
   }
   async sendNairaTransfer(quoteId: string, idempotencyKey: string) {
+    if (SEED_DEMO) return demoFiat.sendNairaTransfer(quoteId);
     return NairaTransferSchema.parse(
       await this.request<unknown>("/fiat/banking/transfers", {
         auth: true,
@@ -709,18 +713,19 @@ class BackendClient {
     );
   }
   async observedBalances() {
-    if (SEED_DEMO) return seedObservedFiatBalances();
+    if (SEED_DEMO) return demoFiat.observedBalances();
     return ObservedBalancesSchema.parse(
       await this.request<unknown>("/fiat/balances", { auth: true })
     );
   }
   async bankAccounts() {
-    if (SEED_DEMO) return seedBankAccounts();
+    if (SEED_DEMO) return demoFiat.bankAccounts();
     return BankAccountsSchema.parse(
       await this.request<unknown>("/fiat/banking/accounts", { auth: true })
     );
   }
   async reconcileBankAccount(accountId: string) {
+    if (SEED_DEMO) return demoFiat.reconcileBankAccount();
     return BankAccountRecordSchema.parse(
       await this.request<unknown>("/fiat/banking/accounts/reconcile", {
         auth: true,
@@ -730,6 +735,7 @@ class BackendClient {
     );
   }
   async createBankAccount(input: BankAccountInput) {
+    if (SEED_DEMO) return demoFiat.createBankAccount(input);
     return BankAccountRecordSchema.parse(
       await this.request<unknown>("/fiat/banking/accounts", {
         auth: true,
@@ -738,7 +744,42 @@ class BackendClient {
       })
     );
   }
+  async banks() {
+    if (SEED_DEMO) return demoFiat.banks();
+    return BankListSchema.parse(
+      await this.request<unknown>("/fiat/banking/banks", { auth: true })
+    ).banks;
+  }
+  async bankCandidates(accountNumber: string) {
+    if (SEED_DEMO) return demoFiat.bankCandidates(accountNumber);
+    return BankListSchema.parse(
+      await this.request<unknown>("/fiat/banking/recipients/candidates", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ accountNumber }),
+      })
+    ).banks;
+  }
+  async resolveBankRecipient(accountNumber: string, bankCode: string) {
+    if (SEED_DEMO)
+      return demoFiat.resolveBankRecipient(accountNumber, bankCode);
+    let raw: unknown;
+    try {
+      raw = await this.request<unknown>("/fiat/banking/recipients/resolve", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ accountNumber, bankCode }),
+      });
+    } catch (err) {
+      const status = apiErrorStatus(err);
+      if (status === 404 || status === 422)
+        throw new BankAccountNotFoundError();
+      throw err;
+    }
+    return ResolvedBankRecipientSchema.parse(raw);
+  }
   async unifiedFiat(displayCurrency: "USD" | "NGN") {
+    if (SEED_DEMO) return demoFiat.unifiedFiat(displayCurrency);
     return UnifiedSnapshotSchema.parse(
       await this.request<unknown>(
         `/fiat/unified?displayCurrency=${displayCurrency}`,
@@ -758,6 +799,7 @@ class BackendClient {
     });
   }
   async unifiedQuote(input: UnifiedQuoteInput) {
+    if (SEED_DEMO) return demoFiat.unifiedQuote(input);
     return UnifiedQuoteSchema.parse(
       await this.request<unknown>("/fiat/unified/quotes", {
         auth: true,
@@ -771,6 +813,7 @@ class BackendClient {
     idempotencyKey: string,
     autoAdvance = true
   ) {
+    if (SEED_DEMO) return demoFiat.unifiedCreateOrder(quoteId, autoAdvance);
     return UnifiedOrderSchema.parse(
       await this.request<unknown>("/fiat/unified/orders", {
         auth: true,
@@ -796,13 +839,13 @@ class BackendClient {
     );
   }
   async fiatRoutes() {
-    if (SEED_DEMO) return { routes: seedFiatRoutes() };
+    if (SEED_DEMO) return { routes: demoFiat.routes() };
     return z
       .object({ routes: z.array(FiatRouteSchema) })
       .parse(await this.request<unknown>("/fiat/routes", { auth: true }));
   }
   async fiatQuote(routeId: string, amountMinor: string) {
-    if (SEED_DEMO) return seedFiatQuote(routeId, amountMinor);
+    if (SEED_DEMO) return demoFiat.quote(routeId, amountMinor);
     return FiatQuoteSchema.parse(
       await this.request<unknown>("/fiat/quotes", {
         auth: true,
@@ -816,6 +859,7 @@ class BackendClient {
     idempotencyKey: string,
     fields: Record<string, string>
   ) {
+    if (SEED_DEMO) return demoFiat.createOrder(quoteId, fields);
     return FiatOrderSchema.parse(
       await this.request<unknown>("/fiat/orders", {
         auth: true,
@@ -825,12 +869,13 @@ class BackendClient {
     );
   }
   async fiatOrders() {
-    if (SEED_DEMO) return { orders: [] };
+    if (SEED_DEMO) return demoFiat.orders();
     return z
       .object({ orders: z.array(FiatOrderSchema) })
       .parse(await this.request<unknown>("/fiat/orders", { auth: true }));
   }
   async fiatOrder(id: string) {
+    if (SEED_DEMO) return demoFiat.order(id);
     return FiatOrderSchema.parse(
       await this.request<unknown>(`/fiat/orders/${encodeURIComponent(id)}`, {
         auth: true,
@@ -874,7 +919,9 @@ class BackendClient {
           endpoint === "/fiat/banking/accounts/reconcile" ||
           endpoint === "/fiat/balances" ||
           endpoint === "/fiat/banking/transfers" ||
-          endpoint === "/fiat/banking/transfers/quotes");
+          endpoint === "/fiat/banking/transfers/quotes" ||
+          endpoint === "/fiat/banking/banks" ||
+          endpoint.startsWith("/fiat/banking/recipients/"));
       if (localSimulation)
         options = {
           ...options,
