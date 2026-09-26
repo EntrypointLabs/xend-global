@@ -11,7 +11,6 @@ import {
   Ionicons,
   FontAwesome5,
   MaterialCommunityIcons,
-  MaterialIcons,
 } from "@expo/vector-icons";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
@@ -27,6 +26,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useContacts } from "@/hooks/useContacts";
 import { useRecentRecipients } from "@/hooks/useRecentRecipients";
+import { RecipientRow } from "./RecipientParts";
 
 interface RecipientStepProps {
   onClose: () => void;
@@ -284,7 +284,10 @@ export default memo(function RecipientStep({
 
         {/* A section with nothing in it is dropped rather than shown empty: a
             Consumer who has never sent has no use for a heading saying so. */}
-        <BottomSheetScrollView showsVerticalScrollIndicator={false}>
+        <BottomSheetScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           {contacts.length > 0 && (
             <>
               <Typography weight="600" className="mb-4 ml-5 text-lg">
@@ -333,35 +336,3 @@ export default memo(function RecipientStep({
     </TouchableWithoutFeedback>
   );
 });
-
-function RecipientRow({
-  title,
-  subtitle,
-  onPress,
-}: {
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      className="mx-5 mb-4 flex-row items-center"
-      onPress={onPress}
-    >
-      <View
-        className="mr-3 h-12 w-12 items-center justify-center rounded-full border bg-gray-200/60"
-        style={{ borderColor: "#F2F4F7" }}
-      >
-        <MaterialIcons name="wallet" size={22} color="black" />
-      </View>
-      <View>
-        <Typography weight="600" className="text-base">
-          {title}
-        </Typography>
-        <Typography weight="500" className="text-sm text-gray-400">
-          {subtitle}
-        </Typography>
-      </View>
-    </TouchableOpacity>
-  );
-}

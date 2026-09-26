@@ -125,6 +125,14 @@ export class BankingRegistry {
     const provider = this.providers.get('nomba');
     return provider instanceof NombaAdapter ? provider : null;
   }
+  /** The authenticated provider that bank directory reads and name enquiry go through. */
+  payoutProvider(): BankPayoutProvider | null {
+    for (const name of ['nomba', 'paga']) {
+      const provider = this.providers.get(name);
+      if (provider && this.authenticated.has(name)) return provider;
+    }
+    return null;
+  }
   get(name: string): BankProvider {
     const provider = this.providers.get(name);
     if (!provider)
