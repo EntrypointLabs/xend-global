@@ -62,10 +62,12 @@ const COMPRESSED_POINT_BYTES = 33;
  * is the same bytes `submit` already pins the signed transaction to.
  */
 export function presenceDigest(message: Buffer): Buffer {
-  return createHash('sha256')
-    .update(Buffer.from(PRESENCE_DOMAIN, 'utf8'))
-    .update(message)
-    .digest();
+  return createHash('sha256').update(presencePreimage(message)).digest();
+}
+
+/** The bytes `presenceDigest` hashes: the domain, then the message. */
+export function presencePreimage(message: Buffer): Buffer {
+  return Buffer.concat([Buffer.from(PRESENCE_DOMAIN, 'utf8'), message]);
 }
 
 /**
@@ -88,16 +90,16 @@ export function verifyPresenceProof(params: {
   if (params.enrolledKeys.length === 0) return false;
 
   let signature: Buffer;
-  let digest: Buffer;
+  let preimage: Buffer;
   try {
     signature = Buffer.from(params.signatureHex, 'hex');
-    digest = presenceDigest(Buffer.from(params.messageBase64, 'base64'));
+    preimage = presencePreimage(Buffer.from(params.messageBase64, 'base64'));
   } catch {
     return false;
   }
   if (signature.length === 0) return false;
 
-  return params.enrolledKeys.some((key) => verifies(digest, signature, key));
+  return params.enrolledKeys.some((key) => verifies(preimage, signature, key));
 }
 
 /**
@@ -105,7 +107,11 @@ export function verifyPresenceProof(params: {
  * as one anyway: the alternative is one unusable enrolment locking a Consumer
  * out of every Spend on a device whose key is fine.
  */
-function verifies(digest: Buffer, signature: Buffer, keyHex: string): boolean {
+function verifies(
+  preimage: Buffer,
+  signature: Buffer,
+  keyHex: string,
+): boolean {
   try {
     const point = Buffer.from(keyHex, 'hex');
     if (point.length !== COMPRESSED_POINT_BYTES) return false;
@@ -116,10 +122,12 @@ function verifies(digest: Buffer, signature: Buffer, keyHex: string): boolean {
       format: 'der',
       type: 'spki',
     });
-    // Null algorithm: the payload is already the digest, which is what the
-    // Secure Enclave and StrongBox both sign. Hashing again here would verify
-    // something the device never saw.
-    return verify(null, digest, publicKey, signature);
+    // The device signs presenceDigest() as-is (NONEwithECDSA on Android,
+    // ecdsaSignatureDigestX962SHA256 on iOS). That is exactly ECDSA-SHA256
+    // over the preimage, so verify the preimage with SHA-256. Passing the
+    // digest with a null algorithm does not skip hashing for EC keys: Node
+    // hashes it again and every real device proof fails.
+    return verify('sha256', preimage, publicKey, signature);
   } catch {
     return false;
   }

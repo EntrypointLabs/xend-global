@@ -9,13 +9,15 @@ import {
 import {
   PRESENCE_DOMAIN,
   presenceDigest,
+  presencePreimage,
   verifyPresenceProof,
 } from './presence-proof';
 
 /**
- * A stand-in for the Secure Enclave: the same curve, the same compressed
- * public key, and signatures over a digest the caller supplies rather than
- * over data it hashes itself.
+ * A stand-in for the Secure Enclave / StrongBox: the same curve and compressed
+ * public key. The device signs a SHA-256 digest as-is, which is the same
+ * signature as ECDSA-SHA256 over the bytes that digest was taken of, so
+ * `signDigestOf(bytes)` is what a phone returns when handed SHA-256(bytes).
  */
 function deviceKey() {
   const { publicKey, privateKey } = generateKeyPairSync('ec', {
@@ -31,17 +33,23 @@ function deviceKey() {
 
   return {
     hardwarePublicKey: compressed.toString('hex'),
-    signDigest: (digest: Buffer) => signWith(privateKey, digest),
+    signDigestOf: (bytes: Buffer) => signWith(privateKey, bytes),
     signMessage: (messageBase64: string) =>
       signWith(
         privateKey,
-        presenceDigest(Buffer.from(messageBase64, 'base64')),
+        presencePreimage(Buffer.from(messageBase64, 'base64')),
       ),
+    signDigestHashedAgain: (messageBase64: string) =>
+      sign(
+        null,
+        presenceDigest(Buffer.from(messageBase64, 'base64')),
+        privateKey,
+      ).toString('hex'),
   };
 }
 
-function signWith(privateKey: KeyObject, digest: Buffer): string {
-  return sign(null, digest, privateKey).toString('hex');
+function signWith(privateKey: KeyObject, bytes: Buffer): string {
+  return sign('sha256', bytes, privateKey).toString('hex');
 }
 
 const MESSAGE = Buffer.from('a compiled transaction message').toString(
@@ -123,14 +131,24 @@ describe('verifyPresenceProof', () => {
   it('refuses a Turnkey stamp replayed as a presence proof', () => {
     const device = deviceKey();
     // What stamp() signs: SHA-256 of the request body, with no domain in front.
-    const stampDigest = createHash('sha256')
-      .update(Buffer.from(MESSAGE, 'base64'))
-      .digest();
+    expect(
+      verifyPresenceProof({
+        messageBase64: MESSAGE,
+        signatureHex: device.signDigestOf(Buffer.from(MESSAGE, 'base64')),
+        enrolledKeys: [device.hardwarePublicKey],
+      }),
+    ).toBe(false);
+  });
+
+  it('refuses a signature over the digest hashed a second time', () => {
+    // A verifier that passes the digest with a null algorithm hashes it again
+    // and only accepts this form, which no phone produces.
+    const device = deviceKey();
 
     expect(
       verifyPresenceProof({
         messageBase64: MESSAGE,
-        signatureHex: device.signDigest(stampDigest),
+        signatureHex: device.signDigestHashedAgain(MESSAGE),
         enrolledKeys: [device.hardwarePublicKey],
       }),
     ).toBe(false);
