@@ -176,8 +176,8 @@ export class WalletsService {
   }
 
   /**
-   * Closes a Consumer's Xend account. Blocked while any token balance
-   * remains — Xend has no custody path to sweep it out first, so a
+   * Closes a Consumer's Prydd account. Blocked while any token balance
+   * remains — Prydd has no custody path to sweep it out first, so a
    * Consumer must withdraw/send everything down to zero themselves.
    *
    * `users` is soft-deleted (`deletedAt` set, email anonymized to free it
@@ -228,7 +228,7 @@ export class WalletsService {
     await this.db.client
       .update(users)
       .set({
-        email: `deleted-${userId}@deleted.xend.internal`,
+        email: `deleted-${userId}@deleted.prydd.internal`,
         deletedAt: new Date(),
       })
       .where(eq(users.id, userId));

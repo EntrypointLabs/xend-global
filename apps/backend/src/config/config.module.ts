@@ -101,7 +101,7 @@ export const USDC_MINT_BY_CLUSTER = {
         // Mail. Only recovery codes go out over this, and a deployment with no
         // key logs them instead, which MailModule refuses in production.
         RESEND_API_KEY: Joi.string().optional().allow(''),
-        MAIL_FROM: Joi.string().default('Xend <security@xend.global>'),
+        MAIL_FROM: Joi.string().default('Prydd <security@xend.global>'),
 
         // App Attest audience: "TEAMID.bundleid". Attestation fails closed
         // without it, so an unset value blocks iOS enrolment rather than
@@ -163,7 +163,7 @@ export const USDC_MINT_BY_CLUSTER = {
         // KAFKA_BROKERS is a comma-separated host:port list. SASL vars stay
         // blank for local docker-compose; managed brokers require them.
         KAFKA_BROKERS: Joi.string().required(),
-        KAFKA_CLIENT_ID: Joi.string().default('xend-backend'),
+        KAFKA_CLIENT_ID: Joi.string().default('prydd-backend'),
         KAFKA_SSL: Joi.boolean().default(false),
         KAFKA_SASL_MECHANISM: Joi.string()
           .valid('plain', 'scram-sha-256', 'scram-sha-512')
@@ -295,7 +295,7 @@ export const USDC_MINT_BY_CLUSTER = {
           .integer()
           .min(60)
           .default(900),
-        CHECKOUT_SESSION_COOKIE: Joi.string().default('xend_checkout_session'),
+        CHECKOUT_SESSION_COOKIE: Joi.string().default('prydd_checkout_session'),
 
         // Outbound webhooks.
         WEBHOOK_DELIVERY_TIMEOUT_MS: Joi.number()
@@ -390,7 +390,7 @@ export const USDC_MINT_BY_CLUSTER = {
         // Tracing is on only when an OTLP/HTTP collector endpoint is given;
         // the SDK starts in main.ts before Nest loads.
         OTEL_EXPORTER_OTLP_ENDPOINT: Joi.string().uri().optional().allow(''),
-        OTEL_SERVICE_NAME: Joi.string().default('xend-backend'),
+        OTEL_SERVICE_NAME: Joi.string().default('prydd-backend'),
       }),
     }),
   ],

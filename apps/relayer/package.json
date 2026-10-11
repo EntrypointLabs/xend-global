@@ -1,7 +1,7 @@
 {
-  "name": "@xend/relayer",
+  "name": "@prydd/relayer",
   "version": "0.0.1",
-  "description": "Fee-payer relayer: isolated Solana co-signer for Pay with Xend",
+  "description": "Fee-payer relayer: isolated Solana co-signer for Pay with Prydd",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {

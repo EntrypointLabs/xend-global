@@ -110,7 +110,7 @@ export function useReplacePasskey() {
  * Lands a staged replacement once its delay has run out.
  *
  * The execute step is signed by the Device Key on this phone, so nothing on
- * the server can finish it; it can only happen when Xend is next opened.
+ * the server can finish it; it can only happen when Prydd is next opened.
  */
 export function useFinishPrimaryRotation() {
   const queryClient = useQueryClient();

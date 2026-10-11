@@ -1,4 +1,4 @@
-# Pay with Xend — preview findings & production gaps
+# Pay with Prydd — preview findings & production gaps
 
 Status: **Closed 2026-09-07.** No longer maintained; the items below are frozen at their last state. Where they stand:
 
@@ -45,10 +45,10 @@ What changed:
 
 ## 1. Identity & onboarding — DECISION (highest priority)
 
-**The checkout must authenticate existing Xend identities, never create them.**
+**The checkout must authenticate existing Prydd identities, never create them.**
 
-- Calling Privy `signupWithPasskey` from the checkout mints a **brand-new identity with only a passkey and no email**, orphaned from the person's real account. When they later open the Xend app and sign up with email, they get a _second_ identity — and their checkout payment lives on the first one, invisible in the app. That is a data/UX mess.
-- **Model:** identity (email + passkey) is created **once, in the mobile Xend app**. The checkout only runs `loginWithPasskey` to authenticate an existing consumer. One identity per person.
+- Calling Privy `signupWithPasskey` from the checkout mints a **brand-new identity with only a passkey and no email**, orphaned from the person's real account. When they later open the Prydd app and sign up with email, they get a _second_ identity — and their checkout payment lives on the first one, invisible in the app. That is a data/UX mess.
+- **Model:** identity (email + passkey) is created **once, in the mobile Prydd app**. The checkout only runs `loginWithPasskey` to authenticate an existing consumer. One identity per person.
 - **DECIDED: the consumer app stays mobile-only. No desktop app.** A payment method must work wherever commerce happens (incl. desktop), but that is solved by **passkeys**, not a desktop app: (1) **synced passkeys** (iCloud Keychain / Google Password Manager) let a desktop shopper authenticate natively with Face ID on their own machine; (2) **cross-device / QR-to-phone hybrid** (Apple-Pay-web / WhatsApp-Web pattern) covers any other desktop. The phone stays the source of truth. The only genuine gap is a **brand-new user on desktop with no app** — handled by "get the app" or, if conversion data later warrants, a **minimal hosted signup page** (not an app). Do NOT build a desktop consumer app.
 
 **ACTIONS**
@@ -96,7 +96,7 @@ The passkey ceremony now issues a real token that reaches `/checkout/authorize`.
 
 - **Token type mismatch (FIXED in checkout).** The backend verifies the Privy **identity** token (`client.getUser({ idToken })`), but the checkout was sending `getAccessToken()` (the _access_ token) -> `INVALID_PRIVY_TOKEN` / 500. Fixed: `apps/checkout/src/ceremony/passkey.ts` now sends `useIdentityToken().identityToken`. **Requires "identity tokens" enabled on the Privy app** (dashboard) or the token is null.
 - **No embedded wallet.** The checkout's `PrivyProvider` gets only `appId`, so a passkey signup creates a user with **no Solana wallet / address**. **Open, and now load-bearing for a different reason than when this was written:** the embedded wallet is S1, and the popup has to sign the Spend with it, so a Consumer whose provider session carries no Solana wallet cannot complete a Payment. The address is no longer a settlement _destination_ (the money leaves the vault), it is the _signer_. `authorize` names the exact key it compiled the Spend for and the popup picks that wallet by address.
-- **Consumer must have a linked email (CONFIRMED by the live test).** After the token verifies, `userToProviderUser` throws `PrivyUserShapeError: ... has no linked email; email login required` (`PRIVY_USER_SHAPE_INVALID`). A **passkey-only** identity (what the checkout `signupWithPasskey` mints) is **not a valid consumer** — the Xend model is email + passkey. This is the backend enforcing §1: **onboarding (email + passkey + wallet) is app-owned; the checkout only authenticates a fully-onboarded consumer.** The live devnet test walked straight into this, which validates the decision.
+- **Consumer must have a linked email (CONFIRMED by the live test).** After the token verifies, `userToProviderUser` throws `PrivyUserShapeError: ... has no linked email; email login required` (`PRIVY_USER_SHAPE_INVALID`). A **passkey-only** identity (what the checkout `signupWithPasskey` mints) is **not a valid consumer** — the Prydd model is email + passkey. This is the backend enforcing §1: **onboarding (email + passkey + wallet) is app-owned; the checkout only authenticates a fully-onboarded consumer.** The live devnet test walked straight into this, which validates the decision.
 - **No consumer account (`smart_accounts`).** Even with an email, `resolveByProviderToken` requires a `smart_accounts` row linking the Privy `providerUserId` -> a `users` row + address, created by the app's **`/auth/exchange`** onboarding, not the checkout. A checkout-only person has none -> `UnknownConsumerError: no Account for provider user`. **Open** — for tests, run `/auth/exchange` (or seed the account) for the identity first; in production the app owns this.
 - **Capacity / tier.** After the account resolves, the payment is checked against the consumer's tier caps. A fresh consumer needs a tier assigned.
 - **Settlement is not funded (`PROGRESS.md` Flag #11).** `POST /checkout/settle` waits for on-chain settlement; with no funded `SETTLEMENT_AUTHORITY` it times out to `PAYMENT_PROCESSING`. **Open** — fund devnet keys (Circle faucet) for a true settle. Note the authority now pays the Payment's fee as well as the ops paths, so it is the only key that has to be funded for a Payment; the relayer fee payer is no longer on this path. The development short-circuit still resolves local Checkout without any of it.
@@ -120,6 +120,6 @@ The passkey ceremony now issues a real token that reaches `/checkout/authorize`.
 
 ## What IS proven (so we do not re-litigate it)
 
-- The `@xend/checkout-core` SDK, the adaptive translucent glass modal (desktop + mobile), and the merchant round-trip (`onResult`).
+- The `@prydd/checkout-core` SDK, the adaptive translucent glass modal (desktop + mobile), and the merchant round-trip (`onResult`).
 - The backend API: intent creation, **FX pinned at creation** (naira shown, no FX at the sheet), the public checkout summary, the ops console, the relayer anti-drain (live 403), and the Phase-6 webhook/idempotency E2E.
 - The real Privy ceremony **renders and reaches a genuine WebAuthn passkey prompt** on a Privy-registered domain over TLS — the piece everyone flagged as the human gate.

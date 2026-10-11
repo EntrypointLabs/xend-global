@@ -197,7 +197,7 @@ export class AccountController {
    *
    * Polled by the app so the notice survives a push that never arrived: a
    * Consumer who has notifications off, or whose token went stale, still sees
-   * the change the next time they open Xend.
+   * the change the next time they open Prydd.
    */
   @Get('changes/pending')
   @AllowEntry()

@@ -17,7 +17,7 @@ export const PENDING_CHANGE_KEY = ["account", "pending-change"] as const;
  *
  * Polled as well as pushed. The push notification is how they find out while
  * the app is closed, but a Consumer with notifications off, or a stale token,
- * would otherwise never see the one notice that has to arrive, so opening Xend
+ * would otherwise never see the one notice that has to arrive, so opening Prydd
  * asks as well.
  */
 export function usePendingAccountChange() {

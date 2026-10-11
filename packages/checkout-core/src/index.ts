@@ -16,7 +16,7 @@ import type {
   CheckoutResult,
   CheckoutStatus,
   CheckoutUnresolved,
-  XendButtonConfig,
+  PryddButtonConfig,
 } from "./types";
 
 export type {
@@ -26,10 +26,10 @@ export type {
   CheckoutStatus,
   CheckoutSummary,
   CheckoutUnresolved,
-  XendButtonConfig,
+  PryddButtonConfig,
 };
 
-export interface XendButtonHandle {
+export interface PryddButtonHandle {
   unmount: () => void;
 }
 
@@ -126,19 +126,19 @@ async function fetchSummary(
 }
 
 /**
- * Mount the Pay with Xend button.
+ * Mount the Pay with Prydd button.
  *
  * The default "iframe" presentation draws the glass sheet on the merchant page
  * and, when the shopper taps Pay, swaps the sheet's body for a cross-origin
  * frame carrying the ceremony: no second window, and the passkey still never
- * leaves Xend's origin. If that frame is refused or never loads, the popup
+ * leaves Prydd's origin. If that frame is refused or never loads, the popup
  * takes over behind the same sheet. "modal" is the same sheet with the popup
  * from the start; "popup" skips the sheet entirely. Every window is opened
  * SYNCHRONOUSLY in the click handler with the intent-less URL, before any
  * awaited work, so iOS Safari does not block it. In a webview / Opera Mini /
  * when the popup is blocked, the flow falls back to a full-page redirect.
  */
-export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
+export function mountPryddButton(config: PryddButtonConfig): PryddButtonHandle {
   const {
     checkoutOrigin,
     createIntent,
@@ -154,7 +154,7 @@ export function mountXendButton(config: XendButtonConfig): XendButtonHandle {
   const wantsSheet = presentation === "iframe" || presentation === "modal";
   if (wantsSheet && config.presentation && !apiBase) {
     console.warn(
-      `[xend-checkout] presentation "${presentation}" needs an apiBase to read the intent summary; opening the popup instead.`,
+      `[prydd-checkout] presentation "${presentation}" needs an apiBase to read the intent summary; opening the popup instead.`,
     );
   }
   const useSheet = wantsSheet && !!apiBase && detectEnvironment().canPopup;

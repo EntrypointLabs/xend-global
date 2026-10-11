@@ -24,7 +24,7 @@ import { useRouter } from "expo-router";
 import { useToast } from "@/contexts/ToastContext";
 import { useNotificationPreference } from "@/hooks/usePushRegistration";
 
-const XEND_TWITTER_URL = "https://twitter.com/xend_global";
+const PRYDD_TWITTER_URL = "https://twitter.com/xend_global";
 const PRIVACY_POLICY_URL = "https://xend.global/legal/privacy-policy";
 const TERMS_URL = "https://xend.global/legal/terms-of-service";
 
@@ -117,7 +117,7 @@ export default function SettingsScreen() {
           label: "Follow @xend_global",
           icon: require("@/assets/icons/x.png"),
           onPress: () => {
-            Linking.openURL(XEND_TWITTER_URL);
+            Linking.openURL(PRYDD_TWITTER_URL);
           },
         },
         {
@@ -145,12 +145,12 @@ export default function SettingsScreen() {
             <View>
               <TabHeaderText>Settings</TabHeaderText>
 
-              {/* Xend Plus Banner */}
+              {/* Prydd Plus Banner */}
               <TouchableOpacity
                 className="flex-row items-center justify-between rounded-3xl bg-black p-4"
                 activeOpacity={0.9}
                 accessibilityRole="button"
-                accessibilityLabel="Learn about Xend Plus"
+                accessibilityLabel="Learn about Prydd Plus"
                 onPress={() =>
                   router.push("/plus?from=/(tabs)/settings" as never)
                 }
@@ -161,7 +161,7 @@ export default function SettingsScreen() {
                   </View>
                   <View>
                     <Typography weight="700" className="text-sm text-white">
-                      Get Xend Plus
+                      Get Prydd Plus
                     </Typography>
                     <Typography className="text-xs text-gray-400">
                       Earn more, pay less
@@ -194,7 +194,7 @@ export default function SettingsScreen() {
           ListFooterComponent={
             <View className="mt-8 items-center">
               <Image
-                source={require("@/assets/images/logo/xend-mark-black-2048.png")}
+                source={require("@/assets/images/logo/prydd-mark-black-2048.png")}
                 className="mb-3 size-8 opacity-40"
                 resizeMode="contain"
               />

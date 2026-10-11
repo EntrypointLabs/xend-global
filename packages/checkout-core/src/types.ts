@@ -27,7 +27,7 @@ export interface CheckoutUnresolved {
 
 /**
  * "iframe" (default) draws the glass sheet in the merchant page and runs the
- * ceremony inline, in a cross-origin frame on Xend's own origin, so no second
+ * ceremony inline, in a cross-origin frame on Prydd's own origin, so no second
  * window appears. "modal" draws the same sheet but always opens the ceremony
  * in a window. "popup" opens that window straight from the button with no
  * sheet. "redirect" navigates the whole page to the hosted checkout and returns
@@ -44,7 +44,7 @@ export type CheckoutPresentation = "iframe" | "modal" | "popup" | "redirect";
  */
 export type ButtonTheme = "auto" | "light" | "dark";
 
-export interface XendButtonConfig {
+export interface PryddButtonConfig {
   /** Exact checkout origin, e.g. "https://pay.xend.global". Compared by strict equality. */
   checkoutOrigin: string;
   /** Merchant-supplied server call that creates the intent and returns its reference. Money never travels client-side. */
@@ -56,7 +56,7 @@ export interface XendButtonConfig {
   presentation?: CheckoutPresentation;
   theme?: ButtonTheme;
   /**
-   * Origin of the Xend API, e.g. "https://api.xend.global". The sheet reads the
+   * Origin of the Prydd API, e.g. "https://api.xend.global". The sheet reads the
    * merchant name and amount from it; without one, the sheet presentations
    * degrade to "popup".
    */

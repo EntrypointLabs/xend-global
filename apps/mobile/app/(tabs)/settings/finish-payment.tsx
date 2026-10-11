@@ -60,7 +60,7 @@ const TERMINAL_PAYMENT_STATUSES = new Set([
 /**
  * Finishing a Payment a checkout could not.
  *
- * "Pay with Xend" on a merchant page reaches one of the Account's signers. A
+ * "Pay with Prydd" on a merchant page reaches one of the Account's signers. A
  * Payment larger than that signer carries alone needs the second, which lives
  * on this phone, so the checkout hands it over rather than failing it. Nothing
  * has been charged when someone arrives here.

@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-09-07
 **Accepted:** 2026-08-30
-**Deciders:** Xend founding team
+**Deciders:** Prydd founding team
 **Tags:** backend, mobile, security, notifications
 
 ## Context and Problem Statement

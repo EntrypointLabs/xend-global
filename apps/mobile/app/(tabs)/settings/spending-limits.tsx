@@ -181,7 +181,7 @@ export default function SpendingLimitsScreen() {
                 weight="500"
                 className="mt-1 text-[13px] leading-5 text-black/40"
               >
-                Xend cannot read it right now, so nothing here can be changed.
+                Prydd cannot read it right now, so nothing here can be changed.
                 Your Account is unaffected. Try again in a moment.
               </Typography>
             </Card>

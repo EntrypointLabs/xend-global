@@ -2,12 +2,12 @@
 
 **Status:** Accepted, superseded in part by [0025](0025-account-multisig-signer-set.md)
 **Date:** 2026-07-12
-**Deciders:** Pay with Xend planning
+**Deciders:** Pay with Prydd planning
 **Tags:** backend, wallet, vendor, pay
 
 ## Context and Problem Statement
 
-The consumer side of Pay with Xend needs a vendor to custody passkey credentials and sign Ed25519 (Solana) transactions on behalf of a Consumer. Earlier planning kept an open vendor race (Privy as lead, Turnkey as a documented fallback, a two-item prototype gate on the real domain), with the earlier Squads Grid smart-account work as a separate track. The vendor race is now closed: the founder decision adopts Privy, and the Squads Grid work was ported to Privy rather than dying into another vendor. Production passkeys already live in Privy's credential store (the mobile app enrolls through `@privy-io/expo` with rp.id resolving to the registrable root xend.global).
+The consumer side of Pay with Prydd needs a vendor to custody passkey credentials and sign Ed25519 (Solana) transactions on behalf of a Consumer. Earlier planning kept an open vendor race (Privy as lead, Turnkey as a documented fallback, a two-item prototype gate on the real domain), with the earlier Squads Grid smart-account work as a separate track. The vendor race is now closed: the founder decision adopts Privy, and the Squads Grid work was ported to Privy rather than dying into another vendor. Production passkeys already live in Privy's credential store (the mobile app enrolls through `@privy-io/expo` with rp.id resolving to the registrable root xend.global).
 
 We need to record that Privy is adopted, that it is reached only through the owned `WALLET_PROVIDER` adapter, and that there is no fallback vendor plan in scope, so later work does not reintroduce a vendor race or import a vendor SDK outside the adapter.
 

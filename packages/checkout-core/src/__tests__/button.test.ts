@@ -10,7 +10,7 @@ function container(): HTMLElement {
 
 afterEach(() => {
   document.body.innerHTML = "";
-  document.getElementById("xend-pay-style")?.remove();
+  document.getElementById("prydd-pay-style")?.remove();
 });
 
 describe("renderButton", () => {
@@ -20,16 +20,16 @@ describe("renderButton", () => {
     const button = mount.querySelector("button");
     expect(button).not.toBeNull();
     expect(button?.getAttribute("type")).toBe("button");
-    expect(button?.getAttribute("aria-label")).toBe("Pay with Xend");
-    expect(button?.textContent).toContain("Pay with Xend");
+    expect(button?.getAttribute("aria-label")).toBe("Pay with Prydd");
+    expect(button?.textContent).toContain("Pay with Prydd");
   });
 
   it("uses the brand background and is never green", () => {
     const mount = container();
     renderButton(mount, { onClick: () => {} });
-    const style = document.getElementById("xend-pay-style");
-    expect(style?.textContent).toContain(`--xend-pay-bg: ${BRAND_BLACK}`);
-    expect(style?.textContent).toContain("background: var(--xend-pay-bg)");
+    const style = document.getElementById("prydd-pay-style");
+    expect(style?.textContent).toContain(`--prydd-pay-bg: ${BRAND_BLACK}`);
+    expect(style?.textContent).toContain("background: var(--prydd-pay-bg)");
     // No green anywhere in the button styling.
     expect(style?.textContent?.toLowerCase()).not.toContain("green");
     expect(style?.textContent).not.toMatch(/#0*(f0|00ff00|008000)/i);
@@ -73,7 +73,7 @@ describe("renderButton", () => {
       theme: "dark",
     });
     expect(dark.element.dataset["theme"]).toBe("dark");
-    const style = document.getElementById("xend-pay-style");
+    const style = document.getElementById("prydd-pay-style");
     expect(style?.textContent).toContain("[data-theme='dark']");
     expect(style?.textContent).toContain("prefers-color-scheme: dark");
   });

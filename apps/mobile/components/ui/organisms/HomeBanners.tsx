@@ -80,7 +80,7 @@ export function HomeBanners() {
         );
       } else if (outcome === "no-account") {
         setPasskeyHint(
-          "That passkey is not on any Xend account. Try again and pick another."
+          "That passkey is not on any Prydd account. Try again and pick another."
         );
       } else if (outcome === "no-passkey") {
         setPasskeyHint("No passkey on this phone. Use the phone that has it.");

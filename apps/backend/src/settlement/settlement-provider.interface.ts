@@ -38,7 +38,7 @@ export interface ProvisionedSettlementEndpoint {
   /** Opaque provider reference (Blockradar child-address id, or the direct-USDC token account id). */
   providerReference: string;
   /**
-   * Attribution root the address is enumerable from (Xend authority for
+   * Attribution root the address is enumerable from (Prydd authority for
    * direct-USDC, master wallet for Blockradar); null when a merchant-own
    * address is merely recorded.
    */

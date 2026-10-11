@@ -116,7 +116,7 @@ function HomeScreenContent() {
         funded: earnBalance > 0,
       },
       {
-        title: "Xend Card",
+        title: "Prydd Card",
         subtitle: "Get your free Card",
         amount: null,
         icon: require("@/assets/icons/card.png"),
@@ -234,7 +234,7 @@ function HomeScreenContent() {
                 marginBottom: compact ? 6 : size(14),
               }}
             >
-              Receive money at your address and start using Xend
+              Receive money at your address and start using Prydd
             </Typography>
 
             <HapticPressable

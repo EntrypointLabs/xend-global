@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
-import { verifyWebhook } from '@xend/checkout-core/webhook';
+import { verifyWebhook } from '@prydd/checkout-core/webhook';
 
 // Local pilot only. No fulfilment side effects; secrets stay in this process.
 export function createPilotReceiver(secret) {

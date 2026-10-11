@@ -1,6 +1,6 @@
 // Stub for `expo-apple-authentication`.
 //
-// Xend authenticates with Privy email OTP only and never invokes Sign in with
+// Prydd authenticates with Privy email OTP only and never invokes Sign in with
 // Apple. The real package was removed because its config plugin injects the
 // Sign-in-with-Apple entitlement, which a free personal Apple team cannot
 // provision. `@privy-io/expo` still imports this module unconditionally for its

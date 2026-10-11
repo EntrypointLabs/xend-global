@@ -113,7 +113,7 @@ export function usePasskeyCeremony() {
         transaction: fromBase64(unsignedTxBase64),
         wallet,
         chain,
-        // Xend's purchase confirmation is the consent surface. This only hides
+        // Prydd's purchase confirmation is the consent surface. This only hides
         // the redundant vendor transaction sheet, not passkey authentication.
         options: { uiOptions: { showWalletUIs: false } },
       });

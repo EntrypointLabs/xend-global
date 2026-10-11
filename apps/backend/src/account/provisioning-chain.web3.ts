@@ -15,7 +15,7 @@ import {
   fetchSettings,
   fetchSpendingLimit,
   type SpendingLimit,
-} from '@xend/smart-account';
+} from '@prydd/smart-account';
 
 import {
   SETTLEMENT_AUTHORITY_SIGNER,

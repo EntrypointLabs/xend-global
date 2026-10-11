@@ -1,4 +1,4 @@
-# Xend
+# Prydd
 
 A mobile payments app for everyday consumers — spend money as you would, but faster. P2P payments to friends are the dominant case; merchant payment rides the same rails. The crypto rails underneath (Solana, USDC, Squads smart accounts, passkey auth) are invisible to the user.
 
@@ -6,12 +6,12 @@ A mobile payments app for everyday consumers — spend money as you would, but f
 
 ### Product
 
-**Xend**:
+**Prydd**:
 The product. Always capitalized as a proper noun.
 _Avoid_: wallet, app
 
 **Consumer**:
-An everyday person using Xend. Not crypto-native.
+An everyday person using Prydd. Not crypto-native.
 _Avoid_: user, trader, holder, wallet user
 
 ### Identity
@@ -25,7 +25,7 @@ The platform-keychain-stored credential that unlocks the **Consumer**'s primary 
 _Avoid_: key, credential, login, device key
 
 **Contact Email**:
-The one address a **Consumer** gives, proved by a code at the start of signing up. It anchors a recovery signer, so there is no **Account** without it. It is how Xend reaches a **Consumer** and how they start **Recover**, and it is never a way to **Spend**: proving it unlocks one signer, which is one vote short of the threshold.
+The one address a **Consumer** gives, proved by a code at the start of signing up. It anchors a recovery signer, so there is no **Account** without it. It is how Prydd reaches a **Consumer** and how they start **Recover**, and it is never a way to **Spend**: proving it unlocks one signer, which is one vote short of the threshold.
 _Avoid_: sign-in email, login email, primary email
 
 **Recovery Email**:
@@ -39,7 +39,7 @@ _Avoid_: restore, reset, sign back in
 ### Money
 
 **Cash**:
-The feature area of Xend that covers everything about the **Consumer**'s money — the screen, the actions on it, the value it holds. "Cash" is the surface; **Balance** is the number on it.
+The feature area of Prydd that covers everything about the **Consumer**'s money — the screen, the actions on it, the value it holds. "Cash" is the surface; **Balance** is the number on it.
 _Avoid_: wallet, funds, holdings, tokens
 
 **Balance**:
@@ -113,7 +113,7 @@ A **Consumer** paying a **Merchant** from their **Balance** through **Checkout**
 _Avoid_: transaction, charge, order, purchase (in code)
 
 **Checkout**:
-The Xend-hosted surface (pay.xend.global) where a **Consumer** approves a **Payment** with their **Passkey**, or with one tap when a **Session** is active. Sits next to card and Apple Pay buttons on the **Merchant**'s page.
+The Prydd-hosted surface (pay.xend.global) where a **Consumer** approves a **Payment** with their **Passkey**, or with one tap when a **Session** is active. Sits next to card and Apple Pay buttons on the **Merchant**'s page.
 _Avoid_: payment page, widget, popup (in user-facing copy), iframe
 
 **Session**:

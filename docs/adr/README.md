@@ -1,6 +1,8 @@
 # Architectural Decision Records
 
-This directory contains Architectural Decision Records (ADRs) for the `xend` monorepo.
+This directory contains Architectural Decision Records (ADRs) for the `prydd` monorepo.
+
+The product was called Xend until October 2026. Records written before then were renamed in place, so "Prydd" in an older ADR refers to what was Xend at the time. Hostnames under `xend.global` and the app id `com.giftedborg.xend` are unchanged and are quoted as they are.
 
 ## What is an ADR?
 
@@ -65,7 +67,7 @@ You do **not** need an ADR for routine choices like file naming, single-feature 
 | [0015](./0015-settlement-provider-layer.md)                              | Settlement provider layer: pluggable SettlementProvider, single-root attribution, refund-in-reverse                                 | Accepted                             | Backend / Pay            |
 | [0016](./0016-checkout-postmessage-protocol.md)                          | Checkout result transport: versioned postMessage protocol and surface security posture                                              | Accepted                             | Frontend / Checkout      |
 | [0017](./0017-webhook-contract.md)                                       | Outbound merchant webhook contract: HMAC t/v1 signing, event schema, and delivery semantics                                         | Accepted                             | Backend / Security       |
-| [0018](./0018-sdk-publishing.md)                                         | Pay with Xend SDK publishing, MIT licensing, and the fulfillment-hostile result contract                                            | Accepted                             | SDK / Packaging          |
+| [0018](./0018-sdk-publishing.md)                                         | Pay with Prydd SDK publishing, MIT licensing, and the fulfillment-hostile result contract                                           | Accepted                             | SDK / Packaging          |
 | [0019](./0019-blockradar-settlement-provider-adapter.md)                 | Blockradar as the first SettlementProvider adapter (convert-at-settlement for naira), gated on three Solana confirmations           | Accepted                             | Backend / Pay            |
 | [0020](./0020-solana-sdk-coexistence.md)                                 | Two Solana toolchains: @solana/kit for new money-moving code, web3.js retained                                                      | Accepted                             | Backend / Solana         |
 | [0021](./0021-web-styling.md)                                            | Web styling: Tailwind v4 CSS-first for web surfaces, NativeWind stays mobile-only                                                   | Accepted                             | Frontend / Styling       |

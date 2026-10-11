@@ -3,7 +3,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js';
-import { SETTINGS_TIME_LOCK_SECONDS } from '@xend/smart-account';
+import { SETTINGS_TIME_LOCK_SECONDS } from '@prydd/smart-account';
 
 import { AccountChangeService } from './account-change.service';
 import type { AccountEventsService } from '../activity/account-events.service';

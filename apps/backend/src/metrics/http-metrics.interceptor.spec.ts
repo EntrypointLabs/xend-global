@@ -22,7 +22,7 @@ async function countFor(labels: Record<string, string>): Promise<number> {
   const metric = await httpRequestDuration.get();
   const sample = metric.values.find(
     (v) =>
-      v.metricName === 'xend_http_request_duration_seconds_count' &&
+      v.metricName === 'prydd_http_request_duration_seconds_count' &&
       Object.entries(labels).every(([k, val]) => v.labels[k] === val),
   );
   return sample?.value ?? 0;
@@ -81,7 +81,7 @@ describe('HttpMetricsInterceptor', () => {
 
   it('is registered on the shared registry', () => {
     expect(
-      metricsRegistry.getSingleMetric('xend_http_request_duration_seconds'),
+      metricsRegistry.getSingleMetric('prydd_http_request_duration_seconds'),
     ).toBe(httpRequestDuration);
   });
 });

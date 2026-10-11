@@ -4,9 +4,9 @@ import type { ReactNode } from 'react';
 export function StatusSheet({ children }: { children: ReactNode }) {
   return (
     <main className="payment-stage">
-      <section className="payment-sheet" aria-label="Xend Checkout">
+      <section className="payment-sheet" aria-label="Prydd Checkout">
         <header className="payment-header">
-          <span className="payment-wordmark">Xend</span>
+          <span className="payment-wordmark">Prydd</span>
           <span className="payment-header-label">Checkout</span>
         </header>
         <div className="payment-state">{children}</div>

@@ -101,11 +101,11 @@ export class RecoveryChallengeService {
 
     await this.mailer.send({
       to: email,
-      subject: `${code} is your Xend code`,
+      subject: `${code} is your Prydd code`,
       text:
         purpose === 'contact_verification'
           ? [
-              `${code} confirms this address for your Xend account.`,
+              `${code} confirms this address for your Prydd account.`,
               '',
               'It expires in 10 minutes.',
               '',
@@ -115,7 +115,7 @@ export class RecoveryChallengeService {
             ].join('\n')
           : purpose === 'contact_rotation'
             ? [
-                `${code} confirms this as the new address for your Xend account.`,
+                `${code} confirms this as the new address for your Prydd account.`,
                 '',
                 'It expires in 10 minutes.',
                 '',
@@ -125,7 +125,7 @@ export class RecoveryChallengeService {
               ].join('\n')
             : purpose === 'entry_session'
               ? [
-                  `${code} lets you into your Xend account to look around.`,
+                  `${code} lets you into your Prydd account to look around.`,
                   '',
                   'It expires in 10 minutes, and what it opens lasts an hour.',
                   '',
@@ -134,7 +134,7 @@ export class RecoveryChallengeService {
                   'They cannot spend with it.',
                 ].join('\n')
               : [
-                  `${code} is your Xend recovery code.`,
+                  `${code} is your Prydd recovery code.`,
                   '',
                   'It lets you move your account to a new phone, and it expires in 10 minutes.',
                   'Moving a phone takes 24 hours to take effect, and we will tell you when it starts.',

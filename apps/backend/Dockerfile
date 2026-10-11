@@ -1,5 +1,5 @@
 # Backend container. Build context is the repo root: the backend imports
-# @xend/smart-account from the workspace, so the package is copied and built
+# @prydd/smart-account from the workspace, so the package is copied and built
 # alongside it rather than resolved from a registry it is not published to.
 #
 # The mobile workspace is deliberately never installed here. `npm ci` against
@@ -13,15 +13,15 @@ COPY package.json package-lock.json ./
 COPY apps/backend/package.json ./apps/backend/package.json
 COPY packages/smart-account/package.json ./packages/smart-account/package.json
 COPY packages/typescript-config/package.json ./packages/typescript-config/package.json
-RUN npm ci --workspace @xend/backend --workspace @xend/smart-account \
+RUN npm ci --workspace @prydd/backend --workspace @prydd/smart-account \
   --include-workspace-root --ignore-scripts --legacy-peer-deps
 
 COPY packages/typescript-config ./packages/typescript-config
 COPY packages/smart-account ./packages/smart-account
-RUN npm run build --workspace @xend/smart-account
+RUN npm run build --workspace @prydd/smart-account
 
 COPY apps/backend ./apps/backend
-RUN npm run build --workspace @xend/backend
+RUN npm run build --workspace @prydd/backend
 
 FROM node:22-slim AS runtime
 WORKDIR /repo

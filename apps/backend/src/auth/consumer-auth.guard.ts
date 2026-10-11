@@ -17,7 +17,7 @@ import type { Principal } from './principal';
 /**
  * The one guard on every Consumer route.
  *
- * It accepts two credentials and stamps a tier on whichever it saw: a Xend
+ * It accepts two credentials and stamps a tier on whichever it saw: a Prydd
  * JWT from `auth/exchange` is `full`, an entry token is `entry`. Then it
  * enforces the tier. A route is closed to `entry` unless it carries
  * `@AllowEntry()`, so the decision a route's author did not make is the safe

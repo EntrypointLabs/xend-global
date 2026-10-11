@@ -1,6 +1,6 @@
 name: SDK Release
 
-# Publishes @xend/checkout-core and @xend/checkout-react. Opens a version PR
+# Publishes @prydd/checkout-core and @prydd/checkout-react. Opens a version PR
 # while changesets are pending, and publishes when that PR merges. Runs only
 # on main; never from a PR branch.
 #

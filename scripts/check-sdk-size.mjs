@@ -16,7 +16,7 @@ const artifact = join(
   'packages',
   'checkout-core',
   'dist',
-  'xend-checkout.iife.js',
+  'prydd-checkout.iife.js',
 );
 
 let raw;
@@ -25,7 +25,7 @@ try {
 } catch {
   console.error(
     `sdk.size status=fail reason=missing_artifact path=${artifact}\n` +
-      'Build @xend/checkout-core first (npm run build).',
+      'Build @prydd/checkout-core first (npm run build).',
   );
   process.exit(1);
 }

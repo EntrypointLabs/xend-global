@@ -1,7 +1,7 @@
 {
-  "name": "@xend/checkout-core",
+  "name": "@prydd/checkout-core",
   "version": "0.0.0",
-  "description": "Pay with Xend checkout button and result relay. Framework-agnostic, zero runtime dependencies.",
+  "description": "Pay with Prydd checkout button and result relay. Framework-agnostic, zero runtime dependencies.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -30,7 +30,7 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
-  "unpkg": "./dist/xend-checkout.iife.js",
+  "unpkg": "./dist/prydd-checkout.iife.js",
   "files": [
     "dist",
     "LICENSE"
@@ -50,9 +50,9 @@
     "size": "node ../../scripts/check-sdk-size.mjs"
   },
   "devDependencies": {
-    "@xend/checkout-protocol": "*",
-    "@xend/eslint-config": "*",
-    "@xend/typescript-config": "*",
+    "@prydd/checkout-protocol": "*",
+    "@prydd/eslint-config": "*",
+    "@prydd/typescript-config": "*",
     "@types/node": "^22.15.3",
     "eslint": "^9.39.1",
     "tsdown": "^0.22.5",

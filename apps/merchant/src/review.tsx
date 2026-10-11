@@ -34,7 +34,7 @@ const stub: PortalClient = {
         endpoints: [
           {
             id: "wh1",
-            url: "https://acme.example.com/webhooks/xend",
+            url: "https://acme.example.com/webhooks/prydd",
             mode: "live",
             enabled: true,
             eventTypes: null,
@@ -128,7 +128,7 @@ function Review() {
     <div className="shell workspace" data-page={panel}>
       <aside>
         <span className="wordmark">
-          <span className="version-pill">v1</span>xend review
+          <span className="version-pill">v1</span>prydd review
         </span>
         <nav aria-label="Review">
           {PANELS.map((name) => (

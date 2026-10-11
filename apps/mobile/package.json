@@ -1,5 +1,5 @@
 {
-  "name": "@xend/mobile",
+  "name": "@prydd/mobile",
   "main": "entrypoint.js",
   "version": "1.0.0",
   "scripts": {
@@ -22,7 +22,7 @@
     "moduleNameMapper": {
       "\\.(png|jpg|jpeg|gif|webp|svg)$": "<rootDir>/test/assetStub.js",
       "^@/(.*)$": "<rootDir>/$1",
-      "^@xend/smart-account$": "<rootDir>/../../packages/smart-account/src/index.ts",
+      "^@prydd/smart-account$": "<rootDir>/../../packages/smart-account/src/index.ts",
       "^(\\.{1,2}/.*)\\.js$": "$1"
     },
     "transform": {
@@ -56,7 +56,7 @@
     "@react-navigation/native": "^7.1.6",
     "@sentry/react-native": "~7.11.0",
     "@solana/web3.js": "^1.98.2",
-    "@xend/smart-account": "*",
+    "@prydd/smart-account": "*",
     "base64-js": "^1.5.1",
     "bs58": "^5.0.0",
     "buffer": "^6.0.3",

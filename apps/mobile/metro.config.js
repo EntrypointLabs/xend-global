@@ -14,10 +14,10 @@ config.resolver.unstable_conditionNames = ["react-native", "browser", "require"]
 // @privy-io/expo imports expo-apple-authentication unconditionally for its Apple
 // OAuth path. That package was removed (its config plugin injects a Sign-in-with-
 // Apple entitlement a free Apple team can't provision), so alias the import to a
-// local stub — Xend uses Privy email OTP only and never triggers Apple sign-in.
+// local stub — Prydd uses Privy email OTP only and never triggers Apple sign-in.
 const appleAuthShim = path.resolve(__dirname, "shims/expo-apple-authentication.js");
 
-// @xend/smart-account is consumed from its TypeScript source rather than its
+// @prydd/smart-account is consumed from its TypeScript source rather than its
 // build output: `dist` is excluded from EAS archives and nothing builds it
 // there, so the package's `exports` would point at files that do not exist on
 // the build machine. Its sources use `.js` suffixes on relative imports, which
@@ -28,7 +28,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (moduleName === "expo-apple-authentication") {
     return { type: "sourceFile", filePath: appleAuthShim };
   }
-  if (moduleName === "@xend/smart-account") {
+  if (moduleName === "@prydd/smart-account") {
     return { type: "sourceFile", filePath: path.join(smartAccountSrc, "index.ts") };
   }
   if (

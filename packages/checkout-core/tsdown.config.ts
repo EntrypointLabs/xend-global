@@ -8,9 +8,9 @@ export default defineConfig([
     clean: true,
   },
   {
-    entry: { "xend-checkout": "src/index.ts" },
+    entry: { "prydd-checkout": "src/index.ts" },
     format: ["iife"],
-    globalName: "XendCheckout",
+    globalName: "PryddCheckout",
     minify: true,
     dts: false,
   },

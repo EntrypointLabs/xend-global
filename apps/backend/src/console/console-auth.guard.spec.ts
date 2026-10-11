@@ -42,7 +42,7 @@ describe('ConsoleAuthGuard', () => {
     expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
     expect(setHeader).toHaveBeenCalledWith(
       'WWW-Authenticate',
-      'Basic realm="Xend Console"',
+      'Basic realm="Prydd Console"',
     );
   });
 
@@ -93,7 +93,7 @@ describe('ConsoleAuthGuard', () => {
     expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
     expect(setHeader).toHaveBeenCalledWith(
       'WWW-Authenticate',
-      'Basic realm="Xend Console"',
+      'Basic realm="Prydd Console"',
     );
   });
 });

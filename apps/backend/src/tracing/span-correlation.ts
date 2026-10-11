@@ -1,6 +1,6 @@
 import { trace } from '@opentelemetry/api';
 
-export const CORRELATION_ID_ATTRIBUTE = 'xend.correlation_id';
+export const CORRELATION_ID_ATTRIBUTE = 'prydd.correlation_id';
 
 /**
  * Stamps the request's correlation id on whatever span is active. With

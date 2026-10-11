@@ -64,7 +64,7 @@ export function usePasskeyLogin() {
 
   /**
    * Privy authenticating is only half of it. The app's own session comes from
-   * exchanging the identity token for a Xend JWT, which is the same step every
+   * exchanging the identity token for a Prydd JWT, which is the same step every
    * other sign-in takes; without it the Consumer is signed in to Privy and to
    * nothing else.
    */
@@ -84,7 +84,7 @@ export function usePasskeyLogin() {
     try {
       // Privy refuses to authenticate while a session is already open, and one
       // can outlive the app's own: a sign-in that authenticated but failed to
-      // exchange leaves Privy logged in and Xend logged out.
+      // exchange leaves Privy logged in and Prydd logged out.
       if (privyUser) await privyLogout();
 
       const user = await authenticateWithRetry(
@@ -99,10 +99,10 @@ export function usePasskeyLogin() {
         return "signed-in";
       }
 
-      setError("Signed in, but Xend could not start your session.");
+      setError("Signed in, but Prydd could not start your session.");
       return "failed";
     } catch (err) {
-      // The passkey is real and Xend has nothing behind it. Not a failure to
+      // The passkey is real and Prydd has nothing behind it. Not a failure to
       // show in red: the answer is the email door, and Privy's half-open
       // session is closed so the next attempt starts clean.
       if (err instanceof PasskeyHasNoAccountError) {
@@ -217,7 +217,7 @@ function describe(err: unknown): string {
   // error, which says nothing to a Consumer and points at the wrong layer for
   // whoever reads the report. The real error still goes to the console.
   if (err instanceof SyntaxError) {
-    return "Xend could not read the response from our sign-in provider.";
+    return "Prydd could not read the response from our sign-in provider.";
   }
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;

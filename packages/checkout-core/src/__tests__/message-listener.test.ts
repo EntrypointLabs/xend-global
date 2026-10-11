@@ -7,11 +7,11 @@ const NONCE = "abcdef0123456789";
 
 function envelope(overrides: Record<string, unknown> = {}) {
   return {
-    xend: "checkout",
+    prydd: "checkout",
     v: 1,
     nonce: NONCE,
     reference: REFERENCE,
-    type: "xend.checkout.result",
+    type: "prydd.checkout.result",
     status: "succeeded",
     ...overrides,
   };
@@ -54,7 +54,7 @@ describe("listenForResult", () => {
       onResult,
     });
     post(
-      envelope({ type: "xend.checkout.cancel", status: "canceled" }),
+      envelope({ type: "prydd.checkout.cancel", status: "canceled" }),
       ORIGIN,
     );
     expect(onResult).toHaveBeenCalledWith({
@@ -85,7 +85,7 @@ describe("listenForResult", () => {
     ["mismatched reference", envelope({ reference: "pi_other" })],
     ["mismatched nonce", envelope({ nonce: "deadbeef" })],
     ["unknown protocol version", envelope({ v: 2 })],
-    ["wrong xend discriminant", envelope({ xend: "notcheckout" })],
+    ["wrong prydd discriminant", envelope({ prydd: "notcheckout" })],
     ["bare (non-namespaced) type", envelope({ type: "result" })],
   ])("ignores %s", (_name, data) => {
     const onResult = vi.fn();
@@ -135,7 +135,7 @@ describe("listenForResult", () => {
     });
     post(
       envelope({
-        type: "xend.checkout.unresolved",
+        type: "prydd.checkout.unresolved",
         status: undefined,
         reason: "confirmation_timeout",
       }),

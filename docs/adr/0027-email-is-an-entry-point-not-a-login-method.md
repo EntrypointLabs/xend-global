@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-08-30
-**Deciders:** Xend founding team
+**Deciders:** Prydd founding team
 **Tags:** mobile, backend, security, wallet, pay
 
 ## Context and Problem Statement
@@ -42,12 +42,12 @@ them and settles both.
 - **The invariant is about anchors, not ordering.** Email anchors S3, the passkey
   anchors S1, the phone anchors S2. Collecting the address earlier moves no anchor.
 - **Email verification is already ours.** `auth/email/challenge` and `auth/email` are
-  Xend endpoints issuing Xend codes, scrypt-hashed with a per-row salt and a ten
+  Prydd endpoints issuing Prydd codes, scrypt-hashed with a per-row salt and a ten
   minute expiry. Proving an address has never touched Privy and does not need to.
 - **The schema already permits it.** `users.id` is our own cuid and the Privy linkage
   lives in `smart_accounts.provider_user_id`, so a `users` row can exist before a
   Privy user does. `users.email` is already nullable and unique.
-- **Checkout does not move.** Tapping "Pay with Xend" on a **Merchant** page prompts
+- **Checkout does not move.** Tapping "Pay with Prydd" on a **Merchant** page prompts
   the passkey and nothing else. That is the product and this ADR leaves it untouched.
 - **A front door has to cross ecosystems.** Passkey sync covers Apple-to-Apple and
   Google-to-Google. iPhone to Android is the case it does not cover, and it is the
@@ -163,7 +163,7 @@ never receive the code.
 ### Support can refuse, and cannot override
 
 0025 leaves `settings_authority` unset, so the **Account** is autonomous and rejecting
-a pending change requires S2. Nobody at Xend can cancel a rotation on a **Consumer**'s
+a pending change requires S2. Nobody at Prydd can cancel a rotation on a **Consumer**'s
 behalf, and that stays true: an override able to move an anchor is a fourth anchor and
 it voids the invariant.
 

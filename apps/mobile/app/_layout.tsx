@@ -102,7 +102,7 @@ if (SENTRY_ENABLED) {
   Sentry.init({
     dsn: SENTRY_DSN,
     environment: process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ?? "production",
-    release: app?.version ? `${app.slug ?? "xend"}@${app.version}` : undefined,
+    release: app?.version ? `${app.slug ?? "prydd"}@${app.version}` : undefined,
     dist: app?.ios?.buildNumber ?? app?.android?.versionCode?.toString(),
     sendDefaultPii: true,
     replaysSessionSampleRate: 0.1,

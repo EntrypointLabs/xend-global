@@ -6,7 +6,7 @@ interface InsufficientBalanceProps {
 
 /**
  * Shown when Balance is not enough to complete the Payment. Points the Consumer
- * to the Xend app. No top-up and no KYC live inside the popup.
+ * to the Prydd app. No top-up and no KYC live inside the popup.
  */
 export function InsufficientBalance({ onCancel }: InsufficientBalanceProps) {
   return (
@@ -16,14 +16,14 @@ export function InsufficientBalance({ onCancel }: InsufficientBalanceProps) {
           Not enough Cash
         </h1>
         <p className="text-brand-muted mt-2 text-sm leading-relaxed">
-          Add Cash in the Xend app, then come back to finish paying.
+          Add Cash in the Prydd app, then come back to finish paying.
         </p>
 
         <a
           href="https://xend.global/app"
           className="bg-brand-ink text-brand-black mt-8 block w-full rounded-2xl py-4 text-center text-base font-semibold"
         >
-          Open Xend
+          Open Prydd
         </a>
         <button
           type="button"

@@ -1,4 +1,4 @@
-package com.giftedborg.xend.hardwarekey
+package com.giftedborg.prydd.hardwarekey
 
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
@@ -45,7 +45,7 @@ class HardwareKeyModule : Module() {
      * `aliasFor`, and enrolling a second account now writes its own alias
      * instead of destroying this one.
      */
-    private const val LEGACY_KEY_ALIAS = "com.giftedborg.xend.approval-signer"
+    private const val LEGACY_KEY_ALIAS = "com.giftedborg.prydd.approval-signer"
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
     /**

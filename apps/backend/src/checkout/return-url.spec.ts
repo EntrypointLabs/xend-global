@@ -7,14 +7,14 @@ const BASE = 'https://shop.example.com/return';
 function parse(signed: string) {
   const url = new URL(signed);
   return {
-    intentId: url.searchParams.get('xend_intent_id') as string,
-    status: url.searchParams.get('xend_status') as
+    intentId: url.searchParams.get('prydd_intent_id') as string,
+    status: url.searchParams.get('prydd_status') as
       | 'succeeded'
       | 'failed'
       | 'canceled'
       | 'expired',
-    ts: Number(url.searchParams.get('xend_ts')),
-    sig: url.searchParams.get('xend_sig') as string,
+    ts: Number(url.searchParams.get('prydd_ts')),
+    sig: url.searchParams.get('prydd_sig') as string,
   };
 }
 

@@ -13,10 +13,10 @@ export const CHECKOUT_PROTOCOL_VERSION = 1 as const;
 export const CHECKOUT_ORIGIN = 'https://pay.xend.global' as const;
 
 export const CheckoutMessageType = {
-  Ready: 'xend.checkout.ready',
-  Unresolved: 'xend.checkout.unresolved',
-  Result: 'xend.checkout.result',
-  Cancel: 'xend.checkout.cancel',
+  Ready: 'prydd.checkout.ready',
+  Unresolved: 'prydd.checkout.unresolved',
+  Result: 'prydd.checkout.result',
+  Cancel: 'prydd.checkout.cancel',
 } as const;
 
 export function buildUnresolved(
@@ -25,7 +25,7 @@ export function buildUnresolved(
   reason: CheckoutUnresolvedReason,
 ): CheckoutUnresolvedEnvelope {
   return {
-    xend: 'checkout',
+    prydd: 'checkout',
     v: CHECKOUT_PROTOCOL_VERSION,
     nonce,
     reference,
@@ -37,7 +37,7 @@ export function buildUnresolved(
 /** Mount handshake. No reference and no status: neither exists yet. */
 export function buildReady(nonce: string): CheckoutReadyEnvelope {
   return {
-    xend: 'checkout',
+    prydd: 'checkout',
     v: CHECKOUT_PROTOCOL_VERSION,
     nonce,
     type: CheckoutMessageType.Ready,
@@ -50,7 +50,7 @@ export function buildResult(
   status: CheckoutStatus,
 ): CheckoutEnvelope {
   return {
-    xend: 'checkout',
+    prydd: 'checkout',
     v: CHECKOUT_PROTOCOL_VERSION,
     nonce,
     reference,
@@ -65,7 +65,7 @@ export function buildCancel(
   reference: string,
 ): CheckoutEnvelope {
   return {
-    xend: 'checkout',
+    prydd: 'checkout',
     v: CHECKOUT_PROTOCOL_VERSION,
     nonce,
     reference,

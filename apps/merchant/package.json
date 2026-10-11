@@ -1,5 +1,5 @@
 {
-  "name": "@xend/merchant",
+  "name": "@prydd/merchant",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,19 +12,19 @@
   },
   "dependencies": {
     "@privy-io/react-auth": "^3.34.0",
-    "@xend/checkout-core": "*",
+    "@prydd/checkout-core": "*",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
   "devDependencies": {
-    "@xend/eslint-config": "*",
+    "@prydd/eslint-config": "*",
     "@testing-library/react": "^16.3.2",
     "jsdom": "^20.0.3",
     "vitest": "^4.1.10",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
     "@vitejs/plugin-react": "^6.0.3",
-    "@xend/typescript-config": "*",
+    "@prydd/typescript-config": "*",
     "typescript": "5.9.2",
     "vite": "^8.1.4"
   }

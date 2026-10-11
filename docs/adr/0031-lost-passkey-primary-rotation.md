@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-09-07
 **Accepted:** 2026-09-01
-**Deciders:** Xend founding team
+**Deciders:** Prydd founding team
 **Tags:** mobile, backend, security, wallet
 
 ## Context and Problem Statement
@@ -82,7 +82,7 @@ a passkey that is already the primary as nothing lost.
 | Both approved, lock elapsed              | `execute`          | S2         |
 | Settled                                  | done               |            |
 
-The `propose` step carries `buildRotatePrimarySigner` from `@xend/smart-account`: the
+The `propose` step carries `buildRotatePrimarySigner` from `@prydd/smart-account`: the
 Settings swap plus a `PolicyUpdate` on each of the two policies, restating the
 spending-limit terms from `spending-limit.terms.ts` because a policy update
 replaces the whole policy. The `approve-recovery` step is taken by the server: it

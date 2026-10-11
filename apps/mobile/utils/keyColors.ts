@@ -1,7 +1,7 @@
 /**
  * Icon colours for the key types.
  *
- * Colour lives on the glyph only. Xend's surfaces stay monochrome, so these are
+ * Colour lives on the glyph only. Prydd's surfaces stay monochrome, so these are
  * the same treatment the settings list already gives its icons rather than a
  * new tinted-panel language.
  *

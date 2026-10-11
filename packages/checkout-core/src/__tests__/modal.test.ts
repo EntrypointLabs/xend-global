@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mountXendButton } from "../index";
+import { mountPryddButton } from "../index";
 
 const ORIGIN = "https://pay.xend.global";
-const API = "https://api.xend.test";
+const API = "https://api.prydd.test";
 
 interface FakeWindow {
   location: { href: string };
@@ -21,14 +21,14 @@ function container(): HTMLElement {
 }
 
 function shadow(): ShadowRoot {
-  const host = document.querySelector("[data-xend-checkout]");
+  const host = document.querySelector("[data-prydd-checkout]");
   if (!host?.shadowRoot) throw new Error("sheet is not mounted");
   return host.shadowRoot;
 }
 
 function sheetText(): string {
   return (
-    document.querySelector("[data-xend-checkout]")?.shadowRoot?.textContent ??
+    document.querySelector("[data-prydd-checkout]")?.shadowRoot?.textContent ??
     ""
   );
 }
@@ -88,8 +88,8 @@ afterEach(() => {
   handle?.unmount();
   handle = undefined;
   document.body.innerHTML = "";
-  document.getElementById("xend-pay-style")?.remove();
-  document.querySelectorAll("[data-xend-checkout]").forEach((n) => n.remove());
+  document.getElementById("prydd-pay-style")?.remove();
+  document.querySelectorAll("[data-prydd-checkout]").forEach((n) => n.remove());
   delete (window as unknown as { PublicKeyCredential?: unknown })
     .PublicKeyCredential;
   Object.defineProperty(window, "location", {
@@ -101,14 +101,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("mountXendButton glass sheet with a popup ceremony", () => {
+describe("mountPryddButton glass sheet with a popup ceremony", () => {
   it("waits for the reference before reporting a cancel taken while loading", async () => {
     const results: unknown[] = [];
     let release!: (v: { reference: string }) => void;
     const pending = new Promise<{ reference: string }>((r) => (release = r));
     const fetchMock = stubSummary({ merchantDisplayName: "Sabi Market" });
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -145,7 +145,7 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
       itemLabel: "1× Founder Hoodie",
     });
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -158,7 +158,7 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
     // The amount comes from displayAmountMinor in the intent's own currency.
     expect(sheetText()).toContain("₦45,000");
     expect(sheetText()).toContain("1× Founder Hoodie");
-    expect(sheetText()).toContain("Pay with your Xend balance");
+    expect(sheetText()).toContain("Pay with your Prydd balance");
     // No balance figure is ever rendered on the merchant page.
     expect(sheetText()).not.toContain("available");
     expect(openSpy).not.toHaveBeenCalled();
@@ -180,7 +180,7 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
       displayAmountMinor: "25000000",
     });
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -204,7 +204,7 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
       displayAmountMinor: "800000",
     });
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -230,7 +230,7 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
     expect(navUrl.searchParams.get("mode")).toBe("popup");
 
     // The sheet waits on the ceremony; it never calls the API itself.
-    expect(sheetText()).toContain("Finish in the Xend window");
+    expect(sheetText()).toContain("Finish in the Prydd window");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     for (const call of fetchMock.mock.calls) {
       expect(String(call[0])).not.toContain("/checkout/authorize");
@@ -249,7 +249,7 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
     });
     const onResult = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -267,11 +267,11 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
       new MessageEvent("message", {
         origin: ORIGIN,
         data: {
-          xend: "checkout",
+          prydd: "checkout",
           v: 1,
           nonce,
           reference: "pi_msg",
-          type: "xend.checkout.result",
+          type: "prydd.checkout.result",
           status: "succeeded",
         },
       }),
@@ -295,7 +295,7 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
     });
     const onUnresolved = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -331,7 +331,7 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
       itemLabel: "</div><script>window.__xss=1</script>",
     });
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -360,7 +360,7 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
     });
     const onResult = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -381,11 +381,11 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
       new MessageEvent("message", {
         origin: ORIGIN,
         data: {
-          xend: "checkout",
+          prydd: "checkout",
           v: 1,
           nonce: new URL(fakeWin.location.href).searchParams.get("nonce"),
           reference: "pi_cancel",
-          type: "xend.checkout.result",
+          type: "prydd.checkout.result",
           status: "succeeded",
         },
       }),
@@ -406,7 +406,7 @@ describe("mountXendButton glass sheet with a popup ceremony", () => {
     });
     let resolveIntent!: (v: { reference: string }) => void;
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,

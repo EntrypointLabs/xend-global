@@ -218,7 +218,7 @@ function MerchantWorkspace() {
               <span className="brand-symbol" aria-hidden="true">
                 ↗
               </span>
-              xend
+              prydd
             </a>
             <nav aria-label="Merchant workspace">
               {navItem("overview", "Home", page === "overview")}
@@ -348,7 +348,7 @@ function MerchantWorkspace() {
                     required
                   />
                   <span>
-                    I understand that Payments settle in USDC on Solana. Xend
+                    I understand that Payments settle in USDC on Solana. Prydd
                     does not automatically convert proceeds or send bank
                     payouts. Later conversion uses my chosen provider’s rates
                     and fees.
@@ -570,7 +570,7 @@ function MerchantWorkspace() {
                         API.
                       </li>
                       <li>
-                        Pass the returned reference to the Xend Checkout SDK.
+                        Pass the returned reference to the Prydd Checkout SDK.
                       </li>
                       <li>
                         Verify the signed webhook before fulfilling the order. A
