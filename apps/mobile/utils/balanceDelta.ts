@@ -8,6 +8,8 @@ const MIN_BASELINE = 0.01;
 export interface BalanceDelta {
   /** Signed fraction: 0.0002 is +0.02%. */
   fraction: number;
+  /** The same change in dollars, signed. */
+  amount: number;
   display: string;
 }
 
@@ -46,6 +48,7 @@ export function selectBalanceDelta(
 
   return {
     fraction,
+    amount: current - prior.value,
     display: `${fraction > 0 ? "+" : fraction < 0 ? "-" : ""}${percent.toFixed(2)}%`,
   };
 }

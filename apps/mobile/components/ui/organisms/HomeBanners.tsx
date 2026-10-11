@@ -21,7 +21,6 @@ import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { usePendingChangeAcknowledgement } from "@/hooks/usePendingChangeAcknowledgement";
 import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { cn } from "@/utils/cn";
-import { earnHeadlineApy } from "@/hooks/useEarn";
 
 /** The card is inset by the screen's own padding on both sides. */
 const SCREEN_PADDING = 20;
@@ -175,18 +174,11 @@ export function HomeBanners() {
     });
   }
 
-  banners.push({
-    key: "earn",
-    icon: "trending-up-outline",
-    tint: "#0080FF",
-    title: `Earn up to ${earnHeadlineApy()} APY`,
-    description: "Put your Cash to work",
-    onPress: () => router.push("/earn"),
-  });
-
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     setPage(Math.round(event.nativeEvent.contentOffset.x / width.current));
   };
+
+  if (banners.length === 0) return null;
 
   return (
     <View className="mb-4 mt-auto">
