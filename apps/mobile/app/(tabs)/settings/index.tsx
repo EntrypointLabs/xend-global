@@ -94,9 +94,9 @@ export default function SettingsScreen() {
           onPress: () => router.push("/settings/address-book" as never),
         },
         {
-          label: "NFTs",
-          icon: require("@/assets/icons/nfts.png"),
-          onPress: () => {},
+          label: "Prydd Card",
+          icon: require("@/assets/icons/card.png"),
+          onPress: () => router.push("/card?from=/(tabs)/settings" as never),
         },
       ],
     },
