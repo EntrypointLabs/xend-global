@@ -23,9 +23,12 @@ Use the Linear MCP tools (prefix `mcp__claude_ai_Linear__`) for all operations. 
 | Backlog     | backlog   |
 | Todo        | unstarted |
 | In Progress | started   |
+| In Review   | started   |
 | Done        | completed |
 | Canceled    | canceled  |
 | Duplicate   | canceled  |
+
+To take an issue from `Todo` to a pull request in `In Review`, use `/linear-start` and `/linear-finish` (see [linear-pickup.md](linear-pickup.md)).
 
 ## Markdown formatting
 
