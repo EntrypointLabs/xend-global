@@ -73,10 +73,8 @@ dist
 # The real one is apps/mobile/app.json; this only ever appears by mistake.
 /app.json
 
-# Agent tooling (the Linear pickup skills and their settings are shared; the rest stays local)
-.claude/*
-!.claude/skills/
-!.claude/linear.json
+# Agent tooling
+.claude
 .trae
 .codex
 
