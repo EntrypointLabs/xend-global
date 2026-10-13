@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
 
 const env = { ...process.env };
-if (env.XEND_DEV_SUITE === "1") {
+if (env.PRYDD_DEV_SUITE === "1") {
   env.PORT = "8000";
-  env.RELAYER_URL = env.XEND_RELAYER_URL;
+  env.RELAYER_URL = env.PRYDD_RELAYER_URL;
 }
 const child = spawn("npm", ["run", "dev:standalone"], {
   stdio: "inherit",

@@ -49,7 +49,7 @@ const REVEAL_RISE = 14;
 /**
  * A full-screen dark preview of something the Consumer cannot use yet.
  *
- * Xend already presents Plus on black in Settings, so unbuilt premium features
+ * Prydd already presents Plus on black in Settings, so unbuilt premium features
  * keep that treatment rather than the white of the working screens: the surface
  * itself signals that this is a look ahead, not a thing to operate.
  *

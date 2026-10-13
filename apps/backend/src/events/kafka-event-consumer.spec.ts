@@ -43,7 +43,7 @@ import { KafkaEventConsumer } from './kafka-event-consumer';
 function makeConfig(maxAttempts = 3): ConfigService {
   const values: Record<string, unknown> = {
     KAFKA_BROKERS: 'localhost:9092',
-    KAFKA_CLIENT_ID: 'xend-backend',
+    KAFKA_CLIENT_ID: 'prydd-backend',
     KAFKA_SSL: false,
     KAFKA_DEAD_LETTER_TOPIC: 'events.dead-letter',
     KAFKA_CONSUMER_MAX_ATTEMPTS: maxAttempts,

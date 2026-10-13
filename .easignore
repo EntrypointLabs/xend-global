@@ -64,7 +64,7 @@ apps/mobile/ios/
 *.bak
 
 # packages/smart-account is NOT excluded, despite the mobile app not importing
-# it. It is a real workspace member and a declared dependency of @xend/backend,
+# it. It is a real workspace member and a declared dependency of @prydd/backend,
 # so the lockfile references it and `npm ci` at the workspace root fails
 # outright when the directory is missing. That failure surfaces as an opaque
 # "Install dependencies" error with nothing pointing at the cause.

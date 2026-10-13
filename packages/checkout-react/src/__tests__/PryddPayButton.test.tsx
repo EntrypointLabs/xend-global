@@ -1,15 +1,15 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { XendPayButton } from "../index";
+import { PryddPayButton } from "../index";
 
 const ORIGIN = "https://pay.xend.global";
 const createIntent = () => Promise.resolve({ reference: "pi_react_1" });
 
-describe("XendPayButton", () => {
-  it("renders the core Pay with Xend button and fires onReady", () => {
+describe("PryddPayButton", () => {
+  it("renders the core Pay with Prydd button and fires onReady", () => {
     const onReady = vi.fn();
     const { container } = render(
-      <XendPayButton
+      <PryddPayButton
         checkoutOrigin={ORIGIN}
         createIntent={createIntent}
         onResult={() => {}}
@@ -18,13 +18,13 @@ describe("XendPayButton", () => {
     );
     const button = container.querySelector("button");
     expect(button).not.toBeNull();
-    expect(button?.getAttribute("aria-label")).toBe("Pay with Xend");
+    expect(button?.getAttribute("aria-label")).toBe("Pay with Prydd");
     expect(onReady).toHaveBeenCalledTimes(1);
   });
 
   it("does not remount the button when a callback prop identity changes", () => {
     const { container, rerender } = render(
-      <XendPayButton
+      <PryddPayButton
         checkoutOrigin={ORIGIN}
         createIntent={createIntent}
         onResult={() => {}}
@@ -34,7 +34,7 @@ describe("XendPayButton", () => {
     expect(first).not.toBeNull();
 
     rerender(
-      <XendPayButton
+      <PryddPayButton
         checkoutOrigin={ORIGIN}
         createIntent={createIntent}
         onResult={() => "a different function identity"}
@@ -48,9 +48,9 @@ describe("XendPayButton", () => {
     "accepts the %s glass-sheet presentation and its apiBase",
     (presentation) => {
       const { container } = render(
-        <XendPayButton
+        <PryddPayButton
           checkoutOrigin={ORIGIN}
-          apiBase="https://api.xend.test"
+          apiBase="https://api.prydd.test"
           presentation={presentation}
           createIntent={createIntent}
           onResult={() => {}}
@@ -58,13 +58,13 @@ describe("XendPayButton", () => {
       );
       expect(container.querySelector("button")).not.toBeNull();
       // The sheet is drawn on click, so nothing is in the page until then.
-      expect(document.querySelector("[data-xend-checkout]")).toBeNull();
+      expect(document.querySelector("[data-prydd-checkout]")).toBeNull();
     },
   );
 
   it("forwards theme and presentation to the core button", () => {
     const { container, rerender } = render(
-      <XendPayButton
+      <PryddPayButton
         checkoutOrigin={ORIGIN}
         createIntent={createIntent}
         onResult={() => {}}
@@ -77,7 +77,7 @@ describe("XendPayButton", () => {
 
     // A mount-time option change is the one thing that rebuilds the button.
     rerender(
-      <XendPayButton
+      <PryddPayButton
         checkoutOrigin={ORIGIN}
         createIntent={createIntent}
         onResult={() => {}}

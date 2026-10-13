@@ -16,7 +16,7 @@ const CANDIDATES = [
 ];
 // Opt in only after the apex hosts entry and certificate trust are installed.
 // www is not interchangeable with the mobile passkey's xend.global RP ID.
-const requestedHost = process.env.XEND_CHECKOUT_HOST;
+const requestedHost = process.env.PRYDD_CHECKOUT_HOST;
 const candidates = requestedHost
   ? [{ host: requestedHost, port: 443 }]
   : CANDIDATES;
@@ -25,7 +25,7 @@ if (
   !['xend.global', ...CANDIDATES.map((c) => c.host)].includes(requestedHost)
 ) {
   throw new Error(
-    'XEND_CHECKOUT_HOST must be a supported Xend development host',
+    'PRYDD_CHECKOUT_HOST must be a supported Prydd development host',
   );
 }
 const active = candidates.find(
@@ -45,7 +45,7 @@ if (requestedHost && !active) {
 const LOCAL_HARNESS_FILES = [
   'merchant-demo.html',
   'pay-modal-prototype.html',
-  'xend-checkout.iife.js',
+  'prydd-checkout.iife.js',
 ];
 const DEMO_KEY_PLACEHOLDER = '__VITE_DEMO_TEST_KEY__';
 const API_KEY_PATTERN = /xnd_(?:test|live)_[A-Za-z0-9_-]{8,}/;
@@ -53,7 +53,7 @@ const API_KEY_PATTERN = /xnd_(?:test|live)_[A-Za-z0-9_-]{8,}/;
 function localHarness(demoTestKey: string): Plugin {
   let outDir = 'dist';
   return {
-    name: 'xend-local-harness',
+    name: 'prydd-local-harness',
     configResolved(config) {
       outDir = config.build.outDir;
     },
@@ -94,7 +94,7 @@ function walk(dir: string): string[] {
   });
 }
 
-const backendUrl = process.env.XEND_BACKEND_URL ?? 'http://localhost:8008';
+const backendUrl = process.env.PRYDD_BACKEND_URL ?? 'http://localhost:8008';
 const proxy = {
   '/pilot/webhook': 'http://127.0.0.1:5175',
   '/checkout': backendUrl,
@@ -103,7 +103,7 @@ const proxy = {
 
 export default defineConfig(({ mode }) => ({
   // Allow a user-owned cache when an earlier privileged dev server owned it.
-  cacheDir: process.env.XEND_VITE_CACHE_DIR ?? 'node_modules/.vite',
+  cacheDir: process.env.PRYDD_VITE_CACHE_DIR ?? 'node_modules/.vite',
   plugins: [
     react(),
     tailwindcss(),

@@ -11,7 +11,7 @@ export const BRAND_BLACK = "#0a0a0a";
 /** Label color on the brand background. Kept white for >= 4.5:1 contrast. */
 export const LABEL_COLOR = "#ffffff";
 
-/** Corner radius of the Xend mark, as a percentage of its box. */
+/** Corner radius of the Prydd mark, as a percentage of its box. */
 export const MARK_RADIUS_PERCENT = 22;
 
 /** Inter Display Medium, with system fallbacks. The font is referenced,
@@ -24,7 +24,7 @@ export const FONT_WEIGHT = 500;
 
 export const LETTER_SPACING = "-0.01em";
 
-export const LABEL_TEXT = "Pay with Xend";
+export const LABEL_TEXT = "Pay with Prydd";
 
 /** Minimum touch target (px). */
 export const MIN_TOUCH_TARGET = 44;

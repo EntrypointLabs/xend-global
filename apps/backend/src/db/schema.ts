@@ -815,7 +815,7 @@ export const tailerState = pgTable('tailer_state', {
 // ---------- Pay domain ----------
 
 /**
- * merchants — a Xend Merchant record. display_name is what Checkout
+ * merchants — a Prydd Merchant record. display_name is what Checkout
  * renders; it is server-owned and never taken from the merchant page.
  * intent_ttl_minutes is a nullable per-Merchant override of the platform
  * intent-TTL default. allowed_origins is the postMessage origin allowlist,
@@ -1212,7 +1212,7 @@ export const webhookDeliveries = pgTable(
  * USDC token account settlements land in (the TransferChecked destination,
  * REQ-PLAIN-SPL). `provider`/`currency`/`provider_reference`/`payout_config`
  * are the polymorphic settlement reference; `authority_address` is the
- * attribution root the address is enumerable from (the Xend authority for
+ * attribution root the address is enumerable from (the Prydd authority for
  * direct-USDC, the Blockradar master wallet in Phase 8, null for a recorded
  * merchant-own address). Columns are nullable until provisioning completes.
  */

@@ -1,6 +1,6 @@
-# @xend/mobile
+# @prydd/mobile
 
-The Xend app: an Expo React Native client for Android and iOS. It talks to [`@xend/backend`](../backend) over HTTPS with a Xend-issued token. The passkey and the embedded Solana wallet behind it are held by Privy and reached through `hooks/usePasskey.ts`; the phone's hardware key is enrolled with Turnkey through `modules/hardware-key`; the Account itself is a Squads smart account (ADR 0025).
+The Prydd app: an Expo React Native client for Android and iOS. It talks to [`@prydd/backend`](../backend) over HTTPS with a Prydd-issued token. The passkey and the embedded Solana wallet behind it are held by Privy and reached through `hooks/usePasskey.ts`; the phone's hardware key is enrolled with Turnkey through `modules/hardware-key`; the Account itself is a Squads smart account (ADR 0025).
 
 Built against Expo SDK 56 (ADR 0011). Use a [development build](https://docs.expo.dev/develop/development-builds/introduction/); Expo Go cannot load the native modules.
 
@@ -15,7 +15,7 @@ Routes live under `app/` (expo-router).
 - **Activity** (`(tabs)/history.tsx`): the unified feed, including merchant Payments and Account events.
 - **Settings** (`(tabs)/settings/`): address book, spending limits, Keys and Recovery (add and remove recovery emails and wallets, review and reject a staged change), replace a lost passkey, restore onto a new phone, connected Merchants with Session revocation, finish an above-limit Payment a Merchant is waiting on.
 - **Investments and Swap** (`investments/`, `swap/`): the non-spending tokens the Consumer holds, and a quoted swap between them.
-- **Previews**: `earn/`, `card/` and `plus/` render surfaces whose backing does not exist yet. See section 9 of `docs/xend-master-context.md` before describing them anywhere.
+- **Previews**: `earn/`, `card/` and `plus/` render surfaces whose backing does not exist yet. See section 9 of `docs/prydd-master-context.md` before describing them anywhere.
 - **KYC** (`(modals)/kyc.tsx`, `app/api/kyc*.ts`): the one remaining Grid SDK carve-out, behind `GRID_API_KEY`.
 
 ## Running
@@ -26,11 +26,11 @@ From the repo root:
 npm install
 cp apps/mobile/example.env apps/mobile/.env
 npm run dev:mobile                              # expo start
-npm --workspace @xend/mobile run android
-npm --workspace @xend/mobile run ios
+npm --workspace @prydd/mobile run android
+npm --workspace @prydd/mobile run ios
 ```
 
-`npm run dev` at the root starts Metro alongside the backend; see the root README for ports. Tests are `npm --workspace @xend/mobile run test`; types `check-types`; lint `lint`.
+`npm run dev` at the root starts Metro alongside the backend; see the root README for ports. Tests are `npm --workspace @prydd/mobile run test`; types `check-types`; lint `lint`.
 
 ## Environment
 

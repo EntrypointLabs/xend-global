@@ -8,7 +8,7 @@ import {
   deriveAccountAddresses,
   derivePolicyAddress,
   SETTINGS_TIME_LOCK_SECONDS,
-} from '@xend/smart-account';
+} from '@prydd/smart-account';
 
 import {
   PREPARED_TX_STORE,

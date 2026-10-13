@@ -23,7 +23,7 @@ export function devPilot(key: string): Plugin {
           res.end(
             readFileSync(
               new URL(
-                "../../packages/checkout-core/dist/xend-checkout.iife.js",
+                "../../packages/checkout-core/dist/prydd-checkout.iife.js",
                 import.meta.url,
               ),
             ),
@@ -61,7 +61,7 @@ export function devPilot(key: string): Plugin {
           )
             throw new Error("Invalid pilot order");
           const upstream = await fetch(
-            `${process.env.XEND_BACKEND_URL ?? "http://127.0.0.1:8008"}/v1/payment_intents`,
+            `${process.env.PRYDD_BACKEND_URL ?? "http://127.0.0.1:8008"}/v1/payment_intents`,
             {
               method: "POST",
               headers: {

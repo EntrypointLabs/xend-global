@@ -16,7 +16,7 @@ export type PasskeySignInOutcome =
   | "failed";
 
 /**
- * The passkey worked and Xend has no account behind it.
+ * The passkey worked and Prydd has no account behind it.
  *
  * Every account starts from a proved address, so the only way forward is the
  * email door. Raised through the sign-in path rather than reported as a
@@ -25,7 +25,7 @@ export type PasskeySignInOutcome =
  */
 export class PasskeyHasNoAccountError extends Error {
   constructor() {
-    super("This passkey is not on a Xend account yet");
+    super("This passkey is not on a Prydd account yet");
     this.name = "PasskeyHasNoAccountError";
   }
 }

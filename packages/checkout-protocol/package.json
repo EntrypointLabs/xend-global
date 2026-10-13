@@ -1,5 +1,5 @@
 {
-  "name": "@xend/checkout-protocol",
+  "name": "@prydd/checkout-protocol",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -18,8 +18,8 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@xend/eslint-config": "*",
-    "@xend/typescript-config": "*",
+    "@prydd/eslint-config": "*",
+    "@prydd/typescript-config": "*",
     "typescript": "5.9.2",
     "vitest": "^4.1.10"
   }

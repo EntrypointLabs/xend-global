@@ -167,7 +167,7 @@ describe('WebhookDeliveryService.attempt', () => {
     const capture = () =>
       mockFetch((...args: unknown[]) => {
         const init = args[1] as { headers: Record<string, string> };
-        headersSeen.push(init.headers['Xend-Signature']);
+        headersSeen.push(init.headers['Prydd-Signature']);
         return Promise.resolve({
           status: 200,
           text: () => Promise.resolve(''),

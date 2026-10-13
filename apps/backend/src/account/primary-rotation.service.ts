@@ -9,7 +9,7 @@ import {
   deriveAccountAddresses,
   derivePolicyAddress,
   SETTINGS_TIME_LOCK_SECONDS,
-} from '@xend/smart-account';
+} from '@prydd/smart-account';
 
 import { AccountEventsService } from '../activity/account-events.service';
 import { DbService } from '../db/db.service';

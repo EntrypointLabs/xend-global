@@ -22,9 +22,9 @@ const EXPECTED = {
 describe('buildResult', () => {
   it('produces a checkout result envelope with the given status', () => {
     const env = buildResult(NONCE, REFERENCE, 'succeeded');
-    expect(env.xend).toBe('checkout');
+    expect(env.prydd).toBe('checkout');
     expect(env.v).toBe(1);
-    expect(env.type).toBe('xend.checkout.result');
+    expect(env.type).toBe('prydd.checkout.result');
     expect(env.status).toBe('succeeded');
     expect(env.nonce).toBe(NONCE);
     expect(env.reference).toBe(REFERENCE);
@@ -42,7 +42,7 @@ describe('buildResult', () => {
 describe('buildCancel', () => {
   it('carries status canceled by contract', () => {
     const env = buildCancel(NONCE, REFERENCE);
-    expect(env.type).toBe('xend.checkout.cancel');
+    expect(env.type).toBe('prydd.checkout.cancel');
     expect(env.status).toBe('canceled');
   });
 });
@@ -50,11 +50,11 @@ describe('buildCancel', () => {
 describe('buildUnresolved', () => {
   it('carries the correlated confirmation timeout', () => {
     expect(buildUnresolved(NONCE, REFERENCE, 'confirmation_timeout')).toEqual({
-      xend: 'checkout',
+      prydd: 'checkout',
       v: 1,
       nonce: NONCE,
       reference: REFERENCE,
-      type: 'xend.checkout.unresolved',
+      type: 'prydd.checkout.unresolved',
       reason: 'confirmation_timeout',
     });
   });
@@ -77,7 +77,7 @@ describe('parseCheckoutMessage', () => {
       { origin: MERCHANT_ORIGIN, data: cancel },
       EXPECTED,
     );
-    expect(out?.type).toBe('xend.checkout.cancel');
+    expect(out?.type).toBe('prydd.checkout.cancel');
     expect(out && 'status' in out && out.status).toBe('canceled');
   });
 
@@ -189,10 +189,10 @@ describe('parseCheckoutMessage', () => {
       EXPECTED,
     );
     expect(out).toEqual({
-      xend: 'checkout',
+      prydd: 'checkout',
       v: 1,
       nonce: NONCE,
-      type: 'xend.checkout.ready',
+      type: 'prydd.checkout.ready',
     });
     expect(out && 'status' in out).toBe(false);
     expect(out && 'reference' in out).toBe(false);
@@ -203,7 +203,7 @@ describe('parseCheckoutMessage', () => {
       { origin: MERCHANT_ORIGIN, data: buildReady(NONCE) },
       { ...EXPECTED, reference: 'pi_not_yet_created' },
     );
-    expect(out?.type).toBe('xend.checkout.ready');
+    expect(out?.type).toBe('prydd.checkout.ready');
   });
 
   it('rejects a ready handshake on a nonce mismatch', () => {
@@ -240,10 +240,10 @@ describe('parseCheckoutMessage', () => {
 describe('buildReady', () => {
   it('produces a handshake with the nonce and nothing else', () => {
     expect(buildReady(NONCE)).toEqual({
-      xend: 'checkout',
+      prydd: 'checkout',
       v: 1,
       nonce: NONCE,
-      type: 'xend.checkout.ready',
+      type: 'prydd.checkout.ready',
     });
   });
 });

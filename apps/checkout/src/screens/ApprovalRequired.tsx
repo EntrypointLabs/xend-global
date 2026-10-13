@@ -22,14 +22,14 @@ export function ApprovalRequired({ intent, onCancel }: ApprovalRequiredProps) {
       </h2>
       <p className="text-brand-muted mt-2 text-sm leading-relaxed">
         Payments this size need a second confirmation from your phone. Open the
-        Xend app to finish. You have not been charged.
+        Prydd app to finish. You have not been charged.
       </p>
 
       <a
         href="https://xend.global/app"
         className="bg-brand-ink text-brand-black mt-8 block w-full rounded-2xl py-4 text-center text-base font-semibold"
       >
-        Open Xend
+        Open Prydd
       </a>
       <button
         type="button"

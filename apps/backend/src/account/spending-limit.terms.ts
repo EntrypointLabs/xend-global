@@ -1,5 +1,5 @@
 import { PublicKey } from '@solana/web3.js';
-import type { LimitPeriod, SpendingLimitTerms } from '@xend/smart-account';
+import type { LimitPeriod, SpendingLimitTerms } from '@prydd/smart-account';
 
 /**
  * The band a Spend may cross on one signature, from O3.

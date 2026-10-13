@@ -6,9 +6,9 @@
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": [
-    "@xend/ui",
-    "@xend/eslint-config",
-    "@xend/typescript-config",
-    "@xend/checkout-protocol"
+    "@prydd/ui",
+    "@prydd/eslint-config",
+    "@prydd/typescript-config",
+    "@prydd/checkout-protocol"
   ]
 }

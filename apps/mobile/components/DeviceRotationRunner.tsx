@@ -4,7 +4,7 @@ import { useFinishDeviceRotation } from "@/hooks/useDeviceRotation";
  * Lands a device rotation once its security delay has run out.
  *
  * Nothing on the server can finish it: the execute step is signed by the
- * passkey, which lives on this phone, so it can only happen the next time Xend
+ * passkey, which lives on this phone, so it can only happen the next time Prydd
  * is opened. Without this the new Device Key would sit approved and waiting on
  * nobody.
  *

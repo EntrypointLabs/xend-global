@@ -120,7 +120,7 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
       }
 
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: "Unlock Xend",
+        promptMessage: "Unlock Prydd",
         cancelLabel: "Cancel",
         disableDeviceFallback: false,
       });

@@ -19,9 +19,9 @@ export interface SealedKey {
  * touching callers: cloud KMS in production, a raw env key at the pilot floor.
  * Same posture as the settlement authority signer.
  *
- * Be precise about what this buys. Xend can open a sealed key, so this is an
+ * Be precise about what this buys. Prydd can open a sealed key, so this is an
  * operational control, not a cryptographic impossibility: the guarantee is that
- * opening requires an email-verified session and is auditable, not that Xend is
+ * opening requires an email-verified session and is auditable, not that Prydd is
  * unable to. The property the design actually rests on is elsewhere, in the
  * threshold: this signer is one of three, and it cannot spend under any path.
  */

@@ -1,5 +1,5 @@
 {
-  "name": "@xend/eslint-config",
+  "name": "@prydd/eslint-config",
   "version": "0.0.0",
   "type": "module",
   "private": true,

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mountXendButton } from "../index";
+import { mountPryddButton } from "../index";
 
 const ORIGIN = "https://pay.xend.global";
 
@@ -44,7 +44,7 @@ afterEach(() => {
   handle?.unmount();
   handle = undefined;
   document.body.innerHTML = "";
-  document.getElementById("xend-pay-style")?.remove();
+  document.getElementById("prydd-pay-style")?.remove();
   delete (window as unknown as { PublicKeyCredential?: unknown })
     .PublicKeyCredential;
   Object.defineProperty(window, "location", {
@@ -55,7 +55,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("mountXendButton sync-open handshake", () => {
+describe("mountPryddButton sync-open handshake", () => {
   it("opens the popup synchronously (intent-less) before awaiting createIntent, then navigates it", async () => {
     const fakeWin = makeFakeWindow();
     const openSpy = vi
@@ -70,7 +70,7 @@ describe("mountXendButton sync-open handshake", () => {
         }),
     );
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       createIntent,
@@ -109,7 +109,7 @@ describe("mountXendButton sync-open handshake", () => {
       .spyOn(window, "open")
       .mockImplementation(() => fakeWin as unknown as Window);
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       createIntent: () => Promise.resolve({ reference: "pi_ref_opener" }),
@@ -130,7 +130,7 @@ describe("mountXendButton sync-open handshake", () => {
       .spyOn(window, "open")
       .mockImplementation(() => makeFakeWindow() as unknown as Window);
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       createIntent: () => Promise.resolve({ reference: "pi_default" }),
@@ -138,12 +138,12 @@ describe("mountXendButton sync-open handshake", () => {
     });
     document.querySelector("button")!.click();
     expect(openSpy).toHaveBeenCalledTimes(1);
-    expect(document.querySelector("[data-xend-checkout]")).toBeNull();
+    expect(document.querySelector("[data-prydd-checkout]")).toBeNull();
     // Nothing was asked for that could not be delivered, so nothing is said.
     expect(warn).not.toHaveBeenCalled();
     handle.unmount();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       presentation: "modal",
@@ -154,7 +154,7 @@ describe("mountXendButton sync-open handshake", () => {
     expect(String(warn.mock.calls[0]![0])).toContain("apiBase");
     document.querySelector("button")!.click();
     expect(openSpy).toHaveBeenCalledTimes(2);
-    expect(document.querySelector("[data-xend-checkout]")).toBeNull();
+    expect(document.querySelector("[data-prydd-checkout]")).toBeNull();
   });
 
   it("opens the popup for a presentation value it does not recognise", () => {
@@ -163,19 +163,19 @@ describe("mountXendButton sync-open handshake", () => {
       .spyOn(window, "open")
       .mockImplementation(() => makeFakeWindow() as unknown as Window);
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       // Script-tag callers are untyped and can pass anything.
       presentation: "drawer" as unknown as "popup",
-      apiBase: "https://api.xend.test",
+      apiBase: "https://api.prydd.test",
       createIntent: () => Promise.resolve({ reference: "pi_unknown" }),
       onResult: () => {},
     });
     document.querySelector("button")!.click();
 
     expect(openSpy).toHaveBeenCalledTimes(1);
-    expect(document.querySelector("[data-xend-checkout]")).toBeNull();
+    expect(document.querySelector("[data-prydd-checkout]")).toBeNull();
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -184,7 +184,7 @@ describe("mountXendButton sync-open handshake", () => {
     const assign = stubLocationAssign();
     const onUnresolved = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       presentation: "redirect",
@@ -210,7 +210,7 @@ describe("mountXendButton sync-open handshake", () => {
     const assign = stubLocationAssign();
     const onUnresolved = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       createIntent: () => Promise.resolve({ reference: "pi_ref_blocked" }),
@@ -240,7 +240,7 @@ describe("mountXendButton sync-open handshake", () => {
     const assign = stubLocationAssign();
     const onUnresolved = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       createIntent: () => Promise.resolve({ reference: "pi_ref_wv" }),

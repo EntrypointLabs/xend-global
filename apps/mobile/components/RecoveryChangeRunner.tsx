@@ -5,7 +5,7 @@ import { useFinishRecoveryChange } from "@/hooks/useRecoveryChange";
  *
  * The change is proposed and approved in one sitting, then waits a day. Nothing
  * on the server can finish it: the execute step is signed by S1, which lives on
- * this device, so it can only happen the next time the Consumer opens Xend.
+ * this device, so it can only happen the next time the Consumer opens Prydd.
  * Without this the key sits at "waiting to become active" indefinitely, having
  * been approved by both keys and blocked on nobody.
  *

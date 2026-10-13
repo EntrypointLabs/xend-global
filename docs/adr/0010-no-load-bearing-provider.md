@@ -2,20 +2,20 @@
 
 **Status:** Accepted
 **Date:** 2026-05-30
-**Deciders:** Xend engineering, in concert with the Grid migration plan
+**Deciders:** Prydd engineering, in concert with the Grid migration plan
 **Tags:** architecture, backend, providers, anti-lock-in, migration
 
 ## Context and Problem Statement
 
-Xend was originally built on Squads Grid, which bundled wallet creation, OTP, signing, balance reads, transfers, KYC, and virtual accounts behind one vendor relationship. Grid was silently wound down by its vendor. The forced migration off Grid surfaces a structural problem worth fixing in the same pass: if a single external provider can take Xend offline by disappearing, the architecture has a load-bearing dependency on something we do not control.
+Prydd was originally built on Squads Grid, which bundled wallet creation, OTP, signing, balance reads, transfers, KYC, and virtual accounts behind one vendor relationship. Grid was silently wound down by its vendor. The forced migration off Grid surfaces a structural problem worth fixing in the same pass: if a single external provider can take Prydd offline by disappearing, the architecture has a load-bearing dependency on something we do not control.
 
 The current state compounds the risk: the expo-router BFF (`apps/mobile/app/api/*+api.ts`) ships `GRID_API_KEY` into the Expo runtime, and SNS resolution in `apps/mobile/utils/solana.ts` hardcodes a Helius URL with the API key in source. Provider keys leaking into the device runtime and provider relationships hidden inside ad-hoc call sites are the same lock-in problem in two shapes.
 
-The migration is the cheapest moment in Xend's life to put an anti-lock-in architecture in place before launch.
+The migration is the cheapest moment in Prydd's life to put an anti-lock-in architecture in place before launch.
 
 ## Decision Drivers
 
-- **Survival of the product**: Grid going dark cannot kill Xend. The same must be true for every replacement.
+- **Survival of the product**: Grid going dark cannot kill Prydd. The same must be true for every replacement.
 - **Migration cost amortisation**: we are touching every wallet, signing, KYC, and RPC call site anyway. Adding a thin internal interface during the rewrite costs near-zero; retrofitting one later would force a second rewrite.
 - **Device-side secret hygiene**: no provider API key may live in the Expo runtime, ever. The BFF deletion already addresses this; the principle generalises it.
 - **Future swap precedent**: Privy is Solana-secondary (Ethereum-first historically). We may want to swap to Turnkey or Crossmint without rewriting business logic.

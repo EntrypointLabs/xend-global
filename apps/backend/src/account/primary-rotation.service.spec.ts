@@ -2,7 +2,7 @@ import { Keypair, PublicKey } from '@solana/web3.js';
 import {
   deriveAccountAddresses,
   derivePolicyAddress,
-} from '@xend/smart-account';
+} from '@prydd/smart-account';
 
 import type { AccountEventsService } from '../activity/account-events.service';
 import type { DbService } from '../db/db.service';

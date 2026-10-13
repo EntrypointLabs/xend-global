@@ -61,9 +61,9 @@ export interface OfframpWebhookEvent {
  * Phase 4's frozen SettlementProvider interface (ADR 0015), registered by
  * APPENDING to the SETTLEMENT_PROVIDERS factory array. Convert-at-settlement:
  * the Consumer's USDC lands at a Blockradar-managed Solana child address under
- * Xend's master wallet, Blockradar auto-sweeps + converts to naira + settles
+ * Prydd's master wallet, Blockradar auto-sweeps + converts to naira + settles
  * to the Merchant bank; "paid" means naira landed. Blockradar owns the funds
- * path end to end — no merchant signer, no Xend-initiated debit.
+ * path end to end — no merchant signer, no Prydd-initiated debit.
  *
  * GATED PER ADR 0019 (Flag #2): the three Solana confirmations are UNCONFIRMED
  * against docs.blockradar.co (Solana off-ramp appears EVM-first; no auto/
@@ -137,9 +137,9 @@ export class BlockradarSettlementProvider
   }
 
   /**
-   * Provision a Blockradar-managed Solana child address under Xend's master
+   * Provision a Blockradar-managed Solana child address under Prydd's master
    * wallet, with auto-sweep configured. The endpoint is Blockradar-managed;
-   * Xend never holds the funds. Attribution derives from the master wallet.
+   * Prydd never holds the funds. Attribution derives from the master wallet.
    */
   async provision(params: {
     merchantId: string;

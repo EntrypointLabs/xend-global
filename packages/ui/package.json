@@ -1,5 +1,5 @@
 {
-  "name": "@xend/ui",
+  "name": "@prydd/ui",
   "version": "0.0.0",
   "private": true,
   "exports": {
@@ -11,8 +11,8 @@
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
-    "@xend/eslint-config": "*",
-    "@xend/typescript-config": "*",
+    "@prydd/eslint-config": "*",
+    "@prydd/typescript-config": "*",
     "@types/node": "^22.15.3",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",

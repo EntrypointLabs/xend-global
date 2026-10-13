@@ -7,7 +7,7 @@ jest.mock("expo-secure-store", () => ({}));
 /**
  * The schema is a hand-kept mirror of the backend's `ExchangeResponseSchema`,
  * and a passkey Consumer has no email until they choose to give one. A mirror
- * that still insists on one turns a successful sign-in into "Xend could not
+ * that still insists on one turns a successful sign-in into "Prydd could not
  * start your session" at the network boundary.
  */
 describe("ExchangeResponseSchema", () => {

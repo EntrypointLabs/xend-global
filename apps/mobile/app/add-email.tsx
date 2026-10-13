@@ -142,7 +142,7 @@ function AddEmailScreen() {
       // which a failed or abandoned sign-up leaves behind. Named, because the
       // picker shows it beside the real one and calls both the same thing.
       setError(
-        "That passkey is not on any Xend account. It is left over from an earlier sign-up. Try again and pick another."
+        "That passkey is not on any Prydd account. It is left over from an earlier sign-up. Try again and pick another."
       );
     } else if (outcome === "no-passkey") {
       setError(

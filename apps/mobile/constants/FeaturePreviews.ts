@@ -8,12 +8,12 @@ import type { FeatureBenefit } from "@/components/ui/layout/FeaturePreviewScreen
  * to be reviewable in one place before a build ships.
  */
 
-export const XEND_PLUS_BENEFITS: FeatureBenefit[] = [
+export const PRYDD_PLUS_BENEFITS: FeatureBenefit[] = [
   {
     icon: "flash",
     iconColor: "#34C759",
     title: "Free transactions",
-    description: "Use Xend without paying Solana network fees.",
+    description: "Use Prydd without paying Solana network fees.",
   },
   {
     icon: "shield",
@@ -25,24 +25,24 @@ export const XEND_PLUS_BENEFITS: FeatureBenefit[] = [
     icon: "business",
     iconColor: "#AF52DE",
     title: "Virtual bank account",
-    description: "Send and receive bank transfers with Xend.",
+    description: "Send and receive bank transfers with Prydd.",
   },
   {
     icon: "card",
     iconColor: "#FFFFFF",
-    title: "Xend Card",
+    title: "Prydd Card",
     description:
       "A virtual card to spend stablecoins anywhere, with zero fees.",
   },
 ];
 
-export const XEND_CARD_BENEFITS: FeatureBenefit[] = [
+export const PRYDD_CARD_BENEFITS: FeatureBenefit[] = [
   {
     icon: "flash",
     iconColor: "#34C759",
     title: "Spend what you already hold",
     description:
-      "Pay directly from your Xend balance, with no top up beforehand.",
+      "Pay directly from your Prydd balance, with no top up beforehand.",
   },
   {
     icon: "globe",
@@ -60,6 +60,6 @@ export const XEND_CARD_BENEFITS: FeatureBenefit[] = [
     icon: "lock-closed",
     iconColor: "#FFFFFF",
     title: "Freeze it anytime",
-    description: "Turn the card off from Xend the moment you need to.",
+    description: "Turn the card off from Prydd the moment you need to.",
   },
 ];

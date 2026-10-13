@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mountXendButton } from "../index";
+import { mountPryddButton } from "../index";
 
 const ORIGIN = "https://pay.xend.global";
-const API = "https://api.xend.test";
+const API = "https://api.prydd.test";
 
 interface FakeWindow {
   location: { href: string };
@@ -21,7 +21,7 @@ function container(): HTMLElement {
 }
 
 function shadow(): ShadowRoot {
-  const host = document.querySelector("[data-xend-checkout]");
+  const host = document.querySelector("[data-prydd-checkout]");
   if (!host?.shadowRoot) throw new Error("sheet is not mounted");
   return host.shadowRoot;
 }
@@ -71,11 +71,11 @@ function postFromFrame(
     new MessageEvent("message", {
       origin,
       data: {
-        xend: "checkout",
+        prydd: "checkout",
         v: 1,
         nonce,
         reference,
-        type: "xend.checkout.result",
+        type: "prydd.checkout.result",
         status: "succeeded",
       },
     }),
@@ -86,7 +86,7 @@ function postReady(nonce: string, origin = ORIGIN): void {
   window.dispatchEvent(
     new MessageEvent("message", {
       origin,
-      data: { xend: "checkout", v: 1, nonce, type: "xend.checkout.ready" },
+      data: { prydd: "checkout", v: 1, nonce, type: "prydd.checkout.ready" },
     }),
   );
 }
@@ -96,11 +96,11 @@ function postUnresolved(nonce: string, reference: string): void {
     new MessageEvent("message", {
       origin: ORIGIN,
       data: {
-        xend: "checkout",
+        prydd: "checkout",
         v: 1,
         nonce,
         reference,
-        type: "xend.checkout.unresolved",
+        type: "prydd.checkout.unresolved",
         reason: "confirmation_timeout",
       },
     }),
@@ -137,8 +137,8 @@ afterEach(() => {
   handle?.unmount();
   handle = undefined;
   document.body.innerHTML = "";
-  document.getElementById("xend-pay-style")?.remove();
-  document.querySelectorAll("[data-xend-checkout]").forEach((n) => n.remove());
+  document.getElementById("prydd-pay-style")?.remove();
+  document.querySelectorAll("[data-prydd-checkout]").forEach((n) => n.remove());
   delete (window as unknown as { PublicKeyCredential?: unknown })
     .PublicKeyCredential;
   setUserAgent(originalUserAgent);
@@ -151,12 +151,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("mountXendButton inline ceremony", () => {
+describe("mountPryddButton inline ceremony", () => {
   it("is the default presentation, and confirms into a frame instead of a window", async () => {
     const openSpy = vi.spyOn(window, "open");
     stubSummary();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -182,7 +182,7 @@ describe("mountXendButton inline ceremony", () => {
     vi.spyOn(window, "open");
     stubSummary();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -207,7 +207,7 @@ describe("mountXendButton inline ceremony", () => {
     stubSummary();
     const onResult = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -234,7 +234,7 @@ describe("mountXendButton inline ceremony", () => {
     stubSummary();
     const onUnresolved = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -256,7 +256,7 @@ describe("mountXendButton inline ceremony", () => {
     });
     expect(payButton.disabled).toBe(false);
     await vi.waitFor(() =>
-      expect(document.querySelector("[data-xend-checkout]")).toBeNull(),
+      expect(document.querySelector("[data-prydd-checkout]")).toBeNull(),
     );
   });
 
@@ -265,7 +265,7 @@ describe("mountXendButton inline ceremony", () => {
     stubSummary();
     const onResult = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -289,7 +289,7 @@ describe("mountXendButton inline ceremony", () => {
     const onResult = vi.fn();
     const onUnresolved = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -320,7 +320,7 @@ describe("mountXendButton inline ceremony", () => {
       .mockImplementation(() => fakeWin as unknown as Window);
     stubSummary();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -347,7 +347,7 @@ describe("mountXendButton inline ceremony", () => {
     stubSummary();
     const onResult = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -380,7 +380,7 @@ describe("mountXendButton inline ceremony", () => {
       .mockImplementation(() => fakeWin as unknown as Window);
     stubSummary();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -396,7 +396,7 @@ describe("mountXendButton inline ceremony", () => {
 
     expect(openSpy).toHaveBeenCalledTimes(1);
     expect(frame()).toBeNull();
-    expect(shadow().textContent).toContain("Finish in the Xend window");
+    expect(shadow().textContent).toContain("Finish in the Prydd window");
   });
 
   it("falls back on the timeout alone for a surface that never handshakes", async () => {
@@ -407,7 +407,7 @@ describe("mountXendButton inline ceremony", () => {
     stubSummary();
     const onResult = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -426,7 +426,7 @@ describe("mountXendButton inline ceremony", () => {
 
     // The sheet is the popup sheet again, with the same nonce and reference.
     expect(frame()).toBeNull();
-    expect(shadow().textContent).toContain("Finish in the Xend window");
+    expect(shadow().textContent).toContain("Finish in the Prydd window");
     const launched = new URL(String(openSpy.mock.calls[0]![0]));
     expect(launched.searchParams.get("nonce")).toBe(frameNonce);
     expect(launched.searchParams.get("mode")).toBe("popup");
@@ -448,7 +448,7 @@ describe("mountXendButton inline ceremony", () => {
     stubSummary();
     const onUnresolved = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -484,7 +484,7 @@ describe("mountXendButton inline ceremony", () => {
     stubSummary();
     const assign = stubLocationAssign();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -494,7 +494,7 @@ describe("mountXendButton inline ceremony", () => {
     document.querySelector("button")!.click();
 
     await vi.waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
-    expect(document.querySelector("[data-xend-checkout]")).toBeNull();
+    expect(document.querySelector("[data-prydd-checkout]")).toBeNull();
     expect(openSpy).not.toHaveBeenCalled();
     expect(String(assign.mock.calls[0]![0])).toContain("mode=redirect");
   });
@@ -504,7 +504,7 @@ describe("mountXendButton inline ceremony", () => {
     stubSummary();
     const onResult = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,

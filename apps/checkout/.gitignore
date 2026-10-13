@@ -8,4 +8,4 @@ certs/
 # test API key client-side, and the IIFE is a hand-built SDK bundle.
 public/merchant-demo.html
 public/pay-modal-prototype.html
-public/xend-checkout.iife.js
+public/prydd-checkout.iife.js

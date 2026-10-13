@@ -62,7 +62,7 @@ interface SpendCheckModalProps {
  * copy of this would drift from it the first time either was touched.
  *
  * The mechanism is deliberately not the story: nothing here mentions signers,
- * thresholds or policies. What a Consumer needs is that Xend checked it was
+ * thresholds or policies. What a Consumer needs is that Prydd checked it was
  * them, and where the money has got to.
  */
 export function SpendCheckModal({

@@ -1,7 +1,7 @@
 import { HttpException } from '@nestjs/common';
 import { Keypair } from '@solana/web3.js';
 import type { Request } from 'express';
-import { deriveAccountAddresses } from '@xend/smart-account';
+import { deriveAccountAddresses } from '@prydd/smart-account';
 
 import type { AttestationService } from '../attestation/attestation.service';
 import { AccountController } from './account.controller';

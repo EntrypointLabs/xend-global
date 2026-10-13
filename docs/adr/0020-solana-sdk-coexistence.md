@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-07-12
-**Deciders:** Pay with Xend planning
+**Deciders:** Pay with Prydd planning
 **Tags:** backend, solana, tooling
 
 ## Context and Problem Statement

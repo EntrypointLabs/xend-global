@@ -3,7 +3,7 @@
  * decimal places its minor unit carries.
  *
  * A Payment shows the Merchant's own currency, so this grows with the markets
- * Xend opens in. The decimals are carried rather than assumed to be two,
+ * Prydd opens in. The decimals are carried rather than assumed to be two,
  * because most currencies use two, the yen uses none and the dinar uses three,
  * and a formatter that hardcodes hundredths misstates an amount by a factor of
  * a hundred the day one of those arrives.

@@ -50,10 +50,10 @@ describe('postReadyToMerchant', () => {
     const [payload, targetOrigin] = postMessage.mock.calls[0]!;
     expect(targetOrigin).toBe(MERCHANT_ORIGIN);
     expect(payload).toEqual({
-      xend: 'checkout',
+      prydd: 'checkout',
       v: 1,
       nonce: NONCE,
-      type: 'xend.checkout.ready',
+      type: 'prydd.checkout.ready',
     });
   });
 
@@ -66,7 +66,7 @@ describe('postReadyToMerchant', () => {
     expect(openerPost).not.toHaveBeenCalled();
     expect(parentPost.mock.calls[0]![1]).toBe(MERCHANT_ORIGIN);
     expect(parentPost.mock.calls[0]![0]).toMatchObject({
-      type: 'xend.checkout.ready',
+      type: 'prydd.checkout.ready',
     });
   });
 
@@ -90,11 +90,11 @@ describe('postResultToMerchant', () => {
     const [payload, targetOrigin] = postMessage.mock.calls[0]!;
     expect(targetOrigin).toBe(MERCHANT_ORIGIN);
     expect(payload).toMatchObject({
-      xend: 'checkout',
+      prydd: 'checkout',
       v: 1,
       nonce: NONCE,
       reference: REFERENCE,
-      type: 'xend.checkout.result',
+      type: 'prydd.checkout.result',
       status: 'succeeded',
     });
   });
@@ -125,11 +125,11 @@ describe('when the surface is framed', () => {
     const [payload, targetOrigin] = parentPost.mock.calls[0]!;
     expect(targetOrigin).toBe(MERCHANT_ORIGIN);
     expect(payload).toMatchObject({
-      xend: 'checkout',
+      prydd: 'checkout',
       v: 1,
       nonce: NONCE,
       reference: REFERENCE,
-      type: 'xend.checkout.result',
+      type: 'prydd.checkout.result',
       status: 'succeeded',
     });
   });
@@ -142,7 +142,7 @@ describe('when the surface is framed', () => {
     expect(postCancelToMerchant(MERCHANT_ORIGIN, NONCE, REFERENCE)).toBe(true);
     expect(parentPost.mock.calls[0]![1]).toBe(MERCHANT_ORIGIN);
     expect(parentPost.mock.calls[0]![0]).toMatchObject({
-      type: 'xend.checkout.cancel',
+      type: 'prydd.checkout.cancel',
       status: 'canceled',
     });
   });
@@ -156,7 +156,7 @@ describe('postCancelToMerchant', () => {
     const [payload, targetOrigin] = postMessage.mock.calls[0]!;
     expect(targetOrigin).toBe(MERCHANT_ORIGIN);
     expect(payload).toMatchObject({
-      type: 'xend.checkout.cancel',
+      type: 'prydd.checkout.cancel',
       status: 'canceled',
     });
   });
@@ -175,11 +175,11 @@ describe('postUnresolvedToMerchant', () => {
     );
     expect(postMessage).toHaveBeenCalledWith(
       {
-        xend: 'checkout',
+        prydd: 'checkout',
         v: 1,
         nonce: NONCE,
         reference: REFERENCE,
-        type: 'xend.checkout.unresolved',
+        type: 'prydd.checkout.unresolved',
         reason: 'confirmation_timeout',
       },
       MERCHANT_ORIGIN,

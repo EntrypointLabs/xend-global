@@ -20,7 +20,7 @@ const logPath =
     ? null
     : path.resolve(
         ROOT,
-        logArg && !logArg.startsWith("--") ? logArg : "/tmp/xend-dev.log",
+        logArg && !logArg.startsWith("--") ? logArg : "/tmp/prydd-dev.log",
       );
 
 const say = (msg) => console.log(`[dev] ${msg}`);
@@ -175,8 +175,8 @@ async function checkServicePorts() {
 }
 
 function checkoutPort() {
-  const candidates = process.env.XEND_CHECKOUT_HOST
-    ? [{ host: process.env.XEND_CHECKOUT_HOST, port: 443 }]
+  const candidates = process.env.PRYDD_CHECKOUT_HOST
+    ? [{ host: process.env.PRYDD_CHECKOUT_HOST, port: 443 }]
     : [
         { host: "www.xend.global", port: 443 },
         { host: "pay.xend.global", port: 5173 },
@@ -206,13 +206,13 @@ function startServices() {
       cwd: ROOT,
       env: {
         ...process.env,
-        XEND_DEV_SUITE: "1",
-        XEND_NGROK_BIN: ngrokBin,
-        XEND_BACKEND_URL: "http://127.0.0.1:8000",
-        XEND_RELAYER_URL: `http://127.0.0.1:${process.env.PORT ?? envValue("apps/relayer/.env", "PORT") ?? 8787}`,
-        XEND_VITE_CACHE_DIR:
-          process.env.XEND_VITE_CACHE_DIR ??
-          path.join(ROOT, "node_modules/.cache/xend-checkout"),
+        PRYDD_DEV_SUITE: "1",
+        PRYDD_NGROK_BIN: ngrokBin,
+        PRYDD_BACKEND_URL: "http://127.0.0.1:8000",
+        PRYDD_RELAYER_URL: `http://127.0.0.1:${process.env.PORT ?? envValue("apps/relayer/.env", "PORT") ?? 8787}`,
+        PRYDD_VITE_CACHE_DIR:
+          process.env.PRYDD_VITE_CACHE_DIR ??
+          path.join(ROOT, "node_modules/.cache/prydd-checkout"),
       },
       stdio: logPath ? ["inherit", "pipe", "pipe"] : "inherit",
     },

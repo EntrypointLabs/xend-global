@@ -1,7 +1,7 @@
 # Merchant onboarding model
 
 **Status:** Accepted
-**Author:** Pay with Xend
+**Author:** Pay with Prydd
 **Scope:** The single four-stage Merchant onboarding model, executed manually at pilot and as software later. One model, two levels of automation.
 
 ## Why one model
@@ -20,11 +20,11 @@ Creating a Merchant profile immediately yields test-mode API keys with no verifi
 
 ### Stage 2 — Lightweight KYB
 
-Xend performs lightweight KYB on the Merchant (business registration, beneficial ownership, sanctions screening). Xend is the verifier; the Merchant is the subject. The outcome is recorded on the Merchant record as `kyb_status` and `kyb_verified_at`. At pilot this is the ops script's `--mark-kyb-verified <merchant-id>` action, run after the off-system checks complete.
+Prydd performs lightweight KYB on the Merchant (business registration, beneficial ownership, sanctions screening). Prydd is the verifier; the Merchant is the subject. The outcome is recorded on the Merchant record as `kyb_status` and `kyb_verified_at`. At pilot this is the ops script's `--mark-kyb-verified <merchant-id>` action, run after the off-system checks complete.
 
 ### Stage 3 — Settlement destination (via the provider layer)
 
-Xend provisions a provider settlement ENDPOINT through Phase 4's `SettlementProvider` layer and records its reference on the Merchant's internal account (`settlement_accounts.provider_reference`). For a naira Merchant this is a Blockradar Solana child address under Xend's single master wallet plus a bank payout config (convert-at-settlement); for a USDC Merchant it is the direct-USDC destination.
+Prydd provisions a provider settlement ENDPOINT through Phase 4's `SettlementProvider` layer and records its reference on the Merchant's internal account (`settlement_accounts.provider_reference`). For a naira Merchant this is a Blockradar Solana child address under Prydd's single master wallet plus a bank payout config (convert-at-settlement); for a USDC Merchant it is the direct-USDC destination.
 
 Merchants have NO wallet and NO signer. There is no merchant-signing tangle: refunds run in reverse through the provider (see the refunds API), not as a merchant-signed reversal. A naira Merchant's verified Blockradar bank details are captured at this stage; the naira payout leg itself remains gated at Phase 8.
 

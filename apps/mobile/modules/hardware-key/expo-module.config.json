@@ -4,6 +4,6 @@
     "modules": ["HardwareKeyModule"]
   },
   "android": {
-    "modules": ["com.giftedborg.xend.hardwarekey.HardwareKeyModule"]
+    "modules": ["com.giftedborg.prydd.hardwarekey.HardwareKeyModule"]
   }
 }

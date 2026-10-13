@@ -10,7 +10,7 @@ import {
   buildCreateAccount,
   fetchProgramConfig,
   nextSettingsSeed,
-} from '@xend/smart-account';
+} from '@prydd/smart-account';
 
 import {
   SETTLEMENT_AUTHORITY_SIGNER,
@@ -24,7 +24,7 @@ import type {
 } from './account.interface';
 
 /**
- * Creates the Account on chain with `@xend/smart-account` and `@solana/web3.js`,
+ * Creates the Account on chain with `@prydd/smart-account` and `@solana/web3.js`,
  * per ADR 0020: the package is web3.js-based, so the whole transaction is built
  * on that toolchain and crosses the seam as base64 bytes.
  *

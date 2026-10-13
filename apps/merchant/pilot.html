@@ -13,7 +13,7 @@
 const output = document.querySelector('#result');
 let idempotencyKey = crypto.randomUUID();
 document.querySelector('#order').addEventListener('change', () => { idempotencyKey = crypto.randomUUID(); });
-XendCheckout.mountXendButton({
+PryddCheckout.mountPryddButton({
   checkoutOrigin: 'https://xend.global',
   apiBase: location.origin,
   presentation: new URLSearchParams(location.search).get('presentation') === 'redirect' ? 'redirect' : 'popup',

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Xend",
+    "name": "Prydd",
     "slug": "xend",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -78,7 +78,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/logo/xend-mark-white-2048.png",
+          "image": "./assets/images/logo/prydd-mark-white-2048.png",
           "imageWidth": 160,
           "resizeMode": "contain",
           "backgroundColor": "#000000"
@@ -89,7 +89,7 @@
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "Allow Xend to use Face ID to unlock the app."
+          "faceIDPermission": "Allow Prydd to use Face ID to unlock the app."
         }
       ],
       [

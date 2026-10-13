@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-07-12
-**Deciders:** Pay with Xend
+**Deciders:** Pay with Prydd
 **Tags:** backend, security, pay
 
 ## Context and Problem Statement
@@ -18,7 +18,7 @@ Merchants need a trustworthy settlement-truth signal. The webhook signing scheme
 
 ## Considered Options
 
-1. **Symmetric HMAC t/v1, Stripe-style** — `Xend-Signature: t=<unix>,v1=<hex>`, signed content `t.rawBody`.
+1. **Symmetric HMAC t/v1, Stripe-style** — `Prydd-Signature: t=<unix>,v1=<hex>`, signed content `t.rawBody`.
 2. **Standard Webhooks spec** — three headers (webhook-id / webhook-timestamp / webhook-signature), signs `id.timestamp.body`, base64 `v1,` signature form.
 3. **Asymmetric / JWS signatures** — publisher signs with a private key, merchant verifies a public key.
 4. **mTLS only** — client-cert transport authentication.
@@ -29,9 +29,9 @@ Chosen option: **"Symmetric HMAC t/v1, Stripe-style"**, because it is the scheme
 
 The frozen contract:
 
-- **Signing.** HMAC-SHA256 over the exact bytes `${timestamp}.${rawBody}` with header `Xend-Signature: t=<unix>,v1=<hex>`, hex-encoded, using the full `whsec_` secret as the UTF-8 key. A 5-minute replay tolerance. Per-endpoint `whsec_` secrets, with two concurrently valid secrets (one `v1=` per secret) for zero-downtime rotation. Sign the exact stored bytes, never parsed-then-reserialized JSON.
+- **Signing.** HMAC-SHA256 over the exact bytes `${timestamp}.${rawBody}` with header `Prydd-Signature: t=<unix>,v1=<hex>`, hex-encoded, using the full `whsec_` secret as the UTF-8 key. A 5-minute replay tolerance. Per-endpoint `whsec_` secrets, with two concurrently valid secrets (one `v1=` per secret) for zero-downtime rotation. Sign the exact stored bytes, never parsed-then-reserialized JSON.
 - **Not Standard Webhooks.** The scheme is Stripe-style t/v1 and is NOT the Standard Webhooks specification, despite the `whsec_` secret prefix. Standard Webhooks uses three headers, signs `id.timestamp.body`, and base64-encodes with a `v1,` comma form; adopting its prefix convention without its scheme is a deliberate familiarity choice. Any future migration is a new signature scheme version (e.g. v2).
-- **Event object.** `{ id: evt_<hash>, object: 'event', type, created, livemode, correlation_id, data: { object } }`. The id is deterministic (`evt_` + sha256(`topic:intentId`) prefix), stable across retries and redeliveries. Merchants dedup on the signed body `id`, NOT on the `Xend-Event-Id` transport header (which is unsigned convenience). The full object is delivered per event: at-least-once and unordered, the object is the truth, and merchants reject events older than their stored state.
+- **Event object.** `{ id: evt_<hash>, object: 'event', type, created, livemode, correlation_id, data: { object } }`. The id is deterministic (`evt_` + sha256(`topic:intentId`) prefix), stable across retries and redeliveries. Merchants dedup on the signed body `id`, NOT on the `Prydd-Event-Id` transport header (which is unsigned convenience). The full object is delivered per event: at-least-once and unordered, the object is the truth, and merchants reject events older than their stored state.
 - **Convert-at-settlement paid semantics** (additive to the frozen signing scheme, HANDOFF v3): `payment.succeeded` means settlement CONFIRMED. For a direct-USDC Merchant that is USDC-confirmed-at-the-endpoint; for a naira Merchant it is the settlement provider's settlement-complete signal (Phase 4 leaves the seam, Phase 8 implements the Blockradar signal). The payload's `data.object.settlement` block carries that provider completion, not just the USDC tx. The t/v1 HMAC signing, header, replay window, and dedup-on-signed-id are unchanged by this.
 - **Firing rule.** Webhooks fire ONLY from consumed Kafka confirmation/expiry events (payment.succeeded/failed from Phase 4, payment.expired from Phase 2), never from submission or the merchant API. The new `EVENT_CONSUMER` seam mirrors `EVENT_PUBLISHER`; see ADR 0012 for the eventing lineage (topics, key = intent id, correlation header).
 - **Delivery.** Exponential backoff with jitter capped near 3 days, then exhausted with an ops alert; every attempt logged in `webhook_deliveries`. SSRF guard (HTTPS only, private/loopback/link-local rejected at resolve time, no redirect following), re-run at delivery time. Test/live separation via per-intent and per-endpoint mode plus a `livemode` flag. Automatic materialization is idempotent under a partial unique index; manual redelivery reuses the same event id and is exempt.

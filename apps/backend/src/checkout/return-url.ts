@@ -4,13 +4,13 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
  * The signed return-URL scheme for redirect-completion mode. Consumers of this
  * contract (the checkout redirect flow and the SDK docs):
  *
- *   key    = CHECKOUT_RETURN_URL_SECRET (an internal Xend secret; merchants
+ *   key    = CHECKOUT_RETURN_URL_SECRET (an internal Prydd secret; merchants
  *            never verify these params, their fulfillment truth stays the
  *            webhook and GET /v1/payment_intents/:id, and the params
  *            deliberately carry no amount).
  *   TTL    = CHECKOUT_RETURN_URL_TTL_SECONDS (default 900) plus 60s forward
  *            clock skew.
- *   params = xend_intent_id, xend_status, xend_ts, xend_sig
+ *   params = prydd_intent_id, prydd_status, prydd_ts, prydd_sig
  *            (sig = hex HMAC-SHA256 over `intentId.status.ts.baseUrl`).
  *
  * Signing the base URL too means a swapped target fails verification.
@@ -37,10 +37,10 @@ export function signReturnUrl(
     .update(canonical(baseUrl, intentId, status, now))
     .digest('hex');
   const url = new URL(baseUrl);
-  url.searchParams.set('xend_intent_id', intentId);
-  url.searchParams.set('xend_status', status);
-  url.searchParams.set('xend_ts', String(now));
-  url.searchParams.set('xend_sig', sig);
+  url.searchParams.set('prydd_intent_id', intentId);
+  url.searchParams.set('prydd_status', status);
+  url.searchParams.set('prydd_ts', String(now));
+  url.searchParams.set('prydd_sig', sig);
   return url.toString();
 }
 

@@ -3,11 +3,11 @@ plugins {
   id 'expo-module-gradle-plugin'
 }
 
-group = 'com.giftedborg.xend'
+group = 'com.giftedborg.prydd'
 version = '0.1.0'
 
 android {
-  namespace "com.giftedborg.xend.hardwarekey"
+  namespace "com.giftedborg.prydd.hardwarekey"
   defaultConfig {
     // versionCode and versionName are not optional here: the Expo module
     // gradle plugin reads both while configuring publication, and omitting

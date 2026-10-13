@@ -1,12 +1,12 @@
 import { useEffect, useRef } from "react";
 import {
-  mountXendButton,
+  mountPryddButton,
   type ButtonTheme,
   type CheckoutPresentation,
   type CheckoutResult,
   type CheckoutStatus,
   type CheckoutUnresolved,
-} from "@xend/checkout-core";
+} from "@prydd/checkout-core";
 
 export type {
   ButtonTheme,
@@ -16,7 +16,7 @@ export type {
   CheckoutUnresolved,
 };
 
-export interface XendPayButtonProps {
+export interface PryddPayButtonProps {
   /** Exact checkout origin, e.g. "https://pay.xend.global". */
   checkoutOrigin: string;
   /** Your server call that creates the intent and returns its reference. */
@@ -27,14 +27,14 @@ export interface XendPayButtonProps {
   onReady?: () => void;
   /** "iframe" (default: glass sheet, inline ceremony), "modal" (sheet plus a window), "popup" or "redirect". Webviews and blocked popups redirect on their own. */
   presentation?: CheckoutPresentation;
-  /** Origin of the Xend API. The sheet reads the intent summary from it; without one, the sheet presentations degrade to "popup". */
+  /** Origin of the Prydd API. The sheet reads the intent summary from it; without one, the sheet presentations degrade to "popup". */
   apiBase?: string;
   /** "auto" (default) follows the viewer's colour scheme; "light" / "dark" pin the material. */
   theme?: ButtonTheme;
 }
 
 /**
- * Thin React wrapper over @xend/checkout-core. All sheet, frame, popup,
+ * Thin React wrapper over @prydd/checkout-core. All sheet, frame, popup,
  * postMessage, nonce, and brand logic lives in core; this component only mounts
  * the vanilla button into a container ref and forwards callbacks. The latest
  * callbacks are held in a ref so re-rendering with new callback identities
@@ -42,7 +42,7 @@ export interface XendPayButtonProps {
  * ceremony handle). The button remounts only when a mount-time option
  * (checkoutOrigin, presentation, theme, apiBase) changes.
  */
-export function XendPayButton(props: XendPayButtonProps): React.JSX.Element {
+export function PryddPayButton(props: PryddPayButtonProps): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   const latest = useRef(props);
   latest.current = props;
@@ -51,7 +51,7 @@ export function XendPayButton(props: XendPayButtonProps): React.JSX.Element {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const handle = mountXendButton({
+    const handle = mountPryddButton({
       mount: el,
       checkoutOrigin,
       presentation,

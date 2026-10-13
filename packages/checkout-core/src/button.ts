@@ -24,8 +24,8 @@ export interface ButtonHandle {
   destroy: () => void;
 }
 
-const CLASS_PREFIX = "xend-pay-";
-const STYLE_ID = "xend-pay-style";
+const CLASS_PREFIX = "prydd-pay-";
+const STYLE_ID = "prydd-pay-style";
 
 // Scoped, brand-baked CSS injected once. No Tailwind runtime, no global
 // selectors; every rule is namespaced under the class prefix. The button
@@ -96,7 +96,7 @@ function styleText(): string {
 `;
 }
 
-// The Xend mark as a tiny inline SVG: a rounded square (rx at 22% of its
+// The Prydd mark as a tiny inline SVG: a rounded square (rx at 22% of its
 // box) enclosing an "X". Label colour on the brand background; never green.
 function markSvg(): string {
   const rx = `${MARK_RADIUS_PERCENT}%`;
@@ -112,7 +112,7 @@ function ensureStyle(doc: Document): void {
 }
 
 /**
- * Render the brand-compliant Pay with Xend button into `mount`. Returns a
+ * Render the brand-compliant Pay with Prydd button into `mount`. Returns a
  * handle to toggle state and tear it down. Fires onReady once the button
  * is in the DOM and interactive.
  */

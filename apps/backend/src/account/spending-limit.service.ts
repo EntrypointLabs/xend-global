@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import type { SpendingLimit } from '@xend/smart-account';
+import type { SpendingLimit } from '@prydd/smart-account';
 
 import { SPEND_CHAIN } from './account.interface';
 import type { SpendChain } from './account.interface';

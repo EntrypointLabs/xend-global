@@ -84,11 +84,11 @@ passkey sign-in sheet. That harness was removed after capture.
    cf-ray: a316d9ffbf09751f-AMS
    x-vercel-id: fra1::iad1::hvrgs-1787789409246-4857035482d2
    body:
-     {"options":{"challenge":"...","rp":{"name":"Xend Mobile","id":"xend.global"},"user":{"id":"...","name":"Xend Mobile","display_name":"Xend Mobile"},"pub_key_cred_params":[{"alg":-8,"type":"public-key"},{"alg":-7,"type":"public-key"},{"alg":-257,"type":"public-key"}],"timeout":60000,"exclude_credentials":[],"authenticator_selection":{"require_resident_key":true,"resident_key":"required","user_verification":"required"},"attestation":"direct","extensions":{"cred_props":{"rk":true}}}}
+     {"options":{"challenge":"...","rp":{"name":"Prydd Mobile","id":"xend.global"},"user":{"id":"...","name":"Prydd Mobile","display_name":"Prydd Mobile"},"pub_key_cred_params":[{"alg":-8,"type":"public-key"},{"alg":-7,"type":"public-key"},{"alg":-257,"type":"public-key"}],"timeout":60000,"exclude_credentials":[],"authenticator_selection":{"require_resident_key":true,"resident_key":"required","user_verification":"required"},"attestation":"direct","extensions":{"cred_props":{"rk":true}}}}
 ```
 
 After that response, Android showed the Google Password Manager sheet:
-`Create passkey to sign in to Xend?`, with RP display `Xend Mobile`, and waited
+`Create passkey to sign in to Prydd?`, with RP display `Prydd Mobile`, and waited
 for fingerprint/PIN. That means the original empty-body failure is past the
 network/SDK parse layer and no longer blocks the passkey creation ceremony.
 

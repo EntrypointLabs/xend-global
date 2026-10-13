@@ -1354,7 +1354,7 @@ class BackendClient {
     return BalancesResponseSchema.parse(raw);
   }
 
-  /** DELETE /wallet/me — closes the Consumer's Xend account. Rejects with a
+  /** DELETE /wallet/me — closes the Consumer's Prydd account. Rejects with a
    *  409 `{code: "ACCOUNT_HAS_BALANCE"}` while any token balance remains;
    *  the caller is responsible for the zero-balance check and for handling
    *  that response (see DeleteAccountModal). */

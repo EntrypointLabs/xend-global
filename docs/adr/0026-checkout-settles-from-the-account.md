@@ -2,12 +2,12 @@
 
 **Status:** Accepted
 **Date:** 2026-08-29
-**Deciders:** Xend founding team
+**Deciders:** Prydd founding team
 **Tags:** backend, pay, wallet, solana, security
 
 ## Context and Problem Statement
 
-Pay with Xend was designed and built while the **Account** was a single Privy
+Pay with Prydd was designed and built while the **Account** was a single Privy
 embedded wallet. [0025](0025-account-multisig-signer-set.md) replaced that with a
 Squads smart account holding a 2-of-3 signer set, and the app followed: a
 **Send** now leaves the vault through the Account's own policies, and the

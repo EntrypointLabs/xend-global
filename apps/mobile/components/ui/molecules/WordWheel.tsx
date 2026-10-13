@@ -105,7 +105,7 @@ function Row({
 }
 
 /**
- * The slow wheel of what Xend does, for the signed-out front door. Ambient
+ * The slow wheel of what Prydd does, for the signed-out front door. Ambient
  * and decorative, so it is hidden from screen readers, and under reduced
  * motion it holds one word instead of turning.
  */

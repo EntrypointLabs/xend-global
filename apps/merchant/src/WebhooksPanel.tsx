@@ -144,7 +144,7 @@ export function WebhooksPanel({
       <div className="workspace-page-title">
         <h1>Webhooks</h1>
         <p>
-          Xend posts a signed event to your endpoint for each Payment outcome,
+          Prydd posts a signed event to your endpoint for each Payment outcome,
           including <code>payment.succeeded</code>, <code>payment.failed</code>{" "}
           and <code>payment.expired</code>. Verify the signature and confirm the
           type is <code>payment.succeeded</code> before fulfilling an order; a
@@ -170,7 +170,7 @@ export function WebhooksPanel({
               type="url"
               required
               value={url}
-              placeholder="https://your-store.com/webhooks/xend"
+              placeholder="https://your-store.com/webhooks/prydd"
               onChange={(e) => setUrl(e.target.value)}
             />
             <small>

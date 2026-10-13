@@ -8,7 +8,7 @@ import {
   deriveAccountAddresses,
   derivePolicyAddress,
   type SpendingLimit,
-} from '@xend/smart-account';
+} from '@prydd/smart-account';
 
 import { InMemoryPreparedTxStore } from '../prepared/prepared-tx.memory';
 import type { SettlementAuthoritySigner } from '../settlement/settlement-authority.interface';

@@ -22,7 +22,7 @@ export function startTracing(): void {
   const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
   if (!endpoint || sdk) return;
 
-  process.env.OTEL_SERVICE_NAME ||= 'xend-backend';
+  process.env.OTEL_SERVICE_NAME ||= 'prydd-backend';
 
   sdk = new NodeSDK({
     traceExporter: new OTLPTraceExporter(),

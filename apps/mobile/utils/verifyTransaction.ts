@@ -2,7 +2,7 @@ import {
   describeTransaction,
   type SettingsChangeAction,
   type TransactionDescription,
-} from "@xend/smart-account";
+} from "@prydd/smart-account";
 import { PublicKey } from "@solana/web3.js";
 
 /**

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import type { CheckoutStatus } from '@xend/checkout-protocol';
+import type { CheckoutStatus } from '@prydd/checkout-protocol';
 import { parseLaunch, LaunchError, type Launch } from './lib/launch';
 import {
   getIntent,

@@ -1,7 +1,7 @@
 export function MerchantEntryStory() {
   return (
-    <section className="entry-story" aria-label="Pay with Xend for business">
-      <p className="entry-kicker">PAY WITH XEND / FOR BUSINESS</p>
+    <section className="entry-story" aria-label="Pay with Prydd for business">
+      <p className="entry-kicker">PAY WITH PRYDD / FOR BUSINESS</p>
       <div>
         <h1>
           Your business.
@@ -24,12 +24,12 @@ export function MerchantEntryStory() {
 
 export function MerchantEntryBrand() {
   return (
-    <a className="wordmark entry-brand" href="/" aria-label="Xend v1">
+    <a className="wordmark entry-brand" href="/" aria-label="Prydd v1">
       <span className="version-pill">v1</span>
       <span className="brand-symbol" aria-hidden="true">
         ↗
       </span>
-      xend
+      prydd
     </a>
   );
 }

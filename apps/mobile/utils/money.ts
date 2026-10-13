@@ -3,7 +3,7 @@
  * decimal places its minor unit carries.
  *
  * A Payment is shown in the Merchant's own currency, so this grows with the
- * markets Xend opens in. The decimals are carried rather than assumed to be
+ * markets Prydd opens in. The decimals are carried rather than assumed to be
  * two, because a formatter that hardcodes hundredths misstates an amount by a
  * factor of a hundred the first time a currency that does not use two arrives.
  */

@@ -3,7 +3,7 @@
 **Status:** Accepted, extended by [0027](0027-email-is-an-entry-point-not-a-login-method.md); see the 2026-09-07 update on rejection
 **Date:** 2026-08-02
 **Accepted:** 2026-08-09
-**Deciders:** Xend founding team
+**Deciders:** Prydd founding team
 **Tags:** mobile, wallet, security, vendor, solana
 
 ## Context and Problem Statement
@@ -35,7 +35,7 @@ rule still holds: each vendor SDK is reached only through its own owned adapter.
 - A signer is a key holder **plus an unlock channel**. Splitting vendors defends
   against vendor compromise, which is rare. Splitting unlock channels defends
   against account takeover, which is what actually drains consumer wallets.
-- **Checkout is passkey-only.** Tapping "Pay with Xend" on a merchant page prompts the
+- **Checkout is passkey-only.** Tapping "Pay with Prydd" on a merchant page prompts the
   passkey and nothing else: no app, no login, no OTP. This is the product, and it
   determines S1's anchor rather than being determined by it.
 - A consumer has exactly three identity anchors: their email inbox, their platform
@@ -75,7 +75,7 @@ transaction.
 |             | S1                            | S2                                                  | S3                                   |
 | ----------- | ----------------------------- | --------------------------------------------------- | ------------------------------------ |
 | Anchor      | platform account              | physical possession                                 | email inbox                          |
-| Key holder  | Privy                         | Turnkey                                             | Xend, encrypted and server-held      |
+| Key holder  | Privy                         | Turnkey                                             | Prydd, encrypted and server-held     |
 | Unlock      | passkey, on its own           | biometric-gated hardware key on the phone           | proving control of the sign-up email |
 | Permissions | `Initiate \| Vote \| Execute` | `Vote \| Execute`                                   | `Vote`                               |
 | Present     | every spend                   | above the spending limit, and every settings change | recovery only                        |
@@ -83,7 +83,7 @@ transaction.
 Threshold 2, `settings_authority` unset (autonomous, no admin override), non-zero
 `time_lock` on settings changes.
 
-The anchors follow from the product rather than from preference. "Pay with Xend" on a
+The anchors follow from the product rather than from preference. "Pay with Prydd" on a
 merchant page must prompt the passkey and nothing else, so the passkey alone completes
 S1 and S1's anchor is the platform account. S3 therefore cannot also live there, which
 is why it moved server-side behind an email check. That also fixes the
@@ -154,7 +154,7 @@ one failing assumption are recorded in the spec.
   above the limit, though not everyday spends.
 - ⚠️ **Bad:** Above-limit spends on a laptop require the phone, because the
   possession factor lives there. This is deliberate but it is real friction.
-- ⚠️ **Bad:** Xend holds S3, encrypted and email-gated. Not pure self-custody. It is
+- ⚠️ **Bad:** Prydd holds S3, encrypted and email-gated. Not pure self-custody. It is
   the weakest of the three signers, cannot spend under any path, and cannot reach
   threshold alone, but it is a custody claim we now have to stand behind.
 - ⚠️ **Bad:** S2 is unrecoverable in isolation by design, since Turnkey email auth

@@ -1,35 +1,35 @@
-# @xend/checkout-core
+# @prydd/checkout-core
 
-Framework-agnostic Pay with Xend button and result relay. Zero runtime
+Framework-agnostic Pay with Prydd button and result relay. Zero runtime
 dependencies. Renders a brand-compliant button, draws the checkout sheet on
-your page, runs the passkey ceremony inline on Xend's own origin without
+your page, runs the passkey ceremony inline on Prydd's own origin without
 opening a second window, and relays a result back. A separate Node entry ships
 the webhook verification helper.
 
 ## The one rule
 
 **The browser result is NOT settlement truth. Confirm every payment
-server-side** off the signed webhook (`@xend/checkout-core/webhook`) or
+server-side** off the signed webhook (`@prydd/checkout-core/webhook`) or
 `GET /v1/payment_intents/:id`. The `onResult` callback intentionally carries only a
 reference and a status, no amount and no verified flag, so a tampered
 browser message can never be mistaken for a completed payment.
 
 ## Install
 
-Script tag (the minified IIFE exposes `window.XendCheckout`):
+Script tag (the minified IIFE exposes `window.PryddCheckout`):
 
 ```html
-<script src="https://unpkg.com/@xend/checkout-core/dist/xend-checkout.iife.js"></script>
+<script src="https://unpkg.com/@prydd/checkout-core/dist/prydd-checkout.iife.js"></script>
 <div id="pay"></div>
 <script>
-  XendCheckout.mountXendButton({
+  PryddCheckout.mountPryddButton({
     checkoutOrigin: "https://pay.xend.global",
     apiBase: "https://api.xend.global",
     mount: document.getElementById("pay"),
     createIntent: async () => {
       // Call YOUR server, which creates the intent. Money never travels
       // through the browser.
-      const res = await fetch("/api/xend/intent", { method: "POST" });
+      const res = await fetch("/api/prydd/intent", { method: "POST" });
       return res.json(); // { reference }
     },
     onResult: (result) => {
@@ -42,19 +42,19 @@ Script tag (the minified IIFE exposes `window.XendCheckout`):
 npm:
 
 ```bash
-npm install @xend/checkout-core
+npm install @prydd/checkout-core
 ```
 
 ```ts
-import { mountXendButton } from "@xend/checkout-core";
+import { mountPryddButton } from "@prydd/checkout-core";
 ```
 
 ## How the sheet works
 
 Tapping the button draws a sheet on your page showing the merchant name and
 the amount, read from `GET /checkout/intents/:reference` on `apiBase`. Tapping
-Pay swaps the sheet's body for Xend's hosted checkout in a cross-origin frame,
-so the shopper's Face ID or fingerprint runs on Xend's origin without a second
+Pay swaps the sheet's body for Prydd's hosted checkout in a cross-origin frame,
+so the shopper's Face ID or fingerprint runs on Prydd's origin without a second
 window ever appearing. The result comes back over the same exact-origin
 postMessage channel, with the same nonce and reference correlation, as the
 popup flow.
@@ -62,18 +62,18 @@ popup flow.
 The checkout announces itself as soon as it loads, and that handshake is what
 tells the SDK the inline ceremony is live. If it never arrives, the popup takes
 over behind the same sheet, automatically and with the same nonce and
-reference. That happens when your origin is not registered with Xend, because
+reference. That happens when your origin is not registered with Prydd, because
 the checkout then refuses to be framed by it; when the frame errors; when the
 shopper is in an in-app browser; and as a backstop, when nothing has been heard
 within three seconds. The only visible difference is that a window appears.
 
 The sheet never authenticates, never signs, and never reads a balance. It is
-the interface; Xend's own origin is the ceremony.
+the interface; Prydd's own origin is the ceremony.
 
 ## What you have to do
 
-**Register every origin you mount the button on** with Xend, on your
-Merchant's allowed origins list. Xend serves the checkout with a
+**Register every origin you mount the button on** with Prydd, on your
+Merchant's allowed origins list. Prydd serves the checkout with a
 `frame-ancestors` allowlist built from that list, so an unregistered origin
 gets the popup fallback instead of the inline ceremony, and the checkout will
 not post a result to it either.
@@ -86,7 +86,7 @@ not post a result to it either.
   straight from the button with no sheet. `"redirect"` navigates the whole
   page. Webviews, Opera Mini and blocked popups fall back to redirect on their
   own, and any value the SDK does not recognise falls back to `"popup"`.
-- `apiBase`: origin of the Xend API, e.g. `"https://api.xend.global"`. The
+- `apiBase`: origin of the Prydd API, e.g. `"https://api.xend.global"`. The
   sheet reads the intent summary from it; without one, `"iframe"` and
   `"modal"` degrade to `"popup"`. Every origin you mount the button on must be
   allowed to read that endpoint cross-origin.
@@ -120,7 +120,7 @@ origins list.
 
 The button uses Inter Display Medium with system fallbacks. The font is
 referenced, not bundled, to keep the script small; hosts that want the exact
-face should self-host or link Inter Display. The Xend mark ships as a tiny
+face should self-host or link Inter Display. The Prydd mark ships as a tiny
 inline SVG.
 
 ## COOP requirement

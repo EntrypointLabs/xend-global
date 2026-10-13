@@ -1,7 +1,7 @@
 {
-  "name": "@xend/checkout-react",
+  "name": "@prydd/checkout-react",
   "version": "0.0.0",
-  "description": "React wrapper for the Pay with Xend checkout button.",
+  "description": "React wrapper for the Pay with Prydd checkout button.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -38,14 +38,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@xend/checkout-core": "*"
+    "@prydd/checkout-core": "*"
   },
   "peerDependencies": {
     "react": ">=18"
   },
   "devDependencies": {
-    "@xend/eslint-config": "*",
-    "@xend/typescript-config": "*",
+    "@prydd/eslint-config": "*",
+    "@prydd/typescript-config": "*",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.15.3",

@@ -11,7 +11,7 @@ export const AWAITING_PAYMENTS_KEY = ["payments", "awaiting"] as const;
  *
  * A Payment larger than one signature carries needs the approval signer, which
  * lives here and nowhere the checkout can reach. Somebody who just tapped "Pay
- * with Xend" and was told to open the app is standing at a till, so this is
+ * with Prydd" and was told to open the app is standing at a till, so this is
  * checked often rather than cached for comfort.
  */
 export function useAwaitingPayments() {

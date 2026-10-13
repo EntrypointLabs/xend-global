@@ -40,7 +40,7 @@ interface Notice {
 }
 
 const NOT_YOU_PENDING =
-  'If it was not you, open Xend now, review the pending change and reject it. Then contact support from the app.';
+  'If it was not you, open Prydd now, review the pending change and reject it. Then contact support from the app.';
 const NOT_YOU_DONE =
   'If this was not you, contact support from the app right away.';
 
@@ -182,10 +182,10 @@ function compose(event: SecurityEvent, context: NoticeContext): Notice | null {
         },
         mails: [
           {
-            subject: 'A change to your Xend account was rejected',
+            subject: 'A change to your Prydd account was rejected',
             text: lines(
               `A pending change to your account was rejected at ${when}. Nothing about your account changed.`,
-              'If you did not expect this, open Xend and check Keys and Recovery.',
+              'If you did not expect this, open Prydd and check Keys and Recovery.',
             ),
           },
         ],
@@ -200,10 +200,10 @@ function compose(event: SecurityEvent, context: NoticeContext): Notice | null {
         },
         mails: [
           {
-            subject: 'A recovery key was added to your Xend account',
+            subject: 'A recovery key was added to your Prydd account',
             text: lines(
               `${subject} was added as a recovery key on your account at ${when}. It can help move your account to a new phone.`,
-              'If this was not you, open Xend, remove it under Keys and Recovery, and contact support from the app.',
+              'If this was not you, open Prydd, remove it under Keys and Recovery, and contact support from the app.',
             ),
           },
         ],
@@ -218,7 +218,7 @@ function compose(event: SecurityEvent, context: NoticeContext): Notice | null {
         },
         mails: [
           {
-            subject: 'A recovery key was removed from your Xend account',
+            subject: 'A recovery key was removed from your Prydd account',
             text: lines(
               `${subject} was removed as a recovery key on your account at ${when}.`,
               NOT_YOU_DONE,
@@ -238,7 +238,7 @@ function compose(event: SecurityEvent, context: NoticeContext): Notice | null {
         },
         mails: [
           {
-            subject: 'A recovery key on your Xend account changed',
+            subject: 'A recovery key on your Prydd account changed',
             text: lines(
               previous
                 ? `A recovery key on your account changed at ${when}: ${previous} was replaced by ${subject}.`
@@ -258,7 +258,7 @@ function compose(event: SecurityEvent, context: NoticeContext): Notice | null {
         },
         mails: [
           {
-            subject: 'Your Xend account moved to a new phone',
+            subject: 'Your Prydd account moved to a new phone',
             text: lines(
               `Your account moved to a new phone at ${when}. The phone you used before can no longer approve payments.`,
               NOT_YOU_DONE,
@@ -274,19 +274,19 @@ function compose(event: SecurityEvent, context: NoticeContext): Notice | null {
       if (previous) {
         mails.push({
           to: previous,
-          subject: 'Your Xend contact email has changed',
+          subject: 'Your Prydd contact email has changed',
           text: lines(
-            `The contact email for your Xend account changed from ${previous} to ${subject} at ${when}. This address will not get notices about the account from now on.`,
-            'If this was not you, contact Xend support right away.',
+            `The contact email for your Prydd account changed from ${previous} to ${subject} at ${when}. This address will not get notices about the account from now on.`,
+            'If this was not you, contact Prydd support right away.',
           ),
         });
       }
       if (subject) {
         mails.push({
           to: subject,
-          subject: 'This is now the contact email for your Xend account',
+          subject: 'This is now the contact email for your Prydd account',
           text: lines(
-            `This address became the contact email for your Xend account at ${when}. Notices about the account come here from now on.`,
+            `This address became the contact email for your Prydd account at ${when}. Notices about the account come here from now on.`,
             NOT_YOU_DONE,
           ),
         });
@@ -305,14 +305,14 @@ function compose(event: SecurityEvent, context: NoticeContext): Notice | null {
       return {
         push: {
           title: 'A passkey was added to your account',
-          body: 'It can now be used to open Xend as you. If this was not you, contact support.',
+          body: 'It can now be used to open Prydd as you. If this was not you, contact support.',
           kind: NOTICE_KIND.securityAlert,
         },
         mails: [
           {
-            subject: 'A passkey was added to your Xend account',
+            subject: 'A passkey was added to your Prydd account',
             text: lines(
-              `A new passkey was added to your account at ${when}. It can be used to open Xend as you.`,
+              `A new passkey was added to your account at ${when}. It can be used to open Prydd as you.`,
               NOT_YOU_DONE,
             ),
           },
@@ -323,15 +323,15 @@ function compose(event: SecurityEvent, context: NoticeContext): Notice | null {
       return {
         push: {
           title: 'Your spending limit changed',
-          body: subject ? `It is now ${subject}.` : 'Open Xend to check it.',
+          body: subject ? `It is now ${subject}.` : 'Open Prydd to check it.',
           kind: NOTICE_KIND.securityAlert,
         },
         mails: [
           {
-            subject: 'Your Xend spending limit changed',
+            subject: 'Your Prydd spending limit changed',
             text: lines(
               `Your spending limit changed at ${when}${subject ? ` to ${subject}` : ''}${previous ? ` (it was ${previous})` : ''}.`,
-              'If this was not you, open Xend, check it under Spending limits, and contact support from the app.',
+              'If this was not you, open Prydd, check it under Spending limits, and contact support from the app.',
             ),
           },
         ],
@@ -358,37 +358,37 @@ function staged(
       case 'recovery_key':
         return {
           title: 'Your recovery key change is on its way',
-          body: 'It goes through after a 24 hour delay. Open Xend to review or cancel it.',
+          body: 'It goes through after a 24 hour delay. Open Prydd to review or cancel it.',
           kind,
         };
       case 'device':
         return {
           title: 'A new phone is being added to your account',
-          body: 'It takes over after a 24 hour delay. If this was not you, open Xend and reject it.',
+          body: 'It takes over after a 24 hour delay. If this was not you, open Prydd and reject it.',
           kind,
         };
       case 'contact_email':
         return {
           title: 'Your contact email is changing',
-          body: `It changes${subject ? ` to ${subject}` : ''} after a 24 hour delay. If this was not you, open Xend and reject it.`,
+          body: `It changes${subject ? ` to ${subject}` : ''} after a 24 hour delay. If this was not you, open Prydd and reject it.`,
           kind,
         };
       case 'passkey':
         return {
           title: 'Your sign-in passkey is being replaced',
-          body: 'The new one takes over after a 24 hour delay. If this was not you, open Xend and reject it.',
+          body: 'The new one takes over after a 24 hour delay. If this was not you, open Prydd and reject it.',
           kind,
         };
       case 'spending_limit':
         return {
           title: 'Your spending limit is changing',
-          body: `It becomes${subject ? ` ${subject}` : ''} after a 24 hour delay. If this was not you, open Xend and reject it.`,
+          body: `It becomes${subject ? ` ${subject}` : ''} after a 24 hour delay. If this was not you, open Prydd and reject it.`,
           kind,
         };
       default:
         return {
-          title: 'Check your Xend account',
-          body: 'Someone started a change to your account. If it was not you, open Xend and reject it.',
+          title: 'Check your Prydd account',
+          body: 'Someone started a change to your account. If it was not you, open Prydd and reject it.',
           kind,
         };
     }
@@ -421,7 +421,7 @@ function staged(
     push,
     mails: [
       {
-        subject: 'A change to your Xend account has started',
+        subject: 'A change to your Prydd account has started',
         text: lines(
           `${what} at ${when}.`,
           'It goes through after a 24 hour delay. Until then it can be rejected from your phone.',
