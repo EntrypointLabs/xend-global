@@ -27,7 +27,7 @@
         "applinks:xend.global",
         "webcredentials:xend.global"
       ],
-      "bundleIdentifier": "com.giftedborg.xend",
+      "bundleIdentifier": "com.entrypointlabs.prydd",
       "entitlements": {
         "com.apple.developer.devicecheck.appattest-environment": "production"
       }
