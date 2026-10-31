@@ -78,7 +78,7 @@ function styleText(): string {
   flex: 0 0 auto;
 }
 .${CLASS_PREFIX}mark rect { fill: var(--${CLASS_PREFIX}fg); }
-.${CLASS_PREFIX}mark path { stroke: var(--${CLASS_PREFIX}bg); }
+.${CLASS_PREFIX}mark path { fill: var(--${CLASS_PREFIX}bg); }
 .${CLASS_PREFIX}spinner {
   width: 16px;
   height: 16px;
@@ -97,10 +97,10 @@ function styleText(): string {
 }
 
 // The Prydd mark as a tiny inline SVG: a rounded square (rx at 22% of its
-// box) enclosing an "X". Label colour on the brand background; never green.
+// box) enclosing the symbol. Label colour on the brand background; never green.
 function markSvg(): string {
   const rx = `${MARK_RADIUS_PERCENT}%`;
-  return `<svg class="${CLASS_PREFIX}mark" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="0" y="0" width="20" height="20" rx="${rx}" ry="${rx}"></rect><path d="M6 6 L14 14 M14 6 L6 14" stroke-width="2" stroke-linecap="round"></path></svg>`;
+  return `<svg class="${CLASS_PREFIX}mark" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="0" y="0" width="20" height="20" rx="${rx}" ry="${rx}"></rect><path transform="translate(3.976 3.916) scale(.06024)" d="M 48 40 L 94 40 C 102 40 107 35 113 29 L 119 23 C 123 19 127 18 135 18 L 180 18 L 180 158 C 180 163 177 166 172 166 L 114 166 C 112 166 110 167 108 169 L 94 182 C 92 184 90 184 87 184 L 28 184 C 23 184 20 181 20 176 L 20 91 C 20 85 24 82 30 82 L 58 82 L 58 144 C 58 147 60 149 63 149 L 86 149 C 89 149 91 148 94 145 L 110 129 C 112 127 115 126 119 126 L 143 126 L 143 59 L 133 59 C 125 59 119 65 114 71 C 109 76 104 78 96 78 L 58 78 C 45 78 36 58 36 50 C 36 44 42 40 48 40 Z"></path></svg>`;
 }
 
 function ensureStyle(doc: Document): void {
