@@ -17,7 +17,7 @@ import {
 } from "@/utils/passkeyOutcome";
 
 /** Must match the relying party the credential was registered against. */
-const RELYING_PARTY = "https://xend.global";
+const RELYING_PARTY = "https://prydd.co";
 
 /**
  * Signs in with a passkey alone. No email, no code.

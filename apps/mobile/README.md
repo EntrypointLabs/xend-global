@@ -34,7 +34,7 @@ npm --workspace @prydd/mobile run ios
 
 ## Releasing to TestFlight
 
-iOS ships as `com.entrypointlabs.prydd` under the EntrypointLabs Apple team; Android stays `com.giftedborg.xend` ([ADR-0037](../../docs/adr/0037-ios-app-id-under-the-entrypointlabs-apple-team.md)). The console steps, the first-time signing credentials and the build-and-submit commands are in [`docs/specs/ios-testflight-runbook.md`](../../docs/specs/ios-testflight-runbook.md). After the first run, a new TestFlight build is `npx eas-cli@latest build --platform ios --profile production --auto-submit`.
+iOS ships as `xyz.entrypointlabs.prydd` under the EntrypointLabs Apple team; Android stays `com.giftedborg.xend` ([ADR-0037](../../docs/adr/0037-ios-app-id-under-the-entrypointlabs-apple-team.md)). The console steps, the first-time signing credentials and the build-and-submit commands are in [`docs/specs/ios-testflight-runbook.md`](../../docs/specs/ios-testflight-runbook.md). After the first run, a new TestFlight build is `npx eas-cli@latest build --platform ios --profile production --auto-submit`.
 
 ## Environment
 

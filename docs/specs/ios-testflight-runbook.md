@@ -1,7 +1,7 @@
 # iOS: from the new Apple account to TestFlight
 
 The first TestFlight build of Prydd, under the EntrypointLabs Apple team with the
-bundle ID `com.entrypointlabs.prydd` ([ADR-0037](../adr/0037-ios-app-id-under-the-entrypointlabs-apple-team.md)).
+bundle ID `xyz.entrypointlabs.prydd` ([ADR-0037](../adr/0037-ios-app-id-under-the-entrypointlabs-apple-team.md)).
 The EAS project stays `gifted-borg/xend`.
 
 Part 1 is console work only a person can do, and part 2 is commands for whoever
@@ -19,7 +19,7 @@ developer.apple.com → Account → Membership details. Write down the **Team ID
 
 Certificates, Identifiers & Profiles → Identifiers → **+** → App IDs → App.
 
-- Bundle ID: **Explicit**, `com.entrypointlabs.prydd`
+- Bundle ID: **Explicit**, `xyz.entrypointlabs.prydd`
 - Description: `Prydd`
 
 Leave the capabilities alone. EAS turns on what the app's entitlements need
@@ -33,7 +33,7 @@ App Store Connect → Apps → **+** → New App.
 - Platforms: iOS
 - Name: `Prydd`. Names are unique across the App Store; if it is taken, use a
   variant. It can change any time before release.
-- Bundle ID: `com.entrypointlabs.prydd` (from 1.2)
+- Bundle ID: `xyz.entrypointlabs.prydd` (from 1.2)
 - SKU: `prydd-ios`
 - User access: Full Access
 
@@ -204,13 +204,13 @@ then gets it automatically. `ITSAppUsesNonExemptEncryption: false` in
 The build installs without these, but sign-in, passkeys and the phone's key fail
 on iOS until each one names the new ID. `<TEAM_ID>` is the Team ID from 1.1.
 
-| Where                                                        | Change                                                                                                                       | Without it                                 |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| Privy dashboard → the app → Clients → the native client      | Add `com.entrypointlabs.prydd` to the allowed app identifiers                                                                | Privy refuses sign-in from the app         |
-| `https://xend.global/.well-known/apple-app-site-association` | Add `<TEAM_ID>.com.entrypointlabs.prydd` to `webcredentials.apps` and to `applinks`                                          | Passkeys and universal links fail          |
-| Backend environment                                          | `IOS_APP_ATTEST_APP_ID=<TEAM_ID>.com.entrypointlabs.prydd`                                                                   | Hardware-key enrolment on iOS fails closed |
-| `EXPO_PUBLIC_BACKEND_URL` on EAS                             | A backend that testers' phones can reach while they test                                                                     | Every request fails                        |
-| EAS credentials → iOS → Push Notifications                   | An APNs key for the new team: `npx eas-cli@latest credentials --platform ios`, or upload one from developer.apple.com → Keys | Push notifications never reach iOS         |
+| Where                                                     | Change                                                                                                                       | Without it                                 |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Privy dashboard → the app → Clients → the native client   | Add `xyz.entrypointlabs.prydd` to the allowed app identifiers                                                                | Privy refuses sign-in from the app         |
+| `https://prydd.co/.well-known/apple-app-site-association` | Add `<TEAM_ID>.xyz.entrypointlabs.prydd` to `webcredentials.apps` and to `applinks`                                          | Passkeys and universal links fail          |
+| Backend environment                                       | `IOS_APP_ATTEST_APP_ID=<TEAM_ID>.xyz.entrypointlabs.prydd`                                                                   | Hardware-key enrolment on iOS fails closed |
+| `EXPO_PUBLIC_BACKEND_URL` on EAS                          | A backend that testers' phones can reach while they test                                                                     | Every request fails                        |
+| EAS credentials → iOS → Push Notifications                | An APNs key for the new team: `npx eas-cli@latest credentials --platform ios`, or upload one from developer.apple.com → Keys | Push notifications never reach iOS         |
 
 Android is unaffected and stays on `com.giftedborg.xend`.
 

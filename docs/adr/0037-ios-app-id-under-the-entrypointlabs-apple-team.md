@@ -1,4 +1,4 @@
-# 0037: iOS ships as com.entrypointlabs.prydd under the EntrypointLabs Apple team
+# 0037: iOS ships as xyz.entrypointlabs.prydd under the EntrypointLabs Apple team
 
 **Status:** Accepted
 **Date:** 2026-10-30
@@ -29,7 +29,7 @@ never released one, so the new account cannot register `com.giftedborg.xend`.
 
 1. **Stay on the old Apple account** and keep `com.giftedborg.xend` on both
    platforms.
-2. **New Apple account, new iOS ID `com.entrypointlabs.prydd`**; Android keeps
+2. **New Apple account, new iOS ID `xyz.entrypointlabs.prydd`**; Android keeps
    `com.giftedborg.xend`.
 3. **New Apple account and rename both platforms** to the new ID.
 
@@ -40,8 +40,8 @@ live in the company account and the old ID cannot follow it there. Android is
 left alone: renaming it would orphan the dApp Store listing for nothing, since
 the Android package was never in conflict.
 
-The prefix is the company's reverse DNS rather than a Prydd domain, which is not
-settled yet.
+The prefix is the reverse DNS of the company's domain, `entrypointlabs.xyz`,
+rather than a Prydd domain, which is not settled yet.
 
 ### Consequences
 
@@ -51,12 +51,12 @@ settled yet.
   app id" has to say which platform it means.
 - ⚠️ **Bad:** every iOS registration outside the repo has to follow, or the
   feature behind it fails on iOS only:
-  - Privy: add `com.entrypointlabs.prydd` to the native client's allowed app
+  - Privy: add `xyz.entrypointlabs.prydd` to the native client's allowed app
     identifiers, or sign-in is refused.
-  - `xend.global/.well-known/apple-app-site-association`: list
-    `<TEAM_ID>.com.entrypointlabs.prydd` under `webcredentials` and `applinks`,
+  - `prydd.co/.well-known/apple-app-site-association`: list
+    `<TEAM_ID>.xyz.entrypointlabs.prydd` under `webcredentials` and `applinks`,
     or passkeys and universal links fail.
-  - Backend `IOS_APP_ATTEST_APP_ID`: set to `<TEAM_ID>.com.entrypointlabs.prydd`,
+  - Backend `IOS_APP_ATTEST_APP_ID`: set to `<TEAM_ID>.xyz.entrypointlabs.prydd`,
     or hardware-key enrolment on iOS fails closed.
   - EAS: a new distribution certificate and provisioning profile for the new
     team, and an APNs key before push notifications reach iOS.
