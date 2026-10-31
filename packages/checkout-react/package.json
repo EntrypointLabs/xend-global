@@ -1,6 +1,6 @@
 {
   "name": "@prydd/checkout-react",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "React wrapper for the Pay with Prydd checkout button.",
   "license": "MIT",
   "type": "module",
