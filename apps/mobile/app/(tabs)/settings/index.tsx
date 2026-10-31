@@ -24,7 +24,7 @@ import { useRouter } from "expo-router";
 import { useToast } from "@/contexts/ToastContext";
 import { useNotificationPreference } from "@/hooks/usePushRegistration";
 
-const PRYDD_TWITTER_URL = "https://twitter.com/xend_global";
+const PRYDD_TWITTER_URL = "https://x.com/pryddfinance";
 const PRIVACY_POLICY_URL = "https://www.prydd.co/legal/privacy-policy";
 const TERMS_URL = "https://www.prydd.co/legal/terms-of-service";
 
@@ -114,7 +114,7 @@ export default function SettingsScreen() {
           onPress: () => {},
         },
         {
-          label: "Follow @xend_global",
+          label: "Follow @pryddfinance",
           icon: require("@/assets/icons/x.png"),
           onPress: () => {
             Linking.openURL(PRYDD_TWITTER_URL);
