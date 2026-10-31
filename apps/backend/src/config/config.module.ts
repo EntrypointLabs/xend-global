@@ -101,7 +101,7 @@ export const USDC_MINT_BY_CLUSTER = {
         // Mail. Only recovery codes go out over this, and a deployment with no
         // key logs them instead, which MailModule refuses in production.
         RESEND_API_KEY: Joi.string().optional().allow(''),
-        MAIL_FROM: Joi.string().default('Prydd <security@xend.global>'),
+        MAIL_FROM: Joi.string().default('Prydd <security@prydd.co>'),
 
         // App Attest audience: "TEAMID.bundleid". Attestation fails closed
         // without it, so an unset value blocks iOS enrolment rather than
@@ -205,9 +205,9 @@ export const USDC_MINT_BY_CLUSTER = {
           .default('100000000'),
 
         // CORS: browser origins allowed to call this API. The mobile app is
-        // not a browser and is unaffected. pay.xend.global is the Checkout
+        // not a browser and is unaffected. pay.prydd.co is the Checkout
         // surface; localhost entries cover local web dev.
-        CORS_ALLOWED_ORIGINS: Joi.string().default('https://pay.xend.global'),
+        CORS_ALLOWED_ORIGINS: Joi.string().default('https://pay.prydd.co'),
 
         // Settlement provider layer (ADR 0015). Active cluster for the
         // settlement money-moving code; devnet backs test mode end-to-end.

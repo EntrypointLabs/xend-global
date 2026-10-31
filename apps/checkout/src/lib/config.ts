@@ -3,12 +3,12 @@
  * not configure Privy's web SDK: it uses the server-returned rp.id. Verify the
  * actual browser request before assuming subdomain Checkout compatibility.
  */
-export const RP_ID = 'xend.global';
-export const RP_ORIGIN = 'https://xend.global';
+export const RP_ID = 'prydd.co';
+export const RP_ORIGIN = 'https://prydd.co';
 
 /**
  * Base URL for the checkout HTTP endpoints. In production this is a same-origin
- * /api path so the HttpOnly session cookie stays scoped to pay.xend.global.
+ * /api path so the HttpOnly session cookie stays scoped to pay.prydd.co.
  */
 export const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 

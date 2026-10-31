@@ -20,7 +20,7 @@ export function InsufficientBalance({ onCancel }: InsufficientBalanceProps) {
         </p>
 
         <a
-          href="https://xend.global/app"
+          href="https://prydd.co"
           className="bg-brand-ink text-brand-black mt-8 block w-full rounded-2xl py-4 text-center text-base font-semibold"
         >
           Open Prydd

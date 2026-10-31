@@ -4,25 +4,24 @@ import tailwindcss from '@tailwindcss/vite';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// Local TLS on a xend.global origin (real passkey testing needs a Privy-trusted
+// Local TLS on a prydd.co origin (real passkey testing needs a Privy-trusted
 // domain: Turnstile, WebAuthn rp.id, and Privy's frame-ancestors/passkey-origin
-// checks all require it). Without an explicit host, preserve the legacy order,
-// preferring
-// www.xend.global:443 (already in Privy's allowlist) over pay.xend.global:5173.
-// Cert: `mkcert www.xend.global` -> apps/checkout/certs/. Port 443 needs sudo.
+// checks all require it). Without an explicit host, prefer www.prydd.co:443
+// over pay.prydd.co:5173. Whichever serves must be in Privy's allowed origins.
+// Cert: `mkcert www.prydd.co` -> apps/checkout/certs/. Port 443 needs sudo.
 const CANDIDATES = [
-  { host: 'www.xend.global', port: 443 },
-  { host: 'pay.xend.global', port: 5173 },
+  { host: 'www.prydd.co', port: 443 },
+  { host: 'pay.prydd.co', port: 5173 },
 ];
 // Opt in only after the apex hosts entry and certificate trust are installed.
-// www is not interchangeable with the mobile passkey's xend.global RP ID.
+// www is not interchangeable with the mobile passkey's prydd.co RP ID.
 const requestedHost = process.env.PRYDD_CHECKOUT_HOST;
 const candidates = requestedHost
   ? [{ host: requestedHost, port: 443 }]
   : CANDIDATES;
 if (
   requestedHost &&
-  !['xend.global', ...CANDIDATES.map((c) => c.host)].includes(requestedHost)
+  !['prydd.co', ...CANDIDATES.map((c) => c.host)].includes(requestedHost)
 ) {
   throw new Error(
     'PRYDD_CHECKOUT_HOST must be a supported Prydd development host',

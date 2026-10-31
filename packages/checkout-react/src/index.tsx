@@ -17,7 +17,7 @@ export type {
 };
 
 export interface PryddPayButtonProps {
-  /** Exact checkout origin, e.g. "https://pay.xend.global". */
+  /** Exact checkout origin, e.g. "https://pay.prydd.co". */
   checkoutOrigin: string;
   /** Your server call that creates the intent and returns its reference. */
   createIntent: () => Promise<{ reference: string }>;

@@ -2,7 +2,7 @@ import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { PryddPayButton } from "../index";
 
-const ORIGIN = "https://pay.xend.global";
+const ORIGIN = "https://pay.prydd.co";
 const createIntent = () => Promise.resolve({ reference: "pi_react_1" });
 
 describe("PryddPayButton", () => {

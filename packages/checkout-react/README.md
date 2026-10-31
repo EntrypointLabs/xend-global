@@ -30,8 +30,8 @@ import { PryddPayButton } from "@prydd/checkout-react";
 export function Checkout() {
   return (
     <PryddPayButton
-      checkoutOrigin="https://pay.xend.global"
-      apiBase="https://api.xend.global"
+      checkoutOrigin="https://pay.prydd.co"
+      apiBase="https://api.prydd.co"
       createIntent={async () => {
         // Call YOUR server, which creates the intent. Money never travels
         // through the browser.

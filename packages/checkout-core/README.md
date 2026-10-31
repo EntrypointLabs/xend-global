@@ -23,8 +23,8 @@ Script tag (the minified IIFE exposes `window.PryddCheckout`):
 <div id="pay"></div>
 <script>
   PryddCheckout.mountPryddButton({
-    checkoutOrigin: "https://pay.xend.global",
-    apiBase: "https://api.xend.global",
+    checkoutOrigin: "https://pay.prydd.co",
+    apiBase: "https://api.prydd.co",
     mount: document.getElementById("pay"),
     createIntent: async () => {
       // Call YOUR server, which creates the intent. Money never travels
@@ -86,7 +86,7 @@ not post a result to it either.
   straight from the button with no sheet. `"redirect"` navigates the whole
   page. Webviews, Opera Mini and blocked popups fall back to redirect on their
   own, and any value the SDK does not recognise falls back to `"popup"`.
-- `apiBase`: origin of the Prydd API, e.g. `"https://api.xend.global"`. The
+- `apiBase`: origin of the Prydd API, e.g. `"https://api.prydd.co"`. The
   sheet reads the intent summary from it; without one, `"iframe"` and
   `"modal"` degrade to `"popup"`. Every origin you mount the button on must be
   allowed to read that endpoint cross-origin.

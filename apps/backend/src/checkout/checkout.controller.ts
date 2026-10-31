@@ -507,7 +507,7 @@ export class CheckoutController {
       sameSite: 'lax',
       path: '/',
       maxAge: ttlDays * 24 * 60 * 60 * 1000,
-      // Host-only: no Domain attribute. Same-origin /api on pay.xend.global
+      // Host-only: no Domain attribute. Same-origin /api on pay.prydd.co
       // keeps this a first-party credential unreadable to merchant-page JS.
     });
   }

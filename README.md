@@ -11,7 +11,7 @@ What Prydd is, and the vocabulary the code uses, is in [`CONTEXT.md`](./CONTEXT.
 | `apps/mobile`                | `@prydd/mobile`            | Expo React Native app for Android and iOS. See [`apps/mobile/README.md`](./apps/mobile/README.md).                                                              |
 | `apps/backend`               | `@prydd/backend`           | NestJS API. Consumer auth, Accounts, Spends, recovery, Pay with Prydd (merchants, intents, settlement, webhooks), console. Drizzle over Postgres, Redis, Kafka. |
 | `apps/relayer`               | `@prydd/relayer`           | Fee-payer relayer. A separate NestJS deployable holding only the fee-payer key, its own RPC access and an internal-auth secret (ADR 0012).                      |
-| `apps/checkout`              | `@prydd/checkout`          | The hosted checkout popup at pay.xend.global. Vite and React.                                                                                                   |
+| `apps/checkout`              | `@prydd/checkout`          | The hosted checkout popup at pay.prydd.co. Vite and React.                                                                                                      |
 | `packages/smart-account`     | `@prydd/smart-account`     | Owned adapter over the Squads Smart Account Program: address derivation and unsigned transaction builders for the 2-of-3 signer set (ADR 0025).                 |
 | `packages/checkout-core`     | `@prydd/checkout-core`     | Pay with Prydd button and result relay. Framework-agnostic, zero runtime dependencies, size-gated.                                                              |
 | `packages/checkout-react`    | `@prydd/checkout-react`    | React wrapper for the button.                                                                                                                                   |
@@ -103,19 +103,19 @@ npm run dev:mobile    # expo start in its own terminal, so the keyboard shortcut
 
 ## Ports
 
-| Service          | Port                                       | Where it is set                                                                                                                        |
-| ---------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend          | 8000 in the suite; 8008 standalone         | `PORT` in `apps/backend/.env.example`, and what `apps/checkout/vite.config.ts` proxies to                                              |
-| Relayer          | 8787                                       | `PORT` in `apps/relayer/.env.example`, the Joi default in `apps/relayer/src/config/config.module.ts`, `docker-compose.yml`             |
-| Checkout         | 5173, or 443 with a `www.xend.global` cert | `apps/checkout/vite.config.ts` serves on whichever mkcert cert is present under `apps/checkout/certs/`; with none, Vite's default 5173 |
-| Merchant         | 5174                                       | `apps/merchant/vite.config.ts`                                                                                                         |
-| ngrok inspector  | 4040                                       | ngrok default; tunnel forwards to backend port 8000                                                                                    |
-| Metro            | 8081                                       | Expo default; `scripts/dev.mjs` refuses to start if it is taken                                                                        |
-| Redis            | 6379                                       | `docker-compose.yml`                                                                                                                   |
-| Kafka            | 9092                                       | `docker-compose.yml`                                                                                                                   |
-| Postgres         | 5432                                       | `docker-compose.yml` (profile `postgres`)                                                                                              |
-| Backend debugger | 9229                                       | `nest start --debug`                                                                                                                   |
-| Relayer debugger | 9230                                       | `nest start --debug=9230`                                                                                                              |
+| Service          | Port                                    | Where it is set                                                                                                                        |
+| ---------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend          | 8000 in the suite; 8008 standalone      | `PORT` in `apps/backend/.env.example`, and what `apps/checkout/vite.config.ts` proxies to                                              |
+| Relayer          | 8787                                    | `PORT` in `apps/relayer/.env.example`, the Joi default in `apps/relayer/src/config/config.module.ts`, `docker-compose.yml`             |
+| Checkout         | 5173, or 443 with a `www.prydd.co` cert | `apps/checkout/vite.config.ts` serves on whichever mkcert cert is present under `apps/checkout/certs/`; with none, Vite's default 5173 |
+| Merchant         | 5174                                    | `apps/merchant/vite.config.ts`                                                                                                         |
+| ngrok inspector  | 4040                                    | ngrok default; tunnel forwards to backend port 8000                                                                                    |
+| Metro            | 8081                                    | Expo default; `scripts/dev.mjs` refuses to start if it is taken                                                                        |
+| Redis            | 6379                                    | `docker-compose.yml`                                                                                                                   |
+| Kafka            | 9092                                    | `docker-compose.yml`                                                                                                                   |
+| Postgres         | 5432                                    | `docker-compose.yml` (profile `postgres`)                                                                                              |
+| Backend debugger | 9229                                    | `nest start --debug`                                                                                                                   |
+| Relayer debugger | 9230                                    | `nest start --debug=9230`                                                                                                              |
 
 Two committed values disagree with this table and are worth knowing about: `apps/backend/.env.example` sets `RELAYER_URL=http://localhost:8080`, and `apps/checkout/vite.config.ts` proxies `/checkout` and `/v1` to `http://localhost:8008` when serving over TLS. Set `RELAYER_URL` to port 8787 and set `PRYDD_BACKEND_URL` to the backend URL when running standalone apps on another port. The combined launcher sets it automatically.
 

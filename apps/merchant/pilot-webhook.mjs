@@ -49,7 +49,7 @@ export function createPilotReceiver(secret) {
 async function main() {
   const key = process.env.PILOT_DEVNET_API_KEY;
   if (!key) throw new Error('PILOT_DEVNET_API_KEY is required');
-  const url = 'https://xend.global/pilot/webhook';
+  const url = 'https://prydd.co/pilot/webhook';
   async function api(path, method = 'GET', body) {
     const response = await fetch(`http://127.0.0.1:8008/v1/webhook_endpoints${path}`, {
       method,
