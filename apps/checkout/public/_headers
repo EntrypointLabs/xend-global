@@ -1,4 +1,4 @@
-# Security-header posture for the pay.xend.global static host (ADR 0016).
+# Security-header posture for the pay.prydd.co static host (ADR 0016).
 # Served by the CDN deploy target (Cloudflare Pages / Netlify _headers). If the
 # surface is ever fronted by a different host, apply this identical header set there.
 # Ownership note: ADR 0012 governs the backend API origin's CORS/COOP; this file

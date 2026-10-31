@@ -34,7 +34,7 @@ const WALLET = "GkP9xL7mQwR2sT4vB6nH8jC3dF5aZ1yU2eW4rK6tN9pM";
 
 export const SEED_USER = {
   id: "demo-consumer-0001",
-  email: "amara@xend.global",
+  email: "amara@prydd.co",
   walletAddress: WALLET,
   smart_account_address: WALLET,
 };
@@ -318,7 +318,7 @@ export function seedRecoveryKeys(): RecoveryKey[] {
     id: "rk-01",
     address: WALLET,
     channel: "email",
-    channelValue: "amara@xend.global",
+    channelValue: "amara@prydd.co",
     createdAt: new Date(Date.now() - 86_400_000 * 30).toISOString(),
     status: "active",
     removable: false,

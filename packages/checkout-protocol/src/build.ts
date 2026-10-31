@@ -10,7 +10,7 @@ import type {
 export const CHECKOUT_PROTOCOL_VERSION = 1 as const;
 
 /** The one origin the checkout surface is ever served from. */
-export const CHECKOUT_ORIGIN = 'https://pay.xend.global' as const;
+export const CHECKOUT_ORIGIN = 'https://pay.prydd.co' as const;
 
 export const CheckoutMessageType = {
   Ready: 'prydd.checkout.ready',

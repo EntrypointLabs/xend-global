@@ -113,7 +113,7 @@ A **Consumer** paying a **Merchant** from their **Balance** through **Checkout**
 _Avoid_: transaction, charge, order, purchase (in code)
 
 **Checkout**:
-The Prydd-hosted surface (pay.xend.global) where a **Consumer** approves a **Payment** with their **Passkey**, or with one tap when a **Session** is active. Sits next to card and Apple Pay buttons on the **Merchant**'s page.
+The Prydd-hosted surface (pay.prydd.co) where a **Consumer** approves a **Payment** with their **Passkey**, or with one tap when a **Session** is active. Sits next to card and Apple Pay buttons on the **Merchant**'s page.
 _Avoid_: payment page, widget, popup (in user-facing copy), iframe
 
 **Session**:

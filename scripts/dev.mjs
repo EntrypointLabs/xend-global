@@ -178,8 +178,8 @@ function checkoutPort() {
   const candidates = process.env.PRYDD_CHECKOUT_HOST
     ? [{ host: process.env.PRYDD_CHECKOUT_HOST, port: 443 }]
     : [
-        { host: "www.xend.global", port: 443 },
-        { host: "pay.xend.global", port: 5173 },
+        { host: "www.prydd.co", port: 443 },
+        { host: "pay.prydd.co", port: 5173 },
       ];
   const active = candidates.find(({ host }) =>
     [".pem", "-key.pem"].every((suffix) =>

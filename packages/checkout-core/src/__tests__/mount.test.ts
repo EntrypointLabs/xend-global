@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountPryddButton } from "../index";
 
-const ORIGIN = "https://pay.xend.global";
+const ORIGIN = "https://pay.prydd.co";
 
 interface FakeWindow {
   location: { href: string };

@@ -72,7 +72,7 @@ export interface RevokedKey {
 
 /**
  * The single key-issuance path. The ops script drives it today; the
- * merchants.xend.global portal drives it later. Test keys are instant and
+ * merchants.prydd.co portal drives it later. Test keys are instant and
  * ungated (KYB never blocks developer experience, only real money). The raw
  * key crosses this boundary exactly once and is never logged or persisted.
  */

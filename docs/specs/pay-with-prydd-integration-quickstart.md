@@ -4,7 +4,7 @@ Status: pilot
 Author: Pay with Prydd, 2026-07-11 (revised 2026-09-07)
 Scope: how a pilot merchant adds the Pay with Prydd button, creates a payment intent on their server, and confirms payment from the signed webhook. Runs end to end on devnet test mode. The server-side intent and webhook contracts are owned by the Pay with Prydd merchant API (see ADR 0017); this guide states the shapes the API serves today.
 
-Throughout, `PRYDD_API_BASE` is the base URL of the Pay with Prydd merchant API you were given with your keys (the checkout's own API for the pilot environment). The hosted checkout is `https://pay.xend.global`.
+Throughout, `PRYDD_API_BASE` is the base URL of the Pay with Prydd merchant API you were given with your keys (the checkout's own API for the pilot environment). The hosted checkout is `https://pay.prydd.co`.
 
 ## The one rule, first
 
@@ -19,7 +19,7 @@ Throughout, `PRYDD_API_BASE` is the base URL of the Pay with Prydd merchant API 
 <script src="https://unpkg.com/@prydd/checkout-core/dist/prydd-checkout.iife.js"></script>
 <script>
   PryddCheckout.mountPryddButton({
-    checkoutOrigin: "https://pay.xend.global",
+    checkoutOrigin: "https://pay.prydd.co",
     mount: document.getElementById("pay"),
     createIntent: async () => {
       const res = await fetch("/api/pay/intent", { method: "POST" });
@@ -43,7 +43,7 @@ npm install @prydd/checkout-react react
 import { PryddPayButton } from "@prydd/checkout-react";
 
 <PryddPayButton
-  checkoutOrigin="https://pay.xend.global"
+  checkoutOrigin="https://pay.prydd.co"
   createIntent={async () =>
     (await fetch("/api/pay/intent", { method: "POST" })).json()
   }
@@ -183,7 +183,7 @@ import { createPryddIntent } from "../actions/pay";
 export function Checkout({ cartId }: { cartId: string }) {
   return (
     <PryddPayButton
-      checkoutOrigin="https://pay.xend.global"
+      checkoutOrigin="https://pay.prydd.co"
       createIntent={() => createPryddIntent(cartId)}
       onResult={(result) => {
         // { reference, status }. Confirm server-side before fulfilling.

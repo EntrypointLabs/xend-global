@@ -3,7 +3,7 @@
  * onboarding model executed by hand: it creates/updates a Merchant profile,
  * stamps KYB after off-system checks, and issues test/live API keys through the
  * SAME gate the KeyIssuanceService uses (assertLiveKeyEligible), so the manual
- * pilot and the future merchants.xend.global portal can never drift.
+ * pilot and the future merchants.prydd.co portal can never drift.
  *
  * Usage:
  *   npx ts-node scripts/issue-merchant-key.ts --name "Acme" --display "Acme Store" --origin https://acme.example --mode test

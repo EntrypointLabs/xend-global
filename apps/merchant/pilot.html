@@ -14,7 +14,7 @@ const output = document.querySelector('#result');
 let idempotencyKey = crypto.randomUUID();
 document.querySelector('#order').addEventListener('change', () => { idempotencyKey = crypto.randomUUID(); });
 PryddCheckout.mountPryddButton({
-  checkoutOrigin: 'https://xend.global',
+  checkoutOrigin: 'https://prydd.co',
   apiBase: location.origin,
   presentation: new URLSearchParams(location.search).get('presentation') === 'redirect' ? 'redirect' : 'popup',
   mount: document.querySelector('#pay'),

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountPryddButton } from "../index";
 
-const ORIGIN = "https://pay.xend.global";
+const ORIGIN = "https://pay.prydd.co";
 const API = "https://api.prydd.test";
 
 interface FakeWindow {
@@ -276,7 +276,7 @@ describe("mountPryddButton inline ceremony", () => {
     (await armedConfirm()).click();
 
     const nonce = new URL(frame()!.src).searchParams.get("nonce")!;
-    postFromFrame(nonce, "pi_forged", "https://pay.xend.global.evil.test");
+    postFromFrame(nonce, "pi_forged", "https://pay.prydd.co.evil.test");
     postFromFrame(nonce, "pi_forged", "null");
 
     expect(onResult).not.toHaveBeenCalled();
@@ -332,7 +332,7 @@ describe("mountPryddButton inline ceremony", () => {
 
     const el = frame()!;
     const nonce = new URL(el.src).searchParams.get("nonce")!;
-    postReady(nonce, "https://pay.xend.global.evil.test");
+    postReady(nonce, "https://pay.prydd.co.evil.test");
     postReady(nonce, "null");
     postReady("n_not_ours");
 

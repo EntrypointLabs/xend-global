@@ -14,11 +14,11 @@ export interface CeremonyResult {
 
 /*
  * @privy-io/expo's linkWithPasskey takes relyingParty per call. The web SDK
- * uses the rp.id returned by Privy's authentication-options endpoint. The
- * installed SDK does not accept a relyingParty override. A live local probe
- * on www.xend.global returned rp.id=www.xend.global, whereas mobile signup
- * explicitly uses https://xend.global. Serve Checkout on the enrollment
- * domain and verify the returned rp.id; an extra ignored option cannot pin it.
+ * has no equivalent: it starts the ceremony without naming a relying party and
+ * uses the rp.id Privy returns. A live local probe on a www host returned that
+ * www host, not its registrable root, whereas mobile signup explicitly uses
+ * https://prydd.co. Verify the returned rp.id on pay.prydd.co before relying
+ * on app-made passkeys there; an extra ignored option cannot pin it.
  */
 /*
  * The wire carries transactions as base64 and the Privy Solana SDK takes and

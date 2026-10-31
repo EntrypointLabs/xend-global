@@ -48,7 +48,7 @@ describe('onRequest', () => {
     stubSummary({ merchantOrigin: MERCHANT });
     const ref = reference();
     const res = await onRequest(
-      context(`https://pay.xend.global/?nonce=n1&mode=iframe&intent=${ref}`),
+      context(`https://pay.prydd.co/?nonce=n1&mode=iframe&intent=${ref}`),
     );
 
     expect(res.headers.get('content-security-policy')).toBe(
@@ -63,7 +63,7 @@ describe('onRequest', () => {
   it('asks the API for exactly the public summary of that intent', async () => {
     const fetchMock = stubSummary({ merchantOrigin: MERCHANT });
     const ref = reference();
-    await onRequest(context(`https://pay.xend.global/?intent=${ref}`));
+    await onRequest(context(`https://pay.prydd.co/?intent=${ref}`));
 
     expect(fetchMock.mock.calls[0]![0]).toBe(
       `${API_BASE}/checkout/intents/${ref}`,
@@ -76,7 +76,7 @@ describe('onRequest', () => {
     const ref = reference();
     const res = await onRequest(
       context(
-        `https://pay.xend.global/?intent=${ref}&opener=${encodeURIComponent(secondOrigin)}`,
+        `https://pay.prydd.co/?intent=${ref}&opener=${encodeURIComponent(secondOrigin)}`,
       ),
     );
 
@@ -91,7 +91,7 @@ describe('onRequest', () => {
   it('keeps the static deny when the URL carries no intent', async () => {
     const fetchMock = stubSummary({ merchantOrigin: MERCHANT });
     const res = await onRequest(
-      context('https://pay.xend.global/?nonce=n1&mode=iframe'),
+      context('https://pay.prydd.co/?nonce=n1&mode=iframe'),
     );
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -104,7 +104,7 @@ describe('onRequest', () => {
   it('keeps the static deny for a malformed reference without calling the API', async () => {
     const fetchMock = stubSummary({ merchantOrigin: MERCHANT });
     const res = await onRequest(
-      context('https://pay.xend.global/?intent=../../etc/passwd'),
+      context('https://pay.prydd.co/?intent=../../etc/passwd'),
     );
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -114,13 +114,13 @@ describe('onRequest', () => {
   it('keeps the static deny when the summary is missing or has no origin', async () => {
     stubSummary({}, false);
     const notFound = await onRequest(
-      context(`https://pay.xend.global/?intent=${reference()}`),
+      context(`https://pay.prydd.co/?intent=${reference()}`),
     );
     expect(notFound.headers.get('x-frame-options')).toBe('DENY');
 
     stubSummary({ merchantOrigin: null });
     const noOrigin = await onRequest(
-      context(`https://pay.xend.global/?intent=${reference()}`),
+      context(`https://pay.prydd.co/?intent=${reference()}`),
     );
     expect(noOrigin.headers.get('content-security-policy')).toBe(
       "frame-ancestors 'none'",
@@ -130,7 +130,7 @@ describe('onRequest', () => {
   it('keeps the static deny when the API call fails outright', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('down')));
     const res = await onRequest(
-      context(`https://pay.xend.global/?intent=${reference()}`),
+      context(`https://pay.prydd.co/?intent=${reference()}`),
     );
     expect(res.headers.get('x-frame-options')).toBe('DENY');
   });
@@ -144,7 +144,7 @@ describe('onRequest', () => {
   ])('refuses to name %s as an ancestor', async (_label, value) => {
     stubSummary({ merchantOrigin: value });
     const res = await onRequest(
-      context(`https://pay.xend.global/?intent=${reference()}`),
+      context(`https://pay.prydd.co/?intent=${reference()}`),
     );
     expect(res.headers.get('content-security-policy')).toBe(
       "frame-ancestors 'none'",
@@ -157,7 +157,7 @@ describe('onRequest', () => {
     const ref = reference();
     const res = await onRequest(
       context(
-        `https://pay.xend.global/?intent=${ref}&opener=${encodeURIComponent(
+        `https://pay.prydd.co/?intent=${ref}&opener=${encodeURIComponent(
           'https://evil.example.com',
         )}`,
       ),
@@ -173,7 +173,7 @@ describe('onRequest', () => {
   it('leaves a subresource load on the static deny without asking the API', async () => {
     const fetchMock = stubSummary({ merchantOrigin: MERCHANT });
     const ref = reference();
-    const ctx = context(`https://pay.xend.global/assets/app.js?intent=${ref}`);
+    const ctx = context(`https://pay.prydd.co/assets/app.js?intent=${ref}`);
     ctx.request = new Request(ctx.request.url, {
       headers: { 'sec-fetch-dest': 'script' },
     });
@@ -189,7 +189,7 @@ describe('onRequest', () => {
   it('keeps directives the policy already carried', async () => {
     stubSummary({ merchantOrigin: MERCHANT });
     const ref = reference();
-    const ctx = context(`https://pay.xend.global/?intent=${ref}`);
+    const ctx = context(`https://pay.prydd.co/?intent=${ref}`);
     ctx.next = () =>
       Promise.resolve(
         new Response('<!doctype html>', {
@@ -211,7 +211,7 @@ describe('onRequest', () => {
 
   it('serves a repeat load of the same intent from the cached summary', async () => {
     const fetchMock = stubSummary({ merchantOrigin: MERCHANT });
-    const url = `https://pay.xend.global/?intent=${reference()}`;
+    const url = `https://pay.prydd.co/?intent=${reference()}`;
 
     const first = await onRequest(context(url));
     const second = await onRequest(context(url));
@@ -240,12 +240,12 @@ describe('onRequest', () => {
 
     await onRequest(
       context(
-        `https://pay.xend.global/?intent=${ref}&opener=${encodeURIComponent(firstOrigin)}`,
+        `https://pay.prydd.co/?intent=${ref}&opener=${encodeURIComponent(firstOrigin)}`,
       ),
     );
     const second = await onRequest(
       context(
-        `https://pay.xend.global/?intent=${ref}&opener=${encodeURIComponent(secondOrigin)}`,
+        `https://pay.prydd.co/?intent=${ref}&opener=${encodeURIComponent(secondOrigin)}`,
       ),
     );
 
@@ -259,12 +259,12 @@ describe('onRequest', () => {
     const fetchMock = stubSummary({ merchantOrigin: MERCHANT });
     const ref = reference();
     await onRequest({
-      ...context(`https://pay.xend.global/?intent=${ref}`),
+      ...context(`https://pay.prydd.co/?intent=${ref}`),
       env: {},
     });
 
     expect(fetchMock.mock.calls[0]![0]).toBe(
-      `https://pay.xend.global/checkout/intents/${ref}`,
+      `https://pay.prydd.co/checkout/intents/${ref}`,
     );
   });
 });

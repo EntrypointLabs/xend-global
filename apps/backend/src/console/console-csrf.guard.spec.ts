@@ -21,7 +21,7 @@ function makeContext(opts: {
   const locals: Record<string, unknown> = {};
   const req = {
     method: opts.method,
-    headers: { host: 'ops.xend.global', ...(opts.headers ?? {}) },
+    headers: { host: 'ops.prydd.co', ...(opts.headers ?? {}) },
     body: opts.body ?? {},
   };
   const res = { cookie, locals };
@@ -57,7 +57,7 @@ describe('ConsoleCsrfGuard', () => {
     const { context } = makeContext({
       method: 'POST',
       headers: {
-        origin: 'https://ops.xend.global',
+        origin: 'https://ops.prydd.co',
         cookie: `${CSRF_COOKIE}=abc123`,
       },
       body: { [CSRF_FIELD]: 'abc123' },
@@ -69,7 +69,7 @@ describe('ConsoleCsrfGuard', () => {
     const { context } = makeContext({
       method: 'POST',
       headers: {
-        referer: 'https://ops.xend.global/console/accounts',
+        referer: 'https://ops.prydd.co/console/accounts',
         cookie: `${CSRF_COOKIE}=abc123`,
       },
       body: { [CSRF_FIELD]: 'abc123' },
@@ -106,7 +106,7 @@ describe('ConsoleCsrfGuard', () => {
     const { context } = makeContext({
       method: 'POST',
       headers: {
-        origin: 'https://ops.xend.global',
+        origin: 'https://ops.prydd.co',
         cookie: `${CSRF_COOKIE}=abc123`,
       },
       body: { [CSRF_FIELD]: 'zzz999' },
@@ -119,7 +119,7 @@ describe('ConsoleCsrfGuard', () => {
   it('refuses a same-origin POST with no cookie at all', () => {
     const { context } = makeContext({
       method: 'POST',
-      headers: { origin: 'https://ops.xend.global' },
+      headers: { origin: 'https://ops.prydd.co' },
       body: { [CSRF_FIELD]: 'abc123' },
     });
     expect(() => new ConsoleCsrfGuard(config).canActivate(context)).toThrow(

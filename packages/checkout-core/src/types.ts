@@ -45,7 +45,7 @@ export type CheckoutPresentation = "iframe" | "modal" | "popup" | "redirect";
 export type ButtonTheme = "auto" | "light" | "dark";
 
 export interface PryddButtonConfig {
-  /** Exact checkout origin, e.g. "https://pay.xend.global". Compared by strict equality. */
+  /** Exact checkout origin, e.g. "https://pay.prydd.co". Compared by strict equality. */
   checkoutOrigin: string;
   /** Merchant-supplied server call that creates the intent and returns its reference. Money never travels client-side. */
   createIntent: () => Promise<{ reference: string }>;
@@ -56,7 +56,7 @@ export interface PryddButtonConfig {
   presentation?: CheckoutPresentation;
   theme?: ButtonTheme;
   /**
-   * Origin of the Prydd API, e.g. "https://api.xend.global". The sheet reads the
+   * Origin of the Prydd API, e.g. "https://api.prydd.co". The sheet reads the
    * merchant name and amount from it; without one, the sheet presentations
    * degrade to "popup".
    */

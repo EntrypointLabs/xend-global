@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listenForResult } from "../message-listener";
 
-const ORIGIN = "https://pay.xend.global";
+const ORIGIN = "https://pay.prydd.co";
 const REFERENCE = "pi_test_123";
 const NONCE = "abcdef0123456789";
 
@@ -65,8 +65,8 @@ describe("listenForResult", () => {
   });
 
   it.each([
-    ["substring-spoofed origin", ORIGIN, "https://pay.xend.global.evil.com"],
-    ["prefix-spoofed origin", ORIGIN, "https://evil.pay.xend.global"],
+    ["substring-spoofed origin", ORIGIN, "https://pay.prydd.co.evil.com"],
+    ["prefix-spoofed origin", ORIGIN, "https://evil.pay.prydd.co"],
     ["null origin", ORIGIN, "null"],
   ])("rejects %s", (_name, _expected, spoofOrigin) => {
     const onResult = vi.fn();
