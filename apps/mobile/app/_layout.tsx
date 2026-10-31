@@ -1,12 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Redirect, Slot, useSegments } from "expo-router";
-import {
-  AppState,
-  AppStateStatus,
-  Platform,
-  StyleSheet,
-  View,
-} from "react-native";
+import { AppState, AppStateStatus, Platform, View } from "react-native";
 
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
@@ -29,6 +23,7 @@ import * as Sentry from "@sentry/react-native";
 import Constants from "expo-constants";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import { FullWindowOverlay } from "react-native-screens";
 import {
   focusManager,
   QueryClient,
@@ -117,7 +112,6 @@ if (SENTRY_ENABLED) {
 function AuthLayout() {
   const segments = useSegments();
   const { isAuthenticated, needsContactEmail } = useAuth();
-  const { isLocked, isObscured } = useAppLock();
   const colorScheme = useColorScheme();
 
   // The screens are held apart from this component's own renders on purpose.
@@ -168,33 +162,39 @@ function AuthLayout() {
     return <Redirect href="/(tabs)" withAnchor />;
   }
 
-  // App lock: once signed in and out of the auth stack, the biometric unlock
-  // overlays the app rather than replacing it — the Slot (and whatever
-  // screen/modal was open) stays mounted underneath, so unlocking returns to
-  // exactly where the Consumer left off instead of resetting the navigator.
-  const showLock = isAuthenticated && !inAuthGroup && isLocked;
-  // Covers content the instant the app isn't active (e.g. the OS
-  // app-switcher snapshot), even during the grace period where `showLock`
-  // hasn't kicked in yet. Skipped once showLock is up — that already covers.
-  const showObscure =
-    isAuthenticated && !inAuthGroup && isObscured && !showLock;
-
   // Theming is driven by NativeWind (ThemedRoot's `dark` class) and
   // ScreenThemeProvider; the navigator inherits light/dark from the OS.
+  return screens;
+}
+
+// Sheets and native modals draw above the root view, so on iOS the cover has to
+// go in the window itself. Android has no equivalent: there it stays a view over
+// the root, and a native modal that is open will still show above it.
+const CoverHost = Platform.OS === "ios" ? FullWindowOverlay : React.Fragment;
+
+/**
+ * App lock: once signed in and out of the auth stack, the biometric unlock
+ * overlays the app rather than replacing it. Whatever screen or sheet was open
+ * stays mounted underneath, so unlocking returns to exactly where the Consumer
+ * left off instead of resetting the navigator.
+ *
+ * `isObscured` covers content the instant the app isn't active (e.g. the OS
+ * app-switcher snapshot), even during the grace period before the lock kicks in.
+ */
+function AppCover() {
+  const segments = useSegments();
+  const { isAuthenticated } = useAuth();
+  const { isLocked, isObscured } = useAppLock();
+
+  if (!isAuthenticated || segments[0] === "(auth)") return null;
+  if (!isLocked && !isObscured) return null;
+
   return (
-    <>
-      {screens}
-      {showObscure && (
-        <View style={StyleSheet.absoluteFill}>
-          <LoadingScreen />
-        </View>
-      )}
-      {showLock && (
-        <View style={StyleSheet.absoluteFill}>
-          <LockScreen />
-        </View>
-      )}
-    </>
+    <CoverHost>
+      <View className="absolute inset-0">
+        {isLocked ? <LockScreen /> : <LoadingScreen />}
+      </View>
+    </CoverHost>
   );
 }
 
@@ -249,9 +249,16 @@ function RootLayout() {
               <ActivityWatch />
               <AppLockProvider>
                 <BlurTargetProvider>
-                  <BottomSheetModalProvider>
-                    <AuthLayout />
-                  </BottomSheetModalProvider>
+                  {/* The New Architecture flattens layout-only views, which
+                      would leave every z-index in the app (tab bar, sheets,
+                      toasts) competing directly with AppCover. A view that
+                      can't be flattened keeps them all in here. */}
+                  <View collapsable={false} className="flex-1">
+                    <BottomSheetModalProvider>
+                      <AuthLayout />
+                    </BottomSheetModalProvider>
+                  </View>
+                  <AppCover />
                 </BlurTargetProvider>
               </AppLockProvider>
             </AuthProvider>
