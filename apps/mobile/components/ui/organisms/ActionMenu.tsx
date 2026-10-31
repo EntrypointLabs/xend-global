@@ -3,6 +3,7 @@ import { Modal, View, StyleSheet, Image } from "react-native";
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import Animated, { SlideInDown, SlideOutDown } from "react-native-reanimated";
 import { Typography } from "../atoms/Typography";
+import { SWAP_ENABLED } from "@/constants/Features";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useSendGate } from "@/hooks/useSendGate";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -34,12 +35,16 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
         onPress: () => gateSend(showSendModal),
         disabled: false,
       },
-      {
-        title: "Swap",
-        icon: require("@/assets/icons/swap.png"),
-        onPress: () => router.push("/swap"),
-        disabled: false,
-      },
+      ...(SWAP_ENABLED
+        ? [
+            {
+              title: "Swap",
+              icon: require("@/assets/icons/swap.png"),
+              onPress: () => router.push("/swap"),
+              disabled: false,
+            },
+          ]
+        : []),
       {
         title: "Prydd Card",
         icon: require("@/assets/icons/card.png"),

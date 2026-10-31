@@ -127,6 +127,18 @@ export const USDC_MINT_BY_CLUSTER = {
         HELIUS_WEBHOOK_SECRET: Joi.string().required(),
         HELIUS_WEBHOOK_ID: Joi.string().optional().allow(''),
 
+        // Bounds on the compute unit price, in micro-lamports, for transactions
+        // the settlement authority pays for. Recent fees set the price between
+        // them; an idle cluster or a failed read prices at the floor.
+        SOLANA_MIN_COMPUTE_UNIT_PRICE: Joi.number()
+          .integer()
+          .min(0)
+          .default(50_000),
+        SOLANA_MAX_COMPUTE_UNIT_PRICE: Joi.number()
+          .integer()
+          .min(Joi.ref('SOLANA_MIN_COMPUTE_UNIT_PRICE'))
+          .default(1_000_000),
+
         // Stablecoin mints — backend computes the Balance sum over this
         // set server-side. USDC is required and non-empty: the capacity
         // engine reads live USDC Balance for every money decision, so a

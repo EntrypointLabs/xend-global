@@ -17,3 +17,10 @@ export const HIDE_MY_WALLET_ENABLED =
 /** Kamino deposits. The position reads correctly; there is no way to fund it. */
 export const EARN_DEPOSITS_ENABLED =
   process.env.EXPO_PUBLIC_ENABLE_EARN_DEPOSITS === "true";
+
+/**
+ * Swap. It signs from the embedded wallet, but the Balance sits in the
+ * Account's vault, so it cannot reach the Consumer's money until it runs as a
+ * Spend.
+ */
+export const SWAP_ENABLED = process.env.EXPO_PUBLIC_ENABLE_SWAP === "true";

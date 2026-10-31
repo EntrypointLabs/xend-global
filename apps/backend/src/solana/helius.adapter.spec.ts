@@ -124,3 +124,46 @@ describe('HeliusAdapter webhook address-list serialization', () => {
     expect(serverAddresses).toEqual(['addrB']);
   });
 });
+
+describe('HeliusAdapter.bootstrapWebhook', () => {
+  function makeAdapter(cluster: string): HeliusAdapter {
+    const config = {
+      getOrThrow: (key: string) =>
+        ({
+          SOLANA_CLUSTER: cluster,
+          HELIUS_RPC_URL: 'https://mainnet.helius-rpc.com/?api-key=test',
+        })[key] ?? 'test-api-key',
+      get: () => undefined,
+    } as unknown as ConfigService;
+    const adapter = new HeliusAdapter(config);
+    adapter.onModuleInit();
+    return adapter;
+  }
+
+  it.each([
+    ['mainnet', 'enhanced'],
+    ['devnet', 'enhancedDevnet'],
+  ])('watches %s with a webhook of type %s', async (cluster, webhookType) => {
+    const fetchMock = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ webhookID: 'wh-new' }),
+      } as unknown as Response),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const id = await makeAdapter(cluster).bootstrapWebhook({
+      webhookURL: 'https://x/webhook',
+      initialAddresses: [],
+      authHeader: 'secret',
+    });
+
+    expect(id).toBe('wh-new');
+    const [, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    const body = JSON.parse(init.body as string) as { webhookType: string };
+    expect(body.webhookType).toBe(webhookType);
+  });
+});

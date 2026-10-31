@@ -14,7 +14,7 @@ Routes live under `app/` (expo-router).
 - **Receive**: address and QR from the Cash surface.
 - **Activity** (`(tabs)/history.tsx`): the unified feed, including merchant Payments and Account events.
 - **Settings** (`(tabs)/settings/`): address book, spending limits, Keys and Recovery (add and remove recovery emails and wallets, review and reject a staged change), replace a lost passkey, restore onto a new phone, connected Merchants with Session revocation, finish an above-limit Payment a Merchant is waiting on.
-- **Investments and Swap** (`investments/`, `swap/`): the non-spending tokens the Consumer holds, and a quoted swap between them.
+- **Investments and Swap** (`investments/`, `swap/`): the non-spending tokens the Consumer holds, and a quoted swap between them. Swap stays hidden unless `EXPO_PUBLIC_ENABLE_SWAP=true`, because it signs from the embedded wallet rather than spending from the Account.
 - **Previews**: `earn/`, `card/` and `plus/` render surfaces whose backing does not exist yet. See section 9 of `docs/prydd-master-context.md` before describing them anywhere.
 - **KYC** (`(modals)/kyc.tsx`, `app/api/kyc*.ts`): the one remaining Grid SDK carve-out, behind `GRID_API_KEY`.
 

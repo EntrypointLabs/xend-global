@@ -51,7 +51,13 @@ export function ActionPill({ items, containerStyle }: ActionPillProps) {
             // included) and a tap near the icon — not just on it — registers.
             className={cn(
               "items-center justify-center py-3",
-              isFirst ? "pl-5 pr-3.5" : isLast ? "pl-3.5 pr-5" : "px-3.5"
+              isFirst && isLast
+                ? "px-5"
+                : isFirst
+                  ? "pl-5 pr-3.5"
+                  : isLast
+                    ? "pl-3.5 pr-5"
+                    : "px-3.5"
             )}
           >
             <Icon isActive={item.isActive} size={24} />

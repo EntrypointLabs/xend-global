@@ -11,6 +11,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
+import { SWAP_ENABLED } from "@/constants/Features";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useSendGate } from "@/hooks/useSendGate";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
@@ -40,18 +41,22 @@ export default function InvestmentsScreen() {
 
   const actionItems = useMemo(
     () => [
-      {
-        icon: () => (
-          <View className="flex-row items-center gap-2">
-            <Ionicons name="swap-horizontal" size={20} color="black" />
-            <Typography weight="700" className="text-lg">
-              Swap
-            </Typography>
-          </View>
-        ),
-        onPress: () => router.push("/swap"),
-        accessibilityLabel: "Swap",
-      },
+      ...(SWAP_ENABLED
+        ? [
+            {
+              icon: () => (
+                <View className="flex-row items-center gap-2">
+                  <Ionicons name="swap-horizontal" size={20} color="black" />
+                  <Typography weight="700" className="text-lg">
+                    Swap
+                  </Typography>
+                </View>
+              ),
+              onPress: () => router.push("/swap"),
+              accessibilityLabel: "Swap",
+            },
+          ]
+        : []),
       {
         icon: () => (
           <View className="flex-row items-center gap-2">
@@ -155,7 +160,9 @@ function EmptyState({ onGetAssets }: { onGetAssets: () => void }) {
         There is nothing here yet
       </Typography>
       <Typography variant="body" className="text-black/40">
-        Deposit or swap tokens
+        {SWAP_ENABLED
+          ? "Deposit or swap tokens"
+          : "Assets you receive show up here"}
       </Typography>
 
       <HapticPressable
