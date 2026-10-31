@@ -40,12 +40,34 @@ export interface BankAccountProvider {
     bvn?: string;
   }): Promise<BankAccount>;
 }
+/** Authenticated read by the stable reference assigned before account creation. */
+export interface BankAccountReader {
+  retrieveAccount(
+    accountReference: string,
+    requestReference: string,
+  ): Promise<BankAccount>;
+}
 /** A customer-scoped balance observation, not an authorization to spend it. */
 export interface BankBalanceReader {
   getBalance(
     accountIdentifier: string,
     reference: string,
   ): Promise<{ amountMinor: string; currency: 'NGN'; observedAt: string }>;
+}
+/** Authenticated provider lookup. Observation alone is not customer settlement. */
+export interface BankTransactionObservation {
+  transactionId: string;
+  merchantId: string | null;
+  type: string;
+  status: string;
+  amountMinor: string;
+  feeMinor: string | null;
+  createdAt: string;
+  source: string;
+  evidence: 'authenticated_sandbox';
+}
+export interface BankTransactionReader {
+  getTransaction(transactionId: string): Promise<BankTransactionObservation>;
 }
 /** Read-only indicative valuation. This never authorizes an exchange or payout. */
 export interface BankUsdValuationReader {
