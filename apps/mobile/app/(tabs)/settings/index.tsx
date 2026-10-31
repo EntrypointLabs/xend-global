@@ -106,12 +106,12 @@ export default function SettingsScreen() {
         {
           label: "Contact support",
           icon: require("@/assets/icons/support.png"),
-          onPress: () => {},
+          onPress: () => router.push("/settings/support" as never),
         },
         {
           label: "Share your feedback",
           icon: require("@/assets/icons/feedback.png"),
-          onPress: () => {},
+          onPress: () => router.push("/settings/feedback" as never),
         },
         {
           label: "Follow @xend_global",

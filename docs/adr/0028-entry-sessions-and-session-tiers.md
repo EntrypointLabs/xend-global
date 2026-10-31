@@ -90,13 +90,16 @@ session is valid and the app must not throw it away over this.
 `entry-route-inventory.spec.ts` discovers every route the backend serves and
 requires each to be in exactly one of two lists, `ENTRY_ALLOWED` and
 `CLOSED_TO_ENTRY`. A new route in neither list fails the build until somebody reads
-the capability table and places it. As of this ADR the allowed list is the read
-endpoints (`GET /wallet/me`, balances, transfers, `GET /account/me`, recovery keys,
-pending changes, merchant **Sessions**), the two recovery starters (device and
-primary rotation: challenge, verify, start, next, submit), **Session** revocation and
-`POST /auth/signout`. Everything that spends, enrols a credential, changes the signer
-set or a policy, moves the contact address, closes the **Account** or changes where
-notices go is closed, by name, with the reason grouped above it.
+the capability table and places it. The allowed list is the read endpoints
+(`GET /wallet/me`, balances, transfers, `GET /account/me`, recovery keys, pending
+changes, merchant **Sessions**), the two recovery starters (device and primary
+rotation: challenge, verify, start, next, submit), **Session** revocation,
+`POST /auth/signout` and `POST /support/requests`. The support request is the one
+write here that is not a recovery step: a **Consumer** locked out of their
+**Account** has only this session to ask from, and the security notices tell them
+to contact support from the app. Everything that spends, enrols a credential,
+changes the signer set or a policy, moves the contact address, closes the **Account**
+or changes where notices go is closed, by name, with the reason grouped above it.
 
 The same spec asserts that no **Consumer** route is left on the raw `AuthGuard('jwt')`,
 which stamps no tier and would let an entry token through as nobody.

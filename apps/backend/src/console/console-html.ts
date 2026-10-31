@@ -36,6 +36,13 @@ const STYLES = `
   }
   th { background: #fafafa; font-weight: 600; }
   td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  td.nowrap { white-space: nowrap; }
+  td.prose { min-width: 32ch; }
+  td.prose div {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-width: 75ch;
+  }
   .muted { color: #6b7280; }
   .empty { color: #6b7280; padding: 24px 0; }
   form { margin: 0; }
@@ -77,6 +84,8 @@ export function layout(title: string, body: string): string {
   <a href="/console/deliveries">Deliveries</a>
   <a href="/console/keys">Keys</a>
   <a href="/console/accounts">Accounts</a>
+  <a href="/console/support">Support</a>
+  <a href="/console/feedback">Feedback</a>
 </nav>
 <h1>${escapeHtml(title)}</h1>
 ${body}

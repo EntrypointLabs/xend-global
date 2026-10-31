@@ -10,6 +10,7 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  check,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
@@ -1568,4 +1569,87 @@ export const capacityCounters = pgTable(
   (table) => ({
     expiresAtIdx: index('capacity_counters_expires_at_idx').on(table.expiresAt),
   }),
+);
+
+export const SUPPORT_TOPICS = [
+  'account_access',
+  'payments',
+  'earn_swap',
+  'other',
+] as const;
+export type SupportTopic = (typeof SUPPORT_TOPICS)[number];
+
+export const SUPPORT_REQUEST_STATUSES = ['open', 'closed'] as const;
+export type SupportRequestStatus = (typeof SUPPORT_REQUEST_STATUSES)[number];
+
+export const APP_PLATFORMS = ['ios', 'android'] as const;
+export type AppPlatform = (typeof APP_PLATFORMS)[number];
+
+/**
+ * support_requests: what a Consumer wrote to the team from the app.
+ *
+ * The table is the record. The copy mailed to the support inbox is a
+ * convenience on top of it, so a request is never lost to a mail outage.
+ */
+export const supportRequests = pgTable(
+  'support_requests',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    topic: text('topic', { enum: SUPPORT_TOPICS }).notNull(),
+    message: text('message').notNull(),
+    /**
+     * The contact address on the Account when the request was made, which is
+     * where the reply was promised. Null when there was none, and blanked when
+     * the Consumer deletes their account.
+     */
+    contactEmail: text('contact_email'),
+    appVersion: text('app_version'),
+    platform: text('platform', { enum: APP_PLATFORMS }),
+    status: text('status', { enum: SUPPORT_REQUEST_STATUSES })
+      .notNull()
+      .default('open'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('support_requests_user_time_idx').on(table.userId, table.createdAt),
+    index('support_requests_created_idx').on(table.createdAt),
+    check(
+      'support_requests_status_check',
+      sql`${table.status} IN ('open', 'closed')`,
+    ),
+  ],
+);
+
+/** feedback: what a Consumer told the team about the app, unprompted. */
+export const feedback = pgTable(
+  'feedback',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    message: text('message').notNull(),
+    /** One to five, or null when they wrote without rating. */
+    rating: integer('rating'),
+    appVersion: text('app_version'),
+    platform: text('platform', { enum: APP_PLATFORMS }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index('feedback_user_time_idx').on(table.userId, table.createdAt),
+    index('feedback_created_idx').on(table.createdAt),
+    check('feedback_rating_check', sql`${table.rating} BETWEEN 1 AND 5`),
+  ],
 );
