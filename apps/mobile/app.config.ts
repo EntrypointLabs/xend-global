@@ -6,7 +6,7 @@ import base from "./app.json";
  * The Sentry slugs are deployment identity, not source. They were checked in
  * as placeholders, which uploads a production build's source maps to whatever
  * project happens to answer to them. Reading them from the environment means a
- * release either names the real project or fails before it ships.
+ * release that uploads either names the real project or fails before it ships.
  */
 const SENTRY_PLUGIN = "@sentry/react-native/expo";
 
@@ -15,10 +15,11 @@ export default (): ExpoConfig => {
   const org = process.env.SENTRY_ORG;
   const project = process.env.SENTRY_PROJECT;
   const releasing = process.env.EAS_BUILD_PROFILE === "production";
+  const uploading = process.env.SENTRY_DISABLE_AUTO_UPLOAD !== "true";
 
-  if (releasing && (!org || !project)) {
+  if (releasing && uploading && (!org || !project)) {
     throw new Error(
-      "SENTRY_ORG and SENTRY_PROJECT are required for a production build"
+      "SENTRY_ORG and SENTRY_PROJECT are required for a production build that uploads source maps"
     );
   }
 

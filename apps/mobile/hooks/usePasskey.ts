@@ -66,10 +66,10 @@ function reportPasskeyFailure(stage: string, err: unknown) {
 }
 
 // Privy validates this as a full origin URL and derives the WebAuthn rp.id
-// from its registrable domain (the apex `xend.global`, not the www host). So
-// `xend.global/.well-known/assetlinks.json` must serve directly (200, no
+// from its registrable domain (the apex `prydd.co`, not the www host). So
+// `prydd.co/.well-known/assetlinks.json` must serve directly (200, no
 // redirect) — Digital Asset Links refuses to follow the apex→www redirect.
-const RELYING_PARTY = "https://xend.global";
+const RELYING_PARTY = "https://prydd.co";
 
 /**
  * Passkey enrollment backed by Privy. A passkey is linked to the already

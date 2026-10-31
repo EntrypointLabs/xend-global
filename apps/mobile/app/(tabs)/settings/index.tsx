@@ -25,8 +25,8 @@ import { useToast } from "@/contexts/ToastContext";
 import { useNotificationPreference } from "@/hooks/usePushRegistration";
 
 const PRYDD_TWITTER_URL = "https://twitter.com/xend_global";
-const PRIVACY_POLICY_URL = "https://xend.global/legal/privacy-policy";
-const TERMS_URL = "https://xend.global/legal/terms-of-service";
+const PRIVACY_POLICY_URL = "https://www.prydd.co/legal/privacy-policy";
+const TERMS_URL = "https://www.prydd.co/legal/terms-of-service";
 
 const APP_VERSION = Constants.expoConfig?.version ?? "1.0.0";
 const APP_BUILD =

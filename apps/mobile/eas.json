@@ -1,7 +1,8 @@
 {
   "cli": {
     "version": ">= 18.8.1",
-    "appVersionSource": "remote"
+    "appVersionSource": "remote",
+    "promptToConfigurePushNotifications": false
   },
   "build": {
     "development": {
@@ -20,11 +21,19 @@
         "buildType": "apk"
       },
       "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "false"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6829126490",
+        "appleTeamId": "YCKKUWB4WD",
+        "ascApiKeyPath": "./asc-api-key.p8",
+        "ascApiKeyId": "Z7YJ27P5ZG",
+        "ascApiKeyIssuerId": "32bdedcd-3c52-422a-8cd5-523b5f50041f"
+      }
+    }
   }
 }

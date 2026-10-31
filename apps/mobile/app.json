@@ -23,11 +23,8 @@
         ],
         "NSCameraUsageDescription": "This app requires camera access to verify your identity."
       },
-      "associatedDomains": [
-        "applinks:xend.global",
-        "webcredentials:xend.global"
-      ],
-      "bundleIdentifier": "com.giftedborg.xend",
+      "associatedDomains": ["applinks:prydd.co", "webcredentials:prydd.co"],
+      "bundleIdentifier": "xyz.entrypointlabs.prydd",
       "entitlements": {
         "com.apple.developer.devicecheck.appattest-environment": "production"
       }
