@@ -142,17 +142,17 @@ is in `.gitignore` and `.easignore`).
   "production": {
     "ios": {
       "ascAppId": "<ASC_APP_ID>",
-      "appleTeamId": "<EXPO_APPLE_TEAM_ID>",
-      "ascApiKeyPath": "./asc-api-key.p8",
-      "ascApiKeyId": "<EXPO_ASC_KEY_ID>",
-      "ascApiKeyIssuerId": "<EXPO_ASC_ISSUER_ID>"
+      "appleTeamId": "<EXPO_APPLE_TEAM_ID>"
     }
   }
 }
 ```
 
-`ascApiKeyPath` is resolved against `apps/mobile`. Copy or link the key there for
-a submission: `ln -sf "$HOME/asc-api-key.p8" ./asc-api-key.p8`. Commit the
+Submissions use the key assigned to the app on EAS, so CI needs no key file.
+Assign it once on expo.dev: the project → Credentials → iOS → the bundle ID →
+Service credentials → App Store Connect API Key for EAS Submit. Upload the `.p8`
+with its Key ID and Issuer ID. `eas credentials` does the same, but it asks for
+an Apple ID login even when the API key is set. Commit the
 `eas.json` change.
 
 ### 2.4 Create the signing credentials
