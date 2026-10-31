@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from "react";
 import { Image, View } from "react-native";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
+import { SWAP_ENABLED } from "@/constants/Features";
 import { useBalances } from "@/hooks/useBalances";
 import { useSwapQuote } from "@/hooks/useSwapQuote";
 import { useExecuteSwap } from "@/hooks/useExecuteSwap";
@@ -31,6 +32,12 @@ const SOL: SwapToken = {
   decimals: 9,
 };
 
+/** The route survives the flag, so a deep link can still land here. */
+export default function SwapRoute() {
+  if (!SWAP_ENABLED) return <Redirect href="/" />;
+  return <SwapScreen />;
+}
+
 /**
  * Swap between the Consumer's assets.
  *
@@ -38,7 +45,7 @@ const SOL: SwapToken = {
  * quote is wired, because showing a converted figure without a real rate would
  * be inventing a price the Consumer might act on.
  */
-export default function SwapScreen() {
+function SwapScreen() {
   const router = useRouter();
   const { showToast } = useToast();
   const { tokens } = useBalances();
