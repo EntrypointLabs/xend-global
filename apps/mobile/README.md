@@ -36,6 +36,14 @@ npm --workspace @prydd/mobile run ios
 
 iOS ships as `xyz.entrypointlabs.prydd` under the EntrypointLabs Apple team; Android stays `com.giftedborg.xend` ([ADR-0037](../../docs/adr/0037-ios-app-id-under-the-entrypointlabs-apple-team.md)). The console steps, the first-time signing credentials and the build-and-submit commands are in [`docs/specs/ios-testflight-runbook.md`](../../docs/specs/ios-testflight-runbook.md). After the first run, a new TestFlight build is `npx eas-cli@latest build --platform ios --profile production --auto-submit`.
 
+Pushing a tag that starts with `ios-` builds the production profile on EAS and submits it to TestFlight (`.eas/workflows/testflight.yml`). Tag a commit that has the workflow file:
+
+```bash
+git tag ios-1.0.0-3 && git push origin ios-1.0.0-3
+```
+
+To run it without a tag, from this folder: `npx eas-cli@latest workflow:run .eas/workflows/testflight.yml`.
+
 ## Environment
 
 `example.env` is the template. Every `EXPO_PUBLIC_*` value ships in the bundle.
