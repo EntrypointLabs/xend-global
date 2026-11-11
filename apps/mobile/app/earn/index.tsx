@@ -4,7 +4,7 @@ import { Image, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
-import { EARN_DEPOSITS_ENABLED } from "@/constants/Features";
+import { useFeature } from "@/hooks/useFeature";
 import { cn } from "@/utils/cn";
 import BalanceView from "@/components/BalanceView";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
@@ -25,6 +25,7 @@ import { EARN_PRODUCTS, useEarnPosition } from "@/hooks/useEarn";
  */
 export default function EarnScreen() {
   const router = useRouter();
+  const depositsEnabled = useFeature("earnDeposits");
   const { showReceiveModal, isReceiveModalVisible, hideAllModals } =
     useModalFlow();
   const address = useWalletAddress();
@@ -150,11 +151,11 @@ export default function EarnScreen() {
             accessibilityLabel="Deposit into Earn"
             // Opening Receive would fund the wallet, not the position, which
             // is not what a control labelled Deposit promises.
-            disabled={!EARN_DEPOSITS_ENABLED}
-            onPress={EARN_DEPOSITS_ENABLED ? showReceiveModal : () => {}}
+            disabled={!depositsEnabled}
+            onPress={depositsEnabled ? showReceiveModal : () => {}}
             className={cn(
               "flex-row items-center gap-2",
-              !EARN_DEPOSITS_ENABLED && "opacity-30"
+              !depositsEnabled && "opacity-30"
             )}
           >
             <Ionicons name="add" size={18} color="#000" />

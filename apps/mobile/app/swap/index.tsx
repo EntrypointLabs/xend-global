@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
-import { SWAP_ENABLED } from "@/constants/Features";
+import { useFeature } from "@/hooks/useFeature";
 import { useBalances } from "@/hooks/useBalances";
 import { useSwapQuote } from "@/hooks/useSwapQuote";
 import { useExecuteSwap } from "@/hooks/useExecuteSwap";
@@ -34,7 +34,8 @@ const SOL: SwapToken = {
 
 /** The route survives the flag, so a deep link can still land here. */
 export default function SwapRoute() {
-  if (!SWAP_ENABLED) return <Redirect href="/" />;
+  const enabled = useFeature("swap");
+  if (!enabled) return <Redirect href="/" />;
   return <SwapScreen />;
 }
 

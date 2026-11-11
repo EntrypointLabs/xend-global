@@ -193,7 +193,7 @@ One reverse-chronological feed per Account covering everything: Spends, Receives
 ### 3.5 Investments and Swap
 
 - **Investments** is a read of every token the Consumer holds that is not their spending balance. Nothing to opt into; it is a view of what they already own.
-- **Swap** between held assets, quoted and executed in-app. The receive side stays blank until a real quote arrives, because showing a converted figure without a real rate would invent a price someone might act on. Hidden for now; see section 9.
+- **Swap** between held assets, quoted and executed in-app. The receive side stays blank until a real quote arrives, because showing a converted figure without a real rate would invent a price someone might act on. It does not work yet; see section 9.
 
 ### 3.6 Earn
 
@@ -490,7 +490,7 @@ A marketing site must not contradict any line in this section.
 - **Prydd Plus does not exist.** Same.
 - **Earn deposits do not work.** The position reads correctly and there is no way to fund it.
 - **Hide my wallet does not work.** The toggle renders and there is nothing behind it.
-- **Swap is switched off.** The screen and live quotes are built, but it signs from the embedded wallet while the Balance sits in the Account's vault, so it cannot spend the Consumer's money. `EXPO_PUBLIC_ENABLE_SWAP` brings it back once it runs as a Spend.
+- **Swap does not work.** The screen and live quotes are built, but it signs from the embedded wallet while the Balance sits in the Account's vault, so it cannot spend the Consumer's money.
 - **Virtual bank accounts are not live.** The older documentation describing them belongs to a discontinued vendor integration.
 - **Naira payouts are switched off.** The adapter is built and gated, pending a settlement route that works natively on Solana.
 - **The merchant portal does not exist.** There is an internal operations console behind Basic Auth (read views plus webhook redelivery and the recovery-signer freeze) and a manual script.

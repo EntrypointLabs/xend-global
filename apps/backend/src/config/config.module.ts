@@ -396,6 +396,22 @@ export const USDC_MINT_BY_CLUSTER = {
           .falsy('0', '')
           .default(false),
 
+        // App kill switches, served by GET /features. True hides the feature
+        // in the app on its next launch or return to the foreground, with no
+        // new build. Nothing set means nothing is switched off.
+        SWAP_KILLSWITCH: Joi.boolean()
+          .truthy('1')
+          .falsy('0', '')
+          .default(false),
+        EARN_DEPOSITS_KILLSWITCH: Joi.boolean()
+          .truthy('1')
+          .falsy('0', '')
+          .default(false),
+        HIDE_MY_WALLET_KILLSWITCH: Joi.boolean()
+          .truthy('1')
+          .falsy('0', '')
+          .default(false),
+
         // Observability. GET /metrics requires this as a bearer token when
         // set; unset, the route is open outside production and absent in it.
         METRICS_SECRET: Joi.string().optional().allow(''),

@@ -14,7 +14,7 @@ Routes live under `app/` (expo-router).
 - **Receive**: address and QR from the Cash surface.
 - **Activity** (`(tabs)/history.tsx`): the unified feed, including merchant Payments and Account events.
 - **Settings** (`(tabs)/settings/`): address book, spending limits, Keys and Recovery (add and remove recovery emails and wallets, review and reject a staged change), replace a lost passkey, restore onto a new phone, connected Merchants with Session revocation, finish an above-limit Payment a Merchant is waiting on.
-- **Investments and Swap** (`investments/`, `swap/`): the non-spending tokens the Consumer holds, and a quoted swap between them. Swap stays hidden unless `EXPO_PUBLIC_ENABLE_SWAP=true`, because it signs from the embedded wallet rather than spending from the Account.
+- **Investments and Swap** (`investments/`, `swap/`): the non-spending tokens the Consumer holds, and a quoted swap between them. Swap does not work yet: it signs from the embedded wallet rather than spending from the Account.
 - **Previews**: `earn/`, `card/` and `plus/` render surfaces whose backing does not exist yet. See section 9 of `docs/prydd-master-context.md` before describing them anywhere.
 - **KYC** (`(modals)/kyc.tsx`, `app/api/kyc*.ts`): the one remaining Grid SDK carve-out, behind `GRID_API_KEY`.
 
@@ -48,18 +48,19 @@ To run it without a tag, from this folder: `npx eas-cli@latest workflow:run .eas
 
 `example.env` is the template. Every `EXPO_PUBLIC_*` value ships in the bundle.
 
-| Variable                        | What it is                                                                                                      |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `EXPO_PUBLIC_BACKEND_URL`       | The backend, `http://localhost:8000` locally; `10.0.2.2` on the Android emulator                                |
-| `EXPO_PUBLIC_PRIVY_APP_ID`      | Privy app id, the same value as the backend's `PRIVY_APP_ID`                                                    |
-| `EXPO_PUBLIC_PRIVY_CLIENT_ID`   | Privy client id for native builds                                                                               |
-| `EXPO_PUBLIC_USDC_MINT_ADDRESS` | The USDC mint. Must match the backend and the cluster; `utils/cluster.ts` rejects a mint from the other network |
-| `EXPO_PUBLIC_USDT_MINT_ADDRESS` | Optional; mainnet only, adds USDT to the headline Balance                                                       |
-| `EXPO_PUBLIC_SOLANA_RPC_URL`    | RPC for `.sol` resolution; never embed a provider key                                                           |
-| `EXPO_PUBLIC_DISABLE_APP_LOCK`  | Dev-only, skips the biometric app lock in dev builds                                                            |
-| `EXPO_PUBLIC_GRID_ENV`          | `sandbox` or `production`, KYC carve-out only                                                                   |
-| `GRID_API_KEY`                  | Server-side only, KYC carve-out                                                                                 |
-| `SENTRY_DNS_URL`                | Optional error reporting                                                                                        |
+| Variable                        | What it is                                                                                                                   |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `EXPO_PUBLIC_BACKEND_URL`       | The backend, `http://localhost:8000` locally; `10.0.2.2` on the Android emulator                                             |
+| `EXPO_PUBLIC_PRIVY_APP_ID`      | Privy app id, the same value as the backend's `PRIVY_APP_ID`                                                                 |
+| `EXPO_PUBLIC_PRIVY_CLIENT_ID`   | Privy client id for native builds                                                                                            |
+| `EXPO_PUBLIC_USDC_MINT_ADDRESS` | The USDC mint. Must match the backend and the cluster; `utils/cluster.ts` rejects a mint from the other network              |
+| `EXPO_PUBLIC_USDT_MINT_ADDRESS` | Optional; mainnet only, adds USDT to the headline Balance                                                                    |
+| `EXPO_PUBLIC_SOLANA_RPC_URL`    | RPC for `.sol` resolution; never embed a provider key                                                                        |
+| `EXPO_PUBLIC_ENABLE_*`          | Feature switches, on unless `false`. The backend's `*_KILLSWITCH` keys turn them off at runtime; see `constants/Features.ts` |
+| `EXPO_PUBLIC_DISABLE_APP_LOCK`  | Dev-only, skips the biometric app lock in dev builds                                                                         |
+| `EXPO_PUBLIC_GRID_ENV`          | `sandbox` or `production`, KYC carve-out only                                                                                |
+| `GRID_API_KEY`                  | Server-side only, KYC carve-out                                                                                              |
+| `SENTRY_DNS_URL`                | Optional error reporting                                                                                                     |
 
 `utils/cluster.ts` reads `EXPO_PUBLIC_SOLANA_CLUSTER` and **defaults to mainnet**; set it to `devnet` for a devnet build. It is not in `example.env` yet, so a copied `.env` with the devnet mint and no cluster value targets mainnet and logs a mint mismatch.
 
