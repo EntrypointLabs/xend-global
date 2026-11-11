@@ -17,7 +17,13 @@ export const SETTLEMENT_PROVIDERS = Symbol('SettlementProviders');
  * ships the Blockradar adapter by APPENDING it to the SETTLEMENT_PROVIDERS
  * factory array, not by extending this type.
  */
-export type SettlementProviderName = 'direct_usdc' | 'blockradar';
+export type SettlementProviderName = 'direct_usdc' | 'blockradar' | 'paj';
+
+/** A Nigerian bank account a naira settlement is paid out to. */
+export interface SettlementBankAccount {
+  bankCode: string;
+  accountNumber: string;
+}
 
 export interface SettlementProviderCapabilities {
   provider: SettlementProviderName;
@@ -71,6 +77,7 @@ export interface SettlementProvider {
   provision(params: {
     merchantId: string;
     merchantAddress?: string;
+    bankAccount?: SettlementBankAccount;
   }): Promise<ProvisionedSettlementEndpoint>;
 
   /**

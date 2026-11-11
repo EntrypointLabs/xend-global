@@ -36,7 +36,11 @@ import {
 } from './merchant.errors';
 import { devnetExecutionEnabled } from './devnet-execution';
 import { MerchantProfileUpdate } from './profile.dtos';
-import { toApiKeyView, toMerchantView } from './merchant-portal.view';
+import {
+  toApiKeyView,
+  toBankAccountView,
+  toMerchantView,
+} from './merchant-portal.view';
 
 const Registration = z.object({
   name: z.string().trim().min(2).max(100),
@@ -282,8 +286,15 @@ export class MerchantPortalController {
     return {
       merchant: toMerchantView(merchant),
       destination: destination
-        ? { address: destination.address, provider: destination.provider }
+        ? {
+            address: destination.address,
+            provider: destination.provider,
+            currency: destination.currency,
+            bankAccount: toBankAccountView(destination.payoutConfig),
+          }
         : null,
+      nairaSettlementAvailable:
+        this.config.get<boolean>('PAJ_ENABLED') === true,
       keys: keys.map(toApiKeyView),
       payments: payments.map((payment) => ({
         id: payment.id,

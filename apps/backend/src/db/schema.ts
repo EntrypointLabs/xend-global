@@ -144,6 +144,7 @@ export const webhookDeliveryStatusEnum = pgEnum('webhook_delivery_status', [
 export const settlementProviderEnum = pgEnum('settlement_provider', [
   'direct_usdc',
   'blockradar',
+  'paj',
 ]);
 
 // Discriminates how a webhook delivery was materialized: 'event' rows are

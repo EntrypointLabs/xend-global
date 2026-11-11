@@ -7,6 +7,8 @@ import {
   UPSTREAM_FX_QUOTE_PROVIDER,
 } from './fx-quote-provider.interface';
 import { PartnerFxAdapter } from './partner-fx.adapter';
+import { PajFxAdapter } from './paj-fx.adapter';
+import { PajModule } from '../settlement/providers/paj/paj.module';
 import { CachedFxQuoteProvider } from './cached-fx-quote.provider';
 
 /**
@@ -15,19 +17,29 @@ import { CachedFxQuoteProvider } from './cached-fx-quote.provider';
  * adapter (ADR 0010). Swapping the partner is a single edit here.
  */
 @Module({
-  imports: [RedisModule],
+  imports: [RedisModule, PajModule],
   providers: [
     PartnerFxAdapter,
     BlockradarFxAdapter,
+    PajFxAdapter,
     {
       provide: UPSTREAM_FX_QUOTE_PROVIDER,
-      inject: [ConfigService, PartnerFxAdapter, BlockradarFxAdapter],
+      inject: [
+        ConfigService,
+        PartnerFxAdapter,
+        BlockradarFxAdapter,
+        PajFxAdapter,
+      ],
       useFactory: (
         config: ConfigService,
         partner: PartnerFxAdapter,
         blockradar: BlockradarFxAdapter,
-      ) =>
-        config.get('FX_QUOTE_SOURCE') === 'blockradar' ? blockradar : partner,
+        paj: PajFxAdapter,
+      ) => {
+        const source = config.get<string>('FX_QUOTE_SOURCE');
+        if (source === 'paj') return paj;
+        return source === 'blockradar' ? blockradar : partner;
+      },
     },
     CachedFxQuoteProvider,
     { provide: FX_QUOTE_PROVIDER, useExisting: CachedFxQuoteProvider },
