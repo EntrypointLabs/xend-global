@@ -279,7 +279,7 @@ export const USDC_MINT_BY_CLUSTER = {
         // quote inside the window rather than misprice.
         FX_PARTNER_QUOTE_URL: Joi.string().uri().optional().allow(''),
         FX_QUOTE_SOURCE: Joi.string()
-          .valid('partner', 'blockradar')
+          .valid('partner', 'blockradar', 'paj')
           .default('partner'),
         FX_PILOT_STATIC_RATE: Joi.string()
           .pattern(/^\d+(\.\d+)?$/)
@@ -377,6 +377,21 @@ export const USDC_MINT_BY_CLUSTER = {
         BLOCKRADAR_MASTER_WALLET_ID: Joi.string().optional().allow(''),
         BLOCKRADAR_REFUND_SUPPORTED: Joi.boolean().default(false),
         BLOCKRADAR_SOLANA_NATIVE_ENABLED: Joi.boolean().default(false),
+        // PAJ naira settlement. Enabling it routes NGN Merchants to PAJ ahead
+        // of Blockradar and mounts POST /webhooks/paj, so both secrets are
+        // required at boot from that point on.
+        PAJ_ENABLED: Joi.boolean().default(false),
+        PAJ_API_BASE: Joi.string().uri().default('https://api.paj.cash'),
+        PAJ_API_KEY: Joi.string().when('PAJ_ENABLED', {
+          is: true,
+          then: Joi.required(),
+          otherwise: Joi.optional().allow(''),
+        }),
+        PAJ_WEBHOOK_SECRET: Joi.string().when('PAJ_ENABLED', {
+          is: true,
+          then: Joi.required(),
+          otherwise: Joi.optional().allow(''),
+        }),
         // Operator toggle: acknowledge inbound off-ramp webhooks without
         // verifying, parsing, or writing.
         SETTLEMENT_WEBHOOK_KILLSWITCH: Joi.boolean()
