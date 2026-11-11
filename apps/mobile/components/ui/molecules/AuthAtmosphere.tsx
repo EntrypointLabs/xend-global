@@ -257,7 +257,7 @@ export function AuthAtmosphere({ variant = "hero" }: { variant?: Variant }) {
 
 const styles = StyleSheet.create({
   photo: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     width: "100%",
     height: "100%",
   },
