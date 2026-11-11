@@ -81,7 +81,9 @@ export const ThemedTextInput = forwardRef<TextInput, ThemedTextInputProps>(
       >
         <TextInput
           ref={ref}
-          className="flex-1 text-base"
+          // Size only, no leading: a line height on an iOS TextInput sets the
+          // text below centre and clips its descenders.
+          className="flex-1 text-[1rem]"
           // DYNAMIC-COLOR (theme-driven text color from ScreenThemeContext)
           style={[{ color: textColor, paddingVertical: 0 }, inputStyle]}
           placeholderTextColor={
