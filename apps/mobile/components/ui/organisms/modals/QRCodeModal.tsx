@@ -5,7 +5,7 @@ import {
   BottomSheetView,
   BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
-import { HIDE_MY_WALLET_ENABLED } from "@/constants/Features";
+import { useFeature } from "@/hooks/useFeature";
 import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
 import QRCode from "react-native-qrcode-svg";
 import * as Clipboard from "expo-clipboard";
@@ -27,6 +27,7 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
     const snapPoints = useMemo(() => ["94%"], []);
     const { showToast } = useToast();
     const [isHideWalletEnabled, setIsHideWalletEnabled] = useState(false);
+    const hideMyWalletEnabled = useFeature("hideMyWallet");
 
     const renderBackdrop = useCallback(
       (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
@@ -92,7 +93,7 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
 
           <View className="h-full flex-1" />
 
-          {HIDE_MY_WALLET_ENABLED && (
+          {hideMyWalletEnabled && (
             <View className="mx-6 mb-7 flex-row items-center justify-between">
               <View className="flex-row items-center px-2">
                 <MaterialCommunityIcons

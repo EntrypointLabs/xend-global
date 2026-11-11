@@ -21,6 +21,7 @@ import {
   SETTLEMENT_AUTHORITY_SIGNER,
   type SettlementAuthoritySigner,
 } from '../settlement/settlement-authority.interface';
+import { withPriorityFee } from '../solana/priority-fee';
 import { AccountCreationError } from './account.errors';
 import {
   type ProposalState,
@@ -133,6 +134,14 @@ export class Web3ProvisioningChain implements ProvisioningChain, OnModuleInit {
     blockhash: string;
     lastValidBlockHeight: number;
   }> {
+    const payerKey = new PublicKey(this.authority.address);
+    const instructions = await withPriorityFee(
+      this.rpc,
+      this.config,
+      payerKey,
+      params.instructions,
+    );
+
     let blockhash: string;
     let lastValidBlockHeight: number;
     try {
@@ -145,9 +154,9 @@ export class Web3ProvisioningChain implements ProvisioningChain, OnModuleInit {
     }
 
     const message = new TransactionMessage({
-      payerKey: new PublicKey(this.authority.address),
+      payerKey,
       recentBlockhash: blockhash,
-      instructions: params.instructions,
+      instructions,
     }).compileToV0Message();
 
     return {

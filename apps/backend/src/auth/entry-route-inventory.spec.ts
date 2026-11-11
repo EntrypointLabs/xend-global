@@ -147,6 +147,7 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /internal/api_keys/:id/revoke',
   'POST /webhooks/helius',
   'GET /health',
+  'GET /features',
   'GET /metrics',
   'GET /v1/webhook_endpoints',
   'POST /v1/webhook_endpoints',

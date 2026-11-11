@@ -8,6 +8,7 @@ import { ScreenLayout } from "@/components/ui/layout";
 import { SendModal } from "@/components/ui/organisms/modals/SendModal";
 import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
+import { useFeature } from "@/hooks/useFeature";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { BalanceChart } from "@/components/ui/organisms/BalanceChart";
 import { HomeBanners } from "@/components/ui/organisms/HomeBanners";
@@ -70,6 +71,7 @@ const SECTION_GAP = 21;
 
 function HomeScreenContent() {
   const router = useRouter();
+  const swapEnabled = useFeature("swap");
   const { size } = useResponsiveLayout();
   const {
     showReceiveModal,
@@ -209,7 +211,9 @@ function HomeScreenContent() {
         >
           <ActionButton primary label="Add money" onPress={showReceiveModal} />
           <ActionButton label="Send" onPress={() => gateSend(showSendModal)} />
-          <ActionButton label="Swap" onPress={() => router.push("/swap")} />
+          {swapEnabled && (
+            <ActionButton label="Swap" onPress={() => router.push("/swap")} />
+          )}
         </View>
 
         <View
@@ -232,7 +236,11 @@ function HomeScreenContent() {
           <BalanceTile
             title="Crypto"
             amount={formatMoney(portfolio.investmentsUsd)}
-            hint={!known || holdings.length > 0 ? null : "Buy your first asset"}
+            hint={
+              !swapEnabled || !known || holdings.length > 0
+                ? null
+                : "Buy your first asset"
+            }
             change={hidden ? null : cryptoChange24h(holdings)}
             hidden={hidden}
             onPress={() => router.push("/investments")}
@@ -275,7 +283,7 @@ function HomeScreenContent() {
                   onPress={() => router.push("/earn")}
                 />
               )}
-              {holdings.length < HOME_ROW_COUNT - 1 && (
+              {swapEnabled && holdings.length < HOME_ROW_COUNT - 1 && (
                 <PromptRow
                   icon="add"
                   label="Buy another asset"
@@ -302,7 +310,9 @@ function HomeScreenContent() {
               weight="500"
               className="mt-1 text-center text-sm text-black/40"
             >
-              Money you add and assets you buy show up here
+              {swapEnabled
+                ? "Money you add and assets you buy show up here"
+                : "Money you add shows up here"}
             </Typography>
           </View>
         )}
