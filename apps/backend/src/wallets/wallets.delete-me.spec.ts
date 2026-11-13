@@ -5,25 +5,36 @@ import type { DbService } from '../db/db.service';
 import type { TokenPriceProvider } from '../prices/token-price.interface';
 import type { TokenMetadataProvider } from '../tokens/token-metadata.interface';
 import type { SolanaRpc, TokenBalance } from '../solana/solana-rpc.interface';
-import { smartAccounts, users } from '../db/schema';
+import { smartAccounts, supportRequests, users } from '../db/schema';
 
 /**
  * Integration tests for WalletsService.deleteMe (mounted at DELETE
  * /wallet/me). The fake DB models `select().from(smartAccounts)` as
- * match-all (same posture as wallets.me.spec.ts) and tracks `update(users)`
- * calls against the seeded store so assertions can inspect what actually
- * got written.
+ * match-all (same posture as wallets.me.spec.ts) and applies every write to
+ * the seeded store so assertions can inspect what actually got written. It
+ * holds one Consumer, so match-all is that Consumer; whose rows a delete
+ * reaches is pinned against real SQL in consumer-messages.pg.spec.ts.
  */
 
 type SmartAccountsRow = typeof smartAccounts.$inferSelect;
 type UsersRow = typeof users.$inferSelect;
+type SupportRequestsRow = typeof supportRequests.$inferSelect;
 
 interface FakeStore {
   smartAccounts: SmartAccountsRow[];
   users: UsersRow[];
+  supportRequests: SupportRequestsRow[];
+  /** Writes made with no transaction open around them. */
+  writesOutsideTransaction: number;
+  /** Set to fail the write that takes the reply address off support requests. */
+  failSupportUpdate?: Error;
 }
 
 function makeFakeDb(store: FakeStore): DbService {
+  let open = false;
+  const wrote = () => {
+    if (!open) store.writesOutsideTransaction += 1;
+  };
   const client = {
     select: () => ({
       from: (tbl: unknown) => ({
@@ -38,6 +49,7 @@ function makeFakeDb(store: FakeStore): DbService {
     update: (tbl: unknown) => ({
       set: (values: Record<string, unknown>) => ({
         where: () => {
+          wrote();
           if (tbl === users) {
             store.users = store.users.map((u) => ({ ...u, ...values }));
           }
@@ -47,12 +59,34 @@ function makeFakeDb(store: FakeStore): DbService {
               ...values,
             }));
           }
+          if (tbl === supportRequests) {
+            if (store.failSupportUpdate) {
+              return Promise.reject(store.failSupportUpdate);
+            }
+            store.supportRequests = store.supportRequests.map((r) => ({
+              ...r,
+              ...values,
+            }));
+          }
           return Promise.resolve();
         },
       }),
     }),
   };
-  return { client } as unknown as DbService;
+  // Rolls the store back when the work throws, as the database would.
+  const withTransaction = async <T>(fn: () => Promise<T>): Promise<T> => {
+    const staged = structuredClone(store);
+    open = true;
+    try {
+      return await fn();
+    } catch (err) {
+      Object.assign(store, staged);
+      throw err;
+    } finally {
+      open = false;
+    }
+  };
+  return { client, withTransaction } as unknown as DbService;
 }
 
 function makeService(opts: {
@@ -87,6 +121,21 @@ function makeService(opts: {
         recoveryReleaseFrozenAt: null,
       },
     ],
+    supportRequests: [
+      {
+        id: 'sr_1',
+        userId: 'u_1',
+        topic: 'payments',
+        message: 'A payment did not arrive.',
+        contactEmail: 'consumer@example.com',
+        appVersion: null,
+        platform: null,
+        status: 'closed',
+        createdAt: new Date('2026-02-03'),
+        closedAt: new Date('2026-02-04'),
+      },
+    ],
+    writesOutsideTransaction: 0,
   };
   const db = makeFakeDb(store);
   const solana = {
@@ -139,6 +188,48 @@ describe('WalletsService.deleteMe', () => {
     // again later, instead of hitting a stale unique-constraint conflict.
     expect(store.smartAccounts[0].walletAddress).toBe('deleted-sa_1');
     expect(store.smartAccounts[0].providerUserId).toBe('deleted-sa_1');
+  });
+
+  it('keeps what they wrote to support, with the reply address taken off it', async () => {
+    const { service, store } = makeService({ tokens: [] });
+
+    await service.deleteMe('u_1');
+
+    expect(store.supportRequests).toEqual([
+      expect.objectContaining({
+        id: 'sr_1',
+        userId: 'u_1',
+        message: 'A payment did not arrive.',
+        status: 'closed',
+        contactEmail: null,
+      }),
+    ]);
+  });
+
+  it('leaves the reply address while a balance remains', async () => {
+    const { service, store } = makeService({
+      tokens: [{ mint: usdcMint, amountRaw: 1n, decimals: 6 }],
+    });
+
+    await expect(service.deleteMe('u_1')).rejects.toBeInstanceOf(
+      AccountHasBalanceError,
+    );
+
+    expect(store.supportRequests[0].contactEmail).toBe('consumer@example.com');
+  });
+
+  it('writes all of it in one transaction, so a failure leaves the account as it was', async () => {
+    // Closing the account locks the Consumer out. Done first and on its own,
+    // a later write failing would leave them unable to sign in to finish.
+    const { service, store } = makeService({ tokens: [] });
+    store.failSupportUpdate = new Error('connection reset');
+
+    await expect(service.deleteMe('u_1')).rejects.toThrow('connection reset');
+
+    expect(store.writesOutsideTransaction).toBe(0);
+    expect(store.users[0].deletedAt).toBeNull();
+    expect(store.users[0].email).toBe('consumer@example.com');
+    expect(store.supportRequests[0].contactEmail).toBe('consumer@example.com');
   });
 
   it('treats an all-zero multi-mint balance list as deletable', async () => {

@@ -52,6 +52,13 @@ import {
   seedWallet,
 } from "@/utils/devSeed";
 import { demoFiat } from "@/utils/devSeedFiat";
+import {
+  FeedbackResponseSchema,
+  SupportRequestResponseSchema,
+  type FeedbackInput,
+  type SupportRequestInput,
+  type SupportRequestResponse,
+} from "@/utils/support";
 
 /**
  * /auth/exchange request + response. Mirrors `ExchangeRequestSchema` and
@@ -1655,6 +1662,40 @@ class BackendClient {
       auth: true,
     });
     return DeleteAccountResponseSchema.parse(raw);
+  }
+
+  /**
+   * POST /support/requests: sends the team a message. Open to an email-only
+   * session, because a Consumer locked out of their Account is exactly who
+   * needs it.
+   */
+  async contactSupport(
+    input: SupportRequestInput
+  ): Promise<SupportRequestResponse> {
+    if (SEED_DEMO) {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      return { id: "demo-support-1", replyTo: null };
+    }
+    const raw = await this.request<unknown>("/support/requests", {
+      method: "POST",
+      body: JSON.stringify(input),
+      auth: true,
+    });
+    return SupportRequestResponseSchema.parse(raw);
+  }
+
+  /** POST /feedback */
+  async shareFeedback(input: FeedbackInput): Promise<void> {
+    if (SEED_DEMO) {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      return;
+    }
+    const raw = await this.request<unknown>("/feedback", {
+      method: "POST",
+      body: JSON.stringify(input),
+      auth: true,
+    });
+    FeedbackResponseSchema.parse(raw);
   }
 
   /** POST /transfers/prepare — backend builds an unsigned v0 transaction

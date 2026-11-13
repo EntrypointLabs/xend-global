@@ -15,8 +15,9 @@ export class ConsoleMailer implements Mailer {
   private readonly logger = new Logger(ConsoleMailer.name);
 
   send(mail: OutgoingMail): Promise<void> {
+    const replyTo = mail.replyTo ? ` reply_to=${mail.replyTo}` : '';
     this.logger.warn(
-      `mail.console to=${mail.to} subject=${JSON.stringify(mail.subject)}\n${mail.text}`,
+      `mail.console to=${mail.to}${replyTo} subject=${JSON.stringify(mail.subject)}\n${mail.text}`,
     );
     return Promise.resolve();
   }

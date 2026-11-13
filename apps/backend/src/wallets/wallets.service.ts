@@ -10,7 +10,12 @@ import type {
   TokenPriceProvider,
 } from '../prices/token-price.interface';
 import type { TokenMetadata } from '../tokens/token-metadata.interface';
-import { smartAccounts, squadsAccounts, users } from '../db/schema';
+import {
+  smartAccounts,
+  squadsAccounts,
+  supportRequests,
+  users,
+} from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import type { SolanaRpc, TokenBalance } from '../solana/solana-rpc.interface';
@@ -193,6 +198,13 @@ export class WalletsService {
    * the new user if the same Privy identity signs in again later. Leaving
    * the old row's uniques intact would turn that re-registration into an
    * unhandled 500 instead of a clean new account.
+   *
+   * The reply address on anything they wrote to support goes with them. What
+   * they wrote to support and as feedback stays, attached to nothing but the
+   * anonymized user row.
+   *
+   * One transaction, so a failure part way leaves an account that can still
+   * sign in and try again, rather than one locked out with half of this done.
    */
   async deleteMe(userId: string): Promise<DeleteAccountResponse> {
     const [account] = await this.db.client
@@ -225,21 +237,28 @@ export class WalletsService {
       }
     }
 
-    await this.db.client
-      .update(users)
-      .set({
-        email: `deleted-${userId}@deleted.prydd.internal`,
-        deletedAt: new Date(),
-      })
-      .where(eq(users.id, userId));
+    await this.db.withTransaction(async () => {
+      await this.db.client
+        .update(users)
+        .set({
+          email: `deleted-${userId}@deleted.prydd.internal`,
+          deletedAt: new Date(),
+        })
+        .where(eq(users.id, userId));
 
-    await this.db.client
-      .update(smartAccounts)
-      .set({
-        walletAddress: `deleted-${account.id}`,
-        providerUserId: `deleted-${account.id}`,
-      })
-      .where(eq(smartAccounts.id, account.id));
+      await this.db.client
+        .update(smartAccounts)
+        .set({
+          walletAddress: `deleted-${account.id}`,
+          providerUserId: `deleted-${account.id}`,
+        })
+        .where(eq(smartAccounts.id, account.id));
+
+      await this.db.client
+        .update(supportRequests)
+        .set({ contactEmail: null })
+        .where(eq(supportRequests.userId, userId));
+    });
 
     return { deleted: true };
   }

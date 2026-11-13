@@ -122,6 +122,12 @@ export const USDC_MINT_BY_CLUSTER = {
         // key logs them instead, which MailModule refuses in production.
         RESEND_API_KEY: Joi.string().optional().allow(''),
         MAIL_FROM: Joi.string().default('Prydd <security@prydd.co>'),
+        // Where a copy of each support request is mailed. Blank mails nothing:
+        // the request is still stored and still shows in the console.
+        SUPPORT_INBOX_EMAIL: Joi.string()
+          .email({ tlds: { allow: false } })
+          .allow('')
+          .default(''),
 
         // App Attest audience: "TEAMID.bundleid". Attestation fails closed
         // without it, so an unset value blocks iOS enrolment rather than

@@ -43,6 +43,7 @@ export class ResendMailer implements Mailer {
           to: [mail.to],
           subject: mail.subject,
           text: mail.text,
+          ...(mail.replyTo ? { reply_to: mail.replyTo } : {}),
         }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { RecoveryModule } from '../recovery/recovery.module';
+import { SupportModule } from '../support/support.module';
 import { WebhookModule } from '../webhook/webhook.module';
 import { AdminAuditService } from './admin-audit.service';
 import { ConsoleAuthGuard } from './console-auth.guard';
@@ -12,11 +13,13 @@ import { ConsoleController } from './console.controller';
  * WebhookDeliveryService (the in-process manual redelivery capability) and
  * RecoveryModule for the recovery release freeze, which is the one lever
  * support holds over an Account: refusing our own signature, never overriding
- * the Consumer's. DbService comes from the global DbModule. This is disposable
- * pilot tooling, distinct from the merchant-facing self-serve portal.
+ * the Consumer's. SupportModule is how a support request is closed, so the
+ * write stays with the module that owns the table. DbService comes from the
+ * global DbModule. This is disposable pilot tooling, distinct from the
+ * merchant-facing self-serve portal.
  */
 @Module({
-  imports: [WebhookModule, RecoveryModule],
+  imports: [WebhookModule, RecoveryModule, SupportModule],
   providers: [
     ConsoleAuthGuard,
     ConsoleCsrfGuard,

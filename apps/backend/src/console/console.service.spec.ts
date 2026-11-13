@@ -9,14 +9,18 @@ import { escapeHtml } from './console-html';
 /**
  * A fake db whose select chain resolves to `rows` at the terminal `.limit()`.
  * Every intermediate builder method returns the same chain so any length of
- * .from/.leftJoin/.orderBy is accepted.
+ * .from/.leftJoin/.orderBy is accepted. `seen` collects the limit each query
+ * asked for.
  */
-function makeDb(rows: unknown[]): DbService {
+function makeDb(rows: unknown[], seen: { limits: number[] } = { limits: [] }) {
   const chain: Record<string, unknown> = {};
   for (const method of ['from', 'leftJoin', 'innerJoin', 'where', 'orderBy']) {
     chain[method] = () => chain;
   }
-  chain.limit = () => Promise.resolve(rows);
+  chain.limit = (n: number) => {
+    seen.limits.push(n);
+    return Promise.resolve(rows);
+  };
   const client = { select: () => chain };
   return { client } as unknown as DbService;
 }
@@ -159,5 +163,48 @@ describe('ConsoleService.listKeyFingerprints', () => {
     const [row] = await svc.listKeyFingerprints();
     expect(row.fingerprint).toBe('xnd_live_...abcd');
     expect(row.merchantName).toBe('Cafe Neo');
+  });
+});
+
+describe('ConsoleService.listSupportRequests', () => {
+  it('returns each request with the reply address held on it', async () => {
+    const row = {
+      id: 'sr_1',
+      createdAt: new Date('2027-03-01T09:00:00.000Z'),
+      topic: 'account_access',
+      status: 'open',
+      closedAt: null,
+      contactEmail: 'alice@example.com',
+      message: 'I cannot sign in.',
+    };
+    const svc = new ConsoleService(makeDb([row]));
+
+    await expect(svc.listSupportRequests()).resolves.toEqual([row]);
+  });
+});
+
+describe('ConsoleService.listFeedback', () => {
+  it('returns each message with its rating and who sent it', async () => {
+    const row = {
+      createdAt: new Date('2027-03-01T09:00:00.000Z'),
+      rating: 4,
+      message: 'Clearer than before.',
+      email: 'alice@example.com',
+    };
+    const svc = new ConsoleService(makeDb([row]));
+
+    await expect(svc.listFeedback()).resolves.toEqual([row]);
+  });
+});
+
+describe('ConsoleService row cap', () => {
+  it('holds the new lists to the same 100 rows as the rest', async () => {
+    const seen = { limits: [] as number[] };
+    const svc = new ConsoleService(makeDb([], seen));
+
+    await svc.listSupportRequests();
+    await svc.listFeedback();
+
+    expect(seen.limits).toEqual([100, 100]);
   });
 });
