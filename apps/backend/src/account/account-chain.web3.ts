@@ -10,12 +10,13 @@ import {
   buildCreateAccount,
   fetchProgramConfig,
   nextSettingsSeed,
-} from '@xend/smart-account';
+} from '@prydd/smart-account';
 
 import {
   SETTLEMENT_AUTHORITY_SIGNER,
   type SettlementAuthoritySigner,
 } from '../settlement/settlement-authority.interface';
+import { withPriorityFee } from '../solana/priority-fee';
 import { AccountCreationError, SeedTakenError } from './account.errors';
 import type {
   AccountChain,
@@ -24,7 +25,7 @@ import type {
 } from './account.interface';
 
 /**
- * Creates the Account on chain with `@xend/smart-account` and `@solana/web3.js`,
+ * Creates the Account on chain with `@prydd/smart-account` and `@solana/web3.js`,
  * per ADR 0020: the package is web3.js-based, so the whole transaction is built
  * on that toolchain and crosses the seam as base64 bytes.
  *
@@ -89,12 +90,16 @@ export class Web3AccountChain implements AccountChain, OnModuleInit {
       timeLockSeconds: 0,
     });
 
+    const instructions = await withPriorityFee(rpc, this.config, creator, [
+      instruction,
+    ]);
+
     const { blockhash, lastValidBlockHeight } =
       await rpc.getLatestBlockhash('confirmed');
     const message = new TransactionMessage({
       payerKey: creator,
       recentBlockhash: blockhash,
-      instructions: [instruction],
+      instructions,
     }).compileToV0Message();
 
     const wireTxBase64 = Buffer.from(
@@ -104,7 +109,7 @@ export class Web3AccountChain implements AccountChain, OnModuleInit {
     const signature = await this.send(wireTxBase64, settingsSeed);
 
     // A signature means the RPC took the bytes, not that the Account exists:
-    // the send sets maxRetries 0, so a dropped transaction still returns one.
+    // a transaction dropped before its blockhash expires still returned one.
     // Persisted on that alone, every later attempt reads back a stored Account
     // whose settings and vault were never created, and provisioning has
     // nothing to work against for good.

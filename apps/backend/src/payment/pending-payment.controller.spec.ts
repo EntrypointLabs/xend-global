@@ -25,6 +25,7 @@ function intentRow(over: Record<string, unknown> = {}) {
     status: 'created',
     displayCurrency: 'NGN',
     displayAmountMinor: '4500000',
+    usdcSettlementRaw: '30000000',
     approvalDeferredAt: new Date('2026-08-29T10:00:00.000Z'),
     createdAt: new Date('2026-08-29T09:00:00.000Z'),
     expiresAt: new Date('2026-08-29T11:00:00.000Z'),
@@ -118,6 +119,7 @@ describe('PendingPaymentController.list', () => {
         merchantDisplayName: 'Sabi Market',
         displayCurrency: 'NGN',
         displayAmountMinor: '4500000',
+        usdcSettlementRaw: '30000000',
         deferredAt: '2026-08-29T10:00:00.000Z',
         expiresAt: '2026-08-29T11:00:00.000Z',
       },
@@ -190,6 +192,19 @@ describe('PendingPaymentController.prepare', () => {
 });
 
 describe('PendingPaymentController.submit', () => {
+  it('returns the recorded settlement status only to the owner', async () => {
+    const { controller } = makeController({
+      findById: jest.fn().mockResolvedValue(intentRow({ status: 'succeeded' })),
+    });
+    await expect(controller.status(makeReq(), 'pi_1')).resolves.toEqual({
+      status: 'succeeded',
+    });
+    await expectRejectHttp(
+      controller.status(makeReq('u_other'), 'pi_1'),
+      404,
+      'INTENT_NOT_FOUND',
+    );
+  });
   it('hands the signed Spend to settlement and returns its signature', async () => {
     const { controller, submitSettlement } = makeController({});
 

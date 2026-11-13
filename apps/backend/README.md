@@ -1,6 +1,6 @@
-# @xend/backend
+# @prydd/backend
 
-The Xend backend — a [NestJS](https://nestjs.com) server that fronts the Squads Grid SDK for the Xend mobile app. Owns the API-key-bearing Grid operations, authentication, wallet management, and transaction orchestration that must not live on the client.
+The Prydd backend — a [NestJS](https://nestjs.com) server that fronts the Squads Grid SDK for the Prydd mobile app. Owns the API-key-bearing Grid operations, authentication, wallet management, and transaction orchestration that must not live on the client.
 
 ## Modules
 
@@ -13,7 +13,7 @@ The Xend backend — a [NestJS](https://nestjs.com) server that fronts the Squad
 
 ## Getting started
 
-Run all commands from the repo root unless noted. The backend is a workspace; npm scripts can target it with `--workspace @xend/backend`.
+Run all commands from the repo root unless noted. The backend is a workspace; npm scripts can target it with `--workspace @prydd/backend`.
 
 ### 1. Install
 
@@ -26,7 +26,7 @@ npm install
 Create `apps/backend/.env` with at least:
 
 ```env
-DATABASE_URL=postgres://user:pass@localhost:5432/xend
+DATABASE_URL=postgres://user:pass@localhost:5432/prydd
 GRID_API_KEY=your_grid_api_key_here
 GRID_ENV=sandbox          # or production
 JWT_SECRET=replace-me
@@ -48,9 +48,9 @@ Postgres is not started by default, since a natively installed one usually alrea
 ### 4. Database
 
 ```bash
-npm --workspace @xend/backend run db:generate   # generate migrations from schema
-npm --workspace @xend/backend run db:migrate    # apply migrations
-npm --workspace @xend/backend run db:studio     # open Drizzle Studio
+npm --workspace @prydd/backend run db:generate   # generate migrations from schema
+npm --workspace @prydd/backend run db:migrate    # apply migrations
+npm --workspace @prydd/backend run db:studio     # open Drizzle Studio
 ```
 
 A hand-authored migration must be added to `drizzle/meta/_journal.json` as well as `drizzle/`. `db:migrate` works off the journal, so a file that is not listed there is silently never applied.
@@ -58,26 +58,26 @@ A hand-authored migration must be added to `drizzle/meta/_journal.json` as well 
 ### 5. Run
 
 ```bash
-npm --workspace @xend/backend run dev           # watch mode
-npm --workspace @xend/backend run build         # compile to dist/
-npm --workspace @xend/backend run start         # run compiled output
-npm --workspace @xend/backend run start:debug   # watch + --debug
+npm --workspace @prydd/backend run dev           # watch mode
+npm --workspace @prydd/backend run build         # compile to dist/
+npm --workspace @prydd/backend run start         # run compiled output
+npm --workspace @prydd/backend run start:debug   # watch + --debug
 ```
 
 ## Tests
 
 ```bash
-npm --workspace @xend/backend run test          # unit
-npm --workspace @xend/backend run test:e2e      # end-to-end (test/jest-e2e.json)
-npm --workspace @xend/backend run test:cov      # coverage
+npm --workspace @prydd/backend run test          # unit
+npm --workspace @prydd/backend run test:e2e      # end-to-end (test/jest-e2e.json)
+npm --workspace @prydd/backend run test:cov      # coverage
 ```
 
 ## Linting and types
 
 ```bash
-npm --workspace @xend/backend run lint
-npm --workspace @xend/backend run check-types
-npm --workspace @xend/backend run format
+npm --workspace @prydd/backend run lint
+npm --workspace @prydd/backend run check-types
+npm --workspace @prydd/backend run format
 ```
 
 ## References

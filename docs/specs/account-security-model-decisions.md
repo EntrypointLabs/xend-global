@@ -58,7 +58,7 @@ which is 3 to 4 transactions plus rent for the proposal and transaction accounts
 The Smart Account Program's `transaction_execute_sync` does a 2-of-3 spend in one
 transaction carrying two signatures, with no proposal accounts and no rent.
 
-Fuse runs on V4 and tolerates the cost because it is a self-custody wallet. Xend
+Fuse runs on V4 and tolerates the cost because it is a self-custody wallet. Prydd
 routes every P2P Send through this path, so the cost is not tolerable.
 
 Tradeoff accepted: the Smart Account Program is v0.1 and younger than V4. It is
@@ -127,7 +127,7 @@ spend under a spending limit.
 ### D4. The signer set
 
 Rewritten. Earlier drafts anchored S1 to the email inbox with the passkey as MFA on
-top. That is incompatible with the product: **"Pay with Xend" on a merchant page must
+top. That is incompatible with the product: **"Pay with Prydd" on a merchant page must
 prompt the passkey and nothing else.** No app, no login, no OTP. If the passkey alone
 completes the payment then the passkey alone completes S1, so S1's anchor is the
 platform account and no amount of wishing makes it the inbox.
@@ -138,7 +138,7 @@ takeover would yield S1 and S3 together.
 |             | S1                            | S2                                                  | S3                                   |
 | ----------- | ----------------------------- | --------------------------------------------------- | ------------------------------------ |
 | Anchor      | platform account              | physical possession                                 | email inbox                          |
-| Key holder  | Privy                         | Turnkey                                             | Xend, encrypted and server-held      |
+| Key holder  | Privy                         | Turnkey                                             | Prydd, encrypted and server-held     |
 | Unlock      | **passkey, on its own**       | biometric-gated hardware key on the phone           | proving control of the sign-up email |
 | Permissions | `Initiate \| Vote \| Execute` | `Vote \| Execute`                                   | `Vote`                               |
 | Present     | every spend                   | above the spending limit, and every settings change | recovery only                        |
@@ -176,7 +176,7 @@ So the model is:
   requires two signatures. This always works and is always available.
 - **A spending limit is an optional policy** that carves out a single-signature fast
   path. An Account may have zero, one, or several.
-- Xend **does** provision a default one at creation, because unlike Fuse we are a
+- Prydd **does** provision a default one at creation, because unlike Fuse we are a
   payments app where small P2P Spends are the dominant case and a second factor on a
   $6 Send would destroy the product. The amount and period are **Open** (O3).
 - A Consumer can raise it, lower it, or delete it outright. **An Account with no
@@ -667,14 +667,14 @@ Properties this buys:
 
 - Silent at creation. No screen, no seed phrase, nothing to write down.
 - Survives both a lost phone and a platform-account change.
-- Xend alone cannot use it, because it needs the email step.
+- Prydd alone cannot use it, because it needs the email step.
 - Even with the email it **cannot spend**. D5b keeps recovery signers out of every
   spend path, so the most it can do is participate in a settings change, which is
   time-locked and notified.
 
 Honest characterisation: this is the Argent pattern, where the provider holds an
 encrypted recovery secret released against a second factor. It is not pure
-self-custody. Xend holds one of three signers and the weakest one, and cannot reach
+self-custody. Prydd holds one of three signers and the weakest one, and cannot reach
 threshold alone.
 
 The alternative is a **third KMS vendor** with email auth holding it instead of us,
@@ -830,7 +830,7 @@ Two properties the passkey must keep, both essential rather than incidental:
 - **It syncs.** iCloud Keychain and Google Password Manager. Without this a Consumer
   cannot check out on a laptop without re-enrolling, which is the friction the product
   exists to remove.
-- **It is sufficient on its own.** Tapping "Pay with Xend" on a merchant page prompts
+- **It is sufficient on its own.** Tapping "Pay with Prydd" on a merchant page prompts
   the passkey and nothing else.
 
 What still holds from the storage research: Privy's own device share never syncs
@@ -1032,9 +1032,9 @@ implementation at the pilot floor and a `keyId` on every sealed key so the custo
 order (KMS > cloud-KMS > raw env) is a migration rather than a rewrite. Same posture
 as the settlement authority signer.
 
-Be precise about what it buys: **Xend can open a sealed key**, so this is an
+Be precise about what it buys: **Prydd can open a sealed key**, so this is an
 operational control, not a cryptographic impossibility. The guarantee is that opening
-requires an email-verified session and is auditable, not that Xend is unable to. The
+requires an email-verified session and is auditable, not that Prydd is unable to. The
 property the design actually rests on is elsewhere, in the threshold: this signer is
 one of three, and D5b keeps it out of every spend path.
 

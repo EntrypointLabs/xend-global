@@ -38,7 +38,7 @@ function kybButton(merchantId: string): string {
  * Merchant rows land in the DB and are fetchable by the backend. Every route
  * is dev-gated by TestDashboardGuard (404 unless NODE_ENV=development)
  * because key creation here has no auth. Distinct from both the read-only
- * ops console (ADR 0022) and the deferred merchants.xend.global self-serve
+ * ops console (ADR 0022) and the deferred merchants.prydd.co self-serve
  * portal; key issuance goes through the same KeyIssuanceService as both.
  */
 @Controller('test-dashboard')
@@ -84,6 +84,9 @@ export class TestDashboardController {
     @Res() res: Response,
   ): Promise<void> {
     try {
+      // Local stub: stamp a submission at the current version so the
+      // version-bound verify accepts it, then verify.
+      await this.keyIssuance.markKybSubmittedForTest(id);
       await this.keyIssuance.markKybVerified(id);
     } catch (err) {
       if (err instanceof MerchantNotFoundError) {

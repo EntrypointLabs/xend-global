@@ -115,7 +115,7 @@ export class NotificationsService {
    * Tells a Consumer a Merchant is waiting on them to finish a Payment.
    *
    * The one notice where being late is the whole failure: somebody who tapped
-   * Pay with Xend and was told to open the app is standing at a checkout with
+   * Pay with Prydd and was told to open the app is standing at a checkout with
    * a card reader in front of them, and a Payment they cannot see is a Payment
    * they abandon.
    *

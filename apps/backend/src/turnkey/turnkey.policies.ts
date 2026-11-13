@@ -1,4 +1,4 @@
-import { PROGRAM_ID } from '@xend/smart-account';
+import { PROGRAM_ID } from '@prydd/smart-account';
 
 export interface TurnkeyPolicyBody {
   policyName: string;
@@ -43,7 +43,7 @@ export function buildApprovalSignerPolicies(
 
   return [
     {
-      policyName: 'xend-approval-allow-account-programs',
+      policyName: 'prydd-approval-allow-account-programs',
       effect: 'EFFECT_ALLOW',
       consensus,
       condition: everyInstructionAllowed,
@@ -51,7 +51,7 @@ export function buildApprovalSignerPolicies(
         'The device key may sign a Solana transaction only when every instruction targets the Squads, System, Token, Token-2022, Associated Token or ComputeBudget program.',
     },
     {
-      policyName: 'xend-approval-deny-other-programs',
+      policyName: 'prydd-approval-deny-other-programs',
       effect: 'EFFECT_DENY',
       consensus: 'true',
       condition: `solana.tx.instructions.count() != solana.tx.instructions.filter(i, i.program_key in [${programs}]).count()`,

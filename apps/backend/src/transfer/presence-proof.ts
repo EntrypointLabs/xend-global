@@ -31,7 +31,7 @@ import { createHash, createPublicKey, verify } from 'node:crypto';
  * means a Turnkey stamp can never be replayed here as a presence proof, or the
  * reverse, without a SHA-256 preimage.
  */
-export const PRESENCE_DOMAIN = 'xend:spend-presence:v1';
+export const PRESENCE_DOMAIN = 'prydd:spend-presence:v1';
 
 /**
  * SubjectPublicKeyInfo header for a P-256 key, up to the point itself.

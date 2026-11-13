@@ -23,7 +23,7 @@ import { normaliseLowS } from "./lowS";
  */
 
 /** Must match PRESENCE_DOMAIN in apps/backend/src/transfer/presence-proof.ts. */
-const PRESENCE_DOMAIN = "xend:spend-presence:v1";
+const PRESENCE_DOMAIN = "prydd:spend-presence:v1";
 
 /**
  * Signs the message inside a prepared transaction, not the transaction.

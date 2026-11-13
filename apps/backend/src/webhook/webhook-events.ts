@@ -63,7 +63,10 @@ export function buildEventPayload(params: BuildEventPayloadParams): {
   // Same convention as the merchant API's payment_intent object: a USDC-priced
   // intent reads back as USDC in raw six-decimal units, not the cents the
   // shopper was shown, so a merchant sees one shape in both places.
-  const pricedInUsdc = intent.displayCurrency === 'USD';
+  const currency =
+    intent.pricingCurrency ??
+    (intent.displayCurrency === 'USD' ? 'USDC' : intent.displayCurrency);
+  const pricedInUsdc = currency === 'USDC';
 
   return {
     id: params.eventId,
@@ -77,7 +80,7 @@ export function buildEventPayload(params: BuildEventPayloadParams): {
         id: payment?.id ?? null,
         intent_id: intent.id,
         status,
-        currency: pricedInUsdc ? 'USDC' : intent.displayCurrency,
+        currency,
         amount: pricedInUsdc
           ? intent.usdcSettlementRaw
           : intent.displayAmountMinor,

@@ -96,25 +96,25 @@ export const hardwareKey = {
 export const SIGN_PROMPT = {
   payment: {
     title: "Approve this payment",
-    reason: "Confirm it is you before Xend sends this",
+    reason: "Confirm it is you before Prydd sends this",
   },
   accountSetup: {
     title: "Finish setting up",
-    reason: "Confirm it is you to secure your Xend account",
+    reason: "Confirm it is you to secure your Prydd account",
   },
   // Worded around the money rather than the mechanism. This is the prompt on an
   // ordinary send, where the Consumer has no reason to know a second key exists
   // and every reason to be told what is about to leave.
   send: {
     title: "Confirm this send",
-    reason: "Check it is you before Xend sends this money",
+    reason: "Check it is you before Prydd sends this money",
   },
   // Worded as stopping rather than approving. This is the one prompt a
   // Consumer may reach while being attacked, and "approve" is the last word
   // they should read on the way to refusing something.
   rejectChange: {
     title: "Stop this change",
-    reason: "Confirm it is you before Xend refuses it",
+    reason: "Confirm it is you before Prydd refuses it",
   },
   replacePasskey: {
     title: "Approve your new passkey",

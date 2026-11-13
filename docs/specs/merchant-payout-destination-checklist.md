@@ -1,7 +1,7 @@
 # Merchant payout destination checklist (Blockradar naira leg)
 
 Status: draft, pre-go-live
-Author: Pay with Xend, 2026-07-12
+Author: Pay with Prydd, 2026-07-12
 Scope: the operational checklist for setting up the Blockradar relationship and the verified bank destination for a naira Merchant, plus the naira settlement end-to-end proof on a test bank account. This is the settlement-provider-stage compliance touchpoint (ADR 0019). It does NOT repeat KYB, which attaches at onboarding and gates live keys (Phase 6). It records only that each step happened and when; sensitive evidence lives outside the repo.
 
 ## 1. Precondition: live keys imply KYB cleared
@@ -44,5 +44,5 @@ Run only if the ADR 0019 confirmations pass and the leg is enabled. This is a hu
 
 - Consumers are never KYC'd anywhere in Checkout (locked).
 - KYB proper is owned by onboarding and gates live keys (Phase 6); this checklist does not repeat it.
-- Convert-at-settlement means Blockradar owns the funds path: no merchant signer and no Xend-initiated debit. Note the transient-custody nuance from ADR 0019 confirmation (b): funds sit in Blockradar-custodied addresses until the platform-initiated payout, so Xend is briefly in the funds path.
+- Convert-at-settlement means Blockradar owns the funds path: no merchant signer and no Prydd-initiated debit. Note the transient-custody nuance from ADR 0019 confirmation (b): funds sit in Blockradar-custodied addresses until the platform-initiated payout, so Prydd is briefly in the funds path.
 - Refunds run reverse-through-provider (naira to USDC to the Consumer at the live rate), invoked by Phase 6's refund API, only when confirmation (c) is met; otherwise naira refunds are manual-ops.

@@ -1,24 +1,24 @@
-# xend
+# prydd
 
-The Xend monorepo: the consumer app, the NestJS backend behind it, the fee-payer relayer, the hosted Pay with Xend checkout, and the packages they share. Turborepo over npm workspaces (`apps/*`, `packages/*`; root package name `xend`).
+The Prydd monorepo: the consumer app, the NestJS backend behind it, the fee-payer relayer, the hosted Pay with Prydd checkout, and the packages they share. Turborepo over npm workspaces (`apps/*`, `packages/*`; root package name `prydd`).
 
-What Xend is, and the vocabulary the code uses, is in [`CONTEXT.md`](./CONTEXT.md). Decisions are in [`docs/adr/`](./docs/adr/README.md).
+What Prydd is, and the vocabulary the code uses, is in [`CONTEXT.md`](./CONTEXT.md). Decisions are in [`docs/adr/`](./docs/adr/README.md).
 
 ## Workspaces
 
-| Workspace                    | Package                   | What it is                                                                                                                                                     |
-| ---------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/mobile`                | `@xend/mobile`            | Expo React Native app for Android and iOS. See [`apps/mobile/README.md`](./apps/mobile/README.md).                                                             |
-| `apps/backend`               | `@xend/backend`           | NestJS API. Consumer auth, Accounts, Spends, recovery, Pay with Xend (merchants, intents, settlement, webhooks), console. Drizzle over Postgres, Redis, Kafka. |
-| `apps/relayer`               | `@xend/relayer`           | Fee-payer relayer. A separate NestJS deployable holding only the fee-payer key, its own RPC access and an internal-auth secret (ADR 0012).                     |
-| `apps/checkout`              | `@xend/checkout`          | The hosted checkout popup at pay.xend.global. Vite and React.                                                                                                  |
-| `packages/smart-account`     | `@xend/smart-account`     | Owned adapter over the Squads Smart Account Program: address derivation and unsigned transaction builders for the 2-of-3 signer set (ADR 0025).                |
-| `packages/checkout-core`     | `@xend/checkout-core`     | Pay with Xend button and result relay. Framework-agnostic, zero runtime dependencies, size-gated.                                                              |
-| `packages/checkout-react`    | `@xend/checkout-react`    | React wrapper for the button.                                                                                                                                  |
-| `packages/checkout-protocol` | `@xend/checkout-protocol` | The versioned postMessage protocol between button and popup (ADR 0016).                                                                                        |
-| `packages/ui`                | `@xend/ui`                | Shared React component library.                                                                                                                                |
-| `packages/eslint-config`     | `@xend/eslint-config`     | Shared ESLint configs.                                                                                                                                         |
-| `packages/typescript-config` | `@xend/typescript-config` | Shared tsconfigs.                                                                                                                                              |
+| Workspace                    | Package                    | What it is                                                                                                                                                      |
+| ---------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/mobile`                | `@prydd/mobile`            | Expo React Native app for Android and iOS. See [`apps/mobile/README.md`](./apps/mobile/README.md).                                                              |
+| `apps/backend`               | `@prydd/backend`           | NestJS API. Consumer auth, Accounts, Spends, recovery, Pay with Prydd (merchants, intents, settlement, webhooks), console. Drizzle over Postgres, Redis, Kafka. |
+| `apps/relayer`               | `@prydd/relayer`           | Fee-payer relayer. A separate NestJS deployable holding only the fee-payer key, its own RPC access and an internal-auth secret (ADR 0012).                      |
+| `apps/checkout`              | `@prydd/checkout`          | The hosted checkout popup at pay.prydd.co. Vite and React.                                                                                                      |
+| `packages/smart-account`     | `@prydd/smart-account`     | Owned adapter over the Squads Smart Account Program: address derivation and unsigned transaction builders for the 2-of-3 signer set (ADR 0025).                 |
+| `packages/checkout-core`     | `@prydd/checkout-core`     | Pay with Prydd button and result relay. Framework-agnostic, zero runtime dependencies, size-gated.                                                              |
+| `packages/checkout-react`    | `@prydd/checkout-react`    | React wrapper for the button.                                                                                                                                   |
+| `packages/checkout-protocol` | `@prydd/checkout-protocol` | The versioned postMessage protocol between button and popup (ADR 0016).                                                                                         |
+| `packages/ui`                | `@prydd/ui`                | Shared React component library.                                                                                                                                 |
+| `packages/eslint-config`     | `@prydd/eslint-config`     | Shared ESLint configs.                                                                                                                                          |
+| `packages/typescript-config` | `@prydd/typescript-config` | Shared tsconfigs.                                                                                                                                               |
 
 ## Prerequisites
 
@@ -44,7 +44,41 @@ Fill in the secrets each file marks as blank. `postinstall` runs `patch-package`
 npm run dev
 ```
 
-`scripts/dev.mjs` brings Docker up (starting Docker Desktop on macOS if it has to), runs `docker compose up -d --wait redis kafka kafka-topics`, checks that Postgres answers on the host and port in `apps/backend/.env`'s `DATABASE_URL`, checks that the service ports are free, and then runs `turbo run dev --continue=always`, so one service falling over leaves the rest up. Add `--log` to tee the combined output to `/tmp/xend-dev.log`.
+`scripts/dev.mjs` checks the app ports, starts Docker Desktop on macOS if needed,
+starts Redis and Kafka (including topic seeding), checks Postgres, and builds the
+shared packages. It then launches every app with a `dev` script: backend, relayer,
+checkout, merchant portal, and mobile (Expo Metro).
+
+The combined launch sets the backend to **8000** and routes the merchant and
+checkout development proxies to that port. Once `GET /health` reports healthy,
+it starts **`ngrok http 8000`**. Install the ngrok CLI and configure your authtoken
+once before running this command. Existing app environment files and secrets
+must be configured first; include `apps/merchant/.env.example` in your setup.
+
+Use the URL printed by ngrok for clients that need a public backend URL (including
+`EXPO_PUBLIC_BACKEND_URL` in the mobile environment if applicable); the launcher does
+not rewrite environment files. Open the mobile development build on a device or
+simulator after Metro starts.
+
+The default interactive terminal opens **Turbo's TUI**, with a pane for each app
+and `//#dev:ngrok`. Select an app with the arrow keys; use Turbo's on-screen
+interaction controls to send keyboard input to Expo. Ctrl+C stops the suite.
+An app or ngrok failure stays visible in its pane while the other apps keep
+running. The ngrok pane waits up to three minutes for backend health before
+opening the tunnel. Docker infrastructure remains running.
+
+The launcher explicitly selects your **system ngrok** from PATH, skipping npm's
+`node_modules/.bin` directories. Expo bundles an older ngrok v2 there; it does
+not use the same configuration as the ngrok v3 installed in your terminal.
+Your system ngrok retains its normal home directory, configuration, and token.
+Use `NGROK_BIN=/absolute/path/to/ngrok` to override the binary, and `NGROK_CONFIG`
+for a non-default configuration file. The selected binary is printed at startup;
+credentials are never printed by the launcher.
+
+Add `--log` to use plain streaming output and tee it to `/tmp/prydd-dev.log`, or
+use `npm run dev -- --log /tmp/my-prydd-dev.log` for a custom path. Non-interactive
+terminals also use streaming output. Interactive runs keep the TUI attached to
+the terminal; use `--log` when you need a combined log file.
 
 Infra on its own:
 
@@ -60,29 +94,32 @@ Postgres is not part of `npm run infra` because a native install usually already
 One service at a time, with infra already up:
 
 ```
-npx turbo run dev --filter=@xend/backend
-npx turbo run dev --filter=@xend/relayer
-npx turbo run dev --filter=@xend/checkout
+npx turbo run dev --filter=@prydd/backend
+npx turbo run dev --filter=@prydd/relayer
+npx turbo run dev --filter=@prydd/checkout
+npx turbo run dev --filter=@prydd/merchant
 npm run dev:mobile    # expo start in its own terminal, so the keyboard shortcuts work
 ```
 
 ## Ports
 
-| Service          | Port                                       | Where it is set                                                                                                                        |
-| ---------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend          | 8008                                       | `PORT` in `apps/backend/.env.example`, and what `apps/checkout/vite.config.ts` proxies to                                              |
-| Relayer          | 8787                                       | `PORT` in `apps/relayer/.env.example`, the Joi default in `apps/relayer/src/config/config.module.ts`, `docker-compose.yml`             |
-| Checkout         | 5173, or 443 with a `www.xend.global` cert | `apps/checkout/vite.config.ts` serves on whichever mkcert cert is present under `apps/checkout/certs/`; with none, Vite's default 5173 |
-| Metro            | 8081                                       | Expo default; `scripts/dev.mjs` refuses to start if it is taken                                                                        |
-| Redis            | 6379                                       | `docker-compose.yml`                                                                                                                   |
-| Kafka            | 9092                                       | `docker-compose.yml`                                                                                                                   |
-| Postgres         | 5432                                       | `docker-compose.yml` (profile `postgres`)                                                                                              |
-| Backend debugger | 9229                                       | `nest start --debug`                                                                                                                   |
-| Relayer debugger | 9230                                       | `nest start --debug=9230`                                                                                                              |
+| Service          | Port                                    | Where it is set                                                                                                                        |
+| ---------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend          | 8000 in the suite; 8008 standalone      | `PORT` in `apps/backend/.env.example`, and what `apps/checkout/vite.config.ts` proxies to                                              |
+| Relayer          | 8787                                    | `PORT` in `apps/relayer/.env.example`, the Joi default in `apps/relayer/src/config/config.module.ts`, `docker-compose.yml`             |
+| Checkout         | 5173, or 443 with a `www.prydd.co` cert | `apps/checkout/vite.config.ts` serves on whichever mkcert cert is present under `apps/checkout/certs/`; with none, Vite's default 5173 |
+| Merchant         | 5174                                    | `apps/merchant/vite.config.ts`                                                                                                         |
+| ngrok inspector  | 4040                                    | ngrok default; tunnel forwards to backend port 8000                                                                                    |
+| Metro            | 8081                                    | Expo default; `scripts/dev.mjs` refuses to start if it is taken                                                                        |
+| Redis            | 6379                                    | `docker-compose.yml`                                                                                                                   |
+| Kafka            | 9092                                    | `docker-compose.yml`                                                                                                                   |
+| Postgres         | 5432                                    | `docker-compose.yml` (profile `postgres`)                                                                                              |
+| Backend debugger | 9229                                    | `nest start --debug`                                                                                                                   |
+| Relayer debugger | 9230                                    | `nest start --debug=9230`                                                                                                              |
 
-Two committed values disagree with this table and are worth knowing about: `apps/backend/.env.example` sets `RELAYER_URL=http://localhost:8080`, and `apps/checkout/vite.config.ts` proxies `/checkout` and `/v1` to `http://localhost:8008` when serving over TLS. Set `RELAYER_URL` to port 8787 and point the proxy at the backend's real port when running those paths locally.
+Two committed values disagree with this table and are worth knowing about: `apps/backend/.env.example` sets `RELAYER_URL=http://localhost:8080`, and `apps/checkout/vite.config.ts` proxies `/checkout` and `/v1` to `http://localhost:8008` when serving over TLS. Set `RELAYER_URL` to port 8787 and set `PRYDD_BACKEND_URL` to the backend URL when running standalone apps on another port. The combined launcher sets it automatically.
 
-The backend tees its own output to `/tmp/xend-backend.log`, colour-free.
+The backend tees its own output to `/tmp/prydd-backend.log`, colour-free.
 
 ## Build, check, test
 
@@ -94,15 +131,15 @@ npm run test
 npm run format
 ```
 
-Filter any task with `--filter`, for example `npx turbo run test --filter=@xend/backend`. The checkout packages are released with changesets: `npm run changeset`, `npm run version-packages`, `npm run release`.
+Filter any task with `--filter`, for example `npx turbo run test --filter=@prydd/backend`. The checkout packages are released with changesets: `npm run changeset`, `npm run version-packages`, `npm run release`.
 
 ## Running in production
 
 The backend ships as a container built from the repo root, because it imports
-`@xend/smart-account` from the workspace:
+`@prydd/smart-account` from the workspace:
 
 ```
-docker build -f apps/backend/Dockerfile -t xend-backend .
+docker build -f apps/backend/Dockerfile -t prydd-backend .
 ```
 
 It runs as `node`, listens on `PORT` (8008 in the example env), and answers
@@ -110,7 +147,7 @@ It runs as `node`, listens on `PORT` (8008 in the example env), and answers
 migrations, so apply them before the first request reaches a new release:
 
 ```
-npm --workspace @xend/backend run db:migrate
+npm --workspace @prydd/backend run db:migrate
 ```
 
 ### Environment
@@ -143,7 +180,7 @@ including the ones with defaults.
 Use an operator script to produce a KMS ciphertext for a secret:
 
 ```
-npm --workspace @xend/backend exec tsx scripts/kms-encrypt-secret.ts
+npm --workspace @prydd/backend exec tsx scripts/kms-encrypt-secret.ts
 ```
 
 ## Docs
@@ -151,6 +188,6 @@ npm --workspace @xend/backend exec tsx scripts/kms-encrypt-secret.ts
 - `CONTEXT.md`: the domain glossary
 - `docs/adr/`: architectural decision records
 - `docs/specs/`: specs, runbooks and handoffs; each carries a status line at the top
-- `docs/xend-master-context.md`: the briefing for outward-facing material
+- `docs/prydd-master-context.md`: the briefing for outward-facing material
 - `docs/agents/`: how agents use the issue tracker, triage labels and domain docs
 - `apps/mobile/STYLE.md`: the mobile styling rules

@@ -8,7 +8,7 @@ Scope: only the features that work end-to-end on Grid today. Card issuance, yiel
 
 Squads Grid was silently wound down by its vendor. Grid is currently load-bearing in three places: identity and OTP (Grid hosts the email OTP), the on-chain smart account and its signer (Grid wraps Turnkey MPC under a Squads multisig), and KYC plus virtual accounts (Grid wraps Bridge.xyz). The expo-router BFF in `apps/mobile/app/api/*+api.ts` ships the Grid API key inside the Expo process and is the path that handles money operations today. That is the surface we are removing.
 
-**One-line principle**: no single external provider may be load-bearing in a way that kills Xend if it disappears. Every layer sits behind an internal interface we own, and every internal call goes through our NestJS backend, never through a runtime that ships provider keys to the device.
+**One-line principle**: no single external provider may be load-bearing in a way that kills Prydd if it disappears. Every layer sits behind an internal interface we own, and every internal call goes through our NestJS backend, never through a runtime that ships provider keys to the device.
 
 **Hard invariant preserved**: Balance is non-optimistic. It updates only when the change confirms on-chain. The migration does not introduce optimistic balance updates anywhere.
 

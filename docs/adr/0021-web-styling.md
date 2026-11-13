@@ -2,12 +2,12 @@
 
 **Status:** Accepted
 **Date:** 2026-07-12
-**Deciders:** Pay with Xend planning
+**Deciders:** Pay with Prydd planning
 **Tags:** frontend, styling, checkout
 
 ## Context and Problem Statement
 
-ADR 0001 consolidated the codebase on NativeWind 4 with CSS-variable tokens as the sole styling system. That decision was made when the only UI in the repo was the Expo mobile app, and NativeWind is a React Native dialect with a runtime. The Pay with Xend work introduces the first web surface, the hosted checkout at pay.xend.global, and more web surfaces (a merchant console) are coming. NativeWind is the wrong tool for a browser surface: it carries a React Native runtime and a dialect that does not belong in a sub-second popup budget, and the checkout bundle size is a product feature.
+ADR 0001 consolidated the codebase on NativeWind 4 with CSS-variable tokens as the sole styling system. That decision was made when the only UI in the repo was the Expo mobile app, and NativeWind is a React Native dialect with a runtime. The Pay with Prydd work introduces the first web surface, the hosted checkout at pay.xend.global, and more web surfaces (a merchant console) are coming. NativeWind is the wrong tool for a browser surface: it carries a React Native runtime and a dialect that does not belong in a sub-second popup budget, and the checkout bundle size is a product feature.
 
 There is also a third surface class: the merchant SDK (Phase 7), which embeds into arbitrary merchant pages and must ship zero dependencies and no build step. It cannot ship a Tailwind runtime or a stylesheet a merchant has to include.
 

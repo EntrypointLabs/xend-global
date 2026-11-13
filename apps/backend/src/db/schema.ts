@@ -112,9 +112,9 @@ export const merchantStatusEnum = pgEnum('merchant_status', [
 export const apiKeyModeEnum = pgEnum('api_key_mode', ['test', 'live']);
 
 // Stripe-shaped intent lifecycle. 'created' -> 'authorized' ->
-// 'settling' -> 'succeeded' | 'failed'; 'expired' (TTL before
-// authorization) and 'canceled' (merchant cancel before
-// authorization) are the other terminals.
+// 'settling' -> 'succeeded' | 'failed'; 'expired' covers TTL before
+// authorization or before an authorized Spend is broadcast, and 'canceled'
+// covers merchant cancellation before authorization.
 export const paymentIntentStatusEnum = pgEnum('payment_intent_status', [
   'created',
   'authorized',
@@ -144,6 +144,7 @@ export const webhookDeliveryStatusEnum = pgEnum('webhook_delivery_status', [
 export const settlementProviderEnum = pgEnum('settlement_provider', [
   'direct_usdc',
   'blockradar',
+  'paj',
 ]);
 
 // Discriminates how a webhook delivery was materialized: 'event' rows are
@@ -815,13 +816,21 @@ export const tailerState = pgTable('tailer_state', {
 // ---------- Pay domain ----------
 
 /**
- * merchants — a Xend Merchant record. display_name is what Checkout
+ * merchants — a Prydd Merchant record. display_name is what Checkout
  * renders; it is server-owned and never taken from the merchant page.
  * intent_ttl_minutes is a nullable per-Merchant override of the platform
  * intent-TTL default. allowed_origins is the postMessage origin allowlist,
  * populated when the Merchant API lands.
  */
 export const merchants = pgTable('merchants', {
+  businessProfile: jsonb('business_profile')
+    .$type<Record<string, string>>()
+    .notNull()
+    .default({}),
+  profileVersion: integer('profile_version').notNull().default(0),
+  ownerProviderId: text('owner_provider_id').unique(),
+  receivingWallet: text('receiving_wallet'),
+  settlementTermsAcceptedAt: timestamp('settlement_terms_accepted_at'),
   id: text('id')
     .primaryKey()
     .$defaultFn(() => createId()),
@@ -834,6 +843,17 @@ export const merchants = pgTable('merchants', {
   // by the manual stage-2 ops action after off-system checks complete.
   kybStatus: kybStatusEnum('kyb_status').notNull().default('pending'),
   kybVerifiedAt: timestamp('kyb_verified_at'),
+  // When the owner submitted their business details for verification review.
+  // Distinct from settlement_terms: submission is the merchant asking to be
+  // reviewed, and it is cleared to null on a resubmission after a rejection.
+  kybSubmittedAt: timestamp('kyb_submitted_at'),
+  // The profile_version that was submitted for review. Verification is bound to
+  // it, and any profile edit clears it, so an operator can never stamp a
+  // profile the owner changed after the reviewer read it.
+  kybSubmittedVersion: integer('kyb_submitted_version'),
+  // The reviewer's note stamped on a rejection, shown to the owner so a
+  // resubmission can fix the named problem. Null while pending or verified.
+  kybReviewNote: text('kyb_review_note'),
   // Per-Merchant revenue fields, both zero at pilot. flat_fee_bps is a flat
   // basis-point fee; fx_spread_bps is the spread booked on the naira
   // conversion at settlement. Whether both stack on one naira Payment is an
@@ -860,9 +880,26 @@ export const apiKeys = pgTable(
       .references(() => merchants.id),
     keyHash: text('key_hash').notNull().unique(),
     keyPrefix: text('key_prefix').notNull(),
+    executionCluster: text('execution_cluster'),
     fingerprint: text('fingerprint').notNull(),
+    /** Owner-supplied label so several keys are told apart in the portal. */
+    name: text('name'),
+    /**
+     * The key this one replaced, set when a rotation issues a successor. It
+     * lets the portal show a rotated key's lineage without a separate table.
+     */
+    rotatedFromId: text('rotated_from_id'),
     mode: apiKeyModeEnum('mode').notNull(),
     revokedAt: timestamp('revoked_at'),
+    /**
+     * When a rotation issued this key's successor, the old key stays valid
+     * until this instant instead of being revoked outright, so a rotation whose
+     * HTTP response is lost never takes a live integration offline: the caller
+     * keeps working on the old key through the grace window while it adopts the
+     * replacement. Null for a key that has not been rotated; the guard treats a
+     * key with this set in the past as invalid.
+     */
+    rotationGraceUntil: timestamp('rotation_grace_until'),
     lastUsedAt: timestamp('last_used_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
@@ -891,6 +928,9 @@ export const paymentIntents = pgTable(
     consumerId: text('consumer_id').references(() => users.id),
     status: paymentIntentStatusEnum('status').notNull().default('created'),
     usdcSettlementRaw: text('usdc_settlement_raw').notNull(),
+    /** Original API denomination; null preserves legacy USD-display USDC intents. */
+    pricingCurrency: text('pricing_currency'),
+    executionCluster: text('execution_cluster'),
     /** What the Merchant priced in, and the figure the Consumer is shown. */
     displayCurrency: text('display_currency').notNull(),
     displayAmountMinor: text('display_amount_minor').notNull(),
@@ -931,12 +971,31 @@ export const paymentIntents = pgTable(
     // created without a key are unconstrained).
     merchantIdemIdx: uniqueIndex('payment_intents_merchant_idem_idx').on(
       table.merchantId,
+      table.executionCluster,
       table.idempotencyKey,
     ),
+    // Old writers leave execution_cluster null during a rolling deploy. Keep
+    // their idempotency domain unique until that compatibility path is retired.
+    merchantLegacyIdemIdx: uniqueIndex(
+      'payment_intents_merchant_legacy_idem_idx',
+    )
+      .on(table.merchantId, table.idempotencyKey)
+      .where(
+        sql`${table.executionCluster} IS NULL AND ${table.idempotencyKey} IS NOT NULL`,
+      ),
     // Expiry sweep scans only unauthorized intents.
     expiryIdx: index('payment_intents_expiry_idx')
       .on(table.expiresAt)
       .where(sql`status = 'created'`),
+    // Backs the portal's payment-history page: filter by merchant+cluster and
+    // order by (created_at, id) desc, so a page is an index range scan rather
+    // than a full scan-and-sort of the merchant's whole history.
+    merchantHistoryIdx: index('payment_intents_merchant_history_idx').on(
+      table.merchantId,
+      table.executionCluster,
+      table.createdAt,
+      table.id,
+    ),
   }),
 );
 
@@ -969,6 +1028,13 @@ export const paymentAttempts = pgTable(
       .on(table.intentId)
       .where(sql`status IN ('authorized', 'settling')`),
     statusIdx: index('payment_attempts_status_idx').on(table.status),
+    // The portal's payment-detail read finds the newest attempt for an intent
+    // regardless of status; the partial live index cannot serve that, so index
+    // (intent_id, created_at) to make it a lookup rather than a scan.
+    intentIdx: index('payment_attempts_intent_idx').on(
+      table.intentId,
+      table.createdAt,
+    ),
   }),
 );
 
@@ -1122,6 +1188,20 @@ export const webhookDeliveries = pgTable(
       table.status,
       table.nextRetryAt,
     ),
+    // The portal's payment-detail read filters deliveries by the intent's
+    // correlation id and orders them newest-first; index both so it is a lookup
+    // rather than a scan of the whole delivery table as history grows.
+    correlationIdx: index('webhook_deliveries_correlation_idx').on(
+      table.correlationId,
+      table.createdAt,
+    ),
+    // Backs the portal's per-endpoint delivery diagnostics, paginated by
+    // (created_at, id) desc for one endpoint.
+    endpointHistoryIdx: index('webhook_deliveries_endpoint_history_idx').on(
+      table.endpointId,
+      table.createdAt,
+      table.id,
+    ),
   }),
 );
 
@@ -1133,28 +1213,39 @@ export const webhookDeliveries = pgTable(
  * USDC token account settlements land in (the TransferChecked destination,
  * REQ-PLAIN-SPL). `provider`/`currency`/`provider_reference`/`payout_config`
  * are the polymorphic settlement reference; `authority_address` is the
- * attribution root the address is enumerable from (the Xend authority for
+ * attribution root the address is enumerable from (the Prydd authority for
  * direct-USDC, the Blockradar master wallet in Phase 8, null for a recorded
  * merchant-own address). Columns are nullable until provisioning completes.
  */
-export const settlementAccounts = pgTable('settlement_accounts', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => createId()),
-  merchantId: text('merchant_id')
-    .notNull()
-    .unique()
-    .references(() => merchants.id),
-  address: text('address').unique(),
-  provider: settlementProviderEnum('provider'),
-  currency: text('currency'),
-  providerReference: text('provider_reference'),
-  payoutConfig: text('payout_config'),
-  authorityAddress: text('authority_address'),
-  provisionedAt: timestamp('provisioned_at'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+export const settlementAccounts = pgTable(
+  'settlement_accounts',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    merchantId: text('merchant_id')
+      .notNull()
+      .references(() => merchants.id),
+    address: text('address'),
+    provider: settlementProviderEnum('provider'),
+    currency: text('currency'),
+    providerReference: text('provider_reference'),
+    payoutConfig: text('payout_config'),
+    authorityAddress: text('authority_address'),
+    executionCluster: text('execution_cluster'),
+    provisionedAt: timestamp('provisioned_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    merchantClusterIdx: uniqueIndex(
+      'settlement_accounts_merchant_cluster_idx',
+    ).on(table.merchantId, table.executionCluster),
+    addressClusterIdx: uniqueIndex(
+      'settlement_accounts_address_cluster_idx',
+    ).on(table.address, table.executionCluster),
+  }),
+);
 
 /**
  * idempotency_keys — Stripe-semantics response snapshot for merchant-facing
@@ -1173,6 +1264,7 @@ export const idempotencyKeys = pgTable(
     merchantId: text('merchant_id')
       .notNull()
       .references(() => merchants.id),
+    executionCluster: text('execution_cluster').notNull().default('legacy'),
     idempotencyKey: text('idempotency_key').notNull(),
     requestHash: text('request_hash').notNull(),
     responseStatus: integer('response_status').notNull(),
@@ -1182,6 +1274,7 @@ export const idempotencyKeys = pgTable(
   (table) => ({
     merchantKeyIdx: uniqueIndex('idempotency_keys_merchant_key_idx').on(
       table.merchantId,
+      table.executionCluster,
       table.idempotencyKey,
     ),
   }),
@@ -1316,6 +1409,37 @@ export const adminAuditLog = pgTable(
   }),
 );
 
+/**
+ * merchant_audit_log — an owner-visible trail of every sensitive self-serve
+ * write a Merchant makes: profile edits, key issuance/rotation/revocation and
+ * webhook endpoint changes. Separate from admin_audit_log (operator actions),
+ * because this one is read back by the owner and is scoped to their Merchant;
+ * an operator trail must never be exposed on the portal. Append-only. The
+ * actor is the owner's provider identity, never a client-supplied id.
+ */
+export const merchantAuditLog = pgTable(
+  'merchant_audit_log',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    merchantId: text('merchant_id')
+      .notNull()
+      .references(() => merchants.id),
+    actor: text('actor').notNull(),
+    action: text('action').notNull(),
+    target: text('target'),
+    metadata: jsonb('metadata').$type<Record<string, string>>(),
+    at: timestamp('at').defaultNow().notNull(),
+  },
+  (table) => ({
+    merchantAtIdx: index('merchant_audit_log_merchant_at_idx').on(
+      table.merchantId,
+      table.at,
+    ),
+  }),
+);
+
 // ---------- Relations ----------
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -1354,15 +1478,12 @@ export const transfersRelations = relations(transfers, ({ one }) => ({
   }),
 }));
 
-export const merchantsRelations = relations(merchants, ({ one, many }) => ({
+export const merchantsRelations = relations(merchants, ({ many }) => ({
   apiKeys: many(apiKeys),
   paymentIntents: many(paymentIntents),
   sessions: many(sessions),
   webhookEndpoints: many(webhookEndpoints),
-  settlementAccount: one(settlementAccounts, {
-    fields: [merchants.id],
-    references: [settlementAccounts.merchantId],
-  }),
+  settlementAccounts: many(settlementAccounts),
 }));
 
 export const paymentIntentsRelations = relations(
@@ -1435,3 +1556,17 @@ export const refundsRelations = relations(refunds, ({ one }) => ({
     references: [merchants.id],
   }),
 }));
+
+/** Transactional authorization headroom, keyed by Consumer and UTC window. */
+export const capacityCounters = pgTable(
+  'capacity_counters',
+  {
+    key: text('key').primaryKey(),
+    count: integer('count').notNull(),
+    totalRaw: numeric('total_raw', { precision: 78, scale: 0 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    expiresAtIdx: index('capacity_counters_expires_at_idx').on(table.expiresAt),
+  }),
+);

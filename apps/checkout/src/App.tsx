@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import type { CheckoutStatus } from '@xend/checkout-protocol';
+import type { CheckoutStatus } from '@prydd/checkout-protocol';
 import { parseLaunch, LaunchError, type Launch } from './lib/launch';
 import {
   getIntent,
@@ -9,8 +9,10 @@ import {
   type TerminalResult,
 } from './lib/api';
 import {
-  postResultToOpener,
-  postCancelToOpener,
+  postReadyToMerchant,
+  postResultToMerchant,
+  postCancelToMerchant,
+  postUnresolvedToMerchant,
 } from './messaging/postMessage';
 import { completeByRedirect } from './messaging/redirect';
 import { LoadingShell } from './screens/LoadingShell';
@@ -42,7 +44,15 @@ type Phase =
   | { kind: 'insufficient'; intent: IntentView }
   | { kind: 'approval'; intent: IntentView }
   | { kind: 'pending' }
-  | { kind: 'result'; status: CheckoutStatus; severed?: boolean }
+  | {
+      kind: 'result';
+      status: CheckoutStatus;
+      severed?: boolean;
+      /** The status is the intent's own backend outcome, not a dismissed
+       * attempt: a canceled intent was voided by the merchant and cannot be
+       * paid by returning to the store. */
+      terminal?: boolean;
+    }
   | { kind: 'fatal' };
 
 export function App() {
@@ -60,10 +70,18 @@ export function App() {
     }
   }, []);
 
+  // Announce the surface to the merchant page as soon as the launch parses,
+  // before the intent is fetched. Without a named opener there is no exact
+  // origin to post to, and a wildcard target is never an option.
+  useEffect(() => {
+    if (!launch || launch.mode === 'redirect' || !launch.opener) return;
+    postReadyToMerchant(launch.opener, launch.nonce);
+  }, [launch]);
+
   // Deliver a terminal result. Redirect mode navigates to the backend-signed
   // return URL when one exists (a dead intent has none, so it renders in place).
-  // Popup mode posts to the exact merchant origin and, if the opener is severed,
-  // falls back to a return-to-store state rather than hanging.
+  // Popup and iframe mode post to the exact merchant origin and, if that channel
+  // is gone, fall back to a return-to-store state rather than hanging.
   const deliverResult = useCallback(
     (intent: IntentView, status: CheckoutStatus, redirectUrl?: string) => {
       if (!launch) return;
@@ -72,16 +90,16 @@ export function App() {
           completeByRedirect(redirectUrl);
           return;
         }
-        setPhase({ kind: 'result', status });
+        setPhase({ kind: 'result', status, terminal: true });
         return;
       }
-      const posted = postResultToOpener(
+      const posted = postResultToMerchant(
         intent.merchantOrigin,
         launch.nonce,
         intent.reference,
         status,
       );
-      setPhase({ kind: 'result', status, severed: !posted });
+      setPhase({ kind: 'result', status, severed: !posted, terminal: true });
     },
     [launch],
   );
@@ -100,7 +118,7 @@ export function App() {
         setPhase({ kind: 'result', status: 'canceled' });
         return;
       }
-      const posted = postCancelToOpener(
+      const posted = postCancelToMerchant(
         intent.merchantOrigin,
         launch.nonce,
         intent.reference,
@@ -155,13 +173,20 @@ export function App() {
           return;
         }
         if (err.code === 'PAYMENT_PROCESSING') {
+          if (launch && launch.mode !== 'redirect') {
+            postUnresolvedToMerchant(
+              intent.merchantOrigin,
+              launch.nonce,
+              intent.reference,
+            );
+          }
           setPhase({ kind: 'pending' });
           return;
         }
       }
       deliverResult(intent, 'failed');
     },
-    [deliverResult],
+    [deliverResult, launch],
   );
 
   const handleTerminal = useCallback(
@@ -179,7 +204,13 @@ export function App() {
     case 'pending':
       return <Result status="succeeded" pending />;
     case 'result':
-      return <Result status={phase.status} severed={phase.severed} />;
+      return (
+        <Result
+          status={phase.status}
+          severed={phase.severed}
+          terminal={phase.terminal}
+        />
+      );
     case 'insufficient':
       return (
         <InsufficientBalance onCancel={() => deliverCancel(phase.intent)} />
@@ -201,6 +232,7 @@ export function App() {
             }
             onError={(err: unknown) => handleError(phase.intent, err)}
             onCancel={() => deliverCancel(phase.intent)}
+            waitForTerminal={launch?.mode === 'redirect'}
           />
         </Suspense>
       );

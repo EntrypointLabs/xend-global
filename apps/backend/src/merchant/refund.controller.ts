@@ -8,7 +8,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { SettlementProviderUnavailableError } from '../settlement/settlement.errors';
+import {
+  RefundNotSupportedError as SettlementRefundNotSupportedError,
+  SettlementProviderUnavailableError,
+} from '../settlement/settlement.errors';
 import { InternalGuard } from './internal.guard';
 import { RefundService } from './refund.service';
 import {
@@ -26,7 +29,7 @@ import {
 } from './merchant.errors';
 
 /**
- * Ops-initiated refund surface (InternalGuard). The merchants.xend.global
+ * Ops-initiated refund surface (InternalGuard). The merchants.prydd.co
  * portal's refund-approval screen is the fast-follow that calls the same
  * service. Not a merchant key, not the consumer JWT. Every request carries an
  * Idempotency-Key; without one it is refused before anything is read.
@@ -74,6 +77,7 @@ export class RefundController {
     }
     if (
       err instanceof RefundNotSupportedError ||
+      err instanceof SettlementRefundNotSupportedError ||
       err instanceof PaymentNotRefundableError ||
       err instanceof SettlementProviderUnavailableError ||
       err instanceof IdempotencyKeyReuseError

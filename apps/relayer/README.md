@@ -1,7 +1,7 @@
-# @xend/relayer
+# @prydd/relayer
 
 The fee-payer relayer: a thin, key-isolated Solana co-signer for Pay with
-Xend. It sponsors the SOL fee on USDC settlement transactions so Consumers
+Prydd. It sponsors the SOL fee on USDC settlement transactions so Consumers
 never hold SOL. It is a SEPARATE deployable, not a module in `apps/backend`,
 and holds the platform's most sensitive material (the fee-payer key). It
 speaks `@solana/kit` (no `@solana/web3.js`) and shares no code with the

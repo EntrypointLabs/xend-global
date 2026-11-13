@@ -93,8 +93,8 @@ export class WebhookDeliveryService {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'Xend-Signature': header,
-          'Xend-Event-Id': delivery.eventId,
+          'Prydd-Signature': header,
+          'Prydd-Event-Id': delivery.eventId,
           'X-Correlation-Id': delivery.correlationId,
         },
         body: delivery.payload,

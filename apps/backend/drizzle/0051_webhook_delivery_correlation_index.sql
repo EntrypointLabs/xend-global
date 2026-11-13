@@ -1,0 +1,1 @@
+CREATE INDEX "webhook_deliveries_correlation_idx" ON "webhook_deliveries" USING btree ("correlation_id","created_at");

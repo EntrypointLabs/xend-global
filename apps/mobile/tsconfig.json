@@ -5,7 +5,7 @@
     "strict": true,
     "paths": {
       "@/*": ["./*"],
-      "@xend/smart-account": ["../../packages/smart-account/src/index.ts"]
+      "@prydd/smart-account": ["../../packages/smart-account/src/index.ts"]
     }
   },
   "include": [

@@ -7,7 +7,7 @@ import {
 import {
   deriveAccountAddresses,
   derivePolicyAddress,
-} from '@xend/smart-account';
+} from '@prydd/smart-account';
 
 import {
   ABOVE_LIMIT_POLICY_SEED,

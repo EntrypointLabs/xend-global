@@ -17,7 +17,7 @@ describe('paymentIntentTransitions', () => {
 
     const text = await metricsRegistry.metrics();
     expect(text).toContain(
-      'xend_payment_intent_transitions_total{from="created",to="authorized"} 2',
+      'prydd_payment_intent_transitions_total{from="created",to="authorized"} 2',
     );
   });
 });

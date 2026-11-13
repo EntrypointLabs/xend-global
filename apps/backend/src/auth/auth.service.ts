@@ -56,7 +56,7 @@ export class AuthService {
   ) {}
 
   /**
-   * Turns a Privy identity into a Xend session.
+   * Turns a Privy identity into a Prydd session.
    *
    * With a sign-up token, the Privy user is bound to the users row whose
    * address the token was issued for. Without one, the only row this can
@@ -166,7 +166,7 @@ export class AuthService {
         {
           code: 'NO_ACCOUNT_FOR_PASSKEY',
           message:
-            'this passkey is not on a Xend account yet; continue with your email to create one',
+            'this passkey is not on a Prydd account yet; continue with your email to create one',
         },
         HttpStatus.NOT_FOUND,
       );

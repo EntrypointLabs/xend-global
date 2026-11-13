@@ -1,8 +1,28 @@
 # Privy configuration verification (Phase 5)
 
-Status: Verified
-Author: Pay with Xend build
-Scope: Phase 5 Privy configuration verification: custom RP ID on the registrable root xend.global, session-signer flow on a Xend-hosted domain, and key exportability. Records the confirmed configuration that the checkout ceremony (task 5.3b) builds against.
+Status: Partially verified; web relying-party claims below are superseded
+
+## Correction from the live pilot (2026-09-19)
+
+The earlier claims in (a), (b), and the Outcome that React's
+`loginWithPasskey` accepts `relyingParty` are incorrect for the installed SDK.
+Its type accepts only `credentialIds`, and its implementation passes Privy's
+returned `options.rp_id` to WebAuthn. A temporary development probe at
+`navigator.credentials.get` captured `rpId: "www.xend.global"` and zero
+allow-list entries on the local www Checkout. Mobile signup explicitly uses
+`https://xend.global`. Privy confirms the pilot Consumer has a registered
+passkey, but the phone's QR flow reported no applicable passkeys.
+
+The ignored override has been removed. The proposed local correction is to
+serve Checkout on the enrollment domain using `PRYDD_CHECKOUT_HOST=xend.global`.
+This requires a local hosts entry and trusted TLS certificate first. After
+installing those and restarting the local server on the apex, the same probe
+confirmed `rpId: "xend.global"`. A successful device assertion and settlement
+are **not yet verified**. This domain result does not prove where the phone
+stored the credential or that the QR authenticator can access it.
+Do not treat the historical verification language below as an E2E result.
+Author: Pay with Prydd build
+Scope: Phase 5 Privy configuration verification: custom RP ID on the registrable root xend.global, session-signer flow on a Prydd-hosted domain, and key exportability. Records the confirmed configuration that the checkout ceremony (task 5.3b) builds against.
 
 ## Why this exists
 
@@ -41,7 +61,7 @@ The confirmed Privy configuration that task 5.3b builds against: set `relyingPar
 
 Doc gaps and caveats carried to the ceremony task and to the mainnet gate:
 
-- The exact Solana policy-engine granularity (program / instruction allowlists) is not fully pinned in the docs. This is routed around by design: policy and tier limits are first-class in the Identity and Capability API, not the wallet layer, and gas is handled by the Xend relayer regardless.
+- The exact Solana policy-engine granularity (program / instruction allowlists) is not fully pinned in the docs. This is routed around by design: policy and tier limits are first-class in the Identity and Capability API, not the wallet layer, and gas is handled by the Prydd relayer regardless.
 - Smart wallets and batching are EVM-only and unused here.
 - On-device latency, the real-credential web assertion, and the live session-signer round trip on real TLS are the human device matrix (task 5.5), not part of this automated run.
 

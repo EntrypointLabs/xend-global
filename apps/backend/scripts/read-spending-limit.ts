@@ -14,7 +14,7 @@ import {
   deriveAccountAddresses,
   derivePolicyAddress,
   resolveSpendRoute,
-} from '@xend/smart-account';
+} from '@prydd/smart-account';
 import { AppModule } from '../src/app.module';
 import {
   ABOVE_LIMIT_POLICY_SEED,

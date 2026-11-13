@@ -133,7 +133,7 @@ describe('WalletsService.deleteMe', () => {
 
     expect(result).toEqual({ deleted: true });
     expect(store.users[0].deletedAt).not.toBeNull();
-    expect(store.users[0].email).toBe('deleted-u_1@deleted.xend.internal');
+    expect(store.users[0].email).toBe('deleted-u_1@deleted.prydd.internal');
     // Frees the unique wallet_address/provider_user_id so /auth/exchange can
     // re-insert a smart_accounts row if the same Privy identity signs in
     // again later, instead of hitting a stale unique-constraint conflict.

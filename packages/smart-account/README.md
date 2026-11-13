@@ -1,4 +1,4 @@
-# @xend/smart-account
+# @prydd/smart-account
 
 Owned adapter over the [Squads Smart Account Program](https://github.com/Squads-Protocol/smart-account-program). Derives Account addresses and builds unsigned transactions for the 2-of-3 signer set described in [ADR 0025](../../docs/adr/0025-account-multisig-signer-set.md).
 
@@ -33,7 +33,7 @@ import {
   buildCreateAccount,
   fetchProgramConfig,
   nextSettingsSeed,
-} from "@xend/smart-account";
+} from "@prydd/smart-account";
 
 const config = await fetchProgramConfig(connection);
 const { instruction, addresses } = buildCreateAccount({

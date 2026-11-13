@@ -32,3 +32,128 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+
+.payment-stage {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: #090909;
+}
+
+.payment-sheet {
+  width: min(100%, 26rem);
+  overflow: hidden;
+  border: 1px solid #343434;
+  border-radius: 1.75rem;
+  background: #1c1c1e;
+  box-shadow: 0 1.5rem 5rem #0006;
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+.payment-header,
+.payment-account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #38383a;
+}
+
+.payment-wordmark {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.06em;
+}
+.payment-header-label,
+.payment-account {
+  font-size: 0.875rem;
+}
+.payment-header-label,
+.payment-account > span {
+  color: #b3b3bb;
+}
+.payment-purchase {
+  padding: 1.75rem 1.5rem;
+  text-align: center;
+}
+.payment-merchant-mark {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  margin: 0 auto 1rem;
+  border-radius: 0.875rem;
+  background: #38383a;
+  font-size: 1.5rem;
+}
+.payment-purchase h1 {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+.payment-total {
+  margin-top: 0.375rem;
+  font-size: clamp(2rem, 8vw, 2.75rem);
+  letter-spacing: -0.04em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.payment-more-info {
+  margin: 0 1.5rem 1rem;
+  font-size: 0.8125rem;
+}
+.payment-actions {
+  padding: 0 1.5rem 1rem;
+}
+.payment-state {
+  padding: 2rem 0 1rem;
+}
+.payment-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+  padding: 0 1.5rem 1.5rem;
+}
+.payment-state .payment-actions a:focus-visible {
+  outline: 3px solid #90bfff;
+  outline-offset: 4px;
+}
+.payment-actions button {
+  min-height: 2.75rem;
+  touch-action: manipulation;
+}
+.payment-actions button:enabled:active {
+  opacity: 0.75;
+}
+.payment-actions button:focus-visible {
+  outline: 3px solid #90bfff;
+  outline-offset: 4px;
+}
+.payment-actions button:first-child {
+  margin-top: 1rem;
+}
+
+@media (max-width: 480px) {
+  .payment-stage {
+    padding: 0;
+    align-items: end;
+  }
+  .payment-sheet {
+    width: 100%;
+    border-radius: 1.75rem 1.75rem 0 0;
+    border-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@media (prefers-contrast: more) {
+  .payment-sheet,
+  .payment-header,
+  .payment-account {
+    border-color: #a1a1aa;
+  }
+}

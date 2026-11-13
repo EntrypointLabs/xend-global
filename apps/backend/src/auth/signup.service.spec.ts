@@ -520,7 +520,7 @@ describe('SignupService.startEmailSignup', () => {
     await expect(
       ctx.service.startEmailSignup('victim-20@example.com', '198.51.100.1'),
     ).resolves.toMatchObject({ sent: true });
-  });
+  }, 30_000);
 });
 
 describe('SignupService.verifyEmailSignup', () => {

@@ -1,4 +1,4 @@
-import type { CheckoutResult } from "../types";
+import type { CheckoutResult, CheckoutUnresolved } from "../types";
 // Types-only imports from Phase 5's protocol package, via the zod-free
 // `/types` subpath (Phase 5's recorded consumption model): erased at
 // build, so checkout-core stays zero-runtime-dependency while the
@@ -8,18 +8,21 @@ import type {
   CheckoutEnvelope,
   CheckoutStatus,
   CheckoutMessageTypeValue,
-} from "@xend/checkout-protocol/types";
+  CheckoutUnresolvedEnvelope,
+  CheckoutUnresolvedReason,
+} from "@prydd/checkout-protocol/types";
 
 // SEAM owned by Phase 5 (checkout surface). RECONCILED against the
 // CANONICAL envelope contract (coordinator decision, recorded in Phase 5
 // and Phase 7 FINDINGS rounds 1b + 2) and typed against
-// @xend/checkout-protocol/types:
-//   - discriminants: xend === 'checkout' and v === 1 (unknown versions are
+// @prydd/checkout-protocol/types:
+//   - discriminants: prydd === 'checkout' and v === 1 (unknown versions are
 //     IGNORED, never errors, so future protocol bumps fail soft)
-//   - type values are NAMESPACED: 'xend.checkout.result' |
-//     'xend.checkout.cancel' (never bare 'result'/'cancel'); cancel
+//   - type values are NAMESPACED: 'prydd.checkout.result' |
+//     'prydd.checkout.cancel' (never bare 'result'/'cancel'); cancel
 //     messages ALSO carry status 'canceled', so a status-driven parser
-//     resolves them; there is NO ready message in v1 (ADR 0016)
+//     resolves them; 'prydd.checkout.ready' is the mount handshake and
+//     carries neither a reference nor a status (ADR 0016)
 //   - fields: reference (intent reference), nonce (must match the nonce
 //     this SDK generated at open), status
 //   - statuses: 'succeeded' | 'failed' | 'canceled' | 'expired'
@@ -29,8 +32,8 @@ import type {
 // `satisfies` binds these literals to the protocol package's types, so a
 // Phase 5 rename breaks this compile instead of silently never matching.
 const RESULT_TYPES = [
-  "xend.checkout.result",
-  "xend.checkout.cancel",
+  "prydd.checkout.result",
+  "prydd.checkout.cancel",
 ] as const satisfies readonly CheckoutMessageTypeValue[];
 const STATUSES = [
   "succeeded",
@@ -38,6 +41,33 @@ const STATUSES = [
   "canceled",
   "expired",
 ] as const satisfies readonly CheckoutStatus[];
+const READY_TYPE = "prydd.checkout.ready" satisfies CheckoutMessageTypeValue;
+const UNRESOLVED_TYPE =
+  "prydd.checkout.unresolved" satisfies CheckoutMessageTypeValue;
+const UNRESOLVED_REASONS = [
+  "confirmation_timeout",
+] as const satisfies readonly CheckoutUnresolvedReason[];
+
+/**
+ * Whether an already-origin-validated payload is the surface's mount
+ * handshake for the ceremony this SDK started. It carries no reference,
+ * because the handshake can precede one, so the nonce is the whole
+ * correlation. Never a result: it reports that the surface loaded, nothing
+ * about a payment.
+ */
+export function isCheckoutReady(
+  data: unknown,
+  expected: { nonce: string },
+): boolean {
+  if (typeof data !== "object" || data === null) return false;
+  const env = data as Record<string, unknown>;
+  return (
+    env["prydd"] === "checkout" &&
+    env["v"] === 1 &&
+    env["type"] === READY_TYPE &&
+    env["nonce"] === expected.nonce
+  );
+}
 
 /**
  * Map an already-origin-validated message payload to a CheckoutResult, or
@@ -52,7 +82,7 @@ export function parseCheckoutEnvelope(
 ): CheckoutResult | null {
   if (typeof data !== "object" || data === null) return null;
   const env = data as Partial<CheckoutEnvelope> & Record<string, unknown>;
-  if (env["xend"] !== "checkout") return null;
+  if (env["prydd"] !== "checkout") return null;
   if (env["v"] !== 1) return null; // ignore unknown protocol versions
   if (!(RESULT_TYPES as readonly string[]).includes(String(env["type"]))) {
     return null;
@@ -69,5 +99,30 @@ export function parseCheckoutEnvelope(
   return {
     reference: expected.reference,
     status: status as CheckoutResult["status"],
+  };
+}
+
+export function parseCheckoutUnresolvedEnvelope(
+  data: unknown,
+  expected: { reference: string; nonce: string },
+): CheckoutUnresolved | null {
+  if (typeof data !== "object" || data === null) return null;
+  const env = data as Partial<CheckoutUnresolvedEnvelope> &
+    Record<string, unknown>;
+  if (env["prydd"] !== "checkout" || env["v"] !== 1) return null;
+  if (env["type"] !== UNRESOLVED_TYPE) return null;
+  if (env["reference"] !== expected.reference) return null;
+  if (env["nonce"] !== expected.nonce) return null;
+  const reason = env["reason"];
+  if (
+    typeof reason !== "string" ||
+    !(UNRESOLVED_REASONS as readonly string[]).includes(reason)
+  ) {
+    return null;
+  }
+  return {
+    reference: expected.reference,
+    status: "unresolved",
+    reason: reason as CheckoutUnresolved["reason"],
   };
 }

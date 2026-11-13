@@ -87,10 +87,10 @@ export function PendingChangeModal({
             className="mb-6 text-sm leading-5 opacity-70"
           >
             {startedHere
-              ? "This changes who can access your Xend account. It takes effect after the delay below, and you can call it off at any point until then."
+              ? "This changes who can access your Prydd account. It takes effect after the delay below, and you can call it off at any point until then."
               : remaining === null
-                ? "A change to who can access your Xend account has been started. It needs one more approval, and then waits 24 hours before it takes effect. You can reject it at any point until then."
-                : "A change to who can access your Xend account has been approved. If this was not you, reject it before the time below runs out."}
+                ? "A change to who can access your Prydd account has been started. It needs one more approval, and then waits 24 hours before it takes effect. You can reject it at any point until then."
+                : "A change to who can access your Prydd account has been approved. If this was not you, reject it before the time below runs out."}
           </Typography>
 
           <View className="mb-6 rounded-2xl border border-border px-4 py-3.5">

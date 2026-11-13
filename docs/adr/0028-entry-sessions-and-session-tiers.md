@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-09-07
 **Accepted:** 2026-08-30
-**Deciders:** Xend founding team
+**Deciders:** Prydd founding team
 **Tags:** backend, mobile, security, auth
 
 ## Context and Problem Statement
@@ -12,7 +12,7 @@
 code proves an inbox and unlocks S3, and never returns S1. It also decided that a
 **Consumer** who arrives with only an inbox, on a phone that holds no passkey for the
 **Account**, must still be able to get in far enough to look around and start a
-recovery. Before this, the only credential the backend understood was the Xend JWT
+recovery. Before this, the only credential the backend understood was the Prydd JWT
 minted by `auth/exchange` against a verified Privy identity token, which is to say a
 passkey. There was no way to admit an inbox without admitting it as a passkey.
 
@@ -37,7 +37,7 @@ an inbox is allowed to be, and how the backend tells.
 ## Considered Options
 
 1. **A second session tier stamped on the principal, closed by default** - the guard
-   accepts a Xend JWT or a Xend entry token, stamps `tier` on the principal, and
+   accepts a Prydd JWT or a Prydd entry token, stamps `tier` on the principal, and
    refuses an `entry` principal on any route not marked `@AllowEntry()`.
 2. **A scoped JWT** - mint the existing JWT with a `scope` claim and check the claim
    in each handler that cares.
@@ -118,7 +118,7 @@ entry. Hooks that must not run for an inbox, such as push registration
   default" from a convention into a build failure.
 - ✅ **Good:** One guard, one principal shape. A handler reads `req.user.tier` and
   needs no second code path.
-- ✅ **Good:** The credential is Xend's own: no Privy session exists behind it, so
+- ✅ **Good:** The credential is Prydd's own: no Privy session exists behind it, so
   nothing about it can be mistaken for S1.
 - ⚠️ **Bad:** Every new **Consumer** route has to be placed in a list, and the author
   has to understand the capability table to place it. That is the cost of the

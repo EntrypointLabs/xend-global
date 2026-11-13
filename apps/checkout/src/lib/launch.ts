@@ -1,4 +1,4 @@
-export type LaunchMode = 'popup' | 'redirect';
+export type LaunchMode = 'popup' | 'redirect' | 'iframe';
 
 export interface Launch {
   /**
@@ -65,7 +65,8 @@ export function parseLaunch(search: string): Launch {
   }
 
   const modeParam = params.get('mode');
-  const mode: LaunchMode = modeParam === 'redirect' ? 'redirect' : 'popup';
+  const mode: LaunchMode =
+    modeParam === 'redirect' || modeParam === 'iframe' ? modeParam : 'popup';
 
   const intent = params.get('intent');
   if (intent !== null && !REFERENCE_PATTERN.test(intent)) {

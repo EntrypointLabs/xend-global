@@ -98,7 +98,7 @@ export function layout(title: string, body: string): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(title)} · Xend Test Dashboard</title>
+<title>${escapeHtml(title)} · Prydd Test Dashboard</title>
 <style>${STYLES}</style>
 </head>
 <body>

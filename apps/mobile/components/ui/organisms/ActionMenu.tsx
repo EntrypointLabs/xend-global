@@ -3,10 +3,12 @@ import { Modal, View, StyleSheet, Image } from "react-native";
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import Animated, { SlideInDown, SlideOutDown } from "react-native-reanimated";
 import { Typography } from "../atoms/Typography";
+import { useFeature } from "@/hooks/useFeature";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useSendGate } from "@/hooks/useSendGate";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import HapticPressable from "../atoms/HapticPressable";
+import { useRouter } from "expo-router";
 
 interface ActionMenuProps {
   visible: boolean;
@@ -17,6 +19,8 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
   const { showSendModal, showReceiveModal } = useModalFlow();
   const gateSend = useSendGate();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const swapEnabled = useFeature("swap");
 
   const menus = useMemo(() => {
     return [
@@ -32,14 +36,24 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
         onPress: () => gateSend(showSendModal),
         disabled: false,
       },
+      ...(swapEnabled
+        ? [
+            {
+              title: "Swap",
+              icon: require("@/assets/icons/swap.png"),
+              onPress: () => router.push("/swap"),
+              disabled: false,
+            },
+          ]
+        : []),
       {
-        title: "Swap",
-        icon: require("@/assets/icons/swap.png"),
-        onPress: () => {},
-        disabled: true,
+        title: "Prydd Card",
+        icon: require("@/assets/icons/card.png"),
+        onPress: () => router.push("/card?from=/(tabs)" as never),
+        disabled: false,
       },
     ] as const;
-  }, [showReceiveModal, showSendModal, gateSend]);
+  }, [showReceiveModal, showSendModal, gateSend, router, swapEnabled]);
 
   return (
     <Modal

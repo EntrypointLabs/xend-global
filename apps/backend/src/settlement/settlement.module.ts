@@ -9,12 +9,16 @@ import { BlockradarSettlementModule } from './providers/blockradar/blockradar-se
 import { BlockradarSettlementProvider } from './providers/blockradar/blockradar-settlement.provider';
 import { BlockradarWebhookController } from './providers/blockradar/blockradar-webhook.controller';
 import { OfframpReconcilerService } from './providers/blockradar/offramp-reconciler.service';
+import { PajModule } from './providers/paj/paj.module';
+import { PajSettlementProvider } from './providers/paj/paj-settlement.provider';
+import { PajWebhookController } from './providers/paj/paj-webhook.controller';
 import { SETTLEMENT_PROVIDERS } from './settlement-provider.interface';
 import { SettlementRouter } from './settlement-router';
 import { SettlementProvisioningService } from './settlement-provisioning.service';
 import { RelayerClient } from './relayer.client';
 import { SettlementService } from './settlement.service';
 import { SettlementConfirmationService } from './settlement-confirmation.service';
+import { CapabilityModule } from '../capability/capability.module';
 
 /**
  * Read from the raw environment because module metadata is evaluated at
@@ -23,6 +27,8 @@ import { SettlementConfirmationService } from './settlement-confirmation.service
 const blockradarWebhookEnabled = /^(true|1|yes)$/i.test(
   process.env.BLOCKRADAR_SOLANA_NATIVE_ENABLED ?? '',
 );
+
+const pajEnabled = /^(true|1|yes)$/i.test(process.env.PAJ_ENABLED ?? '');
 
 /**
  * Settlement provider layer (ADR 0015). SETTLEMENT_PROVIDERS is an array of
@@ -39,19 +45,32 @@ const blockradarWebhookEnabled = /^(true|1|yes)$/i.test(
     PaymentModule,
     EventsModule,
     BlockradarSettlementModule,
+    PajModule,
     SettlementAuthorityModule,
     SpendModule,
+    CapabilityModule,
   ],
-  controllers: blockradarWebhookEnabled ? [BlockradarWebhookController] : [],
+  controllers: [
+    ...(blockradarWebhookEnabled ? [BlockradarWebhookController] : []),
+    ...(pajEnabled ? [PajWebhookController] : []),
+  ],
   providers: [
     DirectUsdcProvider,
+    PajSettlementProvider,
     {
       provide: SETTLEMENT_PROVIDERS,
+      // The router takes the first adapter that serves a currency. PAJ sits
+      // ahead of Blockradar and serves NGN only while it is enabled.
       useFactory: (
         directUsdc: DirectUsdcProvider,
+        paj: PajSettlementProvider,
         blockradar: BlockradarSettlementProvider,
-      ) => [directUsdc, blockradar],
-      inject: [DirectUsdcProvider, BlockradarSettlementProvider],
+      ) => [directUsdc, paj, blockradar],
+      inject: [
+        DirectUsdcProvider,
+        PajSettlementProvider,
+        BlockradarSettlementProvider,
+      ],
     },
     SettlementRouter,
     SettlementProvisioningService,
@@ -65,6 +84,7 @@ const blockradarWebhookEnabled = /^(true|1|yes)$/i.test(
     SettlementRouter,
     SettlementService,
     SettlementConfirmationService,
+    PajSettlementProvider,
     // Account creation pays its rent with the authority rather than the
     // relayer, whose allowlist excludes the System program by design.
     SettlementAuthorityModule,

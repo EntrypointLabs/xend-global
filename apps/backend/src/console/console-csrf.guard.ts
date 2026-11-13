@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 
-export const CSRF_COOKIE = 'xend_console_csrf';
+export const CSRF_COOKIE = 'prydd_console_csrf';
 export const CSRF_FIELD = '_csrf';
 const TOKEN_BYTES = 32;
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
