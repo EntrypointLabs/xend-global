@@ -10,6 +10,8 @@ function intentRow(over: Partial<IntentRow> = {}): IntentRow {
     consumerId: 'c1',
     status: 'succeeded',
     usdcSettlementRaw: '1000000',
+    pricingCurrency: null,
+    executionCluster: 'devnet',
     displayCurrency: 'USD',
     displayAmountMinor: '100',
     fxRate: null,
@@ -44,6 +46,21 @@ function build(intent: IntentRow) {
 }
 
 describe('buildEventPayload', () => {
+  it('preserves explicit USD cents in the Merchant confirmation', () => {
+    const object = build(
+      intentRow({
+        pricingCurrency: 'USD',
+        displayCurrency: 'USD',
+        displayAmountMinor: '100',
+        usdcSettlementRaw: '1000000',
+      }),
+    ).data.object;
+    expect(object).toMatchObject({
+      currency: 'USD',
+      amount: '100',
+      usdc_settlement_raw: '1000000',
+    });
+  });
   it('reads a USDC-priced intent back as USDC in raw units, matching the merchant API object', () => {
     const object = build(intentRow()).data.object;
     expect(object.currency).toBe('USDC');

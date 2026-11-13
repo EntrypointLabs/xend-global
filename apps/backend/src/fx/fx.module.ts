@@ -1,6 +1,11 @@
+import { ConfigService } from '@nestjs/config';
+import { BlockradarFxAdapter } from './blockradar-fx.adapter';
 import { Module } from '@nestjs/common';
 import { RedisModule } from '../redis/redis.module';
-import { FX_QUOTE_PROVIDER } from './fx-quote-provider.interface';
+import {
+  FX_QUOTE_PROVIDER,
+  UPSTREAM_FX_QUOTE_PROVIDER,
+} from './fx-quote-provider.interface';
 import { PartnerFxAdapter } from './partner-fx.adapter';
 import { CachedFxQuoteProvider } from './cached-fx-quote.provider';
 
@@ -13,6 +18,17 @@ import { CachedFxQuoteProvider } from './cached-fx-quote.provider';
   imports: [RedisModule],
   providers: [
     PartnerFxAdapter,
+    BlockradarFxAdapter,
+    {
+      provide: UPSTREAM_FX_QUOTE_PROVIDER,
+      inject: [ConfigService, PartnerFxAdapter, BlockradarFxAdapter],
+      useFactory: (
+        config: ConfigService,
+        partner: PartnerFxAdapter,
+        blockradar: BlockradarFxAdapter,
+      ) =>
+        config.get('FX_QUOTE_SOURCE') === 'blockradar' ? blockradar : partner,
+    },
     CachedFxQuoteProvider,
     { provide: FX_QUOTE_PROVIDER, useExisting: CachedFxQuoteProvider },
   ],

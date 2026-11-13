@@ -73,7 +73,7 @@ The isolated unified simulation below now connects mobile balance, receive, quot
 
 ## Complete unified simulation
 
-`unified/` connects authenticated HTTP endpoints, isolated PostgreSQL holdings, the shared funding planner and a three-second background worker. Migration `0042_unified_fiat_simulation.sql` creates its separate table. Both migrations have been applied locally. Set `FIAT_UNIFIED_SIMULATION=true` in the backend environment and restart the backend. Production rejects this flow regardless of the flag.
+`unified/` connects authenticated HTTP endpoints, isolated PostgreSQL holdings, the shared funding planner and a three-second background worker. Migration `0057_unified_fiat_simulation.sql` creates its separate table. Both migrations have been applied locally. Set `FIAT_UNIFIED_SIMULATION=true` in the backend environment and restart the backend. Production rejects this flow regardless of the flag.
 
 In a mobile development build, open Receive or Send → Fiat → **Test unified NGN + USDC balance**. The screen lives at `apps/mobile/app/(fiat)/unified.tsx`. Its balances are test holdings, separate from real Cash and the Solana vault.
 

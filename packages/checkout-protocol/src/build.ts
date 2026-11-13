@@ -1,4 +1,10 @@
-import type { CheckoutEnvelope, CheckoutStatus } from './types';
+import type {
+  CheckoutEnvelope,
+  CheckoutReadyEnvelope,
+  CheckoutStatus,
+  CheckoutUnresolvedEnvelope,
+  CheckoutUnresolvedReason,
+} from './types';
 
 /** Bump only for a breaking envelope change; consumers ignore unknown versions. */
 export const CHECKOUT_PROTOCOL_VERSION = 1 as const;
@@ -7,9 +13,36 @@ export const CHECKOUT_PROTOCOL_VERSION = 1 as const;
 export const CHECKOUT_ORIGIN = 'https://pay.xend.global' as const;
 
 export const CheckoutMessageType = {
+  Ready: 'xend.checkout.ready',
+  Unresolved: 'xend.checkout.unresolved',
   Result: 'xend.checkout.result',
   Cancel: 'xend.checkout.cancel',
 } as const;
+
+export function buildUnresolved(
+  nonce: string,
+  reference: string,
+  reason: CheckoutUnresolvedReason,
+): CheckoutUnresolvedEnvelope {
+  return {
+    xend: 'checkout',
+    v: CHECKOUT_PROTOCOL_VERSION,
+    nonce,
+    reference,
+    type: CheckoutMessageType.Unresolved,
+    reason,
+  };
+}
+
+/** Mount handshake. No reference and no status: neither exists yet. */
+export function buildReady(nonce: string): CheckoutReadyEnvelope {
+  return {
+    xend: 'checkout',
+    v: CHECKOUT_PROTOCOL_VERSION,
+    nonce,
+    type: CheckoutMessageType.Ready,
+  };
+}
 
 export function buildResult(
   nonce: string,

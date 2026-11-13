@@ -101,7 +101,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("mountXendButton glass sheet", () => {
+describe("mountXendButton glass sheet with a popup ceremony", () => {
   it("waits for the reference before reporting a cancel taken while loading", async () => {
     const results: unknown[] = [];
     let release!: (v: { reference: string }) => void;
@@ -112,6 +112,7 @@ describe("mountXendButton glass sheet", () => {
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => pending,
       onResult: (r) => results.push(r),
     });
@@ -135,7 +136,7 @@ describe("mountXendButton glass sheet", () => {
     expect(sheetText()).not.toContain("Sabi Market");
   });
 
-  it("is the default presentation, and renders the summary without opening a window", async () => {
+  it("renders the summary without opening a window", async () => {
     const openSpy = vi.spyOn(window, "open");
     const fetchMock = stubSummary({
       merchantDisplayName: "Sabi Market",
@@ -207,6 +208,7 @@ describe("mountXendButton glass sheet", () => {
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_confirm" }),
       onResult: () => {},
     });
@@ -251,6 +253,7 @@ describe("mountXendButton glass sheet", () => {
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_msg" }),
       onResult,
     });
@@ -296,6 +299,7 @@ describe("mountXendButton glass sheet", () => {
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_blocked" }),
       onResult: () => {},
       onUnresolved,
@@ -344,7 +348,7 @@ describe("mountXendButton glass sheet", () => {
     expect((window as unknown as { __xss?: number }).__xss).toBeUndefined();
   });
 
-  it("cancels cleanly when the sheet is dismissed, and reports it once", async () => {
+  it("ignores backdrop dismissal after handoff and preserves the real result", async () => {
     const fakeWin = makeFakeWindow();
     vi.spyOn(window, "open").mockImplementation(
       () => fakeWin as unknown as Window,
@@ -360,6 +364,7 @@ describe("mountXendButton glass sheet", () => {
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_cancel" }),
       onResult,
     });
@@ -368,21 +373,17 @@ describe("mountXendButton glass sheet", () => {
 
     shadow().querySelector<HTMLElement>("[data-close]")!.click();
 
-    expect(onResult).toHaveBeenCalledTimes(1);
-    expect(onResult).toHaveBeenCalledWith({
-      reference: "pi_cancel",
-      status: "canceled",
-    });
-    expect(fakeWin.close).toHaveBeenCalled();
+    expect(onResult).not.toHaveBeenCalled();
+    expect(fakeWin.close).not.toHaveBeenCalled();
 
-    // The listener is gone: a late result cannot reopen a settled payment.
+    // Backdrop dismissal must not suppress the actual on-chain result.
     window.dispatchEvent(
       new MessageEvent("message", {
         origin: ORIGIN,
         data: {
           xend: "checkout",
           v: 1,
-          nonce: "n",
+          nonce: new URL(fakeWin.location.href).searchParams.get("nonce"),
           reference: "pi_cancel",
           type: "xend.checkout.result",
           status: "succeeded",
@@ -390,6 +391,10 @@ describe("mountXendButton glass sheet", () => {
       }),
     );
     expect(onResult).toHaveBeenCalledTimes(1);
+    expect(onResult).toHaveBeenCalledWith({
+      reference: "pi_cancel",
+      status: "succeeded",
+    });
   });
 
   it("shows the sheet's loading state, not an error, while the intent is being created", async () => {

@@ -71,7 +71,7 @@ describePg('unified fiat HTTP + PostgreSQL simulation', () => {
     await pool.query('CREATE TABLE users (id text PRIMARY KEY)');
     await pool.query(
       readFileSync(
-        'drizzle/0042_unified_fiat_simulation.sql',
+        'drizzle/0057_unified_fiat_simulation.sql',
         'utf8',
       ).replaceAll('"public".', `"${namespace}".`),
     );

@@ -8,6 +8,16 @@
 
 /** No registered adapter serves the requested currency/provider (e.g. an
  *  NGN Merchant before the Blockradar adapter ships in Phase 8). */
+export class FiatSettlementDisabledError extends Error {
+  readonly code = 'FIAT_SETTLEMENT_DISABLED';
+  constructor() {
+    super(
+      'Payments settle in USDC. Bank conversion and payouts are unavailable.',
+    );
+    this.name = 'FiatSettlementDisabledError';
+  }
+}
+
 export class SettlementProviderUnavailableError extends Error {
   readonly code = 'SETTLEMENT_PROVIDER_UNAVAILABLE';
   constructor(message: string) {

@@ -84,7 +84,10 @@ export class PrivyAdapter implements WalletProvider, OnModuleInit {
    * wallet + email. `client.getUser({ idToken })` performs verification
    * internally; any thrown error is mapped to a typed error here.
    */
-  async verifyIdToken(idToken: string): Promise<WalletProviderUser> {
+  async verifyIdToken(
+    idToken: string,
+    options?: { requireWallet: boolean },
+  ): Promise<WalletProviderUser> {
     if (!idToken || typeof idToken !== 'string') {
       throw new InvalidPrivyTokenError(
         'Privy ID token missing or not a string',
@@ -98,7 +101,7 @@ export class PrivyAdapter implements WalletProvider, OnModuleInit {
       throw this.mapSdkError(err, 'verifyIdToken');
     }
 
-    return this.userToProviderUser(user);
+    return this.userToProviderUser(user, options?.requireWallet);
   }
 
   /**
@@ -142,7 +145,10 @@ export class PrivyAdapter implements WalletProvider, OnModuleInit {
    * one we created), falling back to any Solana wallet if no embedded
    * one is present.
    */
-  private userToProviderUser(user: User): WalletProviderUser {
+  private userToProviderUser(
+    user: User,
+    requireWallet = false,
+  ): WalletProviderUser {
     // TEST ONLY — never production. Local checkout testing uses a minimal
     // passkey-only Privy identity (no email, no Solana wallet). Under
     // NODE_ENV==='development' only, fall back to deterministic placeholders
@@ -161,7 +167,7 @@ export class PrivyAdapter implements WalletProvider, OnModuleInit {
 
     let walletAddress: string;
     if (solanaWallets.length === 0) {
-      if (isDev) {
+      if (isDev && !requireWallet) {
         // TEST ONLY — never production. Fixed valid base58 devnet placeholder.
         walletAddress = DEV_PLACEHOLDER_SOLANA_ADDRESS;
       } else {

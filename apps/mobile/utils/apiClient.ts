@@ -494,6 +494,7 @@ export const AwaitingPaymentSchema = z.object({
   /** ISO 4217, whatever the Merchant priced in. */
   displayCurrency: z.string(),
   displayAmountMinor: z.string(),
+  usdcSettlementRaw: z.string().regex(/^\d+$/),
   /** When Checkout handed this over, which is when the Consumer was asked. */
   deferredAt: z.string().datetime(),
   expiresAt: z.string().datetime(),
@@ -963,7 +964,8 @@ class BackendClient {
       // Remove our internal flag before fetch sees it.
       delete (fetchOptions as { auth?: boolean }).auth;
 
-      if ((options.method ?? "GET").toUpperCase() === "GET") {
+      const method = (options.method ?? "GET").toUpperCase();
+      if (method === "GET" || method === "HEAD") {
         delete fetchOptions.body;
       } else if (fetchOptions.body === undefined) {
         // React Native's fetch puts a single NUL byte on the wire for a POST
@@ -1679,6 +1681,14 @@ class BackendClient {
       { method: "POST", auth: true }
     );
     return PreparePaymentResponseSchema.parse(raw);
+  }
+
+  async paymentStatus(reference: string): Promise<string> {
+    const raw = await this.request<unknown>(
+      `/payments/pending/${encodeURIComponent(reference)}/status`,
+      { auth: true }
+    );
+    return z.object({ status: z.string() }).parse(raw).status;
   }
 
   /** POST /payments/pending/:reference/submit — the fee payer completes and

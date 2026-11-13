@@ -13,13 +13,16 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
+    "db:migrate": "npm --workspace @xend/backend run db:migrate",
+    "db:generate": "npm --workspace @xend/backend run db:generate",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "turbo run build --filter=@xend/checkout-* && changeset publish",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "prepare": "husky",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "dev:ngrok": "node scripts/dev-ngrok.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.7",

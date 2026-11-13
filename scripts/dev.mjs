@@ -6,6 +6,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { resolveNgrok } from "./ngrok.mjs";
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const INFRA_SERVICES = ["redis", "kafka", "kafka-topics"];
 const DOCKER_START_TIMEOUT_MS = 90_000;
@@ -115,7 +117,7 @@ async function checkPostgres() {
   try {
     parsed = new URL(url);
   } catch {
-    die(`DATABASE_URL in apps/backend/.env is not a valid URL: ${url}`);
+    die("DATABASE_URL in apps/backend/.env is not a valid URL.");
   }
 
   const host = parsed.hostname || "localhost";
@@ -138,15 +140,19 @@ async function checkServicePorts() {
   const wanted = [
     {
       label: "backend",
-      port: Number(envValue("apps/backend/.env", "PORT") ?? 8000),
+      port: 8000,
     },
     {
       label: "relayer",
-      port: Number(envValue("apps/relayer/.env", "PORT") ?? 8787),
+      port: Number(
+        process.env.PORT ?? envValue("apps/relayer/.env", "PORT") ?? 8787,
+      ),
     },
     // A busy 8081 makes `expo start` prompt for an alternate port, and it has no
     // terminal to answer from once Turbo owns the process.
     { label: "mobile (Metro)", port: 8081 },
+    { label: "merchant", port: 5174 },
+    { label: "checkout", port: checkoutPort() },
   ];
 
   const taken = [];
@@ -168,38 +174,90 @@ async function checkServicePorts() {
   );
 }
 
-function startServices() {
-  // One task falling over must not take the rest of the suite with it.
-  const turboArgs = ["run", "dev", "--continue=always"];
-  if (logPath) turboArgs.push("--ui=stream");
-
-  say(
-    `Starting backend, relayer, checkout and mobile${logPath ? ` (logging to ${logPath})` : ""}`,
+function checkoutPort() {
+  const candidates = process.env.XEND_CHECKOUT_HOST
+    ? [{ host: process.env.XEND_CHECKOUT_HOST, port: 443 }]
+    : [
+        { host: "www.xend.global", port: 443 },
+        { host: "pay.xend.global", port: 5173 },
+      ];
+  const active = candidates.find(({ host }) =>
+    [".pem", "-key.pem"].every((suffix) =>
+      existsSync(path.join(ROOT, "apps/checkout/certs", host + suffix)),
+    ),
   );
+  return active?.port ?? 5173;
+}
 
-  const child = spawn("npx", ["turbo", ...turboArgs], {
-    cwd: ROOT,
-    stdio: logPath ? ["inherit", "pipe", "pipe"] : "inherit",
-  });
-
-  if (logPath) {
-    const sink = createWriteStream(logPath, { flags: "w" });
+function startServices() {
+  const ui = !logPath && process.stdout.isTTY ? "tui" : "stream";
+  say(`Starting all apps and ngrok in Turbo (${ui}).`);
+  const child = spawn(
+    path.join(ROOT, "node_modules/.bin/turbo"),
+    [
+      "run",
+      "dev",
+      "//#dev:ngrok",
+      "--continue=always",
+      "--env-mode=loose",
+      `--ui=${ui}`,
+    ],
+    {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        XEND_DEV_SUITE: "1",
+        XEND_NGROK_BIN: ngrokBin,
+        XEND_BACKEND_URL: "http://127.0.0.1:8000",
+        XEND_RELAYER_URL: `http://127.0.0.1:${process.env.PORT ?? envValue("apps/relayer/.env", "PORT") ?? 8787}`,
+        XEND_VITE_CACHE_DIR:
+          process.env.XEND_VITE_CACHE_DIR ??
+          path.join(ROOT, "node_modules/.cache/xend-checkout"),
+      },
+      stdio: logPath ? ["inherit", "pipe", "pipe"] : "inherit",
+    },
+  );
+  const sink = logPath ? createWriteStream(logPath, { flags: "w" }) : null;
+  if (sink) {
     child.stdout.pipe(process.stdout);
     child.stderr.pipe(process.stderr);
-    child.stdout.pipe(sink);
-    child.stderr.pipe(sink);
+    child.stdout.pipe(sink, { end: false });
+    child.stderr.pipe(sink, { end: false });
+    sink.on("error", (error) => {
+      console.error(`[dev] Cannot write log: ${error.message}`);
+      child.kill("SIGTERM");
+      process.exitCode = 1;
+    });
   }
-
   for (const signal of ["SIGINT", "SIGTERM"]) {
-    process.on(signal, () => child.kill(signal));
+    process.once(signal, () => child.kill(signal));
   }
-  child.on("exit", (code, signal) => {
-    process.exit(signal ? 1 : (code ?? 0));
+  child.once("error", (error) => {
+    console.error(`[dev] Turbo could not start: ${error.message}`);
+    sink?.end();
+    process.exitCode = 1;
+  });
+  child.once("close", (code, signal) => {
+    sink?.end();
+    process.exitCode = process.exitCode || code || (signal ? 1 : 0);
   });
 }
 
+// npm prepends Expo's legacy ngrok v2 shim to PATH. Resolve outside those dirs.
+const ngrokBin = resolveNgrok();
+say(`ngrok binary: ${ngrokBin}`);
+await checkServicePorts();
 await ensureDockerDaemon();
 startInfra();
 await checkPostgres();
-await checkServicePorts();
-startServices();
+say("Building shared packages...");
+if (
+  run("npx", ["turbo", "run", "build", "--filter=./packages/*"], {
+    stdio: "inherit",
+  }).status !== 0
+) {
+  die(
+    "Shared package build failed. Fix the errors above before starting the apps.",
+  );
+}
+await startServices();

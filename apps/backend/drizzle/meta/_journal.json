@@ -292,50 +292,155 @@
     {
       "idx": 41,
       "version": "7",
-      "when": 1788885236359,
-      "tag": "0041_consumer_fiat_orders",
+      "when": 1789463000000,
+      "tag": "0040_merchant_portal",
       "breakpoints": true
     },
     {
       "idx": 42,
       "version": "7",
-      "when": 1788962860614,
-      "tag": "0042_unified_fiat_simulation",
+      "when": 1789484000000,
+      "tag": "0041_payment_pricing_currency",
       "breakpoints": true
     },
     {
       "idx": 43,
       "version": "7",
-      "when": 1788990517467,
-      "tag": "0043_bank_accounts",
+      "when": 1789488000000,
+      "tag": "0042_api_key_execution_cluster",
       "breakpoints": true
     },
     {
       "idx": 44,
       "version": "7",
-      "when": 1788990667035,
-      "tag": "0044_bank_account_uniqueness",
+      "when": 1789857000000,
+      "tag": "0043_merchant_business_profile",
       "breakpoints": true
     },
     {
       "idx": 45,
       "version": "7",
-      "when": 1788991293519,
-      "tag": "0045_bank_transfers",
+      "when": 1789866000000,
+      "tag": "0044_transactional_capacity",
       "breakpoints": true
     },
     {
       "idx": 46,
       "version": "7",
-      "when": 1789387301269,
-      "tag": "0046_bank_notifications",
+      "when": 1789871635946,
+      "tag": "0046_settlement_account_cluster",
       "breakpoints": true
     },
     {
       "idx": 47,
       "version": "7",
-      "when": 1789390349044,
-      "tag": "0047_bank_notification_requery",
+      "when": 1789874743338,
+      "tag": "0047_settlement_account_cluster_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1789876407764,
+      "tag": "0048_idempotency_cluster_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1789879905111,
+      "tag": "0049_numerous_namora",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789897867916,
+      "tag": "0050_merchant_portal_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1789899581229,
+      "tag": "0051_webhook_delivery_correlation_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1789901054790,
+      "tag": "0052_portal_pagination_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1789903542765,
+      "tag": "0053_kyb_submitted_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1789904367532,
+      "tag": "0054_payment_attempts_intent_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1789924471326,
+      "tag": "0055_api_key_rotation_grace",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1794568909783,
+      "tag": "0056_consumer_fiat_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1794568910783,
+      "tag": "0057_unified_fiat_simulation",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1794568911783,
+      "tag": "0058_bank_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794568912783,
+      "tag": "0059_bank_account_uniqueness",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1794568913783,
+      "tag": "0060_bank_transfers",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1794568914783,
+      "tag": "0061_bank_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1794568915783,
+      "tag": "0062_bank_notification_requery",
       "breakpoints": true
     }
   ]

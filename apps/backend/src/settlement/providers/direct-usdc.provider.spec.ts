@@ -30,6 +30,9 @@ function makeSolana(overrides: Partial<SolanaRpc> = {}): SolanaRpc {
       blockhash: BLOCKHASH,
       lastValidBlockHeight: 1_000,
     }),
+    getSignatureStatuses: jest
+      .fn()
+      .mockResolvedValue([{ confirmationStatus: 'confirmed', err: null }]),
     accountExists: jest.fn().mockResolvedValue(true),
     getTokenAccountOwner: jest.fn().mockResolvedValue(AUTHORITY),
     getTokenAccountBalanceRaw: jest.fn().mockResolvedValue('0'),
@@ -87,20 +90,25 @@ describe('DirectUsdcProvider', () => {
   it('links a recorded merchant-own address with null attribution (no Xend custody)', async () => {
     const merchantWallet = Keypair.generate().publicKey.toBase58();
     const accountExists = jest.fn().mockResolvedValue(true);
-    const provider = makeProvider(makeSolana({ accountExists }));
+    const provider = makeProvider(
+      makeSolana({
+        accountExists,
+        getTokenAccountOwner: jest.fn().mockResolvedValue(merchantWallet),
+      }),
+    );
 
     const endpoint = await provider.provision({
       merchantId: 'm_own',
       merchantAddress: merchantWallet,
     });
 
-    expect(accountExists).toHaveBeenCalledWith(merchantWallet);
+    expect(accountExists).toHaveBeenCalledWith(endpoint.address);
     expect(endpoint.attributionRef).toBeNull();
     expect(endpoint.providerReference).toBe(merchantWallet);
     expect(endpoint.payoutConfig).toBeNull();
   });
 
-  it('rejects a merchant-own address whose USDC ATA does not exist on chain', async () => {
+  it('does not register an ATA before ownership is confirmed', async () => {
     const merchantWallet = Keypair.generate().publicKey.toBase58();
     // The owner wallet exists, but its USDC ATA was never initialized: deriving
     // the PDA must not be mistaken for the account existing, or settlement would
@@ -116,6 +124,25 @@ describe('DirectUsdcProvider', () => {
         merchantAddress: merchantWallet,
       }),
     ).rejects.toMatchObject({ code: 'SETTLEMENT_ACCOUNT_NOT_PROVISIONED' });
+  });
+
+  it('initializes the Merchant USDC ATA with the fee payer and no Merchant SOL', async () => {
+    const merchantWallet = Keypair.generate().publicKey.toBase58();
+    const send = jest.fn().mockResolvedValue('ata-signature');
+    const provider = makeProvider(
+      makeSolana({
+        accountExists: jest.fn().mockResolvedValue(false),
+        getTokenAccountOwner: jest.fn().mockResolvedValue(merchantWallet),
+      }),
+      send,
+    );
+    const result = await provider.provision({
+      merchantId: 'm_new',
+      merchantAddress: merchantWallet,
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(result.providerReference).toBe(merchantWallet);
+    expect(result.attributionRef).toBeNull();
   });
 
   it('handleIncomingSettlement returns complete synchronously (USDC landed is settlement)', async () => {

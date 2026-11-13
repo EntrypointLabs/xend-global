@@ -426,6 +426,8 @@ function checkoutMerchant() {
     allowedOrigins: ['https://acme.example.com'],
     kybStatus: 'verified',
     kybVerifiedAt: null,
+    kybSubmittedAt: null,
+    kybReviewNote: null,
     flatFeeBps: 0,
     fxSpreadBps: 0,
     createdAt: new Date('2026-01-01'),

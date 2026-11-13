@@ -1,4 +1,4 @@
-export type CheckoutMode = "popup" | "redirect";
+export type CheckoutMode = "iframe" | "popup" | "redirect";
 
 export interface LaunchParams {
   nonce: string;
@@ -49,7 +49,7 @@ export function buildLaunchUrl(
 /**
  * The full launch URL Phase 5's launch.ts parses. The query key for the
  * intent reference is `intent` (not intentRef); shape is exactly
- * `?intent=<reference>&nonce=<nonce>&mode=<popup|redirect>[&opener=<origin>]`.
+ * `?intent=<reference>&nonce=<nonce>&mode=<iframe|popup|redirect>[&opener=<origin>]`.
  * This is the ONLY place that builds a launch URL carrying an intent.
  */
 export function buildCheckoutUrl(

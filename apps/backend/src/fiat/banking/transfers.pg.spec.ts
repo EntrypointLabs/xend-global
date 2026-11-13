@@ -88,9 +88,9 @@ describePg('Paga account transfers HTTP + PostgreSQL', () => {
     });
     await pool.query('CREATE TABLE users (id text PRIMARY KEY)');
     for (const file of [
-      '0043_bank_accounts',
-      '0044_bank_account_uniqueness',
-      '0045_bank_transfers',
+      '0058_bank_accounts',
+      '0059_bank_account_uniqueness',
+      '0060_bank_transfers',
     ])
       await pool.query(
         readFileSync(`drizzle/${file}.sql`, 'utf8').replaceAll(

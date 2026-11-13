@@ -1,24 +1,26 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { FxQuote, FxQuoteProvider } from './fx-quote-provider.interface';
 import { FxQuoteUnavailableError } from './fx.errors';
 
 /**
- * The only toucher of the off-ramp partner quote API (the Blockradar/Paycrest
- * quote-API vendor category, ADR 0023). When FX_PARTNER_QUOTE_URL is set it
- * fetches an executable NGN/USDC rate; when it is blank it returns the pilot
- * static rate so devnet E2E is deterministic and the seam is ready for the
- * real quote API. This adapter never caches; the cache wraps it.
+ * Checkout pricing only. Blockradar asset rates are reference prices, not a
+ * promise of bank payout proceeds. The generic partner contract remains for
+ * existing installations; a static rate is restricted to development networks.
+ * This adapter never initiates conversion or settlement.
  */
 @Injectable()
 export class PartnerFxAdapter implements FxQuoteProvider {
-  private readonly logger = new Logger(PartnerFxAdapter.name);
-
   constructor(private readonly config: ConfigService) {}
 
   async getQuote(): Promise<FxQuote> {
     const url = this.config.get<string>('FX_PARTNER_QUOTE_URL');
     if (!url) {
+      if (this.config.get<string>('SOLANA_CLUSTER') === 'mainnet') {
+        throw new FxQuoteUnavailableError(
+          'A live FX provider is required on mainnet',
+        );
+      }
       return {
         ngnPerUsdc: this.config.getOrThrow<string>('FX_PILOT_STATIC_RATE'),
         source: 'pilot-static',
@@ -50,7 +52,11 @@ export class PartnerFxAdapter implements FxQuoteProvider {
     if (!rate) {
       throw new FxQuoteUnavailableError('partner quote missing a valid rate');
     }
-    return { ngnPerUsdc: rate, source: 'partner', quotedAt: new Date() };
+    return {
+      ngnPerUsdc: rate,
+      source: 'partner',
+      quotedAt: new Date(),
+    };
   }
 
   private extractRate(body: unknown): string | undefined {
@@ -62,6 +68,8 @@ export class PartnerFxAdapter implements FxQuoteProvider {
         : typeof raw === 'string'
           ? raw
           : '';
-    return /^\d+(\.\d+)?$/.test(value) ? value : undefined;
+    return /^\d+(\.\d+)?$/.test(value) && /[1-9]/.test(value)
+      ? value
+      : undefined;
   }
 }

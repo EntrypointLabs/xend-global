@@ -5,7 +5,7 @@ import {
   usePrivy,
 } from '@privy-io/react-auth';
 import { useSignTransaction, useWallets } from '@privy-io/react-auth/solana';
-import { RP_ORIGIN } from '../lib/config';
+import { checkoutChain } from '../lib/solana';
 
 export interface CeremonyResult {
   /** The provider IDENTITY token, passed to authorize as providerToken. */
@@ -14,12 +14,11 @@ export interface CeremonyResult {
 
 /*
  * @privy-io/expo's linkWithPasskey takes relyingParty per call. The web SDK
- * (@privy-io/react-auth 3.34) derives rp.id from the Privy app's allowed-domains
- * configuration instead (rp.id = xend.global via the apex AASA/DAL, see
- * docs/specs/privy-config-verification.md). We still pin the intended relying
- * party explicitly here so REQ-RPID is visible in code and never silently
- * defaults to the popup origin, and forward it to the SDK for when the web SDK
- * exposes it per call.
+ * uses the rp.id returned by Privy's authentication-options endpoint. The
+ * installed SDK does not accept a relyingParty override. A live local probe
+ * on www.xend.global returned rp.id=www.xend.global, whereas mobile signup
+ * explicitly uses https://xend.global. Serve Checkout on the enrollment
+ * domain and verify the returned rp.id; an extra ignored option cannot pin it.
  */
 /*
  * The wire carries transactions as base64 and the Privy Solana SDK takes and
@@ -37,13 +36,6 @@ function toBase64(bytes: Uint8Array): string {
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
 }
-
-const CEREMONY_LOGIN_OPTIONS: {
-  relyingParty: string;
-  credentialIds?: string[];
-} = {
-  relyingParty: RP_ORIGIN,
-};
 
 /**
  * The single vendor seam. All Privy web SDK usage lives on this code-split
@@ -79,7 +71,7 @@ export function usePasskeyCeremony() {
     // so Safari user activation stays valid). The checkout only AUTHENTICATES an
     // existing consumer; identity (email + passkey + wallet) is created once in
     // the mobile app, never here.
-    if (!authedRef.current) await loginWithPasskey(CEREMONY_LOGIN_OPTIONS);
+    if (!authedRef.current) await loginWithPasskey();
     return { providerToken: await awaitIdentityToken() };
   }, [loginWithPasskey, awaitIdentityToken]);
 
@@ -99,12 +91,14 @@ export function usePasskeyCeremony() {
     async (
       unsignedTxBase64: string,
       signerAddress: string,
+      executionCluster: string,
     ): Promise<string> => {
+      const chain = checkoutChain(executionCluster);
       if (!authedRef.current) {
         // A Session says the Consumer is recognised, not that a signer is
         // available. If the provider session has lapsed the passkey has to be
         // presented again before anything can be signed.
-        await loginWithPasskey(CEREMONY_LOGIN_OPTIONS);
+        await loginWithPasskey();
       }
       // The backend names the key it compiled the Spend for. Picking by address
       // rather than taking the first connected wallet: signing with a key the
@@ -118,6 +112,10 @@ export function usePasskeyCeremony() {
       const { signedTransaction } = await signTransaction({
         transaction: fromBase64(unsignedTxBase64),
         wallet,
+        chain,
+        // Xend's purchase confirmation is the consent surface. This only hides
+        // the redundant vendor transaction sheet, not passkey authentication.
+        options: { uiOptions: { showWalletUIs: false } },
       });
       return toBase64(signedTransaction);
     },

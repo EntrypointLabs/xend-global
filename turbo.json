@@ -21,7 +21,13 @@
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "interactive": true
+    },
+    "//#dev:ngrok": {
+      "cache": false,
+      "persistent": true,
+      "interactive": true
     }
   }
 }

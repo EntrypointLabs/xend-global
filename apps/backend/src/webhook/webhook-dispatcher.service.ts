@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import {
   paymentIntents,
@@ -11,6 +11,7 @@ import {
 import { EVENT_CONSUMER } from '../events/event-consumer.interface';
 import type { EventConsumer } from '../events/event-consumer.interface';
 import type { PlatformEvent } from '../events/event-publisher.interface';
+import { isLivePayment, paymentDeliveryMode } from '../payment/payment-mode';
 import { WebhookDeliveryService } from './webhook-delivery.service';
 import {
   buildEventId,
@@ -88,12 +89,23 @@ export class WebhookDispatcherService implements OnModuleInit {
 
     const eventId = buildEventId(type, intentId);
     const correlationId = event.correlationId ?? intentId;
-    const livemode = intent.mode === 'live';
+    const livemode = isLivePayment(intent.mode, intent.executionCluster);
+    const deliveryMode = paymentDeliveryMode(
+      intent.mode,
+      intent.executionCluster,
+    );
 
     const [account] = await this.db.client
       .select()
       .from(settlementAccounts)
-      .where(eq(settlementAccounts.merchantId, intent.merchantId))
+      .where(
+        and(
+          eq(settlementAccounts.merchantId, intent.merchantId),
+          intent.executionCluster === null
+            ? isNull(settlementAccounts.executionCluster)
+            : eq(settlementAccounts.executionCluster, intent.executionCluster),
+        ),
+      )
       .limit(1);
     const settlement: EventSettlement = {
       provider: account?.provider ?? null,
@@ -111,7 +123,7 @@ export class WebhookDispatcherService implements OnModuleInit {
         and(
           eq(webhookEndpoints.merchantId, intent.merchantId),
           eq(webhookEndpoints.enabled, true),
-          eq(webhookEndpoints.mode, intent.mode),
+          eq(webhookEndpoints.mode, deliveryMode),
         ),
       );
 

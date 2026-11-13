@@ -62,7 +62,7 @@ Still required for the complete consumer flow:
 
 The [virtual-account guide](https://developer.nomba.com/docs/products/accept-payment/virtual-account) explicitly describes funding a sandbox virtual account with exactly ₦100 from a Nigerian bank, a maximum of two sandbox virtual accounts, and sandbox webhook delivery. The founder performed this test on September 14. Read-back confirms our account is active, but does not return an `expectedAmount` field; do not treat absence of that field as permission to test larger amounts.
 
-Implemented `POST /webhooks/nomba/sandbox` in the running backend and migration `0046_bank_notifications`. The receiver verifies HMAC, freshness and the configured Nomba merchant before any write; retains only signed notification identities in a provider/environment-scoped durable inbox; handles concurrent duplicates and restarts; and rejects an event ID reused for different signed content. It returns a non-2xx response if persistence fails, allowing provider redelivery. It is disabled in production and when the selected provider credentials or webhook secret are missing.
+Implemented `POST /webhooks/nomba/sandbox` in the running backend and migration `0061_bank_notifications`. The receiver verifies HMAC, freshness and the configured Nomba merchant before any write; retains only signed notification identities in a provider/environment-scoped durable inbox; handles concurrent duplicates and restarts; and rejects an event ID reused for different signed content. It returns a non-2xx response if persistence fails, allowing provider redelivery. It is disabled in production and when the selected provider credentials or webhook secret are missing.
 
 Nomba's [signature algorithm](https://developer.nomba.com/docs/api-basics/webhook) does not include amount, fee, currency, virtual account reference or beneficiary. Those unsigned fields never become trusted inbox data. A received event is **not a credit**. The automatic requery worker is implemented; customer attribution and ledger credits remain outstanding because the actual deposit lookup does not establish matching settlement.
 
@@ -74,13 +74,13 @@ The founder explicitly approved ngrok. The signed public connectivity probe pass
 
 The founder sent exactly ₦100 from a Nigerian bank. Nomba delivered `payment_success` / `vact_transfer` through ngrok; the configured signature, merchant identity and timestamp passed and the backend acknowledged HTTP 200 after durable storage. Inspection of the callback showed the expected virtual account, ₦100 amount and ₦10 fee. Amount, fee and account coordinates remain unsigned claims.
 
-| Independent authenticated check | Result |
-| --- | --- |
+| Independent authenticated check                           | Result                                                                                            |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | Single transaction lookup using the signed transaction ID | Echoed ID and correct parent, but `type=transfer`, ₦100 amount, ₦20 fee and a different timestamp |
-| Requery using callback session ID | Different transaction ID, `type=transfer`, ₦400 amount and ₦20 fee |
-| Today's parent transaction list | One result, no matching deposit ID |
+| Requery using callback session ID                         | Different transaction ID, `type=transfer`, ₦400 amount and ₦20 fee                                |
+| Today's parent transaction list                           | One result, no matching deposit ID                                                                |
 
-The worker now re-queries signed transaction identities using the provider registry. Migration `0047_bank_notification_requery` adds durable attempt count, two-minute claims, backoff, lookup observation and review reason. Claims are safe across processes and stale responses cannot overwrite a newer result. Transient query failures retry at most six attempts; contradictory responses are retained as `needs_attention`, never a guessed credit. It is sandbox-only and scopes work to the configured merchant. No new public routes are added.
+The worker now re-queries signed transaction identities using the provider registry. Migration `0062_bank_notification_requery` adds durable attempt count, two-minute claims, backoff, lookup observation and review reason. Claims are safe across processes and stale responses cannot overwrite a newer result. Transient query failures retry at most six attempts; contradictory responses are retained as `needs_attention`, never a guessed credit. It is sandbox-only and scopes work to the configured merchant. No new public routes are added.
 
 At 12:59:53 UTC the running worker processed the actual deposit and persisted `TRANSACTION_IDENTITY_MISMATCH` after one attempt. This proves bank → Nomba → public webhook → durable inbox → authenticated API lookup. It does not prove a reconciled consumer balance, NGN payout, conversion or unified send. No additional deposit or automatic refund was attempted. Next provider question: which sandbox endpoint returns the actual `vact_transfer` record, its virtual-account reference, net credited amount and fee, rather than a canned transfer response? Resolving that contract is necessary before attributing and spending this deposit.
 

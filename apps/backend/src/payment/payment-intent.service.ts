@@ -1,7 +1,7 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { and, desc, eq, gt, isNotNull, lt } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lt } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { merchants, paymentIntents } from '../db/schema';
 import { EVENT_PUBLISHER } from '../events/event-publisher.interface';
@@ -27,6 +27,7 @@ function pgErrorCode(err: unknown): string | undefined {
 export interface CreateIntentParams {
   merchantId: string;
   usdcSettlementRaw: string;
+  pricingCurrency?: 'NGN' | 'USD' | 'USDC';
   /** What the Merchant priced in, and the figure the Consumer is shown. */
   displayCurrency: string;
   displayAmountMinor: string;
@@ -44,13 +45,14 @@ export interface CreateIntentParams {
 
 /**
  * Durable Payment intents. Every read and write hits Postgres; there is no
- * in-memory intent state. Replaying the same (merchant, idempotency key)
+ * in-memory intent state. Replaying the same (merchant, execution cluster,
+ * idempotency key)
  * returns the existing intent instead of creating a second one, and status
  * only ever changes through the conditional {@link transition}, which is the
  * race arbiter for concurrent confirmers.
  */
 @Injectable()
-export class PaymentIntentService {
+export class PaymentIntentService implements OnModuleInit {
   private readonly logger = new Logger(PaymentIntentService.name);
 
   constructor(
@@ -59,7 +61,32 @@ export class PaymentIntentService {
     @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
   ) {}
 
+  /**
+   * Migration 0042 could add the execution-cluster column but could not know
+   * which network each deployment uses. Backfill only nonterminal work here,
+   * where the validated SOLANA_CLUSTER is available, before traffic starts.
+   */
+  async onModuleInit(): Promise<void> {
+    const cluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
+    const backfilled = await this.db.client
+      .update(paymentIntents)
+      .set({ executionCluster: cluster, updatedAt: new Date() })
+      .where(
+        and(
+          isNull(paymentIntents.executionCluster),
+          inArray(paymentIntents.status, ['created', 'authorized', 'settling']),
+        ),
+      )
+      .returning({ id: paymentIntents.id });
+    if (backfilled.length > 0) {
+      this.logger.warn(
+        `payment_intent.execution_cluster_backfilled cluster=${cluster} count=${backfilled.length}`,
+      );
+    }
+  }
+
   async create(params: CreateIntentParams): Promise<IntentRow> {
+    const executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     const [merchant] = await this.db.client
       .select()
       .from(merchants)
@@ -92,6 +119,7 @@ export class PaymentIntentService {
       const existing = await this.findByIdempotency(
         params.merchantId,
         params.idempotencyKey,
+        executionCluster,
       );
       if (existing) return existing;
     }
@@ -108,6 +136,8 @@ export class PaymentIntentService {
         .values({
           merchantId: params.merchantId,
           usdcSettlementRaw: params.usdcSettlementRaw,
+          pricingCurrency: params.pricingCurrency ?? null,
+          executionCluster,
           displayCurrency: params.displayCurrency,
           displayAmountMinor: params.displayAmountMinor,
           fxRate: params.fxRate ?? null,
@@ -128,6 +158,7 @@ export class PaymentIntentService {
         const winner = await this.findByIdempotency(
           params.merchantId,
           params.idempotencyKey,
+          executionCluster,
         );
         if (winner) return winner;
       }
@@ -173,7 +204,7 @@ export class PaymentIntentService {
       )
       .returning();
     if (updated) {
-      paymentIntentTransitions.inc({ from, to });
+      this.db.afterCommit(() => paymentIntentTransitions.inc({ from, to }));
       return updated;
     }
 
@@ -255,12 +286,14 @@ export class PaymentIntentService {
    * the app should find it at the top.
    */
   async listAwaitingApproval(consumerId: string): Promise<IntentRow[]> {
+    const executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     return this.db.client
       .select()
       .from(paymentIntents)
       .where(
         and(
           eq(paymentIntents.consumerId, consumerId),
+          eq(paymentIntents.executionCluster, executionCluster),
           eq(paymentIntents.status, 'created'),
           isNotNull(paymentIntents.approvalDeferredAt),
           gt(paymentIntents.expiresAt, new Date()),
@@ -290,6 +323,7 @@ export class PaymentIntentService {
   private async findByIdempotency(
     merchantId: string,
     idempotencyKey: string,
+    executionCluster: string,
   ): Promise<IntentRow | undefined> {
     const [row] = await this.db.client
       .select()
@@ -297,10 +331,27 @@ export class PaymentIntentService {
       .where(
         and(
           eq(paymentIntents.merchantId, merchantId),
+          eq(paymentIntents.executionCluster, executionCluster),
           eq(paymentIntents.idempotencyKey, idempotencyKey),
         ),
       )
       .limit(1);
-    return row;
+    if (row) return row;
+
+    // Terminal intents created before execution-cluster scoping were left
+    // null because their original cluster cannot be inferred safely. They
+    // still own their idempotency key and must win a replay before insertion.
+    const [legacy] = await this.db.client
+      .select()
+      .from(paymentIntents)
+      .where(
+        and(
+          eq(paymentIntents.merchantId, merchantId),
+          isNull(paymentIntents.executionCluster),
+          eq(paymentIntents.idempotencyKey, idempotencyKey),
+        ),
+      )
+      .limit(1);
+    return legacy;
   }
 }

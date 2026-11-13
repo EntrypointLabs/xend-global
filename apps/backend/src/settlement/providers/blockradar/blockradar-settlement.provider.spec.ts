@@ -25,9 +25,17 @@ function makeConfig(overrides: Record<string, unknown> = {}): ConfigService {
     BLOCKRADAR_MASTER_WALLET_ID: 'mw_1',
     BLOCKRADAR_REFUND_SUPPORTED: false,
     BLOCKRADAR_SOLANA_NATIVE_ENABLED: false,
+    SOLANA_CLUSTER: 'devnet',
     ...overrides,
   };
-  return { get: (k: string) => map[k] } as unknown as ConfigService;
+  return {
+    get: (k: string) => map[k],
+    getOrThrow: (k: string) => {
+      const value = map[k];
+      if (value === undefined) throw new Error(`missing config ${k}`);
+      return value;
+    },
+  } as unknown as ConfigService;
 }
 
 interface DbOpts {

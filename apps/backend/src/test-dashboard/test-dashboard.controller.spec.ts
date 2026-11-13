@@ -88,7 +88,11 @@ describe('TestDashboardController', () => {
     createMerchant: jest.Mock;
     listTestMerchants: jest.Mock;
   };
-  let keyIssuance: { issueKey: jest.Mock; markKybVerified: jest.Mock };
+  let keyIssuance: {
+    issueKey: jest.Mock;
+    markKybVerified: jest.Mock;
+    markKybSubmittedForTest: jest.Mock;
+  };
   let controller: TestDashboardController;
 
   beforeEach(() => {
@@ -104,6 +108,7 @@ describe('TestDashboardController', () => {
         fingerprint: 'xnd_test_...1234',
       }),
       markKybVerified: jest.fn().mockResolvedValue(undefined),
+      markKybSubmittedForTest: jest.fn().mockResolvedValue(undefined),
     };
     controller = new TestDashboardController(
       dashboard as unknown as TestDashboardService,

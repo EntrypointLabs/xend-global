@@ -30,6 +30,8 @@ interface Args {
   mode: 'test' | 'live';
   merchantId?: string;
   markKybVerified?: string;
+  markKybRejected?: string;
+  reason?: string;
   origins: string[];
 }
 
@@ -90,6 +92,12 @@ function parseArgs(argv: string[]): Args {
       case '--mark-kyb-verified':
         args.markKybVerified = next();
         break;
+      case '--mark-kyb-rejected':
+        args.markKybRejected = next();
+        break;
+      case '--reason':
+        args.reason = next();
+        break;
       default:
         throw new Error(`unknown flag: ${flag}`);
     }
@@ -106,14 +114,62 @@ async function main(): Promise<void> {
   await client.connect();
   try {
     if (args.markKybVerified) {
+      // Verification is bound to the submitted profile version: stamp verified
+      // only when a submission is present and still matches the current
+      // profile, so an edit made after review is never verified unreviewed.
+      // Only the currently reviewed submission can be approved: require the
+      // pending state so a delayed or repeated verify cannot overwrite a
+      // rejection (which leaves kyb_submitted_version = profile_version) and
+      // silently re-enable live keys.
       const res = await client.query(
-        `UPDATE merchants SET kyb_status = 'verified', kyb_verified_at = now(), updated_at = now() WHERE id = $1 RETURNING id`,
+        `UPDATE merchants SET kyb_status = 'verified', kyb_verified_at = now(), updated_at = now()
+         WHERE id = $1 AND kyb_status = 'pending' AND kyb_submitted_version IS NOT NULL AND kyb_submitted_version = profile_version RETURNING id`,
         [args.markKybVerified],
       );
       if (res.rowCount === 0) {
-        throw new Error(`merchant ${args.markKybVerified} not found`);
+        const [row] = (
+          await client.query<{ id: string }>(
+            `SELECT id FROM merchants WHERE id = $1`,
+            [args.markKybVerified],
+          )
+        ).rows;
+        throw new Error(
+          row
+            ? `merchant ${args.markKybVerified} has no pending submission matching its current profile; ask them to submit for verification`
+            : `merchant ${args.markKybVerified} not found`,
+        );
       }
       console.log(`KYB verified for merchant ${args.markKybVerified}`);
+      return;
+    }
+
+    if (args.markKybRejected) {
+      if (!args.reason) {
+        throw new Error('--mark-kyb-rejected requires --reason "<note>"');
+      }
+      // Reject only an active submission whose version still matches the
+      // reviewed profile: a delayed result must not reject a profile the owner
+      // has since edited, and it must never touch an already-verified merchant
+      // (which would clear verification and 403 every live key).
+      const res = await client.query(
+        `UPDATE merchants SET kyb_status = 'rejected', kyb_review_note = $2, kyb_verified_at = NULL, updated_at = now()
+         WHERE id = $1 AND kyb_status = 'pending' AND kyb_submitted_version IS NOT NULL AND kyb_submitted_version = profile_version RETURNING id`,
+        [args.markKybRejected, args.reason],
+      );
+      if (res.rowCount === 0) {
+        const [row] = (
+          await client.query<{ id: string }>(
+            `SELECT id FROM merchants WHERE id = $1`,
+            [args.markKybRejected],
+          )
+        ).rows;
+        throw new Error(
+          row
+            ? `merchant ${args.markKybRejected} has no pending submission matching its current profile; nothing to reject`
+            : `merchant ${args.markKybRejected} not found`,
+        );
+      }
+      console.log(`KYB rejected for merchant ${args.markKybRejected}`);
       return;
     }
 

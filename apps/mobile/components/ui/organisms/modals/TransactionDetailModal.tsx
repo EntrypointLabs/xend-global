@@ -14,7 +14,11 @@ import { Typography } from "../../atoms/Typography";
 import { format } from "date-fns";
 import HapticPressable from "../../atoms/HapticPressable";
 import { useContacts } from "@/hooks/useContacts";
-import { statusLabel, type ActivityEntry } from "@/utils/activity";
+import {
+  activityDetailTimestamp,
+  statusLabel,
+  type ActivityEntry,
+} from "@/utils/activity";
 import { AccountEventMark } from "@/components/ui/organisms/ActivityItem";
 
 interface TransactionDetailModalProps {
@@ -88,7 +92,10 @@ export function TransactionDetailModal({
     item.tokenName
   );
   const usd = item.usdValue ?? null;
-  const date = format(new Date(item.createdAt), "MMM d, yyyy 'at' h:mma");
+  const date = format(
+    new Date(activityDetailTimestamp(item)),
+    "MMM d, yyyy 'at' h:mma"
+  );
   const signature = item.signature;
 
   const counterpartyLabel = item.direction === "send" ? "To" : "From";

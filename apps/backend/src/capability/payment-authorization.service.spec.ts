@@ -24,6 +24,8 @@ function intentRow(over: Partial<IntentRow> = {}): IntentRow {
     consumerId: null,
     status: 'created',
     usdcSettlementRaw: '2000000',
+    pricingCurrency: null,
+    executionCluster: 'devnet',
     displayCurrency: 'USD',
     displayAmountMinor: '1000',
     fxRate: null,
@@ -65,7 +67,13 @@ function makeDb(opts: { attemptId?: string; insertError?: Error } = {}) {
       },
     }),
   };
-  return { db: { client } as unknown as DbService, insertValues };
+  return {
+    db: {
+      client,
+      withTransaction: <T>(fn: () => Promise<T>) => fn(),
+    } as unknown as DbService,
+    insertValues,
+  };
 }
 
 function makePublisher() {
@@ -80,13 +88,19 @@ function makePublisher() {
 }
 
 function makeCapacity() {
-  const reserveCapacity = jest.fn().mockResolvedValue(undefined);
+  const reservationTimes: Date[] = [];
+  const reserveCapacity = jest.fn(
+    (_consumerId: string, _amountRaw: string, reservedAt: Date) => {
+      reservationTimes.push(reservedAt);
+      return Promise.resolve(undefined);
+    },
+  );
   const releaseCapacity = jest.fn().mockResolvedValue(undefined);
   const capacity = {
     reserveCapacity,
     releaseCapacity,
   } as unknown as CapacityService;
-  return { capacity, reserveCapacity, releaseCapacity };
+  return { capacity, reserveCapacity, releaseCapacity, reservationTimes };
 }
 
 function makeIntents(intent: IntentRow) {
@@ -116,7 +130,8 @@ describe('PaymentAuthorizationService.authorize (consumer path)', () => {
   it('authorizes and returns no rotated token, making no session calls', async () => {
     const intent = intentRow({ usdcSettlementRaw: '2000000' });
     const { intents, transition } = makeIntents(intent);
-    const { capacity, reserveCapacity, releaseCapacity } = makeCapacity();
+    const { capacity, reserveCapacity, releaseCapacity, reservationTimes } =
+      makeCapacity();
     const { sessions, validate } = makeSessions();
     const { publisher, events } = makePublisher();
     const { db } = makeDb({ attemptId: 'att_9' });
@@ -140,12 +155,19 @@ describe('PaymentAuthorizationService.authorize (consumer path)', () => {
     });
     expect(result.rotatedSessionToken).toBeUndefined();
     expect(validate).not.toHaveBeenCalled();
-    expect(reserveCapacity).toHaveBeenCalledWith('c1', '2000000');
+    expect(reserveCapacity).toHaveBeenCalledWith(
+      'c1',
+      '2000000',
+      expect.any(Date),
+    );
     expect(transition).toHaveBeenCalledWith(
       'pi_1',
       'created',
       'authorized',
-      expect.objectContaining({ consumerId: 'c1' }),
+      expect.objectContaining({
+        consumerId: 'c1',
+        authorizedAt: reservationTimes[0],
+      }),
     );
     expect(releaseCapacity).not.toHaveBeenCalled();
     expect(events[0].topic).toBe('payment.authorized');
@@ -175,7 +197,7 @@ describe('PaymentAuthorizationService.authorize (consumer path)', () => {
     expect(events).toHaveLength(0);
   });
 
-  it('gives the reservation back when the authorizing transition loses its race', async () => {
+  it('lets the transaction roll back when the authorizing transition loses its race', async () => {
     const intent = intentRow({ usdcSettlementRaw: '2000000' });
     const { intents, transition } = makeIntents(intent);
     transition.mockRejectedValue(new IntentStateConflictError('lost race'));
@@ -195,8 +217,12 @@ describe('PaymentAuthorizationService.authorize (consumer path)', () => {
       service.authorize({ intentId: 'pi_1', consumerId: 'c1' }),
     ).rejects.toBeInstanceOf(IntentStateConflictError);
 
-    expect(reserveCapacity).toHaveBeenCalledWith('c1', '2000000');
-    expect(releaseCapacity).toHaveBeenCalledWith('c1', '2000000');
+    expect(reserveCapacity).toHaveBeenCalledWith(
+      'c1',
+      '2000000',
+      expect.any(Date),
+    );
+    expect(releaseCapacity).not.toHaveBeenCalled();
     expect(insertValues).not.toHaveBeenCalled();
     expect(events).toHaveLength(0);
   });
@@ -270,7 +296,8 @@ describe('PaymentAuthorizationService.authorize (session path)', () => {
       usdcSettlementRaw: '2000000',
     });
     const { intents, transition } = makeIntents(intent);
-    const { capacity, reserveCapacity, releaseCapacity } = makeCapacity();
+    const { capacity, reserveCapacity, releaseCapacity, reservationTimes } =
+      makeCapacity();
     const { sessions, validate, rotate } = makeSessions({
       consumerId: 'c_session',
       rotated: 'xsess_fresh',
@@ -291,12 +318,19 @@ describe('PaymentAuthorizationService.authorize (session path)', () => {
     });
 
     expect(validate).toHaveBeenCalledWith('tok', 'm1');
-    expect(reserveCapacity).toHaveBeenCalledWith('c_session', '2000000');
+    expect(reserveCapacity).toHaveBeenCalledWith(
+      'c_session',
+      '2000000',
+      expect.any(Date),
+    );
     expect(transition).toHaveBeenCalledWith(
       'pi_1',
       'created',
       'authorized',
-      expect.objectContaining({ consumerId: 'c_session' }),
+      expect.objectContaining({
+        consumerId: 'c_session',
+        authorizedAt: reservationTimes[0],
+      }),
     );
     expect(releaseCapacity).not.toHaveBeenCalled();
     expect(rotate).toHaveBeenCalledWith('sess1');

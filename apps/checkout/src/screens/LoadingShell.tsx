@@ -1,3 +1,5 @@
+import { StatusSheet } from './StatusSheet';
+
 /**
  * The first paint the popup opens to, rendered synchronously with no Privy
  * import. Also the handshake wait state: when the popup was opened without an
@@ -5,15 +7,15 @@
  */
 export function LoadingShell() {
   return (
-    <div className="bg-brand-black flex h-full items-center justify-center">
-      <div className="flex flex-col items-center gap-5">
+    <StatusSheet>
+      <div className="payment-result" role="status" aria-live="polite">
         <span className="text-brand-ink text-3xl font-medium tracking-tight">
-          Xend
+          Preparing your Payment
         </span>
         <span className="bg-brand-line h-1 w-24 overflow-hidden rounded-full">
-          <span className="bg-brand-muted block h-full w-1/2 animate-pulse rounded-full" />
+          <span className="bg-brand-muted block h-full w-1/2 animate-pulse rounded-full motion-reduce:animate-none" />
         </span>
       </div>
-    </div>
+    </StatusSheet>
   );
 }

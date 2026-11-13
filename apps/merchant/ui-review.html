@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Xend responsive UI review</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #e9e9ed;
+        color: #1d1d1f;
+        font:
+          14px system-ui,
+          sans-serif;
+      }
+      h1 {
+        font-size: 20px;
+      }
+      p {
+        max-width: 640px;
+        line-height: 1.5;
+      }
+      iframe {
+        display: block;
+        width: 390px;
+        max-width: 100%;
+        height: 844px;
+        border: 1px solid #bbb;
+        border-radius: 16px;
+        background: white;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Merchant mobile layout review</h1>
+    <p>
+      The actual Merchant app at a 390 × 844 CSS-pixel viewport. This is a
+      layout check, not a device or authentication simulator. Actions inside the
+      frame use the real local backend.
+    </p>
+    <iframe src="/" title="Merchant app at phone width"></iframe>
+  </body>
+</html>

@@ -60,8 +60,8 @@ describePg('bank notification requery PostgreSQL', () => {
       options: `-c search_path=${namespace}`,
     });
     for (const file of [
-      '0046_bank_notifications.sql',
-      '0047_bank_notification_requery.sql',
+      '0061_bank_notifications.sql',
+      '0062_bank_notification_requery.sql',
     ])
       await pool.query(readFileSync(`drizzle/${file}`, 'utf8'));
     db = { client: drizzle(pool) } as unknown as DbService;

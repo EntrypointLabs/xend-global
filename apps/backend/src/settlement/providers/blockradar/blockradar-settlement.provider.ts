@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { DbService } from '../../../db/db.service';
 import {
   merchants,
@@ -380,6 +380,7 @@ export class BlockradarSettlementProvider
     providerReference: string | null;
     payoutConfig: string | null;
   }> {
+    const executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     const [account] = await this.db.client
       .select({
         merchantId: settlementAccounts.merchantId,
@@ -387,7 +388,12 @@ export class BlockradarSettlementProvider
         payoutConfig: settlementAccounts.payoutConfig,
       })
       .from(settlementAccounts)
-      .where(eq(settlementAccounts.address, endpointAddress))
+      .where(
+        and(
+          eq(settlementAccounts.address, endpointAddress),
+          eq(settlementAccounts.executionCluster, executionCluster),
+        ),
+      )
       .limit(1);
     if (!account) {
       throw new DestinationUnverifiedError(

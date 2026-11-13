@@ -46,6 +46,7 @@ export class CapacityService implements OnModuleInit {
   private tiers!: Record<string, TierBand>;
   private defaultTier!: string;
   private usdcMint!: string;
+  private executionCluster!: string;
 
   constructor(
     private readonly db: DbService,
@@ -54,8 +55,9 @@ export class CapacityService implements OnModuleInit {
     @Inject(CAPACITY_COUNTER) private readonly counter: ReservingRateCounter,
   ) {}
 
-  onModuleInit() {
+  onModuleInit(): void {
     this.defaultTier = this.config.getOrThrow<string>('CAPACITY_DEFAULT_TIER');
+    this.executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     this.tiers = parseTierTable(
       this.config.getOrThrow<string>('CAPACITY_TIERS'),
       this.defaultTier,
@@ -85,7 +87,10 @@ export class CapacityService implements OnModuleInit {
     return this.defaultTier;
   }
 
-  async getCapability(consumerId: string): Promise<CapabilitySnapshot> {
+  async getCapability(
+    consumerId: string,
+    windowAt = new Date(),
+  ): Promise<CapabilitySnapshot> {
     const accountAddress = await this.accountAddress(consumerId);
 
     const balances = await this.solana.getTokenBalances(accountAddress);
@@ -94,15 +99,18 @@ export class CapacityService implements OnModuleInit {
       if (b.mint === this.usdcMint) balance += b.amountRaw;
     }
 
-    const now = new Date();
     const tier = this.getTierForConsumer(consumerId);
     const limits = this.tiers[tier];
     if (!limits) {
       throw new Error(`tier '${tier}' missing from tier table`);
     }
 
-    const day = await this.counter.peek(this.dayKey(consumerId, now));
-    const month = await this.counter.peek(this.monthKey(consumerId, now));
+    const [day, month, legacyDay, legacyMonth] = await Promise.all([
+      this.counter.peek(this.dayKey(consumerId, windowAt)),
+      this.counter.peek(this.monthKey(consumerId, windowAt)),
+      this.counter.peek(this.legacyDayKey(consumerId, windowAt)),
+      this.counter.peek(this.legacyMonthKey(consumerId, windowAt)),
+    ]);
 
     return {
       consumerId,
@@ -110,8 +118,16 @@ export class CapacityService implements OnModuleInit {
       balanceRaw: balance.toString(),
       tier,
       limits,
-      usedTodayRaw: day.totalRaw,
-      usedThisMonthRaw: month.totalRaw,
+      // Migration 0044 cannot infer a cluster for pre-0042 authorizations.
+      // Count that legacy usage on every cluster until its short-lived window
+      // expires, so a shared database cannot make already-spent allowance
+      // disappear on either deployment.
+      usedTodayRaw: (
+        BigInt(day.totalRaw) + BigInt(legacyDay.totalRaw)
+      ).toString(),
+      usedThisMonthRaw: (
+        BigInt(month.totalRaw) + BigInt(legacyMonth.totalRaw)
+      ).toString(),
       riskFlags: [],
       // Reserved: credit capability slots in here later; the field exists so
       // the response shape does not break when it does.
@@ -167,9 +183,10 @@ export class CapacityService implements OnModuleInit {
   async reserveCapacity(
     consumerId: string,
     amountRaw: string,
+    reservedAt = new Date(),
   ): Promise<CapabilitySnapshot> {
     try {
-      return await this.reserve(consumerId, amountRaw);
+      return await this.reserve(consumerId, amountRaw, reservedAt);
     } catch (err) {
       if (err instanceof CapacityExceededError) {
         capacityReservationsRefused.inc({ reason: err.reason.toLowerCase() });
@@ -183,8 +200,9 @@ export class CapacityService implements OnModuleInit {
   private async reserve(
     consumerId: string,
     amountRaw: string,
+    reservedAt: Date,
   ): Promise<CapabilitySnapshot> {
-    const capability = await this.getCapability(consumerId);
+    const capability = await this.getCapability(consumerId, reservedAt);
     const amount = BigInt(amountRaw);
     const { limits } = capability;
     const log = (allowed: boolean) =>
@@ -194,13 +212,24 @@ export class CapacityService implements OnModuleInit {
 
     this.assertPerPaymentAndBalance(capability, amount, amountRaw, log);
 
-    const now = new Date();
-    const dayKey = this.dayKey(consumerId, now);
-    const monthKey = this.monthKey(consumerId, now);
+    const dayKey = this.dayKey(consumerId, reservedAt);
+    const monthKey = this.monthKey(consumerId, reservedAt);
+    const [legacyDay, legacyMonth] = await Promise.all([
+      this.counter.peek(this.legacyDayKey(consumerId, reservedAt)),
+      this.counter.peek(this.legacyMonthKey(consumerId, reservedAt)),
+    ]);
+    const dailyCapForCluster = this.remainingClusterCap(
+      limits.dailyCapRaw,
+      legacyDay.totalRaw,
+    );
+    const monthlyCapForCluster = this.remainingClusterCap(
+      limits.monthlyCapRaw,
+      legacyMonth.totalRaw,
+    );
     const day = await this.counter.reserve(
       dayKey,
       amountRaw,
-      limits.dailyCapRaw,
+      dailyCapForCluster,
       DAY_COUNTER_TTL_SECONDS,
     );
     if (!day.allowed) {
@@ -213,7 +242,7 @@ export class CapacityService implements OnModuleInit {
     const month = await this.counter.reserve(
       monthKey,
       amountRaw,
-      limits.monthlyCapRaw,
+      monthlyCapForCluster,
       MONTH_COUNTER_TTL_SECONDS,
     );
     if (!month.allowed) {
@@ -228,16 +257,26 @@ export class CapacityService implements OnModuleInit {
     log(true);
     return {
       ...capability,
-      usedTodayRaw: day.snapshot.totalRaw,
-      usedThisMonthRaw: month.snapshot.totalRaw,
+      usedTodayRaw: (
+        BigInt(day.snapshot.totalRaw) + BigInt(legacyDay.totalRaw)
+      ).toString(),
+      usedThisMonthRaw: (
+        BigInt(month.snapshot.totalRaw) + BigInt(legacyMonth.totalRaw)
+      ).toString(),
     };
   }
 
-  /** Undoes reserveCapacity for a Payment that did not get authorized. */
-  async releaseCapacity(consumerId: string, amountRaw: string): Promise<void> {
-    const now = new Date();
-    await this.counter.release(this.dayKey(consumerId, now), amountRaw);
-    await this.counter.release(this.monthKey(consumerId, now), amountRaw);
+  /** Undoes reserveCapacity in the same UTC windows where it was reserved. */
+  async releaseCapacity(
+    consumerId: string,
+    amountRaw: string,
+    reservedAt = new Date(),
+  ): Promise<void> {
+    await this.counter.release(this.dayKey(consumerId, reservedAt), amountRaw);
+    await this.counter.release(
+      this.monthKey(consumerId, reservedAt),
+      amountRaw,
+    );
   }
 
   private assertPerPaymentAndBalance(
@@ -299,12 +338,30 @@ export class CapacityService implements OnModuleInit {
     const y = now.getUTCFullYear();
     const m = String(now.getUTCMonth() + 1).padStart(2, '0');
     const d = String(now.getUTCDate()).padStart(2, '0');
-    return `cap:consumer:${consumerId}:day:${y}${m}${d}`;
+    return `cap:cluster:${this.executionCluster}:consumer:${consumerId}:day:${y}${m}${d}`;
   }
 
   private monthKey(consumerId: string, now: Date): string {
     const y = now.getUTCFullYear();
     const m = String(now.getUTCMonth() + 1).padStart(2, '0');
-    return `cap:consumer:${consumerId}:month:${y}${m}`;
+    return `cap:cluster:${this.executionCluster}:consumer:${consumerId}:month:${y}${m}`;
+  }
+
+  private legacyDayKey(consumerId: string, now: Date): string {
+    const y = now.getUTCFullYear();
+    const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(now.getUTCDate()).padStart(2, '0');
+    return `cap:cluster:legacy:consumer:${consumerId}:day:${y}${m}${d}`;
+  }
+
+  private legacyMonthKey(consumerId: string, now: Date): string {
+    const y = now.getUTCFullYear();
+    const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+    return `cap:cluster:legacy:consumer:${consumerId}:month:${y}${m}`;
+  }
+
+  private remainingClusterCap(capRaw: string, legacyUsedRaw: string): string {
+    const remaining = BigInt(capRaw) - BigInt(legacyUsedRaw);
+    return (remaining > 0n ? remaining : 0n).toString();
   }
 }
