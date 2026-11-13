@@ -51,6 +51,9 @@ const ENTRY_ALLOWED: readonly string[] = [
   'GET /consumers/me/sessions',
   'DELETE /consumers/me/sessions/:id',
   'POST /auth/signout',
+  // A Consumer locked out of their Account has only this session to ask from,
+  // and the security notices tell them to contact support from the app.
+  'POST /support/requests',
 ];
 
 /**
@@ -96,6 +99,8 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /account/recovery/contact/verify',
   'POST /account/recovery/contact',
   'DELETE /wallet/me',
+  // Writes with nothing urgent about them, so they wait for the passkey.
+  'POST /feedback',
   // Where notices go and whether they are wanted.
   'POST /notifications/devices',
   'DELETE /notifications/devices',
@@ -181,9 +186,12 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'GET /console/deliveries',
   'GET /console/keys',
   'GET /console/accounts',
+  'GET /console/support',
+  'GET /console/feedback',
   'POST /console/deliveries/:id/redeliver',
   'POST /console/accounts/:userId/recovery/freeze',
   'POST /console/accounts/:userId/recovery/unfreeze',
+  'POST /console/support/:id/close',
   'POST /internal/api_keys/:id/revoke',
   'POST /webhooks/helius',
   // Nomba HMAC authenticates this receiver, never a Consumer session.

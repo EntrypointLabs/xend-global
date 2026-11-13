@@ -16,6 +16,7 @@ import { THROTTLE_LIMITS } from '../common/throttle';
 import { DbService } from '../db/db.service';
 import { webhookDeliveries } from '../db/schema';
 import { RecoveryService } from '../recovery/recovery.service';
+import { SupportService } from '../support/support.service';
 import { WebhookDeliveryService } from '../webhook/webhook-delivery.service';
 import { AdminAuditService } from './admin-audit.service';
 import { ConsoleAuthGuard, consoleActor } from './console-auth.guard';
@@ -24,8 +25,10 @@ import {
   ConsoleService,
   type ConsoleAccountRow,
   type ConsoleDeliveryRow,
+  type ConsoleFeedbackRow,
   type ConsoleKeyRow,
   type ConsolePaymentRow,
+  type ConsoleSupportRow,
 } from './console.service';
 import { escapeHtml, layout } from './console-html';
 
@@ -40,6 +43,24 @@ function iso(date: Date | null): string | null {
   return date ? date.toISOString() : null;
 }
 
+/** A value that reads as one thing, such as a timestamp, kept on one line. */
+function nowrapCell(value: string): string {
+  return `<td class="nowrap">${escapeHtml(value)}</td>`;
+}
+
+function whenCell(date: Date): string {
+  return nowrapCell(date.toISOString());
+}
+
+/**
+ * Something a Consumer typed, shown with the line breaks they gave it. The
+ * inner block is what holds the line length: a table cell takes whatever
+ * width the table has left over, however long that makes a line.
+ */
+function proseCell(text: string): string {
+  return `<td class="prose"><div>${escapeHtml(text)}</div></td>`;
+}
+
 /** Set by ConsoleCsrfGuard on every safe request; base64url, so HTML-safe. */
 function csrfTokenOf(res: Response): string {
   return (res.locals as { csrfToken?: string }).csrfToken ?? '';
@@ -48,12 +69,14 @@ function csrfTokenOf(res: Response): string {
 /**
  * Ops console (ADR 0022). Renders server-side HTML tables behind Basic Auth:
  * payments (with refund linkage shown, never actionable), the webhook delivery
- * log with a per-row manual Redeliver button, API key fingerprints, and
- * Consumer Accounts. Two write paths: webhook redelivery, and freezing or
- * releasing an Account's recovery signer. Neither reaches a Consumer-facing
- * route, and the freeze is a refusal to sign rather than a power to sign.
- * Every write is CSRF-checked and lands a row in admin_audit_log. The auth
- * throttle caps credential guessing against the Basic Auth prompt.
+ * log with a per-row manual Redeliver button, API key fingerprints, Consumer
+ * Accounts, and what Consumers sent the team: support requests and feedback.
+ * Three write paths: webhook redelivery, freezing or releasing an Account's
+ * recovery signer, and closing a support request. None reaches a
+ * Consumer-facing route, and the freeze is a refusal to sign rather than a
+ * power to sign. Every write is CSRF-checked and lands a row in
+ * admin_audit_log. The auth throttle caps credential guessing against the
+ * Basic Auth prompt.
  */
 @Controller('console')
 @Throttle({ auth: THROTTLE_LIMITS.auth })
@@ -65,6 +88,7 @@ export class ConsoleController {
     private readonly console: ConsoleService,
     private readonly delivery: WebhookDeliveryService,
     private readonly recovery: RecoveryService,
+    private readonly support: SupportService,
     private readonly db: DbService,
     private readonly audit: AdminAuditService,
   ) {}
@@ -105,6 +129,45 @@ export class ConsoleController {
     res
       .type('html')
       .send(layout('Accounts', this.renderAccounts(rows, csrfTokenOf(res))));
+  }
+
+  @Get('support')
+  async supportRequests(@Res() res: Response): Promise<void> {
+    const rows = await this.console.listSupportRequests();
+    res
+      .type('html')
+      .send(layout('Support', this.renderSupport(rows, csrfTokenOf(res))));
+  }
+
+  @Get('feedback')
+  async feedback(@Res() res: Response): Promise<void> {
+    const rows = await this.console.listFeedback();
+    res.type('html').send(layout('Feedback', this.renderFeedback(rows)));
+  }
+
+  /**
+   * Marks a support request as dealt with.
+   *
+   * Recorded only when this call is the one that closed it. A second click on
+   * a stale page changes nothing, so there is nothing for the audit log to
+   * say about it.
+   */
+  @Post('support/:id/close')
+  async closeSupportRequest(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    const outcome = await this.support.close(id);
+    if (outcome === 'not_found') {
+      throw new NotFoundException(`support request ${id} not found`);
+    }
+    if (outcome === 'closed') {
+      const actor = consoleActor(req);
+      await this.audit.record(actor, 'support.close', id);
+      this.logger.log(`console.support_close request=${id} actor=${actor}`);
+    }
+    res.redirect(303, '/console/support');
   }
 
   /**
@@ -276,6 +339,55 @@ export class ConsoleController {
           '</tr>'
         );
       })
+      .join('');
+    return `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  }
+
+  private renderSupport(rows: ConsoleSupportRow[], csrfToken: string): string {
+    if (rows.length === 0) {
+      return '<p class="empty">No support requests yet.</p>';
+    }
+    const head =
+      '<tr><th>When</th><th>Topic</th><th>Status</th><th>Email</th>' +
+      '<th>Message</th><th></th></tr>';
+    const body = rows
+      .map((r) => {
+        const open = r.status === 'open';
+        const action = `/console/support/${encodeURIComponent(r.id)}/close`;
+        const button = open
+          ? `<form method="post" action="${escapeHtml(action)}">${csrfField(csrfToken)}<button type="submit">Close</button></form>`
+          : '';
+        return (
+          '<tr>' +
+          whenCell(r.createdAt) +
+          cell(r.topic) +
+          nowrapCell(open ? 'Open' : `Closed ${iso(r.closedAt) ?? ''}`) +
+          cell(r.contactEmail) +
+          proseCell(r.message) +
+          `<td>${button}</td>` +
+          '</tr>'
+        );
+      })
+      .join('');
+    return `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  }
+
+  private renderFeedback(rows: ConsoleFeedbackRow[]): string {
+    if (rows.length === 0) {
+      return '<p class="empty">No feedback yet.</p>';
+    }
+    const head =
+      '<tr><th>When</th><th>Rating</th><th>Message</th><th>Email</th></tr>';
+    const body = rows
+      .map(
+        (r) =>
+          '<tr>' +
+          whenCell(r.createdAt) +
+          cell(r.rating === null ? null : `${r.rating} of 5`) +
+          proseCell(r.message) +
+          cell(r.email) +
+          '</tr>',
+      )
       .join('');
     return `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
   }

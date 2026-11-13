@@ -3,13 +3,16 @@ import { desc, eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import {
   apiKeys,
+  feedback,
   merchants,
   payments,
   paymentIntents,
   squadsAccounts,
+  supportRequests,
   users,
   webhookDeliveries,
   webhookEndpoints,
+  type SupportRequestStatus,
 } from '../db/schema';
 
 import { minorUnitDecimals } from '../fx/currency';
@@ -57,6 +60,24 @@ export interface ConsoleAccountRow {
   createdAt: Date;
   /** Set while support is refusing to release the recovery signer. */
   recoveryReleaseFrozenAt: Date | null;
+}
+
+export interface ConsoleSupportRow {
+  id: string;
+  createdAt: Date;
+  topic: string;
+  status: SupportRequestStatus;
+  closedAt: Date | null;
+  /** Where the reply was promised, not the address on the Account today. */
+  contactEmail: string | null;
+  message: string;
+}
+
+export interface ConsoleFeedbackRow {
+  createdAt: Date;
+  rating: number | null;
+  message: string;
+  email: string | null;
 }
 
 /** Truncate a base58 signature to head…tail for display. */
@@ -184,6 +205,43 @@ export class ConsoleService {
       .from(squadsAccounts)
       .innerJoin(users, eq(squadsAccounts.userId, users.id))
       .orderBy(desc(squadsAccounts.createdAt), desc(squadsAccounts.id))
+      .limit(LIST_LIMIT);
+  }
+
+  /**
+   * What Consumers wrote to the team, newest first.
+   *
+   * The email is the one held on the request rather than the Account's
+   * current one: it is the address the reply was promised to, and it is blank
+   * once the Consumer has deleted their account.
+   */
+  async listSupportRequests(): Promise<ConsoleSupportRow[]> {
+    return this.db.client
+      .select({
+        id: supportRequests.id,
+        createdAt: supportRequests.createdAt,
+        topic: supportRequests.topic,
+        status: supportRequests.status,
+        closedAt: supportRequests.closedAt,
+        contactEmail: supportRequests.contactEmail,
+        message: supportRequests.message,
+      })
+      .from(supportRequests)
+      .orderBy(desc(supportRequests.createdAt), desc(supportRequests.id))
+      .limit(LIST_LIMIT);
+  }
+
+  async listFeedback(): Promise<ConsoleFeedbackRow[]> {
+    return this.db.client
+      .select({
+        createdAt: feedback.createdAt,
+        rating: feedback.rating,
+        message: feedback.message,
+        email: users.email,
+      })
+      .from(feedback)
+      .innerJoin(users, eq(feedback.userId, users.id))
+      .orderBy(desc(feedback.createdAt), desc(feedback.id))
       .limit(LIST_LIMIT);
   }
 
