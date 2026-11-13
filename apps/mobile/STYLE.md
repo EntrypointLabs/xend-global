@@ -1,6 +1,6 @@
 # Mobile Styling Guide
 
-> One source of truth for how to style `apps/mobile`. See [`docs/adr/0001`](../../docs/adr/0001-consolidate-on-nativewind-styling.md) for the umbrella decision.
+> One source of truth for how to style `apps/mobile`. For what things should look like (type scale, primitives, screen patterns) see the [design system](../../docs/design/design-system.md). See [`docs/adr/0001`](../../docs/adr/0001-consolidate-on-nativewind-styling.md) for the umbrella decision.
 
 ## Rules
 

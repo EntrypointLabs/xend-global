@@ -129,6 +129,7 @@ export default function InvestmentsScreen() {
       <SendModal
         visible={isSendModalVisible}
         onClose={() => setIsSendModalVisible(false)}
+        cryptoOnly
         onSendToWallet={() => {
           setIsSendModalVisible(false);
           sendFlowModalRef.current?.present();
@@ -140,6 +141,7 @@ export default function InvestmentsScreen() {
         visible={isReceiveModalVisible}
         onClose={hideAllModals}
         onOpenQRCode={() => qrCodeModalRef.current?.present()}
+        cryptoOnly
       />
       <QRCodeModal ref={qrCodeModalRef} walletAddress={address ?? ""} />
     </ScreenLayout>
