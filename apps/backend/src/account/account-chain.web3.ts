@@ -5,6 +5,7 @@ import {
   PublicKey,
   TransactionMessage,
   VersionedTransaction,
+  type TransactionError,
 } from '@solana/web3.js';
 import {
   buildCreateAccount,
@@ -113,16 +114,34 @@ export class Web3AccountChain implements AccountChain, OnModuleInit {
     // Persisted on that alone, every later attempt reads back a stored Account
     // whose settings and vault were never created, and provisioning has
     // nothing to work against for good.
+    let landedError: TransactionError | null;
     try {
-      await rpc.confirmTransaction(
+      const confirmation = await rpc.confirmTransaction(
         { signature, blockhash, lastValidBlockHeight },
         'confirmed',
       );
+      landedError = confirmation.value.err;
     } catch (cause) {
       // It may yet land. Naming the signature lets the next attempt re-read
       // the chain rather than assume either outcome.
       throw new AccountCreationError(
         `Account creation ${signature} did not confirm: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    }
+
+    // confirmTransaction resolves rather than throws for a transaction that
+    // landed and failed. Lost seed races mostly arrive this way, because the
+    // send itself rarely sees them, and returning here would persist a settings
+    // address that another creator owns.
+    if (landedError) {
+      if (isSeedTakenOnChain(landedError)) {
+        this.logger.warn(`account.seed_taken seed=${settingsSeed} landed`);
+        throw new SeedTakenError(
+          `settings seed ${settingsSeed} was claimed by another creator`,
+        );
+      }
+      throw new AccountCreationError(
+        `Account creation ${signature} failed on chain: ${JSON.stringify(landedError)}`,
       );
     }
 
@@ -190,4 +209,20 @@ function isSeedTaken(message: string): boolean {
     message.includes('MissingAccount') ||
     message.includes('custom program error: 0x1788')
   );
+}
+
+/** {@link isSeedTaken}'s two codes, read from a transaction that landed. */
+function isSeedTakenOnChain(err: TransactionError): boolean {
+  const code = customErrorCode(err);
+  return code === 0 || code === 6024;
+}
+
+function customErrorCode(err: TransactionError): number | undefined {
+  if (typeof err !== 'object' || err === null) return undefined;
+  const instructionError: unknown = Reflect.get(err, 'InstructionError');
+  if (!Array.isArray(instructionError)) return undefined;
+  const detail: unknown = instructionError[1];
+  if (typeof detail !== 'object' || detail === null) return undefined;
+  const custom: unknown = Reflect.get(detail, 'Custom');
+  return typeof custom === 'number' ? custom : undefined;
 }
