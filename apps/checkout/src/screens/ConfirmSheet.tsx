@@ -13,7 +13,7 @@ interface ConfirmSheetProps {
 const ARM_DELAY_MS = 500;
 
 /**
- * The Apple-Pay-feel moment. Shows the merchant name from the Xend record and
+ * The Apple-Pay-feel moment. Shows the merchant name from the Prydd record and
  * the price and exact USDC debit from the pinned quote.
  * A recognized Session reaches this sheet directly for a one-tap
  * confirm.

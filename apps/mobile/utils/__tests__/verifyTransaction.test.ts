@@ -17,7 +17,7 @@ import {
   derivePolicyAddress,
   SETTINGS_TIME_LOCK_SECONDS,
   TOKEN_PROGRAM_ID,
-} from "@xend/smart-account";
+} from "@prydd/smart-account";
 
 import { checkSettings, checkSpend } from "@/utils/verifyTransaction";
 

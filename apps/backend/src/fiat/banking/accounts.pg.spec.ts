@@ -93,13 +93,13 @@ describePg('per-user naira accounts HTTP + PostgreSQL', () => {
     });
     await pool.query('CREATE TABLE users (id text PRIMARY KEY)');
     await pool.query(
-      readFileSync('drizzle/0058_bank_accounts.sql', 'utf8').replaceAll(
+      readFileSync('drizzle/0059_bank_accounts.sql', 'utf8').replaceAll(
         '"public".',
         `"${namespace}".`,
       ),
     );
     await pool.query(
-      readFileSync('drizzle/0059_bank_account_uniqueness.sql', 'utf8'),
+      readFileSync('drizzle/0060_bank_account_uniqueness.sql', 'utf8'),
     );
     await pool.query("INSERT INTO users (id) VALUES ('alice'), ('bob')");
     await start();

@@ -1,5 +1,5 @@
 {
-  "name": "@xend/smart-account",
+  "name": "@prydd/smart-account",
   "version": "0.0.0",
   "private": true,
   "description": "Owned adapter over the Squads Smart Account Program. Derives Account addresses and builds unsigned transactions for the 2-of-3 signer set.",
@@ -39,8 +39,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
-    "@xend/eslint-config": "*",
-    "@xend/typescript-config": "*",
+    "@prydd/eslint-config": "*",
+    "@prydd/typescript-config": "*",
     "eslint": "^9.39.1",
     "litesvm": "^0.8.0",
     "tsdown": "^0.22.5",

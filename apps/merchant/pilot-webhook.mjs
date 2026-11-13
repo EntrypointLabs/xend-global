@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
-import { verifyWebhook } from '@xend/checkout-core/webhook';
+import { verifyWebhook } from '@prydd/checkout-core/webhook';
 
 // Local pilot only. No fulfilment side effects; secrets stay in this process.
 export function createPilotReceiver(secret) {
@@ -49,7 +49,7 @@ export function createPilotReceiver(secret) {
 async function main() {
   const key = process.env.PILOT_DEVNET_API_KEY;
   if (!key) throw new Error('PILOT_DEVNET_API_KEY is required');
-  const url = 'https://xend.global/pilot/webhook';
+  const url = 'https://prydd.co/pilot/webhook';
   async function api(path, method = 'GET', body) {
     const response = await fetch(`http://127.0.0.1:8008/v1/webhook_endpoints${path}`, {
       method,

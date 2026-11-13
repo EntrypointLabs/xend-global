@@ -72,9 +72,9 @@ The phone holding S2 is gone and its key cannot be copied, so a new one is minte
 
 ## What is left
 
-**Email login is gone and O10 is closed** (2026-08-30). `(auth)/email-login.tsx`, `restore-account.tsx` and the "Recover existing wallet" button were removed in `b6dc884`. What an emailed code opens on an existing Account is now an entry session: Xend's own `xentry_` token, one hour, no Privy session behind it, refused by every route that spends, changes the signer set or enrols a credential (`apps/backend/src/auth/consumer-auth.guard.ts`, `entry-route-inventory.spec.ts`; ADR 0028). Sign-up leads with the address (`app/(auth)/login.tsx` pushes to `add-email.tsx`) per ADR 0027, so the "New here? Create an account" workaround is gone too.
+**Email login is gone and O10 is closed** (2026-08-30). `(auth)/email-login.tsx`, `restore-account.tsx` and the "Recover existing wallet" button were removed in `b6dc884`. What an emailed code opens on an existing Account is now an entry session: Prydd's own `xentry_` token, one hour, no Privy session behind it, refused by every route that spends, changes the signer set or enrols a credential (`apps/backend/src/auth/consumer-auth.guard.ts`, `entry-route-inventory.spec.ts`; ADR 0028). Sign-up leads with the address (`app/(auth)/login.tsx` pushes to `add-email.tsx`) per ADR 0027, so the "New here? Create an account" workaround is gone too.
 
-**Passkeys are indistinguishable in the platform picker.** Privy sets the WebAuthn user name to the app name, so every credential shows as "Xend Mobile" and a Consumer with two accounts cannot tell them apart. `signupWithPasskey` takes only `relyingParty`, so this is Privy's to fix; worth raising alongside XEN-29. `exclude_credentials` is empty at sign-up too, which is why the platform will mint a second credential for an identity that already has one.
+**Passkeys are indistinguishable in the platform picker.** Privy sets the WebAuthn user name to the app name, so every credential shows as "Prydd Mobile" and a Consumer with two accounts cannot tell them apart. `signupWithPasskey` takes only `relyingParty`, so this is Privy's to fix; worth raising alongside XEN-29. `exclude_credentials` is empty at sign-up too, which is why the platform will mint a second credential for an identity that already has one.
 
 **A lost passkey has an exit now.** `settings/replace-passkey.tsx` mints a fresh passkey and `PrimaryRotationService` (`apps/backend/src/account/primary-rotation.service.ts`) swaps it into the signer set and both policies, approved by the Device Key on the phone and S3 released against an emailed code, executable after the 24 hour lock (ADR 0031). It needs the phone, so it covers a passkey deleted from the password manager, not a move between ecosystems.
 
@@ -95,7 +95,7 @@ The sequencing decision still holds: the multisig ships before the resubmission.
 5. **The reviewer's balance.** Roughly 0.75 USDC on a mainnet Privy wallet. The sweep exists; run it. The address is readable from the Privy dashboard.
 6. **Reshoot the listing previews.** `assets/dapp-store/preview-*.png` still show a Visa card, a virtual bank account, 7.99% APY and merchant charges. Fresh captures are in `.gstack/previews-new/`; Home and Receive are the two to avoid.
 7. **Re-read the listing copy against what the app does.** It lives in the publisher portal, not the repo.
-8. **Three surfaces still look real and do nothing:** Xend Card, Earn Deposit, Hide My Wallet.
+8. **Three surfaces still look real and do nothing:** Prydd Card, Earn Deposit, Hide My Wallet.
 9. **Two secrets gate the submission and neither is on the build machine:** `DAPP_STORE_API_KEY` and the Solana signer keypair.
 
 Token artwork is off this list: SOL, EURC and Kamino ship as real marks rather than letters in a circle.

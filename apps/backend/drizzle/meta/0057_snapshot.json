@@ -1,6 +1,6 @@
 {
-  "id": "21d81b5a-e243-4931-8278-4d248362d96a",
-  "prevId": "ed52e39c-69b9-4ee1-974c-5aa87b808fe5",
+  "id": "f23227f0-9c04-4caf-a36f-c0dae99169f3",
+  "prevId": "6e3c0fca-bbb1-4100-a039-1f5e32df221f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3993,48 +3993,6 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
-    },
-    "public.fiat_unified_wallets": {
-      "name": "fiat_unified_wallets",
-      "schema": "",
-      "columns": {
-        "owner_id": {
-          "name": "owner_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "holdings": {
-          "name": "holdings",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "records": {
-          "name": "records",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "fiat_unified_wallets_owner_id_users_id_fk": {
-          "name": "fiat_unified_wallets_owner_id_users_id_fk",
-          "tableFrom": "fiat_unified_wallets",
-          "tableTo": "users",
-          "columnsFrom": ["owner_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
     }
   },
   "enums": {
@@ -4131,7 +4089,7 @@
     "public.settlement_provider": {
       "name": "settlement_provider",
       "schema": "public",
-      "values": ["direct_usdc", "blockradar"]
+      "values": ["direct_usdc", "blockradar", "paj"]
     },
     "public.transfer_direction": {
       "name": "transfer_direction",

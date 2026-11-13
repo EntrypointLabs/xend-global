@@ -1,6 +1,6 @@
 {
-  "id": "ed1513d8-31b2-41a5-82ca-818f050dc3c7",
-  "prevId": "10f86b0e-9623-44ff-bb41-f09889d2f05b",
+  "id": "006ace5c-66ba-41e9-a5ad-0b6bc7b8b572",
+  "prevId": "c68b8cf3-4eb2-41fa-8dfb-5c376be2d5d2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3893,200 +3893,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.fiat_bank_notifications": {
-      "name": "fiat_bank_notifications",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "environment": {
-          "name": "environment",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "merchant_id": {
-          "name": "merchant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "event_id": {
-          "name": "event_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "transaction_id": {
-          "name": "transaction_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "signed_hash": {
-          "name": "signed_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "notification": {
-          "name": "notification",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'received'"
-        },
-        "query_attempts": {
-          "name": "query_attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "query_claim": {
-          "name": "query_claim",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "next_query_at": {
-          "name": "next_query_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "queried_at": {
-          "name": "queried_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "query_result": {
-          "name": "query_result",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "query_error": {
-          "name": "query_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "received_at": {
-          "name": "received_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "fiat_bank_notifications_identity_key": {
-          "name": "fiat_bank_notifications_identity_key",
-          "columns": [
-            {
-              "expression": "provider",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "environment",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "merchant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "event_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "fiat_bank_notifications_due": {
-          "name": "fiat_bank_notifications_due",
-          "columns": [
-            {
-              "expression": "provider",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "environment",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "merchant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "next_query_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"fiat_bank_notifications\".\"status\" = 'received'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "fiat_bank_notifications_query_attempts_check": {
-          "name": "fiat_bank_notifications_query_attempts_check",
-          "value": "\"fiat_bank_notifications\".\"query_attempts\" >= 0"
-        },
-        "fiat_bank_notifications_environment_check": {
-          "name": "fiat_bank_notifications_environment_check",
-          "value": "\"fiat_bank_notifications\".\"environment\" IN ('sandbox', 'production')"
-        },
-        "fiat_bank_notifications_status_check": {
-          "name": "fiat_bank_notifications_status_check",
-          "value": "\"fiat_bank_notifications\".\"status\" IN ('received', 'needs_attention', 'reconciled')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.fiat_bank_transfers": {
       "name": "fiat_bank_transfers",
       "schema": "",
@@ -4593,7 +4399,7 @@
     "public.settlement_provider": {
       "name": "settlement_provider",
       "schema": "public",
-      "values": ["direct_usdc", "blockradar"]
+      "values": ["direct_usdc", "blockradar", "paj"]
     },
     "public.transfer_direction": {
       "name": "transfer_direction",

@@ -7,7 +7,7 @@ import { resolveNgrok } from "./ngrok.mjs";
 import { waitForBackend, redactNgrokOutput } from "./dev-ngrok.mjs";
 
 test("ngrok ignores npm/Expo shims and selects the system executable", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "xend-ngrok-"));
+  const root = mkdtempSync(path.join(tmpdir(), "prydd-ngrok-"));
   try {
     const shim = path.join(root, "node_modules/.bin");
     const system = path.join(root, "bin");

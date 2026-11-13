@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-07-12
-**Deciders:** Pay with Xend
+**Deciders:** Pay with Prydd
 **Tags:** backend, pay, vendor
 
 ## Context and Problem Statement
@@ -21,7 +21,7 @@ Merchants price in naira, but Consumers pay in USDC and merchants settle without
 
 1. **Convert-at-settlement via an off-ramp provider with a pinned checkout quote** — pin an executable quote at creation to size the USDC charge; the provider converts to naira at settlement.
 2. **Market-data / exchange feed** — price off a public rate feed.
-3. **A Xend-side spread on a held USDC balance** — the v2 model where the merchant absorbs the spread on settled USDC.
+3. **A Prydd-side spread on a held USDC balance** — the v2 model where the merchant absorbs the spread on settled USDC.
 4. **Manual pilot rate** — an operator sets a fixed rate.
 
 ## Decision Outcome
@@ -56,7 +56,7 @@ A cached fallback is bounded by a staleness cap; beyond it, intent creation fail
 - ✅ Simple to source.
 - ❌ Not executable; a displayed rate you cannot transact at is a Binance-precedent exposure.
 
-### A Xend-side spread on a held USDC balance (v2)
+### A Prydd-side spread on a held USDC balance (v2)
 
 - ✅ Conceptually simple margin capture.
 - ❌ Superseded: under convert-at-settlement merchants do not hold USDC, so there is no balance to absorb a spread on.

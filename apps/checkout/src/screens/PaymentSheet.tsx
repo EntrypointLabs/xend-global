@@ -15,7 +15,7 @@ export function PaymentSheet({
     <main className="payment-stage">
       <section className="payment-sheet" aria-labelledby="payment-title">
         <header className="payment-header">
-          <span className="payment-wordmark">Xend</span>
+          <span className="payment-wordmark">Prydd</span>
           <span className="payment-header-label">Checkout</span>
         </header>
         <div className="payment-purchase">

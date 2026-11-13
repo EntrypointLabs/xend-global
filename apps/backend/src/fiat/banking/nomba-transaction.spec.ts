@@ -18,7 +18,7 @@ function setup(data: unknown = transaction, authenticated = true) {
     transport,
     adapter: new NombaAdapter(
       {
-        senderName: 'Xend',
+        senderName: 'Prydd',
         ...(authenticated
           ? { accessToken: 'test-token', accountId: 'merchant' }
           : {}),

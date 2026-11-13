@@ -96,7 +96,7 @@ export class ConsoleAuthGuard implements CanActivate {
   }
 
   private challenge(res: Response): UnauthorizedException {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Xend Console"');
+    res.setHeader('WWW-Authenticate', 'Basic realm="Prydd Console"');
     return new UnauthorizedException('Console authentication required');
   }
 }

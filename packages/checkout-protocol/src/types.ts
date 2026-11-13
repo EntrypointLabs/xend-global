@@ -3,12 +3,12 @@ export type CheckoutStatus = 'succeeded' | 'failed' | 'canceled' | 'expired';
 
 /** The message types that report an outcome, and so carry a reference and a status. */
 export type CheckoutTerminalMessageTypeValue =
-  | 'xend.checkout.result'
-  | 'xend.checkout.cancel';
+  | 'prydd.checkout.result'
+  | 'prydd.checkout.cancel';
 
 export type CheckoutMessageTypeValue =
-  | 'xend.checkout.ready'
-  | 'xend.checkout.unresolved'
+  | 'prydd.checkout.ready'
+  | 'prydd.checkout.unresolved'
   | CheckoutTerminalMessageTypeValue;
 
 export type CheckoutUnresolvedReason = 'confirmation_timeout';
@@ -21,7 +21,7 @@ export type CheckoutUnresolvedReason = 'confirmation_timeout';
  * per-type special case.
  */
 export interface CheckoutEnvelope {
-  xend: 'checkout';
+  prydd: 'checkout';
   v: 1;
   nonce: string;
   reference: string;
@@ -37,18 +37,18 @@ export interface CheckoutEnvelope {
  * embedder's proof that the inline ceremony is live.
  */
 export interface CheckoutReadyEnvelope {
-  xend: 'checkout';
+  prydd: 'checkout';
   v: 1;
   nonce: string;
-  type: 'xend.checkout.ready';
+  type: 'prydd.checkout.ready';
 }
 
 /** The surface could not confirm a terminal result while its channel is live. */
 export interface CheckoutUnresolvedEnvelope {
-  xend: 'checkout';
+  prydd: 'checkout';
   v: 1;
   nonce: string;
   reference: string;
-  type: 'xend.checkout.unresolved';
+  type: 'prydd.checkout.unresolved';
   reason: CheckoutUnresolvedReason;
 }

@@ -1,5 +1,5 @@
 {
-  "name": "@xend/checkout",
+  "name": "@prydd/checkout",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "@solana/kit": "^7.0.0",
     "@privy-io/react-auth": "^3.34.0",
     "@solana-program/memo": "^0.9.0",
-    "@xend/checkout-protocol": "*",
+    "@prydd/checkout-protocol": "*",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "zod": "^3.25.76"
@@ -28,8 +28,8 @@
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
     "@vitejs/plugin-react": "^6.0.3",
-    "@xend/eslint-config": "*",
-    "@xend/typescript-config": "*",
+    "@prydd/eslint-config": "*",
+    "@prydd/typescript-config": "*",
     "jsdom": "^27.0.0",
     "prettier-plugin-tailwindcss": "^0.6.14",
     "size-limit": "^12.1.0",

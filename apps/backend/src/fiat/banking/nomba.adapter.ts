@@ -75,7 +75,7 @@ function recipient(value: BankRecipient): void {
 }
 
 /** Sandbox contract adapter only. Even authenticated sandbox responses remain fixtures.
- * Durable idempotency/reservations belong in Xend's orchestrator. This adapter never retries writes.
+ * Durable idempotency/reservations belong in Prydd's orchestrator. This adapter never retries writes.
  */
 export class NombaAdapter
   implements
@@ -295,7 +295,7 @@ export class NombaAdapter
       evidence: 'authenticated_sandbox',
     };
   }
-  /** Recover a provisioned account by Xend's persisted reference, never create again. */
+  /** Recover a provisioned account by Prydd's persisted reference, never create again. */
   async retrieveAccount(
     accountReference: string,
     requestReference: string,

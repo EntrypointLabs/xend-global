@@ -7,8 +7,8 @@ import { isFramed } from './frame';
  * and never gets one back; storage is the only carrier that survives there.
  * The popup keeps the cookie and touches neither of these.
  */
-const SESSION_HEADER = 'X-Xend-Checkout-Session';
-const SESSION_STORAGE_KEY = 'xend.checkout.session';
+const SESSION_HEADER = 'X-Prydd-Checkout-Session';
+const SESSION_STORAGE_KEY = 'prydd.checkout.session';
 
 function readStoredSession(): string {
   try {
@@ -129,7 +129,7 @@ export type CheckoutErrorCode =
   | 'INSUFFICIENT_BALANCE'
   | 'INTENT_EXPIRED'
   | 'PAYMENT_PROCESSING'
-  /** Above the band one signature carries; only the Xend app can finish it. */
+  /** Above the band one signature carries; only the Prydd app can finish it. */
   | 'APPROVAL_REQUIRED'
   | 'UNKNOWN';
 

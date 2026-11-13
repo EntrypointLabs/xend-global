@@ -88,8 +88,8 @@ const CSS = `
 .sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
 .spinner { width: 34px; height: 34px; margin: 20px auto; border-radius: 50%; border: 3px solid var(--field); border-top-color: var(--muted); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-/* The ceremony frame is an inset panel under the Xend lockup, so it reads as
-   Xend's own surface and never as merchant chrome. */
+/* The ceremony frame is an inset panel under the Prydd lockup, so it reads as
+   Prydd's own surface and never as merchant chrome. */
 .frame { display: block; width: 100%; height: min(58vh, 440px); border: 1px solid var(--fedge); border-radius: 16px; background: var(--field); }
 button:focus-visible { outline: 3px solid #80b5ff; outline-offset: 3px; }
 .sheet { max-height: calc(100dvh - 24px); overflow-y: auto; }
@@ -159,7 +159,7 @@ export function openModal(opts: ModalOptions): ModalHandle {
   let dismissible = true;
   let closed = false;
   const host = doc.createElement("div");
-  host.setAttribute("data-xend-checkout", "");
+  host.setAttribute("data-prydd-checkout", "");
   const root = host.attachShadow({ mode: "open" });
   const style = doc.createElement("style");
   style.textContent = CSS;
@@ -170,7 +170,7 @@ export function openModal(opts: ModalOptions): ModalHandle {
   const win = doc.defaultView;
   const isMobile = (win?.innerWidth ?? 800) <= 640;
   wrap.classList.add(isMobile ? "sheetmode" : "modal");
-  wrap.innerHTML = `<div class="scrim" data-close></div><div class="stage"><section class="sheet" role="dialog" aria-label="Pay with Xend" aria-modal="true" data-theme="${resolveTheme(theme, doc)}"><div class="grabber"></div><div class="body"></div></section></div>`;
+  wrap.innerHTML = `<div class="scrim" data-close></div><div class="stage"><section class="sheet" role="dialog" aria-label="Pay with Prydd" aria-modal="true" data-theme="${resolveTheme(theme, doc)}"><div class="grabber"></div><div class="body"></div></section></div>`;
   root.appendChild(wrap);
   doc.body.appendChild(host);
 
@@ -244,12 +244,12 @@ export function openModal(opts: ModalOptions): ModalHandle {
         ? "Confirm and pay"
         : "Pay with passkey";
       render(`
-        <div class="head"><span class="mfav"></span><div><div class="mname"></div><div class="msub">Pay with Xend</div></div><button class="x" data-cancel aria-label="Close">✕</button></div>
+        <div class="head"><span class="mfav"></span><div><div class="mname"></div><div class="msub">Pay with Prydd</div></div><button class="x" data-cancel aria-label="Close">✕</button></div>
         <div class="amt"><div class="k">You're paying</div><div class="v"></div>${summary.itemLabel ? `<div class="s"></div>` : ""}</div>
-        <div class="src"><span class="dot"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="13" rx="2.5" stroke="var(--glyph)" stroke-width="1.7"/><path d="M3 10h18" stroke="var(--glyph)" stroke-width="1.7"/></svg></span><div><div class="t1">Xend Cash</div><div class="t2">Pay with your Xend balance</div></div></div>
+        <div class="src"><span class="dot"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="13" rx="2.5" stroke="var(--glyph)" stroke-width="1.7"/><path d="M3 10h18" stroke="var(--glyph)" stroke-width="1.7"/></svg></span><div><div class="t1">Prydd Cash</div><div class="t2">Pay with your Prydd balance</div></div></div>
         <button class="cta" data-confirm disabled>${FACE_ID}${ctaLabel}</button>
         <button class="cancel" data-cancel>Cancel</button>
-        <div class="foot"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="var(--muted2)" stroke-width="1.7"/><path d="M8 11V8a4 4 0 018 0v3" stroke="var(--muted2)" stroke-width="1.7"/></svg>Payments secured by Xend</div>`);
+        <div class="foot"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="var(--muted2)" stroke-width="1.7"/><path d="M8 11V8a4 4 0 018 0v3" stroke="var(--muted2)" stroke-width="1.7"/></svg>Payments secured by Prydd</div>`);
       // Merchant-controlled strings are written as text, never parsed as markup.
       setText(".mname", summary.merchantDisplayName);
       setText(
@@ -283,11 +283,11 @@ export function openModal(opts: ModalOptions): ModalHandle {
     showFrame(src) {
       dismissible = false;
       render(
-        `<div class="foot" style="margin:0 0 10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="var(--muted2)" stroke-width="1.7"/><path d="M8 11V8a4 4 0 018 0v3" stroke="var(--muted2)" stroke-width="1.7"/></svg>Confirming on Xend</div>`,
+        `<div class="foot" style="margin:0 0 10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="var(--muted2)" stroke-width="1.7"/><path d="M8 11V8a4 4 0 018 0v3" stroke="var(--muted2)" stroke-width="1.7"/></svg>Confirming on Prydd</div>`,
       );
       const frame = doc.createElement("iframe");
       frame.className = "frame";
-      frame.title = "Xend checkout";
+      frame.title = "Prydd checkout";
       // publickey-credentials-get is what lets the passkey ceremony run in a
       // cross-origin frame at all; allow-same-origin keeps the frame on the
       // checkout's real origin, without which its postMessage would arrive as
@@ -304,7 +304,7 @@ export function openModal(opts: ModalOptions): ModalHandle {
     showWaiting() {
       dismissible = false;
       render(
-        `<div class="center" role="status" aria-live="polite"><div class="spinner" aria-hidden="true"></div><div class="title">Waiting for confirmation</div><div class="sub">Finish in the Xend window.</div></div>`,
+        `<div class="center" role="status" aria-live="polite"><div class="spinner" aria-hidden="true"></div><div class="title">Waiting for confirmation</div><div class="sub">Finish in the Prydd window.</div></div>`,
       );
     },
     showResult(status) {

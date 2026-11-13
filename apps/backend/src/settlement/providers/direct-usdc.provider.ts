@@ -43,7 +43,7 @@ const TOKEN_ACCOUNT_SPACE = 165n;
 const USDC_DECIMALS = 6;
 
 /**
- * The pilot settlement adapter: USDC settles directly into a Xend-authority-
+ * The pilot settlement adapter: USDC settles directly into a Prydd-authority-
  * owned classic-SPL token account (REQ-PLAIN-SPL, so the Phase 3 relayer
  * checks stay valid). Each Merchant gets a DISTINCT authority-owned token
  * account, enumerable from the authority root (REQ-ATTRIBUTABLE). Refunds
@@ -82,7 +82,7 @@ export class DirectUsdcProvider implements SettlementProvider, OnModuleInit {
   }): Promise<ProvisionedSettlementEndpoint> {
     const usdcMint = address(this.usdcMint);
 
-    // Recorded merchant-own variant: no funds under Xend control, no
+    // Recorded merchant-own variant: no funds under Prydd control, no
     // attribution root, reverse() unsupported. Not the pilot default.
     if (params.merchantAddress) {
       const [ata] = await findAssociatedTokenPda({
@@ -142,7 +142,7 @@ export class DirectUsdcProvider implements SettlementProvider, OnModuleInit {
       };
     }
 
-    // Default: a distinct per-Merchant Xend-authority-owned USDC token
+    // Default: a distinct per-Merchant Prydd-authority-owned USDC token
     // account. A fresh ephemeral keypair is the new account; the authority
     // is payer + owner, so the account is enumerable from the authority
     // root and the authority alone signs future transfers (refunds). The
@@ -239,7 +239,7 @@ export class DirectUsdcProvider implements SettlementProvider, OnModuleInit {
     paymentId: string;
   }): Promise<{ signature: string }> {
     // Only an authority-owned endpoint can be reversed: a recorded
-    // merchant-own address has no Xend signer, so ops handles it manually.
+    // merchant-own address has no Prydd signer, so ops handles it manually.
     const owner = await this.solana.getTokenAccountOwner(
       params.endpointAddress,
     );

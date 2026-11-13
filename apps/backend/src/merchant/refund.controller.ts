@@ -29,7 +29,7 @@ import {
 } from './merchant.errors';
 
 /**
- * Ops-initiated refund surface (InternalGuard). The merchants.xend.global
+ * Ops-initiated refund surface (InternalGuard). The merchants.prydd.co
  * portal's refund-approval screen is the fast-follow that calls the same
  * service. Not a merchant key, not the consumer JWT. Every request carries an
  * Idempotency-Key; without one it is refused before anything is read.

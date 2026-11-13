@@ -5,8 +5,15 @@ import { WithScreenTheme } from "@/components/WithScreenTheme";
 import { router } from "expo-router";
 import Logo from "@/components/Logo";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { AuthAtmosphere } from "@/components/ui/molecules/AuthAtmosphere";
 import { WordWheel } from "@/components/ui/molecules/WordWheel";
 import { Ionicons } from "@expo/vector-icons";
+import {
+  AUTH_BRAND_BLUE,
+  AUTH_CANVAS,
+  AUTH_CTA,
+  AUTH_CTA_LABEL,
+} from "@/constants/Colors";
 
 /**
  * The front door, and only for somebody with no session: email signs a new
@@ -20,9 +27,8 @@ function LoginScreen() {
   const onRecover = () => router.push("/(auth)/recover");
 
   return (
-    <View className="flex-1">
-      <GradientBackround />
-
+    <View className="flex-1" style={{ backgroundColor: AUTH_CANVAS }}>
+      <AuthAtmosphere variant="hero" />
       <View className="flex-1 justify-between px-8 py-16">
         <View className="h-full flex-1 justify-center">
           <WordWheel />
@@ -39,13 +45,13 @@ function LoginScreen() {
           <View className="mb-10">
             <Typography
               weight="500"
-              className="w-full max-w-[311px] text-lg text-[#8FE5F6]"
+              className="w-full max-w-[311px] text-lg text-white/50"
             >
               Save, earn and invest
             </Typography>
             <Typography
               weight="500"
-              className="w-full max-w-[311px] text-lg text-[#8FE5F6]"
+              className="w-full max-w-[311px] text-lg text-white/50"
             >
               with stablecoins and digital assets.
             </Typography>
@@ -53,17 +59,23 @@ function LoginScreen() {
           <View className="gap-2.5">
             <HapticPressable
               onPress={onEmail}
-              className="w-full flex-row items-center justify-center gap-4 rounded-full border border-white bg-white p-4"
+              className="h-14 w-full flex-row items-center justify-center gap-4 rounded-full px-4"
+              style={{ backgroundColor: AUTH_CTA, height: 56 }}
             >
-              <Ionicons name="mail-outline" size={22} color="#000000" />
-              <Typography weight="600" className="text-lg text-black">
+              <Ionicons name="mail-outline" size={22} color={AUTH_CTA_LABEL} />
+              <Typography
+                weight="600"
+                className="text-lg"
+                style={{ color: AUTH_CTA_LABEL }}
+              >
                 Continue with email
               </Typography>
             </HapticPressable>
 
             <HapticPressable
               onPress={onRecover}
-              className="w-full flex-row items-center justify-center gap-3 rounded-full border border-white/20 bg-white/20 p-4"
+              className="h-14 w-full flex-row items-center justify-center gap-3 rounded-full border border-white/20 bg-white/20 px-4"
+              style={{ height: 56 }}
             >
               <Image
                 source={require("@/assets/icons/redo.png")}
@@ -80,30 +92,8 @@ function LoginScreen() {
   );
 }
 
-const GradientBackround = () => {
-  return (
-    <>
-      <Image
-        source={require("@/assets/images/onboarding/blue-blur-1.png")}
-        className="absolute bottom-[58px] left-0 h-[468px] w-full"
-        resizeMode="stretch"
-      />
-      <Image
-        source={require("@/assets/images/onboarding/blue-blur-2.png")}
-        className="absolute bottom-[-17px] left-0 h-[468px] w-full"
-        resizeMode="cover"
-      />
-      <Image
-        source={require("@/assets/images/onboarding/blue-blur-3.png")}
-        className="absolute bottom-[-134px] left-0 h-[468px] w-full"
-        resizeMode="cover"
-      />
-    </>
-  );
-};
-
 export default WithScreenTheme(LoginScreen, {
-  backgroundColor: "#FFFFFF",
-  textColor: "#000000",
-  primaryColor: "#000000",
+  backgroundColor: AUTH_CANVAS,
+  textColor: "#FFFFFF",
+  primaryColor: AUTH_BRAND_BLUE,
 });

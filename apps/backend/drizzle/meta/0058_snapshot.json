@@ -1,6 +1,6 @@
 {
-  "id": "11788712-bc4a-4104-8b3b-2a4ad27ceb3f",
-  "prevId": "21d81b5a-e243-4931-8278-4d248362d96a",
+  "id": "138e595f-75c5-477e-87a9-ce8c5efc9a8d",
+  "prevId": "f23227f0-9c04-4caf-a36f-c0dae99169f3",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3731,140 +3731,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.fiat_bank_accounts": {
-      "name": "fiat_bank_accounts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "owner_id": {
-          "name": "owner_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "environment": {
-          "name": "environment",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "account_reference": {
-          "name": "account_reference",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "account": {
-          "name": "account",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "fiat_bank_accounts_owner_provider_env_key": {
-          "name": "fiat_bank_accounts_owner_provider_env_key",
-          "columns": [
-            {
-              "expression": "owner_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "environment",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "fiat_bank_accounts_provider_reference_key": {
-          "name": "fiat_bank_accounts_provider_reference_key",
-          "columns": [
-            {
-              "expression": "provider",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "environment",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "account_reference",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "fiat_bank_accounts_owner_id_users_id_fk": {
-          "name": "fiat_bank_accounts_owner_id_users_id_fk",
-          "tableFrom": "fiat_bank_accounts",
-          "tableTo": "users",
-          "columnsFrom": ["owner_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.fiat_order_events": {
       "name": "fiat_order_events",
       "schema": "",
@@ -4265,7 +4131,7 @@
     "public.settlement_provider": {
       "name": "settlement_provider",
       "schema": "public",
-      "values": ["direct_usdc", "blockradar"]
+      "values": ["direct_usdc", "blockradar", "paj"]
     },
     "public.transfer_direction": {
       "name": "transfer_direction",

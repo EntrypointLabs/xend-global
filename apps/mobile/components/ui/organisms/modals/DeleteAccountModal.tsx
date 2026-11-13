@@ -77,7 +77,7 @@ export function DeleteAccountModal({
                   <Ionicons name="trash" size={26} color="#fff" />
                 </View>
                 <Image
-                  source={require("@/assets/images/logo/xend-mark-black-2048.png")}
+                  source={require("@/assets/images/logo/prydd-mark-black-2048.png")}
                   className="absolute bottom-3 right-3 size-5 opacity-20"
                   resizeMode="contain"
                 />
@@ -89,7 +89,7 @@ export function DeleteAccountModal({
               >
                 Deleting your account will permanently close it. If you
                 continue, you will not be able to recover, access, or perform
-                any other action with this account in Xend.
+                any other action with this account in Prydd.
               </Typography>
 
               <Typography

@@ -5,7 +5,10 @@ import { DbService, type DbExecutor } from '../db/db.service';
 import { settlementAccounts } from '../db/schema';
 import { SOLANA_RPC, type SolanaRpc } from '../solana/solana-rpc.interface';
 import { SettlementRouter } from './settlement-router';
-import type { SettlementProviderName } from './settlement-provider.interface';
+import type {
+  SettlementBankAccount,
+  SettlementProviderName,
+} from './settlement-provider.interface';
 import { SettlementAccountNotProvisionedError } from './settlement.errors';
 
 /**
@@ -30,7 +33,11 @@ export class SettlementProvisioningService {
 
   async provisionOrLink(
     merchantId: string,
-    opts: { currency: string; merchantAddress?: string },
+    opts: {
+      currency: string;
+      merchantAddress?: string;
+      bankAccount?: SettlementBankAccount;
+    },
     onProvisioned?: (tx: DbExecutor) => Promise<void>,
   ): Promise<{
     address: string;
@@ -76,6 +83,7 @@ export class SettlementProvisioningService {
     const endpoint = await provider.provision({
       merchantId,
       merchantAddress: opts.merchantAddress,
+      bankAccount: opts.bankAccount,
     });
     const providerName = provider.capabilities.provider;
 
@@ -147,7 +155,7 @@ export class SettlementProvisioningService {
    * through the Account's own policy, and the program checks that the account
    * being credited belongs to the destination the Spend names. The endpoint is
    * a bare token account rather than anybody's associated one, so that owner
-   * cannot be derived and has to be read: the authority for an endpoint Xend
+   * cannot be derived and has to be read: the authority for an endpoint Prydd
    * provisioned, the Merchant itself for one it already had.
    */
   async getSettlementAddressForSettlement(merchantId: string): Promise<{
@@ -177,7 +185,7 @@ export class SettlementProvisioningService {
       );
     }
     // The USDC pilot settles to Merchant-controlled accounts. An endpoint
-    // from the earlier Xend-custody pilot must be explicitly migrated first.
+    // from the earlier Prydd-custody pilot must be explicitly migrated first.
     if (row.provider === 'direct_usdc' && row.authorityAddress != null) {
       throw new SettlementAccountNotProvisionedError(
         'This Merchant needs a Merchant-owned USDC settlement destination',

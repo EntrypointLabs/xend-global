@@ -4,8 +4,8 @@
 // same-origin routing, security headers or SPA deep-link fallback regress.
 //
 // Usage:
-//   API_URL=https://api.xend.global \
-//   MERCHANT_URL=https://merchants.xend.global \
+//   API_URL=https://api.prydd.co \
+//   MERCHANT_URL=https://merchants.prydd.co \
 //   node scripts/smoke-merchant-production.mjs
 //
 // Exits non-zero on the first failed check.

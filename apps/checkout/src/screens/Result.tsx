@@ -1,4 +1,4 @@
-import type { CheckoutStatus } from '@xend/checkout-protocol';
+import type { CheckoutStatus } from '@prydd/checkout-protocol';
 import { StatusSheet } from './StatusSheet';
 
 interface ResultProps {
@@ -54,7 +54,7 @@ function copyFor(
     return {
       title: 'Waiting for confirmation',
       detail:
-        'Your Payment is still being confirmed. Check Activity in Xend before trying again.',
+        'Your Payment is still being confirmed. Check Activity in Prydd before trying again.',
     };
   }
   switch (status) {

@@ -1,6 +1,6 @@
 {
-  "id": "171ce54e-783c-4a25-a862-1aef51626d1a",
-  "prevId": "ed1513d8-31b2-41a5-82ca-818f050dc3c7",
+  "id": "d2ece1cd-49fe-4ffc-b185-5654fe4d7371",
+  "prevId": "006ace5c-66ba-41e9-a5ad-0b6bc7b8b572",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4593,7 +4593,7 @@
     "public.settlement_provider": {
       "name": "settlement_provider",
       "schema": "public",
-      "values": ["direct_usdc", "blockradar"]
+      "values": ["direct_usdc", "blockradar", "paj"]
     },
     "public.transfer_direction": {
       "name": "transfer_direction",

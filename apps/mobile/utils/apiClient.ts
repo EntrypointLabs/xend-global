@@ -38,6 +38,7 @@ import {
 } from "@/utils/errors";
 import { showToast } from "@/utils/toast";
 import { AuthStorage } from "@/utils/storage/authStorage";
+import { ServerFeaturesSchema, type ServerFeatures } from "@/utils/features";
 import {
   SEED_DEMO,
   seedAccount,
@@ -1594,6 +1595,28 @@ class BackendClient {
     });
   }
 
+  /**
+   * GET /features: which features the server allows right now. Unauthenticated,
+   * because it is read before anyone signs in.
+   *
+   * Goes around `request()`, which toasts and logs every failure. Here a
+   * failure is expected and handled: the caller falls back to the last answer,
+   * and an unreachable backend is no reason to show the Consumer an error.
+   */
+  async getFeatures(): Promise<ServerFeatures> {
+    const response = await fetch(`${this.baseUrl}/features`, {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new ApiError(
+        "BackendClient: /features failed",
+        response.status,
+        undefined
+      );
+    }
+    return ServerFeaturesSchema.parse(await response.json());
+  }
+
   async getNotificationPreference(): Promise<boolean> {
     if (SEED_DEMO) return true;
     const raw = await this.request<unknown>("/notifications/preferences", {
@@ -1622,7 +1645,7 @@ class BackendClient {
     return BalancesResponseSchema.parse(raw);
   }
 
-  /** DELETE /wallet/me — closes the Consumer's Xend account. Rejects with a
+  /** DELETE /wallet/me — closes the Consumer's Prydd account. Rejects with a
    *  409 `{code: "ACCOUNT_HAS_BALANCE"}` while any token balance remains;
    *  the caller is responsible for the zero-balance check and for handling
    *  that response (see DeleteAccountModal). */

@@ -10,7 +10,7 @@ running app, which is exactly the check the rejection cites.
 | ------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | Investments, "Trade Crypto"                                   | Works. Swap ships live Socket quotes and executes                         |
 | Earn, "Up to 7.99% APY"                                       | No deposit path. The in-app figure is 4.93%, Kamino quotes 4.37%          |
-| Xend Card, Visa mark, "Get your free Card"                    | Does not exist. Opens a "Coming soon" screen                              |
+| Prydd Card, Visa mark, "Get your free Card"                   | Does not exist. Opens a "Coming soon" screen                              |
 | "Get your Virtual Bank Account, Receive USD and EUR for USDC" | Does not exist                                                            |
 | Send "To bank account, Send USDC/EURC"                        | Raises "Fiat transfers are coming soon"                                   |
 | "Receive with Hide My Wallet" toggle                          | Rendered, not implemented                                                 |
@@ -124,7 +124,7 @@ leaves each modal offering a single choice, and a chooser with one option is
 friction in front of a screen the button could open directly. They keep the
 existing `isBankDisabled` treatment from KYC status.
 
-Xend Card stays. It opens a screen that says so plainly, which is a labelled
+Prydd Card stays. It opens a screen that says so plainly, which is a labelled
 preview rather than a dead tap. Its only problem is the listing screenshot.
 
 ## Submitting, once the credentials exist
@@ -141,7 +141,7 @@ eas build --platform android --profile production
 DAPP_STORE_API_KEY=<portal key> npx @solana-mobile/dapp-store-cli \
   --apk-file <path to the built APK> \
   --keypair <path to the Solana signer> \
-  --whats-new "Xend now runs on Solana mainnet, so deposits, sends and activity
+  --whats-new "Prydd now runs on Solana mainnet, so deposits, sends and activity
     reflect real balances. Swap quotes live and settles on chain, and
     Investments lists every asset you hold."
 ```
@@ -169,7 +169,7 @@ Before running it:
    than in this repo. The in-app surface now advertises only Cash, Investments and Earn.
 3. **Three surfaces look real and do nothing.** This is the same shape as the original
    rejection, so it is a judgement call rather than an oversight:
-   - **Xend Card** is back in the home grid by request, and raises a "coming soon"
+   - **Prydd Card** is back in the home grid by request, and raises a "coming soon"
      toast.
    - **Swap** has a complete screen and a working keypad, but Review raises "Swap
      quotes open soon". No quote provider is wired.
@@ -194,7 +194,7 @@ inside the APK where it can be extracted and its quota burned, a worse trade tha
 rate-limited fallback. Revisit with a usage-capped key or a backend RPC proxy if
 fallback reads become load-bearing.
 
-**Xend Card: kept in the home action grid.** It was removed as an unverifiable feature,
+**Prydd Card: kept in the home action grid.** It was removed as an unverifiable feature,
 then restored by request: the grid reads as incomplete with three tiles, and the card is
 a real part of the product story. It still only raises a "Coming soon" toast, which is
 tracked as a risk above rather than treated as settled.
@@ -212,7 +212,7 @@ The CLI is portal-backed now, not raw NFT minting:
 DAPP_STORE_API_KEY=<portal key> npx @solana-mobile/dapp-store-cli \
   --apk-file <path to the built APK> \
   --keypair <path to the Solana signer> \
-  --whats-new "Xend now runs on Solana mainnet, so deposits, sends and activity reflect real balances. Investments and Earn are live."
+  --whats-new "Prydd now runs on Solana mainnet, so deposits, sends and activity reflect real balances. Investments and Earn are live."
 ```
 
 The portal decides whether this lands as a first release or an update, and the app must

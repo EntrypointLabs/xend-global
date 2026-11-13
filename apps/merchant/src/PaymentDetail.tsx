@@ -192,7 +192,7 @@ export function PaymentDetail({
             <h2>Webhook delivery</h2>
             {payment.webhookDeliveries.length === 0 ? (
               <p>
-                No webhook deliveries recorded. Xend posts a signed event for
+                No webhook deliveries recorded. Prydd posts a signed event for
                 each outcome, including <code>payment.succeeded</code>,{" "}
                 <code>payment.failed</code> and <code>payment.expired</code>, to
                 the endpoints configured for this mode.

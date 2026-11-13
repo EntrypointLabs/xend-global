@@ -1,6 +1,6 @@
 {
-  "id": "b670cf0c-ea34-4998-b6a7-e4bd62826823",
-  "prevId": "11788712-bc4a-4104-8b3b-2a4ad27ceb3f",
+  "id": "1b846787-94e2-4025-8f36-a6200b840e4c",
+  "prevId": "138e595f-75c5-477e-87a9-ce8c5efc9a8d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3846,34 +3846,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "fiat_bank_accounts_active_number_key": {
-          "name": "fiat_bank_accounts_active_number_key",
-          "columns": [
-            {
-              "expression": "provider",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "environment",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "(\"account\"->>'accountNumber')",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"fiat_bank_accounts\".\"status\" = 'active'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -4293,7 +4265,7 @@
     "public.settlement_provider": {
       "name": "settlement_provider",
       "schema": "public",
-      "values": ["direct_usdc", "blockradar"]
+      "values": ["direct_usdc", "blockradar", "paj"]
     },
     "public.transfer_direction": {
       "name": "transfer_direction",

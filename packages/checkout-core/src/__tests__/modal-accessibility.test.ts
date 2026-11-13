@@ -18,7 +18,7 @@ beforeEach(() => {
     onConfirm: vi.fn(),
     onCancel: cancel,
   });
-  root = document.querySelector("[data-xend-checkout]")!.shadowRoot!;
+  root = document.querySelector("[data-prydd-checkout]")!.shadowRoot!;
 });
 afterEach(() => {
   modal.close();
@@ -31,7 +31,7 @@ describe("SDK modal keyboard and dismissal behavior", () => {
   it("focuses the named dialog and restores its trigger when closed", () => {
     expect(root.activeElement?.getAttribute("role")).toBe("dialog");
     expect(root.activeElement?.getAttribute("aria-label")).toBe(
-      "Pay with Xend",
+      "Pay with Prydd",
     );
     modal.close();
     expect(document.activeElement).toBe(trigger);

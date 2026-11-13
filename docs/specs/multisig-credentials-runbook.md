@@ -233,7 +233,7 @@ with a key policy that grants `kms:Decrypt` to the backend's role and
 history:
 
 ```
-printf '%s' "$SECRET" | npm --workspace @xend/backend exec \
+printf '%s' "$SECRET" | npm --workspace @prydd/backend exec \
   tsx scripts/kms-encrypt-secret.ts -- --key-id <arn> --region <region>
 ```
 

@@ -1,6 +1,8 @@
 # Architectural Decision Records
 
-This directory contains Architectural Decision Records (ADRs) for the `xend` monorepo.
+This directory contains Architectural Decision Records (ADRs) for the `prydd` monorepo.
+
+The product was called Xend until October 2026. Records written before then were renamed in place, so "Prydd" in an older ADR refers to what was Xend at the time. Hostnames under `xend.global` and the Android app id `com.giftedborg.xend` are unchanged and are quoted as they are. The iOS app id moved to `xyz.entrypointlabs.prydd` in [ADR-0037](./0037-ios-app-id-under-the-entrypointlabs-apple-team.md); older records that name `com.giftedborg.xend` for iOS predate it.
 
 ## What is an ADR?
 
@@ -65,7 +67,7 @@ You do **not** need an ADR for routine choices like file naming, single-feature 
 | [0015](./0015-settlement-provider-layer.md)                              | Settlement provider layer: pluggable SettlementProvider, single-root attribution, refund-in-reverse                                 | Accepted                             | Backend / Pay            |
 | [0016](./0016-checkout-postmessage-protocol.md)                          | Checkout result transport: versioned postMessage protocol and surface security posture                                              | Accepted                             | Frontend / Checkout      |
 | [0017](./0017-webhook-contract.md)                                       | Outbound merchant webhook contract: HMAC t/v1 signing, event schema, and delivery semantics                                         | Accepted                             | Backend / Security       |
-| [0018](./0018-sdk-publishing.md)                                         | Pay with Xend SDK publishing, MIT licensing, and the fulfillment-hostile result contract                                            | Accepted                             | SDK / Packaging          |
+| [0018](./0018-sdk-publishing.md)                                         | Pay with Prydd SDK publishing, MIT licensing, and the fulfillment-hostile result contract                                           | Accepted                             | SDK / Packaging          |
 | [0019](./0019-blockradar-settlement-provider-adapter.md)                 | Blockradar as the first SettlementProvider adapter (convert-at-settlement for naira), gated on three Solana confirmations           | Accepted                             | Backend / Pay            |
 | [0020](./0020-solana-sdk-coexistence.md)                                 | Two Solana toolchains: @solana/kit for new money-moving code, web3.js retained                                                      | Accepted                             | Backend / Solana         |
 | [0021](./0021-web-styling.md)                                            | Web styling: Tailwind v4 CSS-first for web surfaces, NativeWind stays mobile-only                                                   | Accepted                             | Frontend / Styling       |
@@ -84,6 +86,7 @@ You do **not** need an ADR for routine choices like file naming, single-feature 
 | [0034](./0034-merchant-portal-routing.md)                                | Merchant portal uses a dependency-free history router with a fixed top nav                                                          | Accepted                             | Frontend / Merchant      |
 | [0035](./0035-merchant-portal-owner-surface-and-audit.md)                | Owner-authenticated merchant portal surface, audit trail and least-privilege reads                                                  | Accepted                             | Backend / Security       |
 | [0036](./0036-checkout-cancel-dismisses-the-attempt.md)                  | Checkout Cancel dismisses the attempt, it does not terminally cancel the intent                                                     | Accepted                             | Frontend / Checkout      |
+| [0037](./0037-ios-app-id-under-the-entrypointlabs-apple-team.md)         | iOS ships as `xyz.entrypointlabs.prydd` under the EntrypointLabs Apple team                                                         | Accepted                             | Mobile / Release         |
 
 > 0014 is reserved for a conditional relayer decision (a Kora reversal, see the 0012 update) and remains an intentional gap. The next free number is 0037.
 

@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-07-12
-**Deciders:** Pay with Xend planning
+**Deciders:** Pay with Prydd planning
 **Tags:** frontend, checkout, security, pay
 
 ## Context and Problem Statement
@@ -21,7 +21,7 @@ Two separate consumers must agree on the exact shape of this signal: the checkou
 
 ## Considered Options
 
-1. **Versioned exact-origin envelope in a shared package, hand-mirrored by the SDK** - a `v`-stamped envelope validated by an exact-origin guard, frozen in `@xend/checkout-protocol`, with the SDK hand-mirroring it and reconciling field-for-field plus importing the types-only path as a devDependency.
+1. **Versioned exact-origin envelope in a shared package, hand-mirrored by the SDK** - a `v`-stamped envelope validated by an exact-origin guard, frozen in `@prydd/checkout-protocol`, with the SDK hand-mirroring it and reconciling field-for-field plus importing the types-only path as a devDependency.
 2. **Unversioned ad-hoc messages** - post whatever fields are convenient and read them loosely on the other side.
 3. **postMessage as the source of truth** - treat a `succeeded` message as proof the Payment settled.
 4. **Runtime-shared protocol package inside the SDK** - have the SDK import the schema (and zod) at runtime.
@@ -32,7 +32,7 @@ Chosen option: **"Versioned exact-origin envelope in a shared package, hand-mirr
 
 The envelope:
 
-- A versioned envelope with a `v` field and the forward-compat rule: consumers ignore versions they do not recognize. v1 is `{ xend: 'checkout', v: 1, nonce, reference, type, status }`.
+- A versioned envelope with a `v` field and the forward-compat rule: consumers ignore versions they do not recognize. v1 is `{ prydd: 'checkout', v: 1, nonce, reference, type, status }`.
 - Canonical field vocabulary: the wire id is `reference` (never intentRef); statuses are `succeeded | failed | canceled | expired` (single-l, Stripe-style).
 - Every message carries a status. A cancel message carries `status: 'canceled'` so a status-only consumer needs no per-type special case.
 - No Ready or handshake message ships in v1. It would be contract over-provision with no v1 consumer. If a handshake is needed later it arrives as a new message type under the same version rules.
@@ -46,7 +46,7 @@ Security:
 
 The popup launch handshake (paired SDK contract): the SDK opens the popup synchronously in the click handler with only `?nonce` and `?mode`, before the intent exists, then navigates the popup to append `intent=<reference>` once creation resolves. The surface treats an intent-less first load as the normal handshake state and renders a loading shell, never an error. A missing nonce stays a hard error.
 
-Consumption model: `@xend/checkout-protocol` is the canonical contract. The zero-dependency merchant SDK hand-mirrors the envelope, must reconcile field-for-field against `envelope.ts` in review, and imports `@xend/checkout-protocol/types` as a devDependency. Types erase at build, so zod never enters the SDK runtime, and re-drift fails compilation. The `satisfies z.ZodType<CheckoutEnvelope>` clause in `envelope.ts` ties the runtime schema to the types-only file so the two cannot silently disagree.
+Consumption model: `@prydd/checkout-protocol` is the canonical contract. The zero-dependency merchant SDK hand-mirrors the envelope, must reconcile field-for-field against `envelope.ts` in review, and imports `@prydd/checkout-protocol/types` as a devDependency. Types erase at build, so zod never enters the SDK runtime, and re-drift fails compilation. The `satisfies z.ZodType<CheckoutEnvelope>` clause in `envelope.ts` ties the runtime schema to the types-only file so the two cannot silently disagree.
 
 Surface security-header posture (this ADR governs the pay.xend.global static host): the host serves `Cross-Origin-Opener-Policy: same-origin-allow-popups` (never `same-origin`, which would sever `window.opener` and kill the popup channel), `Content-Security-Policy: frame-ancestors 'none'` (superseded, see the 2026-09-07 update), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer`. Ownership note: ADR 0012 governs the backend API origin's CORS and COOP policy; this ADR governs the checkout static host. The two are different origins and must not be conflated.
 
@@ -97,7 +97,7 @@ What changes:
 - **`mode=iframe` joins `popup` and `redirect`.** The frame is navigated to
   the same launch URL the popup gets, with `mode=iframe`. Results still arrive
   as the v1 envelope, validated by the same guard, from the same exact origin.
-- **v1 gains a handshake: `xend.checkout.ready`.** The original decision above
+- **v1 gains a handshake: `prydd.checkout.ready`.** The original decision above
   declined to ship one on the grounds that it had no v1 consumer, and said that
   if a handshake were ever needed it would arrive as a new message type under
   the same version rules. That is what this is. The surface posts it the moment
@@ -105,7 +105,7 @@ What changes:
   `merchantWindow()` and the same exact target-origin discipline as every other
   message. It is its own shape rather than a status-bearing envelope, because
   at handshake time there is honestly no reference and no status to report:
-  `{ xend, v, nonce, type }` and nothing more. `parseCheckoutMessage` returns
+  `{ prydd, v, nonce, type }` and nothing more. `parseCheckoutMessage` returns
   it as itself, so reading a status off a handshake is a compile error rather
   than an undefined.
   Its one exception: it is the only message whose target origin is the one the
@@ -142,7 +142,7 @@ short, three seconds, because the fallback `window.open` runs from it and has
 to remain inside the browser's transient activation window.
 
 What is gained: on a correctly registered merchant, the whole payment happens
-in one window, on one page, with the passkey still on Xend's origin and the
+in one window, on one page, with the passkey still on Prydd's origin and the
 merchant still unable to see or influence the ceremony.
 
 Source: `packages/checkout-core/src/{index,modal,message-listener,popup}.ts`.

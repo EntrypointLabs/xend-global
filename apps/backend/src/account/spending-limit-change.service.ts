@@ -18,7 +18,7 @@ import {
   SETTINGS_TIME_LOCK_SECONDS,
   type LimitPeriod,
   type SpendingLimit,
-} from '@xend/smart-account';
+} from '@prydd/smart-account';
 
 import { AccountEventsService } from '../activity/account-events.service';
 import {

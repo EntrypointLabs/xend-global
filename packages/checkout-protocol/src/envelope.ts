@@ -14,7 +14,7 @@ export const CheckoutStatusSchema = z.enum([
 ]);
 
 export const CheckoutEnvelopeSchema = z.object({
-  xend: z.literal('checkout'),
+  prydd: z.literal('checkout'),
   v: z.literal(CHECKOUT_PROTOCOL_VERSION),
   nonce: z.string().min(1),
   reference: z.string().min(1),
@@ -23,14 +23,14 @@ export const CheckoutEnvelopeSchema = z.object({
 }) satisfies z.ZodType<CheckoutEnvelope>;
 
 export const CheckoutReadyEnvelopeSchema = z.object({
-  xend: z.literal('checkout'),
+  prydd: z.literal('checkout'),
   v: z.literal(CHECKOUT_PROTOCOL_VERSION),
   nonce: z.string().min(1),
   type: z.literal(CheckoutMessageType.Ready),
 }) satisfies z.ZodType<CheckoutReadyEnvelope>;
 
 export const CheckoutUnresolvedEnvelopeSchema = z.object({
-  xend: z.literal('checkout'),
+  prydd: z.literal('checkout'),
   v: z.literal(CHECKOUT_PROTOCOL_VERSION),
   nonce: z.string().min(1),
   reference: z.string().min(1),

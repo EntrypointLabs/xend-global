@@ -203,7 +203,7 @@ export function TransactionDetailModal({
                 weight="500"
                 className="mr-1 text-[13px] text-black/30"
               >
-                Xend⁺
+                Prydd⁺
               </Typography>
               <Typography weight="500" className="text-success">
                 Covered

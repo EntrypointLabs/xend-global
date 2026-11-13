@@ -11,6 +11,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
+import { useFeature } from "@/hooks/useFeature";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useSendGate } from "@/hooks/useSendGate";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
@@ -29,6 +30,7 @@ import { cn } from "@/utils/cn";
  */
 export default function InvestmentsScreen() {
   const router = useRouter();
+  const swapEnabled = useFeature("swap");
   const { showReceiveModal, isReceiveModalVisible, hideAllModals } =
     useModalFlow();
   const address = useWalletAddress();
@@ -40,18 +42,22 @@ export default function InvestmentsScreen() {
 
   const actionItems = useMemo(
     () => [
-      {
-        icon: () => (
-          <View className="flex-row items-center gap-2">
-            <Ionicons name="swap-horizontal" size={20} color="black" />
-            <Typography weight="700" className="text-lg">
-              Swap
-            </Typography>
-          </View>
-        ),
-        onPress: () => router.push("/swap"),
-        accessibilityLabel: "Swap",
-      },
+      ...(swapEnabled
+        ? [
+            {
+              icon: () => (
+                <View className="flex-row items-center gap-2">
+                  <Ionicons name="swap-horizontal" size={20} color="black" />
+                  <Typography weight="700" className="text-lg">
+                    Swap
+                  </Typography>
+                </View>
+              ),
+              onPress: () => router.push("/swap"),
+              accessibilityLabel: "Swap",
+            },
+          ]
+        : []),
       {
         icon: () => (
           <View className="flex-row items-center gap-2">
@@ -65,7 +71,7 @@ export default function InvestmentsScreen() {
         accessibilityLabel: "Send",
       },
     ],
-    [router, gateSend]
+    [router, gateSend, swapEnabled]
   );
 
   const total = isError ? "0.00" : formatMoney(totalUsd);
@@ -143,6 +149,8 @@ export default function InvestmentsScreen() {
 }
 
 function EmptyState({ onGetAssets }: { onGetAssets: () => void }) {
+  const swapEnabled = useFeature("swap");
+
   return (
     <View className="flex-1 items-center justify-center gap-2">
       <View className="mb-4 h-16 w-28 flex-row items-center gap-2 rounded-2xl border-2 border-dashed border-black/10 px-4">
@@ -157,7 +165,9 @@ function EmptyState({ onGetAssets }: { onGetAssets: () => void }) {
         There is nothing here yet
       </Typography>
       <Typography variant="body" className="text-black/40">
-        Deposit or swap tokens
+        {swapEnabled
+          ? "Deposit or swap tokens"
+          : "Assets you receive show up here"}
       </Typography>
 
       <HapticPressable

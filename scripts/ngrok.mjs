@@ -2,7 +2,7 @@ import { accessSync, constants } from "node:fs";
 import path from "node:path";
 
 export function resolveNgrok(env = process.env) {
-  const override = env.XEND_NGROK_BIN || env.NGROK_BIN;
+  const override = env.PRYDD_NGROK_BIN || env.NGROK_BIN;
   const candidates = override
     ? [path.resolve(override)]
     : (env.PATH ?? "")

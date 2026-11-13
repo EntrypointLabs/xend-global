@@ -3,8 +3,8 @@ Pod::Spec.new do |s|
   s.version        = '0.1.0'
   s.summary        = 'Secure Enclave P-256 key for the approval signer'
   s.description    = 'Generates and uses the ADR 0025 approval signer key in the Secure Enclave, with App Attest.'
-  s.author         = 'Xend'
-  s.homepage       = 'https://xend.global'
+  s.author         = 'Prydd'
+  s.homepage       = 'https://prydd.co'
   s.platforms      = { :ios => '15.1' }
   s.source         = { git: '' }
   s.static_framework = true

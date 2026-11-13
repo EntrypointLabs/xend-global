@@ -20,6 +20,14 @@ interface ThemedTextInputProps extends Omit<TextInputProps, "style"> {
   error?: boolean;
 }
 
+function isDarkCanvas(backgroundColor: string) {
+  const hex = backgroundColor.trim().toLowerCase();
+  return hex === "#000" || hex === "#000000" || hex === "black";
+}
+
+/** Matches auth primary CTA pills (`h-14` / `p-4` ≈ 56pt). */
+export const THEMED_TEXT_INPUT_HEIGHT = 56;
+
 export const ThemedTextInput = forwardRef<TextInput, ThemedTextInputProps>(
   (
     {
@@ -31,37 +39,63 @@ export const ThemedTextInput = forwardRef<TextInput, ThemedTextInputProps>(
       buttonSize = 40,
       withButtonBackground = true,
       error,
+      keyboardAppearance,
+      selectionColor,
+      cursorColor,
+      underlineColorAndroid,
       ...textInputProps
     },
     ref
   ) => {
     const { textColor, backgroundColor } = useScreenTheme();
 
-    const isBackgroundDark =
-      backgroundColor === "#000000" || backgroundColor.toLowerCase() === "#000";
-    const buttonBackground = isBackgroundDark ? "#FFFFFF" : "#000000";
-    const iconColor = isBackgroundDark ? "#000000" : "#FFFFFF";
+    const dark = isDarkCanvas(backgroundColor);
+    const buttonBackground = dark ? "#FFFFFF" : "#000000";
+    const iconColor = dark ? "#000000" : "#FFFFFF";
 
     const errorColor = "#FF3B30";
+    // Fill and border use different alphas so the pill does not read as a
+    // double stroke against a dark canvas.
+    const fieldFill = dark ? "rgba(255,255,255,0.08)" : textColor + "14";
+    const fieldBorder = error
+      ? errorColor
+      : dark
+        ? "rgba(255,255,255,0.18)"
+        : textColor + "28";
 
     return (
       <View
-        className="w-full flex-row items-center rounded-[42px] border-[0.5px] px-3 py-2"
-        // DYNAMIC-COLOR (per-screen theme via useScreenTheme; hex "20" = 12.5% alpha)
+        className="w-full flex-row items-center rounded-full px-5"
+        // DYNAMIC-COLOR (per-screen theme via useScreenTheme)
+        // Fixed h-14 (56) outer height — same as auth CTA pills. Border is
+        // drawn inside that box so it does not grow past the button.
         style={[
           {
-            borderColor: error ? errorColor : textColor + "20",
-            backgroundColor: textColor + "20",
+            height: THEMED_TEXT_INPUT_HEIGHT,
+            borderWidth: 1,
+            borderColor: fieldBorder,
+            backgroundColor: fieldFill,
           },
           style,
         ]}
       >
         <TextInput
           ref={ref}
-          className="h-10 flex-1 pl-3 text-base"
+          // Size only, no leading: a line height on an iOS TextInput sets the
+          // text below centre and clips its descenders.
+          className="flex-1 text-[1rem]"
           // DYNAMIC-COLOR (theme-driven text color from ScreenThemeContext)
-          style={[{ color: textColor }, inputStyle]}
-          placeholderTextColor={textColor + "80"}
+          style={[{ color: textColor, paddingVertical: 0 }, inputStyle]}
+          placeholderTextColor={
+            dark ? "rgba(255,255,255,0.35)" : textColor + "80"
+          }
+          keyboardAppearance={keyboardAppearance ?? (dark ? "dark" : "light")}
+          selectionColor={
+            selectionColor ??
+            (dark ? "rgba(255,255,255,0.35)" : textColor + "40")
+          }
+          cursorColor={cursorColor ?? textColor}
+          underlineColorAndroid={underlineColorAndroid ?? "transparent"}
           {...textInputProps}
         />
         {buttonIcon && (
@@ -78,6 +112,7 @@ export const ThemedTextInput = forwardRef<TextInput, ThemedTextInputProps>(
               withButtonBackground ? buttonBackground : "transparent"
             }
             iconColor={withButtonBackground ? iconColor : textColor}
+            disabled={buttonDisabled}
           />
         )}
       </View>

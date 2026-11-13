@@ -41,7 +41,7 @@ describe("verifyWebhook", () => {
   it("returns the parsed payload for a valid signature", () => {
     const result = verifyWebhook(
       BODY,
-      { "xend-signature": header(BODY, SECRET, NOW) },
+      { "prydd-signature": header(BODY, SECRET, NOW) },
       SECRET,
     );
     expect(result).toEqual(JSON.parse(BODY));
@@ -50,7 +50,7 @@ describe("verifyWebhook", () => {
   it("reads the signature header case-insensitively and accepts a Buffer body", () => {
     const result = verifyWebhook(
       Buffer.from(BODY, "utf8"),
-      { "Xend-Signature": header(BODY, SECRET, NOW) },
+      { "Prydd-Signature": header(BODY, SECRET, NOW) },
       SECRET,
     );
     expect(result).toEqual(JSON.parse(BODY));
@@ -59,7 +59,7 @@ describe("verifyWebhook", () => {
   it("rejects a tampered body", () => {
     const h = header(BODY, SECRET, NOW);
     expectCode(
-      () => verifyWebhook(BODY + " ", { "xend-signature": h }, SECRET),
+      () => verifyWebhook(BODY + " ", { "prydd-signature": h }, SECRET),
       "INVALID_SIGNATURE",
     );
   });
@@ -69,7 +69,7 @@ describe("verifyWebhook", () => {
       () =>
         verifyWebhook(
           BODY,
-          { "xend-signature": header(BODY, SECRET, NOW) },
+          { "prydd-signature": header(BODY, SECRET, NOW) },
           "whsec_wrong",
         ),
       "INVALID_SIGNATURE",
@@ -85,7 +85,7 @@ describe("verifyWebhook", () => {
       () =>
         verifyWebhook(
           BODY,
-          { "xend-signature": `v1=${v1(BODY, SECRET, NOW)}` },
+          { "prydd-signature": `v1=${v1(BODY, SECRET, NOW)}` },
           SECRET,
         ),
       "MALFORMED_HEADER",
@@ -94,7 +94,7 @@ describe("verifyWebhook", () => {
 
   it("rejects a malformed header (no v1=)", () => {
     expectCode(
-      () => verifyWebhook(BODY, { "xend-signature": `t=${NOW}` }, SECRET),
+      () => verifyWebhook(BODY, { "prydd-signature": `t=${NOW}` }, SECRET),
       "MALFORMED_HEADER",
     );
   });
@@ -105,7 +105,7 @@ describe("verifyWebhook", () => {
       () =>
         verifyWebhook(
           BODY,
-          { "xend-signature": header(BODY, SECRET, stale) },
+          { "prydd-signature": header(BODY, SECRET, stale) },
           SECRET,
         ),
       "TIMESTAMP_OUT_OF_TOLERANCE",
@@ -118,7 +118,7 @@ describe("verifyWebhook", () => {
       () =>
         verifyWebhook(
           BODY,
-          { "xend-signature": header(BODY, SECRET, future) },
+          { "prydd-signature": header(BODY, SECRET, future) },
           SECRET,
         ),
       "TIMESTAMP_OUT_OF_TOLERANCE",
@@ -133,7 +133,7 @@ describe("verifyWebhook", () => {
       .update(`${NOW}.${BODY}`)
       .digest("hex");
     const h = `t=${NOW},v1=${stale},v1=${rotated}`;
-    expect(verifyWebhook(BODY, { "xend-signature": h }, SECRET)).toEqual(
+    expect(verifyWebhook(BODY, { "prydd-signature": h }, SECRET)).toEqual(
       JSON.parse(BODY),
     );
   });
@@ -141,7 +141,7 @@ describe("verifyWebhook", () => {
   it("treats an odd-length / non-hex v1 candidate as a non-match, not an error", () => {
     const good = v1(BODY, SECRET, NOW);
     const h = `t=${NOW},v1=zzz,v1=abc,v1=${good}`;
-    expect(verifyWebhook(BODY, { "xend-signature": h }, SECRET)).toEqual(
+    expect(verifyWebhook(BODY, { "prydd-signature": h }, SECRET)).toEqual(
       JSON.parse(BODY),
     );
   });
@@ -149,7 +149,7 @@ describe("verifyWebhook", () => {
   it("verifies over raw bytes even with insignificant whitespace", () => {
     const spaced = '{ "id" :  "evt_ws" }';
     const h = header(spaced, SECRET, NOW);
-    expect(verifyWebhook(spaced, { "xend-signature": h }, SECRET)).toEqual({
+    expect(verifyWebhook(spaced, { "prydd-signature": h }, SECRET)).toEqual({
       id: "evt_ws",
     });
   });
@@ -160,11 +160,11 @@ describe("verifyWebhook", () => {
     const stripped = SECRET.slice("whsec_".length);
     const strippedHeader = `t=${NOW},v1=${v1(BODY, stripped, NOW)}`;
     expectCode(
-      () => verifyWebhook(BODY, { "xend-signature": strippedHeader }, SECRET),
+      () => verifyWebhook(BODY, { "prydd-signature": strippedHeader }, SECRET),
       "INVALID_SIGNATURE",
     );
     // Our helper must use the FULL secret, so the correct full-secret header still passes.
-    expect(verifyWebhook(BODY, { "xend-signature": h }, SECRET)).toEqual(
+    expect(verifyWebhook(BODY, { "prydd-signature": h }, SECRET)).toEqual(
       JSON.parse(BODY),
     );
   });

@@ -1,4 +1,4 @@
-# xend
+# prydd
 
 ## Agent skills
 
@@ -12,4 +12,4 @@ Category labels reuse existing Linear labels (`Bug`, `Feature`). State labels us
 
 ### Domain docs
 
-Single-context. The domain glossary is `CONTEXT.md` at the repo root, and decisions are ADRs under `docs/adr/` (index in `docs/adr/README.md`). `docs/xend-master-context.md` is the briefing for outward-facing material. See `docs/agents/domain.md`.
+Single-context. The domain glossary is `CONTEXT.md` at the repo root, and decisions are ADRs under `docs/adr/` (index in `docs/adr/README.md`). `docs/prydd-master-context.md` is the briefing for outward-facing material. See `docs/agents/domain.md`.

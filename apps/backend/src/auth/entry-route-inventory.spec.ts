@@ -158,6 +158,9 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /merchant-portal/keys/:id/revoke',
   'POST /merchant-portal/keys/:id/rotate',
   'POST /merchant-portal/destination',
+  'GET /merchant-portal/naira/banks',
+  'POST /merchant-portal/naira/account',
+  'POST /merchant-portal/naira/destination',
   'POST /merchant-portal/keys',
   'POST /merchant-portal/kyb/submit',
   'GET /merchant-portal/webhooks',
@@ -186,6 +189,7 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   // Nomba HMAC authenticates this receiver, never a Consumer session.
   'POST /webhooks/nomba/sandbox',
   'GET /health',
+  'GET /features',
   'GET /metrics',
   'GET /v1/webhook_endpoints',
   'POST /v1/webhook_endpoints',

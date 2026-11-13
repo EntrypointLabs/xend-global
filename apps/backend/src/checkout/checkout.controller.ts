@@ -75,7 +75,7 @@ const AUTHORIZE_POLL_MS = 500;
  * first Payment with no Session yet) is what marks the request as header-borne,
  * so a rotated token is handed back in the response body.
  */
-const SESSION_HEADER = 'x-xend-checkout-session';
+const SESSION_HEADER = 'x-prydd-checkout-session';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -301,7 +301,7 @@ export class CheckoutController {
         });
 
         throw new ApprovalRequiredError(
-          `intent ${reference} is above the one-signature band and has to be approved from the Xend app`,
+          `intent ${reference} is above the one-signature band and has to be approved from the Prydd app`,
         );
       }
 
@@ -507,7 +507,7 @@ export class CheckoutController {
       sameSite: 'lax',
       path: '/',
       maxAge: ttlDays * 24 * 60 * 60 * 1000,
-      // Host-only: no Domain attribute. Same-origin /api on pay.xend.global
+      // Host-only: no Domain attribute. Same-origin /api on pay.prydd.co
       // keeps this a first-party credential unreadable to merchant-page JS.
     });
   }

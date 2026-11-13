@@ -1,4 +1,4 @@
-# Pay with Xend USDC pilot
+# Pay with Prydd USDC pilot
 
 ## Current status, 2026-09-20
 
@@ -68,7 +68,7 @@ Design references inspected in the browser:
 
 - [Earnify Merchant dashboard](https://dribbble.com/shots/26756914-Earnify-Merchant-Dashboard-UI): top navigation and compact summary cards.
 - [CloseCRM developer hub](https://dribbble.com/shots/27542726-CloseCRM-API-keys-SDKs-developer-hub-UI-design): individual API-key cards and clear key environments.
-- Checkout uses Xend-branded payment sheets, not Apple branding or a simulated native biometric prompt.
+- Checkout uses Prydd-branded payment sheets, not Apple branding or a simulated native biometric prompt.
 
 Implemented and verified in this UI pass:
 
@@ -244,7 +244,7 @@ On the connected Seeker, Activity visibly shows both settled Payments as
 shows Completed, Merchant address `9jFU...wAsN` and transaction `5u2s...sxK9`,
 matching the independently verified chain data. The Account screen shows a
 rounded $0.75 remaining balance. Screenshots from this run are in
-`/tmp/xend-device-check.YPTCf4/` (ephemeral local evidence).
+`/tmp/prydd-device-check.YPTCf4/` (ephemeral local evidence).
 
 Two visible rough edges remain: a recurring development error toast and a
 detail timestamp shown as 5:50 PM while the device clock is 5:06 PM. The detail
@@ -351,7 +351,7 @@ The new apps/merchant workspace and authenticated merchant-portal routes wire
 signup to a provider-verified Solana wallet. The portal records USDC terms,
 initializes that Merchant's receiving token account and gates live keys on KYB.
 No Merchant registration or receiving account has yet been verified end to end.
-Existing historical Xend-controlled destinations are rejected by live settlement.
+Existing historical Prydd-controlled destinations are rejected by live settlement.
 
 The Paga/Nomba/Consumer fiat PRs (#96, #97, #98) remain sandbox integrations and
 are not dependencies of USDC settlement. Mainnet identity, funding, Merchant

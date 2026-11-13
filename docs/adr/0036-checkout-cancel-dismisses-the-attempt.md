@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-09-20
-**Deciders:** Pay with Xend
+**Deciders:** Pay with Prydd
 **Tags:** frontend, checkout, backend
 
 ## Context and Problem Statement

@@ -4,7 +4,7 @@ import {
   deriveAccountAddresses,
   derivePolicyAddress,
   type SpendingLimit,
-} from '@xend/smart-account';
+} from '@prydd/smart-account';
 
 import type { AccountEventsService } from '../activity/account-events.service';
 import { InMemoryPreparedTxStore } from '../prepared/prepared-tx.memory';

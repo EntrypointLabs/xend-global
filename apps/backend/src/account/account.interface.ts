@@ -2,7 +2,7 @@
  * Seams for creating a Consumer's Squads smart account (ADR 0025).
  *
  * The chain work sits behind `AccountChain` for two reasons. It keeps
- * `@solana/web3.js` and `@xend/smart-account` out of the service, per ADR 0020's
+ * `@solana/web3.js` and `@prydd/smart-account` out of the service, per ADR 0020's
  * rule that the two Solana toolchains trade bytes rather than objects, and it
  * makes the ordering rules in `AccountService` testable without a validator.
  */
@@ -209,7 +209,7 @@ export interface SettingsState {
    * only proves that some change landed there, and which keys the Account
    * now names is what says whether it was the one a rotation staged.
    */
-  signers: import('@xend/smart-account').SettingsSigner[];
+  signers: import('@prydd/smart-account').SettingsSigner[];
 }
 
 export interface ProposalState {
@@ -248,7 +248,7 @@ export interface ProvisioningChain {
   readSpendingLimit(
     settingsAddress: string,
     policySeed: bigint,
-  ): Promise<import('@xend/smart-account').SpendingLimit>;
+  ): Promise<import('@prydd/smart-account').SpendingLimit>;
   policyExists(settingsAddress: string, policySeed: bigint): Promise<boolean>;
   /** Null when no proposal was ever created at that index. */
   readProposal(
@@ -318,7 +318,7 @@ export interface SpendChain {
   readSpendingLimits(
     settingsAddress: string,
     policySeed: bigint,
-  ): Promise<readonly import('@xend/smart-account').SpendingLimit[]>;
+  ): Promise<readonly import('@prydd/smart-account').SpendingLimit[]>;
 
   /**
    * The token program that owns a mint.

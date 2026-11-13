@@ -2,12 +2,12 @@
 
 **Status:** Accepted
 **Date:** 2026-05-30
-**Deciders:** Xend mobile team (executor-4a of Xend Grid migration Phase 4)
+**Deciders:** Prydd mobile team (executor-4a of Prydd Grid migration Phase 4)
 **Tags:** mobile, expo, dependencies, privy
 
 ## Context and Problem Statement
 
-The Xend Grid migration replaces Squads Grid with Privy as the embedded
+The Prydd Grid migration replaces Squads Grid with Privy as the embedded
 wallet / signing layer. The pinned mobile SDK is `@privy-io/expo@0.67.1`
 (decision locked in the Phase 1 "Privy SDK Decisions" table after the
 Privy-on-Solana spike). The Phase 1 spike harness at `spike/privy-solana`
@@ -17,7 +17,7 @@ generation (their config plugins and native modules depend on RN 0.85.x
 
 - Expo Modules 56 APIs).
 
-Xend mobile (`apps/mobile`) is currently on **Expo SDK ~54.0.33 / React
+Prydd mobile (`apps/mobile`) is currently on **Expo SDK ~54.0.33 / React
 Native 0.81.5**. Without the upgrade, the Phase 4 mobile cutover cannot
 install Privy: peer-dep resolution and the iOS/Android native build
 would both fail.

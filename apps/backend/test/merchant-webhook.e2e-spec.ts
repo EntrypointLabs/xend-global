@@ -47,7 +47,7 @@ import { IntentExpiredError } from '../src/payment/payment.errors';
 
 const WEBHOOK_SECRET = 'whsec_e2e_secret';
 const RETURN_SECRET = 'checkout-return-secret';
-const COOKIE = 'xend_checkout_session';
+const COOKIE = 'prydd_checkout_session';
 const TOLERANCE = 300;
 
 // ---- shared config ----
@@ -239,8 +239,8 @@ describe('Phase 6 E2E harness: webhook truth', () => {
 
       expect(captured).toHaveLength(1);
       const req = captured[0];
-      const sigHeader = req.headers['Xend-Signature'];
-      expect(req.headers['Xend-Event-Id']).toBe(
+      const sigHeader = req.headers['Prydd-Signature'];
+      expect(req.headers['Prydd-Event-Id']).toBe(
         buildEventId('payment.succeeded', INTENT_ID),
       );
       expect(req.headers['X-Correlation-Id']).toBe(INTENT_ID);
@@ -287,7 +287,7 @@ describe('Phase 6 E2E harness: webhook truth', () => {
     try {
       await dispatcher.handle(succeededEvent());
       const { body, headers } = captured[0];
-      const sig = headers['Xend-Signature'];
+      const sig = headers['Prydd-Signature'];
       // One-byte tamper.
       const tampered = body.replace(/./, body[0] === 'x' ? 'y' : 'x');
       expect(verifyWebhook(tampered, sig, WEBHOOK_SECRET, TOLERANCE)).toBe(
@@ -566,8 +566,8 @@ describe('Phase 6 E2E harness: checkout surface', () => {
 
     expect(response.status).toBe('succeeded');
     const url = new URL(response.redirectUrl as string);
-    const ts = Number(url.searchParams.get('xend_ts'));
-    const sig = url.searchParams.get('xend_sig') as string;
+    const ts = Number(url.searchParams.get('prydd_ts'));
+    const sig = url.searchParams.get('prydd_sig') as string;
     expect(
       verifyReturnUrl(
         'https://shop.example.com/return',

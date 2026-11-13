@@ -1,6 +1,6 @@
 {
-  "id": "10f86b0e-9623-44ff-bb41-f09889d2f05b",
-  "prevId": "b670cf0c-ea34-4998-b6a7-e4bd62826823",
+  "id": "c68b8cf3-4eb2-41fa-8dfb-5c376be2d5d2",
+  "prevId": "1b846787-94e2-4025-8f36-a6200b840e4c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3893,112 +3893,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.fiat_bank_transfers": {
-      "name": "fiat_bank_transfers",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "owner_id": {
-          "name": "owner_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source_account_id": {
-          "name": "source_account_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "destination_account_id": {
-          "name": "destination_account_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "idempotency_key": {
-          "name": "idempotency_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "record": {
-          "name": "record",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "fiat_bank_transfers_owner_key": {
-          "name": "fiat_bank_transfers_owner_key",
-          "columns": [
-            {
-              "expression": "owner_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "idempotency_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "fiat_bank_transfers_owner_id_users_id_fk": {
-          "name": "fiat_bank_transfers_owner_id_users_id_fk",
-          "tableFrom": "fiat_bank_transfers",
-          "tableTo": "users",
-          "columnsFrom": ["owner_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "fiat_bank_transfers_source_account_id_fiat_bank_accounts_id_fk": {
-          "name": "fiat_bank_transfers_source_account_id_fiat_bank_accounts_id_fk",
-          "tableFrom": "fiat_bank_transfers",
-          "tableTo": "fiat_bank_accounts",
-          "columnsFrom": ["source_account_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "fiat_bank_transfers_destination_account_id_fiat_bank_accounts_id_fk": {
-          "name": "fiat_bank_transfers_destination_account_id_fiat_bank_accounts_id_fk",
-          "tableFrom": "fiat_bank_transfers",
-          "tableTo": "fiat_bank_accounts",
-          "columnsFrom": ["destination_account_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.fiat_order_events": {
       "name": "fiat_order_events",
       "schema": "",
@@ -4399,7 +4293,7 @@
     "public.settlement_provider": {
       "name": "settlement_provider",
       "schema": "public",
-      "values": ["direct_usdc", "blockradar"]
+      "values": ["direct_usdc", "blockradar", "paj"]
     },
     "public.transfer_direction": {
       "name": "transfer_direction",

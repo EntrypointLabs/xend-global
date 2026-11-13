@@ -19,6 +19,7 @@ const HOLD_MS = 1200;
 const MOVE_MS = 500;
 const MOVE_EASING = Easing.bezier(0.77, 0, 0.175, 1);
 
+/** Multicolor icons — the pizzazz on an otherwise monochrome door. */
 const WORDS = [
   { label: "Save", icon: "shield-checkmark", color: "#38BDF8" },
   { label: "Earn", icon: "bar-chart", color: "#F97316" },
@@ -96,7 +97,7 @@ function Row({
         <Ionicons name={word.icon} size={34} color={word.color} />
       </Animated.View>
       <Animated.View style={textStyle}>
-        <Typography weight="500" className="text-4xl">
+        <Typography weight="500" className="text-4xl text-white">
           {word.label}
         </Typography>
       </Animated.View>
@@ -135,7 +136,7 @@ export function WordWheel() {
         accessibilityElementsHidden
       >
         <Ionicons name={word.icon} size={34} color={word.color} />
-        <Typography weight="500" className="text-4xl">
+        <Typography weight="500" className="text-4xl text-white">
           {word.label}
         </Typography>
       </View>

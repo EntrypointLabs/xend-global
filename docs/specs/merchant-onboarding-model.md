@@ -1,12 +1,12 @@
 # Merchant onboarding model
 
 **Status:** Accepted
-**Author:** Pay with Xend
+**Author:** Pay with Prydd
 **Scope:** The single four-stage Merchant onboarding model, executed manually at pilot and as software later. One model, two levels of automation.
 
 ## Why one model
 
-Merchant onboarding is specified once here so the manual pilot sequence and the future self-serve portal at merchants.xend.global execute the exact same four stages. The manual pilot runs this model at automation level zero (the `apps/backend/scripts/issue-merchant-key.ts` ops script); the portal runs the same stages as software over this phase's keys, payments, and webhook-delivery surfaces. There is no separate portal specification to drift from.
+Merchant onboarding is specified once here so the manual pilot sequence and the future self-serve portal at merchants.prydd.co execute the exact same four stages. The manual pilot runs this model at automation level zero (the `apps/backend/scripts/issue-merchant-key.ts` ops script); the portal runs the same stages as software over this phase's keys, payments, and webhook-delivery surfaces. There is no separate portal specification to drift from.
 
 A guiding rule threads all four stages: KYB gates real money, never developer experience. Test-mode keys are instant and ungated; only live-mode keys wait on verification. The Merchant's integration code never changes between test and live. Only the key does.
 
@@ -20,11 +20,11 @@ Creating a Merchant profile immediately yields test-mode API keys with no verifi
 
 ### Stage 2 — Lightweight KYB
 
-Xend performs lightweight KYB on the Merchant (business registration, beneficial ownership, sanctions screening). Xend is the verifier; the Merchant is the subject. The outcome is recorded on the Merchant record as `kyb_status` and `kyb_verified_at`. At pilot this is the ops script's `--mark-kyb-verified <merchant-id>` action, run after the off-system checks complete.
+Prydd performs lightweight KYB on the Merchant (business registration, beneficial ownership, sanctions screening). Prydd is the verifier; the Merchant is the subject. The outcome is recorded on the Merchant record as `kyb_status` and `kyb_verified_at`. At pilot this is the ops script's `--mark-kyb-verified <merchant-id>` action, run after the off-system checks complete.
 
 ### Stage 3 — Settlement destination (via the provider layer)
 
-Xend provisions a provider settlement ENDPOINT through Phase 4's `SettlementProvider` layer and records its reference on the Merchant's internal account (`settlement_accounts.provider_reference`). For a naira Merchant this is a Blockradar Solana child address under Xend's single master wallet plus a bank payout config (convert-at-settlement); for a USDC Merchant it is the direct-USDC destination.
+Prydd provisions a provider settlement ENDPOINT through Phase 4's `SettlementProvider` layer and records its reference on the Merchant's internal account (`settlement_accounts.provider_reference`). For a naira Merchant this is a Blockradar Solana child address under Prydd's single master wallet plus a bank payout config (convert-at-settlement); for a USDC Merchant it is the direct-USDC destination.
 
 Merchants have NO wallet and NO signer. There is no merchant-signing tangle: refunds run in reverse through the provider (see the refunds API), not as a merchant-signed reversal. A naira Merchant's verified Blockradar bank details are captured at this stage; the naira payout leg itself remains gated at Phase 8.
 
@@ -48,4 +48,4 @@ A naira Merchant prices in naira. Checkout pins an executable naira to USDC quot
 ## Automation levels
 
 - **Level zero (pilot):** `apps/backend/scripts/issue-merchant-key.ts` is this model run by hand. It creates the profile, stamps KYB with `--mark-kyb-verified`, and issues keys through the shared live-key gate. No portal UI ships in v1.
-- **Level one (fast-follow):** merchants.xend.global executes the same four stages as software (profile and keys, Payments and Payouts views, refund approval, metrics) over the surfaces this phase builds. It is a named fast-follow, not a pilot dependency.
+- **Level one (fast-follow):** merchants.prydd.co executes the same four stages as software (profile and keys, Payments and Payouts views, refund approval, metrics) over the surfaces this phase builds. It is a named fast-follow, not a pilot dependency.

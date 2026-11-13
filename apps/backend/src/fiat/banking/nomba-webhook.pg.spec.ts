@@ -51,7 +51,7 @@ describePg('Nomba notification HTTP + PostgreSQL', () => {
       options: `-c search_path=${namespace}`,
     });
     await pool.query(
-      readFileSync('drizzle/0061_bank_notifications.sql', 'utf8'),
+      readFileSync('drizzle/0062_bank_notifications.sql', 'utf8'),
     );
     await start();
   });

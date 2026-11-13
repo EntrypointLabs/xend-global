@@ -366,7 +366,7 @@ describe('SettlementProvisioningService', () => {
     ).rejects.toThrow(SettlementAccountNotProvisionedError);
   });
 
-  it('refuses to silently reuse a Xend-controlled endpoint for Merchant-owned onboarding', async () => {
+  it('refuses to silently reuse a Prydd-controlled endpoint for Merchant-owned onboarding', async () => {
     const { provider, provision } = fakeUsdcProvider();
     const service = new SettlementProvisioningService(
       makeDb({

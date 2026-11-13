@@ -24,7 +24,7 @@ import Security
  */
 public class HardwareKeyModule: Module {
   /// The tag used before keys were scoped to an account. Still read, never written.
-  private static let legacyKeyTag = "com.giftedborg.xend.approval-signer"
+  private static let legacyKeyTag = "com.giftedborg.prydd.approval-signer"
 
   /// Where this account's approval key lives.
   ///
@@ -60,8 +60,8 @@ public class HardwareKeyModule: Module {
     ]
     return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
   }
-  private static let sentinelKey = "com.giftedborg.xend.approval-signer.enrolled"
-  private static let attestKeyDefault = "com.giftedborg.xend.appattest.keyid"
+  private static let sentinelKey = "com.giftedborg.prydd.approval-signer.enrolled"
+  private static let attestKeyDefault = "com.giftedborg.prydd.appattest.keyid"
 
   public func definition() -> ModuleDefinition {
     Name("HardwareKey")

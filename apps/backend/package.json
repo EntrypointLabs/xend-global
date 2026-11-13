@@ -1,5 +1,5 @@
 {
-  "name": "@xend/backend",
+  "name": "@prydd/backend",
   "version": "0.0.1",
   "description": "",
   "author": "",
@@ -21,7 +21,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "dev:standalone": "NO_COLOR=1 FORCE_COLOR=0 npm run start:debug 2>&1 | tee /tmp/xend-backend.log"
+    "dev:standalone": "NO_COLOR=1 FORCE_COLOR=0 npm run start:debug 2>&1 | tee /tmp/prydd-backend.log"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.1127.0",
@@ -46,7 +46,7 @@
     "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.98.4",
     "@turnkey/sdk-server": "^8.1.0",
-    "@xend/smart-account": "*",
+    "@prydd/smart-account": "*",
     "cbor-x": "^1.6.5",
     "drizzle-orm": "^0.45.1",
     "ioredis": "^5.11.1",

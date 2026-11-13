@@ -87,7 +87,7 @@ describe('DirectUsdcProvider', () => {
     expect(signAndSend).toHaveBeenCalledTimes(2);
   });
 
-  it('links a recorded merchant-own address with null attribution (no Xend custody)', async () => {
+  it('links a recorded merchant-own address with null attribution (no Prydd custody)', async () => {
     const merchantWallet = Keypair.generate().publicKey.toBase58();
     const accountExists = jest.fn().mockResolvedValue(true);
     const provider = makeProvider(

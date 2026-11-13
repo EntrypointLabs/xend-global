@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-07-12
-**Deciders:** Planning session (Pay with Xend, Phase 2)
+**Deciders:** Planning session (Pay with Prydd, Phase 2)
 **Tags:** backend, security, pay
 
 ## Context and Problem Statement

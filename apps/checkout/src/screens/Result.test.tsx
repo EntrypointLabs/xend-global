@@ -25,7 +25,7 @@ describe('Checkout result disclosure', () => {
       const html = renderToStaticMarkup(<Result status={status} />);
       expect(html).not.toContain('Payment complete');
       expect(html).not.toContain('border-success');
-      expect(html).toContain('Xend');
+      expect(html).toContain('Prydd');
     },
   );
 

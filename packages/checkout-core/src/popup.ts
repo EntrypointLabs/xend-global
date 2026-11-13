@@ -85,7 +85,7 @@ export function openCheckoutWindow(
 ): Window | null {
   return window.open(
     buildLaunchUrl(checkoutOrigin, { nonce, mode: "popup", opener }),
-    "xend-checkout",
+    "prydd-checkout",
     "popup,width=420,height=640",
   );
 }

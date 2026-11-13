@@ -88,7 +88,7 @@ Do not turn those exclusions into simulated production capabilities.
 ## Acceptance
 
 Entry-page update, 2026-09-20: loading, login and setup use a shared
-black-information/white-action split layout, with the Xend v1 mark on the right.
+black-information/white-action split layout, with the Prydd v1 mark on the right.
 No workspace navigation mounts until an account is loaded. The entry action is
 “Continue”. Session readiness gates the entire entry/dashboard surface, avoiding
 the signed-out flash during restoration. The actual browser reload was observed

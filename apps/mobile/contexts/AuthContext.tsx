@@ -52,8 +52,8 @@ function emailArgFor(privyUser: unknown): string | null {
  * in `app/_layout.tsx`, since it consumes Privy hooks.
  *
  * Two kinds of session pass through here. A passkey sign-in exchanges a Privy
- * identity for a Xend JWT and is the full session. An email code on an
- * existing account opens an entry session, which is Xend's own token with no
+ * identity for a Prydd JWT and is the full session. An email code on an
+ * existing account opens an entry session, which is Prydd's own token with no
  * Privy session behind it: it can look and start a recovery, and the server
  * refuses everything else. The passkey is what turns the second into the
  * first.

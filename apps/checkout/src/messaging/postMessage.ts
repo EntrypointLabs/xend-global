@@ -5,8 +5,8 @@ import {
   buildResult,
   buildCancel,
   buildUnresolved,
-} from '@xend/checkout-protocol/build';
-import type { CheckoutStatus } from '@xend/checkout-protocol';
+} from '@prydd/checkout-protocol/build';
+import type { CheckoutStatus } from '@prydd/checkout-protocol';
 import { isFramed } from '../lib/frame';
 
 /**

@@ -4,7 +4,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js';
-import { deriveAccountAddresses } from '@xend/smart-account';
+import { deriveAccountAddresses } from '@prydd/smart-account';
 
 import type {
   RecoverySignerStatus,

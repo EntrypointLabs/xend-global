@@ -67,7 +67,7 @@ export type SettleBody = z.infer<typeof SettleBodySchema>;
  * attempt state and never appears on this wire.
  *
  * sessionToken appears only for a request that carried its Session on the
- * X-Xend-Checkout-Session header, which is how a framed surface persists a
+ * X-Prydd-Checkout-Session header, which is how a framed surface persists a
  * rotation it cannot read off a cookie. A cookie-borne request never sees it.
  */
 export const AuthorizeResponseSchema = z.union([

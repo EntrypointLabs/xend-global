@@ -1914,7 +1914,7 @@ describe.skipIf(!HAVE_FIXTURES)("primary signer rotation", () => {
 });
 
 /*
- * A Merchant is paid into a token account Xend provisions for it, which is a
+ * A Merchant is paid into a token account Prydd provisions for it, which is a
  * bare account rather than anybody's ATA. These pin the two facts Checkout
  * settlement rests on: the program accepts such an account, and it accepts it
  * on the route an everyday Payment actually takes.

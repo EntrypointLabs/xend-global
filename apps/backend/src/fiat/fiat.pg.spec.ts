@@ -76,7 +76,7 @@ describePg('fiat HTTP + PostgreSQL', () => {
     });
     await pool.query('CREATE TABLE users (id text PRIMARY KEY)');
     const migration = readFileSync(
-      'drizzle/0056_consumer_fiat_orders.sql',
+      'drizzle/0057_consumer_fiat_orders.sql',
       'utf8',
     ).replaceAll('"public".', `"${namespace}".`);
     await pool.query(migration);

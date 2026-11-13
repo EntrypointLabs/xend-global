@@ -127,10 +127,10 @@ export async function sendRawTransactionViaConnection(
   // is guaranteed by Solana itself.
   const raw = Buffer.from(signedTxBase64, 'base64');
   return await conn.sendRawTransaction(raw, {
-    // The prepare/submit split owns retries, so keep the SDK's own retry
-    // count at zero to keep the latency budget tight.
+    // maxRetries stays unset so the RPC node rebroadcasts until the blockhash
+    // expires. One forward to the leader is often dropped on a busy cluster,
+    // and this call still returns as soon as the node takes the bytes.
     skipPreflight: false,
-    maxRetries: 0,
   });
 }
 

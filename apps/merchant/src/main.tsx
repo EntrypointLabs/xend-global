@@ -25,6 +25,7 @@ import { WebhooksPanel } from "./WebhooksPanel";
 import { PaymentsPanel } from "./PaymentsPanel";
 import { PaymentDetail } from "./PaymentDetail";
 import { AuditPanel } from "./AuditPanel";
+import { ReceivingAccount, type Destination } from "./ReceivingAccount";
 
 type ApiKey = {
   id: string;
@@ -50,7 +51,8 @@ type Dashboard = {
     kybReviewNote: string | null;
     receivingWallet: string;
   };
-  destination: { address: string | null } | null;
+  destination: Destination | null;
+  nairaSettlementAvailable?: boolean;
   keys: ApiKey[];
   payments: {
     id: string;
@@ -218,7 +220,7 @@ function MerchantWorkspace() {
               <span className="brand-symbol" aria-hidden="true">
                 ↗
               </span>
-              xend
+              prydd
             </a>
             <nav aria-label="Merchant workspace">
               {navItem("overview", "Home", page === "overview")}
@@ -348,7 +350,7 @@ function MerchantWorkspace() {
                     required
                   />
                   <span>
-                    I understand that Payments settle in USDC on Solana. Xend
+                    I understand that Payments settle in USDC on Solana. Prydd
                     does not automatically convert proceeds or send bank
                     payouts. Later conversion uses my chosen provider’s rates
                     and fees.
@@ -399,33 +401,16 @@ function MerchantWorkspace() {
                 </p>
               </div>
               <div className="grid">
-                <section className="panel">
-                  <p className="eyebrow">01 / RECEIVING ACCOUNT</p>
-                  <h2>
-                    {data.destination
-                      ? "Receiving account connected."
-                      : "Give payments a home."}
-                  </h2>
-                  <p>
-                    Merchant-controlled USDC on Solana. Network: {data.cluster}.
-                  </p>
-                  <code className="address">
-                    {data.destination?.address ?? data.merchant.receivingWallet}
-                  </code>
-                  {!data.destination && (
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        void run(async () => {
-                          await client.post("destination");
-                          await refresh();
-                        })
-                      }
-                    >
-                      Initialize USDC account ↗
-                    </button>
-                  )}
-                </section>
+                <ReceivingAccount
+                  client={client}
+                  destination={data.destination}
+                  receivingWallet={data.merchant.receivingWallet}
+                  cluster={data.cluster}
+                  nairaAvailable={data.nairaSettlementAvailable === true}
+                  busy={busy}
+                  run={run}
+                  onConnected={refresh}
+                />
                 <section className="panel">
                   <p className="eyebrow">02 / BUSINESS VERIFICATION</p>
                   <h2>
@@ -570,7 +555,7 @@ function MerchantWorkspace() {
                         API.
                       </li>
                       <li>
-                        Pass the returned reference to the Xend Checkout SDK.
+                        Pass the returned reference to the Prydd Checkout SDK.
                       </li>
                       <li>
                         Verify the signed webhook before fulfilling the order. A

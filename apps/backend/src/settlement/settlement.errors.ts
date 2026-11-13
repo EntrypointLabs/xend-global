@@ -27,7 +27,7 @@ export class SettlementProviderUnavailableError extends Error {
 }
 
 /** The provider or endpoint cannot reverse a settlement (e.g. a recorded
- *  merchant-own address, for which Xend holds no signer). */
+ *  merchant-own address, for which Prydd holds no signer). */
 export class RefundNotSupportedError extends Error {
   readonly code = 'REFUND_NOT_SUPPORTED';
   constructor(message: string) {

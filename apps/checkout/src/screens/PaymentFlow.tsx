@@ -158,7 +158,7 @@ function PaymentFlowInner({
 /**
  * The code-split payment screen. PrivyProvider and every Privy web SDK import
  * live on this lazily loaded chunk, off the popup-interactive first paint. rp.id
- * is set to xend.global through the Privy app configuration (see the ceremony
+ * is set to prydd.co through the Privy app configuration (see the ceremony
  * module).
  *
  * The whole Payment runs inside this tree rather than in App, because signing

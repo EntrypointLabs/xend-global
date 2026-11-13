@@ -1,5 +1,5 @@
 {
-  "extends": "@xend/typescript-config/base.json",
+  "extends": "@prydd/typescript-config/base.json",
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "Bundler",

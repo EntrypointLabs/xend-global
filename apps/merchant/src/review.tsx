@@ -7,6 +7,7 @@ import { WebhooksPanel } from "./WebhooksPanel";
 import { PaymentsPanel } from "./PaymentsPanel";
 import { PaymentDetail } from "./PaymentDetail";
 import { AuditPanel } from "./AuditPanel";
+import { ReceivingAccount } from "./ReceivingAccount";
 
 /**
  * A dev-only harness for eyeballing the portal panels without Privy sign-in or
@@ -34,7 +35,7 @@ const stub: PortalClient = {
         endpoints: [
           {
             id: "wh1",
-            url: "https://acme.example.com/webhooks/xend",
+            url: "https://acme.example.com/webhooks/prydd",
             mode: "live",
             enabled: true,
             eventTypes: null,
@@ -115,12 +116,40 @@ const stub: PortalClient = {
         ],
         nextCursor: null,
       } as T;
+    if (path === "naira/banks")
+      return {
+        banks: [
+          { code: "044", name: "Access Bank" },
+          { code: "058", name: "Guaranty Trust Bank" },
+          { code: "090267", name: "Kuda Microfinance Bank" },
+        ],
+      } as T;
     return {} as T;
   },
-  post: async <T,>(): Promise<T> => ({}) as T,
+  post: async <T,>(path?: string, body?: unknown): Promise<T> => {
+    if (path === "naira/account") {
+      const { accountNumber } = body as { accountNumber: string };
+      if (accountNumber.endsWith("0"))
+        throw new Error(
+          "We could not confirm that account. Check the bank and account number.",
+        );
+      return {
+        accountName: "ADA STORES LIMITED",
+        bankName: "Guaranty Trust Bank",
+        accountLast4: accountNumber.slice(-4),
+      } as T;
+    }
+    return {} as T;
+  },
 };
 
-const PANELS = ["payments", "payment", "webhooks", "audit"] as const;
+const PANELS = [
+  "payments",
+  "payment",
+  "webhooks",
+  "audit",
+  "receiving",
+] as const;
 
 function Review() {
   const [panel, setPanel] = useState<(typeof PANELS)[number]>("payments");
@@ -128,7 +157,7 @@ function Review() {
     <div className="shell workspace" data-page={panel}>
       <aside>
         <span className="wordmark">
-          <span className="version-pill">v1</span>xend review
+          <span className="version-pill">v1</span>prydd review
         </span>
         <nav aria-label="Review">
           {PANELS.map((name) => (
@@ -156,6 +185,36 @@ function Review() {
           />
         )}
         {panel === "audit" && <AuditPanel client={stub} />}
+        {panel === "receiving" && (
+          <section className="account-workspace">
+            <div className="grid">
+              {[
+                null,
+                {
+                  address: null,
+                  currency: "NGN",
+                  bankAccount: {
+                    bankName: "Guaranty Trust Bank",
+                    accountName: "ADA STORES LIMITED",
+                    accountLast4: "6789",
+                  },
+                },
+              ].map((destination, index) => (
+                <ReceivingAccount
+                  key={index}
+                  client={stub}
+                  destination={destination}
+                  receivingWallet="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+                  cluster="devnet"
+                  nairaAvailable
+                  busy={false}
+                  run={(action) => action()}
+                  onConnected={async () => {}}
+                />
+              ))}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );

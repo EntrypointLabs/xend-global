@@ -35,13 +35,13 @@ function readHeader(headers: WebhookHeaders, name: string): string | undefined {
 }
 
 /**
- * Verify a Pay with Xend webhook (Stripe-style t/v1 scheme, ADR 0017).
+ * Verify a Pay with Prydd webhook (Stripe-style t/v1 scheme, ADR 0017).
  * Returns the parsed JSON payload on success; throws
  * WebhookVerificationError otherwise. `rawBody` MUST be the exact received
  * bytes (string or Buffer): verifying over re-serialized JSON breaks the
  * signature.
  *
- * The `Xend-Event-Id` header is UNSIGNED and for convenience only. Dedup
+ * The `Prydd-Event-Id` header is UNSIGNED and for convenience only. Dedup
  * on the event id inside the verified payload, never on that header.
  */
 export function verifyWebhook(

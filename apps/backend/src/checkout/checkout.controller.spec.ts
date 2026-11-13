@@ -23,7 +23,7 @@ type MerchantRow = typeof merchants.$inferSelect;
 type IntentRow = typeof paymentIntents.$inferSelect;
 
 const SECRET = 'checkout-return-secret';
-const COOKIE = 'xend_checkout_session';
+const COOKIE = 'prydd_checkout_session';
 
 function merchantRow(over: Partial<MerchantRow> = {}): MerchantRow {
   return {
@@ -145,7 +145,7 @@ function makeReq(cookie?: string): Request {
 function makeFramedReq(session = '', cookie?: string): Request {
   return {
     headers: {
-      'x-xend-checkout-session': session,
+      'x-prydd-checkout-session': session,
       ...(cookie ? { cookie: `${COOKIE}=${cookie}` } : {}),
     },
   } as unknown as Request;
@@ -456,8 +456,8 @@ describe('CheckoutController.getSummary', () => {
         'https://shop.example.com/cancel',
         'pi_1',
         'canceled',
-        Number(url.searchParams.get('xend_ts')),
-        url.searchParams.get('xend_sig') as string,
+        Number(url.searchParams.get('prydd_ts')),
+        url.searchParams.get('prydd_sig') as string,
         SECRET,
         900,
       ),
@@ -952,8 +952,8 @@ describe('CheckoutController.settle', () => {
         'https://shop.example.com/return',
         'pi_1',
         'succeeded',
-        Number(url.searchParams.get('xend_ts')),
-        url.searchParams.get('xend_sig') as string,
+        Number(url.searchParams.get('prydd_ts')),
+        url.searchParams.get('prydd_sig') as string,
         SECRET,
         900,
       ),
@@ -972,7 +972,7 @@ describe('CheckoutController.settle', () => {
 
     expect(response.status).toBe('failed');
     const url = new URL(response.redirectUrl as string);
-    expect(url.searchParams.get('xend_status')).toBe('failed');
+    expect(url.searchParams.get('prydd_status')).toBe('failed');
   });
 
   it('times out to 502 PAYMENT_PROCESSING when no terminal status arrives', async () => {
@@ -1065,14 +1065,14 @@ describe('CheckoutController.authorize (test mode)', () => {
     const redirect = (response as { redirectUrl?: string }).redirectUrl;
     expect(redirect).toBeDefined();
     const url = new URL(redirect as string);
-    expect(url.searchParams.get('xend_status')).toBe('succeeded');
+    expect(url.searchParams.get('prydd_status')).toBe('succeeded');
     expect(
       verifyReturnUrl(
         'https://shop.example.com/return',
         'pi_1',
         'succeeded',
-        Number(url.searchParams.get('xend_ts')),
-        url.searchParams.get('xend_sig') as string,
+        Number(url.searchParams.get('prydd_ts')),
+        url.searchParams.get('prydd_sig') as string,
         SECRET,
         900,
       ),

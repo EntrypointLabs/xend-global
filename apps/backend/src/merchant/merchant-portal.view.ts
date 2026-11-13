@@ -63,3 +63,21 @@ export function toWebhookEndpointView(endpoint: EndpointRow) {
     updatedAt: endpoint.updatedAt.toISOString(),
   };
 }
+
+/** The bank a naira destination pays, without the full account number. */
+export function toBankAccountView(payoutConfig: string | null) {
+  if (!payoutConfig) return null;
+  try {
+    const config = JSON.parse(payoutConfig) as Record<string, unknown>;
+    const { bankName, accountName, accountLast4 } = config;
+    if (
+      typeof bankName !== 'string' ||
+      typeof accountName !== 'string' ||
+      typeof accountLast4 !== 'string'
+    )
+      return null;
+    return { bankName, accountName, accountLast4 };
+  } catch {
+    return null;
+  }
+}

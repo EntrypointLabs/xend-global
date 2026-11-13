@@ -9,8 +9,8 @@ export type PendingPaymentSubmission = {
   signedTransactionBase64: string;
 };
 
-const INDEX_PREFIX = "xend.pending_payment_submissions";
-const PAYLOAD_PREFIX = "xend.pending_payment_transaction";
+const INDEX_PREFIX = "prydd.pending_payment_submissions";
+const PAYLOAD_PREFIX = "prydd.pending_payment_transaction";
 
 const indexKey = (userId: string) => userScopedKey(INDEX_PREFIX, userId);
 const payloadKey = (userId: string, reference: string) =>

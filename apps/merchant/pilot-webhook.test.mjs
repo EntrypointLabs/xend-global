@@ -14,7 +14,7 @@ test('pilot verifies raw SDK signatures, rejects tampering and deduplicates sign
   const body = JSON.stringify({ id: 'evt_unit', type: 'payment.succeeded' });
   function headers(timestamp = Math.floor(Date.now() / 1000)) {
     const signature = createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex');
-    return { 'Xend-Signature': `t=${timestamp},v1=${signature}`, 'Xend-Event-Id': 'unsigned-do-not-trust' };
+    return { 'Prydd-Signature': `t=${timestamp},v1=${signature}`, 'Prydd-Event-Id': 'unsigned-do-not-trust' };
   }
   const send = (payload, signature = headers()) => fetch(url, { method: 'POST', headers: signature, body: payload });
   assert.equal((await send(body, {})).status, 400);

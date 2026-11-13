@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const STORAGE_KEY = 'xend.checkout.session';
+const STORAGE_KEY = 'prydd.checkout.session';
 
 function setParent(value: unknown) {
   Object.defineProperty(window, 'parent', {
@@ -53,7 +53,7 @@ describe('the Session carrier', () => {
 
     await authorize({ reference: 'pi_1' });
 
-    expect(sentHeaders(fetchMock)['X-Xend-Checkout-Session']).toBe(
+    expect(sentHeaders(fetchMock)['X-Prydd-Checkout-Session']).toBe(
       'stored-token',
     );
   });
@@ -65,7 +65,7 @@ describe('the Session carrier', () => {
 
     await authorize({ reference: 'pi_1' });
 
-    expect(sentHeaders(fetchMock)['X-Xend-Checkout-Session']).toBe('');
+    expect(sentHeaders(fetchMock)['X-Prydd-Checkout-Session']).toBe('');
   });
 
   it('sends no header at all from a popup, which has the cookie', async () => {
@@ -76,7 +76,7 @@ describe('the Session carrier', () => {
     await authorize({ reference: 'pi_1' });
 
     expect(sentHeaders(fetchMock)).not.toHaveProperty(
-      'X-Xend-Checkout-Session',
+      'X-Prydd-Checkout-Session',
     );
     expect((fetchMock.mock.calls[0]![1] as RequestInit).credentials).toBe(
       'include',
@@ -117,7 +117,7 @@ describe('the Session carrier', () => {
     await expect(authorize({ reference: 'pi_1' })).resolves.toMatchObject({
       status: 'succeeded',
     });
-    expect(sentHeaders(fetchMock)['X-Xend-Checkout-Session']).toBe('');
+    expect(sentHeaders(fetchMock)['X-Prydd-Checkout-Session']).toBe('');
     vi.restoreAllMocks();
   });
 });

@@ -17,7 +17,7 @@ it("shows only the loading message, without login branding or a skeleton", () =>
     "Loading your dashboard...",
   );
   expect(
-    screen.queryByRole("region", { name: "Pay with Xend for business" }),
+    screen.queryByRole("region", { name: "Pay with Prydd for business" }),
   ).toBeNull();
   expect(screen.getByRole("main").getAttribute("aria-busy")).toBe("true");
   expect(container.querySelector(".merchant-entry")).toBeNull();

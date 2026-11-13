@@ -139,7 +139,7 @@ describe('Nomba sandbox server authentication', () => {
     const auth = new NombaSandboxAuth(credentials, authTransport, () => start);
     const adapter = new NombaAdapter(
       {
-        senderName: 'Xend',
+        senderName: 'Prydd',
         accountId: credentials.accountId,
         accessToken: () => auth.getAccessToken(),
       },
@@ -171,7 +171,7 @@ describe('Nomba sandbox server authentication', () => {
     const auth = new NombaSandboxAuth(credentials, authTransport, () => start);
     const adapter = new NombaAdapter(
       {
-        senderName: 'Xend',
+        senderName: 'Prydd',
         accountId: credentials.accountId,
         accessToken: () => auth.getAccessToken(),
         onUnauthorized: (token) => auth.invalidate(token),
