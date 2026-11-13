@@ -25,7 +25,7 @@ function setup(rateResponse: unknown = rate, quoteResponse: unknown = quote) {
     );
   const adapter = new NombaAdapter(
     {
-      senderName: 'Xend',
+      senderName: 'Prydd',
       accountId: 'sandbox-account',
       accessToken: 'sandbox-token',
     },
@@ -68,7 +68,9 @@ describe('Nomba indicative USD fiat valuation', () => {
   it('refuses anonymous fixtures for balance valuation', async () => {
     const transport = jest.fn();
     await expect(
-      new NombaAdapter({ senderName: 'Xend' }, transport).quoteNgnUsd('150000'),
+      new NombaAdapter({ senderName: 'Prydd' }, transport).quoteNgnUsd(
+        '150000',
+      ),
     ).rejects.toThrow('NOMBA_AUTH_REQUIRED');
     expect(transport).not.toHaveBeenCalled();
   });

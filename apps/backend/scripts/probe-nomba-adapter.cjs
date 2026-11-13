@@ -13,8 +13,8 @@ const transport = async (url, init) => {
   }
   return response;
 };
-const adapter = new NombaAdapter({ senderName: 'Xend Sandbox Test' }, transport);
-const reference = `xend_${randomUUID().replaceAll('-', '').slice(0, 20)}`;
+const adapter = new NombaAdapter({ senderName: 'Prydd Sandbox Test' }, transport);
+const reference = `prydd_${randomUUID().replaceAll('-', '').slice(0, 20)}`;
 async function probe(name, operation) {
   try {
     const result = await operation();
@@ -25,8 +25,8 @@ async function probe(name, operation) {
   }
 }
 (async () => {
-  await probe('createAccount', () => adapter.createAccount({ reference, accountReference: reference, firstName: 'Xend', lastName: 'Sandbox', email: 'sandbox@example.com' }));
-  const payout = { reference, amountMinor: '350000', recipient: { bankCode: '058', accountNumber: '0000000000', accountName: 'Xend Sandbox Test' }, narration: 'Sandbox contract probe' };
+  await probe('createAccount', () => adapter.createAccount({ reference, accountReference: reference, firstName: 'Prydd', lastName: 'Sandbox', email: 'sandbox@example.com' }));
+  const payout = { reference, amountMinor: '350000', recipient: { bankCode: '058', accountNumber: '0000000000', accountName: 'Prydd Sandbox Test' }, narration: 'Sandbox contract probe' };
   await probe('submitPayout', () => adapter.submitPayout(payout));
   if (observedReference) await probe('getPayout', () => adapter.getPayout({ ...payout, providerReference: observedReference }));
   else observations.push({ name: 'getPayout', skipped: 'No provider reference returned' });
