@@ -93,7 +93,7 @@ export interface SpendRequest {
    * The token account to credit, when it is not the destination's associated
    * one.
    *
-   * A Merchant settles into a token account Xend provisions for it, which is a
+   * A Merchant settles into a token account Prydd provisions for it, which is a
    * bare account rather than anyone's ATA, so deriving one here would name an
    * address that does not exist. The program checks ownership rather than
    * derivation, so an account the destination owns is accepted; it is verified

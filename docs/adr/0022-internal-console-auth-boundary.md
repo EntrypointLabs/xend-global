@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-07-12
-**Deciders:** Pay with Xend platform team
+**Deciders:** Pay with Prydd platform team
 **Tags:** backend, security, ops
 
 ## Context and Problem Statement
@@ -30,7 +30,7 @@ The console itself is disposable pilot tooling: a read-only view with one write 
 
 Chosen option: **"HTTP Basic Auth guard + browser-native prompt"**, because it is the minimum app-level identity that gives a real credential check with zero new infrastructure. The browser's native Basic Auth dialog removes the need for any login page or client code, and a single ~40-line guard is trivially deletable when the console is retired or replaced by the portal.
 
-The guard reads `CONSOLE_USER` and `CONSOLE_PASSWORD` from config. When either is unset or empty the console does not exist and every request is denied (fail-safe). Credentials are compared with `timingSafeEqual` over SHA-256 digests (digesting first equalizes lengths so the constant-time compare never throws). A denied request sets `WWW-Authenticate: Basic realm="Xend Console"` so the browser prompts natively. The console is read-only except for the single webhook redelivery POST, which calls Phase 6's in-process redelivery capability.
+The guard reads `CONSOLE_USER` and `CONSOLE_PASSWORD` from config. When either is unset or empty the console does not exist and every request is denied (fail-safe). Credentials are compared with `timingSafeEqual` over SHA-256 digests (digesting first equalizes lengths so the constant-time compare never throws). A denied request sets `WWW-Authenticate: Basic realm="Prydd Console"` so the browser prompts natively. The console is read-only except for the single webhook redelivery POST, which calls Phase 6's in-process redelivery capability.
 
 This scope is revisited when the console grows a write surface beyond redelivery, or when more than one operator needs distinct identities or an audit trail. At that point session-based auth with per-operator accounts becomes justified; it is not justified now.
 

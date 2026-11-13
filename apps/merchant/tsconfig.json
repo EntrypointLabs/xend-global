@@ -1,0 +1,5 @@
+{
+  "extends": "@prydd/typescript-config/vite.json",
+  "compilerOptions": { "types": ["vite/client"] },
+  "include": ["src"]
+}

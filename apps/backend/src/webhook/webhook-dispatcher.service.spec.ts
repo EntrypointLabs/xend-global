@@ -27,6 +27,8 @@ function intentRow(over: Partial<IntentRow> = {}): IntentRow {
     consumerId: 'c1',
     status: 'succeeded',
     usdcSettlementRaw: '1000000',
+    pricingCurrency: null,
+    executionCluster: 'devnet',
     displayCurrency: 'USD',
     displayAmountMinor: '1000',
     fxRate: null,
@@ -74,6 +76,7 @@ function accountRow(): AccountRow {
     providerReference: 'ref-1',
     payoutConfig: null,
     authorityAddress: null,
+    executionCluster: 'devnet',
     provisionedAt: new Date('2026-01-01'),
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
@@ -314,7 +317,10 @@ describe('WebhookDispatcherService.handle (test mode)', () => {
   });
 
   it('asks for live endpoints, and only live endpoints, for a live intent', async () => {
-    const { db, captured } = makeCapturingDb(intentRow({ mode: 'live' }), []);
+    const { db, captured } = makeCapturingDb(
+      intentRow({ mode: 'live', executionCluster: 'mainnet' }),
+      [],
+    );
     const delivery = makeDelivery({ id: 'wd1' });
     const svc = new WebhookDispatcherService(consumer, db, delivery, config);
 
@@ -324,5 +330,24 @@ describe('WebhookDispatcherService.handle (test mode)', () => {
     expect(query.params).toContain('live');
     expect(query.params).not.toContain('test');
     expect(delivery.createDelivery).not.toHaveBeenCalled();
+  });
+
+  it('routes real devnet execution to test endpoints with livemode=false', async () => {
+    const { db, captured } = makeCapturingDb(
+      intentRow({ mode: 'live', executionCluster: 'devnet' }),
+      [endpointRow({ mode: 'test' })],
+    );
+    const delivery = makeDelivery({ id: 'wd1' });
+    const svc = new WebhookDispatcherService(consumer, db, delivery, config);
+
+    await svc.handle(event());
+
+    const query = new PgDialect().sqlToQuery(captured.where as SQL);
+    expect(query.params).toContain('test');
+    expect(query.params).not.toContain('live');
+    const calls = delivery.createDelivery.mock.calls as Array<
+      [{ payload: string }]
+    >;
+    expect(JSON.parse(calls[0][0].payload)).toMatchObject({ livemode: false });
   });
 });

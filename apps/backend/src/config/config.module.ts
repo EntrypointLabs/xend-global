@@ -47,6 +47,10 @@ export const USDC_MINT_BY_CLUSTER = {
         // Privy — server-side ID token verification.
         PRIVY_APP_ID: Joi.string().required(),
         PRIVY_APP_SECRET: Joi.string().required(),
+        // Separate Merchant app. Missing configuration disables only the portal.
+        MERCHANT_PRIVY_APP_ID: Joi.string().optional().allow(''),
+        MERCHANT_PRIVY_APP_SECRET: Joi.string().optional().allow(''),
+        DEVNET_PAYMENTS_ENABLED: Joi.boolean().default(false),
         // PRIVY_VERIFICATION_KEY is optional: the SDK can fetch it from
         // Privy's JWKS endpoint on demand. Pin it for prod to avoid the
         // round-trip and to make verification offline-deterministic.
@@ -97,7 +101,7 @@ export const USDC_MINT_BY_CLUSTER = {
         // Mail. Only recovery codes go out over this, and a deployment with no
         // key logs them instead, which MailModule refuses in production.
         RESEND_API_KEY: Joi.string().optional().allow(''),
-        MAIL_FROM: Joi.string().default('Xend <security@xend.global>'),
+        MAIL_FROM: Joi.string().default('Prydd <security@prydd.co>'),
 
         // App Attest audience: "TEAMID.bundleid". Attestation fails closed
         // without it, so an unset value blocks iOS enrolment rather than
@@ -122,6 +126,18 @@ export const USDC_MINT_BY_CLUSTER = {
         //     returned ID. Without it, register/unregister throw.
         HELIUS_WEBHOOK_SECRET: Joi.string().required(),
         HELIUS_WEBHOOK_ID: Joi.string().optional().allow(''),
+
+        // Bounds on the compute unit price, in micro-lamports, for transactions
+        // the settlement authority pays for. Recent fees set the price between
+        // them; an idle cluster or a failed read prices at the floor.
+        SOLANA_MIN_COMPUTE_UNIT_PRICE: Joi.number()
+          .integer()
+          .min(0)
+          .default(50_000),
+        SOLANA_MAX_COMPUTE_UNIT_PRICE: Joi.number()
+          .integer()
+          .min(Joi.ref('SOLANA_MIN_COMPUTE_UNIT_PRICE'))
+          .default(1_000_000),
 
         // Stablecoin mints — backend computes the Balance sum over this
         // set server-side. USDC is required and non-empty: the capacity
@@ -159,7 +175,7 @@ export const USDC_MINT_BY_CLUSTER = {
         // KAFKA_BROKERS is a comma-separated host:port list. SASL vars stay
         // blank for local docker-compose; managed brokers require them.
         KAFKA_BROKERS: Joi.string().required(),
-        KAFKA_CLIENT_ID: Joi.string().default('xend-backend'),
+        KAFKA_CLIENT_ID: Joi.string().default('prydd-backend'),
         KAFKA_SSL: Joi.boolean().default(false),
         KAFKA_SASL_MECHANISM: Joi.string()
           .valid('plain', 'scram-sha-256', 'scram-sha-512')
@@ -201,9 +217,9 @@ export const USDC_MINT_BY_CLUSTER = {
           .default('100000000'),
 
         // CORS: browser origins allowed to call this API. The mobile app is
-        // not a browser and is unaffected. pay.xend.global is the Checkout
+        // not a browser and is unaffected. pay.prydd.co is the Checkout
         // surface; localhost entries cover local web dev.
-        CORS_ALLOWED_ORIGINS: Joi.string().default('https://pay.xend.global'),
+        CORS_ALLOWED_ORIGINS: Joi.string().default('https://pay.prydd.co'),
 
         // Settlement provider layer (ADR 0015). Active cluster for the
         // settlement money-moving code; devnet backs test mode end-to-end.
@@ -274,6 +290,9 @@ export const USDC_MINT_BY_CLUSTER = {
         // (devnet). Staleness cap: reject creation if no fresh-or-cached
         // quote inside the window rather than misprice.
         FX_PARTNER_QUOTE_URL: Joi.string().uri().optional().allow(''),
+        FX_QUOTE_SOURCE: Joi.string()
+          .valid('partner', 'blockradar', 'paj')
+          .default('partner'),
         FX_PILOT_STATIC_RATE: Joi.string()
           .pattern(/^\d+(\.\d+)?$/)
           .default('1600.00'),
@@ -288,7 +307,7 @@ export const USDC_MINT_BY_CLUSTER = {
           .integer()
           .min(60)
           .default(900),
-        CHECKOUT_SESSION_COOKIE: Joi.string().default('xend_checkout_session'),
+        CHECKOUT_SESSION_COOKIE: Joi.string().default('prydd_checkout_session'),
 
         // Outbound webhooks.
         WEBHOOK_DELIVERY_TIMEOUT_MS: Joi.number()
@@ -370,9 +389,40 @@ export const USDC_MINT_BY_CLUSTER = {
         BLOCKRADAR_MASTER_WALLET_ID: Joi.string().optional().allow(''),
         BLOCKRADAR_REFUND_SUPPORTED: Joi.boolean().default(false),
         BLOCKRADAR_SOLANA_NATIVE_ENABLED: Joi.boolean().default(false),
+        // PAJ naira settlement. Enabling it routes NGN Merchants to PAJ ahead
+        // of Blockradar and mounts POST /webhooks/paj, so both secrets are
+        // required at boot from that point on.
+        PAJ_ENABLED: Joi.boolean().default(false),
+        PAJ_API_BASE: Joi.string().uri().default('https://api.paj.cash'),
+        PAJ_API_KEY: Joi.string().when('PAJ_ENABLED', {
+          is: true,
+          then: Joi.required(),
+          otherwise: Joi.optional().allow(''),
+        }),
+        PAJ_WEBHOOK_SECRET: Joi.string().when('PAJ_ENABLED', {
+          is: true,
+          then: Joi.required(),
+          otherwise: Joi.optional().allow(''),
+        }),
         // Operator toggle: acknowledge inbound off-ramp webhooks without
         // verifying, parsing, or writing.
         SETTLEMENT_WEBHOOK_KILLSWITCH: Joi.boolean()
+          .truthy('1')
+          .falsy('0', '')
+          .default(false),
+
+        // App kill switches, served by GET /features. True hides the feature
+        // in the app on its next launch or return to the foreground, with no
+        // new build. Nothing set means nothing is switched off.
+        SWAP_KILLSWITCH: Joi.boolean()
+          .truthy('1')
+          .falsy('0', '')
+          .default(false),
+        EARN_DEPOSITS_KILLSWITCH: Joi.boolean()
+          .truthy('1')
+          .falsy('0', '')
+          .default(false),
+        HIDE_MY_WALLET_KILLSWITCH: Joi.boolean()
           .truthy('1')
           .falsy('0', '')
           .default(false),
@@ -383,7 +433,7 @@ export const USDC_MINT_BY_CLUSTER = {
         // Tracing is on only when an OTLP/HTTP collector endpoint is given;
         // the SDK starts in main.ts before Nest loads.
         OTEL_EXPORTER_OTLP_ENDPOINT: Joi.string().uri().optional().allow(''),
-        OTEL_SERVICE_NAME: Joi.string().default('xend-backend'),
+        OTEL_SERVICE_NAME: Joi.string().default('prydd-backend'),
       }),
     }),
   ],

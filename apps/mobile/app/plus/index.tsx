@@ -1,15 +1,15 @@
 import React from "react";
 
 import { FeaturePreviewScreen } from "@/components/ui/layout/FeaturePreviewScreen";
-import { XEND_PLUS_BENEFITS } from "@/constants/FeaturePreviews";
+import { PRYDD_PLUS_BENEFITS } from "@/constants/FeaturePreviews";
 
-export default function XendPlusScreen() {
+export default function PryddPlusScreen() {
   return (
     <FeaturePreviewScreen
       mark="sparkles"
-      title="Xend Plus"
-      subtitle="A membership for people who use Xend every day."
-      benefits={XEND_PLUS_BENEFITS}
+      title="Prydd Plus"
+      subtitle="A membership for people who use Prydd every day."
+      benefits={PRYDD_PLUS_BENEFITS}
     />
   );
 }

@@ -140,16 +140,40 @@ export class ReconcilerService implements OnModuleInit {
    * Replay a single wallet. Returns the count of events written. The
    * Failover RPC adapter falls back to the public RPC if Helius is down.
    */
+  async replayPayment(
+    smartAccountId: string,
+    walletAddress: string,
+    signature: string,
+  ): Promise<number> {
+    const [status] = await this.solana.getSignatureStatuses([signature]);
+    if (
+      status?.err ||
+      status?.slot == null ||
+      !['confirmed', 'finalized'].includes(status.confirmationStatus ?? '')
+    ) {
+      throw new Error(
+        `Confirmed Payment signature not yet readable: ${signature}`,
+      );
+    }
+    return this.replayWallet(smartAccountId, walletAddress, status.slot);
+  }
+
   async replayWallet(
     smartAccountId: string,
     walletAddress: string,
+    includeSlot?: bigint,
   ): Promise<number> {
     const [bookmark] = await this.db.client
       .select()
       .from(tailerState)
       .where(eq(tailerState.walletAddress, walletAddress))
       .limit(1);
-    const sinceSlot = bookmark?.lastIndexedSlot ?? 0n;
+    const bookmarkSlot = bookmark?.lastIndexedSlot ?? 0n;
+    // An event can arrive after a newer webhook advanced the bookmark.
+    const sinceSlot =
+      includeSlot !== undefined && includeSlot < bookmarkSlot
+        ? includeSlot
+        : bookmarkSlot;
 
     let count = 0;
     for await (const evt of this.solana.streamConfirmedTransfers(

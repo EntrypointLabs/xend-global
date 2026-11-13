@@ -38,7 +38,7 @@ export default function ConnectedMerchantsScreen() {
   const confirmRevoke = (session: SessionSummary) => {
     Alert.alert(
       "Revoke access",
-      `${session.merchantDisplayName} will no longer be able to take payments from your Xend balance.`,
+      `${session.merchantDisplayName} will no longer be able to take payments from your Prydd balance.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -47,7 +47,10 @@ export default function ConnectedMerchantsScreen() {
           onPress: () =>
             revoke(session.id, {
               onError: () =>
-                Alert.alert("Couldn't revoke", "Something went wrong. Try again."),
+                Alert.alert(
+                  "Couldn't revoke",
+                  "Something went wrong. Try again."
+                ),
             }),
         },
       ],
@@ -114,7 +117,10 @@ export default function ConnectedMerchantsScreen() {
                   <Typography weight="600" className="text-base text-black">
                     {session.merchantDisplayName}
                   </Typography>
-                  <Typography weight="500" className="mt-0.5 text-sm text-black/40">
+                  <Typography
+                    weight="500"
+                    className="mt-0.5 text-sm text-black/40"
+                  >
                     Last used {formatLastUsed(session.lastUsedAt)}
                   </Typography>
                 </View>
@@ -122,7 +128,10 @@ export default function ConnectedMerchantsScreen() {
                   onPress={() => confirmRevoke(session)}
                   className="p-2"
                 >
-                  <Typography weight="600" className="text-base text-destructive">
+                  <Typography
+                    weight="600"
+                    className="text-base text-destructive"
+                  >
                     Revoke
                   </Typography>
                 </HapticPressable>

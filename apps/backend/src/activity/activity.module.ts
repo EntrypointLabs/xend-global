@@ -8,6 +8,8 @@ import { EventParser } from './event-parser';
 import { ReconcilerService } from './reconciler.service';
 import { TailerService } from './tailer.service';
 import { WebhookController } from './webhook.controller';
+import { EventsModule } from '../events/events.module';
+import { PaymentActivityService } from './payment-activity.service';
 
 /**
  * RPC tailer: webhook receiver + reconciler for confirmed transfers.
@@ -19,6 +21,7 @@ import { WebhookController } from './webhook.controller';
   // PricesModule values a transfer at the moment it is indexed.
   // NotificationsModule tells the Consumer when money arrives.
   imports: [
+    EventsModule,
     SolanaModule,
     PricesModule,
     NotificationsModule,
@@ -27,7 +30,12 @@ import { WebhookController } from './webhook.controller';
     ScheduleModule.forRoot(),
   ],
   controllers: [WebhookController],
-  providers: [TailerService, EventParser, ReconcilerService],
+  providers: [
+    TailerService,
+    EventParser,
+    ReconcilerService,
+    PaymentActivityService,
+  ],
   exports: [TailerService, EventParser, ReconcilerService],
 })
 export class ActivityModule {}

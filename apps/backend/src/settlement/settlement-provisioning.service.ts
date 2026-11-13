@@ -1,10 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
-import { DbService } from '../db/db.service';
+import { ConfigService } from '@nestjs/config';
+import { and, eq } from 'drizzle-orm';
+import { DbService, type DbExecutor } from '../db/db.service';
 import { settlementAccounts } from '../db/schema';
 import { SOLANA_RPC, type SolanaRpc } from '../solana/solana-rpc.interface';
 import { SettlementRouter } from './settlement-router';
-import type { SettlementProviderName } from './settlement-provider.interface';
+import type {
+  SettlementBankAccount,
+  SettlementProviderName,
+} from './settlement-provider.interface';
 import { SettlementAccountNotProvisionedError } from './settlement.errors';
 
 /**
@@ -22,24 +26,51 @@ export class SettlementProvisioningService {
 
   constructor(
     private readonly db: DbService,
+    private readonly config: ConfigService,
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
     private readonly router: SettlementRouter,
   ) {}
 
   async provisionOrLink(
     merchantId: string,
-    opts: { currency: string; merchantAddress?: string },
+    opts: {
+      currency: string;
+      merchantAddress?: string;
+      bankAccount?: SettlementBankAccount;
+    },
+    onProvisioned?: (tx: DbExecutor) => Promise<void>,
   ): Promise<{
     address: string;
     provider: SettlementProviderName;
     provisioned: boolean;
   }> {
+    const executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     const [existing] = await this.db.client
       .select()
       .from(settlementAccounts)
-      .where(eq(settlementAccounts.merchantId, merchantId))
+      .where(
+        and(
+          eq(settlementAccounts.merchantId, merchantId),
+          eq(settlementAccounts.executionCluster, executionCluster),
+        ),
+      )
       .limit(1);
-    if (existing?.address && existing.provisionedAt && existing.provider) {
+    if (
+      existing?.address &&
+      existing.provisionedAt &&
+      existing.provider &&
+      existing.executionCluster === executionCluster
+    ) {
+      if (
+        opts.merchantAddress &&
+        (existing.provider !== 'direct_usdc' ||
+          existing.authorityAddress != null ||
+          existing.providerReference !== opts.merchantAddress)
+      ) {
+        throw new SettlementAccountNotProvisionedError(
+          'Existing settlement destination differs from the requested Merchant-owned account',
+        );
+      }
       // Idempotent: an already-provisioned endpoint is returned as-is.
       return {
         address: existing.address,
@@ -52,6 +83,7 @@ export class SettlementProvisioningService {
     const endpoint = await provider.provision({
       merchantId,
       merchantAddress: opts.merchantAddress,
+      bankAccount: opts.bankAccount,
     });
     const providerName = provider.capabilities.provider;
 
@@ -63,25 +95,37 @@ export class SettlementProvisioningService {
       providerReference: endpoint.providerReference,
       payoutConfig: endpoint.payoutConfig,
       authorityAddress: endpoint.attributionRef,
+      executionCluster,
       provisionedAt: new Date(),
       updatedAt: new Date(),
     };
-    await this.db.client
-      .insert(settlementAccounts)
-      .values(row)
-      .onConflictDoUpdate({
-        target: settlementAccounts.merchantId,
-        set: {
-          address: row.address,
-          provider: row.provider,
-          currency: row.currency,
-          providerReference: row.providerReference,
-          payoutConfig: row.payoutConfig,
-          authorityAddress: row.authorityAddress,
-          provisionedAt: row.provisionedAt,
-          updatedAt: row.updatedAt,
-        },
-      });
+    // Persist the destination and its audit entry together: the external
+    // provider.provision above already ran, so a failed audit write must not
+    // leave a live destination the trail never recorded. The upsert stays
+    // idempotent, so a retry after a mid-transaction failure is safe.
+    await this.db.client.transaction(async (tx) => {
+      await tx
+        .insert(settlementAccounts)
+        .values(row)
+        .onConflictDoUpdate({
+          target: [
+            settlementAccounts.merchantId,
+            settlementAccounts.executionCluster,
+          ],
+          set: {
+            address: row.address,
+            provider: row.provider,
+            currency: row.currency,
+            providerReference: row.providerReference,
+            payoutConfig: row.payoutConfig,
+            authorityAddress: row.authorityAddress,
+            executionCluster: row.executionCluster,
+            provisionedAt: row.provisionedAt,
+            updatedAt: row.updatedAt,
+          },
+        });
+      if (onProvisioned) await onProvisioned(tx);
+    });
 
     // Best-effort: the reconciler is the safety net if webhook registration
     // fails, so a failure here must not fail provisioning.
@@ -111,7 +155,7 @@ export class SettlementProvisioningService {
    * through the Account's own policy, and the program checks that the account
    * being credited belongs to the destination the Spend names. The endpoint is
    * a bare token account rather than anybody's associated one, so that owner
-   * cannot be derived and has to be read: the authority for an endpoint Xend
+   * cannot be derived and has to be read: the authority for an endpoint Prydd
    * provisioned, the Merchant itself for one it already had.
    */
   async getSettlementAddressForSettlement(merchantId: string): Promise<{
@@ -119,20 +163,46 @@ export class SettlementProvisioningService {
     owner: string;
     provider: SettlementProviderName;
   }> {
+    const executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
     const [row] = await this.db.client
       .select()
       .from(settlementAccounts)
-      .where(eq(settlementAccounts.merchantId, merchantId))
+      .where(
+        and(
+          eq(settlementAccounts.merchantId, merchantId),
+          eq(settlementAccounts.executionCluster, executionCluster),
+        ),
+      )
       .limit(1);
-    if (!row?.address || !row.provisionedAt || !row.provider) {
+    if (
+      !row?.address ||
+      !row.provisionedAt ||
+      !row.provider ||
+      row.executionCluster !== executionCluster
+    ) {
       throw new SettlementAccountNotProvisionedError(
-        `merchant ${merchantId} has no provisioned settlement endpoint`,
+        `merchant ${merchantId} has no settlement endpoint on ${executionCluster}`,
+      );
+    }
+    // The USDC pilot settles to Merchant-controlled accounts. An endpoint
+    // from the earlier Prydd-custody pilot must be explicitly migrated first.
+    if (row.provider === 'direct_usdc' && row.authorityAddress != null) {
+      throw new SettlementAccountNotProvisionedError(
+        'This Merchant needs a Merchant-owned USDC settlement destination',
       );
     }
     const owner = row.authorityAddress ?? row.providerReference;
     if (!owner) {
       throw new SettlementAccountNotProvisionedError(
         `merchant ${merchantId} has a settlement endpoint with no recorded owner`,
+      );
+    }
+    if (
+      row.provider === 'direct_usdc' &&
+      (await this.solana.getTokenAccountOwner(row.address)) !== owner
+    ) {
+      throw new SettlementAccountNotProvisionedError(
+        'Merchant settlement account ownership could not be verified',
       );
     }
     return { address: row.address, owner, provider: row.provider };

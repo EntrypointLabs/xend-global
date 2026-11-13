@@ -3,7 +3,7 @@
  * decimal places its minor unit carries.
  *
  * A Payment shows the Merchant's own currency, so this grows with the markets
- * Xend opens in. The decimals are carried rather than assumed to be two,
+ * Prydd opens in. The decimals are carried rather than assumed to be two,
  * because most currencies use two, the yen uses none and the dinar uses three,
  * and a formatter that hardcodes hundredths misstates an amount by a factor of
  * a hundred the day one of those arrives.
@@ -33,6 +33,15 @@ function groupThousands(digits: string): string {
  * the amount itself stays correct for every two-decimal currency.
  */
 export function formatMoney(currency: string, minorRaw: string): string {
+  return formatAmount(currency, minorRaw, true);
+}
+
+/** Exact amount without a positional currency-symbol assumption. */
+export function formatAmount(
+  currency: string,
+  minorRaw: string,
+  withSymbol = false,
+): string {
   const { symbol, decimals } = CURRENCIES[currency] ?? {
     symbol: `${currency} `,
     decimals: 2,
@@ -49,5 +58,5 @@ export function formatMoney(currency: string, minorRaw: string): string {
   const fractionPart =
     fraction > 0n ? '.' + fraction.toString().padStart(decimals, '0') : '';
 
-  return `${negative ? '-' : ''}${symbol}${grouped}${fractionPart}`;
+  return `${negative ? '-' : ''}${withSymbol ? symbol : ''}${grouped}${fractionPart}`;
 }

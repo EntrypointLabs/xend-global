@@ -18,8 +18,8 @@ export type AuthorizeBody = z.infer<typeof AuthorizeBodySchema>;
  * merchants.allowed_origins; sessionRecognized is a non-destructive cookie
  * check. cancelUrl is the optional signed redirect-mode cancel target (a
  * Consumer can cancel BEFORE any authorize call, so it rides on the summary).
- * There is deliberately no settlement amount and no FX field here: exposing
- * them on an unauthenticated endpoint would leak the pinned rate.
+ * The approved USDC pilot exposes the exact debit so the Consumer can consent
+ * to the amount that leaves their Account before signing.
  */
 export const IntentSummarySchema = z.object({
   reference: z.string(),
@@ -27,12 +27,11 @@ export const IntentSummarySchema = z.object({
   merchantDisplayName: z.string(),
   /**
    * What the Merchant priced in and the figure to show, in that currency's
-   * minor unit. Never a settlement amount and never a rate: a Consumer sees
-   * the price they were quoted, and the FX behind a converted one stays off
-   * this unauthenticated endpoint.
+   * minor unit. This price is shown alongside the separately pinned USDC debit.
    */
   displayCurrency: z.string(),
   displayAmountMinor: z.string(),
+  usdcSettlementRaw: z.string().regex(/^\d+$/),
   merchantOrigin: z.string().nullable(),
   sessionRecognized: z.boolean(),
   expiresAt: z.string(),
@@ -66,6 +65,10 @@ export type SettleBody = z.infer<typeof SettleBodySchema>;
  * Account's own signer is what moves the money, and those are two different
  * things. The terminal outcomes are unchanged; 'authorized' is an internal
  * attempt state and never appears on this wire.
+ *
+ * sessionToken appears only for a request that carried its Session on the
+ * X-Prydd-Checkout-Session header, which is how a framed surface persists a
+ * rotation it cannot read off a cookie. A cookie-borne request never sees it.
  */
 export const AuthorizeResponseSchema = z.union([
   z.object({
@@ -73,11 +76,14 @@ export const AuthorizeResponseSchema = z.union([
     unsignedTxBase64: z.string(),
     /** Which of the Consumer's keys the popup must sign with. */
     signerAddress: z.string(),
+    executionCluster: z.enum(['devnet', 'testnet', 'mainnet-beta']),
+    sessionToken: z.string().optional(),
   }),
   z.object({
     status: z.enum(['succeeded', 'failed']),
     redirectUrl: z.string().optional(),
     cancelUrl: z.string().optional(),
+    sessionToken: z.string().optional(),
   }),
 ]);
 export type AuthorizeResponse = z.infer<typeof AuthorizeResponseSchema>;

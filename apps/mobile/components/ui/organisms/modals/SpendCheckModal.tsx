@@ -41,7 +41,7 @@ interface SpendCheckModalProps {
    * row that says why; the check the Consumer performs is the same either way.
    */
   aboveDailyLimit: boolean;
-  onRetry: () => void;
+  onRetry?: () => void;
   onDismiss: () => void;
 }
 
@@ -62,7 +62,7 @@ interface SpendCheckModalProps {
  * copy of this would drift from it the first time either was touched.
  *
  * The mechanism is deliberately not the story: nothing here mentions signers,
- * thresholds or policies. What a Consumer needs is that Xend checked it was
+ * thresholds or policies. What a Consumer needs is that Prydd checked it was
  * them, and where the money has got to.
  */
 export function SpendCheckModal({
@@ -139,14 +139,16 @@ export function SpendCheckModal({
 
           {settled ? (
             <View className="gap-3">
-              <HapticPressable
-                onPress={onRetry}
-                className="w-full items-center justify-center rounded-full bg-white py-4"
-              >
-                <Typography weight="600" className="text-base text-black">
-                  Try again
-                </Typography>
-              </HapticPressable>
+              {onRetry && (
+                <HapticPressable
+                  onPress={onRetry}
+                  className="w-full items-center justify-center rounded-full bg-white py-4"
+                >
+                  <Typography weight="600" className="text-base text-black">
+                    Try again
+                  </Typography>
+                </HapticPressable>
+              )}
               <HapticPressable
                 onPress={onDismiss}
                 feedback="selection"

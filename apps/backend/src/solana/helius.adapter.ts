@@ -29,9 +29,8 @@ import {
 } from './web3-connection';
 
 /** Helius webhook configuration API base. Helius uses a single host
- *  for both mainnet and devnet webhook config; the underlying RPC
- *  cluster is selected by the webhook's `transactionType` + addresses,
- *  not the config URL. */
+ *  for both mainnet and devnet webhook config; the cluster a webhook
+ *  watches is selected by its `webhookType`, not the config URL. */
 const HELIUS_WEBHOOK_API = 'https://api.helius.xyz/v0/webhooks';
 
 interface HeliusWebhookRecord {
@@ -281,6 +280,12 @@ export class HeliusAdapter implements SolanaRpc, OnModuleInit {
     return (await res.json()) as HeliusWebhookRecord;
   }
 
+  private webhookType(): 'enhanced' | 'enhancedDevnet' {
+    return this.config.getOrThrow<string>('SOLANA_CLUSTER') === 'mainnet'
+      ? 'enhanced'
+      : 'enhancedDevnet';
+  }
+
   private async editWebhookAddresses(
     webhookId: string,
     accountAddresses: string[],
@@ -290,7 +295,7 @@ export class HeliusAdapter implements SolanaRpc, OnModuleInit {
       webhookURL: current.webhookURL,
       transactionTypes: current.transactionTypes,
       accountAddresses,
-      webhookType: current.webhookType ?? 'enhanced',
+      webhookType: current.webhookType ?? this.webhookType(),
       // Echo the authHeader so Helius keeps signing deliveries with the
       // same shared secret on the address-list update.
       authHeader: current.authHeader,
@@ -330,7 +335,7 @@ export class HeliusAdapter implements SolanaRpc, OnModuleInit {
       webhookURL: opts.webhookURL,
       transactionTypes: ['Any'],
       accountAddresses: opts.initialAddresses,
-      webhookType: 'enhancedDevnet',
+      webhookType: this.webhookType(),
       authHeader: opts.authHeader,
     };
     const res = await fetch(`${HELIUS_WEBHOOK_API}?api-key=${this.apiKey}`, {

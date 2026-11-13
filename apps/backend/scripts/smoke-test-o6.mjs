@@ -87,10 +87,10 @@ async function main() {
     rootQuorumThreshold: 1,
     rootUsers: [
       {
-        userName: "xend-delegated",
+        userName: "prydd-delegated",
         apiKeys: [
           {
-            apiKeyName: "xend-delegated",
+            apiKeyName: "prydd-delegated",
             publicKey: delegatedPublicKey,
             curveType: "API_KEY_CURVE_P256",
           },

@@ -1,7 +1,7 @@
 # Relayer: Kora adopt-vs-build
 
 Status: Decided
-Author: Pay with Xend planning session, 2026-07-12
+Author: Pay with Prydd planning session, 2026-07-12
 Scope: Phase 3 fee-payer relayer (REQ-RELAYER-ISOLATED, REQ-ANTI-DRAIN)
 
 ## Summary
@@ -12,7 +12,7 @@ This is a written decision, not code. The provenance of the Kora facts below is 
 
 ## What Kora is
 
-Kora is the Solana Foundation's fee-payer relayer: a standalone Rust JSON-RPC server that co-signs and sponsors transaction fees so end users never need to hold SOL. It has been audited by Runtime Verification, ships a TypeScript SDK, and supports pluggable signer backends including raw key, Turnkey, Privy, and Vault. It is the canonical reference implementation for gasless Solana payments, and its validation checklist is the checklist regardless of whether Xend adopts it or builds its own: program allowlist, token and mint restriction, `max_allowed_lamports` fee caps, per-account spend caps, global and per-account rate limits, disallowed-account lists, a fee-payer policy that governs which instruction shapes the sponsor will co-sign, and priority-fee estimation with a configurable margin. Xend's relayer, built or adopted, enforces the same set.
+Kora is the Solana Foundation's fee-payer relayer: a standalone Rust JSON-RPC server that co-signs and sponsors transaction fees so end users never need to hold SOL. It has been audited by Runtime Verification, ships a TypeScript SDK, and supports pluggable signer backends including raw key, Turnkey, Privy, and Vault. It is the canonical reference implementation for gasless Solana payments, and its validation checklist is the checklist regardless of whether Prydd adopts it or builds its own: program allowlist, token and mint restriction, `max_allowed_lamports` fee caps, per-account spend caps, global and per-account rate limits, disallowed-account lists, a fee-payer policy that governs which instruction shapes the sponsor will co-sign, and priority-fee estimation with a configurable margin. Prydd's relayer, built or adopted, enforces the same set.
 
 ## Exit criteria
 
@@ -28,11 +28,11 @@ Running, upgrading, monitoring, and being on-call for a standalone Rust service 
 
 Score: **favors build; Kora needs a shim either way.** Confidence: **HIGH** that a shim is required, **MEDIUM** on the exact shim surface.
 
-Kora's static config validates transaction structure, but three of Xend's needs are dynamic and per-request, which Kora's TOML cannot express on its own:
+Kora's static config validates transaction structure, but three of Prydd's needs are dynamic and per-request, which Kora's TOML cannot express on its own:
 
 - **Byte-pinned message equality.** The strongest anti-drain guarantee is that the relayer co-signs only a message the platform itself compiled and pinned (see PITFALLS.md 4.2). Kora validates that a transaction looks like an allowed shape; it does not validate that the transaction byte-equals a specific message our backend pinned for this intent. A shim in front of Kora would have to hold the pinned message and reject on any divergence before Kora is invoked.
 - **Destination equals a per-request expected settlement account.** The USDC `TransferChecked` destination must equal the settlement account supplied for this specific request (in v3, a Blockradar child token account resolved per merchant), not a member of a static allowlist. Kora's disallowed-account and allowlist config is static; a per-request expected destination is dynamic input.
-- **Per-Consumer and per-merchant caps keyed on domain identifiers.** These caps require `consumerId` and `merchantId` passed at call time. Kora's per-account rate limits key on chain accounts, not on Xend domain identities, so the domain-scoped caps have to live in the shim (they are also enforced upstream in the Identity and Capability API; the relayer's own are defense-in-depth).
+- **Per-Consumer and per-merchant caps keyed on domain identifiers.** These caps require `consumerId` and `merchantId` passed at call time. Kora's per-account rate limits key on chain accounts, not on Prydd domain identities, so the domain-scoped caps have to live in the shim (they are also enforced upstream in the Identity and Capability API; the relayer's own are defense-in-depth).
 
 Where Kora is fully sufficient: the program allowlist, the USDC mint restriction, the `max_allowed_lamports` and compute-price ceilings, and the fee-payer-not-writable policy. These map cleanly onto Kora config. The gap is the dynamic, domain-aware half, which under an adopt-Kora outcome becomes "stand up Kora plus a thin internal-auth and pinned-message and expected-destination and domain-caps shim." A thin NestJS relayer folds that shim and the static checks into one small in-process codebase.
 

@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-09-07
 **Accepted:** 2026-08-14
-**Deciders:** Xend founding team
+**Deciders:** Prydd founding team
 **Tags:** backend, wallet, security, compliance
 
 ## Context and Problem Statement

@@ -10,7 +10,7 @@ import {
   type SpendingLimit,
   type SpendRequest,
   type SpendRoute,
-} from '@xend/smart-account';
+} from '@prydd/smart-account';
 
 import {
   PREPARED_TX_STORE,

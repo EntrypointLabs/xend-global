@@ -1,0 +1,2 @@
+CREATE INDEX "payment_intents_merchant_history_idx" ON "payment_intents" USING btree ("merchant_id","execution_cluster","created_at","id");--> statement-breakpoint
+CREATE INDEX "webhook_deliveries_endpoint_history_idx" ON "webhook_deliveries" USING btree ("endpoint_id","created_at","id");

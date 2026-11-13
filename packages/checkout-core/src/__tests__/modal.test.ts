@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mountXendButton } from "../index";
+import { mountPryddButton } from "../index";
 
-const ORIGIN = "https://pay.xend.global";
-const API = "https://api.xend.test";
+const ORIGIN = "https://pay.prydd.co";
+const API = "https://api.prydd.test";
 
 interface FakeWindow {
   location: { href: string };
@@ -21,14 +21,14 @@ function container(): HTMLElement {
 }
 
 function shadow(): ShadowRoot {
-  const host = document.querySelector("[data-xend-checkout]");
+  const host = document.querySelector("[data-prydd-checkout]");
   if (!host?.shadowRoot) throw new Error("sheet is not mounted");
   return host.shadowRoot;
 }
 
 function sheetText(): string {
   return (
-    document.querySelector("[data-xend-checkout]")?.shadowRoot?.textContent ??
+    document.querySelector("[data-prydd-checkout]")?.shadowRoot?.textContent ??
     ""
   );
 }
@@ -88,8 +88,8 @@ afterEach(() => {
   handle?.unmount();
   handle = undefined;
   document.body.innerHTML = "";
-  document.getElementById("xend-pay-style")?.remove();
-  document.querySelectorAll("[data-xend-checkout]").forEach((n) => n.remove());
+  document.getElementById("prydd-pay-style")?.remove();
+  document.querySelectorAll("[data-prydd-checkout]").forEach((n) => n.remove());
   delete (window as unknown as { PublicKeyCredential?: unknown })
     .PublicKeyCredential;
   Object.defineProperty(window, "location", {
@@ -101,17 +101,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("mountXendButton glass sheet", () => {
+describe("mountPryddButton glass sheet with a popup ceremony", () => {
   it("waits for the reference before reporting a cancel taken while loading", async () => {
     const results: unknown[] = [];
     let release!: (v: { reference: string }) => void;
     const pending = new Promise<{ reference: string }>((r) => (release = r));
     const fetchMock = stubSummary({ merchantDisplayName: "Sabi Market" });
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => pending,
       onResult: (r) => results.push(r),
     });
@@ -135,7 +136,7 @@ describe("mountXendButton glass sheet", () => {
     expect(sheetText()).not.toContain("Sabi Market");
   });
 
-  it("is the default presentation, and renders the summary without opening a window", async () => {
+  it("renders the summary without opening a window", async () => {
     const openSpy = vi.spyOn(window, "open");
     const fetchMock = stubSummary({
       merchantDisplayName: "Sabi Market",
@@ -144,7 +145,7 @@ describe("mountXendButton glass sheet", () => {
       itemLabel: "1× Founder Hoodie",
     });
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -157,7 +158,7 @@ describe("mountXendButton glass sheet", () => {
     // The amount comes from displayAmountMinor in the intent's own currency.
     expect(sheetText()).toContain("₦45,000");
     expect(sheetText()).toContain("1× Founder Hoodie");
-    expect(sheetText()).toContain("Pay with your Xend balance");
+    expect(sheetText()).toContain("Pay with your Prydd balance");
     // No balance figure is ever rendered on the merchant page.
     expect(sheetText()).not.toContain("available");
     expect(openSpy).not.toHaveBeenCalled();
@@ -179,7 +180,7 @@ describe("mountXendButton glass sheet", () => {
       displayAmountMinor: "25000000",
     });
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -203,10 +204,11 @@ describe("mountXendButton glass sheet", () => {
       displayAmountMinor: "800000",
     });
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_confirm" }),
       onResult: () => {},
     });
@@ -228,7 +230,7 @@ describe("mountXendButton glass sheet", () => {
     expect(navUrl.searchParams.get("mode")).toBe("popup");
 
     // The sheet waits on the ceremony; it never calls the API itself.
-    expect(sheetText()).toContain("Finish in the Xend window");
+    expect(sheetText()).toContain("Finish in the Prydd window");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     for (const call of fetchMock.mock.calls) {
       expect(String(call[0])).not.toContain("/checkout/authorize");
@@ -247,10 +249,11 @@ describe("mountXendButton glass sheet", () => {
     });
     const onResult = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_msg" }),
       onResult,
     });
@@ -264,11 +267,11 @@ describe("mountXendButton glass sheet", () => {
       new MessageEvent("message", {
         origin: ORIGIN,
         data: {
-          xend: "checkout",
+          prydd: "checkout",
           v: 1,
           nonce,
           reference: "pi_msg",
-          type: "xend.checkout.result",
+          type: "prydd.checkout.result",
           status: "succeeded",
         },
       }),
@@ -292,10 +295,11 @@ describe("mountXendButton glass sheet", () => {
     });
     const onUnresolved = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_blocked" }),
       onResult: () => {},
       onUnresolved,
@@ -327,7 +331,7 @@ describe("mountXendButton glass sheet", () => {
       itemLabel: "</div><script>window.__xss=1</script>",
     });
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
@@ -344,7 +348,7 @@ describe("mountXendButton glass sheet", () => {
     expect((window as unknown as { __xss?: number }).__xss).toBeUndefined();
   });
 
-  it("cancels cleanly when the sheet is dismissed, and reports it once", async () => {
+  it("ignores backdrop dismissal after handoff and preserves the real result", async () => {
     const fakeWin = makeFakeWindow();
     vi.spyOn(window, "open").mockImplementation(
       () => fakeWin as unknown as Window,
@@ -356,10 +360,11 @@ describe("mountXendButton glass sheet", () => {
     });
     const onResult = vi.fn();
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_cancel" }),
       onResult,
     });
@@ -368,28 +373,28 @@ describe("mountXendButton glass sheet", () => {
 
     shadow().querySelector<HTMLElement>("[data-close]")!.click();
 
-    expect(onResult).toHaveBeenCalledTimes(1);
-    expect(onResult).toHaveBeenCalledWith({
-      reference: "pi_cancel",
-      status: "canceled",
-    });
-    expect(fakeWin.close).toHaveBeenCalled();
+    expect(onResult).not.toHaveBeenCalled();
+    expect(fakeWin.close).not.toHaveBeenCalled();
 
-    // The listener is gone: a late result cannot reopen a settled payment.
+    // Backdrop dismissal must not suppress the actual on-chain result.
     window.dispatchEvent(
       new MessageEvent("message", {
         origin: ORIGIN,
         data: {
-          xend: "checkout",
+          prydd: "checkout",
           v: 1,
-          nonce: "n",
+          nonce: new URL(fakeWin.location.href).searchParams.get("nonce"),
           reference: "pi_cancel",
-          type: "xend.checkout.result",
+          type: "prydd.checkout.result",
           status: "succeeded",
         },
       }),
     );
     expect(onResult).toHaveBeenCalledTimes(1);
+    expect(onResult).toHaveBeenCalledWith({
+      reference: "pi_cancel",
+      status: "succeeded",
+    });
   });
 
   it("shows the sheet's loading state, not an error, while the intent is being created", async () => {
@@ -401,7 +406,7 @@ describe("mountXendButton glass sheet", () => {
     });
     let resolveIntent!: (v: { reference: string }) => void;
 
-    handle = mountXendButton({
+    handle = mountPryddButton({
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,

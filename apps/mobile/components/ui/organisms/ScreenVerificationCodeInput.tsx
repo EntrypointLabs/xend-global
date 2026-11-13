@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
+import { AUTH_BRAND_BLUE } from "@/constants/Colors";
 import { useScreenTheme } from "@/contexts/ScreenThemeContext";
 
 interface ScreenVerificationCodeInputProps {
@@ -40,7 +41,12 @@ export function ScreenVerificationCodeInput({
   const light = tone === "light";
   const boxBackground = light ? "#00000008" : inputBackgroundColor + "40";
   const digitColor = light ? "#00000066" : textColor;
-  const activeBorder = light ? "#00000026" : textColor;
+  // Auth dark canvas uses brand blue for the live box; light screens stay muted.
+  const activeBorder = light
+    ? "#00000026"
+    : isBackgroundDark
+      ? AUTH_BRAND_BLUE
+      : textColor;
   const restingBorder = light ? "transparent" : textColor + "20";
 
   const handleChange = (text: string) => {

@@ -40,6 +40,7 @@ import {
   type IntentObject,
 } from './dtos';
 import { IdempotencyKeyReuseError } from './merchant.errors';
+import { isLivePayment } from '../payment/payment-mode';
 
 type IntentRow = typeof paymentIntents.$inferSelect;
 
@@ -85,6 +86,7 @@ export class MerchantController {
   ): Promise<IntentObject> {
     const { merchantId, mode } = req.merchant;
     try {
+      const executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
       const allowPrivate =
         this.config.get<boolean>('WEBHOOK_ALLOW_PRIVATE_URLS') ?? false;
       if (body.return_url) {
@@ -113,6 +115,7 @@ export class MerchantController {
             merchantId,
             mode,
             usdcSettlementRaw: '',
+            pricingCurrency: body.currency,
             displayCurrency: '',
             displayAmountMinor: '',
             merchantReference: body.merchant_reference,
@@ -123,8 +126,12 @@ export class MerchantController {
 
           if (body.currency === 'NGN') {
             const quote = await this.fx.getQuote();
-            const rateDecimals =
-              this.config.getOrThrow<number>('FX_RATE_DECIMALS');
+            // The provider's exact decimal string is the pinned quote. The
+            // configured scale is a minimum, not permission to truncate it.
+            const rateDecimals = Math.max(
+              this.config.getOrThrow<number>('FX_RATE_DECIMALS'),
+              quote.ngnPerUsdc.split('.')[1]?.length ?? 0,
+            );
             params.usdcSettlementRaw = localMinorToUsdcRaw(
               body.amount,
               quote.ngnPerUsdc,
@@ -136,6 +143,17 @@ export class MerchantController {
             params.fxRate = quote.ngnPerUsdc;
             params.fxSource = quote.source;
             params.fxQuotedAt = quote.quotedAt;
+          } else if (body.currency === 'USD') {
+            // Pilot dollar pricing is denominated at one USDC per USD.
+            // This is not an executable fiat conversion or payout quote.
+            params.usdcSettlementRaw = localMinorToUsdcRaw(
+              body.amount,
+              '1',
+              0,
+              'USD',
+            );
+            params.displayCurrency = 'USD';
+            params.displayAmountMinor = body.amount;
           } else {
             // Priced in the settlement asset. There is no rate to pin, and the
             // Consumer is shown dollars: USDC is a chain detail and never
@@ -151,6 +169,7 @@ export class MerchantController {
           }
           return { status: HttpStatus.CREATED, body: this.toObject(intent) };
         },
+        executionCluster,
       );
       return result.body;
     } catch (err) {
@@ -169,7 +188,10 @@ export class MerchantController {
       // existence.
       if (
         intent.merchantId !== req.merchant.merchantId ||
-        intent.mode !== req.merchant.mode
+        intent.mode !== req.merchant.mode ||
+        (req.merchant.executionCluster !== null &&
+          intent.executionCluster !== null &&
+          intent.executionCluster !== req.merchant.executionCluster)
       ) {
         throw new IntentNotFoundError(`intent ${id} not found`);
       }
@@ -195,12 +217,15 @@ export class MerchantController {
     // Only a USDC-priced intent is displayed in USD; the Merchant sent six
     // decimal raw units and reads the same back, not the cents shown to the
     // shopper.
-    const pricedInUsdc = intent.displayCurrency === 'USD';
+    const currency =
+      intent.pricingCurrency ??
+      (intent.displayCurrency === 'USD' ? 'USDC' : intent.displayCurrency);
+    const pricedInUsdc = currency === 'USDC';
     return {
       id: intent.id,
       object: 'payment_intent',
       status: intent.status,
-      currency: pricedInUsdc ? 'USDC' : intent.displayCurrency,
+      currency,
       amount: pricedInUsdc
         ? intent.usdcSettlementRaw
         : intent.displayAmountMinor,
@@ -212,7 +237,7 @@ export class MerchantController {
       merchant_reference: intent.merchantReference,
       return_url: intent.returnUrl,
       cancel_url: intent.cancelUrl,
-      livemode: intent.mode === 'live',
+      livemode: isLivePayment(intent.mode, intent.executionCluster),
       created: Math.floor(intent.createdAt.getTime() / 1000),
       metadata: intent.metadata ?? null,
     };

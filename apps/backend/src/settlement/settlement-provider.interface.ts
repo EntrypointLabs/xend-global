@@ -17,7 +17,13 @@ export const SETTLEMENT_PROVIDERS = Symbol('SettlementProviders');
  * ships the Blockradar adapter by APPENDING it to the SETTLEMENT_PROVIDERS
  * factory array, not by extending this type.
  */
-export type SettlementProviderName = 'direct_usdc' | 'blockradar';
+export type SettlementProviderName = 'direct_usdc' | 'blockradar' | 'paj';
+
+/** A Nigerian bank account a naira settlement is paid out to. */
+export interface SettlementBankAccount {
+  bankCode: string;
+  accountNumber: string;
+}
 
 export interface SettlementProviderCapabilities {
   provider: SettlementProviderName;
@@ -38,7 +44,7 @@ export interface ProvisionedSettlementEndpoint {
   /** Opaque provider reference (Blockradar child-address id, or the direct-USDC token account id). */
   providerReference: string;
   /**
-   * Attribution root the address is enumerable from (Xend authority for
+   * Attribution root the address is enumerable from (Prydd authority for
    * direct-USDC, master wallet for Blockradar); null when a merchant-own
    * address is merely recorded.
    */
@@ -71,6 +77,7 @@ export interface SettlementProvider {
   provision(params: {
     merchantId: string;
     merchantAddress?: string;
+    bankAccount?: SettlementBankAccount;
   }): Promise<ProvisionedSettlementEndpoint>;
 
   /**

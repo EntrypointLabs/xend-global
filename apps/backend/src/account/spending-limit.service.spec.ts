@@ -4,7 +4,7 @@ import {
   deriveAccountAddresses,
   derivePolicyAddress,
   type SpendingLimit,
-} from '@xend/smart-account';
+} from '@prydd/smart-account';
 
 import { SPENDING_LIMIT_POLICY_SEED } from './account.interface';
 import type { SpendChain } from './account.interface';

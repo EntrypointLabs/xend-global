@@ -92,8 +92,8 @@ export default function RestoreDeviceScreen() {
             className="mt-3 text-center text-base leading-6 text-black/40"
           >
             {activeAt
-              ? `It finishes on ${when(activeAt)}. Open Xend after that and this phone takes over as your Device Key.`
-              : "It finishes after a one day security delay. Open Xend after that and this phone takes over as your Device Key."}
+              ? `It finishes on ${when(activeAt)}. Open Prydd after that and this phone takes over as your Device Key.`
+              : "It finishes after a one day security delay. Open Prydd after that and this phone takes over as your Device Key."}
           </Typography>
           <Typography
             weight="400"
@@ -166,7 +166,7 @@ export default function RestoreDeviceScreen() {
               weight="500"
               className="mt-6 text-lg leading-7 text-black"
             >
-              Your Device Key lives on the phone you set Xend up with, and it
+              Your Device Key lives on the phone you set Prydd up with, and it
               cannot be copied here.
             </Typography>
 

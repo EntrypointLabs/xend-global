@@ -1,21 +1,22 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
-  Keyboard,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
-  TouchableWithoutFeedback,
+  TextInput,
   View,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { AccountSetupModal } from "@/components/ui/organisms/modals/AccountSetupModal";
-import { ThemedTextInput } from "@/components/ui/molecules";
+import {
+  THEMED_TEXT_INPUT_HEIGHT,
+  ThemedTextInput,
+} from "@/components/ui/molecules/ThemedTextInput";
 import { ScreenVerificationCodeInput } from "@/components/ui/organisms";
 import { WithScreenTheme } from "@/components/WithScreenTheme";
 import { useAccountSetup } from "@/hooks/useAccountSetup";
@@ -25,6 +26,16 @@ import { hardwareKey } from "@/modules/hardware-key/src";
 import { Email } from "@/types/Auth";
 import { apiClient, apiErrorCode, apiErrorStatus } from "@/utils/apiClient";
 import { cn } from "@/utils/cn";
+import { AuthAtmosphere } from "@/components/ui/molecules/AuthAtmosphere";
+import {
+  AUTH_BRAND_BLUE,
+  AUTH_CANVAS,
+  AUTH_CTA,
+  AUTH_CTA_LABEL,
+} from "@/constants/Colors";
+
+/** Auth primary pills: `h-14` / former `p-4` target — same as the email field. */
+const AUTH_CTA_HEIGHT = THEMED_TEXT_INPUT_HEIGHT;
 
 /**
  * The email door: the address a Consumer is reached at, proved by a code,
@@ -61,6 +72,7 @@ function AddEmailScreen() {
   const { intent } = useLocalSearchParams<{ intent?: string }>();
   const [step, setStep] = useState<Step>("address");
   const [value, setValue] = useState("");
+  const emailInputRef = useRef<TextInput>(null);
   /**
    * The address a code went to, held apart from the input so the code step
    * confirms what was actually mailed rather than whatever the field says by
@@ -100,6 +112,14 @@ function AddEmailScreen() {
       cancelled = true;
     };
   }, [step, hasDeviceKey]);
+
+  // Focus after navigation settle — autoFocus alone often misses the push
+  // from login's "Continue with email".
+  useEffect(() => {
+    if (step !== "address") return;
+    const t = setTimeout(() => emailInputRef.current?.focus(), 120);
+    return () => clearTimeout(t);
+  }, [step]);
   const {
     stage: setupStage,
     error: setupError,
@@ -107,6 +127,7 @@ function AddEmailScreen() {
     clearError: clearSetupError,
   } = useAccountSetup();
 
+  const insets = useSafeAreaInsets();
   const signedIn = isAuthenticated === true;
   const done = () => router.replace("/(tabs)");
   const finishEntry = () => {
@@ -115,6 +136,19 @@ function AddEmailScreen() {
     } else {
       done();
     }
+  };
+
+  /** Address-step escape: back to login, cancel, or sign out — never trap. */
+  const leaveAddressStep = () => {
+    if (!signedIn) {
+      router.replace("/(auth)/login");
+      return;
+    }
+    if (onFile) {
+      done();
+      return;
+    }
+    void logout();
   };
 
   /**
@@ -142,7 +176,7 @@ function AddEmailScreen() {
       // which a failed or abandoned sign-up leaves behind. Named, because the
       // picker shows it beside the real one and calls both the same thing.
       setError(
-        "That passkey is not on any Xend account. It is left over from an earlier sign-up. Try again and pick another."
+        "That passkey is not on any Prydd account. It is left over from an earlier sign-up. Try again and pick another."
       );
     } else if (outcome === "no-passkey") {
       setError(
@@ -264,280 +298,269 @@ function AddEmailScreen() {
   };
 
   const disabled = saving || !value.trim();
+  const addressLeaveLabel = !signedIn
+    ? "Back to login"
+    : onFile
+      ? "Cancel"
+      : "Sign out";
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <View className="flex-1">
-        <GradientBackground />
+    <View className="flex-1" style={{ backgroundColor: AUTH_CANVAS }}>
+      <AuthAtmosphere variant="quiet" />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        className="flex-1"
+      >
+        <View className="flex-1">
+          <View className="px-5" style={{ paddingTop: insets.top + 8 }}>
+            {step === "address" ? (
+              <HapticPressable
+                onPress={leaveAddressStep}
+                disabled={saving}
+                feedback="selection"
+                className="size-10 items-center justify-center rounded-full bg-white/10"
+                accessibilityLabel={addressLeaveLabel}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name={!signedIn ? "chevron-back" : "close"}
+                  size={22}
+                  color="#FFFFFF"
+                />
+              </HapticPressable>
+            ) : step === "code" || step === "passkey" ? (
+              <HapticPressable
+                onPress={editAddress}
+                disabled={saving || creatingPasskey}
+                feedback="selection"
+                className="size-10 items-center justify-center rounded-full bg-white/10"
+                accessibilityLabel="Use a different address"
+                hitSlop={8}
+              >
+                <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+              </HapticPressable>
+            ) : (
+              <View className="size-10" />
+            )}
+          </View>
 
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          className="flex-1"
-        >
-          <ScrollView
-            className="flex-1"
-            contentContainerClassName="flex-grow"
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            bounces={false}
+          <View
+            className="flex-1 justify-end px-8"
+            style={{ paddingBottom: Math.max(insets.bottom, 16) + 24 }}
           >
-            <View className="flex-1 justify-end px-8 py-16">
-              <Typography weight="600" className="mb-3 text-3xl text-white">
-                {step === "address"
-                  ? signedIn
-                    ? "Add your email"
-                    : "What's your email?"
-                  : step === "code"
-                    ? "Check your email"
-                    : step === "unlock"
-                      ? "Use your passkey"
-                      : "Create your passkey"}
-              </Typography>
+            <Typography
+              weight="600"
+              className={cn(
+                "text-3xl text-white",
+                step === "address" ? "mb-8" : "mb-3"
+              )}
+            >
+              {step === "address"
+                ? signedIn
+                  ? "Add your email"
+                  : "What's your email?"
+                : step === "code"
+                  ? "Check your email"
+                  : step === "unlock"
+                    ? "Use your passkey"
+                    : "Create your passkey"}
+            </Typography>
+            {step !== "address" && (
               <Typography
                 weight="400"
-                className="mb-8 text-base leading-6 text-[#8FE5F6]"
+                className="mb-8 text-base leading-6 text-white/50"
               >
-                {step === "address"
-                  ? "For receipts and security alerts, and how your account comes back if you lose this phone. It is not how you sign in: that is your passkey."
-                  : step === "code"
-                    ? `We sent a six-digit code to ${claimed}. Enter it to prove this inbox is yours.`
-                    : step === "unlock"
-                      ? `${claimed} is open to look at. Your passkey is what unlocks sending and key changes.`
-                      : "Your passkey is what signs you in. It lives in your phone's password manager, so there is nothing to remember."}
+                {step === "code"
+                  ? `We sent a six-digit code to ${claimed}. Enter it to prove this inbox is yours.`
+                  : step === "unlock"
+                    ? `${claimed} is open to look at. Your passkey is what unlocks sending and key changes.`
+                    : "Your passkey is what signs you in. It lives in your phone's password manager, so there is nothing to remember."}
               </Typography>
+            )}
 
-              {step === "code" ? (
-                // The same six boxes everywhere a code is typed, so a code
-                // looks like a code across the product. It submits on the
-                // sixth digit, which is why there is no separate button.
-                <ScreenVerificationCodeInput
-                  key={claimed}
-                  onCodeComplete={confirmCode}
-                />
-              ) : step === "address" ? (
-                <ThemedTextInput
-                  value={value}
-                  onChangeText={(text) => {
-                    setValue(text);
-                    setError(null);
-                  }}
-                  placeholder="you@example.com"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="email"
-                  error={!!error}
-                  onSubmitEditing={requestCode}
-                  returnKeyType="go"
-                  editable={!saving}
-                />
-              ) : null}
+            {step === "code" ? (
+              // The same six boxes everywhere a code is typed, so a code
+              // looks like a code across the product. It submits on the
+              // sixth digit, which is why there is no separate button.
+              <ScreenVerificationCodeInput
+                key={claimed}
+                onCodeComplete={confirmCode}
+              />
+            ) : step === "address" ? (
+              <ThemedTextInput
+                ref={emailInputRef}
+                value={value}
+                onChangeText={(text) => {
+                  setValue(text);
+                  setError(null);
+                }}
+                placeholder="you@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                textContentType="emailAddress"
+                error={!!error}
+                onSubmitEditing={requestCode}
+                returnKeyType="go"
+                editable={!saving}
+                autoFocus
+              />
+            ) : null}
 
-              {error && (
-                <Typography weight="400" className="mt-2 text-sm text-red-400">
-                  {error}
-                </Typography>
-              )}
-              {(step === "passkey" || step === "unlock") && passkeyError && (
-                <Typography weight="400" className="mb-2 text-sm text-red-400">
-                  {passkeyError}
-                </Typography>
-              )}
+            {error && (
+              <Typography weight="400" className="mt-2 text-sm text-red-400">
+                {error}
+              </Typography>
+            )}
+            {(step === "passkey" || step === "unlock") && passkeyError && (
+              <Typography weight="400" className="mb-2 text-sm text-red-400">
+                {passkeyError}
+              </Typography>
+            )}
 
-              {step === "address" && (
-                <HapticPressable
-                  onPress={requestCode}
-                  disabled={disabled}
-                  className={cn(
-                    "mt-6 items-center justify-center rounded-full bg-white p-4",
-                    disabled && "opacity-50"
-                  )}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#000" />
-                  ) : (
-                    <Typography weight="600" className="text-lg text-black">
-                      Send me a code
-                    </Typography>
-                  )}
-                </HapticPressable>
-              )}
-
-              {step === "code" && saving && (
-                <View className="mt-2 items-center p-4">
-                  <ActivityIndicator color="#FFF" />
-                </View>
-              )}
-
-              {step === "unlock" && (
-                <>
-                  <HapticPressable
-                    onPress={() => entryUserId && unlock(entryUserId)}
-                    disabled={creatingPasskey}
-                    className={cn(
-                      "w-full flex-row items-center justify-center gap-4 rounded-full bg-white p-4",
-                      creatingPasskey && "opacity-50"
-                    )}
+            {step === "address" && (
+              <HapticPressable
+                onPress={requestCode}
+                disabled={disabled}
+                className={cn(
+                  "mt-6 h-14 items-center justify-center rounded-full px-4",
+                  disabled && "opacity-50"
+                )}
+                style={{
+                  backgroundColor: AUTH_CTA,
+                  height: AUTH_CTA_HEIGHT,
+                }}
+              >
+                {saving ? (
+                  <ActivityIndicator color={AUTH_CTA_LABEL} />
+                ) : (
+                  <Typography
+                    weight="600"
+                    className="text-lg"
+                    style={{ color: AUTH_CTA_LABEL }}
                   >
-                    <Ionicons
-                      name="finger-print-outline"
-                      size={22}
-                      color="#000000"
-                    />
-                    <Typography weight="600" className="text-lg text-black">
-                      {creatingPasskey ? "Waiting…" : "Use passkey"}
-                    </Typography>
-                  </HapticPressable>
-                  {hasDeviceKey ? (
-                    <HapticPressable
-                      onPress={() =>
-                        router.replace("/(tabs)/settings/replace-passkey")
-                      }
-                      disabled={creatingPasskey}
-                      className="mt-4 items-center p-2"
-                    >
-                      <Typography weight="500" className="text-base text-white">
-                        {"I don't have a passkey for this account"}
-                      </Typography>
-                    </HapticPressable>
-                  ) : hasDeviceKey === false ? (
-                    <Typography
-                      weight="400"
-                      className="mt-4 px-2 text-center text-sm leading-5 text-white/70"
-                    >
-                      No passkey for this account on this phone? Recover from
-                      the phone that has your Account, or with a second Recovery
-                      Key.
-                    </Typography>
-                  ) : null}
-                  <HapticPressable
-                    onPress={finishEntry}
-                    disabled={creatingPasskey}
-                    className="mt-1 items-center p-2"
-                  >
-                    <Typography
-                      weight="500"
-                      className="text-base text-white/70"
-                    >
-                      Just look around for now
-                    </Typography>
-                  </HapticPressable>
-                </>
-              )}
+                    Send me a code
+                  </Typography>
+                )}
+              </HapticPressable>
+            )}
 
-              {step === "passkey" && (
+            {step === "code" && saving && (
+              <View className="mt-2 items-center p-4">
+                <ActivityIndicator color="#FFF" />
+              </View>
+            )}
+
+            {step === "unlock" && (
+              <>
                 <HapticPressable
-                  onPress={createPasskey}
+                  onPress={() => entryUserId && unlock(entryUserId)}
                   disabled={creatingPasskey}
                   className={cn(
-                    "w-full flex-row items-center justify-center gap-4 rounded-full bg-white p-4",
+                    "h-14 w-full flex-row items-center justify-center gap-4 rounded-full px-4",
                     creatingPasskey && "opacity-50"
                   )}
+                  style={{
+                    backgroundColor: AUTH_CTA,
+                    height: AUTH_CTA_HEIGHT,
+                  }}
                 >
                   <Ionicons
                     name="finger-print-outline"
                     size={22}
-                    color="#000000"
+                    color={AUTH_CTA_LABEL}
                   />
-                  <Typography weight="600" className="text-lg text-black">
-                    {creatingPasskey
-                      ? "Creating…"
-                      : passkeyError
-                        ? "Try again"
-                        : "Create passkey"}
-                  </Typography>
-                </HapticPressable>
-              )}
-
-              {step === "unlock" ? null : step === "code" ||
-                step === "passkey" ? (
-                <HapticPressable
-                  onPress={editAddress}
-                  disabled={saving || creatingPasskey}
-                  className="mt-4 items-center p-2"
-                >
-                  <Typography weight="500" className="text-base text-white">
-                    Use a different address
-                  </Typography>
-                </HapticPressable>
-              ) : !signedIn ? (
-                <HapticPressable
-                  onPress={() => router.replace("/(auth)/login")}
-                  disabled={saving}
-                  className="mt-4 items-center p-2"
-                >
-                  <Typography weight="500" className="text-base text-white">
-                    Back
-                  </Typography>
-                </HapticPressable>
-              ) : onFile ? (
-                // Reached deliberately by somebody who already has an address,
-                // so there is nothing to insist on and leaving is free.
-                <HapticPressable
-                  onPress={done}
-                  disabled={saving}
-                  className="mt-4 items-center p-2"
-                >
-                  <Typography weight="500" className="text-base text-white">
-                    Cancel
-                  </Typography>
-                </HapticPressable>
-              ) : (
-                // The escape, and deliberately not a skip. Somebody who cannot
-                // receive mail at any address they hold should leave with no
-                // account rather than with one nobody can ever recover.
-                <HapticPressable
-                  onPress={logout}
-                  disabled={saving}
-                  className="mt-4 items-center p-2"
-                >
                   <Typography
-                    weight="500"
-                    className="text-base text-white/70 underline"
+                    weight="600"
+                    className="text-lg"
+                    style={{ color: AUTH_CTA_LABEL }}
                   >
-                    Sign out
+                    {creatingPasskey ? "Waiting…" : "Use passkey"}
                   </Typography>
                 </HapticPressable>
-              )}
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+                {hasDeviceKey ? (
+                  <HapticPressable
+                    onPress={() =>
+                      router.replace("/(tabs)/settings/replace-passkey")
+                    }
+                    disabled={creatingPasskey}
+                    className="mt-4 items-center p-2"
+                  >
+                    <Typography weight="500" className="text-base text-white">
+                      {"I don't have a passkey for this account"}
+                    </Typography>
+                  </HapticPressable>
+                ) : hasDeviceKey === false ? (
+                  <Typography
+                    weight="400"
+                    className="mt-4 px-2 text-center text-sm leading-5 text-white/70"
+                  >
+                    No passkey for this account on this phone? Recover from the
+                    phone that has your Account, or with a second Recovery Key.
+                  </Typography>
+                ) : null}
+                <HapticPressable
+                  onPress={finishEntry}
+                  disabled={creatingPasskey}
+                  className="mt-1 items-center p-2"
+                >
+                  <Typography weight="500" className="text-base text-white/70">
+                    Just look around for now
+                  </Typography>
+                </HapticPressable>
+              </>
+            )}
 
-        <AccountSetupModal
-          visible={settingUpAccount}
-          stage={setupStage}
-          error={setupError}
-          onStart={onRunAccountSetup}
-          onRetry={onRunAccountSetup}
-          onSkip={onSkipAccountSetup}
-        />
-      </View>
-    </TouchableWithoutFeedback>
+            {step === "passkey" && (
+              <HapticPressable
+                onPress={createPasskey}
+                disabled={creatingPasskey}
+                className={cn(
+                  "h-14 w-full flex-row items-center justify-center gap-4 rounded-full px-4",
+                  creatingPasskey && "opacity-50"
+                )}
+                style={{
+                  backgroundColor: AUTH_CTA,
+                  height: AUTH_CTA_HEIGHT,
+                }}
+              >
+                <Ionicons
+                  name="finger-print-outline"
+                  size={22}
+                  color={AUTH_CTA_LABEL}
+                />
+                <Typography
+                  weight="600"
+                  className="text-lg"
+                  style={{ color: AUTH_CTA_LABEL }}
+                >
+                  {creatingPasskey
+                    ? "Creating…"
+                    : passkeyError
+                      ? "Try again"
+                      : "Create passkey"}
+                </Typography>
+              </HapticPressable>
+            )}
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+
+      <AccountSetupModal
+        visible={settingUpAccount}
+        stage={setupStage}
+        error={setupError}
+        onStart={onRunAccountSetup}
+        onRetry={onRunAccountSetup}
+        onSkip={onSkipAccountSetup}
+      />
+    </View>
   );
 }
 
-const GradientBackground = () => (
-  <>
-    <Image
-      source={require("@/assets/images/onboarding/blue-blur-1.png")}
-      className="absolute bottom-[58px] left-0 h-[468px] w-full"
-      resizeMode="stretch"
-    />
-    <Image
-      source={require("@/assets/images/onboarding/blue-blur-2.png")}
-      className="absolute bottom-[-17px] left-0 h-[468px] w-full"
-      resizeMode="cover"
-    />
-    <Image
-      source={require("@/assets/images/onboarding/blue-blur-3.png")}
-      className="absolute bottom-[-134px] left-0 h-[468px] w-full"
-      resizeMode="cover"
-    />
-  </>
-);
-
 export default WithScreenTheme(AddEmailScreen, {
-  backgroundColor: "#000000",
+  backgroundColor: AUTH_CANVAS,
   textColor: "#FFFFFF",
-  primaryColor: "#FFFFFF",
+  primaryColor: AUTH_BRAND_BLUE,
 });

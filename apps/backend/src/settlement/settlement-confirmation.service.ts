@@ -57,6 +57,7 @@ export class SettlementConfirmationService implements OnModuleInit {
   private readonly logger = new Logger(SettlementConfirmationService.name);
   private pollIntervalMs!: number;
   private budgetMs!: number;
+  private executionCluster!: string;
 
   constructor(
     private readonly db: DbService,
@@ -75,6 +76,7 @@ export class SettlementConfirmationService implements OnModuleInit {
     this.budgetMs = this.config.getOrThrow<number>(
       'SETTLEMENT_CONFIRM_BUDGET_MS',
     );
+    this.executionCluster = this.config.getOrThrow<string>('SOLANA_CLUSTER');
   }
 
   /**
@@ -436,6 +438,7 @@ export class SettlementConfirmationService implements OnModuleInit {
         ON o.signature = pa.tx_signature AND o.direction = 'settlement'
       WHERE pa.status = 'succeeded'
         AND pi.status = 'settling'
+        AND pi.execution_cluster = ${this.executionCluster}
         AND (p.id IS NULL OR o.id IS NULL)
         AND pa.tx_signature IS NOT NULL
         AND pa.updated_at < (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${CLAIM_RESUME_AFTER_SECONDS}`)} seconds'
@@ -467,7 +470,10 @@ export class SettlementConfirmationService implements OnModuleInit {
         pa.updated_at < (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${BLOCKHASH_EXPIRY_SECONDS}`)} seconds'
           AS "expired"
       FROM payment_attempts pa
-      WHERE pa.status = 'settling' AND pa.tx_signature IS NOT NULL
+      JOIN payment_intents pi ON pi.id = pa.intent_id
+      WHERE pa.status = 'settling'
+        AND pi.execution_cluster = ${this.executionCluster}
+        AND pa.tx_signature IS NOT NULL
       ORDER BY pa.updated_at ASC
       LIMIT ${sql.raw(`${REAP_BATCH}`)}
     `)) as unknown as {
@@ -506,6 +512,7 @@ export class SettlementConfirmationService implements OnModuleInit {
       FROM payment_attempts pa
       JOIN payment_intents pi ON pi.id = pa.intent_id
       WHERE pa.status = 'authorized'
+        AND pi.execution_cluster = ${this.executionCluster}
         AND pa.updated_at < (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${BLOCKHASH_EXPIRY_SECONDS}`)} seconds'
       ORDER BY pa.updated_at ASC
       LIMIT ${sql.raw(`${REAP_BATCH}`)}
@@ -519,90 +526,63 @@ export class SettlementConfirmationService implements OnModuleInit {
       }[];
     };
     for (const row of rows.rows) {
-      // Refinement (crash+landed sub-case): if the attempt was pinned (has a
-      // message) but never got a signature, its broadcast may have landed
-      // under a signature we never recorded. Before silently freeing the
-      // index, check the endpoint for a confirmed inbound transfer of the
-      // exact amount inside the window; on a hit reap with a distinct code +
-      // an ops alert. Accepted pilot-ops residual: an authority-owned endpoint
-      // is shared by owner, so this heuristic is amount-and-window scoped, not
-      // signature-exact.
-      const orphanSuspected =
-        row.messageBase64 != null &&
-        (await this.hasSuspectedOrphanInbound(
-          row.merchantId,
-          row.usdcSettlementRaw,
-        ));
-      const code = orphanSuspected
-        ? 'ATTEMPT_ORPHAN_SUSPECTED'
-        : 'ATTEMPT_ABANDONED';
-      const reaped = (await this.db.client.execute(sql`
+      await this.db.withAdvisoryLock(
+        `payment-submit:${row.intentId}`,
+        async () => {
+          // Once a signed message may have escaped, missing indexed activity is
+          // not evidence of non-payment. Quarantine every pinned/no-signature
+          // attempt for reconciliation by ops; never emit a false payment.failed
+          // based on an amount/window heuristic or RPC lag.
+          const orphanSuspected = row.messageBase64 != null;
+          const code = orphanSuspected
+            ? 'ATTEMPT_ORPHAN_SUSPECTED'
+            : 'ATTEMPT_ABANDONED';
+          const reaped = (await this.db.client.execute(sql`
         UPDATE payment_attempts
         SET status = 'failed',
             failure_reason = ${JSON.stringify({ code })},
             updated_at = NOW()
         WHERE id = ${row.id} AND status = 'authorized'
+          AND message_base64 IS NOT DISTINCT FROM ${row.messageBase64}
       `)) as unknown as { rowCount: number };
-      if (reaped.rowCount === 0) continue;
-      if (orphanSuspected) {
-        // Money may have landed under a signature we never recorded: leave the
-        // intent `authorized` for ops to resolve manually. Auto-failing here
-        // could tell the merchant the payment failed after they were paid.
-        this.logger.warn(
-          `settlement.reap.orphan_suspected attempt_id=${row.id} intent_id=${row.intentId} merchant_id=${row.merchantId} amount_raw=${row.usdcSettlementRaw}`,
-        );
-      } else {
-        // Clean abandonment: free the parent intent so it is not stranded
-        // `authorized` with no live attempt (which authorize() cannot re-enter,
-        // leaving the checkout permanently stuck). Move it to terminal `failed`
-        // and notify the merchant. A conditional transition tolerates a race
-        // with any concurrent terminal write.
-        try {
-          await this.intents.transition(
-            row.intentId,
-            'authorized',
-            'failed',
-            {},
+          if (reaped.rowCount === 0) return;
+          if (orphanSuspected) {
+            // Money may have landed under a signature we never recorded: leave the
+            // intent `authorized` for ops to resolve manually. Auto-failing here
+            // could tell the merchant the payment failed after they were paid.
+            this.logger.warn(
+              `settlement.reap.orphan_suspected attempt_id=${row.id} intent_id=${row.intentId} merchant_id=${row.merchantId} amount_raw=${row.usdcSettlementRaw}`,
+            );
+          } else {
+            // Clean abandonment: free the parent intent so it is not stranded
+            // `authorized` with no live attempt (which authorize() cannot re-enter,
+            // leaving the checkout permanently stuck). Move it to terminal `failed`
+            // and notify the merchant. A conditional transition tolerates a race
+            // with any concurrent terminal write.
+            try {
+              await this.intents.transition(
+                row.intentId,
+                'authorized',
+                'failed',
+                {},
+              );
+              settlementConfirmations.inc({ outcome: 'timed_out' });
+              await this.events.publish({
+                topic: 'payment.failed',
+                key: row.intentId,
+                payload: { intentId: row.intentId, reason: code },
+                correlationId: row.intentId,
+              });
+            } catch (err) {
+              if (!(err instanceof IntentStateConflictError)) throw err;
+            }
+          }
+          this.logger.log(
+            `settlement.reap attempt_id=${row.id} intent_id=${row.intentId} reason=${code}`,
           );
-          settlementConfirmations.inc({ outcome: 'timed_out' });
-          await this.events.publish({
-            topic: 'payment.failed',
-            key: row.intentId,
-            payload: { intentId: row.intentId, reason: code },
-            correlationId: row.intentId,
-          });
-        } catch (err) {
-          if (!(err instanceof IntentStateConflictError)) throw err;
-        }
-      }
-      this.logger.log(
-        `settlement.reap attempt_id=${row.id} intent_id=${row.intentId} reason=${code}`,
+        },
       );
     }
-  }
-
-  private async hasSuspectedOrphanInbound(
-    merchantId: string,
-    amountRaw: string,
-  ): Promise<boolean> {
-    let endpoint: string;
-    try {
-      ({ address: endpoint } =
-        await this.provisioning.getSettlementAddressForSettlement(merchantId));
-    } catch {
-      return false;
-    }
-    const hit = (await this.db.client.execute(sql`
-      SELECT 1
-      FROM transfers
-      WHERE to_address = ${endpoint}
-        AND amount_raw = ${amountRaw}
-        AND status = 'CONFIRMED'
-        AND kind = 'transfer'
-        AND confirmed_at > (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${BLOCKHASH_EXPIRY_SECONDS}`)} seconds'
-      LIMIT 1
-    `)) as unknown as { rows: unknown[] };
-    return hit.rows.length > 0;
   }
 
   /**

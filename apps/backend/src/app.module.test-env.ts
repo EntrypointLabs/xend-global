@@ -8,7 +8,7 @@
  */
 export const APP_MODULE_TEST_ENV: Record<string, string> = {
   NODE_ENV: 'test',
-  DATABASE_URL: 'postgres://user:pass@localhost:5432/xend_test',
+  DATABASE_URL: 'postgres://user:pass@localhost:5432/prydd_test',
   JWT_SECRET: 'test-jwt-secret',
   PRIVY_APP_ID: 'test-privy-app-id',
   PRIVY_APP_SECRET: 'test-privy-app-secret',

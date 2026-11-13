@@ -1,5 +1,6 @@
 import {
   AddressLookupTableAccount,
+  ComputeBudgetProgram,
   Keypair,
   PublicKey,
   SystemProgram,
@@ -406,6 +407,112 @@ describe("describeTransaction: spends", () => {
       if (described.kind !== "spend") throw new Error("not a spend");
       expect(described.destination?.equals(destination)).toBe(true);
     });
+  });
+});
+
+describe("describeTransaction: priority fees", () => {
+  const PACKET_DATA_SIZE = 1232;
+  const priorityFee = ComputeBudgetProgram.setComputeUnitPrice({
+    microLamports: 1_000_000,
+  });
+
+  const provisioning = () => {
+    const { propose, policies } = buildProvisionAccount({
+      addresses,
+      spendingLimitSeed: 1n,
+      aboveLimitSeed: 2n,
+      terms,
+      primary,
+      approval,
+      proposer: primary,
+      rentPayer: feePayer,
+      transactionIndex: 1n,
+      timeLockSeconds: SETTINGS_TIME_LOCK_SECONDS,
+    });
+    return [
+      priorityFee,
+      ...propose,
+      buildApproveSettingsChange({
+        addresses,
+        transactionIndex: 1n,
+        signer: primary,
+      }),
+      buildApproveSettingsChange({
+        addresses,
+        transactionIndex: 1n,
+        signer: approval,
+      }),
+      buildExecuteSettingsChange({
+        addresses,
+        transactionIndex: 1n,
+        signer: primary,
+        rentPayer: feePayer,
+        policies,
+      }),
+    ];
+  };
+
+  const primaryRotation = () =>
+    buildRotatePrimarySigner({
+      addresses,
+      oldPrimary: primary,
+      newPrimary: key(),
+      approval,
+      signers: [
+        { key: primary, permissions: { mask: ROLE_PERMISSIONS.primary } },
+        { key: approval, permissions: { mask: ROLE_PERMISSIONS.approval } },
+        { key: recovery, permissions: { mask: ROLE_PERMISSIONS.recovery } },
+      ],
+      spendingLimitSeed: 1n,
+      currentLimit: {
+        policy: spendingLimitPolicy,
+        mint: USDC,
+        maxPerUse: 100_000_000n,
+        maxPerPeriod: 100_000_000n,
+        remainingInPeriod: 40_000_000n,
+        period: "Daily",
+        destinations: [],
+      },
+      aboveLimitSeed: 2n,
+      proposer: approval,
+      rentPayer: feePayer,
+      transactionIndex: 8n,
+    }).propose;
+
+  it("reads a spend past its priority fee", () => {
+    const destination = key();
+    const tx = compile([
+      priorityFee,
+      buildSpend({
+        addresses,
+        request: { mint: USDC, amount: 2_500_000n, destination },
+        route: { kind: "spending-limit", policy: spendingLimitPolicy },
+        signers: [primary],
+        decimals: 6,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      }),
+    ]);
+    expect(describeTransaction(tx, context)).toMatchObject({
+      kind: "spend",
+      route: "spending-limit",
+      amount: 2_500_000n,
+    });
+  });
+
+  it("reads a settings change past its priority fee", () => {
+    expect(describeTransaction(compile(provisioning()), context)).toMatchObject(
+      { kind: "settings", transactionIndex: 1n },
+    );
+  });
+
+  it("keeps the largest transactions inside a packet with a fee on them", () => {
+    for (const instructions of [
+      provisioning(),
+      [priorityFee, ...primaryRotation()],
+    ]) {
+      const bytes = Buffer.from(compile(instructions), "base64").length;
+      expect(bytes).toBeLessThanOrEqual(PACKET_DATA_SIZE);
+    }
   });
 });
 

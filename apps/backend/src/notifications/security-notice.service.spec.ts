@@ -169,7 +169,7 @@ describe('SecurityNoticeService', () => {
     expect(sentMails(mailer)).toEqual([
       expect.objectContaining({
         to: 'consumer@example.com',
-        subject: 'A recovery key was added to your Xend account',
+        subject: 'A recovery key was added to your Prydd account',
       }),
     ]);
   });
@@ -249,8 +249,8 @@ describe('SecurityNoticeService', () => {
 
     const [own, unknown] = sentMessages(sender);
     expect(own.title).toBe('Your recovery key change is on its way');
-    expect(unknown.title).toBe('Check your Xend account');
-    expect(unknown.body).toContain('open Xend and reject it');
+    expect(unknown.title).toBe('Check your Prydd account');
+    expect(unknown.body).toContain('open Prydd and reject it');
   });
 
   it('says when, what, and what to do, in plain words, for every kind', async () => {

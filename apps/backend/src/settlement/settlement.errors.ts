@@ -8,6 +8,16 @@
 
 /** No registered adapter serves the requested currency/provider (e.g. an
  *  NGN Merchant before the Blockradar adapter ships in Phase 8). */
+export class FiatSettlementDisabledError extends Error {
+  readonly code = 'FIAT_SETTLEMENT_DISABLED';
+  constructor() {
+    super(
+      'Payments settle in USDC. Bank conversion and payouts are unavailable.',
+    );
+    this.name = 'FiatSettlementDisabledError';
+  }
+}
+
 export class SettlementProviderUnavailableError extends Error {
   readonly code = 'SETTLEMENT_PROVIDER_UNAVAILABLE';
   constructor(message: string) {
@@ -17,7 +27,7 @@ export class SettlementProviderUnavailableError extends Error {
 }
 
 /** The provider or endpoint cannot reverse a settlement (e.g. a recorded
- *  merchant-own address, for which Xend holds no signer). */
+ *  merchant-own address, for which Prydd holds no signer). */
 export class RefundNotSupportedError extends Error {
   readonly code = 'REFUND_NOT_SUPPORTED';
   constructor(message: string) {

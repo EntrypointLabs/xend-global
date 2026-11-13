@@ -20,6 +20,7 @@ export type ModalTheme = ButtonTheme;
 export interface ModalHandle {
   showLoading: () => void;
   showConfirm: (summary: CheckoutSummary) => void;
+  showFrame: (src: string) => HTMLIFrameElement;
   showWaiting: () => void;
   showResult: (status: CheckoutStatus) => void;
   showError: (message: string) => void;
@@ -87,6 +88,22 @@ const CSS = `
 .sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
 .spinner { width: 34px; height: 34px; margin: 20px auto; border-radius: 50%; border: 3px solid var(--field); border-top-color: var(--muted); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* The ceremony frame is an inset panel under the Prydd lockup, so it reads as
+   Prydd's own surface and never as merchant chrome. */
+.frame { display: block; width: 100%; height: min(58vh, 440px); border: 1px solid var(--fedge); border-radius: 16px; background: var(--field); }
+button:focus-visible { outline: 3px solid #80b5ff; outline-offset: 3px; }
+.sheet { max-height: calc(100dvh - 24px); overflow-y: auto; }
+.mname, .amt .v, .sub { overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) {
+  .wrap.modal .sheet, .wrap.sheetmode .sheet, .scrim { transition: none; }
+  .facebig.scan, .spinner { animation: none; }
+  .cta:not(:disabled):active { transform: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  [data-theme="light"] { --mat: #fafafc; }
+  [data-theme="dark"] { --mat: #1e1e22; }
+  .sheet, .scrim { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
 `;
 
 const FACE_ID = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--pink)" stroke-width="1.7" stroke-linecap="round" style="flex:0 0 auto"><path d="M4 8V6.5A2.5 2.5 0 016.5 4H8"/><path d="M16 4h1.5A2.5 2.5 0 0120 6.5V8"/><path d="M20 16v1.5a2.5 2.5 0 01-2.5 2.5H16"/><path d="M8 20H6.5A2.5 2.5 0 014 17.5V16"/><path d="M9 10v1M15 10v1M12 9v4l-1 1M9.5 15.5a3.5 3.5 0 005 0"/></svg>`;
@@ -138,8 +155,11 @@ function resolveTheme(theme: ModalTheme, doc: Document): "light" | "dark" {
  */
 export function openModal(opts: ModalOptions): ModalHandle {
   const { doc, theme, onConfirm, onCancel } = opts;
+  const previousFocus = doc.activeElement as HTMLElement | null;
+  let dismissible = true;
+  let closed = false;
   const host = doc.createElement("div");
-  host.setAttribute("data-xend-checkout", "");
+  host.setAttribute("data-prydd-checkout", "");
   const root = host.attachShadow({ mode: "open" });
   const style = doc.createElement("style");
   style.textContent = CSS;
@@ -150,24 +170,60 @@ export function openModal(opts: ModalOptions): ModalHandle {
   const win = doc.defaultView;
   const isMobile = (win?.innerWidth ?? 800) <= 640;
   wrap.classList.add(isMobile ? "sheetmode" : "modal");
-  wrap.innerHTML = `<div class="scrim" data-close></div><div class="stage"><section class="sheet" role="dialog" aria-modal="true" data-theme="${resolveTheme(theme, doc)}"><div class="grabber"></div><div class="body"></div></section></div>`;
+  wrap.innerHTML = `<div class="scrim" data-close></div><div class="stage"><section class="sheet" role="dialog" aria-label="Pay with Prydd" aria-modal="true" data-theme="${resolveTheme(theme, doc)}"><div class="grabber"></div><div class="body"></div></section></div>`;
   root.appendChild(wrap);
   doc.body.appendChild(host);
 
   const body = wrap.querySelector(".body") as HTMLElement;
+  const dialog = wrap.querySelector(".sheet") as HTMLElement;
+  dialog.tabIndex = -1;
+  dialog.focus({ preventScroll: true });
+  root.addEventListener("keydown", (event) => {
+    const key = event as KeyboardEvent;
+    if (key.key === "Escape" && dismissible) {
+      key.preventDefault();
+      onCancel();
+      return;
+    }
+    if (key.key !== "Tab") return;
+    const controls = Array.from(
+      body.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), a[href], iframe, [tabindex="0"]',
+      ),
+    );
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    const active = root.activeElement;
+    if (!first) {
+      key.preventDefault();
+      dialog.focus();
+    } else if (key.shiftKey && (active === first || active === dialog)) {
+      key.preventDefault();
+      last?.focus();
+    } else if (!key.shiftKey && (active === last || active === dialog)) {
+      key.preventDefault();
+      first.focus();
+    }
+  });
   requestAnimationFrame(() => wrap.classList.add("open"));
 
   const close = () => {
+    if (closed) return;
+    closed = true;
     wrap.classList.remove("open");
+    host.inert = true;
+    if (previousFocus?.isConnected)
+      previousFocus.focus({ preventScroll: true });
     win?.setTimeout(() => host.remove(), 420);
   };
   root.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
-    if (t.hasAttribute("data-close")) onCancel();
+    if (t.hasAttribute("data-close") && dismissible) onCancel();
   });
 
   const render = (html: string) => {
     body.innerHTML = html;
+    if (!root.activeElement) dialog.focus({ preventScroll: true });
   };
 
   const setText = (selector: string, value: string) => {
@@ -186,14 +242,14 @@ export function openModal(opts: ModalOptions): ModalHandle {
       // purchase into a one-tap confirm; without one the passkey ceremony runs.
       const ctaLabel = summary.sessionRecognized
         ? "Confirm and pay"
-        : "Confirm with Face ID";
+        : "Pay with passkey";
       render(`
-        <div class="head"><span class="mfav"></span><div><div class="mname"></div><div class="msub">Pay with Xend</div></div><button class="x" data-cancel aria-label="Close">✕</button></div>
+        <div class="head"><span class="mfav"></span><div><div class="mname"></div><div class="msub">Pay with Prydd</div></div><button class="x" data-cancel aria-label="Close">✕</button></div>
         <div class="amt"><div class="k">You're paying</div><div class="v"></div>${summary.itemLabel ? `<div class="s"></div>` : ""}</div>
-        <div class="src"><span class="dot"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="13" rx="2.5" stroke="var(--glyph)" stroke-width="1.7"/><path d="M3 10h18" stroke="var(--glyph)" stroke-width="1.7"/></svg></span><div><div class="t1">Xend Cash</div><div class="t2">Pay with your Xend balance</div></div></div>
+        <div class="src"><span class="dot"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="13" rx="2.5" stroke="var(--glyph)" stroke-width="1.7"/><path d="M3 10h18" stroke="var(--glyph)" stroke-width="1.7"/></svg></span><div><div class="t1">Prydd Cash</div><div class="t2">Pay with your Prydd balance</div></div></div>
         <button class="cta" data-confirm disabled>${FACE_ID}${ctaLabel}</button>
         <button class="cancel" data-cancel>Cancel</button>
-        <div class="foot"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="var(--muted2)" stroke-width="1.7"/><path d="M8 11V8a4 4 0 018 0v3" stroke="var(--muted2)" stroke-width="1.7"/></svg>Payments secured by Xend</div>`);
+        <div class="foot"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="var(--muted2)" stroke-width="1.7"/><path d="M8 11V8a4 4 0 018 0v3" stroke="var(--muted2)" stroke-width="1.7"/></svg>Payments secured by Prydd</div>`);
       // Merchant-controlled strings are written as text, never parsed as markup.
       setText(".mname", summary.merchantDisplayName);
       setText(
@@ -224,12 +280,35 @@ export function openModal(opts: ModalOptions): ModalHandle {
         root.addEventListener(e, onInteract, { once: true }),
       );
     },
-    showWaiting() {
+    showFrame(src) {
+      dismissible = false;
       render(
-        `<div class="center"><div class="facebig scan"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--glyph)" stroke-width="1.5" stroke-linecap="round"><path d="M4 8V6.5A2.5 2.5 0 016.5 4H8"/><path d="M16 4h1.5A2.5 2.5 0 0120 6.5V8"/><path d="M20 16v1.5a2.5 2.5 0 01-2.5 2.5H16"/><path d="M8 20H6.5A2.5 2.5 0 014 17.5V16"/><path d="M9 10v1.5M15 10v1.5M12 9v4l-1.2 1M9 15a4 4 0 006 0"/></svg></div><div class="title">Confirming with Face ID</div><div class="sub">Finish in the Xend window.</div></div>`,
+        `<div class="foot" style="margin:0 0 10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="var(--muted2)" stroke-width="1.7"/><path d="M8 11V8a4 4 0 018 0v3" stroke="var(--muted2)" stroke-width="1.7"/></svg>Confirming on Prydd</div>`,
+      );
+      const frame = doc.createElement("iframe");
+      frame.className = "frame";
+      frame.title = "Prydd checkout";
+      // publickey-credentials-get is what lets the passkey ceremony run in a
+      // cross-origin frame at all; allow-same-origin keeps the frame on the
+      // checkout's real origin, without which its postMessage would arrive as
+      // the "null" origin the listener rejects.
+      frame.setAttribute("allow", "publickey-credentials-get");
+      frame.setAttribute(
+        "sandbox",
+        "allow-scripts allow-forms allow-same-origin",
+      );
+      frame.src = src;
+      body.appendChild(frame);
+      return frame;
+    },
+    showWaiting() {
+      dismissible = false;
+      render(
+        `<div class="center" role="status" aria-live="polite"><div class="spinner" aria-hidden="true"></div><div class="title">Waiting for confirmation</div><div class="sub">Finish in the Prydd window.</div></div>`,
       );
     },
     showResult(status) {
+      dismissible = true;
       if (status === "succeeded") {
         render(
           `<div class="center"><div class="check"><svg width="38" height="38" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.2 4.2L19 7" stroke="#30d158" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="title">Done</div><div class="sub">Your receipt is on its way</div></div>`,
@@ -250,6 +329,7 @@ export function openModal(opts: ModalOptions): ModalHandle {
       }
     },
     showError(message) {
+      dismissible = true;
       render(
         `<div class="center"><div class="title">Something went wrong</div><div class="sub"></div><button class="cancel" data-cancel style="margin-top:14px">Close</button></div>`,
       );

@@ -3,15 +3,15 @@
 **Status:** Accepted
 **Date:** 2026-09-07
 **Accepted:** 2026-08-30
-**Deciders:** Xend founding team
+**Deciders:** Prydd founding team
 **Tags:** backend, security, ops, wallet
 
 ## Context and Problem Statement
 
 [0025](0025-account-multisig-signer-set.md) leaves `settings_authority` unset, so
-the **Account** is autonomous: nobody at Xend can cancel a staged change, rotate a
+the **Account** is autonomous: nobody at Prydd can cancel a staged change, rotate a
 signer or move a vote. [0027](0027-email-is-an-entry-point-not-a-login-method.md)
-named the one lever that does not violate that: refusal. Xend holds S3, sealed, and
+named the one lever that does not violate that: refusal. Prydd holds S3, sealed, and
 releases it only against an emailed code. Declining to release it costs nothing in
 the threat model, because declining to sign is not the same as being able to sign.
 
@@ -24,7 +24,7 @@ that stops the change reaching two approvals.
 
 ## Decision Drivers
 
-- The invariant: no single compromise may yield `threshold` signers, and no Xend
+- The invariant: no single compromise may yield `threshold` signers, and no Prydd
   override may become a fourth anchor.
 - Refusal must be asymmetric. A **Consumer** with their passkey and phone holds
   threshold without S3 and must be unaffected.
@@ -40,7 +40,7 @@ that stops the change reaching two approvals.
 1. **A per-Account freeze on S3's release, set and cleared from the console** - a
    timestamp on `users`, checked wherever the vault is about to be opened and
    wherever a rotation that needs S3 is about to be staged.
-2. **A settings authority held by Xend** - an on-chain admin key able to cancel a
+2. **A settings authority held by Prydd** - an on-chain admin key able to cancel a
    staged change directly.
 3. **Nothing** - rely on the time lock and the notification alone.
 
@@ -93,7 +93,7 @@ first because the staged change is on a clock and a lone signer cannot stop it.
 
 ### Consequences
 
-- ✅ **Good:** The one lever Xend holds costs nothing in the threat model. The
+- ✅ **Good:** The one lever Prydd holds costs nothing in the threat model. The
   freeze cannot move an anchor, cancel a change, or sign anything.
 - ✅ **Good:** The asymmetry is right. A **Consumer** holding phone and passkey is
   untouched; an attacker holding the inbox drops from one vote to none.
@@ -119,7 +119,7 @@ first because the staged change is on a clock and a lone signer cannot stop it.
 - ✅ Checked at the vault and at the start of both rotations.
 - ❌ Manual, and has to be released by hand.
 
-### A settings authority held by Xend
+### A settings authority held by Prydd
 
 - ✅ Can cancel a staged change outright.
 - ❌ An override able to move an anchor is a fourth anchor, and voids the

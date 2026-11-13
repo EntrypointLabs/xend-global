@@ -3,6 +3,16 @@ import { useColorScheme } from "react-native";
 const tintColorLight = "#0a7ea4";
 const tintColorDark = "#fff";
 
+/**
+ * PRYDD auth door (login / recover / add-email). Dark canvas with Plasma-style
+ * lifestyle atmosphere; brand blue is a faint accent only. Primary actions are
+ * white pills (black label), matching the Plasma door treatment.
+ */
+export const AUTH_BRAND_BLUE = "#3256EC";
+export const AUTH_CANVAS = "#000000";
+export const AUTH_CTA = "#FFFFFF";
+export const AUTH_CTA_LABEL = "#000000";
+
 export type ThemeProps = {
   lightColor?: string;
   darkColor?: string;

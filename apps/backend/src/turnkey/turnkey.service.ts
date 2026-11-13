@@ -207,13 +207,13 @@ export class TurnkeyService {
 
     try {
       return await this.api.createSubOrganization({
-        subOrganizationName: `xend-approval-${params.reference}`,
+        subOrganizationName: `prydd-approval-${params.reference}`,
         rootUsers: [
           {
-            userName: 'xend-delegated',
+            userName: 'prydd-delegated',
             apiKeys: [
               {
-                apiKeyName: 'xend-delegated-policy',
+                apiKeyName: 'prydd-delegated-policy',
                 publicKey: this.delegatedUserPublicKey,
                 curveType: 'API_KEY_CURVE_P256',
               },

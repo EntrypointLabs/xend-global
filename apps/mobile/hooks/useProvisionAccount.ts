@@ -7,7 +7,7 @@ import { Buffer } from "buffer";
 import { ACCOUNT_QUERY_KEY } from "@/hooks/useAccount";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
 import { assertSettings } from "@/utils/verifyTransaction";
-import { SETTINGS_TIME_LOCK_SECONDS } from "@xend/smart-account";
+import { SETTINGS_TIME_LOCK_SECONDS } from "@prydd/smart-account";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import { apiClient, type AccountResponse } from "@/utils/apiClient";
 
