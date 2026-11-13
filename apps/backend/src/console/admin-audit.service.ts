@@ -6,6 +6,7 @@ export type AdminAction =
   | 'recovery.freeze'
   | 'recovery.unfreeze'
   | 'webhook.redeliver'
+  | 'support.close'
   | 'api_key.issue'
   | 'api_key.revoke'
   | 'auth.console.failed'

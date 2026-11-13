@@ -25,6 +25,8 @@ import { PendingPaymentModule } from './payment/pending-payment.module';
 import { SessionModule } from './session/session.module';
 import { SettlementModule } from './settlement/settlement.module';
 import { FxModule } from './fx/fx.module';
+import { SupportModule } from './support/support.module';
+import { FeedbackModule } from './feedback/feedback.module';
 import { MerchantModule } from './merchant/merchant.module';
 import { CheckoutModule } from './checkout/checkout.module';
 import { WebhookModule } from './webhook/webhook.module';
@@ -73,6 +75,8 @@ const testDashboardEnabled = process.env.NODE_ENV !== 'production';
     SessionModule,
     SettlementModule,
     FxModule,
+    SupportModule,
+    FeedbackModule,
     MerchantModule,
     CheckoutModule,
     WebhookModule,
