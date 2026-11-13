@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, forwardRef, useRef } from "react";
-import { View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import {
   BottomSheetModal,
   BottomSheetView,
@@ -126,9 +126,9 @@ const RenderContent = ({
   }
 
   return (
-    <View className="flex-1 rounded-3xl">
+    <View className="flex-1 overflow-hidden rounded-3xl">
       <CameraView
-        style={{ flex: 1, height: 400, width: 400 }}
+        style={StyleSheet.absoluteFill}
         facing="back"
         barcodeScannerSettings={{
           barcodeTypes: ["qr"],

@@ -98,90 +98,96 @@ export function SpendCheckModal({
   const current = finished ? steps.length : found < 0 ? 0 : found;
 
   return (
-    <Modal visible={visible} animationType="slide" statusBarTranslucent>
-      <StatusBar style="light" />
-      {/* Fixed dark, not the app's theme: this screen is the same weight
+    <>
+      {/* Outside the Modal so the status bar stack, not the native modal, owns
+          the style and it reverts when this closes. */}
+      {visible && <StatusBar style="light" />}
+      <Modal visible={visible} animationType="slide" statusBarTranslucent>
+        {/* Fixed dark, not the app's theme: this screen is the same weight
           whichever theme the Consumer runs. The values are the dark palette's
           own, so it still reads as this app in either. */}
-      <SafeAreaView edges={["top", "bottom"]} className="flex-1 bg-black">
-        <View className="flex-1 px-6 pb-8 pt-6">
-          <Typography weight="500" className="text-white/50">
-            {heading}
-          </Typography>
-          <Typography weight="700" variant="h3" className="mt-1 text-white">
-            {amount}
-          </Typography>
-          <Typography weight="400" className="mt-1 text-white/50">
-            to {counterparty}
-          </Typography>
+        <SafeAreaView edges={["top", "bottom"]} className="flex-1 bg-black">
+          <View className="flex-1 px-6 pb-8 pt-6">
+            <Typography weight="500" className="text-white/50">
+              {heading}
+            </Typography>
+            <Typography weight="700" variant="h3" className="mt-1 text-white">
+              {amount}
+            </Typography>
+            <Typography weight="400" className="mt-1 text-white/50">
+              to {counterparty}
+            </Typography>
 
-          <View className="my-8 h-px bg-white/10" />
+            <View className="my-8 h-px bg-white/10" />
 
-          <View className="flex-1">
-            {steps.map((row, index) => {
-              const reached = index === current;
-              return (
-                <Step
-                  key={row.key}
-                  title={finished && row.key === "sending" ? "Sent" : row.title}
-                  body={
-                    reached && settled && message
-                      ? message
-                      : finished && row.key === "sending"
-                        ? "The money is on its way."
-                        : row.body
-                  }
-                  position={
-                    index < current
-                      ? "done"
-                      : reached
-                        ? settled
-                          ? state
-                          : "active"
-                        : "waiting"
-                  }
-                  last={index === steps.length - 1}
-                />
-              );
-            })}
-          </View>
+            <View className="flex-1">
+              {steps.map((row, index) => {
+                const reached = index === current;
+                return (
+                  <Step
+                    key={row.key}
+                    title={
+                      finished && row.key === "sending" ? "Sent" : row.title
+                    }
+                    body={
+                      reached && settled && message
+                        ? message
+                        : finished && row.key === "sending"
+                          ? "The money is on its way."
+                          : row.body
+                    }
+                    position={
+                      index < current
+                        ? "done"
+                        : reached
+                          ? settled
+                            ? state
+                            : "active"
+                          : "waiting"
+                    }
+                    last={index === steps.length - 1}
+                  />
+                );
+              })}
+            </View>
 
-          {settled ? (
-            <View className="gap-3">
-              {onRetry && (
+            {settled ? (
+              <View className="gap-3">
+                {onRetry && (
+                  <HapticPressable
+                    onPress={onRetry}
+                    className="w-full items-center justify-center rounded-full bg-white py-4"
+                  >
+                    <Typography weight="600" className="text-base text-black">
+                      Try again
+                    </Typography>
+                  </HapticPressable>
+                )}
                 <HapticPressable
-                  onPress={onRetry}
-                  className="w-full items-center justify-center rounded-full bg-white py-4"
+                  onPress={onDismiss}
+                  feedback="selection"
+                  className="w-full items-center justify-center py-3"
                 >
-                  <Typography weight="600" className="text-base text-black">
-                    Try again
+                  <Typography weight="500" className="text-sm text-white/50">
+                    Not now
                   </Typography>
                 </HapticPressable>
-              )}
-              <HapticPressable
-                onPress={onDismiss}
-                feedback="selection"
-                className="w-full items-center justify-center py-3"
+              </View>
+            ) : finished ? null : (
+              // No way out while a prompt or the network has the send. Offering
+              // one would suggest the send can be called back, and once it is
+              // signed it cannot.
+              <Typography
+                weight="400"
+                className="text-center text-sm text-white/40"
               >
-                <Typography weight="500" className="text-sm text-white/50">
-                  Not now
-                </Typography>
-              </HapticPressable>
-            </View>
-          ) : finished ? null : (
-            // No way out while a prompt or the network has the send. Offering
-            // one would suggest the send can be called back, and once it is
-            // signed it cannot.
-            <Typography
-              weight="400"
-              className="text-center text-sm text-white/40"
-            >
-              Keep the app open until this finishes.
-            </Typography>
-          )}
-        </View>
-      </SafeAreaView>
-    </Modal>
+                Keep the app open until this finishes.
+              </Typography>
+            )}
+          </View>
+        </SafeAreaView>
+      </Modal>
+    </>
   );
 }
 

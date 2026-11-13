@@ -20,7 +20,12 @@ import {
 } from "@gorhom/bottom-sheet";
 import { truncateAddress } from "@/utils/helper";
 import { TextInput } from "react-native-gesture-handler";
-import { isPublicKey, isSnsName, resolveSnsName } from "@/utils/solana";
+import {
+  NameLookupError,
+  isPublicKey,
+  isSnsName,
+  resolveSnsName,
+} from "@/utils/solana";
 import { cn } from "@/utils/cn";
 import { useQuery } from "@tanstack/react-query";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -69,12 +74,10 @@ export default memo(function RecipientStep({
     enabled: Boolean(
       debouncedRecipient && !isPublicKey(debouncedRecipient) && isSns
     ),
-    retry: (count, error) => {
-      if (count > 1) return false;
-      if (error?.message === "The name account does not exist") return false;
-      return true;
-    },
-    retryDelay: 2_000,
+    retry: (count, error) =>
+      count < 2 &&
+      !(error instanceof NameLookupError && error.failure === "not-found"),
+    retryDelay: (attempt) => 1_500 * (attempt + 1),
   });
 
   const handlePaste = async () => {
@@ -133,10 +136,7 @@ export default memo(function RecipientStep({
         };
       }
       if (resolveError) {
-        const errLabel =
-          resolveError.message === "The name account does not exist"
-            ? "No matching address found"
-            : resolveError.message;
+        const errLabel = resolveError.message;
         return {
           isValid: false,
           label: errLabel,
