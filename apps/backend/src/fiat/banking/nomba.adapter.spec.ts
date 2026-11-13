@@ -7,7 +7,7 @@ const recipient = {
   accountName: 'Sandbox Recipient',
 };
 const payout = {
-  reference: 'xend-test',
+  reference: 'prydd-test',
   amountMinor: '10001',
   recipient,
   narration: 'Test',
@@ -27,7 +27,7 @@ function setup(data: unknown = record) {
   );
   return {
     transport,
-    adapter: new NombaAdapter({ senderName: 'Xend' }, transport),
+    adapter: new NombaAdapter({ senderName: 'Prydd' }, transport),
   };
 }
 describe('Nomba sandbox adapter', () => {
@@ -35,12 +35,12 @@ describe('Nomba sandbox adapter', () => {
     expect(
       () =>
         new NombaAdapter({
-          senderName: 'Xend',
+          senderName: 'Prydd',
           baseUrl: 'https://api.nomba.com',
         }),
     ).toThrow('NOMBA_PRODUCTION_DISABLED');
     expect(
-      () => new NombaAdapter({ senderName: 'Xend', accessToken: 'test' }),
+      () => new NombaAdapter({ senderName: 'Prydd', accessToken: 'test' }),
     ).toThrow('NOMBA_INCOMPLETE_AUTH');
   });
   it('sends exact minor units and never claims verified settlement', async () => {
@@ -114,7 +114,7 @@ describe('Nomba sandbox adapter', () => {
     expect((await adapter.submitPayout(payout)).providerReference).toBe(
       'provider-2',
     );
-    // Cross-request dedupe must live in the durable Xend orchestrator, never this HTTP adapter.
+    // Cross-request dedupe must live in the durable Prydd orchestrator, never this HTTP adapter.
   });
   it.each([
     ['PENDING_BILLING', 'pending'],
@@ -135,7 +135,7 @@ describe('Nomba sandbox adapter', () => {
     const { transport } = setup();
     const adapter = new NombaAdapter(
       {
-        senderName: 'Xend',
+        senderName: 'Prydd',
         accessToken: 'test-token',
         accountId: 'test-account',
       },
@@ -150,7 +150,7 @@ describe('Nomba sandbox adapter', () => {
       Authorization: 'Bearer test-token',
       accountId: 'test-account',
     });
-    expect(call[0]).toContain('merchantTxRef=xend-test');
+    expect(call[0]).toContain('merchantTxRef=prydd-test');
   });
   it('creates a static account with matching reference and pooled custody', async () => {
     const { adapter, transport } = setup({
@@ -210,7 +210,7 @@ describe('Nomba account recovery', () => {
     currency: 'NGN',
     expired: false,
     bankAccountNumber: '0123456789',
-    bankAccountName: 'Xend Sandbox',
+    bankAccountName: 'Prydd Sandbox',
     bankName: 'Nomba',
   };
   function authenticated(data: unknown) {
@@ -219,7 +219,7 @@ describe('Nomba account recovery', () => {
       transport,
       adapter: new NombaAdapter(
         {
-          senderName: 'Xend',
+          senderName: 'Prydd',
           accessToken: 'sandbox-token',
           accountId: 'sandbox-parent',
         },
@@ -290,7 +290,7 @@ describe('Nomba account recovery', () => {
         authenticated({ ...account, ...overrides }).adapter.createAccount({
           reference: 'request',
           accountReference: account.accountRef,
-          firstName: 'Xend',
+          firstName: 'Prydd',
           lastName: 'Sandbox',
           email: 'sandbox@example.com',
         }),
