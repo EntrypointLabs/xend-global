@@ -3,6 +3,7 @@ import { Modal, View, StyleSheet, Image } from "react-native";
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import Animated, { SlideInDown, SlideOutDown } from "react-native-reanimated";
 import { Typography } from "../atoms/Typography";
+import { useFeature } from "@/hooks/useFeature";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useSendGate } from "@/hooks/useSendGate";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,6 +20,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
   const gateSend = useSendGate();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const swapEnabled = useFeature("swap");
 
   const menus = useMemo(() => {
     return [
@@ -34,12 +36,16 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
         onPress: () => gateSend(showSendModal),
         disabled: false,
       },
-      {
-        title: "Swap",
-        icon: require("@/assets/icons/swap.png"),
-        onPress: () => router.push("/swap"),
-        disabled: false,
-      },
+      ...(swapEnabled
+        ? [
+            {
+              title: "Swap",
+              icon: require("@/assets/icons/swap.png"),
+              onPress: () => router.push("/swap"),
+              disabled: false,
+            },
+          ]
+        : []),
       {
         title: "Prydd Card",
         icon: require("@/assets/icons/card.png"),
@@ -47,7 +53,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
         disabled: false,
       },
     ] as const;
-  }, [showReceiveModal, showSendModal, gateSend, router]);
+  }, [showReceiveModal, showSendModal, gateSend, router, swapEnabled]);
 
   return (
     <Modal

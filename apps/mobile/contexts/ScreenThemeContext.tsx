@@ -18,15 +18,32 @@ const ScreenThemeContext = createContext<ScreenThemeContextType | undefined>(
   undefined
 );
 
-export function ScreenThemeProvider({ children }: { children: ReactNode }) {
+export function ScreenThemeProvider({
+  children,
+  initialTheme,
+}: {
+  children: ReactNode;
+  /** Applied on first paint so themed children do not flash the global default. */
+  initialTheme?: {
+    backgroundColor?: string;
+    textColor?: string;
+    primaryColor?: string;
+  };
+}) {
   // Get default colors from the global theme
   const defaultBackground = useThemeColor({}, "background");
   const defaultText = useThemeColor({}, "text");
   const defaultPrimary = useThemeColor({}, "primary");
 
-  const [backgroundColor, setBackgroundColor] = useState(defaultBackground);
-  const [textColor, setTextColor] = useState(defaultText);
-  const [primaryColor, setPrimaryColor] = useState(defaultPrimary);
+  const [backgroundColor, setBackgroundColor] = useState(
+    initialTheme?.backgroundColor ?? defaultBackground
+  );
+  const [textColor, setTextColor] = useState(
+    initialTheme?.textColor ?? defaultText
+  );
+  const [primaryColor, setPrimaryColor] = useState(
+    initialTheme?.primaryColor ?? defaultPrimary
+  );
 
   const setScreenTheme = (theme: {
     backgroundColor?: string;

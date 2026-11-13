@@ -33,6 +33,7 @@ import { WebhookModule } from './webhook/webhook.module';
 import { ConsoleModule } from './console/console.module';
 import { TestDashboardModule } from './test-dashboard/test-dashboard.module';
 import { HealthModule } from './health/health.module';
+import { FeaturesModule } from './features/features.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { TracingModule } from './tracing/tracing.module';
 import { THROTTLE_LIMITS } from './common/throttle';
@@ -54,6 +55,7 @@ const testDashboardEnabled = process.env.NODE_ENV !== 'production';
     }),
     DbModule,
     HealthModule,
+    FeaturesModule,
     MetricsModule,
     TracingModule,
     EntrySessionModule,

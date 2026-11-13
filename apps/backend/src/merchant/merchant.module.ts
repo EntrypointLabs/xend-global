@@ -18,6 +18,7 @@ import { MerchantPortalController } from './merchant-portal.controller';
 import { MerchantPortalWebhooksController } from './merchant-portal-webhooks.controller';
 import { MerchantPortalPaymentsController } from './merchant-portal-payments.controller';
 import { MerchantPortalAuditController } from './merchant-portal-audit.controller';
+import { MerchantPortalNairaController } from './merchant-portal-naira.controller';
 
 /**
  * The Merchant API surface. Consumes Phase 2's PaymentIntentService, the FX
@@ -45,6 +46,7 @@ import { MerchantPortalAuditController } from './merchant-portal-audit.controlle
     MerchantPortalWebhooksController,
     MerchantPortalPaymentsController,
     MerchantPortalAuditController,
+    MerchantPortalNairaController,
   ],
   exports: [KeyIssuanceService, IdempotencyService],
 })

@@ -5,7 +5,10 @@ import { DbService, type DbExecutor } from '../db/db.service';
 import { settlementAccounts } from '../db/schema';
 import { SOLANA_RPC, type SolanaRpc } from '../solana/solana-rpc.interface';
 import { SettlementRouter } from './settlement-router';
-import type { SettlementProviderName } from './settlement-provider.interface';
+import type {
+  SettlementBankAccount,
+  SettlementProviderName,
+} from './settlement-provider.interface';
 import { SettlementAccountNotProvisionedError } from './settlement.errors';
 
 /**
@@ -30,7 +33,11 @@ export class SettlementProvisioningService {
 
   async provisionOrLink(
     merchantId: string,
-    opts: { currency: string; merchantAddress?: string },
+    opts: {
+      currency: string;
+      merchantAddress?: string;
+      bankAccount?: SettlementBankAccount;
+    },
     onProvisioned?: (tx: DbExecutor) => Promise<void>,
   ): Promise<{
     address: string;
@@ -76,6 +83,7 @@ export class SettlementProvisioningService {
     const endpoint = await provider.provision({
       merchantId,
       merchantAddress: opts.merchantAddress,
+      bankAccount: opts.bankAccount,
     });
     const providerName = provider.capabilities.provider;
 

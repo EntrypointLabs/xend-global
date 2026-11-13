@@ -133,6 +133,18 @@ export const USDC_MINT_BY_CLUSTER = {
         HELIUS_WEBHOOK_SECRET: Joi.string().required(),
         HELIUS_WEBHOOK_ID: Joi.string().optional().allow(''),
 
+        // Bounds on the compute unit price, in micro-lamports, for transactions
+        // the settlement authority pays for. Recent fees set the price between
+        // them; an idle cluster or a failed read prices at the floor.
+        SOLANA_MIN_COMPUTE_UNIT_PRICE: Joi.number()
+          .integer()
+          .min(0)
+          .default(50_000),
+        SOLANA_MAX_COMPUTE_UNIT_PRICE: Joi.number()
+          .integer()
+          .min(Joi.ref('SOLANA_MIN_COMPUTE_UNIT_PRICE'))
+          .default(1_000_000),
+
         // Stablecoin mints — backend computes the Balance sum over this
         // set server-side. USDC is required and non-empty: the capacity
         // engine reads live USDC Balance for every money decision, so a
@@ -285,7 +297,7 @@ export const USDC_MINT_BY_CLUSTER = {
         // quote inside the window rather than misprice.
         FX_PARTNER_QUOTE_URL: Joi.string().uri().optional().allow(''),
         FX_QUOTE_SOURCE: Joi.string()
-          .valid('partner', 'blockradar')
+          .valid('partner', 'blockradar', 'paj')
           .default('partner'),
         FX_PILOT_STATIC_RATE: Joi.string()
           .pattern(/^\d+(\.\d+)?$/)
@@ -383,9 +395,40 @@ export const USDC_MINT_BY_CLUSTER = {
         BLOCKRADAR_MASTER_WALLET_ID: Joi.string().optional().allow(''),
         BLOCKRADAR_REFUND_SUPPORTED: Joi.boolean().default(false),
         BLOCKRADAR_SOLANA_NATIVE_ENABLED: Joi.boolean().default(false),
+        // PAJ naira settlement. Enabling it routes NGN Merchants to PAJ ahead
+        // of Blockradar and mounts POST /webhooks/paj, so both secrets are
+        // required at boot from that point on.
+        PAJ_ENABLED: Joi.boolean().default(false),
+        PAJ_API_BASE: Joi.string().uri().default('https://api.paj.cash'),
+        PAJ_API_KEY: Joi.string().when('PAJ_ENABLED', {
+          is: true,
+          then: Joi.required(),
+          otherwise: Joi.optional().allow(''),
+        }),
+        PAJ_WEBHOOK_SECRET: Joi.string().when('PAJ_ENABLED', {
+          is: true,
+          then: Joi.required(),
+          otherwise: Joi.optional().allow(''),
+        }),
         // Operator toggle: acknowledge inbound off-ramp webhooks without
         // verifying, parsing, or writing.
         SETTLEMENT_WEBHOOK_KILLSWITCH: Joi.boolean()
+          .truthy('1')
+          .falsy('0', '')
+          .default(false),
+
+        // App kill switches, served by GET /features. True hides the feature
+        // in the app on its next launch or return to the foreground, with no
+        // new build. Nothing set means nothing is switched off.
+        SWAP_KILLSWITCH: Joi.boolean()
+          .truthy('1')
+          .falsy('0', '')
+          .default(false),
+        EARN_DEPOSITS_KILLSWITCH: Joi.boolean()
+          .truthy('1')
+          .falsy('0', '')
+          .default(false),
+        HIDE_MY_WALLET_KILLSWITCH: Joi.boolean()
           .truthy('1')
           .falsy('0', '')
           .default(false),
