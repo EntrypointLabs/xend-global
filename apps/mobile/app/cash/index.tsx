@@ -11,6 +11,7 @@ import { SendModal } from "@/components/ui/organisms/modals/SendModal";
 import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { SendFlowModal } from "@/components/ui/organisms/send/SendFlowModal";
+import type { SendMode } from "@/components/ui/organisms/send/bankAccount";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -36,6 +37,7 @@ export default function CashScreen() {
   const [isSendModalVisible, setIsSendModalVisible] = useState(false);
   const [isReceiveModalVisible, setIsReceiveModalVisible] = useState(false);
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
+  const [sendMode, setSendMode] = useState<SendMode>("crypto");
   const qrCodeModalRef = useRef<BottomSheetModal>(null);
 
   // useBalances defaults `usdc` to 0, so the empty-wallet case renders as
@@ -227,11 +229,21 @@ export default function CashScreen() {
         onClose={() => setIsSendModalVisible(false)}
         onSendToWallet={() => {
           setIsSendModalVisible(false);
+          setSendMode("crypto");
+          sendFlowModalRef.current?.present();
+        }}
+        onSendToBank={() => {
+          setIsSendModalVisible(false);
+          setSendMode("bank");
           sendFlowModalRef.current?.present();
         }}
       />
 
-      <SendFlowModal ref={sendFlowModalRef} onClose={() => {}} />
+      <SendFlowModal
+        ref={sendFlowModalRef}
+        mode={sendMode}
+        onClose={() => {}}
+      />
 
       <ReceiveModal
         visible={isReceiveModalVisible}

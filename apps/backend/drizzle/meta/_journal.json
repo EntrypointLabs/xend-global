@@ -407,6 +407,55 @@
       "when": 1794570768856,
       "tag": "0057_support_and_feedback",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1794575159452,
+      "tag": "0058_consumer_fiat_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794575160452,
+      "tag": "0059_unified_fiat_simulation",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1794575161452,
+      "tag": "0060_bank_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1794575162452,
+      "tag": "0061_bank_account_uniqueness",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1794575163452,
+      "tag": "0062_bank_transfers",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1794575164452,
+      "tag": "0063_bank_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1794575165452,
+      "tag": "0064_bank_notification_requery",
+      "breakpoints": true
     }
   ]
 }

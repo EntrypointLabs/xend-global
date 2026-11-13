@@ -112,7 +112,16 @@ export function usePendingWatch(hasPending = false) {
       const previousSeenAt = lastSeenAtRef.current;
       lastSeenAtRef.current = seenAt;
 
-      if (hasPolledRef.current && lastHeadRef.current !== headKey) {
+      // The feed and this head can be fetched either side of the moment a
+      // transfer confirms. If the head already saw CONFIRMED on its first read
+      // it never sees a change, and a feed still holding PENDING would stay
+      // "Sending…" for good. A pending feed over a settled head is stale.
+      const feedBehindHead = hasPending && head?.status !== "PENDING";
+
+      if (
+        hasPolledRef.current &&
+        (lastHeadRef.current !== headKey || feedBehindHead)
+      ) {
         queryClient.invalidateQueries({ queryKey: ["transfers", userId] });
         queryClient.invalidateQueries({ queryKey: ["balances", userId] });
 

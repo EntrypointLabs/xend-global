@@ -28,6 +28,7 @@ import { EmptyAccountIllustration } from "@/components/ui/atoms/EmptyAccountIllu
 import { useRouter } from "expo-router";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { SendFlowModal } from "@/components/ui/organisms/send/SendFlowModal";
+import type { SendMode } from "@/components/ui/organisms/send/bankAccount";
 import BalanceView from "@/components/BalanceView";
 import { cn } from "@/utils/cn";
 
@@ -104,6 +105,7 @@ function HomeScreenContent() {
   const address = useWalletAddress();
   const { name: walletName } = useWalletName();
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
+  const [sendMode, setSendMode] = useState<SendMode>("crypto");
   const qrCodeModalRef = useRef<BottomSheetModal>(null);
 
   const history = useBalanceHistory(total);
@@ -324,11 +326,21 @@ function HomeScreenContent() {
         onClose={hideAllModals}
         onSendToWallet={() => {
           hideAllModals();
+          setSendMode("crypto");
+          sendFlowModalRef.current?.present();
+        }}
+        onSendToBank={() => {
+          hideAllModals();
+          setSendMode("bank");
           sendFlowModalRef.current?.present();
         }}
       />
 
-      <SendFlowModal ref={sendFlowModalRef} onClose={() => {}} />
+      <SendFlowModal
+        ref={sendFlowModalRef}
+        mode={sendMode}
+        onClose={() => {}}
+      />
 
       <ReceiveModal
         visible={isReceiveModalVisible}

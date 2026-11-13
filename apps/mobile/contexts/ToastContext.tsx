@@ -9,16 +9,40 @@ import React, {
 import { Animated, View } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { setToastHandler } from "@/utils/toast";
+import { cn } from "@/utils/cn";
+import {
+  setToastHandler,
+  type ToastOptions,
+  type ToastTone,
+} from "@/utils/toast";
 
-interface ToastOptions {
+const DEFAULT_DURATION_MS = 3000;
+
+const TONE_SURFACE: Record<ToastTone, string> = {
+  default: "border-black/5",
+  success: "border-success/20 bg-success/10",
+  failed: "border-destructive/20 bg-destructive/10",
+};
+
+const TONE_TEXT: Record<ToastTone, string> = {
+  default: "text-black",
+  success: "text-success",
+  failed: "text-destructive",
+};
+
+interface ToastState {
   label: string;
   icon?: React.ReactNode;
-  duration?: number;
+  tone: ToastTone;
+  id?: string;
 }
 
 interface ToastContextType {
-  showToast: (label: string, icon?: React.ReactNode) => void;
+  showToast: (
+    label: string,
+    icon?: React.ReactNode,
+    options?: ToastOptions
+  ) => void;
 }
 
 const ToastContext = createContext<ToastContextType | null>(null);
@@ -35,39 +59,43 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(-100)).current;
   const opacity = useRef(new Animated.Value(0)).current;
-  const [toast, setToast] = useState<ToastOptions | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout>>(null);
+  const visibleId = useRef<string | null>(null);
 
   const showToast = useCallback(
-    (label: string, icon?: React.ReactNode) => {
-      // Clear any existing hide timer
+    (label: string, icon?: React.ReactNode, options?: ToastOptions) => {
       if (hideTimer.current) {
         clearTimeout(hideTimer.current);
       }
 
-      // Reset animation values for new toast
-      translateY.setValue(-100);
-      opacity.setValue(0);
+      const id = options?.id;
+      const replacesVisible = id !== undefined && visibleId.current === id;
+      visibleId.current = id ?? null;
+      setToast({ label, icon, tone: options?.tone ?? "default", id });
 
-      setToast({ label, icon });
+      if (!replacesVisible) {
+        translateY.setValue(-100);
+        opacity.setValue(0);
+        Animated.parallel([
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            damping: 20,
+            stiffness: 300,
+          }),
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }
 
-      // Slide in from the top
-      Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          useNativeDriver: true,
-          damping: 20,
-          stiffness: 300,
-        }),
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      // Auto-hide after duration
       hideTimer.current = setTimeout(() => {
+        visibleId.current = null;
+        // A toast shown mid-exit stops this animation, and clearing then
+        // would blank the toast that interrupted it.
         Animated.parallel([
           Animated.timing(translateY, {
             toValue: -100,
@@ -79,8 +107,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             duration: 250,
             useNativeDriver: true,
           }),
-        ]).start(() => setToast(null));
-      }, 3000);
+        ]).start(({ finished }) => {
+          if (finished) setToast(null);
+        });
+      }, options?.durationMs ?? DEFAULT_DURATION_MS);
     },
     [translateY, opacity]
   );
@@ -107,7 +137,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           ]}
         >
           <View
-            className="flex-row items-center rounded-full border border-black/5 bg-white px-4 py-2.5"
+            className="mx-4 rounded-full bg-white"
             // PLATFORM-SHADOW: lifts the pill off same-colored content so it
             // stays visible on both iOS and Android (no reliable blur on Android).
             style={{
@@ -118,10 +148,22 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               elevation: 6,
             }}
           >
-            {toast.icon && <View className="mr-2">{toast.icon}</View>}
-            <Typography weight="600" className="text-sm text-black">
-              {toast.label}
-            </Typography>
+            {/* The tint sits on a white base because a translucent pill would
+                show whatever it floats over. */}
+            <View
+              className={cn(
+                "flex-row items-center rounded-full border px-4 py-2.5",
+                TONE_SURFACE[toast.tone]
+              )}
+            >
+              {toast.icon && <View className="mr-2">{toast.icon}</View>}
+              <Typography
+                weight="600"
+                className={cn("shrink text-sm", TONE_TEXT[toast.tone])}
+              >
+                {toast.label}
+              </Typography>
+            </View>
           </View>
         </Animated.View>
       )}

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "fiat_bank_accounts_active_number_key" ON "fiat_bank_accounts" USING btree ("provider","environment",("account"->>'accountNumber')) WHERE "fiat_bank_accounts"."status" = 'active';

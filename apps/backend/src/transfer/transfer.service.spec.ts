@@ -16,7 +16,7 @@ import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { ApprovalSignerStore } from '../turnkey/approval-signer.store';
 import { InMemoryPreparedTxStore } from '../prepared/prepared-tx.memory';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { presenceDigest } from './presence-proof';
+import { presencePreimage } from './presence-proof';
 import {
   InvalidRecipientError,
   IntentExpiredError,
@@ -255,8 +255,8 @@ function makeDeviceKey() {
         Buffer.from(unsignedTxBase64, 'base64'),
       ).message.serialize();
       return sign(
-        null,
-        presenceDigest(Buffer.from(message)),
+        'sha256',
+        presencePreimage(Buffer.from(message)),
         privateKey,
       ).toString('hex');
     },
