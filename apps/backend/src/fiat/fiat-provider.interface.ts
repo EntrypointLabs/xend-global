@@ -1,4 +1,4 @@
-/** Xend-owned wire/domain vocabulary. Provider payloads never cross this boundary. */
+/** Prydd-owned wire/domain vocabulary. Provider payloads never cross this boundary. */
 export const FIAT_PROVIDERS = Symbol('FIAT_PROVIDERS');
 export type FiatDirection = 'receive' | 'send';
 export type FiatStatus =

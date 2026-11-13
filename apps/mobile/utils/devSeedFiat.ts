@@ -98,7 +98,7 @@ function settleAccount() {
       destination: { accountNumber: "0987654321", accountName: "Tobi Adeyemi" },
       amountMinor: "2500000",
       feeMinor: null,
-      narration: "Xend transfer",
+      narration: "Prydd transfer",
       expiresAt: iso(),
       createdAt: iso(Date.now() - 3_600_000),
       updatedAt: iso(Date.now() - 3_600_000),
@@ -268,7 +268,7 @@ export const demoFiat = {
     return {
       environment: "sandbox",
       available: state.account?.status === "active",
-      scope: "xend_paga_accounts",
+      scope: "prydd_paga_accounts",
       transfers: state.transfers.map(publicTransfer),
     };
   },
@@ -278,7 +278,7 @@ export const demoFiat = {
     const name = KNOWN_RECIPIENTS[accountNumber];
     if (!name)
       throw new Error(
-        "No Xend Paga account matches that number. Try 0987654321."
+        "No Prydd Paga account matches that number. Try 0987654321."
       );
     if (BigInt(amountMinor) > state.ngnMinor)
       throw new Error("That amount is more than your naira balance.");
@@ -292,7 +292,7 @@ export const demoFiat = {
       destination: { accountNumber, accountName: name },
       amountMinor,
       feeMinor: null,
-      narration: "Xend transfer",
+      narration: "Prydd transfer",
       expiresAt: iso(Date.now() + 300_000),
       createdAt: iso(),
       updatedAt: iso(),

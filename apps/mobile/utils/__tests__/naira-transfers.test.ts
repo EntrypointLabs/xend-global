@@ -12,7 +12,7 @@ const transfer = {
   },
   amountMinor: "10000",
   feeMinor: null,
-  narration: "Xend transfer",
+  narration: "Prydd transfer",
   expiresAt: "2026-09-09T21:00:00.000Z",
   createdAt: "now",
   updatedAt: "now",

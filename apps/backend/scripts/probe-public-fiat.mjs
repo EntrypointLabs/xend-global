@@ -4,7 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 const nomba = 'https://sandbox.nomba.com';
-const ref = `xend_${randomUUID().replaceAll('-', '').slice(0, 20)}`;
+const ref = `prydd_${randomUUID().replaceAll('-', '').slice(0, 20)}`;
 const observations = [];
 async function probe(label, url, body) {
   if (body && new URL(url).origin !== nomba) throw new Error('Writes restricted to Nomba sandbox');
@@ -42,14 +42,14 @@ await Promise.all([
   probe('Paystack dedicated accounts auth gate (read-only)', 'https://api.paystack.co/dedicated_account'),
 ]);
 const account = await probe('Nomba static receiving details', `${nomba}/v1/accounts/virtual`, {
-  accountRef: ref, accountName: 'Xend Sandbox Test', currency: 'NGN',
+  accountRef: ref, accountName: 'Prydd Sandbox Test', currency: 'NGN',
 });
 if (account?.data?.bankAccountNumber) {
   const read = await probe('Nomba account read-back', `${nomba}/v1/accounts/virtual/${encodeURIComponent(account.data.bankAccountNumber)}`);
   observations.at(-1).matchesCreatedAccount = read?.data?.bankAccountNumber === account.data.bankAccountNumber;
 }
 const transfer = {
-  amount: 3500, accountNumber: '0000000000', accountName: 'Xend Sandbox Test',
+  amount: 3500, accountNumber: '0000000000', accountName: 'Prydd Sandbox Test',
   bankCode: '058', merchantTxRef: ref, senderName: 'Test Sender', narration: 'Sandbox test',
 };
 await probe('Nomba invalid account length', `${nomba}/v2/transfers/bank`, { ...transfer, accountNumber: '000000000' });

@@ -74,7 +74,7 @@ export class NairaTransfersService {
     return {
       environment: 'sandbox' as const,
       available: this.available(),
-      scope: 'xend_paga_accounts' as const,
+      scope: 'prydd_paga_accounts' as const,
       transfers: (rows.rows as TransferRow[]).map((row) => row.record),
     };
   }
@@ -116,7 +116,7 @@ export class NairaTransfersService {
     const destination = destinationResult.rows[0] as AccountRow | undefined;
     if (!destination)
       throw new NotFoundException(
-        'Recipient must have another active Xend Paga sandbox account.',
+        'Recipient must have another active Prydd Paga sandbox account.',
       );
     let verified: Awaited<ReturnType<PagaProvider['retrieveAccount']>>;
     try {

@@ -33,7 +33,7 @@ export class UnifiedLocalGuard implements CanActivate {
       !/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(
         req.headers.host ?? '',
       ) ||
-      req.headers['x-xend-local-simulation'] !== '1' ||
+      req.headers['x-prydd-local-simulation'] !== '1' ||
       req.headers.origin ||
       req.headers.forwarded ||
       req.headers['x-forwarded-for']

@@ -37,7 +37,7 @@ export class BankingRegistry {
         this.providers.set(
           'nomba',
           new NombaAdapter({
-            senderName: 'Xend Sandbox',
+            senderName: 'Prydd Sandbox',
             accountId,
             accessToken: () => auth.getAccessToken(),
             onUnauthorized: (token) => auth.invalidate(token),
@@ -47,7 +47,7 @@ export class BankingRegistry {
       } else if (!clientId && !clientSecret && !accountId) {
         this.providers.set(
           'nomba',
-          new NombaAdapter({ senderName: 'Xend Sandbox' }),
+          new NombaAdapter({ senderName: 'Prydd Sandbox' }),
         );
       }
     }

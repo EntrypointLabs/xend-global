@@ -43,7 +43,7 @@ interface SpendCheckModalProps {
   aboveDailyLimit: boolean;
   /**
    * False when nothing on this phone is asked of the Consumer (a bank payout
-   * settled by Xend), so the screen does not claim a check that never ran.
+   * settled by Prydd), so the screen does not claim a check that never ran.
    */
   checksIdentity?: boolean;
   /** Replaces the sending step's line, e.g. where the money is headed. */

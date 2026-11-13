@@ -38,8 +38,8 @@ These are still open: permanent/temporary account issuance, Sumsub hosted flow, 
 
 ## Validation
 
-- Backend tests: `npm test --workspace @xend/backend -- --runInBand src/fiat`.
-- Mobile contract tests: `npm test --workspace @xend/mobile -- --runInBand utils/__tests__/fiat.test.ts`.
+- Backend tests: `npm test --workspace @prydd/backend -- --runInBand src/fiat`.
+- Mobile contract tests: `npm test --workspace @prydd/mobile -- --runInBand utils/__tests__/fiat.test.ts`.
 - PostgreSQL HTTP test: supply `FIAT_PG_TEST_DATABASE_URL` via a secret environment, run `src/fiat/fiat.pg.spec.ts` from the backend workspace. It creates and removes a unique isolated schema; auth is explicitly mocked only in that test. Tests cover concurrent creates, update dedupe, changed payloads, ownership, restart and return state.
 - `npm run check-types` checks the workspace.
 - `apps/backend/scripts/probe-fonbnk.mjs` independently exercises the sandbox API without orders or fund movement.
@@ -62,7 +62,7 @@ node apps/backend/scripts/demo-unified-funding.cjs
 node apps/backend/scripts/probe-nomba-adapter.cjs
 
 # Both adapters plus shared funding rules and workflow tests
-npm test --workspace @xend/backend -- --runInBand src/fiat/banking src/fiat/funding
+npm test --workspace @prydd/backend -- --runInBand src/fiat/banking src/fiat/funding
 ```
 
 Nomba's actual adapter probe accepted account creation and payout submission as fixtures, then rejected inconsistent transaction requery. Its public sandbox cannot prove production settlement or idempotency. Paga's tests mock documented HTTP contracts because authenticated sandbox keys remain unavailable. The Paga subsidiary debit and Business bank payout are separate treasury legs; do not submit the second by repeating the first after a timeout. Sandbox operation evidence is always fixture, including a matched Paga requery. No NGN/USDC conversion endpoint is invented.
@@ -122,8 +122,8 @@ For a timed-out creation, use **Check account status** in the mobile account scr
 
 The mobile account screens now call `GET /fiat/balances` to read an owned Paga account and owned Solana vault through the provider API and RPC. These observations are not simulator credits or ledger reservations. Missing balances remain null. Sandbox bank holdings are never combined with mainnet tokens. Any displayed USD total is an indicative quote, not executable USDC settlement.
 
-`GET /fiat/banking/transfers`, `POST /fiat/banking/transfers/quotes` and `POST /fiat/banking/transfers` connect the Paga subsidiary-account transfer path. Both source and recipient must be active owned Xend Paga accounts. Source ownership is derived from the session; the recipient is checked with Paga before preview. Submission checks the provider balance, persists a stable claim and calls the documented transfer endpoint once. Matched exact source debit and destination credit permit sandbox completion; uncertain outcomes retain `needs_attention` and block another outgoing submission until reconciled. Fees remain unknown rather than being fabricated as zero.
+`GET /fiat/banking/transfers`, `POST /fiat/banking/transfers/quotes` and `POST /fiat/banking/transfers` connect the Paga subsidiary-account transfer path. Both source and recipient must be active owned Prydd Paga accounts. Source ownership is derived from the session; the recipient is checked with Paga before preview. Submission checks the provider balance, persists a stable claim and calls the documented transfer endpoint once. Matched exact source debit and destination credit permit sandbox completion; uncertain outcomes retain `needs_attention` and block another outgoing submission until reconciled. Fees remain unknown rather than being fabricated as zero.
 
-The local-only developer routes use the `/dev` prefix and the existing explicit guard. Open **Naira account → Send to another Xend Paga account**. Migration0045 for durable transfer intents has been applied locally. Provider credentials and two provisioned sandbox accounts are needed to run the actual external transfer; the HTTP/PG integration tests use controlled provider responses and do not prove tenant settlement.
+The local-only developer routes use the `/dev` prefix and the existing explicit guard. Open **Naira account → Send to another Prydd Paga account**. Migration0045 for durable transfer intents has been applied locally. Provider credentials and two provisioned sandbox accounts are needed to run the actual external transfer; the HTTP/PG integration tests use controlled provider responses and do not prove tenant settlement.
 
 Fonbnk development is parked. Its existing code is retained, but it is not the selected implementation path or a dependency of observed balances. Nomba and Paga adapters are prepared separately for branch review, with shared mobile/API/persistence code merged on an integration branch. Cross-asset execution, external NGN bank payouts and funded end-to-end verification remain required before declaring the goal complete.

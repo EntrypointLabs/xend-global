@@ -51,7 +51,7 @@ const BENEFITS: {
     icon: "arrow-down-circle-outline",
     tile: "bg-info/15",
     color: "#2563EB",
-    text: "Money you receive lands in your Xend Account",
+    text: "Money you receive lands in your Prydd Account",
   },
   {
     icon: "flash-outline",

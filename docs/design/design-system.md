@@ -1,4 +1,4 @@
-# Xend mobile design system
+# Prydd mobile design system
 
 The visual language `apps/mobile` already speaks, written down so new screens
 match it instead of inventing their own. It is descriptive first: every rule

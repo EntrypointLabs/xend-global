@@ -75,7 +75,7 @@ export class SimulatorFiatProvider implements FiatProvider {
   async getOrder(): Promise<ProviderFiatOrder> {
     throw new FiatError(
       'SIMULATION_LOCAL_STATE',
-      'Simulation state is stored by Xend.',
+      'Simulation state is stored by Prydd.',
     );
   }
 }

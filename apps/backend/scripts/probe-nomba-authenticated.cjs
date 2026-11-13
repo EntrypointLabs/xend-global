@@ -28,7 +28,7 @@ async function main() {
   });
   const adapter = new NombaAdapter({
     accountId,
-    senderName: 'Xend Sandbox',
+    senderName: 'Prydd Sandbox',
     accessToken: () => auth.getAccessToken(),
   });
   const observations = [];
@@ -55,7 +55,7 @@ async function main() {
       {
         redirect: 'error',
         signal: AbortSignal.timeout(5000),
-        headers: { 'x-xend-local-simulation': '1' },
+        headers: { 'x-prydd-local-simulation': '1' },
       },
     );
     if (!response.ok) throw new Error('LOCAL_ACCOUNTS_UNAVAILABLE');
@@ -77,7 +77,7 @@ async function main() {
     observations.push({ name: 'persisted account recovery', matches });
     if (!matches) throw new Error('PERSISTED_ACCOUNT_MISMATCH');
   }
-  const neverCreatedAccount = `xend-control-${randomUUID()}`;
+  const neverCreatedAccount = `prydd-control-${randomUUID()}`;
   const accountControl = await read(
     `/v1/accounts/virtual/${encodeURIComponent(neverCreatedAccount)}`,
   );
@@ -86,7 +86,7 @@ async function main() {
     http: accountControl.response.status,
     code: accountControl.payload.code,
   });
-  const neverCreatedTransaction = `xend-control-${randomUUID()}`;
+  const neverCreatedTransaction = `prydd-control-${randomUUID()}`;
   const transactionControl = await read(
     `/v1/transactions/accounts/single?transactionRef=${encodeURIComponent(neverCreatedTransaction)}`,
   );

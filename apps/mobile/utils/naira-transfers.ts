@@ -21,7 +21,7 @@ export const NairaTransferSchema = z.object({
 export const NairaTransfersSchema = z.object({
   environment: z.literal("sandbox"),
   available: z.boolean(),
-  scope: z.literal("xend_paga_accounts"),
+  scope: z.literal("prydd_paga_accounts"),
   transfers: z.array(NairaTransferSchema),
 });
 export type NairaTransfer = z.infer<typeof NairaTransferSchema>;

@@ -928,7 +928,7 @@ class BackendClient {
         options = {
           ...options,
           auth: false,
-          headers: { ...options.headers, "x-xend-local-simulation": "1" },
+          headers: { ...options.headers, "x-prydd-local-simulation": "1" },
         };
       const url = `${this.baseUrl}${localSimulation ? "/dev" : ""}${endpoint}`;
 

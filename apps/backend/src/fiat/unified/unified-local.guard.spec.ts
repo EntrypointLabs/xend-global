@@ -19,7 +19,7 @@ describe('local simulator access', () => {
     );
     const req = {
       socket: { remoteAddress: '127.0.0.1' },
-      headers: { host: 'localhost:8008', 'x-xend-local-simulation': '1' },
+      headers: { host: 'localhost:8008', 'x-prydd-local-simulation': '1' },
       user: undefined,
       ...overrides,
     };
@@ -41,7 +41,7 @@ describe('local simulator access', () => {
     [
       'development',
       'true',
-      { headers: { host: 'public.example', 'x-xend-local-simulation': '1' } },
+      { headers: { host: 'public.example', 'x-prydd-local-simulation': '1' } },
     ],
     ['development', 'true', { headers: { host: 'localhost:8008' } }],
     [
@@ -50,7 +50,7 @@ describe('local simulator access', () => {
       {
         headers: {
           host: 'localhost:8008',
-          'x-xend-local-simulation': '1',
+          'x-prydd-local-simulation': '1',
           'x-forwarded-for': '10.0.0.2',
         },
       },
@@ -61,7 +61,7 @@ describe('local simulator access', () => {
       {
         headers: {
           host: 'localhost:8008',
-          'x-xend-local-simulation': '1',
+          'x-prydd-local-simulation': '1',
           origin: 'https://example.com',
         },
       },

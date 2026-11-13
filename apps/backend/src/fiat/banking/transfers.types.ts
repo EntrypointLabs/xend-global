@@ -3,7 +3,7 @@ export const NairaTransferQuoteBody = z
   .object({
     destinationAccountNumber: z.string().regex(/^\d{10}$/),
     amountMinor: z.string().regex(/^[1-9]\d{0,14}$/),
-    narration: z.string().trim().max(200).default('Xend transfer'),
+    narration: z.string().trim().max(200).default('Prydd transfer'),
     idempotencyKey: z.string().min(8).max(100),
   })
   .strict();

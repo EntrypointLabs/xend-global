@@ -51,7 +51,7 @@ export async function signPresenceProof(
   );
 }
 
-const BANK_SEND_PRESENCE_DOMAIN = "xend:bank-send-presence:v1";
+const BANK_SEND_PRESENCE_DOMAIN = "prydd:bank-send-presence:v1";
 
 /**
  * Puts the same face or fingerprint in front of a bank send, bound to the

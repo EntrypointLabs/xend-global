@@ -53,7 +53,7 @@ jobs:
       - name: Fiat HTTP and PostgreSQL integration tests
         working-directory: apps/backend
         env:
-          FIAT_PG_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/xend_ci
+          FIAT_PG_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/prydd_ci
         run: npm test -- --runInBand src/fiat
 
       - name: Verify payment transaction rollback and saturated-pool retries

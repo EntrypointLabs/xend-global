@@ -12,7 +12,7 @@ function binding(
   direction: 'receive' | 'send' = 'receive',
 ): FonbnkOrderBinding {
   return {
-    orderParams: 'xend_test_order_123',
+    orderParams: 'prydd_test_order_123',
     direction,
     customer: {
       email: 'unit-test@example.com',
@@ -197,7 +197,7 @@ describe('Fonbnk sandbox order lifecycle contracts', () => {
     await expect(client.create(b)).rejects.toThrow('outcome is unknown');
     expect((await client.findByReference(b))?.reference).toBe(id);
     expect(fetchMock.mock.calls[1][0]).toBe(
-      'https://sandbox-api.fonbnk.com/api/v2/order?orderParams=xend_test_order_123',
+      'https://sandbox-api.fonbnk.com/api/v2/order?orderParams=prydd_test_order_123',
     );
     expect(fetchMock.mock.calls[1][1]?.method).toBe('GET');
   });

@@ -372,7 +372,7 @@ export class FonbnkFiatProvider implements FiatProvider {
         if (
           !['phoneNumber', 'bankCode', 'bankAccountNumber'].includes(field.key)
         ) {
-          // Wallet destination is resolved by Xend; sandbox controls are not a consumer form.
+          // Wallet destination is resolved by Prydd; sandbox controls are not a consumer form.
           if (
             field.required === true &&
             !['blockchainWalletAddress', 'blockchainMemo'].includes(
