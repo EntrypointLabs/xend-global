@@ -249,8 +249,9 @@ function HomeScreenContent() {
           />
         </View>
 
-        {/* Holdings first; a spare row is the next thing worth doing. */}
-        {holdings.length > 0 && (
+        {/* Holdings first; a spare row is the next thing worth doing. An Account
+            holding only cash still gets the section, as those spare rows. */}
+        {(holdings.length > 0 || (known && hasBalance)) && (
           <View style={{ marginBottom: size(SECTION_GAP) }}>
             <View className="flex-row items-center justify-between pb-1">
               <Typography weight="500" className="text-sm text-black/30">
