@@ -139,6 +139,14 @@ export function seedTransfers(): TransferListResponse {
         occurredAt: hoursAgo(5),
       },
       {
+        id: "evt-3",
+        kind: "recovery_key_removed",
+        subject: "Fq9z...7Kd2",
+        previousSubject: null,
+        signature: "5pWq2Xr8tYb3nM6kJ9hG4fD1sA7zC2vB5nM8kL3jH6gF",
+        occurredAt: hoursAgo(7),
+      },
+      {
         id: "evt-2",
         kind: "wallet_renamed",
         subject: "Gift",
