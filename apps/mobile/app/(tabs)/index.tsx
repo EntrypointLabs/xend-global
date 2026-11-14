@@ -1,6 +1,7 @@
 import { ScrollView, View } from "react-native";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Typography } from "@/components/ui/atoms/Typography";
+import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useMemo, useRef, useState } from "react";
 
@@ -159,17 +160,11 @@ function HomeScreenContent() {
         }}
       >
         <View className="flex-row items-center justify-between pb-6">
-          <HapticPressable
-            accessibilityRole="button"
-            accessibilityLabel="Account settings"
-            hitSlop={HEADER_HIT_SLOP}
-            onPress={() => router.push("/(tabs)/settings" as never)}
-            className="h-9 w-9 items-center justify-center rounded-full bg-black/5"
-          >
-            <Typography weight="600" className="text-sm text-black">
-              {initials(walletName)}
-            </Typography>
-          </HapticPressable>
+          <View className="min-h-9 flex-1 justify-center pr-4">
+            <TabHeaderText className="pb-0" numberOfLines={1}>
+              {walletName}
+            </TabHeaderText>
+          </View>
           <HapticPressable
             accessibilityRole="button"
             accessibilityLabel={hidden ? "Show balances" : "Hide balances"}
@@ -482,15 +477,6 @@ function cryptoChange24h(holdings: InvestmentHolding[]): number | null {
   }
   if (before === 0) return null;
   return ((now - before) / before) * 100;
-}
-
-function initials(name: string | null | undefined): string {
-  const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "P";
-  return words
-    .slice(0, 2)
-    .map((word) => word[0]!.toUpperCase())
-    .join("");
 }
 
 /**
