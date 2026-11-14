@@ -2,7 +2,7 @@ import { ScrollView, View } from "react-native";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 
 import { ScreenLayout } from "@/components/ui/layout";
 import { SendModal } from "@/components/ui/organisms/modals/SendModal";
@@ -21,6 +21,18 @@ import { formatTokenAmount } from "@/utils/tokens";
 import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { useBalances } from "@/hooks/useBalances";
 import { useTransfersInfinite } from "@/hooks/useTransfers";
+import { useHomeWidgets } from "@/hooks/useHomeWidgets";
+import { useWatchlist } from "@/hooks/useWatchlist";
+import { RecentTransactions } from "@/components/ui/organisms/home/RecentTransactions";
+import { SpentThisMonth } from "@/components/ui/organisms/home/SpentThisMonth";
+import { Watchlist } from "@/components/ui/organisms/home/Watchlist";
+import { WidgetsModal } from "@/components/ui/organisms/home/WidgetsModal";
+import { TransactionDetailModal } from "@/components/ui/organisms/modals/TransactionDetailModal";
+import {
+  mapTransferRowToActivityEntry,
+  type ActivityEntry,
+} from "@/utils/activity";
+import { summariseMonthlySpend } from "@/utils/spentThisMonth";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useWalletName } from "@/hooks/useWalletName";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
@@ -31,17 +43,11 @@ import { SendFlowModal } from "@/components/ui/organisms/send/SendFlowModal";
 import type { SendMode } from "@/components/ui/organisms/send/bankAccount";
 import BalanceView from "@/components/BalanceView";
 import { cn } from "@/utils/cn";
+import { RAISED } from "@/components/ui/organisms/home/surface";
 
 // Surfaces are lifted off the page by a soft shadow instead of being outlined.
 // iOS reads the shadow* props and Android only `elevation`, which is why these
 // are style objects and not classes.
-const RAISED = {
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: 6 },
-  shadowOpacity: 0.09,
-  shadowRadius: 14,
-  elevation: 3,
-};
 const RAISED_DARK = {
   shadowColor: "#000",
   shadowOffset: { width: 0, height: 8 },
@@ -86,6 +92,8 @@ function HomeScreenContent() {
     isError: isBalanceError,
     isLoading: isBalanceLoading,
     refetch: refetchBalances,
+    decimalsByMint,
+    iconsByMint,
   } = useBalances();
   const { balance: earnBalance } = useEarnPosition();
   const { holdings } = useInvestments();
@@ -99,10 +107,29 @@ function HomeScreenContent() {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  // Called for its cache, not its result: the activity tab reads the same
-  // query, and warming it here means it does not start empty.
-  useTransfersInfinite();
   const address = useWalletAddress();
+  const { data: transferPages, isLoading: isTransfersLoading } =
+    useTransfersInfinite();
+  const { visibility, setVisible } = useHomeWidgets();
+  const { tokens: watchedTokens } = useWatchlist(visibility.watchlist);
+  const [widgetsOpen, setWidgetsOpen] = useState(false);
+  const [openEntry, setOpenEntry] = useState<ActivityEntry | null>(null);
+
+  const entries = useMemo(
+    () =>
+      (transferPages?.pages.flatMap((page) => page.transfers) ?? [])
+        .map((row) =>
+          mapTransferRowToActivityEntry(row, {
+            selfAddress: address ?? "",
+            decimalsByMint,
+            iconsByMint,
+          })
+        )
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
+    [transferPages, address, decimalsByMint, iconsByMint]
+  );
+  const recentEntries = entries.slice(0, 3);
+  const monthlySpend = useMemo(() => summariseMonthlySpend(entries), [entries]);
   const { name: walletName } = useWalletName();
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
   const [sendMode, setSendMode] = useState<SendMode>("crypto");
@@ -249,53 +276,55 @@ function HomeScreenContent() {
           />
         </View>
 
-        {/* Holdings first; a spare row is the next thing worth doing. */}
-        {holdings.length > 0 && (
-          <View style={{ marginBottom: size(SECTION_GAP) }}>
-            <View className="flex-row items-center justify-between pb-1">
-              <Typography weight="500" className="text-sm text-black/30">
-                Your assets
-              </Typography>
-              <HapticPressable
-                accessibilityRole="button"
-                accessibilityLabel="See all assets"
-                hitSlop={12}
-                onPress={() => router.push("/investments")}
-                className="py-1"
-              >
-                <Typography weight="500" className="text-sm text-black/40">
-                  See all
+        {/* Holdings first; a spare row is the next thing worth doing. An Account
+            holding only cash still gets the section, as those spare rows. */}
+        {visibility.assets &&
+          (holdings.length > 0 || (known && hasBalance)) && (
+            <View style={{ marginBottom: size(SECTION_GAP) }}>
+              <View className="flex-row items-center justify-between pb-1">
+                <Typography weight="500" className="text-sm text-black/30">
+                  Your assets
                 </Typography>
-              </HapticPressable>
-            </View>
-            <View className="gap-2.5 pt-1">
-              {holdings.slice(0, HOME_ROW_COUNT).map((holding) => (
-                <AssetRow
-                  key={holding.mint}
-                  holding={holding}
-                  hidden={hidden}
+                <HapticPressable
+                  accessibilityRole="button"
+                  accessibilityLabel="See all assets"
+                  hitSlop={12}
                   onPress={() => router.push("/investments")}
-                />
-              ))}
-              {holdings.length < HOME_ROW_COUNT && (
-                <PromptRow
-                  icon="bar-chart-outline"
-                  label="Earn"
-                  detail={`Up to ${earnHeadlineApy()} APY`}
-                  onPress={() => router.push("/earn")}
-                />
-              )}
-              {swapEnabled && holdings.length < HOME_ROW_COUNT - 1 && (
-                <PromptRow
-                  icon="add"
-                  label="Buy another asset"
-                  detail="Swap cash for crypto"
-                  onPress={() => router.push("/swap")}
-                />
-              )}
+                  className="py-1"
+                >
+                  <Typography weight="500" className="text-sm text-black/40">
+                    See all
+                  </Typography>
+                </HapticPressable>
+              </View>
+              <View className="gap-2.5 pt-1">
+                {holdings.slice(0, HOME_ROW_COUNT).map((holding) => (
+                  <AssetRow
+                    key={holding.mint}
+                    holding={holding}
+                    hidden={hidden}
+                    onPress={() => router.push("/investments")}
+                  />
+                ))}
+                {holdings.length < HOME_ROW_COUNT && (
+                  <PromptRow
+                    icon="bar-chart-outline"
+                    label="Earn"
+                    detail={`Up to ${earnHeadlineApy()} APY`}
+                    onPress={() => router.push("/earn")}
+                  />
+                )}
+                {swapEnabled && holdings.length < HOME_ROW_COUNT - 1 && (
+                  <PromptRow
+                    icon="add"
+                    label="Buy another asset"
+                    detail="Swap cash for crypto"
+                    onPress={() => router.push("/swap")}
+                  />
+                )}
+              </View>
             </View>
-          </View>
-        )}
+          )}
 
         {/* Only for an Account known to hold nothing at all. One that holds
             cash but no assets is not empty, and says so in its tiles. */}
@@ -319,8 +348,63 @@ function HomeScreenContent() {
           </View>
         )}
 
+        {visibility.transactions && (
+          <View style={{ marginBottom: size(SECTION_GAP) }}>
+            <RecentTransactions
+              entries={recentEntries}
+              loaded={!isTransfersLoading}
+              onSeeAll={() => router.push("/history")}
+              onOpen={setOpenEntry}
+            />
+          </View>
+        )}
+
+        {visibility.spend && (
+          <View style={{ marginBottom: size(SECTION_GAP) }}>
+            <SpentThisMonth spend={monthlySpend} hidden={hidden} />
+          </View>
+        )}
+
+        {visibility.watchlist && (
+          <View style={{ marginBottom: size(SECTION_GAP) }}>
+            <Watchlist
+              tokens={watchedTokens}
+              onOpen={swapEnabled ? () => router.push("/swap") : undefined}
+            />
+          </View>
+        )}
+
+        <HapticPressable
+          accessibilityRole="button"
+          accessibilityLabel="Add widgets"
+          onPress={() => setWidgetsOpen(true)}
+          className="mb-6 flex-row items-center gap-1.5 self-center rounded-full bg-black/5 px-5 py-3"
+        >
+          <Ionicons name="add" size={18} color="#000" />
+          <Typography weight="600" className="text-sm">
+            Add widgets
+          </Typography>
+        </HapticPressable>
+
         <HomeBanners />
       </ScrollView>
+      <WidgetsModal
+        visible={widgetsOpen}
+        onClose={() => setWidgetsOpen(false)}
+        visibility={visibility}
+        onChange={setVisible}
+        preview={{
+          holdings,
+          latestEntry: recentEntries[0] ?? null,
+          spend: monthlySpend,
+          watched: watchedTokens,
+        }}
+      />
+      <TransactionDetailModal
+        visible={openEntry !== null}
+        onClose={() => setOpenEntry(null)}
+        item={openEntry}
+      />
       <SendModal
         visible={isSendModalVisible}
         onClose={hideAllModals}

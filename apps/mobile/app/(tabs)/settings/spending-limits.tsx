@@ -1,7 +1,6 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import { ActivityIndicator, Image, ScrollView, View } from "react-native";
 import { router } from "expo-router";
-import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { Ionicons } from "@expo/vector-icons";
 
 import { ScreenLayout } from "@/components/ui/layout";
@@ -9,7 +8,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { ThemedButton } from "@/components/ui/molecules";
 import { ThemedTextInput } from "@/components/ui/molecules/ThemedTextInput";
-import { InfoSheet } from "@/components/ui/organisms/modals/InfoSheet";
+import { InfoModal } from "@/components/ui/organisms/modals/InfoModal";
 import { useAccount } from "@/hooks/useAccount";
 import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { usePendingAccountChange } from "@/hooks/usePendingAccountChange";
@@ -36,7 +35,7 @@ import {
  * A limit a single tap could raise would not be a limit.
  */
 export default function SpendingLimitsScreen() {
-  const infoSheetRef = useRef<BottomSheetModal>(null);
+  const [infoOpen, setInfoOpen] = useState(false);
   const { data: account, isLoading, refetch } = useAccount();
   const { data: pendingChange, isLoading: readingPending } =
     usePendingAccountChange();
@@ -116,7 +115,7 @@ export default function SpendingLimitsScreen() {
             resizeMode="contain"
           />
           <HapticPressable
-            onPress={() => infoSheetRef.current?.present()}
+            onPress={() => setInfoOpen(true)}
             className="p-1"
             hitSlop={12}
             accessibilityRole="button"
@@ -360,8 +359,9 @@ export default function SpendingLimitsScreen() {
         </HapticPressable>
       </View>
 
-      <InfoSheet
-        ref={infoSheetRef}
+      <InfoModal
+        visible={infoOpen}
+        onClose={() => setInfoOpen(false)}
         iconName="time-outline"
         iconBackground="#000000"
         title="Spending Limit"

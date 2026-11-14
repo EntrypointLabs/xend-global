@@ -1,4 +1,4 @@
-import { View } from "react-native";
+import { Image, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Typography } from "../atoms/Typography";
 import type { ActivityEntry } from "@/utils/activity";
@@ -11,6 +11,7 @@ import { describeToken } from "@/utils/tokens";
 import { formatUsdFromString } from "@/utils/balances";
 import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { formatMoney } from "@/utils/money";
+import { KEY_COLORS } from "@/utils/keyColors";
 
 export type ActivityItemProps = ActivityEntry & {
   onPress?: () => void;
@@ -155,12 +156,14 @@ function AwaitingPaymentItem({
   );
 }
 
+const keyIcon = require("@/assets/icons/keys.png");
+
 /**
- * A muted key in a thin ring, badged with what happened to it.
+ * A key or pencil on a soft disc in its own colour, badged with what happened.
  *
- * Deliberately quieter than a token mark: these rows carry no amount, and
- * giving them a filled colour badge would make an account note look like the
- * loudest money on the screen.
+ * The key is the same purple key Settings uses for Keys & Recovery, so the row
+ * reads as the place it came from. Added and removed are told apart by a solid
+ * green or red badge rather than by the glyph.
  */
 export function AccountEventMark({
   kind,
@@ -170,24 +173,38 @@ export function AccountEventMark({
   size?: number;
 }) {
   const renamed = kind === "wallet_renamed";
-  const badge = kind === "recovery_key_removed" ? "close" : "add";
+  const removed = kind === "recovery_key_removed";
+  const tint = renamed ? KEY_COLORS.passkey : KEY_COLORS.device;
+  const badgeSize = size * 0.42;
 
   return (
     <View
-      className="items-center justify-center rounded-full border border-black/[0.08]"
-      style={{ width: size, height: size }}
+      className="items-center justify-center rounded-full"
+      // DYNAMIC-COLOR: a light wash of the event's own colour
+      style={{ width: size, height: size, backgroundColor: `${tint}1F` }}
     >
-      <Ionicons
-        name={renamed ? "create-outline" : "key-outline"}
-        size={size * 0.45}
-        color="#00000059"
-      />
+      {renamed ? (
+        <Ionicons name="pencil" size={size * 0.45} color={tint} />
+      ) : (
+        <Image
+          source={keyIcon}
+          style={{ width: size * 0.5, height: size * 0.5 }}
+          resizeMode="contain"
+        />
+      )}
       {!renamed && (
         <View
-          className="absolute -right-0.5 -top-0.5 items-center justify-center rounded-full border border-white bg-black/[0.08]"
-          style={{ width: size * 0.4, height: size * 0.4 }}
+          className={cn(
+            "absolute -bottom-0.5 -right-0.5 items-center justify-center rounded-full border-2 border-white",
+            removed ? "bg-destructive" : "bg-success"
+          )}
+          style={{ width: badgeSize, height: badgeSize }}
         >
-          <Ionicons name={badge} size={size * 0.25} color="#00000080" />
+          <Ionicons
+            name={removed ? "close" : "add"}
+            size={badgeSize * 0.7}
+            color="#FFFFFF"
+          />
         </View>
       )}
     </View>

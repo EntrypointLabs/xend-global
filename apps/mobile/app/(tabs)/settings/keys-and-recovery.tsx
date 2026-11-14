@@ -7,7 +7,6 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
-import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { Ionicons } from "@expo/vector-icons";
 
 import { ScreenLayout } from "@/components/ui/layout";
@@ -16,9 +15,9 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import type { PopoverAnchor } from "@/components/ui/molecules/ContactActionsPopover";
 import { KeyActionsPopover } from "@/components/ui/molecules/KeyActionsPopover";
 import {
-  KeyExplainerSheet,
+  KeyExplainerModal,
   type ExplainedKey,
-} from "@/components/ui/organisms/modals/KeyExplainerSheet";
+} from "@/components/ui/organisms/modals/KeyExplainerModal";
 import { PasskeySetupModal } from "@/components/ui/organisms/modals/PasskeySetupModal";
 import { useAccount } from "@/hooks/useAccount";
 import { usePasskey } from "@/hooks/usePasskey";
@@ -31,7 +30,7 @@ import { KEY_COLORS, recoveryKeyColor } from "@/utils/keyColors";
 import type { RecoveryKey } from "@/utils/apiClient";
 
 export default function KeysAndRecoveryScreen() {
-  const explainerRef = useRef<BottomSheetModal>(null);
+  const [explainerOpen, setExplainerOpen] = useState(false);
   const [explaining, setExplaining] = useState<ExplainedKey>("recovery");
   const [showPasskeySetup, setShowPasskeySetup] = useState(false);
   const [menu, setMenu] = useState<{
@@ -57,7 +56,7 @@ export default function KeysAndRecoveryScreen() {
 
   const explain = (subject: ExplainedKey) => {
     setExplaining(subject);
-    explainerRef.current?.present();
+    setExplainerOpen(true);
   };
 
   const onRemove = async (key: RecoveryKey) => {
@@ -246,7 +245,11 @@ export default function KeysAndRecoveryScreen() {
         }
       />
 
-      <KeyExplainerSheet ref={explainerRef} subject={explaining} />
+      <KeyExplainerModal
+        visible={explainerOpen}
+        onClose={() => setExplainerOpen(false)}
+        subject={explaining}
+      />
 
       <PasskeySetupModal
         visible={showPasskeySetup}

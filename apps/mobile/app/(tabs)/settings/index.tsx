@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import {
   Image,
   View,
@@ -7,7 +7,6 @@ import {
   Linking,
 } from "react-native";
 import Constants from "expo-constants";
-import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
 import { SettingsItem } from "@/components/ui/molecules";
@@ -16,7 +15,7 @@ import { Spacing } from "@/constants/Spacing";
 import { useAuth } from "@/contexts/AuthContext";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { EditWalletModal } from "@/components/ui/organisms/modals/EditWalletModal";
-import { NotificationsSheet } from "@/components/ui/organisms/modals/NotificationsSheet";
+import { NotificationsModal } from "@/components/ui/organisms/modals/NotificationsModal";
 import { DeleteAccountModal } from "@/components/ui/organisms/modals/DeleteAccountModal";
 import { useWalletName } from "@/hooks/useWalletName";
 import { useBalances } from "@/hooks/useBalances";
@@ -39,7 +38,7 @@ export default function SettingsScreen() {
   const { name: walletName, setName: setWalletName } = useWalletName();
   const [showEditWallet, setShowEditWallet] = useState(false);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
-  const notificationsSheetRef = useRef<BottomSheetModal>(null);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notifications = useNotificationPreference();
   const { showToast } = useToast();
   const { total: balanceTotal, totalDisplay: balanceDisplay } = useBalances();
@@ -86,7 +85,7 @@ export default function SettingsScreen() {
         {
           label: "Notifications",
           icon: require("@/assets/icons/notification.png"),
-          onPress: () => notificationsSheetRef.current?.present(),
+          onPress: () => setNotificationsOpen(true),
         },
         {
           label: "Address book",
@@ -241,8 +240,9 @@ export default function SettingsScreen() {
         balanceDisplay={`$${balanceDisplay}`}
         onDeleted={handleAccountDeleted}
       />
-      <NotificationsSheet
-        ref={notificationsSheetRef}
+      <NotificationsModal
+        visible={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
         initialEnabled={notifications.enabled ?? true}
         onToggle={notifications.setEnabled}
       />

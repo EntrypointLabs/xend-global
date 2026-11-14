@@ -57,11 +57,26 @@ export function seedWallet(): WalletResponse {
 /**
  * `EXPO_PUBLIC_SEED_BALANCE=empty` seeds an Account that holds nothing, which
  * is the state every new Consumer starts in and the hardest one to reach with
- * a funded fixture.
+ * a funded fixture. `usdc` seeds cash and nothing else, the state of a
+ * Consumer who has added money but bought no asset.
  */
 export function seedBalances(): BalancesResponse {
   if (process.env.EXPO_PUBLIC_SEED_BALANCE === "empty") {
     return { walletAddress: WALLET, tokens: [], fetchedAtSlot: 312_004_918 };
+  }
+  if (process.env.EXPO_PUBLIC_SEED_BALANCE === "usdc") {
+    return {
+      walletAddress: WALLET,
+      tokens: [
+        {
+          mint: usdcMint(),
+          amountRaw: "2847500000",
+          decimals: 6,
+          symbol: "USDC",
+        },
+      ],
+      fetchedAtSlot: 312_004_918,
+    };
   }
   return {
     walletAddress: WALLET,
@@ -122,6 +137,14 @@ export function seedTransfers(): TransferListResponse {
         previousSubject: null,
         signature: "3ouU7Kq9vXbN2mRt5wYzA8cD1eF4gH6jK9lM2nP5qR8s",
         occurredAt: hoursAgo(5),
+      },
+      {
+        id: "evt-3",
+        kind: "recovery_key_removed",
+        subject: "Fq9z...7Kd2",
+        previousSubject: null,
+        signature: "5pWq2Xr8tYb3nM6kJ9hG4fD1sA7zC2vB5nM8kL3jH6gF",
+        occurredAt: hoursAgo(7),
       },
       {
         id: "evt-2",
