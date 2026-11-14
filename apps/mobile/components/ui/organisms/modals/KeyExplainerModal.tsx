@@ -1,15 +1,10 @@
-import React, { forwardRef, useCallback, useMemo } from "react";
+import React from "react";
 import { View } from "react-native";
-import {
-  BottomSheetBackdropProps,
-  BottomSheetModal,
-  BottomSheetView,
-} from "@gorhom/bottom-sheet";
 import { Ionicons } from "@expo/vector-icons";
 
-import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
+import { ActionModal } from "../ActionModal";
 
 export type ExplainedKey = "passkey" | "device" | "recovery";
 
@@ -96,81 +91,60 @@ const EXPLAINERS: Record<
   },
 };
 
-interface KeyExplainerSheetProps {
+interface KeyExplainerModalProps {
+  visible: boolean;
+  onClose: () => void;
   subject: ExplainedKey;
 }
 
-export const KeyExplainerSheet = forwardRef<
-  BottomSheetModal,
-  KeyExplainerSheetProps
->(({ subject }, ref) => {
-  const snapPoints = useMemo(() => ["72%"], []);
+export function KeyExplainerModal({
+  visible,
+  onClose,
+  subject,
+}: KeyExplainerModalProps) {
   const explainer = EXPLAINERS[subject];
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
-    []
-  );
-
-  const dismiss = () => {
-    // @ts-ignore - ref forwarded from parent
-    ref?.current?.dismiss();
-  };
-
   return (
-    <BottomSheetModal
-      ref={ref}
-      index={0}
-      snapPoints={snapPoints}
-      backdropComponent={renderBackdrop}
-      enablePanDownToClose
-      handleIndicatorStyle={{ backgroundColor: "#00000026" }}
-    >
-      <BottomSheetView className="flex-1 px-6 pb-8">
-        <View className="items-center pt-2">
-          <View className="size-14 items-center justify-center rounded-2xl bg-black">
-            <Ionicons name={explainer.icon} size={26} color="#FFFFFF" />
-          </View>
-          <Typography weight="700" className="mt-4 text-2xl text-black">
-            {explainer.title}
-          </Typography>
+    <ActionModal visible={visible} onClose={onClose}>
+      <View className="mb-6 items-center">
+        <View className="mb-5 size-12 items-center justify-center rounded-2xl bg-black">
+          <Ionicons name={explainer.icon} size={24} color="#FFFFFF" />
         </View>
+        <Typography weight="600" className="text-base">
+          {explainer.title}
+        </Typography>
+      </View>
 
-        <View className="mt-7 gap-6">
-          {explainer.points.map((point) => (
-            <View key={point.heading} className="flex-row gap-3">
-              <View className="mt-0.5 size-5 items-center justify-center">
-                <Ionicons name={point.icon} size={16} color="#000000" />
-              </View>
-              <View className="flex-1">
-                <Typography weight="600" className="text-base text-black">
-                  {point.heading}
-                </Typography>
-                <Typography
-                  weight="400"
-                  className="mt-1 text-base leading-6 text-black/50"
-                >
-                  {point.body}
-                </Typography>
-              </View>
+      <View className="gap-5">
+        {explainer.points.map((point) => (
+          <View key={point.heading} className="flex-row gap-3">
+            <View className="mt-0.5 size-5 items-center justify-center">
+              <Ionicons name={point.icon} size={16} color="#000000" />
             </View>
-          ))}
-        </View>
+            <View className="flex-1">
+              <Typography weight="600" className="text-base text-black">
+                {point.heading}
+              </Typography>
+              <Typography
+                weight="400"
+                className="mt-1 text-base leading-6 text-black/50"
+              >
+                {point.body}
+              </Typography>
+            </View>
+          </View>
+        ))}
+      </View>
 
-        <View className="min-h-6 flex-1" />
-
-        <HapticPressable
-          onPress={dismiss}
-          className="h-14 items-center justify-center rounded-full bg-black/5"
-          accessibilityRole="button"
-        >
-          <Typography weight="600" className="text-base text-black">
-            Got it
-          </Typography>
-        </HapticPressable>
-      </BottomSheetView>
-    </BottomSheetModal>
+      <HapticPressable
+        onPress={onClose}
+        className="mt-6 h-14 items-center justify-center rounded-full bg-black/5"
+        accessibilityRole="button"
+      >
+        <Typography weight="600" className="text-base text-black">
+          Got it
+        </Typography>
+      </HapticPressable>
+    </ActionModal>
   );
-});
-
-KeyExplainerSheet.displayName = "KeyExplainerSheet";
+}
