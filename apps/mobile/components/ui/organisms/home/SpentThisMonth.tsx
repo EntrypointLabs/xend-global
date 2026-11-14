@@ -11,34 +11,40 @@ import { RAISED } from "./surface";
 const PLOT_HEIGHT = 56;
 const DOT_RADIUS = 3.5;
 
-function linePath(values: number[], width: number): string {
+function linePath(values: number[], width: number, height: number): string {
   const max = Math.max(...values, 0);
   const inset = DOT_RADIUS + 1;
-  const usableHeight = PLOT_HEIGHT - inset * 2;
+  const usableHeight = height - inset * 2;
   return values
     .map((value, index) => {
       const x = inset + (index / (values.length - 1)) * (width - inset * 2);
       const y =
         max === 0
-          ? PLOT_HEIGHT - inset
-          : PLOT_HEIGHT - inset - (value / max) * usableHeight;
+          ? height - inset
+          : height - inset - (value / max) * usableHeight;
       return `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
     })
     .join(" ");
 }
 
-function Plot({ values }: { values: number[] }) {
+export function SpendLine({
+  values,
+  height = PLOT_HEIGHT,
+}: {
+  values: number[];
+  height?: number;
+}) {
   const [width, setWidth] = useState(0);
   const onLayout = (event: LayoutChangeEvent) =>
     setWidth(event.nativeEvent.layout.width);
   const flat = Math.max(...values) === 0;
 
   return (
-    <View onLayout={onLayout} style={{ height: PLOT_HEIGHT }}>
+    <View onLayout={onLayout} style={{ height }}>
       {width > 0 && values.length > 1 && (
-        <Svg width={width} height={PLOT_HEIGHT}>
+        <Svg width={width} height={height}>
           <Path
-            d={linePath(values, width)}
+            d={linePath(values, width, height)}
             stroke={flat ? "#0000001A" : "#000000"}
             strokeWidth={2}
             strokeLinecap="round"
@@ -83,7 +89,7 @@ export function SpentThisMonth({
           Sends and payments
         </Typography>
         <View className="mt-3">
-          <Plot values={spend.cumulative} />
+          <SpendLine values={spend.cumulative} />
         </View>
       </View>
     </HomeSection>

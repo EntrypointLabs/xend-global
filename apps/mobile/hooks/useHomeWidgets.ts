@@ -1,5 +1,4 @@
-import { useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useUserId } from "@/hooks/useUserId";
 import { StorageService, userScopedKey } from "@/utils/storage";
@@ -13,26 +12,37 @@ import {
 /** Which Home sections the Consumer has switched on, kept on this phone. */
 export function useHomeWidgets() {
   const userId = useUserId();
-  const queryClient = useQueryClient();
   const storageKey = userScopedKey("home.widgets", userId ?? "signed-out");
-  const queryKey = ["home-widgets", storageKey];
+  const [visibility, setVisibility] = useState<HomeWidgetVisibility>(
+    DEFAULT_WIDGET_VISIBILITY
+  );
+  // A choice made before the saved one has loaded must win over it.
+  const changedByUser = useRef(false);
+  const latest = useRef(visibility);
 
-  const { data } = useQuery({
-    queryKey,
-    queryFn: async () =>
-      parseWidgetVisibility(await StorageService.getItem(storageKey)),
-    staleTime: Infinity,
-  });
-  const visibility: HomeWidgetVisibility = data ?? DEFAULT_WIDGET_VISIBILITY;
+  useEffect(() => {
+    let cancelled = false;
+    StorageService.getItem<unknown>(storageKey).then((stored) => {
+      if (!cancelled && !changedByUser.current) {
+        const loaded = parseWidgetVisibility(stored);
+        latest.current = loaded;
+        setVisibility(loaded);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [storageKey]);
 
   const setVisible = useCallback(
     (key: HomeWidgetKey, visible: boolean) => {
-      const next = { ...visibility, [key]: visible };
-      queryClient.setQueryData(queryKey, next);
+      changedByUser.current = true;
+      const next = { ...latest.current, [key]: visible };
+      latest.current = next;
+      setVisibility(next);
       StorageService.setItem(storageKey, next).catch(() => {});
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [visibility, storageKey, queryClient]
+    [storageKey]
   );
 
   return { visibility, setVisible };

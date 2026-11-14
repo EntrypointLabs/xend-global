@@ -393,6 +393,12 @@ function HomeScreenContent() {
         onClose={() => setWidgetsOpen(false)}
         visibility={visibility}
         onChange={setVisible}
+        preview={{
+          holdings,
+          latestEntry: recentEntries[0] ?? null,
+          spend: monthlySpend,
+          watched: watchedTokens,
+        }}
       />
       <TransactionDetailModal
         visible={openEntry !== null}
