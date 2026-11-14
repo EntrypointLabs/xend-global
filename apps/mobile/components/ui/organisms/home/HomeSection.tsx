@@ -3,6 +3,8 @@ import { View } from "react-native";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
+import { GLASS } from "@/components/ui/glass";
+import { cn } from "@/utils/cn";
 
 interface HomeSectionProps {
   title: string;
@@ -21,7 +23,7 @@ export function HomeSection({
   return (
     <View>
       <View className="flex-row items-center justify-between pb-1">
-        <Typography weight="500" className="text-sm text-black/30">
+        <Typography weight="500" className={cn("text-sm", GLASS.caption)}>
           {title}
         </Typography>
         {actionLabel && onAction && (
@@ -32,7 +34,7 @@ export function HomeSection({
             onPress={onAction}
             className="py-1"
           >
-            <Typography weight="500" className="text-sm text-black/40">
+            <Typography weight="500" className={cn("text-sm", GLASS.copy)}>
               {actionLabel}
             </Typography>
           </HapticPressable>

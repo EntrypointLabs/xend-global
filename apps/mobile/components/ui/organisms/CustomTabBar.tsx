@@ -26,7 +26,10 @@ const iconMappings = {
   index: Home,
   settings: Settings,
   history: History,
-} as Record<string, React.FC<{ isActive?: boolean }>>;
+} as Record<
+  string,
+  React.FC<{ isActive?: boolean; size?: number; tone?: "dark" | "light" }>
+>;
 
 const fabShadow = {
   shadowColor: "#000",
@@ -91,6 +94,9 @@ export function CustomTabBar({
     <>
       <ContainerWrapper withBlur={!isHome}>
         <ActionPill
+          // Home sits on the photo, so its bar is glass; the white tabs keep
+          // the solid pill.
+          variant={isHome ? "glass" : "solid"}
           items={state.routes.map((route, index) => {
             const { options } = descriptors[route.key];
             const isFocused = state.index === index;
@@ -146,7 +152,9 @@ export function CustomTabBar({
           >
             <HapticPressable
               className={cn(
-                "h-[50px] w-[50px] items-center justify-center rounded-[28px] bg-black",
+                // White on the photo, the same solid white as Add money: the
+                // one primary action on the screen gets the one solid fill.
+                "h-[50px] w-[50px] items-center justify-center rounded-[28px] bg-white",
                 readOnly && "opacity-30"
               )}
               // PLATFORM-SHADOW
@@ -157,7 +165,7 @@ export function CustomTabBar({
                 readOnly ? "Sign in with your passkey to send" : "Actions"
               }
             >
-              <Ionicons name="add" size={28} color="white" />
+              <Ionicons name="add" size={28} color="black" />
             </HapticPressable>
           </Animated.View>
         )}

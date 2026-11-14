@@ -64,11 +64,14 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
       onRequestClose={onClose}
     >
       <View className="flex-1 items-end justify-end">
+        {/* Dark frost: the menu only opens from Home, which sits on the
+            photo, and its labels are white to match. */}
         <FrostBlurView
+          tint="dark"
           // MEASURED-LAYOUT (absoluteFill)
           style={StyleSheet.absoluteFill}
         >
-          <HapticPressable className="flex-1" onPress={onClose} />
+          <HapticPressable className="flex-1 bg-black/30" onPress={onClose} />
         </FrostBlurView>
 
         <View
@@ -91,7 +94,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
                   setTimeout(menu.onPress, 10);
                 }}
               >
-                <Typography weight="600" className="text-lg text-black">
+                <Typography weight="600" className="text-lg text-white">
                   {menu.title}
                 </Typography>
                 <Image

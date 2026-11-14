@@ -113,6 +113,11 @@ function AuthLayout() {
   const segments = useSegments();
   const { isAuthenticated, needsContactEmail } = useAuth();
   const colorScheme = useColorScheme();
+  // Home sits on a dark photo. Kept to a boolean so the memo below only
+  // rebuilds when Home is entered or left, not on every navigation.
+  const onPhoto =
+    (segments as string[])[0] === "(tabs)" &&
+    (segments as string[])[1] === undefined;
 
   // The screens are held apart from this component's own renders on purpose.
   // `useSegments()` above changes on every navigation, and without this the
@@ -127,12 +132,14 @@ function AuthLayout() {
             <BlurTargetHost>
               <Slot />
             </BlurTargetHost>
-            <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+            <StatusBar
+              style={colorScheme === "dark" || onPhoto ? "light" : "dark"}
+            />
           </ToastProvider>
         </ModalFlowProvider>
       </ScreenThemeProvider>
     ),
-    [colorScheme]
+    [colorScheme, onPhoto]
   );
 
   if (isAuthenticated === null) {

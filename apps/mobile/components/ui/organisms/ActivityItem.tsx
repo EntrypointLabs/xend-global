@@ -12,12 +12,32 @@ import { formatUsdFromString } from "@/utils/balances";
 import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { formatMoney } from "@/utils/money";
 import { KEY_COLORS } from "@/utils/keyColors";
+import { GLASS, useOnPhoto } from "@/components/ui/glass";
 
 export type ActivityItemProps = ActivityEntry & {
   onPress?: () => void;
 };
 
+/** Row text colours, white on the Home photo and black everywhere else. */
+function useRowTone() {
+  const onPhoto = useOnPhoto();
+  return onPhoto
+    ? {
+        ink: "text-white",
+        muted: "text-white/[0.56]",
+        up: GLASS.up,
+        down: GLASS.down,
+      }
+    : {
+        ink: "",
+        muted: "text-black/30",
+        up: "text-success",
+        down: "text-destructive",
+      };
+}
+
 export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
+  const tone = useRowTone();
   // An account event has no amount, no token and no counterparty. Falling
   // through would render it as a nameless token and a "+0", which reads as a
   // broken transfer rather than the security notice it is.
@@ -56,10 +76,10 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
       : `From: ${truncateAddress(entry.counterparty)}`;
 
   const valueColorClass = isInactive
-    ? "text-black/30"
+    ? tone.muted
     : isSend
-      ? "text-destructive"
-      : "text-success";
+      ? tone.down
+      : tone.up;
 
   return (
     <HapticPressable
@@ -74,10 +94,10 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
       />
       <View className="flex-1 flex-row items-center justify-between">
         <View className="flex-col">
-          <Typography weight="600" className="mb-0.5">
+          <Typography weight="600" className={cn("mb-0.5", tone.ink)}>
             {statusLabel(entry)}
           </Typography>
-          <Typography weight="500" className="text-sm text-black/30">
+          <Typography weight="500" className={cn("text-sm", tone.muted)}>
             {label}
           </Typography>
         </View>
@@ -98,7 +118,7 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
             // What it was worth when it happened, not what the same tokens
             // would fetch today. Shown for every asset, since "5 SOL" alone
             // does not tell a Consumer what they received.
-            <Typography weight="500" className="text-xs text-black/30">
+            <Typography weight="500" className={cn("text-xs", tone.muted)}>
               {formatUsdFromString(usd)}
             </Typography>
           )}
@@ -123,6 +143,7 @@ function AwaitingPaymentItem({
   entry: ActivityEntry;
   onPress?: () => void;
 }) {
+  const tone = useRowTone();
   return (
     <HapticPressable
       className="flex-row items-center gap-3.5 py-3"
@@ -133,17 +154,17 @@ function AwaitingPaymentItem({
       </View>
       <View className="flex-1 flex-row items-center justify-between">
         <View className="flex-col">
-          <Typography weight="600" className="mb-0.5">
+          <Typography weight="600" className={cn("mb-0.5", tone.ink)}>
             {statusLabel(entry)}
           </Typography>
-          <Typography weight="500" className="text-sm text-black/30">
+          <Typography weight="500" className={cn("text-sm", tone.muted)}>
             {entry.merchantName ?? "Merchant"}
           </Typography>
         </View>
         <View className="flex-row items-center gap-1">
           <Typography
             weight="600"
-            className="text-sm tracking-[0.5px] text-black/30"
+            className={cn("text-sm tracking-[0.5px]", tone.muted)}
           >
             {entry.displayCurrency && entry.displayAmountMinor
               ? formatMoney(entry.displayCurrency, entry.displayAmountMinor)
@@ -219,6 +240,7 @@ function AccountEventItem({
   onPress?: () => void;
 }) {
   const label = entry.securityLabel ?? "Account updated";
+  const tone = useRowTone();
 
   return (
     <HapticPressable
@@ -227,13 +249,13 @@ function AccountEventItem({
     >
       <AccountEventMark kind={entry.securityKind} />
       <View className="flex-1 flex-col">
-        <Typography weight="600" className="mb-0.5">
+        <Typography weight="600" className={cn("mb-0.5", tone.ink)}>
           {label}
         </Typography>
         {entry.securitySubject && (
           <Typography
             weight="500"
-            className="text-sm text-black/30"
+            className={cn("text-sm", tone.muted)}
             numberOfLines={1}
           >
             {entry.securitySubject}

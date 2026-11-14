@@ -2,10 +2,11 @@ import React from "react";
 import { View } from "react-native";
 
 import { Typography } from "@/components/ui/atoms/Typography";
+import { GLASS } from "@/components/ui/glass";
 import { ActivityItem } from "@/components/ui/organisms/ActivityItem";
 import type { ActivityEntry } from "@/utils/activity";
+import { cn } from "@/utils/cn";
 import { HomeSection } from "./HomeSection";
-import { RAISED } from "./surface";
 
 interface RecentTransactionsProps {
   entries: ActivityEntry[];
@@ -26,24 +27,22 @@ export function RecentTransactions({
       actionLabel={entries.length > 0 ? "See all" : undefined}
       onAction={onSeeAll}
     >
-      <View
-        className="rounded-2xl bg-card px-4 py-1"
-        // PLATFORM-SHADOW
-        style={RAISED}
-      >
+      <View className={cn("px-4 py-1", GLASS.card)}>
         {entries.length === 0 ? (
-          <Typography weight="500" className="py-4 text-sm text-black/40">
+          <Typography weight="500" className={cn("py-4 text-sm", GLASS.copy)}>
             {loaded
               ? "Money you add and send shows up here"
               : "Loading your activity"}
           </Typography>
         ) : (
-          entries.map((entry) => (
-            <ActivityItem
+          entries.map((entry, index) => (
+            // Rows split by the site card's own 12% hairline.
+            <View
               key={entry.id}
-              {...entry}
-              onPress={() => onOpen(entry)}
-            />
+              className={cn(index > 0 && "border-t", GLASS.divider)}
+            >
+              <ActivityItem {...entry} onPress={() => onOpen(entry)} />
+            </View>
           ))
         )}
       </View>
