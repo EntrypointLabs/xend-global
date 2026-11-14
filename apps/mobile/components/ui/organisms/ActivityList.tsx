@@ -8,6 +8,8 @@ import {
 import { ActivityItem } from "./ActivityItem";
 import { Typography } from "../atoms/Typography";
 import type { ActivityEntry } from "@/utils/activity";
+import { cn } from "@/utils/cn";
+import { GLASS, groupedRowClass, useOnPhoto } from "@/components/ui/glass";
 
 type ActivityRow = ActivityEntry & {
   onPress?: () => void;
@@ -26,6 +28,7 @@ interface ActivityListProps {
   isFetchingNextPage?: boolean;
   hasNextPage?: boolean;
   ListEmptyComponent?: React.ReactElement | null;
+  ListHeaderComponent?: React.ReactElement | null;
 }
 
 // The grouping key is a `YYYY-MM-DD` day; render it as a readable date. Build
@@ -49,10 +52,15 @@ export const ActivityList = memo(
     isFetchingNextPage = false,
     hasNextPage = false,
     ListEmptyComponent,
+    ListHeaderComponent,
   }: ActivityListProps) => {
+    const onPhoto = useOnPhoto();
     const emptyState = ListEmptyComponent ?? (
       <View className="items-center py-16">
-        <Typography weight="500" className="text-black/30">
+        <Typography
+          weight="500"
+          className={onPhoto ? GLASS.copy : "text-black/30"}
+        >
           No activity yet
         </Typography>
       </View>
@@ -62,9 +70,30 @@ export const ActivityList = memo(
       <SectionList
         sections={sections}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <ActivityItem {...item} />}
+        ListHeaderComponent={ListHeaderComponent}
+        renderItem={({ item, index, section }) =>
+          onPhoto ? (
+            // On the photo each day is one glass card.
+            <View
+              className={cn(
+                groupedRowClass(index, section.data.length),
+                index > 0 && "border-t border-t-white/[0.12]"
+              )}
+            >
+              <ActivityItem {...item} />
+            </View>
+          ) : (
+            <ActivityItem {...item} />
+          )
+        }
         renderSectionHeader={({ section: { title } }) => (
-          <Typography weight="600" className="text-sm text-black/30">
+          <Typography
+            weight="600"
+            className={cn(
+              "text-sm",
+              onPhoto ? cn("pb-2 pt-5", GLASS.caption) : "text-black/30"
+            )}
+          >
             {formatSectionTitle(title)}
           </Typography>
         )}
@@ -74,14 +103,18 @@ export const ActivityList = memo(
         }}
         refreshControl={
           onRefresh ? (
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={onPhoto ? "#FFFFFF" : undefined}
+            />
           ) : undefined
         }
         ListEmptyComponent={emptyState}
         ListFooterComponent={
           isFetchingNextPage ? (
             <View className="py-4">
-              <ActivityIndicator />
+              <ActivityIndicator color={onPhoto ? "#FFFFFF" : undefined} />
             </View>
           ) : null
         }

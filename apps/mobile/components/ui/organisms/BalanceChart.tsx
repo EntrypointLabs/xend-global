@@ -5,6 +5,7 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { cn } from "@/utils/cn";
+import { useOnPhoto } from "@/components/ui/glass";
 
 export const CHART_RANGES = ["1D", "1W", "1M", "6M", "1Y"] as const;
 export type ChartRange = (typeof CHART_RANGES)[number];
@@ -56,6 +57,7 @@ export function BalanceChart({
   style,
 }: BalanceChartProps) {
   const { size } = useResponsiveLayout();
+  const onPhoto = useOnPhoto();
   const [range, setRange] = useState<ChartRange>("1D");
   // Stable per mount: calling Date.now() inside the memo is an impure render.
   const [now] = useState(() => Date.now());
@@ -92,7 +94,13 @@ export function BalanceChart({
               key={i}
               className={cn(
                 "flex-1 rounded-full",
-                loading ? "bg-black/[0.06]" : "bg-black/10"
+                onPhoto
+                  ? loading
+                    ? "bg-white/[0.12]"
+                    : "bg-white/[0.18]"
+                  : loading
+                    ? "bg-black/[0.06]"
+                    : "bg-black/10"
               )}
               style={{
                 height: height === null ? "100%" : `${height * 100}%`,
@@ -121,14 +129,28 @@ export function BalanceChart({
               scaleOnPress={false}
               className={cn(
                 "rounded-full px-2 py-0.5",
-                active ? "bg-black/5" : "bg-transparent"
+                active
+                  ? onPhoto
+                    ? "bg-white/[0.12]"
+                    : "bg-black/5"
+                  : "bg-transparent"
               )}
             >
               <Typography
                 weight={active ? "600" : "500"}
                 className={cn(
                   "text-sm",
-                  loading ? "text-black/15" : active ? "" : "text-black/30"
+                  onPhoto
+                    ? loading
+                      ? "text-white/[0.3]"
+                      : active
+                        ? "text-white"
+                        : "text-white/[0.56]"
+                    : loading
+                      ? "text-black/15"
+                      : active
+                        ? ""
+                        : "text-black/30"
                 )}
               >
                 {option}

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Redirect, Slot, useSegments } from "expo-router";
-import { AppState, AppStateStatus, Platform, View } from "react-native";
+import { AppState, AppStateStatus, LogBox, Platform, View } from "react-native";
+import { SEED_DEMO } from "@/utils/devSeed";
 
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
@@ -11,6 +12,11 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { AppLockProvider, useAppLock } from "@/contexts/AppLockContext";
 import { ScreenThemeProvider } from "@/contexts/ScreenThemeContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { isPhotoRoute } from "@/components/ui/glass";
+import {
+  AppearanceProvider,
+  useColorfulTheme,
+} from "@/contexts/AppearanceContext";
 import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/utils/cn";
 import { ModalFlowProvider } from "@/contexts/ModalFlowContext";
@@ -64,6 +70,12 @@ import {
 // Runs before any provider mounts, so the first Privy call is already covered.
 installPrivyRequestLog();
 
+// An unsigned simulator build has no keychain entitlement, so in the demo every
+// secure read and write raised an error toast over the screen being shown.
+if (SEED_DEMO) {
+  LogBox.ignoreLogs(["A required entitlement isn't present"]);
+}
+
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2 } },
 });
@@ -113,6 +125,12 @@ function AuthLayout() {
   const segments = useSegments();
   const { isAuthenticated, needsContactEmail } = useAuth();
   const colorScheme = useColorScheme();
+  // The tab roots sit on a dark photo. Kept to a boolean so the memo below only
+  // rebuilds when one of them is entered or left, not on every navigation.
+  // The theme preview is black in either theme.
+  const onPhoto =
+    isPhotoRoute(segments as string[], useColorfulTheme()) ||
+    (segments as string[])[2] === "theme-preview";
 
   // The screens are held apart from this component's own renders on purpose.
   // `useSegments()` above changes on every navigation, and without this the
@@ -127,12 +145,14 @@ function AuthLayout() {
             <BlurTargetHost>
               <Slot />
             </BlurTargetHost>
-            <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+            <StatusBar
+              style={colorScheme === "dark" || onPhoto ? "light" : "dark"}
+            />
           </ToastProvider>
         </ModalFlowProvider>
       </ScreenThemeProvider>
     ),
-    [colorScheme]
+    [colorScheme, onPhoto]
   );
 
   if (isAuthenticated === null) {
@@ -245,23 +265,25 @@ function RootLayout() {
         <ReactQueryFocusBridge />
         <GestureHandlerRootView style={{ flex: 1 }}>
           <ThemedRoot>
-            <AuthProvider>
-              <ActivityWatch />
-              <AppLockProvider>
-                <BlurTargetProvider>
-                  {/* The New Architecture flattens layout-only views, which
+            <AppearanceProvider>
+              <AuthProvider>
+                <ActivityWatch />
+                <AppLockProvider>
+                  <BlurTargetProvider>
+                    {/* The New Architecture flattens layout-only views, which
                       would leave every z-index in the app (tab bar, sheets,
                       toasts) competing directly with AppCover. A view that
                       can't be flattened keeps them all in here. */}
-                  <View collapsable={false} className="flex-1">
-                    <BottomSheetModalProvider>
-                      <AuthLayout />
-                    </BottomSheetModalProvider>
-                  </View>
-                  <AppCover />
-                </BlurTargetProvider>
-              </AppLockProvider>
-            </AuthProvider>
+                    <View collapsable={false} className="flex-1">
+                      <BottomSheetModalProvider>
+                        <AuthLayout />
+                      </BottomSheetModalProvider>
+                    </View>
+                    <AppCover />
+                  </BlurTargetProvider>
+                </AppLockProvider>
+              </AuthProvider>
+            </AppearanceProvider>
           </ThemedRoot>
         </GestureHandlerRootView>
       </QueryClientProvider>

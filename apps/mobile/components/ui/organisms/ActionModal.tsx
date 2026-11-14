@@ -11,6 +11,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { ThemedText } from "@/components/ui/atoms";
 import { useThemeColor } from "@/hooks/useThemeColor";
+import { OnPhotoProvider } from "@/components/ui/glass";
 import Animated, {
   useSharedValue,
   // useAnimatedStyle,
@@ -173,7 +174,11 @@ export function ActionModal({
                     </View>
                   ) : null}
 
-                  <View style={styles.contentContainer}>{children}</View>
+                  {/* A white card, so nothing in it is on the photo even when
+                      the screen that opened it is. */}
+                  <OnPhotoProvider value={false}>
+                    <View style={styles.contentContainer}>{children}</View>
+                  </OnPhotoProvider>
                 </Animated.View>
               </GestureDetector>
             </TouchableWithoutFeedback>

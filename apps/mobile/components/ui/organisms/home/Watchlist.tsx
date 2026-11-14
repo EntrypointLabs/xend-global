@@ -6,8 +6,8 @@ import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { Typography } from "@/components/ui/atoms/Typography";
 import type { WatchedToken } from "@/hooks/useWatchlist";
 import { cn } from "@/utils/cn";
+import { useSurface, type Surface } from "@/components/ui/glass";
 import { HomeSection } from "./HomeSection";
-import { RAISED } from "./surface";
 
 function formatPrice(price: number): string {
   if (price >= 1) {
@@ -21,12 +21,8 @@ function formatPrice(price: number): string {
   return price.toFixed(decimals).replace(/(\.\d\d\d*?)0+$/, "$1");
 }
 
-function changeClass(change: number): string {
-  return change > 0
-    ? "text-success"
-    : change < 0
-      ? "text-destructive"
-      : "text-black/30";
+function changeClass(change: number, S: Surface): string {
+  return change > 0 ? S.up : change < 0 ? S.down : S.small;
 }
 
 function Row({
@@ -36,6 +32,7 @@ function Row({
   token: WatchedToken;
   onPress?: () => void;
 }) {
+  const S = useSurface();
   const priced = token.usdPrice !== null;
   const spoken = priced
     ? `${token.name}, $${formatPrice(token.usdPrice!)}`
@@ -55,24 +52,28 @@ function Row({
         size={40}
       />
       <View className="flex-1">
-        <Typography weight="600" className="text-base" numberOfLines={1}>
+        <Typography
+          weight="600"
+          className={cn("text-base", S.ink)}
+          numberOfLines={1}
+        >
           {token.name}
         </Typography>
-        <Typography weight="500" className="text-[13px] text-black/40">
+        <Typography weight="500" className={cn("text-[13px]", S.small)}>
           {token.symbol}
         </Typography>
       </View>
       <View className="items-end">
         <Typography
           weight="600"
-          className={cn("text-base", !priced && "text-black/30")}
+          className={cn("text-base", priced ? S.ink : S.small)}
         >
           {priced ? `$${formatPrice(token.usdPrice!)}` : "Unavailable"}
         </Typography>
         {token.change24h !== null && (
           <Typography
             weight="600"
-            className={cn("text-[12px]", changeClass(token.change24h))}
+            className={cn("text-[12px]", changeClass(token.change24h, S))}
           >
             {token.change24h > 0 ? "+" : ""}
             {token.change24h.toFixed(2)}%
@@ -90,15 +91,21 @@ export function Watchlist({
   tokens: WatchedToken[];
   onOpen?: () => void;
 }) {
+  const S = useSurface();
   return (
     <HomeSection title="Watchlist">
       <View
-        className="rounded-2xl bg-card px-4 py-1"
+        className={cn("px-4 py-1", S.card)}
         // PLATFORM-SHADOW
-        style={RAISED}
+        style={S.raised}
       >
-        {tokens.map((token) => (
-          <Row key={token.mint} token={token} onPress={onOpen} />
+        {tokens.map((token, index) => (
+          <View
+            key={token.mint}
+            className={cn(index > 0 && "border-t", S.divider)}
+          >
+            <Row token={token} onPress={onOpen} />
+          </View>
         ))}
       </View>
     </HomeSection>

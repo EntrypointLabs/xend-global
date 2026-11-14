@@ -3,6 +3,8 @@ import { View, Image, ImageSourcePropType } from "react-native";
 import { Typography } from "../atoms/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "../atoms/HapticPressable";
+import { GLASS_COLORS, useOnPhoto } from "@/components/ui/glass";
+import { cn } from "@/utils/cn";
 
 interface SettingsItemProps {
   icon: ImageSourcePropType | React.ReactNode;
@@ -10,6 +12,8 @@ interface SettingsItemProps {
   onPress?: () => void;
   showChevron?: boolean;
   color?: string;
+  /** Tint a black glyph white on the photo. Coloured glyphs keep their colour. */
+  tintOnPhoto?: boolean;
 }
 
 export function SettingsItem({
@@ -18,7 +22,10 @@ export function SettingsItem({
   onPress,
   showChevron = true,
   color,
+  tintOnPhoto = false,
 }: SettingsItemProps) {
+  const onPhoto = useOnPhoto();
+
   return (
     <HapticPressable
       onPress={onPress}
@@ -32,6 +39,7 @@ export function SettingsItem({
             source={icon as ImageSourcePropType}
             className="size-6"
             resizeMode="contain"
+            tintColor={onPhoto && tintOnPhoto ? "#FFFFFF" : undefined}
           />
         )}
       </View>
@@ -39,15 +47,28 @@ export function SettingsItem({
       <View className="flex-1">
         <Typography
           weight="500"
-          className="text-lg text-black"
-          style={{ color }}
+          className={cn("text-lg", onPhoto ? "text-white" : "text-black")}
+          // Only when set: an undefined `color` in the style still overrides
+          // the class colour and turns the label black on the photo.
+          style={color ? { color } : undefined}
         >
           {label}
         </Typography>
       </View>
-      {showChevron && (
-        <Ionicons name="chevron-forward" size={20} className="!text-black/40" />
-      )}
+      {showChevron &&
+        (onPhoto ? (
+          <Ionicons
+            name="chevron-forward"
+            size={20}
+            color={GLASS_COLORS.small}
+          />
+        ) : (
+          <Ionicons
+            name="chevron-forward"
+            size={20}
+            className="!text-black/40"
+          />
+        ))}
     </HapticPressable>
   );
 }

@@ -9,6 +9,8 @@ import { useSendGate } from "@/hooks/useSendGate";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import HapticPressable from "../atoms/HapticPressable";
 import { useRouter } from "expo-router";
+import { useColorfulTheme } from "@/contexts/AppearanceContext";
+import { cn } from "@/utils/cn";
 
 interface ActionMenuProps {
   visible: boolean;
@@ -21,6 +23,9 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const swapEnabled = useFeature("swap");
+  // The menu only opens from Home: on its photo the frost is dark and the
+  // labels white, on the monochrome Home it stays light with black labels.
+  const dark = useColorfulTheme();
 
   const menus = useMemo(() => {
     return [
@@ -65,10 +70,14 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
     >
       <View className="flex-1 items-end justify-end">
         <FrostBlurView
+          tint={dark ? "dark" : "light"}
           // MEASURED-LAYOUT (absoluteFill)
           style={StyleSheet.absoluteFill}
         >
-          <HapticPressable className="flex-1" onPress={onClose} />
+          <HapticPressable
+            className={cn("flex-1", dark && "bg-black/30")}
+            onPress={onClose}
+          />
         </FrostBlurView>
 
         <View
@@ -91,7 +100,10 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
                   setTimeout(menu.onPress, 10);
                 }}
               >
-                <Typography weight="600" className="text-lg text-black">
+                <Typography
+                  weight="600"
+                  className={cn("text-lg", dark ? "text-white" : "text-black")}
+                >
                   {menu.title}
                 </Typography>
                 <Image
