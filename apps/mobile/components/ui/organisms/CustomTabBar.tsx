@@ -22,6 +22,7 @@ import { useSegments } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/utils/cn";
 import { isPhotoRoute } from "@/components/ui/glass";
+import { useColorfulTheme } from "@/contexts/AppearanceContext";
 
 const iconMappings = {
   index: Home,
@@ -60,7 +61,8 @@ export function CustomTabBar({
   const fabOpacity = useSharedValue(1);
 
   const isHome = segments[0] === "(tabs)" && segments[1] === undefined;
-  const onPhoto = isPhotoRoute(segments);
+  const colorful = useColorfulTheme();
+  const onPhoto = isPhotoRoute(segments, colorful);
   const isSettingsSubPage =
     segments[0] === "(tabs)" &&
     segments[1] === "settings" &&
@@ -154,9 +156,10 @@ export function CustomTabBar({
           >
             <HapticPressable
               className={cn(
-                // White on the photo, the same solid white as Add money: the
-                // one primary action on the screen gets the one solid fill.
-                "h-[50px] w-[50px] items-center justify-center rounded-[28px] bg-white",
+                // The same fill as Add money in each theme: white on the
+                // photo, black on white. One primary action, one solid fill.
+                "h-[50px] w-[50px] items-center justify-center rounded-[28px]",
+                onPhoto ? "bg-white" : "bg-black",
                 readOnly && "opacity-30"
               )}
               // PLATFORM-SHADOW
@@ -167,7 +170,11 @@ export function CustomTabBar({
                 readOnly ? "Sign in with your passkey to send" : "Actions"
               }
             >
-              <Ionicons name="add" size={28} color="black" />
+              <Ionicons
+                name="add"
+                size={28}
+                color={onPhoto ? "black" : "white"}
+              />
             </HapticPressable>
           </Animated.View>
         )}

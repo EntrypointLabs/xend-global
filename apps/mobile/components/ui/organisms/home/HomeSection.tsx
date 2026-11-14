@@ -3,7 +3,7 @@ import { View } from "react-native";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
-import { GLASS } from "@/components/ui/glass";
+import { useSurface } from "@/components/ui/glass";
 import { cn } from "@/utils/cn";
 
 interface HomeSectionProps {
@@ -20,10 +20,11 @@ export function HomeSection({
   onAction,
   children,
 }: HomeSectionProps) {
+  const S = useSurface();
   return (
     <View>
       <View className="flex-row items-center justify-between pb-1">
-        <Typography weight="500" className={cn("text-sm", GLASS.caption)}>
+        <Typography weight="500" className={cn("text-sm", S.caption)}>
           {title}
         </Typography>
         {actionLabel && onAction && (
@@ -34,7 +35,7 @@ export function HomeSection({
             onPress={onAction}
             className="py-1"
           >
-            <Typography weight="500" className={cn("text-sm", GLASS.copy)}>
+            <Typography weight="500" className={cn("text-sm", S.copy)}>
               {actionLabel}
             </Typography>
           </HapticPressable>

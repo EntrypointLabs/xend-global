@@ -44,11 +44,13 @@ import type { SendMode } from "@/components/ui/organisms/send/bankAccount";
 import BalanceView from "@/components/BalanceView";
 import { cn } from "@/utils/cn";
 import {
-  GLASS,
-  GLASS_COLORS,
   OnPhotoProvider,
   PhotoBackdrop,
+  surfaceFor,
+  useSurface,
+  type Surface,
 } from "@/components/ui/glass";
+import { useColorfulTheme } from "@/contexts/AppearanceContext";
 
 // Lifts the 31pt header controls to a 47pt target without growing them.
 const HEADER_HIT_SLOP = 8;
@@ -71,6 +73,9 @@ const CHART_GAP_ABOVE = 28;
 const SECTION_GAP = 21;
 
 function HomeScreenContent() {
+  const colorful = useColorfulTheme();
+  // This component creates the photo context, so it reads the theme directly.
+  const S = surfaceFor(colorful);
   const router = useRouter();
   const swapEnabled = useFeature("swap");
   const { size } = useResponsiveLayout();
@@ -141,10 +146,10 @@ function HomeScreenContent() {
       : null;
 
   return (
-    <OnPhotoProvider value>
+    <OnPhotoProvider value={colorful}>
       <View className="flex-1">
-        <PhotoBackdrop />
-        <ScreenLayout lightColor="transparent">
+        {colorful && <PhotoBackdrop />}
+        <ScreenLayout lightColor={colorful ? "transparent" : undefined}>
           {/* The gutter lives inside the scroll view. Outside it, the view's own
           bounds would shear the shadows off at the screen's left and right. */}
           <ScrollView
@@ -163,10 +168,10 @@ function HomeScreenContent() {
                 onPress={() => router.push("/(tabs)/settings" as never)}
                 className={cn(
                   "h-9 w-9 items-center justify-center rounded-full",
-                  GLASS.chip
+                  S.chip
                 )}
               >
-                <Typography weight="600" className={cn("text-sm", GLASS.ink)}>
+                <Typography weight="600" className={cn("text-sm", S.ink)}>
                   {initials(walletName)}
                 </Typography>
               </HapticPressable>
@@ -180,13 +185,13 @@ function HomeScreenContent() {
                 <Ionicons
                   name={hidden ? "eye-off-outline" : "eye-outline"}
                   size={22}
-                  color={GLASS_COLORS.caption}
+                  color={S.colors.caption}
                 />
               </HapticPressable>
             </View>
 
             <View>
-              <Typography weight="500" className={cn("text-sm", GLASS.caption)}>
+              <Typography weight="500" className={cn("text-sm", S.caption)}>
                 Total Balance
               </Typography>
               {isBalanceError ? (
@@ -213,10 +218,7 @@ function HomeScreenContent() {
                   <Amount
                     hidden={hidden}
                     weight="700"
-                    className={cn(
-                      "leading-[120%] tracking-[-1.1px]",
-                      GLASS.ink
-                    )}
+                    className={cn("leading-[120%] tracking-[-1.1px]", S.ink)}
                     style={{ fontSize: size(40) }}
                     amount={totalDisplay}
                   />
@@ -297,7 +299,7 @@ function HomeScreenContent() {
                   <View className="flex-row items-center justify-between pb-1">
                     <Typography
                       weight="500"
-                      className={cn("text-sm", GLASS.caption)}
+                      className={cn("text-sm", S.caption)}
                     >
                       Your assets
                     </Typography>
@@ -310,7 +312,7 @@ function HomeScreenContent() {
                     >
                       <Typography
                         weight="500"
-                        className={cn("text-sm", GLASS.copy)}
+                        className={cn("text-sm", S.copy)}
                       >
                         See all
                       </Typography>
@@ -353,15 +355,12 @@ function HomeScreenContent() {
                 style={{ marginBottom: size(SECTION_GAP) }}
               >
                 <EmptyAccountIllustration />
-                <Typography
-                  weight="600"
-                  className={cn("mt-4 text-lg", GLASS.ink)}
-                >
+                <Typography weight="600" className={cn("mt-4 text-lg", S.ink)}>
                   There is nothing here yet
                 </Typography>
                 <Typography
                   weight="500"
-                  className={cn("mt-1 text-center text-sm", GLASS.copy)}
+                  className={cn("mt-1 text-center text-sm", S.copy)}
                 >
                   {swapEnabled
                     ? "Money you add and assets you buy show up here"
@@ -402,11 +401,11 @@ function HomeScreenContent() {
               onPress={() => setWidgetsOpen(true)}
               className={cn(
                 "mb-6 flex-row items-center gap-1.5 self-center rounded-full px-5 py-3",
-                GLASS.outlinePill
+                S.quietPill
               )}
             >
-              <Ionicons name="add" size={18} color={GLASS_COLORS.ink} />
-              <Typography weight="600" className={cn("text-sm", GLASS.ink)}>
+              <Ionicons name="add" size={18} color={S.colors.ink} />
+              <Typography weight="600" className={cn("text-sm", S.ink)}>
                 Add widgets
               </Typography>
             </HapticPressable>
@@ -466,19 +465,17 @@ function HomeScreenContent() {
 
 /** Green when the balance grew, red when it fell. Flat is not drawn. */
 function DayChange({ amount }: { amount: number }) {
+  const S = useSurface();
   const up = amount > 0;
   return (
-    <Typography
-      weight="500"
-      className={cn("text-sm", up ? GLASS.up : GLASS.down)}
-    >
+    <Typography weight="500" className={cn("text-sm", up ? S.up : S.down)}>
       {up ? "+" : "-"}${formatMoney(Math.abs(amount))} today
     </Typography>
   );
 }
 
-function changeClass(change: number): string {
-  return change > 0 ? GLASS.up : change < 0 ? GLASS.down : GLASS.small;
+function changeClass(change: number, S: Surface): string {
+  return change > 0 ? S.up : change < 0 ? S.down : S.small;
 }
 
 function signedPercent(change: number): string {
@@ -550,20 +547,24 @@ function ActionButton({
   onPress: () => void;
   primary?: boolean;
 }) {
+  const S = useSurface();
   return (
     <HapticPressable
       accessibilityRole="button"
       onPress={onPress}
-      // The site's CTA is a solid white pill with black type; its secondary
-      // pills are a white hairline on the photo.
       className={cn(
         "flex-1 items-center rounded-full py-3",
-        primary ? "bg-white" : GLASS.outlinePill
+        primary ? S.primaryButton : S.secondaryButton
       )}
+      // PLATFORM-SHADOW
+      style={primary ? S.primaryRaised : S.raised}
     >
       <Typography
-        weight={primary ? "600" : "500"}
-        className={cn("text-[15px]", primary ? "text-black" : GLASS.ink)}
+        weight="600"
+        className={cn(
+          "text-[15px]",
+          primary ? S.primaryButtonText : S.secondaryButtonText
+        )}
       >
         {label}
       </Typography>
@@ -588,6 +589,7 @@ function BalanceTile({
   hidden: boolean;
   onPress: () => void;
 }) {
+  const S = useSurface();
   const spoken = [
     title,
     hidden ? "hidden" : `$${amount}`,
@@ -601,26 +603,28 @@ function BalanceTile({
       accessibilityRole="button"
       accessibilityLabel={spoken}
       onPress={onPress}
-      className={cn("flex-1 gap-1 p-[18px]", GLASS.card)}
+      className={cn("flex-1 gap-1", S.tile, S.card)}
+      // PLATFORM-SHADOW
+      style={S.raised}
     >
-      <Typography weight="500" className={cn("text-[13px]", GLASS.caption)}>
+      <Typography weight="500" className={cn("text-[13px]", S.caption)}>
         {title}
       </Typography>
       <Amount
         hidden={hidden}
-        weight="500"
-        className={cn("text-[22px] tracking-[-0.9px]", GLASS.ink)}
+        weight="600"
+        className={cn(S.tileAmount, S.ink)}
         amount={amount}
       />
       {change != null ? (
         <Typography
           weight="500"
-          className={cn("text-[13px]", changeClass(change))}
+          className={cn("text-[13px]", changeClass(change, S))}
         >
           {signedPercent(change)} today
         </Typography>
       ) : (
-        <Typography weight="500" className={cn("text-[13px]", GLASS.small)}>
+        <Typography weight="500" className={cn("text-[13px]", S.small)}>
           {hint ?? " "}
         </Typography>
       )}
@@ -628,7 +632,9 @@ function BalanceTile({
   );
 }
 
-const ROW = cn("flex-row items-center justify-between px-4 py-3", GLASS.card);
+function rowClass(S: Surface): string {
+  return cn("flex-row items-center justify-between px-4 py-3", S.card);
+}
 
 function AssetRow({
   holding,
@@ -639,6 +645,7 @@ function AssetRow({
   hidden: boolean;
   onPress: () => void;
 }) {
+  const S = useSurface();
   const change = holding.priceChange24h;
   const units = `${formatTokenAmount(holding.amount, holding.decimals)} ${holding.symbol}`;
   const value = holding.usdValue == null ? null : formatMoney(holding.usdValue);
@@ -656,7 +663,9 @@ function AssetRow({
       accessibilityRole="button"
       accessibilityLabel={spoken}
       onPress={onPress}
-      className={ROW}
+      className={rowClass(S)}
+      // PLATFORM-SHADOW
+      style={S.raised}
     >
       <View className="flex-1 flex-row items-center gap-3">
         <TokenMark
@@ -668,14 +677,14 @@ function AssetRow({
         <View className="flex-1 gap-0.5">
           <Typography
             weight="600"
-            className={cn("text-base", GLASS.ink)}
+            className={cn("text-base", S.ink)}
             numberOfLines={1}
           >
             {holding.name}
           </Typography>
           <Typography
             weight="500"
-            className={cn("text-[13px]", GLASS.small)}
+            className={cn("text-[13px]", S.small)}
             numberOfLines={1}
           >
             {units}
@@ -686,14 +695,14 @@ function AssetRow({
         {value === null ? (
           // Nothing could price it. Saying so beats a "$0.00" the Consumer
           // would read as having lost it.
-          <Typography weight="600" className={cn("text-base", GLASS.small)}>
+          <Typography weight="600" className={cn("text-base", S.small)}>
             Unpriced
           </Typography>
         ) : (
           <Amount
             hidden={hidden}
             weight="600"
-            className={cn("text-base", GLASS.ink)}
+            className={cn("text-base", S.ink)}
             amount={value}
           />
         )}
@@ -704,16 +713,17 @@ function AssetRow({
 }
 
 function ChangePill({ change }: { change: number }) {
+  const S = useSurface();
   return (
     <View
       className={cn(
         "rounded-full px-2 py-0.5",
-        change > 0 ? GLASS.upFill : change < 0 ? GLASS.downFill : GLASS.chip
+        change > 0 ? S.upFill : change < 0 ? S.downFill : S.chip
       )}
     >
       <Typography
         weight="600"
-        className={cn("text-[12px]", changeClass(change))}
+        className={cn("text-[12px]", changeClass(change, S))}
       >
         {signedPercent(change)}
       </Typography>
@@ -732,32 +742,35 @@ function PromptRow({
   detail: string;
   onPress: () => void;
 }) {
+  const S = useSurface();
   return (
     <HapticPressable
       accessibilityRole="button"
       accessibilityLabel={`${label}, ${detail}`}
       onPress={onPress}
-      className={ROW}
+      className={rowClass(S)}
+      // PLATFORM-SHADOW
+      style={S.raised}
     >
       <View className="flex-row items-center gap-3">
         <View
           className={cn(
             "h-[40px] w-[40px] items-center justify-center rounded-full",
-            GLASS.chip
+            S.chip
           )}
         >
-          <Ionicons name={icon} size={20} color={GLASS_COLORS.ink} />
+          <Ionicons name={icon} size={20} color={S.colors.ink} />
         </View>
         <View className="gap-0.5">
-          <Typography weight="600" className={cn("text-base", GLASS.ink)}>
+          <Typography weight="600" className={cn("text-base", S.ink)}>
             {label}
           </Typography>
-          <Typography weight="500" className={cn("text-[13px]", GLASS.small)}>
+          <Typography weight="500" className={cn("text-[13px]", S.small)}>
             {detail}
           </Typography>
         </View>
       </View>
-      <Ionicons name="chevron-forward" size={16} color={GLASS_COLORS.small} />
+      <Ionicons name="chevron-forward" size={16} color={S.colors.small} />
     </HapticPressable>
   );
 }

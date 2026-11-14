@@ -8,7 +8,12 @@ import {
 } from "react-native";
 import Constants from "expo-constants";
 import { Typography } from "@/components/ui/atoms/Typography";
-import { GLASS, groupedRowClass, PhotoScreen } from "@/components/ui/glass";
+import {
+  groupedRowClass,
+  PhotoScreen,
+  surfaceFor,
+} from "@/components/ui/glass";
+import { useColorfulTheme } from "@/contexts/AppearanceContext";
 import { cn } from "@/utils/cn";
 import { SettingsItem } from "@/components/ui/molecules";
 import { Ionicons } from "@expo/vector-icons";
@@ -43,6 +48,10 @@ interface SettingsRow {
 
 export default function SettingsScreen() {
   const router = useRouter();
+  // This screen sits above the photo context PhotoScreen creates, so it
+  // reads the theme directly.
+  const colorful = useColorfulTheme();
+  const S = surfaceFor(colorful);
   const { logout, user } = useAuth();
   const { name: walletName, setName: setWalletName } = useWalletName();
   const [showEditWallet, setShowEditWallet] = useState(false);
@@ -58,6 +67,9 @@ export default function SettingsScreen() {
     showToast("Your account has been deleted");
     await logout();
   };
+
+  // The photo's brighter red only on the photo; the stock red on white.
+  const deleteRed = colorful ? "#FF7A70" : "#F90101";
 
   const sections: { title: string; data: SettingsRow[] }[] = [
     {
@@ -91,6 +103,11 @@ export default function SettingsScreen() {
           icon: require("@/assets/icons/edit-wallet.png"),
           tintOnPhoto: true,
           onPress: () => setShowEditWallet(true),
+        },
+        {
+          label: "Appearance",
+          icon: <Ionicons name="color-palette" size={24} color="#FF8A1F" />,
+          onPress: () => router.push("/settings/appearance" as never),
         },
         {
           label: "Notifications",
@@ -131,7 +148,9 @@ export default function SettingsScreen() {
         },
         {
           label: "Logout",
-          icon: <Ionicons name="log-out-outline" size={22} color="#FFFFFF" />,
+          icon: (
+            <Ionicons name="log-out-outline" size={22} color={S.colors.ink} />
+          ),
           onPress: logout,
         },
         {
@@ -139,10 +158,14 @@ export default function SettingsScreen() {
           // The photo's brighter destructive red; the stock #F90101 is too dark
           // to read on the veil.
           icon: (
-            <Ionicons name="person-remove-outline" size={22} color="#FF7A70" />
+            <Ionicons
+              name="person-remove-outline"
+              size={22}
+              color={deleteRed}
+            />
           ),
           onPress: () => setShowDeleteAccount(true),
-          color: "#FF7A70",
+          color: deleteRed,
         },
       ],
     },
@@ -158,7 +181,12 @@ export default function SettingsScreen() {
 
               {/* Prydd Plus Banner */}
               <TouchableOpacity
-                className="flex-row items-center justify-between rounded-[16px] border border-white/[0.18] bg-black/60 p-4"
+                className={cn(
+                  "flex-row items-center justify-between p-4",
+                  colorful
+                    ? "rounded-[16px] border border-white/[0.18] bg-black/60"
+                    : "rounded-3xl bg-black"
+                )}
                 activeOpacity={0.9}
                 accessibilityRole="button"
                 accessibilityLabel="Learn about Prydd Plus"
@@ -187,13 +215,8 @@ export default function SettingsScreen() {
           }
           sections={sections}
           keyExtractor={(item, index) => item.label + index}
-          renderItem={({ item, index, section }) => (
-            <View
-              className={cn(
-                groupedRowClass(index, section.data.length),
-                index > 0 && "border-t border-t-white/[0.12]"
-              )}
-            >
+          renderItem={({ item, index, section }) => {
+            const row = (
               <SettingsItem
                 label={item.label}
                 icon={item.icon}
@@ -201,11 +224,22 @@ export default function SettingsScreen() {
                 color={item.color}
                 tintOnPhoto={item.tintOnPhoto}
               />
-            </View>
-          )}
+            );
+            if (!colorful) return row;
+            return (
+              <View
+                className={cn(
+                  groupedRowClass(index, section.data.length),
+                  index > 0 && "border-t border-t-white/[0.12]"
+                )}
+              >
+                {row}
+              </View>
+            );
+          }}
           renderSectionHeader={({ section: { title } }) => (
             <View className="mb-2 mt-6">
-              <Typography weight="500" className={cn("text-lg", GLASS.caption)}>
+              <Typography weight="500" className={cn("text-lg", S.caption)}>
                 {title}
               </Typography>
             </View>
@@ -213,11 +247,18 @@ export default function SettingsScreen() {
           ListFooterComponent={
             <View className="mt-8 items-center">
               <Image
-                source={require("@/assets/images/logo/prydd-mark-white-2048.png")}
-                className="mb-3 size-8 opacity-60"
+                source={
+                  colorful
+                    ? require("@/assets/images/logo/prydd-mark-white-2048.png")
+                    : require("@/assets/images/logo/prydd-mark-black-2048.png")
+                }
+                className={cn(
+                  "mb-3 size-8",
+                  colorful ? "opacity-60" : "opacity-40"
+                )}
                 resizeMode="contain"
               />
-              <Typography weight="500" className={cn("text-sm", GLASS.small)}>
+              <Typography weight="500" className={cn("text-sm", S.small)}>
                 Version {APP_VERSION}
                 {APP_BUILD ? ` (${APP_BUILD})` : ""}
               </Typography>
@@ -225,24 +266,18 @@ export default function SettingsScreen() {
                 <TouchableOpacity
                   onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
                 >
-                  <Typography
-                    weight="500"
-                    className={cn("text-xs", GLASS.small)}
-                  >
+                  <Typography weight="500" className={cn("text-xs", S.small)}>
                     Privacy Policy
                   </Typography>
                 </TouchableOpacity>
                 <Typography
                   weight="500"
-                  className={cn("mx-2 text-xs", GLASS.small)}
+                  className={cn("mx-2 text-xs", S.small)}
                 >
                   ·
                 </Typography>
                 <TouchableOpacity onPress={() => Linking.openURL(TERMS_URL)}>
-                  <Typography
-                    weight="500"
-                    className={cn("text-xs", GLASS.small)}
-                  >
+                  <Typography weight="500" className={cn("text-xs", S.small)}>
                     Terms & Conditions
                   </Typography>
                 </TouchableOpacity>

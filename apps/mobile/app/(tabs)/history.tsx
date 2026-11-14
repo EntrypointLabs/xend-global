@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { router } from "expo-router";
-import { GLASS, PhotoScreen } from "@/components/ui/glass";
+import { PhotoScreen, useSurface } from "@/components/ui/glass";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { formatMoney } from "@/utils/balances";
 import { cn } from "@/utils/cn";
@@ -138,9 +138,10 @@ export default function HistoryScreen() {
  * screen a hero the way Revolut's tabs open, before the feed starts.
  */
 function MonthHero({ flow }: { flow: MonthlyFlow }) {
+  const S = useSurface();
   return (
     <View className="items-center pb-2 pt-10">
-      <Typography weight="500" className={cn("text-[13px]", GLASS.caption)}>
+      <Typography weight="500" className={cn("text-[13px]", S.caption)}>
         This month
       </Typography>
       <View className="mt-3 w-full flex-row">
@@ -161,6 +162,7 @@ function Figure({
   amount: number;
   sign: "+" | "-";
 }) {
+  const S = useSurface();
   return (
     <View
       className="flex-1 items-center"
@@ -169,17 +171,11 @@ function Figure({
     >
       <Typography
         weight="500"
-        className={cn(
-          "text-[28px] leading-[105%] tracking-[-1.26px]",
-          GLASS.ink
-        )}
+        className={cn("text-[28px] leading-[105%] tracking-[-1.26px]", S.ink)}
       >
         {amount > 0 ? sign : ""}${formatMoney(amount)}
       </Typography>
-      <Typography
-        weight="500"
-        className={cn("mt-1.5 text-[13px]", GLASS.small)}
-      >
+      <Typography weight="500" className={cn("mt-1.5 text-[13px]", S.small)}>
         {label}
       </Typography>
     </View>

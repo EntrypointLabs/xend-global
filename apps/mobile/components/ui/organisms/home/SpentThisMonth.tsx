@@ -5,7 +5,7 @@ import Svg, { Circle, Path } from "react-native-svg";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { formatMoney } from "@/utils/balances";
 import type { MonthlySpend } from "@/utils/spentThisMonth";
-import { GLASS, useOnPhoto } from "@/components/ui/glass";
+import { useOnPhoto, useSurface } from "@/components/ui/glass";
 import { cn } from "@/utils/cn";
 import { HomeSection } from "./HomeSection";
 
@@ -76,27 +76,24 @@ export function SpentThisMonth({
   spend: MonthlySpend;
   hidden: boolean;
 }) {
+  const S = useSurface();
   const total = hidden ? "••••" : `$${formatMoney(spend.totalUsd)}`;
   return (
     <HomeSection title="Spent this month">
       <View
-        className={cn("p-[18px]", GLASS.card)}
+        className={cn("p-[18px]", S.card)}
+        // PLATFORM-SHADOW
+        style={S.raised}
         accessible
         accessibilityLabel={`Spent this month, ${hidden ? "hidden" : total}`}
       >
         <Typography
           weight="500"
-          className={cn(
-            "text-[28px] leading-[105%] tracking-[-1.26px]",
-            GLASS.ink
-          )}
+          className={cn("text-[28px] leading-[105%] tracking-[-1.26px]", S.ink)}
         >
           {total}
         </Typography>
-        <Typography
-          weight="500"
-          className={cn("mt-1.5 text-[13px]", GLASS.small)}
-        >
+        <Typography weight="500" className={cn("mt-1.5 text-[13px]", S.small)}>
           Sends and payments
         </Typography>
         <View className="mt-3">

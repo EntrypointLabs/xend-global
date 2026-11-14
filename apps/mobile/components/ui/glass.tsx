@@ -3,6 +3,7 @@ import { Image, StyleSheet, View, useWindowDimensions } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { BlurView } from "expo-blur";
 import { ScreenLayout } from "@/components/ui/layout/ScreenLayout";
+import { useColorfulTheme } from "@/contexts/AppearanceContext";
 
 /** How hard a blurred backdrop is softened. Retune it here for every tab. */
 const PHOTO_BLUR = 40;
@@ -42,12 +43,119 @@ export const GLASS_COLORS = {
   chip: "rgba(255,255,255,0.12)",
 } as const;
 
+// Soft shadow that lifts a monochrome card off the white page. iOS reads the
+// shadow* props and Android only `elevation`, so these are style objects.
+const RAISED = {
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.09,
+  shadowRadius: 14,
+  elevation: 3,
+};
+const RAISED_DARK = {
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 8 },
+  shadowOpacity: 0.28,
+  shadowRadius: 12,
+  elevation: 6,
+};
+
+/** One theme's surface and text values, keyed the same in both themes. */
+export interface Surface {
+  card: string;
+  /** Lift for `card`: a shadow on white, nothing on the photo. */
+  raised: object | undefined;
+  divider: string;
+  chip: string;
+  ink: string;
+  copy: string;
+  caption: string;
+  small: string;
+  up: string;
+  down: string;
+  upFill: string;
+  downFill: string;
+  primaryButton: string;
+  primaryButtonText: string;
+  primaryRaised: object | undefined;
+  secondaryButton: string;
+  secondaryButtonText: string;
+  /** A low-emphasis pill such as "Add widgets". */
+  quietPill: string;
+  /** Padding and figure size of the Cash and Crypto tiles. */
+  tile: string;
+  tileAmount: string;
+  colors: { ink: string; caption: string; small: string; chip: string };
+}
+
+const PHOTO_SURFACE: Surface = {
+  ...GLASS,
+  raised: undefined,
+  // The site's CTA is a solid white pill with black type; its secondary
+  // pills are a white hairline on the photo.
+  primaryButton: "bg-white",
+  primaryButtonText: "text-black",
+  primaryRaised: undefined,
+  secondaryButton: GLASS.outlinePill,
+  secondaryButtonText: "text-white",
+  quietPill: GLASS.outlinePill,
+  tile: "p-[18px]",
+  tileAmount: "text-[22px] tracking-[-0.9px]",
+  colors: GLASS_COLORS,
+};
+
+const MONO_SURFACE: Surface = {
+  card: "rounded-2xl bg-card",
+  raised: RAISED,
+  divider: "border-black/[0.06]",
+  chip: "bg-black/5",
+  ink: "text-black",
+  copy: "text-black/40",
+  caption: "text-black/40",
+  small: "text-black/30",
+  up: "text-success",
+  down: "text-destructive",
+  upFill: "bg-success/10",
+  downFill: "bg-destructive/10",
+  primaryButton: "bg-black",
+  primaryButtonText: "text-white",
+  primaryRaised: RAISED_DARK,
+  secondaryButton: "bg-white",
+  secondaryButtonText: "text-black",
+  quietPill: "bg-black/5",
+  tile: "px-4 py-4",
+  tileAmount: "text-lg",
+  colors: {
+    ink: "#000000",
+    caption: "#00000066",
+    small: "#0000004D",
+    chip: "rgba(0,0,0,0.05)",
+  },
+};
+
 /**
- * The routes drawn on a photo: the three tab roots. Settings sub-pages are
- * still white screens. Shared by the tab bar and the status bar so the two
- * cannot disagree about which screens are dark.
+ * The surface for wherever the caller is: glass on the photo, the white app
+ * everywhere else, including a monochrome tab root.
  */
-export function isPhotoRoute(segments: readonly string[]): boolean {
+export function useSurface(): Surface {
+  return surfaceFor(useOnPhoto());
+}
+
+/** The surface for a screen that sets the photo context itself. */
+export function surfaceFor(onPhoto: boolean): Surface {
+  return onPhoto ? PHOTO_SURFACE : MONO_SURFACE;
+}
+
+/**
+ * The routes drawn on a photo in the colorful theme: the three tab roots.
+ * Settings sub-pages are still white screens. Shared by the tab bar and the
+ * status bar so the two cannot disagree about which screens are dark.
+ */
+export function isPhotoRoute(
+  segments: readonly string[],
+  colorful: boolean
+): boolean {
+  if (!colorful) return false;
   if (segments[0] !== "(tabs)") return false;
   const tab = segments[1];
   if (tab === undefined || tab === "history") return true;
@@ -148,9 +256,10 @@ export function PhotoBackdrop({
 }
 
 /**
- * A tab screen on a photo: the backdrop, the photo context for everything in
- * it, and a transparent ScreenLayout. Each tab picks its own scene, the way
- * Revolut changes the backdrop per tab under the same glass.
+ * A tab root. In the colorful theme it sits on its photo, with the photo
+ * context set for everything in it; each tab picks its own scene, the way
+ * Revolut changes the backdrop per tab under the same glass. In the
+ * monochrome theme it is a plain white ScreenLayout.
  */
 export function PhotoScreen({
   scene,
@@ -163,6 +272,14 @@ export function PhotoScreen({
   blurred?: boolean;
   children: React.ReactNode;
 }) {
+  const colorful = useColorfulTheme();
+  if (!colorful) {
+    return (
+      <OnPhotoProvider value={false}>
+        <ScreenLayout>{children}</ScreenLayout>
+      </OnPhotoProvider>
+    );
+  }
   return (
     <OnPhotoProvider value>
       <View className="flex-1">

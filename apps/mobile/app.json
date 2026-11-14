@@ -95,6 +95,19 @@
           "icon": "./assets/images/notification-icon.png",
           "color": "#0a0a0a"
         }
+      ],
+      [
+        "expo-alternate-app-icons",
+        [
+          {
+            "name": "White",
+            "ios": "./assets/images/app-icons/icon-white.png",
+            "android": {
+              "foregroundImage": "./assets/images/app-icons/adaptive-icon-white.png",
+              "backgroundColor": "#FFFFFF"
+            }
+          }
+        ]
       ]
     ],
     "experiments": {
