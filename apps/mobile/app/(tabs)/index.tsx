@@ -160,17 +160,11 @@ function HomeScreenContent() {
         }}
       >
         <View className="flex-row items-center justify-between pb-6">
-          <HapticPressable
-            accessibilityRole="button"
-            accessibilityLabel="Account settings"
-            hitSlop={HEADER_HIT_SLOP}
-            onPress={() => router.push("/(tabs)/settings" as never)}
-            className="min-h-9 flex-1 justify-center pr-4"
-          >
+          <View className="min-h-9 flex-1 justify-center pr-4">
             <TabHeaderText className="pb-0" numberOfLines={1}>
               {walletName}
             </TabHeaderText>
-          </HapticPressable>
+          </View>
           <HapticPressable
             accessibilityRole="button"
             accessibilityLabel={hidden ? "Show balances" : "Hide balances"}
