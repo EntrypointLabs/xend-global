@@ -42,3 +42,36 @@ export function summariseMonthlySpend(
   }
   return { totalUsd: running, cumulative };
 }
+
+export interface MonthlyFlow {
+  inUsd: number;
+  outUsd: number;
+}
+
+/**
+ * Money in and money out this calendar month, in USD, by the same rules as
+ * {@link summariseMonthlySpend}: frozen values only, failed and unpriced rows
+ * skipped, and nothing for events that moved no money.
+ */
+export function summariseMonthlyFlow(
+  entries: ActivityEntry[],
+  now: Date = new Date()
+): MonthlyFlow {
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  let inUsd = 0;
+  let outUsd = 0;
+
+  for (const entry of entries) {
+    if (entry.kind !== "transfer" && entry.kind !== "payment") continue;
+    if (entry.status === "failed") continue;
+    const usd = entry.usdValue == null ? NaN : Number(entry.usdValue);
+    if (!Number.isFinite(usd)) continue;
+    const at = new Date(entry.createdAt);
+    if (at.getFullYear() !== year || at.getMonth() !== month) continue;
+    if (at > now) continue;
+    if (entry.direction === "send") outUsd += usd;
+    else inUsd += usd;
+  }
+  return { inUsd, outUsd };
+}

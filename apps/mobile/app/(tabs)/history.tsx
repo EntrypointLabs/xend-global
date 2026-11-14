@@ -1,7 +1,11 @@
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { router } from "expo-router";
-import { ScreenLayout } from "@/components/ui/layout";
+import { GLASS, PhotoScreen } from "@/components/ui/glass";
+import { Typography } from "@/components/ui/atoms/Typography";
+import { formatMoney } from "@/utils/balances";
+import { cn } from "@/utils/cn";
+import { summariseMonthlyFlow, type MonthlyFlow } from "@/utils/spentThisMonth";
 import {
   ActivityList,
   TransactionDetailModal,
@@ -99,9 +103,12 @@ export default function HistoryScreen() {
   }, [refetch]);
 
   return (
-    <ScreenLayout>
-      <TabHeaderText>Activity</TabHeaderText>
+    <PhotoScreen scene="sky" warm blurred>
+      <TabHeaderText className="pb-0">Activity</TabHeaderText>
       <ActivityList
+        ListHeaderComponent={
+          <MonthHero flow={summariseMonthlyFlow(transferRows)} />
+        }
         sections={sections}
         onEndReached={() => fetchNextPage()}
         hasNextPage={hasNextPage}
@@ -111,7 +118,7 @@ export default function HistoryScreen() {
         ListEmptyComponent={
           isLoading ? (
             <View className="items-center py-16">
-              <ActivityIndicator />
+              <ActivityIndicator color="#FFFFFF" />
             </View>
           ) : undefined
         }
@@ -122,6 +129,59 @@ export default function HistoryScreen() {
         onClose={() => setModalVisible(false)}
         item={selectedItem}
       />
-    </ScreenLayout>
+    </PhotoScreen>
+  );
+}
+
+/**
+ * This month's money in and out, over the open part of the photo. Gives the
+ * screen a hero the way Revolut's tabs open, before the feed starts.
+ */
+function MonthHero({ flow }: { flow: MonthlyFlow }) {
+  return (
+    <View className="items-center pb-2 pt-10">
+      <Typography weight="500" className={cn("text-[13px]", GLASS.caption)}>
+        This month
+      </Typography>
+      <View className="mt-3 w-full flex-row">
+        <Figure label="Money in" amount={flow.inUsd} sign="+" />
+        <View className="w-px bg-white/[0.18]" />
+        <Figure label="Money out" amount={flow.outUsd} sign="-" />
+      </View>
+    </View>
+  );
+}
+
+function Figure({
+  label,
+  amount,
+  sign,
+}: {
+  label: string;
+  amount: number;
+  sign: "+" | "-";
+}) {
+  return (
+    <View
+      className="flex-1 items-center"
+      accessible
+      accessibilityLabel={`${label} this month, $${formatMoney(amount)}`}
+    >
+      <Typography
+        weight="500"
+        className={cn(
+          "text-[28px] leading-[105%] tracking-[-1.26px]",
+          GLASS.ink
+        )}
+      >
+        {amount > 0 ? sign : ""}${formatMoney(amount)}
+      </Typography>
+      <Typography
+        weight="500"
+        className={cn("mt-1.5 text-[13px]", GLASS.small)}
+      >
+        {label}
+      </Typography>
+    </View>
   );
 }

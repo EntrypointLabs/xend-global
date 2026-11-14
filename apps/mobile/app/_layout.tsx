@@ -11,6 +11,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { AppLockProvider, useAppLock } from "@/contexts/AppLockContext";
 import { ScreenThemeProvider } from "@/contexts/ScreenThemeContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { isPhotoRoute } from "@/components/ui/glass";
 import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/utils/cn";
 import { ModalFlowProvider } from "@/contexts/ModalFlowContext";
@@ -113,11 +114,9 @@ function AuthLayout() {
   const segments = useSegments();
   const { isAuthenticated, needsContactEmail } = useAuth();
   const colorScheme = useColorScheme();
-  // Home sits on a dark photo. Kept to a boolean so the memo below only
-  // rebuilds when Home is entered or left, not on every navigation.
-  const onPhoto =
-    (segments as string[])[0] === "(tabs)" &&
-    (segments as string[])[1] === undefined;
+  // The tab roots sit on a dark photo. Kept to a boolean so the memo below only
+  // rebuilds when one of them is entered or left, not on every navigation.
+  const onPhoto = isPhotoRoute(segments as string[]);
 
   // The screens are held apart from this component's own renders on purpose.
   // `useSegments()` above changes on every navigation, and without this the

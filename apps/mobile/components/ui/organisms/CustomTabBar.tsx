@@ -21,6 +21,7 @@ import { BlurView } from "expo-blur";
 import { useSegments } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/utils/cn";
+import { isPhotoRoute } from "@/components/ui/glass";
 
 const iconMappings = {
   index: Home,
@@ -59,6 +60,7 @@ export function CustomTabBar({
   const fabOpacity = useSharedValue(1);
 
   const isHome = segments[0] === "(tabs)" && segments[1] === undefined;
+  const onPhoto = isPhotoRoute(segments);
   const isSettingsSubPage =
     segments[0] === "(tabs)" &&
     segments[1] === "settings" &&
@@ -92,11 +94,11 @@ export function CustomTabBar({
 
   return (
     <>
-      <ContainerWrapper withBlur={!isHome}>
+      <ContainerWrapper withBlur={!onPhoto}>
         <ActionPill
-          // Home sits on the photo, so its bar is glass; the white tabs keep
-          // the solid pill.
-          variant={isHome ? "glass" : "solid"}
+          // The tab roots sit on the photo, so their bar is glass; any white
+          // screen keeps the solid pill.
+          variant={onPhoto ? "glass" : "solid"}
           items={state.routes.map((route, index) => {
             const { options } = descriptors[route.key];
             const isFocused = state.index === index;

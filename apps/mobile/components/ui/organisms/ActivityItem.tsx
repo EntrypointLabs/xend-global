@@ -12,7 +12,7 @@ import { formatUsdFromString } from "@/utils/balances";
 import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { formatMoney } from "@/utils/money";
 import { KEY_COLORS } from "@/utils/keyColors";
-import { GLASS, useOnPhoto } from "@/components/ui/glass";
+import { GLASS, GLASS_COLORS, useOnPhoto } from "@/components/ui/glass";
 
 export type ActivityItemProps = ActivityEntry & {
   onPress?: () => void;
@@ -197,12 +197,18 @@ export function AccountEventMark({
   const removed = kind === "recovery_key_removed";
   const tint = renamed ? KEY_COLORS.passkey : KEY_COLORS.device;
   const badgeSize = size * 0.42;
+  const onPhoto = useOnPhoto();
 
   return (
     <View
       className="items-center justify-center rounded-full"
-      // DYNAMIC-COLOR: a light wash of the event's own colour
-      style={{ width: size, height: size, backgroundColor: `${tint}1F` }}
+      // DYNAMIC-COLOR: a light wash of the event's own colour; on the photo
+      // that wash goes muddy, so it takes the glass chip instead.
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: onPhoto ? GLASS_COLORS.chip : `${tint}1F`,
+      }}
     >
       {renamed ? (
         <Ionicons name="pencil" size={size * 0.45} color={tint} />
