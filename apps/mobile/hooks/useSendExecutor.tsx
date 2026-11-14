@@ -42,7 +42,7 @@ export type SendStart =
   | { status: "sending" };
 
 const SEND_TOAST_ID = "send";
-const SENDING_TOAST_MS = 5_000;
+const SENDING_TOAST_MS = 15_000;
 const FAILED_TOAST_MS = 5_000;
 
 const NETWORK_BUSY = "The network is busy. Nothing has been sent.";
@@ -170,6 +170,32 @@ const REFUSAL_MESSAGE: Record<BankRefusal, string> = {
   expired: TOO_SLOW,
   other: SOMETHING_WRONG,
 };
+
+const TRANSFER_POLL_MS = 1_000;
+
+/**
+ * The backend answers a submit as soon as the transaction is broadcast, which
+ * is still PENDING. Watches the row only while the Sending toast is on screen,
+ * so the toast can turn into Sent or Failed in place; after that, Activity is
+ * where the outcome shows.
+ */
+async function waitForTransfer(
+  transferId: string,
+  deadline: number
+): Promise<"CONFIRMED" | "FAILED" | "PENDING"> {
+  while (Date.now() < deadline) {
+    try {
+      const { transfers } = await apiClient.listTransfers({ limit: 10 });
+      const status = transfers.find((t) => t.id === transferId)?.status;
+      if (status === "CONFIRMED" || status === "FAILED") return status;
+    } catch {
+      // A missed read says nothing about the transfer; the next one might.
+    }
+    const wait = Math.min(TRANSFER_POLL_MS, deadline - Date.now());
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  }
+  return "PENDING";
+}
 
 const ORDER_POLL_MS = 1_500;
 const ORDER_POLL_LIMIT = 40;
@@ -362,9 +388,11 @@ export function useSendExecutor() {
 
       const submission = prepared;
       toastSending();
+      const sendingUntil = Date.now() + SENDING_TOAST_MS;
       void (async () => {
+        let submitted: SubmitTransferResponse;
         try {
-          await submitPrepared(submission);
+          submitted = await submitPrepared(submission);
         } catch (err: any) {
           const code = err?.data?.code;
           if (code === "INTENT_EXPIRED") {
@@ -396,6 +424,17 @@ export function useSendExecutor() {
         // Submitted (or deduplicated): the intent is spent.
         if (pendingCrypto?.submission === submission) pendingCrypto = null;
         invalidateAfterCryptoSend(queryClient);
+
+        const settled = await waitForTransfer(
+          submitted.transferId,
+          sendingUntil
+        );
+        if (settled === "PENDING") return;
+        invalidateAfterCryptoSend(queryClient);
+        if (settled === "FAILED") {
+          toastFailed(`transfer ${submitted.transferId} failed on chain`);
+          return;
+        }
         toastSent();
       })();
 
