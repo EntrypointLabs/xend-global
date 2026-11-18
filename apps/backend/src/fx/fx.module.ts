@@ -10,6 +10,8 @@ import { PartnerFxAdapter } from './partner-fx.adapter';
 import { PajFxAdapter } from './paj-fx.adapter';
 import { PajModule } from '../settlement/providers/paj/paj.module';
 import { CachedFxQuoteProvider } from './cached-fx-quote.provider';
+import { DisplayRatesController } from './display-rates.controller';
+import { DisplayRatesService } from './display-rates.service';
 
 /**
  * FX quote seam (ADR 0023). FX_QUOTE_PROVIDER is bound to the cached provider,
@@ -18,7 +20,9 @@ import { CachedFxQuoteProvider } from './cached-fx-quote.provider';
  */
 @Module({
   imports: [RedisModule, PajModule],
+  controllers: [DisplayRatesController],
   providers: [
+    DisplayRatesService,
     PartnerFxAdapter,
     BlockradarFxAdapter,
     PajFxAdapter,
