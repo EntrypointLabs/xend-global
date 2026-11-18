@@ -61,6 +61,7 @@ const CHROME_GAP = 4;
 // scalable: `mt-8` above the chart and `mb-6` below each block.
 const CHART_GAP_ABOVE = 28;
 const SECTION_GAP = 21;
+const CARD_DROP = 12;
 
 function HomeScreenContent() {
   const colorful = useColorfulTheme();
@@ -222,7 +223,12 @@ function HomeScreenContent() {
             </View>
 
             {countryCard && visibility.country ? (
-              <View style={{ marginBottom: size(SECTION_GAP) }}>
+              <View
+                style={{
+                  marginTop: size(CARD_DROP),
+                  marginBottom: size(SECTION_GAP),
+                }}
+              >
                 <CountryAccountWidget
                   card={countryCard}
                   {...localLabels(
