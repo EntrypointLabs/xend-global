@@ -15,7 +15,7 @@ import { BalanceChart } from "@/components/ui/organisms/BalanceChart";
 import { HomeBanners } from "@/components/ui/organisms/HomeBanners";
 import { useBalanceDelta, useBalanceHistory } from "@/hooks/useBalanceHistory";
 import { useEarnPosition } from "@/hooks/useEarn";
-import { useInvestments, type InvestmentHolding } from "@/hooks/useInvestments";
+import { useInvestments } from "@/hooks/useInvestments";
 import { useSendGate } from "@/hooks/useSendGate";
 import { formatMoney } from "@/utils/balances";
 import { useBalances } from "@/hooks/useBalances";
@@ -37,7 +37,6 @@ import {
   PhotoBackdrop,
   surfaceFor,
   useSurface,
-  type Surface,
 } from "@/components/ui/glass";
 import { useColorfulTheme } from "@/contexts/AppearanceContext";
 import { HOME_WIDGETS } from "@/utils/homeWidgets";
@@ -233,39 +232,7 @@ function HomeScreenContent() {
               ) : null
             )}
 
-            <View
-              className="flex-row gap-3"
-              style={{ marginBottom: size(SECTION_GAP) }}
-            >
-              <BalanceTile
-                title="Cash"
-                amount={formatMoney(portfolio.cashUsd)}
-                hint={
-                  !known
-                    ? null
-                    : portfolio.cashUsd > 0
-                      ? "₦ and $"
-                      : "Add money to start"
-                }
-                hidden={hidden}
-                onPress={() => router.push("/cash")}
-              />
-              <BalanceTile
-                title="Crypto"
-                amount={formatMoney(portfolio.investmentsUsd)}
-                hint={
-                  !swapEnabled || !known || holdings.length > 0
-                    ? null
-                    : "Buy your first asset"
-                }
-                change={hidden ? null : cryptoChange24h(holdings)}
-                hidden={hidden}
-                onPress={() => router.push("/investments")}
-              />
-            </View>
-
-            {/* Only for an Account known to hold nothing at all. One that holds
-            cash but no assets is not empty, and says so in its tiles. */}
+            {/* Only for an Account known to hold nothing at all. */}
             {known && !hasBalance && holdings.length === 0 && (
               <View
                 className="items-center pt-6"
@@ -354,36 +321,6 @@ function DayChange({ amount }: { amount: number }) {
   );
 }
 
-function changeClass(change: number, S: Surface): string {
-  return change > 0 ? S.up : change < 0 ? S.down : S.small;
-}
-
-function signedPercent(change: number): string {
-  return `${change > 0 ? "+" : ""}${change.toFixed(1)}%`;
-}
-
-function spokenPercent(change: number): string {
-  if (change === 0) return "no change";
-  return `${change > 0 ? "up" : "down"} ${Math.abs(change).toFixed(1)} percent`;
-}
-
-/**
- * How far the priced holdings moved together over 24h, weighted by what each
- * is worth. Null when nothing reports a change, so the tile says nothing
- * rather than "0.0%".
- */
-function cryptoChange24h(holdings: InvestmentHolding[]): number | null {
-  let now = 0;
-  let before = 0;
-  for (const holding of holdings) {
-    if (holding.usdValue == null || holding.priceChange24h == null) continue;
-    now += holding.usdValue;
-    before += holding.usdValue / (1 + holding.priceChange24h / 100);
-  }
-  if (before === 0) return null;
-  return ((now - before) / before) * 100;
-}
-
 /**
  * An amount that can be masked without the layout around it moving.
  *
@@ -439,66 +376,6 @@ function ActionButton({
       >
         {label}
       </Typography>
-    </HapticPressable>
-  );
-}
-
-function BalanceTile({
-  title,
-  amount,
-  hint,
-  change = null,
-  hidden,
-  onPress,
-}: {
-  title: string;
-  amount: string;
-  /** What sits under the amount when there is no change to report. */
-  hint: string | null;
-  /** Percent moved over 24h. Takes the hint's place when known. */
-  change?: number | null;
-  hidden: boolean;
-  onPress: () => void;
-}) {
-  const S = useSurface();
-  const spoken = [
-    title,
-    hidden ? "hidden" : `$${amount}`,
-    change != null ? `${spokenPercent(change)} today` : hint,
-  ]
-    .filter(Boolean)
-    .join(", ");
-
-  return (
-    <HapticPressable
-      accessibilityRole="button"
-      accessibilityLabel={spoken}
-      onPress={onPress}
-      className={cn("flex-1 gap-1", S.tile, S.card)}
-      // PLATFORM-SHADOW
-      style={S.raised}
-    >
-      <Typography weight="500" className={cn("text-[13px]", S.caption)}>
-        {title}
-      </Typography>
-      <Amount
-        hidden={hidden}
-        weight="600"
-        className={cn(S.tileAmount, S.ink)}
-        amount={amount}
-      />
-      {change != null ? (
-        <Typography
-          weight="500"
-          className={cn("text-[13px]", changeClass(change, S))}
-        >
-          {signedPercent(change)} today
-        </Typography>
-      ) : (
-        <Typography weight="500" className={cn("text-[13px]", S.small)}>
-          {hint ?? " "}
-        </Typography>
-      )}
     </HapticPressable>
   );
 }

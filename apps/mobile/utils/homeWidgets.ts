@@ -15,8 +15,8 @@ export const HOME_WIDGETS = [
     /** Static FX copy for now; live rates later. */
     rateLabel: "£1 = ₦1,898.44",
     displayName: "UNITED KINGDOM",
-    /** Wise UK reference plate — photo, type, pill, and dock at 1:1. */
-    background: require("@/assets/images/widgets/united-kingdom-plate.png"),
+    /** Photo only. The card draws the pill, title, balance and dock live. */
+    background: require("@/assets/images/widgets/united-kingdom-photo.jpg"),
   },
 ] as const;
 

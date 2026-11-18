@@ -46,9 +46,10 @@ function CountryPreview({ widget }: { widget: HomeWidget }) {
           ]}
         />
         <View className="flex-1 items-center justify-center">
-          <Typography className="text-2xl leading-none">
-            {widget.flag}
-          </Typography>
+          <Image
+            source={widget.flagImage}
+            style={{ width: 28, height: 28, borderRadius: 14 }}
+          />
         </View>
       </View>
       <View className="items-center">
