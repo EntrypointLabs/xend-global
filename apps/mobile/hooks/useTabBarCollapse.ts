@@ -1,8 +1,8 @@
 import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 
-/** Below this the bar stays open, so a nudge at the top never folds it. */
-const OPEN_NEAR_TOP = 24;
+/** Scrolling this close to the top never folds the bar. */
+const FOLD_AFTER = 24;
 /** Movement smaller than this is jitter, not a direction. */
 const DIRECTION_SLOP = 6;
 
@@ -25,8 +25,8 @@ export function useTabBarCollapsed(): boolean {
 }
 
 /**
- * Folds the tab bar to its current tab while the Consumer scrolls down, and
- * opens it again on the way back up, the way iOS does its own.
+ * Folds the tab bar to its current tab once the Consumer scrolls down. Only a
+ * tap opens it again, so reading back up never springs it open.
  */
 export function useCollapseOnScroll() {
   const lastY = useRef(0);
@@ -34,13 +34,9 @@ export function useCollapseOnScroll() {
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const y = event.nativeEvent.contentOffset.y;
       const delta = y - lastY.current;
-      if (y <= OPEN_NEAR_TOP) {
-        setTabBarCollapsed(false);
-        lastY.current = y;
-      } else if (Math.abs(delta) >= DIRECTION_SLOP) {
-        setTabBarCollapsed(delta > 0);
-        lastY.current = y;
-      }
+      if (Math.abs(delta) < DIRECTION_SLOP) return;
+      if (delta > 0 && y > FOLD_AFTER) setTabBarCollapsed(true);
+      lastY.current = y;
     },
     []
   );
