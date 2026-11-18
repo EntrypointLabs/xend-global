@@ -105,7 +105,7 @@ export default function HistoryScreen() {
 
   return (
     <PhotoScreen scene="sky" warm blurred>
-      <TabHeaderText className="pb-0">Activity</TabHeaderText>
+      <TabHeaderText>Activity</TabHeaderText>
       <ActivityList
         // Hidden for now; restore to bring back the month's money in and out.
         // ListHeaderComponent={
