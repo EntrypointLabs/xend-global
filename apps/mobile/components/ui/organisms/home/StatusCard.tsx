@@ -16,8 +16,8 @@ import { Typography } from "@/components/ui/atoms/Typography";
 
 /** The illustration's own proportions, 240 by 160. */
 const ART_WIDTH = 88;
-/** Every page is the same height so the carousel never jumps between them. */
-const CARD_HEIGHT = 90;
+/** The carousel stretches every page to its tallest, so this is a floor. */
+const MIN_HEIGHT = 90;
 const INK = "#0E0F0C";
 
 export type StatusArt =
@@ -39,7 +39,7 @@ export function StatusCard({ title, subtitle, art, onPress }: StatusCardProps) {
         <Typography
           weight="500"
           className="text-[18px] leading-[23px] tracking-[-0.2px] text-[#0E0F0C]"
-          numberOfLines={1}
+          numberOfLines={2}
         >
           {title}
         </Typography>
@@ -67,8 +67,8 @@ export function StatusCard({ title, subtitle, art, onPress }: StatusCardProps) {
   );
 
   const className =
-    "flex-row items-center overflow-hidden rounded-[20px] pl-5 pr-4";
-  const style = { height: CARD_HEIGHT };
+    "flex-1 flex-row items-center overflow-hidden rounded-[20px] py-[14px] pl-5 pr-4";
+  const style = { minHeight: MIN_HEIGHT };
 
   if (!onPress) {
     return (
