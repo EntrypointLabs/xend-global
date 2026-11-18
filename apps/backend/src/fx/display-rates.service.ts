@@ -15,6 +15,16 @@ import {
  */
 const MARKET_ENDPOINT = 'https://api.frankfurter.dev/v1/latest?base=USD';
 
+/**
+ * Keyless daily rates (CC0) covering the currencies the ECB does not publish,
+ * such as GHS, KES and AED. Used only to fill gaps the ECB leaves.
+ */
+const WIDE_ENDPOINT =
+  'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json';
+
+/** The feed also lists crypto and metals; only real ISO 4217 codes pass. */
+const ISO_CURRENCIES = new Set(Intl.supportedValuesOf('currency'));
+
 const REQUEST_TIMEOUT_MS = 4_000;
 
 /** ECB rates move daily, so an hour of reuse costs nothing in accuracy. */
@@ -30,9 +40,10 @@ export interface DisplayRates {
  * Rates for showing a dollar balance in a Consumer's local currency.
  *
  * Display only: nothing is priced or settled on these. NGN comes from the
- * checkout quote, the rate Prydd actually converts at, and the rest from the
- * ECB reference. When an upstream is down the last good answer is served, so
- * a card already showing a balance keeps showing one.
+ * checkout quote, the rate Prydd actually converts at; the rest from the ECB
+ * reference, with a wider daily feed filling the currencies the ECB does not
+ * publish. When an upstream is down the last good answer is served, so a card
+ * already showing a balance keeps showing one.
  */
 @Injectable()
 export class DisplayRatesService {
@@ -55,7 +66,8 @@ export class DisplayRatesService {
   }
 
   private async refresh(): Promise<DisplayRates> {
-    const [market, ngn] = await Promise.allSettled([
+    const [wide, market, ngn] = await Promise.allSettled([
+      this.fetchWide(),
       this.fetchMarket(),
       this.ngnQuote.getQuote(),
     ]);
@@ -63,6 +75,8 @@ export class DisplayRatesService {
     const perUsd: Record<string, number> = {
       ...(this.cached?.rates.perUsd ?? {}),
     };
+    if (wide.status === 'fulfilled') Object.assign(perUsd, wide.value);
+    else this.logger.warn(`wide rates unavailable: ${reason(wide.reason)}`);
     if (market.status === 'fulfilled') Object.assign(perUsd, market.value);
     else this.logger.warn(`market rates unavailable: ${reason(market.reason)}`);
 
@@ -77,7 +91,7 @@ export class DisplayRatesService {
       throw new ServiceUnavailableException('no display rates available');
     }
 
-    const fresh = market.status === 'fulfilled' || ngn.status === 'fulfilled';
+    const fresh = [wide, market, ngn].some((r) => r.status === 'fulfilled');
     const rates: DisplayRates = {
       perUsd,
       quotedAt:
@@ -99,6 +113,27 @@ export class DisplayRatesService {
     for (const [code, value] of Object.entries(body.rates ?? {})) {
       if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
         rates[code] = value;
+      }
+    }
+    return rates;
+  }
+
+  private async fetchWide(): Promise<Record<string, number>> {
+    const res = await fetch(WIDE_ENDPOINT, {
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`currency-api responded ${res.status}`);
+    const body = (await res.json()) as { usd?: Record<string, unknown> };
+    const rates: Record<string, number> = {};
+    for (const [code, value] of Object.entries(body.usd ?? {})) {
+      const iso = code.toUpperCase();
+      if (
+        ISO_CURRENCIES.has(iso) &&
+        typeof value === 'number' &&
+        Number.isFinite(value) &&
+        value > 0
+      ) {
+        rates[iso] = value;
       }
     }
     return rates;

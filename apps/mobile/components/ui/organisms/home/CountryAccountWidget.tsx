@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Text, View, type LayoutChangeEvent } from "react-native";
 import { Image } from "expo-image";
 import { BlurView } from "expo-blur";
+import { Ionicons } from "@expo/vector-icons";
 import Svg, {
   Circle,
   Defs,
@@ -12,7 +13,7 @@ import Svg, {
 } from "react-native-svg";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
-import type { HomeWidget } from "@/utils/homeWidgets";
+import type { CountryCard } from "@/utils/countryCards";
 
 /**
  * Every length below is in points on a 436pt-wide card, measured off the Wise
@@ -94,14 +95,14 @@ const ACTIONS = [
 export type CountryWidgetAction = (typeof ACTIONS)[number]["key"];
 
 interface CountryAccountWidgetProps {
-  widget: HomeWidget;
+  card: CountryCard;
   balanceLabel: string;
   rateLabel: string;
   onAction?: (action: CountryWidgetAction) => void;
 }
 
 export function CountryAccountWidget({
-  widget,
+  card,
   balanceLabel,
   rateLabel,
   onAction,
@@ -111,10 +112,10 @@ export function CountryAccountWidget({
   const onLayout = (e: LayoutChangeEvent) =>
     setWidth(e.nativeEvent.layout.width);
 
-  const titleLines = widget.displayName.split(" ");
+  const titleLines = card.lines;
   const [natural, setNatural] = useState<Record<number, number>>({});
   const condenseFor = (i: number) => {
-    const target = widget.titleWidths[i];
+    const target = card.titleWidths?.[i];
     const measured = natural[i];
     return target && measured ? (target * s) / measured : TITLE.condense;
   };
@@ -133,7 +134,7 @@ export function CountryAccountWidget({
       {width > 0 && (
         <>
           <Image
-            source={widget.background}
+            source={{ uri: card.photoUrl }}
             style={FILL}
             contentFit="cover"
             transition={0}
@@ -142,7 +143,7 @@ export function CountryAccountWidget({
 
           <View
             accessible
-            accessibilityLabel={`${widget.title}, ${balanceLabel} available to spend, ${rateLabel}`}
+            accessibilityLabel={`${card.name}, ${balanceLabel} available to spend, ${rateLabel}`}
             style={FILL}
           >
             <View
@@ -157,14 +158,22 @@ export function CountryAccountWidget({
             >
               <BlurView intensity={18} tint="dark" style={FILL} />
               <View className="absolute inset-0 bg-black/[0.15]" />
-              <Image
-                source={widget.flagImage}
-                style={{
-                  width: PILL.flag * s,
-                  height: PILL.flag * s,
-                  borderRadius: (PILL.flag * s) / 2,
-                }}
-              />
+              {card.flagUrl ? (
+                <Image
+                  source={{ uri: card.flagUrl }}
+                  style={{
+                    width: PILL.flag * s,
+                    height: PILL.flag * s,
+                    borderRadius: (PILL.flag * s) / 2,
+                  }}
+                />
+              ) : (
+                <Ionicons
+                  name="globe-outline"
+                  size={PILL.flag * s}
+                  color={PAPER}
+                />
+              )}
               <Text
                 className="font-inter-semibold"
                 style={{

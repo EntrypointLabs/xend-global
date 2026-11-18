@@ -39,8 +39,10 @@ import {
   useSurface,
 } from "@/components/ui/glass";
 import { useColorfulTheme } from "@/contexts/AppearanceContext";
-import { HOME_WIDGETS } from "@/utils/homeWidgets";
 import { useDisplayRates } from "@/hooks/useDisplayRates";
+import { useCountryCard } from "@/hooks/useCountryCard";
+import type { CountryCard } from "@/utils/countryCards";
+import type { DisplayRates } from "@/utils/displayRates";
 import { formatLocalAmount, formatRateLabel } from "@/utils/displayRates";
 
 // Lifts the 31pt header controls to a 47pt target without growing them.
@@ -84,7 +86,8 @@ function HomeScreenContent() {
   const { holdings } = useInvestments();
   const gateSend = useSendGate();
   const [hidden, setHidden] = useState(false);
-  const { data: rates } = useDisplayRates();
+  const { data: rates, isError: ratesFailed } = useDisplayRates();
+  const countryCard = useCountryCard();
 
   // Everything the Consumer owns, in USD: cash, investments and Earn. The Card
   // joins this sum when it holds a balance of its own.
@@ -218,24 +221,20 @@ function HomeScreenContent() {
               )}
             </View>
 
-            {HOME_WIDGETS.map((widget) =>
-              visibility[widget.key] ? (
-                <View
-                  key={widget.key}
-                  style={{ marginBottom: size(SECTION_GAP) }}
-                >
-                  <CountryAccountWidget
-                    widget={widget}
-                    {...localLabels(
-                      widget.currencySymbol,
-                      rates?.perUsd[widget.currency],
-                      known ? portfolio.cashUsd : null,
-                      hidden
-                    )}
-                  />
-                </View>
-              ) : null
-            )}
+            {countryCard && visibility.country ? (
+              <View style={{ marginBottom: size(SECTION_GAP) }}>
+                <CountryAccountWidget
+                  card={countryCard}
+                  {...localLabels(
+                    countryCard,
+                    rates,
+                    ratesFailed,
+                    known ? portfolio.cashUsd : null,
+                    hidden
+                  )}
+                />
+              </View>
+            ) : null}
 
             {/* Only for an Account known to hold nothing at all. */}
             {known && !hasBalance && holdings.length === 0 && (
@@ -279,6 +278,7 @@ function HomeScreenContent() {
             visible={widgetsOpen}
             onClose={() => setWidgetsOpen(false)}
             visibility={visibility}
+            card={countryCard}
             onChange={setVisible}
           />
           <SendModal
@@ -388,21 +388,43 @@ function ActionButton({
 /**
  * A country card's balance and rate. The balance is the cash that can be spent
  * now, in dollars, shown in the local currency; the rate is against the dollar.
+ * Where the local currency is the dollar, or has no rate, both stay in dollars.
  */
 function localLabels(
-  symbol: string,
-  perUsd: number | undefined,
+  card: CountryCard,
+  rates: DisplayRates | undefined,
+  /** The rates request gave up; show dollars rather than waiting forever. */
+  ratesFailed: boolean,
   /** Null until the balance has loaded, so a failed read never shows as zero. */
   cashUsd: number | null,
   hidden: boolean
 ): { balanceLabel: string; rateLabel: string } {
+  const { currency, symbol } = card;
+  const perUsd = currency ? rates?.perUsd[currency] : undefined;
+  const inDollars =
+    !currency ||
+    !symbol ||
+    currency === "USD" ||
+    (rates ? !perUsd : ratesFailed);
+  if (inDollars) {
+    return {
+      balanceLabel: hidden
+        ? "••••"
+        : cashUsd !== null
+          ? `$${formatMoney(cashUsd)}`
+          : "$…",
+      rateLabel: "Spend in USD",
+    };
+  }
   return {
     balanceLabel: hidden
       ? "••••"
       : perUsd && cashUsd !== null
-        ? formatLocalAmount(symbol, cashUsd, perUsd)
+        ? formatLocalAmount(symbol, cashUsd, perUsd, currency)
         : `${symbol}…`,
-    rateLabel: perUsd ? formatRateLabel(symbol, perUsd) : `${symbol}1 = $…`,
+    rateLabel: perUsd
+      ? formatRateLabel(symbol, perUsd, currency)
+      : `${symbol}1 = $…`,
   };
 }
 
