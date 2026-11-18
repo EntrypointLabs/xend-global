@@ -25,7 +25,7 @@ import { WidgetsModal } from "@/components/ui/organisms/home/WidgetsModal";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useWalletName } from "@/hooks/useWalletName";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
-import { EmptyAccountIllustration } from "@/components/ui/atoms/EmptyAccountIllustration";
+import { EmptyAccountBanner } from "@/components/ui/organisms/home/EmptyAccountBanner";
 import { useRouter } from "expo-router";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { SendFlowModal } from "@/components/ui/organisms/send/SendFlowModal";
@@ -222,6 +222,19 @@ function HomeScreenContent() {
               )}
             </View>
 
+            {/* Only for an Account known to hold nothing at all. */}
+            {known && !hasBalance && holdings.length === 0 && (
+              <View style={{ marginBottom: size(SECTION_GAP) }}>
+                <EmptyAccountBanner
+                  subtitle={
+                    swapEnabled
+                      ? "Your money and assets show up here"
+                      : "Your money shows up here"
+                  }
+                />
+              </View>
+            )}
+
             {countryCard && visibility.country ? (
               <View
                 style={{
@@ -241,27 +254,6 @@ function HomeScreenContent() {
                 />
               </View>
             ) : null}
-
-            {/* Only for an Account known to hold nothing at all. */}
-            {known && !hasBalance && holdings.length === 0 && (
-              <View
-                className="items-center pt-6"
-                style={{ marginBottom: size(SECTION_GAP) }}
-              >
-                <EmptyAccountIllustration />
-                <Typography weight="600" className={cn("mt-4 text-lg", S.ink)}>
-                  There is nothing here yet
-                </Typography>
-                <Typography
-                  weight="500"
-                  className={cn("mt-1 text-center text-sm", S.copy)}
-                >
-                  {swapEnabled
-                    ? "Money you add and assets you buy show up here"
-                    : "Money you add shows up here"}
-                </Typography>
-              </View>
-            )}
 
             <HapticPressable
               accessibilityRole="button"
