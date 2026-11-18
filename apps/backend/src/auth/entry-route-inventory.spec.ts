@@ -198,6 +198,7 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /webhooks/nomba/sandbox',
   'GET /health',
   'GET /features',
+  'GET /fx/display-rates',
   'GET /metrics',
   'GET /v1/webhook_endpoints',
   'POST /v1/webhook_endpoints',
