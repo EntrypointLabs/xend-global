@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,6 +18,11 @@ import Animated, {
 import { ActionMenu } from "./ActionMenu";
 
 import { BlurView } from "expo-blur";
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
+import {
+  setTabBarCollapsed,
+  useTabBarCollapsed,
+} from "@/hooks/useTabBarCollapse";
 import { useSegments } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/utils/cn";
@@ -32,6 +37,9 @@ const iconMappings = {
   string,
   React.FC<{ isActive?: boolean; size?: number; tone?: "dark" | "light" }>
 >;
+
+/** iOS 26's own material; older systems keep the drawn bar. */
+const LIQUID = isLiquidGlassAvailable();
 
 const fabShadow = {
   shadowColor: "#000",
@@ -56,6 +64,10 @@ export function CustomTabBar({
   // cannot. The home banner says why and offers the passkey; the button just
   // stops pretending.
   const readOnly = sessionTier === "entry";
+
+  const collapsed = useTabBarCollapsed();
+  // A new tab starts at its top, so the bar opens with it.
+  React.useEffect(() => setTabBarCollapsed(false), [state.index]);
 
   const fabScale = useSharedValue(1);
   const fabOpacity = useSharedValue(1);
@@ -96,8 +108,11 @@ export function CustomTabBar({
 
   return (
     <>
-      <ContainerWrapper withBlur={!onPhoto}>
+      <ContainerWrapper withBlur={!onPhoto && !LIQUID}>
         <ActionPill
+          liquid
+          collapsed={collapsed}
+          onExpand={() => setTabBarCollapsed(false)}
           // The tab roots sit on the photo, so their bar is glass; any white
           // screen keeps the solid pill.
           variant={onPhoto ? "glass" : "solid"}
@@ -151,25 +166,34 @@ export function CustomTabBar({
         {isHome && (
           // REANIMATED-EXCEPTION
           <Animated.View
-            className="absolute right-4 top-3 z-[2]"
+            className="absolute right-4 top-2.5 z-[2]"
             style={fabStyle}
           >
             <HapticPressable
               className={cn(
                 // The same fill as Add money in each theme: white on the
                 // photo, black on white. One primary action, one solid fill.
-                "h-[50px] w-[50px] items-center justify-center rounded-[28px]",
-                onPhoto ? "bg-white" : "bg-black",
+                // On liquid glass that fill becomes the glass's tint instead.
+                "h-[50px] w-[50px] items-center justify-center overflow-hidden rounded-[28px]",
+                !LIQUID && (onPhoto ? "bg-white" : "bg-black"),
                 readOnly && "opacity-30"
               )}
               // PLATFORM-SHADOW
-              style={fabShadow}
+              style={LIQUID ? undefined : fabShadow}
               onPress={handleFabPress}
               disabled={readOnly}
               accessibilityLabel={
                 readOnly ? "Sign in with your passkey to send" : "Actions"
               }
             >
+              {LIQUID && (
+                <GlassView
+                  glassEffectStyle="regular"
+                  tintColor={onPhoto ? "#FFFFFF" : "#0A0A0A"}
+                  isInteractive
+                  style={[StyleSheet.absoluteFill, { borderRadius: 28 }]}
+                />
+              )}
               <Ionicons
                 name="add"
                 size={28}

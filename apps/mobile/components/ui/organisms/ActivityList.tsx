@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   SectionList,
+  type SectionListProps,
   View,
 } from "react-native";
 import { ActivityItem } from "./ActivityItem";
@@ -29,6 +30,8 @@ interface ActivityListProps {
   hasNextPage?: boolean;
   ListEmptyComponent?: React.ReactElement | null;
   ListHeaderComponent?: React.ReactElement | null;
+  onScroll?: SectionListProps<ActivityRow, ActivitySection>["onScroll"];
+  scrollEventThrottle?: number;
 }
 
 // The grouping key is a `YYYY-MM-DD` day; render it as a readable date. Build
@@ -53,6 +56,8 @@ export const ActivityList = memo(
     hasNextPage = false,
     ListEmptyComponent,
     ListHeaderComponent,
+    onScroll,
+    scrollEventThrottle,
   }: ActivityListProps) => {
     const onPhoto = useOnPhoto();
     const emptyState = ListEmptyComponent ?? (
@@ -68,6 +73,8 @@ export const ActivityList = memo(
 
     return (
       <SectionList
+        onScroll={onScroll}
+        scrollEventThrottle={scrollEventThrottle}
         sections={sections}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={ListHeaderComponent}

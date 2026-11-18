@@ -14,6 +14,7 @@ import {
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { useTransfersInfinite, usePendingWatch } from "@/hooks/useTransfers";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
+import { useCollapseOnScroll } from "@/hooks/useTabBarCollapse";
 import { useBalances } from "@/hooks/useBalances";
 import { useAwaitingPayments } from "@/hooks/useAwaitingPayments";
 import {
@@ -26,6 +27,7 @@ import {
 
 export default function HistoryScreen() {
   const address = useWalletAddress();
+  const collapseOnScroll = useCollapseOnScroll();
   const { decimalsByMint, iconsByMint } = useBalances();
   const {
     data,
@@ -107,6 +109,7 @@ export default function HistoryScreen() {
     <PhotoScreen scene="sky" warm blurred>
       <TabHeaderText>Activity</TabHeaderText>
       <ActivityList
+        {...collapseOnScroll}
         // Hidden for now; restore to bring back the month's money in and out.
         // ListHeaderComponent={
         //   <MonthHero flow={summariseMonthlyFlow(transferRows)} />
