@@ -12,29 +12,27 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ActionModal } from "@/components/ui/organisms/ActionModal";
 import { cn } from "@/utils/cn";
-import {
-  HOME_WIDGETS,
-  type HomeWidget,
-  type HomeWidgetKey,
-  type HomeWidgetVisibility,
-} from "@/utils/homeWidgets";
+import type { CountryCard } from "@/utils/countryCards";
+import type { HomeWidgetKey, HomeWidgetVisibility } from "@/utils/homeWidgets";
 
 interface WidgetsModalProps {
   visible: boolean;
   onClose: () => void;
   visibility: HomeWidgetVisibility;
+  /** Null when the person's country is not known yet. */
+  card: CountryCard | null;
   onChange: (key: HomeWidgetKey, visible: boolean) => void;
 }
 
 /** Share of the screen the grid may take before it scrolls. */
 const GRID_MAX_SCREEN_SHARE = 0.58;
 
-function CountryPreview({ widget }: { widget: HomeWidget }) {
+function CountryPreview({ card }: { card: CountryCard }) {
   return (
     <>
       <View className="h-16 w-full overflow-hidden rounded-2xl">
         <Image
-          source={widget.background}
+          source={{ uri: card.photoUrl }}
           style={StyleSheet.absoluteFill}
           contentFit="cover"
         />
@@ -46,10 +44,14 @@ function CountryPreview({ widget }: { widget: HomeWidget }) {
           ]}
         />
         <View className="flex-1 items-center justify-center">
-          <Image
-            source={widget.flagImage}
-            style={{ width: 28, height: 28, borderRadius: 14 }}
-          />
+          {card.flagUrl ? (
+            <Image
+              source={{ uri: card.flagUrl }}
+              style={{ width: 28, height: 28, borderRadius: 14 }}
+            />
+          ) : (
+            <Ionicons name="globe-outline" size={28} color="#FFF" />
+          )}
         </View>
       </View>
       <View className="items-center">
@@ -58,14 +60,14 @@ function CountryPreview({ widget }: { widget: HomeWidget }) {
           className="text-center text-[15px] leading-5"
           numberOfLines={2}
         >
-          {widget.title}
+          {card.name}
         </Typography>
         <Typography
           weight="500"
           className="mt-0.5 text-center text-xs text-black/40"
           numberOfLines={1}
         >
-          {widget.detail}
+          {`${card.currency ?? "USD"} balance`}
         </Typography>
       </View>
     </>
@@ -119,6 +121,7 @@ export function WidgetsModal({
   visible,
   onClose,
   visibility,
+  card,
   onChange,
 }: WidgetsModalProps) {
   const { height } = useWindowDimensions();
@@ -145,16 +148,15 @@ export function WidgetsModal({
         style={{ maxHeight: height * GRID_MAX_SCREEN_SHARE }}
       >
         <View className="flex-row flex-wrap justify-between gap-y-3">
-          {HOME_WIDGETS.map((widget) => (
+          {card ? (
             <PreviewCard
-              key={widget.key}
-              title={widget.title}
-              on={visibility[widget.key]}
-              onToggle={() => onChange(widget.key, !visibility[widget.key])}
+              title={card.name}
+              on={visibility.country}
+              onToggle={() => onChange("country", !visibility.country)}
             >
-              <CountryPreview widget={widget} />
+              <CountryPreview card={card} />
             </PreviewCard>
-          ))}
+          ) : null}
         </View>
       </ScrollView>
     </ActionModal>

@@ -27,3 +27,19 @@ describe("formatLocalAmount", () => {
     expect(formatLocalAmount("£", 0, 0.758)).toBe("£0.00");
   });
 });
+
+describe("currencies written differently", () => {
+  it("drops the decimals for the yen", () => {
+    expect(formatRateLabel("¥", 159.29, "JPY")).toBe("$1 = ¥159");
+    expect(formatLocalAmount("¥", 10, 159.29, "JPY")).toBe("¥1,593");
+  });
+
+  it("spaces a symbol made of letters", () => {
+    expect(formatRateLabel("KES", 130.01, "KES")).toBe("$1 = KES 130.01");
+    expect(formatLocalAmount("KSh", 10, 130.01, "KES")).toBe("KSh 1,300.10");
+  });
+
+  it("keeps a symbol that ends in a sign tight", () => {
+    expect(formatLocalAmount("GH₵", 10, 11.73, "GHS")).toBe("GH₵117.30");
+  });
+});

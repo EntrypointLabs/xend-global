@@ -1,42 +1,15 @@
 /**
- * Country-account widgets on Home. Catalog is country-keyed so more locales
- * can plug in later without another redesign. Only the UK ships for now.
+ * Sections a Consumer can switch on or off on Home. The country card is one
+ * section whose content follows where the person is.
  */
-export const HOME_WIDGETS = [
-  {
-    key: "uk",
-    title: "United Kingdom",
-    detail: "GBP balance",
-    countryCode: "GB",
-    currency: "GBP",
-    currencySymbol: "£",
-    flag: "🇬🇧",
-    flagImage: require("@/assets/images/widgets/flag-gb.png"),
-    displayName: "UNITED KINGDOM",
-    /**
-     * How wide each title line is drawn, in points on the 436pt-wide card.
-     * Montserrat's proportions differ from Wise's, so each line is fitted to
-     * its own width rather than sharing one condense.
-     */
-    titleWidths: [165, 235],
-    /** Photo only. The card draws the pill, title, balance and dock live. */
-    background: require("@/assets/images/widgets/united-kingdom-photo.jpg"),
-  },
-] as const;
+export const HOME_WIDGET_KEYS = ["country"] as const;
 
-export type HomeWidget = (typeof HOME_WIDGETS)[number];
-export type HomeWidgetKey = HomeWidget["key"];
+export type HomeWidgetKey = (typeof HOME_WIDGET_KEYS)[number];
 export type HomeWidgetVisibility = Record<HomeWidgetKey, boolean>;
 
 export const DEFAULT_WIDGET_VISIBILITY: HomeWidgetVisibility = {
-  uk: true,
+  country: true,
 };
-
-export function widgetByKey(key: HomeWidgetKey): HomeWidget {
-  const found = HOME_WIDGETS.find((widget) => widget.key === key);
-  if (!found) throw new Error(`Unknown home widget: ${key}`);
-  return found;
-}
 
 /**
  * Reads what was saved, tolerating anything. A widget the saved value does not
@@ -46,7 +19,7 @@ export function widgetByKey(key: HomeWidgetKey): HomeWidget {
 export function parseWidgetVisibility(stored: unknown): HomeWidgetVisibility {
   const result = { ...DEFAULT_WIDGET_VISIBILITY };
   if (typeof stored !== "object" || stored === null) return result;
-  for (const { key } of HOME_WIDGETS) {
+  for (const key of HOME_WIDGET_KEYS) {
     const value = (stored as Record<string, unknown>)[key];
     if (typeof value === "boolean") result[key] = value;
   }
