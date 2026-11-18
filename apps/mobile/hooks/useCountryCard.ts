@@ -21,6 +21,8 @@ export function useCountryCard(): CountryCard | null {
     staleTime: 60 * 60_000,
     retry: 1,
   });
-  if (live.isSuccess) return live.data;
+  // A failed refetch keeps the last live answer in `data`; that still beats
+  // whatever was stored before it.
+  if (live.data !== undefined) return live.data;
   return stored.data ?? null;
 }

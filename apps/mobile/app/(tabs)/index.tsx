@@ -86,7 +86,7 @@ function HomeScreenContent() {
   const { holdings } = useInvestments();
   const gateSend = useSendGate();
   const [hidden, setHidden] = useState(false);
-  const { data: rates } = useDisplayRates();
+  const { data: rates, isError: ratesFailed } = useDisplayRates();
   const countryCard = useCountryCard();
 
   // Everything the Consumer owns, in USD: cash, investments and Earn. The Card
@@ -228,6 +228,7 @@ function HomeScreenContent() {
                   {...localLabels(
                     countryCard,
                     rates,
+                    ratesFailed,
                     known ? portfolio.cashUsd : null,
                     hidden
                   )}
@@ -392,6 +393,8 @@ function ActionButton({
 function localLabels(
   card: CountryCard,
   rates: DisplayRates | undefined,
+  /** The rates request gave up; show dollars rather than waiting forever. */
+  ratesFailed: boolean,
   /** Null until the balance has loaded, so a failed read never shows as zero. */
   cashUsd: number | null,
   hidden: boolean
@@ -399,7 +402,10 @@ function localLabels(
   const { currency, symbol } = card;
   const perUsd = currency ? rates?.perUsd[currency] : undefined;
   const inDollars =
-    !currency || !symbol || currency === "USD" || (rates && !perUsd);
+    !currency ||
+    !symbol ||
+    currency === "USD" ||
+    (rates ? !perUsd : ratesFailed);
   if (inDollars) {
     return {
       balanceLabel: hidden

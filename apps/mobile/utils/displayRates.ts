@@ -24,23 +24,40 @@ export const DEMO_DISPLAY_RATES: DisplayRates = {
   quotedAt: "2026-11-18T00:00:00.000Z",
 };
 
-/** Currencies written without a fractional part. */
-const WHOLE_UNIT_CURRENCIES = new Set([
-  "JPY",
-  "KRW",
-  "VND",
-  "CLP",
-  "ISK",
-  "PYG",
-  "UGX",
-  "RWF",
-  "XAF",
-  "XOF",
-  "IDR",
-]);
+/**
+ * Minor-unit digits for currencies that do not use two (ISO 4217). IDR keeps
+ * two in the standard but is never written with them in practice.
+ */
+const FRACTION_DIGITS: Record<string, number> = {
+  BIF: 0,
+  CLP: 0,
+  DJF: 0,
+  GNF: 0,
+  ISK: 0,
+  JPY: 0,
+  KMF: 0,
+  KRW: 0,
+  PYG: 0,
+  RWF: 0,
+  UGX: 0,
+  UYI: 0,
+  VND: 0,
+  VUV: 0,
+  XAF: 0,
+  XOF: 0,
+  XPF: 0,
+  IDR: 0,
+  BHD: 3,
+  IQD: 3,
+  JOD: 3,
+  KWD: 3,
+  LYD: 3,
+  OMR: 3,
+  TND: 3,
+};
 
 function amount(value: number, currency?: string | null): string {
-  const digits = currency && WHOLE_UNIT_CURRENCIES.has(currency) ? 0 : 2;
+  const digits = currency ? (FRACTION_DIGITS[currency] ?? 2) : 2;
   return value.toLocaleString("en-US", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,

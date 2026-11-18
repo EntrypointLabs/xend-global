@@ -43,3 +43,14 @@ describe("currencies written differently", () => {
     expect(formatLocalAmount("GH₵", 10, 11.73, "GHS")).toBe("GH₵117.30");
   });
 });
+
+describe("minor units by currency", () => {
+  it("writes every zero-decimal currency without decimals", () => {
+    expect(formatLocalAmount("FBu", 10, 2950.5, "BIF")).toBe("FBu 29,505");
+    expect(formatLocalAmount("Fdj", 10, 177.7, "DJF")).toBe("Fdj 1,777");
+  });
+
+  it("writes three-decimal currencies with three", () => {
+    expect(formatLocalAmount("KD", 10, 0.3071, "KWD")).toBe("KD 3.071");
+  });
+});
