@@ -1,16 +1,20 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
-  Dimensions,
+  LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
   ScrollView,
+  type StyleProp,
   View,
+  type ViewStyle,
 } from "react-native";
 import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 
-import HapticPressable from "@/components/ui/atoms/HapticPressable";
-import { Typography } from "@/components/ui/atoms/Typography";
+import { useOnPhoto } from "@/components/ui/glass";
+import {
+  StatusCard,
+  type StatusCardProps,
+} from "@/components/ui/organisms/home/StatusCard";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccount } from "@/hooks/useAccount";
 import { useAwaitingPayments } from "@/hooks/useAwaitingPayments";
@@ -22,31 +26,33 @@ import { usePendingChangeAcknowledgement } from "@/hooks/usePendingChangeAcknowl
 import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { cn } from "@/utils/cn";
 
-/** The card is inset by the screen's own padding on both sides. */
-const SCREEN_PADDING = 20;
+export type StatusItem = StatusCardProps & { key: string };
 
-interface Banner {
-  key: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  tint: string;
-  title: string;
-  description: string;
-  onPress: () => void;
+interface StatusCarouselProps {
+  /** The page for an Account known to hold nothing, or null. */
+  empty: StatusItem | null;
+  /** Offers for what the Consumer has not tried, shown after everything else. */
+  nudges: StatusItem[];
+  style?: StyleProp<ViewStyle>;
 }
 
 /**
- * The notices at the foot of the home screen, one page at a time.
+ * Home's status slot, one page at a time: first whatever needs the Consumer,
+ * then the empty state, then nudges. Nothing here can be dismissed; each page
+ * goes when what it describes stops being true.
  *
  * A carousel rather than a single slot because these arrive independently: a
- * staged settings change is not a reason to stop telling someone about Earn,
- * and Earn is not a reason to bury the change.
+ * staged settings change is not a reason to stop offering Earn, and Earn is not
+ * a reason to bury the change. People rarely swipe past the first page, which
+ * is why anything that needs them comes first.
  *
  * A change the Consumer started themselves lands here and nowhere else. It is
  * not an emergency, so it does not interrupt, but it is the only place they can
  * see the wait running down and still call it off, so it must not be silent
  * either.
  */
-export function HomeBanners() {
+export function StatusCarousel({ empty, nudges, style }: StatusCarouselProps) {
+  const onPhoto = useOnPhoto();
   const { sessionTier, user } = useAuth();
   const { data: account } = useAccount();
   const { data: change } = usePendingAccountChange();
@@ -57,10 +63,10 @@ export function HomeBanners() {
   const passkey = usePasskeyLogin();
   const [passkeyHint, setPasskeyHint] = useState<string | null>(null);
   const [page, setPage] = useState(0);
-  const width = useRef(Dimensions.get("window").width - SCREEN_PADDING * 2);
+  const [width, setWidth] = useState(0);
   const remaining = useCountdown(change?.executableAt ?? null);
 
-  const banners: Banner[] = [];
+  const banners: StatusItem[] = [];
 
   // Before everything, including a waiting Payment: nothing else on the
   // screen can be finished until this is. An email code opened this session,
@@ -75,27 +81,25 @@ export function HomeBanners() {
       if (outcome === "wrong-account") {
         const opened = passkey.wrongAccountEmail();
         setPasskeyHint(
-          `That passkey opens ${opened ?? "a different account"}. Try again and pick the one for this account.`
+          opened
+            ? `That passkey opens ${opened}`
+            : "That passkey opens another account"
         );
       } else if (outcome === "no-account") {
-        setPasskeyHint(
-          "That passkey is not on any Prydd account. Try again and pick another."
-        );
+        setPasskeyHint("That passkey is not on any account");
       } else if (outcome === "no-passkey") {
-        setPasskeyHint("No passkey on this phone. Use the phone that has it.");
+        setPasskeyHint("No passkey on this phone");
       } else if (outcome === "failed") {
-        setPasskeyHint(passkey.error ?? "That did not work. Tap to try again.");
+        setPasskeyHint("That did not work. Tap to retry");
       }
     };
     banners.push({
       key: "entry-session",
-      icon: "finger-print-outline",
-      tint: "#0A0A0A",
+      art: "passkey",
       title: "Looking, not spending",
-      description: passkey.busy
-        ? "Waiting for your passkey."
-        : (passkeyHint ??
-          "Sending and key changes need your passkey. Tap to sign in."),
+      subtitle: passkey.busy
+        ? "Waiting for your passkey"
+        : (passkeyHint ?? "Sign in with your passkey to send"),
       onPress: () => void upgrade(),
     });
   }
@@ -115,13 +119,15 @@ export function HomeBanners() {
   if (waiting.length > 0) {
     banners.push({
       key: "finish-payment",
-      icon: "storefront-outline",
-      tint: "#0A0A0A",
+      art: "payment",
       title:
         waiting.length === 1
-          ? `Finish paying ${waiting[0].merchantDisplayName}`
+          ? "Finish your payment"
           : `${waiting.length} payments need you`,
-      description: "Checked twice at this size. Tap to finish.",
+      subtitle:
+        waiting.length === 1
+          ? `${waiting[0].merchantDisplayName} is waiting`
+          : "Tap to finish them",
       onPress: () => router.push("/settings/finish-payment" as never),
     });
   }
@@ -129,12 +135,11 @@ export function HomeBanners() {
   if (change && restoring) {
     banners.push({
       key: "pending-change",
-      icon: "phone-portrait-outline",
-      tint: "#0A0A0A",
-      title: mine ? "Recovering on this phone" : "A phone is being added",
-      description: remaining
-        ? `Takes over in ${remaining}. Tap to review.`
-        : "Waiting on approval. Tap to review.",
+      art: "phone",
+      title: mine ? "Recovering this phone" : "A phone is being added",
+      subtitle: remaining
+        ? `Takes over in ${remaining}`
+        : "Waiting on approval",
       // Review means the same thing either way here: the screen that shows the
       // wait running down and still offers to call it off. Asked for, so it
       // opens even on the phone that started the change.
@@ -143,14 +148,11 @@ export function HomeBanners() {
   } else if (change) {
     banners.push({
       key: "pending-change",
-      icon: "time-outline",
-      tint: "#0A0A0A",
-      title: mine
-        ? "Your key change is on its way"
-        : "A change to your account is pending",
-      description: remaining
-        ? `Goes through in ${remaining}. Tap to review.`
-        : "Waiting for a second approval. Tap to review.",
+      art: "clock",
+      title: mine ? "Key change on its way" : "Account change pending",
+      subtitle: remaining
+        ? `Goes through in ${remaining}`
+        : "Waiting for a second approval",
       // Reviewing means two different things depending on whose change it is.
       // Their own is a key they can watch land, and the key list is where it
       // lives. Somebody else's is a thing to refuse, and the only screen that
@@ -166,22 +168,31 @@ export function HomeBanners() {
     // else on the screen explains why.
     banners.push({
       key: "device-restore",
-      icon: "phone-portrait-outline",
-      tint: "#0A0A0A",
-      title: "This phone cannot approve",
-      description: "Your Device Key is on another phone. Tap to recover it.",
+      art: "phone",
+      title: "This phone can't approve",
+      subtitle: "Your key is on another phone",
       onPress: () => router.push("/settings/restore-device" as never),
     });
   }
 
+  if (empty) banners.push(empty);
+  banners.push(...nudges);
+
+  const onLayout = (event: LayoutChangeEvent) =>
+    setWidth(event.nativeEvent.layout.width);
+
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    setPage(Math.round(event.nativeEvent.contentOffset.x / width.current));
+    if (width > 0) {
+      setPage(Math.round(event.nativeEvent.contentOffset.x / width));
+    }
   };
 
   if (banners.length === 0) return null;
+  // A page can disappear while it is showing, such as a payment just finished.
+  const current = Math.min(page, banners.length - 1);
 
   return (
-    <View className="mb-4 mt-auto">
+    <View style={style} onLayout={onLayout}>
       <ScrollView
         horizontal
         pagingEnabled
@@ -189,54 +200,32 @@ export function HomeBanners() {
         onMomentumScrollEnd={onScroll}
         scrollEnabled={banners.length > 1}
       >
-        {banners.map((banner) => (
-          <View key={banner.key} style={{ width: width.current }}>
-            <BannerCard banner={banner} />
+        {banners.map(({ key, ...card }) => (
+          <View key={key} style={{ width }}>
+            <StatusCard {...card} />
           </View>
         ))}
       </ScrollView>
 
       {banners.length > 1 && (
-        <View className="mt-2 flex-row items-center justify-center gap-1.5">
+        <View className="mt-2.5 flex-row items-center justify-center gap-1.5">
           {banners.map((banner, index) => (
             <View
               key={banner.key}
               className={cn(
                 "size-1.5 rounded-full",
-                index === page ? "bg-black/40" : "bg-black/10"
+                index === current
+                  ? onPhoto
+                    ? "bg-white/80"
+                    : "bg-black/45"
+                  : onPhoto
+                    ? "bg-white/30"
+                    : "bg-black/10"
               )}
             />
           ))}
         </View>
       )}
     </View>
-  );
-}
-
-function BannerCard({ banner }: { banner: Banner }) {
-  return (
-    <HapticPressable
-      onPress={banner.onPress}
-      className="flex-row items-center justify-between rounded-[20px] border border-black/[0.05] bg-white p-4"
-    >
-      <View className="flex-1 flex-row items-center">
-        <View
-          className="mr-3 size-10 items-center justify-center rounded-full"
-          // DYNAMIC-COLOR (per-banner icon tint)
-          style={{ backgroundColor: banner.tint }}
-        >
-          <Ionicons name={banner.icon} size={18} color="#FFFFFF" />
-        </View>
-        <View className="flex-1 gap-0.5">
-          <Typography weight="600" className="text-[15px] text-black">
-            {banner.title}
-          </Typography>
-          <Typography weight="500" className="text-[13px] text-black/50">
-            {banner.description}
-          </Typography>
-        </View>
-      </View>
-      <Ionicons name="chevron-forward" size={16} color="#00000040" />
-    </HapticPressable>
   );
 }
