@@ -5,6 +5,7 @@ import { PhotoScreen, useSurface } from "@/components/ui/glass";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { formatMoney } from "@/utils/balances";
 import { cn } from "@/utils/cn";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- MonthHero is hidden for now
 import { summariseMonthlyFlow, type MonthlyFlow } from "@/utils/spentThisMonth";
 import {
   ActivityList,
@@ -106,9 +107,10 @@ export default function HistoryScreen() {
     <PhotoScreen scene="sky" warm blurred>
       <TabHeaderText className="pb-0">Activity</TabHeaderText>
       <ActivityList
-        ListHeaderComponent={
-          <MonthHero flow={summariseMonthlyFlow(transferRows)} />
-        }
+        // Hidden for now; restore to bring back the month's money in and out.
+        // ListHeaderComponent={
+        //   <MonthHero flow={summariseMonthlyFlow(transferRows)} />
+        // }
         sections={sections}
         onEndReached={() => fetchNextPage()}
         hasNextPage={hasNextPage}
@@ -137,6 +139,7 @@ export default function HistoryScreen() {
  * This month's money in and out, over the open part of the photo. Gives the
  * screen a hero the way Revolut's tabs open, before the feed starts.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- hidden for now, see ListHeaderComponent
 function MonthHero({ flow }: { flow: MonthlyFlow }) {
   const S = useSurface();
   return (
