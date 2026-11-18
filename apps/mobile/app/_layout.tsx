@@ -59,6 +59,10 @@ import {
   Inter_900Black_Italic,
   useFonts,
 } from "@expo-google-fonts/inter";
+import { InterTight_900Black } from "@expo-google-fonts/inter-tight";
+import { BarlowCondensed_900Black } from "@expo-google-fonts/barlow-condensed";
+import { BebasNeue_400Regular } from "@expo-google-fonts/bebas-neue";
+import { Anton_400Regular } from "@expo-google-fonts/anton";
 import LoadingScreen from "@/components/ui/layout/LoadingScreen";
 import LockScreen from "@/components/ui/layout/LockScreen";
 import { usePendingWatch } from "@/hooks/useTransfers";
@@ -238,6 +242,10 @@ function RootLayout() {
     Inter_700Bold_Italic,
     Inter_800ExtraBold_Italic,
     Inter_900Black_Italic,
+    InterTight_900Black,
+    BarlowCondensed_900Black,
+    BebasNeue_400Regular,
+    Anton_400Regular,
   });
 
   const [fontTimeout, setFontTimeout] = useState(false);

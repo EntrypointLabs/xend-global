@@ -3,7 +3,7 @@ import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 
 import { ScreenLayout } from "@/components/ui/layout";
 import { SendModal } from "@/components/ui/organisms/modals/SendModal";
@@ -14,26 +14,14 @@ import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { BalanceChart } from "@/components/ui/organisms/BalanceChart";
 import { HomeBanners } from "@/components/ui/organisms/HomeBanners";
 import { useBalanceDelta, useBalanceHistory } from "@/hooks/useBalanceHistory";
-import { earnHeadlineApy, useEarnPosition } from "@/hooks/useEarn";
+import { useEarnPosition } from "@/hooks/useEarn";
 import { useInvestments, type InvestmentHolding } from "@/hooks/useInvestments";
 import { useSendGate } from "@/hooks/useSendGate";
 import { formatMoney } from "@/utils/balances";
-import { formatTokenAmount } from "@/utils/tokens";
-import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { useBalances } from "@/hooks/useBalances";
-import { useTransfersInfinite } from "@/hooks/useTransfers";
 import { useHomeWidgets } from "@/hooks/useHomeWidgets";
-import { useWatchlist } from "@/hooks/useWatchlist";
-import { RecentTransactions } from "@/components/ui/organisms/home/RecentTransactions";
-import { SpentThisMonth } from "@/components/ui/organisms/home/SpentThisMonth";
-import { Watchlist } from "@/components/ui/organisms/home/Watchlist";
+import { CountryAccountWidget } from "@/components/ui/organisms/home/CountryAccountWidget";
 import { WidgetsModal } from "@/components/ui/organisms/home/WidgetsModal";
-import { TransactionDetailModal } from "@/components/ui/organisms/modals/TransactionDetailModal";
-import {
-  mapTransferRowToActivityEntry,
-  type ActivityEntry,
-} from "@/utils/activity";
-import { summariseMonthlySpend } from "@/utils/spentThisMonth";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useWalletName } from "@/hooks/useWalletName";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
@@ -52,6 +40,7 @@ import {
   type Surface,
 } from "@/components/ui/glass";
 import { useColorfulTheme } from "@/contexts/AppearanceContext";
+import { HOME_WIDGETS } from "@/utils/homeWidgets";
 
 // Lifts the 31pt header controls to a 47pt target without growing them.
 const HEADER_HIT_SLOP = 8;
@@ -64,9 +53,6 @@ const FLOATING_CHROME_HEIGHT = 8 + 50;
 // ScreenLayout's own p-5 already sits below this, so the measured gap to the
 // chrome is comfortably larger than this number suggests.
 const CHROME_GAP = 4;
-
-/** Rows under the tiles: holdings first, then what to do next. */
-const HOME_ROW_COUNT = 3;
 
 // The spacing the screen was drawn with, in points, before it was made
 // scalable: `mt-8` above the chart and `mb-6` below each block.
@@ -92,8 +78,6 @@ function HomeScreenContent() {
     isError: isBalanceError,
     isLoading: isBalanceLoading,
     refetch: refetchBalances,
-    decimalsByMint,
-    iconsByMint,
   } = useBalances();
   const { balance: earnBalance } = useEarnPosition();
   const { holdings } = useInvestments();
@@ -108,28 +92,8 @@ function HomeScreenContent() {
     maximumFractionDigits: 2,
   });
   const address = useWalletAddress();
-  const { data: transferPages, isLoading: isTransfersLoading } =
-    useTransfersInfinite();
   const { visibility, setVisible } = useHomeWidgets();
-  const { tokens: watchedTokens } = useWatchlist(visibility.watchlist);
   const [widgetsOpen, setWidgetsOpen] = useState(false);
-  const [openEntry, setOpenEntry] = useState<ActivityEntry | null>(null);
-
-  const entries = useMemo(
-    () =>
-      (transferPages?.pages.flatMap((page) => page.transfers) ?? [])
-        .map((row) =>
-          mapTransferRowToActivityEntry(row, {
-            selfAddress: address ?? "",
-            decimalsByMint,
-            iconsByMint,
-          })
-        )
-        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
-    [transferPages, address, decimalsByMint, iconsByMint]
-  );
-  const recentEntries = entries.slice(0, 3);
-  const monthlySpend = useMemo(() => summariseMonthlySpend(entries), [entries]);
   const { name: walletName } = useWalletName();
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
   const [sendMode, setSendMode] = useState<SendMode>("crypto");
@@ -252,6 +216,23 @@ function HomeScreenContent() {
               )}
             </View>
 
+            {HOME_WIDGETS.map((widget) =>
+              visibility[widget.key] ? (
+                <View
+                  key={widget.key}
+                  style={{ marginBottom: size(SECTION_GAP) }}
+                >
+                  <CountryAccountWidget
+                    widget={widget}
+                    balanceLabel={
+                      hidden ? "••••" : `${widget.currencySymbol}0.00`
+                    }
+                    onDismiss={() => setVisible(widget.key, false)}
+                  />
+                </View>
+              ) : null
+            )}
+
             <View
               className="flex-row gap-3"
               style={{ marginBottom: size(SECTION_GAP) }}
@@ -283,62 +264,6 @@ function HomeScreenContent() {
               />
             </View>
 
-            {/* Holdings first; a spare row is the next thing worth doing. An Account
-            holding only cash still gets the section, as those spare rows. */}
-            {visibility.assets &&
-              (holdings.length > 0 || (known && hasBalance)) && (
-                <View style={{ marginBottom: size(SECTION_GAP) }}>
-                  <View className="flex-row items-center justify-between pb-1">
-                    <Typography
-                      weight="500"
-                      className={cn("text-sm", S.caption)}
-                    >
-                      Your assets
-                    </Typography>
-                    <HapticPressable
-                      accessibilityRole="button"
-                      accessibilityLabel="See all assets"
-                      hitSlop={12}
-                      onPress={() => router.push("/investments")}
-                      className="py-1"
-                    >
-                      <Typography
-                        weight="500"
-                        className={cn("text-sm", S.copy)}
-                      >
-                        See all
-                      </Typography>
-                    </HapticPressable>
-                  </View>
-                  <View className="gap-2.5 pt-1">
-                    {holdings.slice(0, HOME_ROW_COUNT).map((holding) => (
-                      <AssetRow
-                        key={holding.mint}
-                        holding={holding}
-                        hidden={hidden}
-                        onPress={() => router.push("/investments")}
-                      />
-                    ))}
-                    {holdings.length < HOME_ROW_COUNT && (
-                      <PromptRow
-                        icon="bar-chart-outline"
-                        label="Earn"
-                        detail={`Up to ${earnHeadlineApy()} APY`}
-                        onPress={() => router.push("/earn")}
-                      />
-                    )}
-                    {swapEnabled && holdings.length < HOME_ROW_COUNT - 1 && (
-                      <PromptRow
-                        icon="add"
-                        label="Buy another asset"
-                        detail="Swap cash for crypto"
-                        onPress={() => router.push("/swap")}
-                      />
-                    )}
-                  </View>
-                </View>
-              )}
-
             {/* Only for an Account known to hold nothing at all. One that holds
             cash but no assets is not empty, and says so in its tiles. */}
             {known && !hasBalance && holdings.length === 0 && (
@@ -358,32 +283,6 @@ function HomeScreenContent() {
                     ? "Money you add and assets you buy show up here"
                     : "Money you add shows up here"}
                 </Typography>
-              </View>
-            )}
-
-            {visibility.transactions && (
-              <View style={{ marginBottom: size(SECTION_GAP) }}>
-                <RecentTransactions
-                  entries={recentEntries}
-                  loaded={!isTransfersLoading}
-                  onSeeAll={() => router.push("/history")}
-                  onOpen={setOpenEntry}
-                />
-              </View>
-            )}
-
-            {visibility.spend && (
-              <View style={{ marginBottom: size(SECTION_GAP) }}>
-                <SpentThisMonth spend={monthlySpend} hidden={hidden} />
-              </View>
-            )}
-
-            {visibility.watchlist && (
-              <View style={{ marginBottom: size(SECTION_GAP) }}>
-                <Watchlist
-                  tokens={watchedTokens}
-                  onOpen={swapEnabled ? () => router.push("/swap") : undefined}
-                />
               </View>
             )}
 
@@ -409,17 +308,6 @@ function HomeScreenContent() {
             onClose={() => setWidgetsOpen(false)}
             visibility={visibility}
             onChange={setVisible}
-            preview={{
-              holdings,
-              latestEntry: recentEntries[0] ?? null,
-              spend: monthlySpend,
-              watched: watchedTokens,
-            }}
-          />
-          <TransactionDetailModal
-            visible={openEntry !== null}
-            onClose={() => setOpenEntry(null)}
-            item={openEntry}
           />
           <SendModal
             visible={isSendModalVisible}
@@ -611,149 +499,6 @@ function BalanceTile({
           {hint ?? " "}
         </Typography>
       )}
-    </HapticPressable>
-  );
-}
-
-function rowClass(S: Surface): string {
-  return cn("flex-row items-center justify-between px-4 py-3", S.card);
-}
-
-function AssetRow({
-  holding,
-  hidden,
-  onPress,
-}: {
-  holding: InvestmentHolding;
-  hidden: boolean;
-  onPress: () => void;
-}) {
-  const S = useSurface();
-  const change = holding.priceChange24h;
-  const units = `${formatTokenAmount(holding.amount, holding.decimals)} ${holding.symbol}`;
-  const value = holding.usdValue == null ? null : formatMoney(holding.usdValue);
-  const spoken = [
-    holding.name,
-    units,
-    value === null ? "unpriced" : hidden ? "hidden" : `$${value}`,
-    change != null ? spokenPercent(change) : null,
-  ]
-    .filter(Boolean)
-    .join(", ");
-
-  return (
-    <HapticPressable
-      accessibilityRole="button"
-      accessibilityLabel={spoken}
-      onPress={onPress}
-      className={rowClass(S)}
-      // PLATFORM-SHADOW
-      style={S.raised}
-    >
-      <View className="flex-1 flex-row items-center gap-3">
-        <TokenMark
-          mint={holding.mint}
-          label={holding.name}
-          iconUrl={holding.iconUrl}
-          size={40}
-        />
-        <View className="flex-1 gap-0.5">
-          <Typography
-            weight="600"
-            className={cn("text-base", S.ink)}
-            numberOfLines={1}
-          >
-            {holding.name}
-          </Typography>
-          <Typography
-            weight="500"
-            className={cn("text-[13px]", S.small)}
-            numberOfLines={1}
-          >
-            {units}
-          </Typography>
-        </View>
-      </View>
-      <View className="items-end gap-1 pl-3">
-        {value === null ? (
-          // Nothing could price it. Saying so beats a "$0.00" the Consumer
-          // would read as having lost it.
-          <Typography weight="600" className={cn("text-base", S.small)}>
-            Unpriced
-          </Typography>
-        ) : (
-          <Amount
-            hidden={hidden}
-            weight="600"
-            className={cn("text-base", S.ink)}
-            amount={value}
-          />
-        )}
-        {change != null && <ChangePill change={change} />}
-      </View>
-    </HapticPressable>
-  );
-}
-
-function ChangePill({ change }: { change: number }) {
-  const S = useSurface();
-  return (
-    <View
-      className={cn(
-        "rounded-full px-2 py-0.5",
-        change > 0 ? S.upFill : change < 0 ? S.downFill : S.chip
-      )}
-    >
-      <Typography
-        weight="600"
-        className={cn("text-[12px]", changeClass(change, S))}
-      >
-        {signedPercent(change)}
-      </Typography>
-    </View>
-  );
-}
-
-function PromptRow({
-  icon,
-  label,
-  detail,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  detail: string;
-  onPress: () => void;
-}) {
-  const S = useSurface();
-  return (
-    <HapticPressable
-      accessibilityRole="button"
-      accessibilityLabel={`${label}, ${detail}`}
-      onPress={onPress}
-      className={rowClass(S)}
-      // PLATFORM-SHADOW
-      style={S.raised}
-    >
-      <View className="flex-row items-center gap-3">
-        <View
-          className={cn(
-            "h-[40px] w-[40px] items-center justify-center rounded-full",
-            S.chip
-          )}
-        >
-          <Ionicons name={icon} size={20} color={S.colors.ink} />
-        </View>
-        <View className="gap-0.5">
-          <Typography weight="600" className={cn("text-base", S.ink)}>
-            {label}
-          </Typography>
-          <Typography weight="500" className={cn("text-[13px]", S.small)}>
-            {detail}
-          </Typography>
-        </View>
-      </View>
-      <Ionicons name="chevron-forward" size={16} color={S.colors.small} />
     </HapticPressable>
   );
 }
