@@ -19,6 +19,7 @@ import { useSendGate } from "@/hooks/useSendGate";
 import { formatMoney } from "@/utils/balances";
 import { useBalances } from "@/hooks/useBalances";
 import { useHomeWidgets } from "@/hooks/useHomeWidgets";
+import { useCollapseOnScroll } from "@/hooks/useTabBarCollapse";
 import { CountryAccountWidget } from "@/components/ui/organisms/home/CountryAccountWidget";
 import { WidgetsModal } from "@/components/ui/organisms/home/WidgetsModal";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
@@ -97,6 +98,7 @@ function HomeScreenContent() {
   const [hidden, setHidden] = useState(false);
   const { data: rates, isError: ratesFailed } = useDisplayRates();
   const countryCard = useCountryCard();
+  const collapseOnScroll = useCollapseOnScroll();
 
   // Everything the Consumer owns, in USD: cash, investments and Earn. The Card
   // joins this sum when it holds a balance of its own.
@@ -155,6 +157,7 @@ function HomeScreenContent() {
           {/* The gutter lives inside the scroll view. Outside it, the view's own
           bounds would shear the shadows off at the screen's left and right. */}
           <ScrollView
+            {...collapseOnScroll}
             className="-mx-5 flex-1"
             contentContainerClassName="px-5"
             showsVerticalScrollIndicator={false}

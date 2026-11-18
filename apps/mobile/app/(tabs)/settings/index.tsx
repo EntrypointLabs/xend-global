@@ -24,6 +24,7 @@ import { EditWalletModal } from "@/components/ui/organisms/modals/EditWalletModa
 import { NotificationsModal } from "@/components/ui/organisms/modals/NotificationsModal";
 import { DeleteAccountModal } from "@/components/ui/organisms/modals/DeleteAccountModal";
 import { useWalletName } from "@/hooks/useWalletName";
+import { useCollapseOnScroll } from "@/hooks/useTabBarCollapse";
 import { useBalances } from "@/hooks/useBalances";
 import { useRouter } from "expo-router";
 import { useToast } from "@/contexts/ToastContext";
@@ -47,6 +48,7 @@ interface SettingsRow {
 }
 
 export default function SettingsScreen() {
+  const collapseOnScroll = useCollapseOnScroll();
   const router = useRouter();
   // This screen sits above the photo context PhotoScreen creates, so it
   // reads the theme directly.
@@ -175,6 +177,7 @@ export default function SettingsScreen() {
     <PhotoScreen scene="shore" blurred>
       <View className="w-full flex-1">
         <SectionList
+          {...collapseOnScroll}
           ListHeaderComponent={
             <View>
               <TabHeaderText>Settings</TabHeaderText>
