@@ -229,7 +229,7 @@ function HomeScreenContent() {
                     {...localLabels(
                       widget.currencySymbol,
                       rates?.perUsd[widget.currency],
-                      portfolio.cashUsd,
+                      known ? portfolio.cashUsd : null,
                       hidden
                     )}
                   />
@@ -392,13 +392,14 @@ function ActionButton({
 function localLabels(
   symbol: string,
   perUsd: number | undefined,
-  cashUsd: number,
+  /** Null until the balance has loaded, so a failed read never shows as zero. */
+  cashUsd: number | null,
   hidden: boolean
 ): { balanceLabel: string; rateLabel: string } {
   return {
     balanceLabel: hidden
       ? "••••"
-      : perUsd
+      : perUsd && cashUsd !== null
         ? formatLocalAmount(symbol, cashUsd, perUsd)
         : `${symbol}…`,
     rateLabel: perUsd ? formatRateLabel(symbol, perUsd) : `${symbol}1 = $…`,
