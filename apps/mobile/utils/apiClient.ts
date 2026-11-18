@@ -40,6 +40,11 @@ import { showToast } from "@/utils/toast";
 import { AuthStorage } from "@/utils/storage/authStorage";
 import { ServerFeaturesSchema, type ServerFeatures } from "@/utils/features";
 import {
+  DEMO_DISPLAY_RATES,
+  DisplayRatesSchema,
+  type DisplayRates,
+} from "@/utils/displayRates";
+import {
   SEED_DEMO,
   seedAccount,
   seedProvisioningStep,
@@ -1622,6 +1627,20 @@ class BackendClient {
       );
     }
     return ServerFeaturesSchema.parse(await response.json());
+  }
+
+  /** Dollar rates for showing a balance in local currency. Unauthenticated. */
+  async getDisplayRates(): Promise<DisplayRates> {
+    if (SEED_DEMO) return DEMO_DISPLAY_RATES;
+    const response = await fetch(`${this.baseUrl}/fx/display-rates`);
+    if (!response.ok) {
+      throw new ApiError(
+        "BackendClient: /fx/display-rates failed",
+        response.status,
+        undefined
+      );
+    }
+    return DisplayRatesSchema.parse(await response.json());
   }
 
   async getNotificationPreference(): Promise<boolean> {

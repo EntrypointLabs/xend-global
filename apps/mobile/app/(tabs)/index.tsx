@@ -40,6 +40,8 @@ import {
 } from "@/components/ui/glass";
 import { useColorfulTheme } from "@/contexts/AppearanceContext";
 import { HOME_WIDGETS } from "@/utils/homeWidgets";
+import { useDisplayRates } from "@/hooks/useDisplayRates";
+import { formatLocalAmount, formatRateLabel } from "@/utils/displayRates";
 
 // Lifts the 31pt header controls to a 47pt target without growing them.
 const HEADER_HIT_SLOP = 8;
@@ -82,6 +84,7 @@ function HomeScreenContent() {
   const { holdings } = useInvestments();
   const gateSend = useSendGate();
   const [hidden, setHidden] = useState(false);
+  const { data: rates } = useDisplayRates();
 
   // Everything the Consumer owns, in USD: cash, investments and Earn. The Card
   // joins this sum when it holds a balance of its own.
@@ -223,10 +226,12 @@ function HomeScreenContent() {
                 >
                   <CountryAccountWidget
                     widget={widget}
-                    balanceLabel={
-                      hidden ? "••••" : `${widget.currencySymbol}0.00`
-                    }
-                    onDismiss={() => setVisible(widget.key, false)}
+                    {...localLabels(
+                      widget.currencySymbol,
+                      rates?.perUsd[widget.currency],
+                      portfolio.cashUsd,
+                      hidden
+                    )}
                   />
                 </View>
               ) : null
@@ -378,6 +383,26 @@ function ActionButton({
       </Typography>
     </HapticPressable>
   );
+}
+
+/**
+ * A country card's balance and rate. The balance is the cash that can be spent
+ * now, in dollars, shown in the local currency; the rate is against the dollar.
+ */
+function localLabels(
+  symbol: string,
+  perUsd: number | undefined,
+  cashUsd: number,
+  hidden: boolean
+): { balanceLabel: string; rateLabel: string } {
+  return {
+    balanceLabel: hidden
+      ? "••••"
+      : perUsd
+        ? formatLocalAmount(symbol, cashUsd, perUsd)
+        : `${symbol}…`,
+    rateLabel: perUsd ? formatRateLabel(symbol, perUsd) : `${symbol}1 = $…`,
+  };
 }
 
 export default function HomeScreen() {

@@ -12,9 +12,13 @@ export const HOME_WIDGETS = [
     currencySymbol: "£",
     flag: "🇬🇧",
     flagImage: require("@/assets/images/widgets/flag-gb.png"),
-    /** Static FX copy for now; live rates later. */
-    rateLabel: "£1 = ₦1,898.44",
     displayName: "UNITED KINGDOM",
+    /**
+     * How wide each title line is drawn, in points on the 436pt-wide card.
+     * Montserrat's proportions differ from Wise's, so each line is fitted to
+     * its own width rather than sharing one condense.
+     */
+    titleWidths: [165, 235],
     /** Photo only. The card draws the pill, title, balance and dock live. */
     background: require("@/assets/images/widgets/united-kingdom-photo.jpg"),
   },
