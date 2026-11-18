@@ -20,6 +20,9 @@
       "android": {
         "buildType": "apk"
       },
+      "ios": {
+        "image": "macos-tahoe-26.6-xcode-27.1"
+      },
       "env": {
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
