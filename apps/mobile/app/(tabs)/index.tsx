@@ -67,8 +67,8 @@ const SECTION_GAP = 21;
 const CARD_DROP = 12;
 
 const NUDGE_ART: Record<NudgeKey, Pick<StatusItem, "art">> = {
-  earn: { art: { kind: "icon", name: "trending-up-outline" } },
-  "bank-payout": { art: { kind: "icon", name: "business-outline" } },
+  earn: { art: "earn" },
+  "bank-payout": { art: "bank" },
 };
 
 function HomeScreenContent() {
@@ -262,7 +262,7 @@ function HomeScreenContent() {
                       subtitle: swapEnabled
                         ? "Your money and assets show up here"
                         : "Your money shows up here",
-                      art: { kind: "empty-account" },
+                      art: "empty-account",
                     }
                   : null
               }

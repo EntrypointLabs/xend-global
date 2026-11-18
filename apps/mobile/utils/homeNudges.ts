@@ -1,4 +1,3 @@
-import { formatMoney } from "@/utils/balances";
 import { formatRateLabel } from "@/utils/displayRates";
 
 export type NudgeKey = "earn" | "bank-payout";
@@ -45,8 +44,8 @@ export function homeNudges(input: NudgeInputs): Nudge[] {
       title: `Earn ${input.earnApy}% a year`,
       subtitle:
         yearly >= MIN_YEARLY_TO_QUOTE
-          ? `Your $${formatMoney(cashUsd)} could make about $${Math.round(yearly)} a year`
-          : "On dollars you are not spending yet",
+          ? `About $${Math.round(yearly).toLocaleString("en-US")} a year on your cash`
+          : "On cash you are not spending",
     });
   }
 
@@ -54,7 +53,7 @@ export function homeNudges(input: NudgeInputs): Nudge[] {
   if (input.currency === "NGN" && input.symbol && input.perUsd) {
     nudges.push({
       key: "bank-payout",
-      title: "Send to any Nigerian bank",
+      title: "Send to any bank",
       subtitle: `${formatRateLabel(input.symbol, input.perUsd, input.currency)} today`,
     });
   }

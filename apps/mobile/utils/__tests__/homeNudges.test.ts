@@ -16,11 +16,11 @@ describe("homeNudges", () => {
       {
         key: "earn",
         title: "Earn 4.37% a year",
-        subtitle: "Your $120.00 could make about $5 a year",
+        subtitle: "About $5 a year on your cash",
       },
       {
         key: "bank-payout",
-        title: "Send to any Nigerian bank",
+        title: "Send to any bank",
         subtitle: "$1 = ₦1,530.00 today",
       },
     ]);
@@ -41,7 +41,7 @@ describe("homeNudges", () => {
 
   it("quotes the rate instead of a yearly figure that rounds to nothing", () => {
     expect(homeNudges({ ...base, cashUsd: 5 })[0].subtitle).toBe(
-      "On dollars you are not spending yet"
+      "On cash you are not spending"
     );
   });
 

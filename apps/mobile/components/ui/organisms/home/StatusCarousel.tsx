@@ -81,26 +81,25 @@ export function StatusCarousel({ empty, nudges, style }: StatusCarouselProps) {
       if (outcome === "wrong-account") {
         const opened = passkey.wrongAccountEmail();
         setPasskeyHint(
-          `That passkey opens ${opened ?? "a different account"}. Try again and pick the one for this account.`
+          opened
+            ? `That passkey opens ${opened}`
+            : "That passkey opens another account"
         );
       } else if (outcome === "no-account") {
-        setPasskeyHint(
-          "That passkey is not on any Prydd account. Try again and pick another."
-        );
+        setPasskeyHint("That passkey is not on any account");
       } else if (outcome === "no-passkey") {
-        setPasskeyHint("No passkey on this phone. Use the phone that has it.");
+        setPasskeyHint("No passkey on this phone");
       } else if (outcome === "failed") {
-        setPasskeyHint(passkey.error ?? "That did not work. Tap to try again.");
+        setPasskeyHint("That did not work. Tap to retry");
       }
     };
     banners.push({
       key: "entry-session",
-      art: { kind: "icon", name: "finger-print-outline" },
+      art: "passkey",
       title: "Looking, not spending",
       subtitle: passkey.busy
-        ? "Waiting for your passkey."
-        : (passkeyHint ??
-          "Sending and key changes need your passkey. Tap to sign in."),
+        ? "Waiting for your passkey"
+        : (passkeyHint ?? "Sign in with your passkey to send"),
       onPress: () => void upgrade(),
     });
   }
@@ -120,12 +119,15 @@ export function StatusCarousel({ empty, nudges, style }: StatusCarouselProps) {
   if (waiting.length > 0) {
     banners.push({
       key: "finish-payment",
-      art: { kind: "icon", name: "storefront-outline" },
+      art: "payment",
       title:
         waiting.length === 1
-          ? `Finish paying ${waiting[0].merchantDisplayName}`
+          ? "Finish your payment"
           : `${waiting.length} payments need you`,
-      subtitle: "Checked twice at this size. Tap to finish.",
+      subtitle:
+        waiting.length === 1
+          ? `${waiting[0].merchantDisplayName} is waiting`
+          : "Tap to finish them",
       onPress: () => router.push("/settings/finish-payment" as never),
     });
   }
@@ -133,11 +135,11 @@ export function StatusCarousel({ empty, nudges, style }: StatusCarouselProps) {
   if (change && restoring) {
     banners.push({
       key: "pending-change",
-      art: { kind: "icon", name: "phone-portrait-outline" },
-      title: mine ? "Recovering on this phone" : "A phone is being added",
+      art: "phone",
+      title: mine ? "Recovering this phone" : "A phone is being added",
       subtitle: remaining
-        ? `Takes over in ${remaining}. Tap to review.`
-        : "Waiting on approval. Tap to review.",
+        ? `Takes over in ${remaining}`
+        : "Waiting on approval",
       // Review means the same thing either way here: the screen that shows the
       // wait running down and still offers to call it off. Asked for, so it
       // opens even on the phone that started the change.
@@ -146,13 +148,11 @@ export function StatusCarousel({ empty, nudges, style }: StatusCarouselProps) {
   } else if (change) {
     banners.push({
       key: "pending-change",
-      art: { kind: "icon", name: "time-outline" },
-      title: mine
-        ? "Your key change is on its way"
-        : "A change to your account is pending",
+      art: "clock",
+      title: mine ? "Key change on its way" : "Account change pending",
       subtitle: remaining
-        ? `Goes through in ${remaining}. Tap to review.`
-        : "Waiting for a second approval. Tap to review.",
+        ? `Goes through in ${remaining}`
+        : "Waiting for a second approval",
       // Reviewing means two different things depending on whose change it is.
       // Their own is a key they can watch land, and the key list is where it
       // lives. Somebody else's is a thing to refuse, and the only screen that
@@ -168,9 +168,9 @@ export function StatusCarousel({ empty, nudges, style }: StatusCarouselProps) {
     // else on the screen explains why.
     banners.push({
       key: "device-restore",
-      art: { kind: "icon", name: "phone-portrait-outline" },
-      title: "This phone cannot approve",
-      subtitle: "Your Device Key is on another phone. Tap to recover it.",
+      art: "phone",
+      title: "This phone can't approve",
+      subtitle: "Your key is on another phone",
       onPress: () => router.push("/settings/restore-device" as never),
     });
   }
