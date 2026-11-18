@@ -12,9 +12,8 @@ import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { useFeature } from "@/hooks/useFeature";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { BalanceChart } from "@/components/ui/organisms/BalanceChart";
-import { HomeBanners } from "@/components/ui/organisms/HomeBanners";
 import { useBalanceDelta, useBalanceHistory } from "@/hooks/useBalanceHistory";
-import { useEarnPosition } from "@/hooks/useEarn";
+import { earnHeadlineApy, useEarnPosition } from "@/hooks/useEarn";
 import { useInvestments } from "@/hooks/useInvestments";
 import { useSendGate } from "@/hooks/useSendGate";
 import { formatMoney } from "@/utils/balances";
@@ -25,7 +24,11 @@ import { WidgetsModal } from "@/components/ui/organisms/home/WidgetsModal";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useWalletName } from "@/hooks/useWalletName";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
-import { EmptyAccountBanner } from "@/components/ui/organisms/home/EmptyAccountBanner";
+import {
+  StatusCarousel,
+  type StatusItem,
+} from "@/components/ui/organisms/home/StatusCarousel";
+import { homeNudges, type NudgeKey } from "@/utils/homeNudges";
 import { useRouter } from "expo-router";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { SendFlowModal } from "@/components/ui/organisms/send/SendFlowModal";
@@ -62,6 +65,11 @@ const CHROME_GAP = 4;
 const CHART_GAP_ABOVE = 28;
 const SECTION_GAP = 21;
 const CARD_DROP = 12;
+
+const NUDGE_ART: Record<NudgeKey, Pick<StatusItem, "art">> = {
+  earn: { art: { kind: "icon", name: "trending-up-outline" } },
+  "bank-payout": { art: { kind: "icon", name: "business-outline" } },
+};
 
 function HomeScreenContent() {
   const colorful = useColorfulTheme();
@@ -111,6 +119,29 @@ function HomeScreenContent() {
   // Loading and a failed read are "unknown", which is not the same as empty:
   // the empty-state copy only belongs on an account known to hold nothing.
   const known = !isBalanceLoading && !isBalanceError;
+  const earnDepositsEnabled = useFeature("earnDeposits");
+  const nudges: StatusItem[] = homeNudges({
+    cashUsd: known ? portfolio.cashUsd : null,
+    earnUsd: earnBalance,
+    earnDepositsEnabled,
+    earnApy: Number.parseFloat(earnHeadlineApy()),
+    currency: countryCard?.currency ?? null,
+    symbol: countryCard?.symbol ?? null,
+    perUsd: countryCard?.currency
+      ? rates?.perUsd[countryCard.currency]
+      : undefined,
+  }).map((nudge) => ({
+    ...nudge,
+    ...NUDGE_ART[nudge.key],
+    onPress:
+      nudge.key === "earn"
+        ? () => router.push("/earn")
+        : () =>
+            gateSend(() => {
+              setSendMode("bank");
+              sendFlowModalRef.current?.present();
+            }),
+  }));
   const dayChange =
     delta && hasBalance && !hidden && Math.abs(delta.amount) >= 0.005
       ? delta.amount
@@ -222,18 +253,22 @@ function HomeScreenContent() {
               )}
             </View>
 
-            {/* Only for an Account known to hold nothing at all. */}
-            {known && !hasBalance && holdings.length === 0 && (
-              <View style={{ marginBottom: size(SECTION_GAP) }}>
-                <EmptyAccountBanner
-                  subtitle={
-                    swapEnabled
-                      ? "Your money and assets show up here"
-                      : "Your money shows up here"
-                  }
-                />
-              </View>
-            )}
+            <StatusCarousel
+              empty={
+                known && !hasBalance && holdings.length === 0
+                  ? {
+                      key: "empty-account",
+                      title: "No activity yet",
+                      subtitle: swapEnabled
+                        ? "Your money and assets show up here"
+                        : "Your money shows up here",
+                      art: { kind: "empty-account" },
+                    }
+                  : null
+              }
+              nudges={nudges}
+              style={{ marginBottom: size(SECTION_GAP) }}
+            />
 
             {countryCard && visibility.country ? (
               <View
@@ -269,8 +304,6 @@ function HomeScreenContent() {
                 Add widgets
               </Typography>
             </HapticPressable>
-
-            <HomeBanners />
           </ScrollView>
           <WidgetsModal
             visible={widgetsOpen}

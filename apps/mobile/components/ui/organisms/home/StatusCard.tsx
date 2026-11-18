@@ -1,5 +1,6 @@
 import React from "react";
 import { View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import Svg, {
   Defs,
   Ellipse,
@@ -9,31 +10,38 @@ import Svg, {
   Stop,
 } from "react-native-svg";
 
+import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { EmptyAccountIllustration } from "@/components/ui/atoms/EmptyAccountIllustration";
 import { Typography } from "@/components/ui/atoms/Typography";
 
 /** The illustration's own proportions, 240 by 160. */
 const ART_WIDTH = 88;
+/** Every page is the same height so the carousel never jumps between them. */
+const CARD_HEIGHT = 90;
+const INK = "#0E0F0C";
 
-/**
- * What Home shows an Account that holds nothing: a banner in the same family
- * as the country card rather than an empty page. It is a state, not a notice,
- * so it cannot be dismissed; it goes once money arrives.
- */
-export function EmptyAccountBanner({ subtitle }: { subtitle: string }) {
-  return (
-    <View
-      accessible
-      accessibilityLabel={`No activity yet. ${subtitle}`}
-      className="flex-row items-center overflow-hidden rounded-[20px] py-[14px] pl-5 pr-4"
-    >
+export type StatusArt =
+  | { kind: "empty-account" }
+  | { kind: "icon"; name: keyof typeof Ionicons.glyphMap };
+
+export interface StatusCardProps {
+  title: string;
+  subtitle: string;
+  art: StatusArt;
+  onPress?: () => void;
+}
+
+export function StatusCard({ title, subtitle, art, onPress }: StatusCardProps) {
+  const body = (
+    <>
       <Mist />
       <View className="flex-1 pr-2">
         <Typography
           weight="500"
           className="text-[18px] leading-[23px] tracking-[-0.2px] text-[#0E0F0C]"
+          numberOfLines={1}
         >
-          No activity yet
+          {title}
         </Typography>
         <Typography
           weight="500"
@@ -43,8 +51,47 @@ export function EmptyAccountBanner({ subtitle }: { subtitle: string }) {
           {subtitle}
         </Typography>
       </View>
-      <EmptyAccountIllustration width={ART_WIDTH} />
-    </View>
+      <View
+        className="items-center justify-center"
+        style={{ width: ART_WIDTH }}
+      >
+        {art.kind === "empty-account" ? (
+          <EmptyAccountIllustration width={ART_WIDTH} />
+        ) : (
+          <View className="size-[52px] items-center justify-center rounded-full bg-white/70">
+            <Ionicons name={art.name} size={24} color={INK} />
+          </View>
+        )}
+      </View>
+    </>
+  );
+
+  const className =
+    "flex-row items-center overflow-hidden rounded-[20px] pl-5 pr-4";
+  const style = { height: CARD_HEIGHT };
+
+  if (!onPress) {
+    return (
+      <View
+        accessible
+        accessibilityLabel={`${title}. ${subtitle}`}
+        className={className}
+        style={style}
+      >
+        {body}
+      </View>
+    );
+  }
+  return (
+    <HapticPressable
+      accessibilityRole="button"
+      accessibilityLabel={`${title}. ${subtitle}`}
+      onPress={onPress}
+      className={className}
+      style={style}
+    >
+      {body}
+    </HapticPressable>
   );
 }
 
