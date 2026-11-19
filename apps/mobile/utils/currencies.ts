@@ -1,3 +1,5 @@
+import { CARDS_ORIGIN } from "@/utils/countryCards";
+
 /**
  * English names for the currencies the rates feed can return. Kept here
  * because Hermes has no Intl.DisplayNames, so the runtime cannot name them.
@@ -191,4 +193,14 @@ export function currencyCountry(code: string): string | null {
   const country =
     code in FLAG_COUNTRY ? FLAG_COUNTRY[code] : code.slice(0, 2).toUpperCase();
   return country && /^[A-Z]{2}$/.test(country) ? country.toLowerCase() : null;
+}
+
+/**
+ * Where a currency's round flag is served. They live on prydd.co beside the
+ * country card images rather than in the app, which would otherwise carry
+ * every flag a currency list might show.
+ */
+export function currencyFlagUrl(code: string): string | null {
+  const country = currencyCountry(code);
+  return country ? `${CARDS_ORIGIN}/flags/v1/${country}.webp` : null;
 }

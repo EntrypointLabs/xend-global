@@ -19,25 +19,32 @@ import {
   startingPrice,
 } from "@/utils/displayRates";
 import { cn } from "@/utils/cn";
-import { currencyCountry, currencyName } from "@/utils/currencies";
-import { FLAG_IMAGES } from "@/utils/flagImages";
+import { currencyFlagUrl, currencyName } from "@/utils/currencies";
 
 const INK = "#0E0F0C";
 const DISPLAY = { fontFamily: "Montserrat_900Black" } as const;
 
 /** A currency's round flag, or a globe where no one country fits. */
 function CurrencyFlag({ code, size }: { code: string; size: number }) {
-  const country = currencyCountry(code);
-  const source = country ? FLAG_IMAGES[country] : undefined;
-  if (source) {
+  const uri = currencyFlagUrl(code);
+  // A flag that will not load (offline, not served yet) falls back to the
+  // globe rather than leaving an empty ring.
+  const [failed, setFailed] = useState(false);
+  if (uri && !failed) {
     return (
       <View
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        className="overflow-hidden rounded-full border border-black/[0.08]"
+        className="overflow-hidden rounded-full border border-black/[0.08] bg-black/[0.06]"
         style={{ width: size, height: size }}
       >
-        <Image source={source} style={{ width: "100%", height: "100%" }} />
+        <Image
+          source={{ uri }}
+          style={{ width: "100%", height: "100%" }}
+          cachePolicy="disk"
+          transition={120}
+          onError={() => setFailed(true)}
+        />
       </View>
     );
   }
