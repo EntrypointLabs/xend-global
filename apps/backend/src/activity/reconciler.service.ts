@@ -32,12 +32,14 @@ const PENDING_EXPIRY_MS = 120_000;
 /** How long after the last check a still-PENDING send is looked at again. */
 const PENDING_RECHECK_MS = 30_000;
 /**
- * A send still PENDING this long after submission is anomalous: it has either
- * landed or been force-failed many checks ago. It stops counting as a reason
- * to keep checking, so one wedged row cannot keep an idle database awake
- * forever; the boot check still finalizes it.
+ * A send still PENDING this long after submission is anomalous: normally it
+ * has landed or been force-failed many checks ago, so something upstream (an
+ * RPC that keeps failing, say) is wrong. It is still checked until it settles,
+ * but every PENDING_STALE_RECHECK_MS rather than every PENDING_RECHECK_MS, so
+ * one wedged row wakes an idle database a few times an hour, not constantly.
  */
 const PENDING_RECHECK_HORIZON_MS = 60 * 60 * 1000;
+const PENDING_STALE_RECHECK_MS = 10 * 60 * 1000;
 /**
  * At most one on-chain catch-up per Consumer in this window. Opening the app
  * fetches activity, and a Consumer who pulls to refresh should not pay for a
@@ -65,7 +67,9 @@ const USER_CATCH_UP_WAIT_MS = 3_000;
  *      PENDING `transfers` row older than the age threshold, ask the cluster
  *      what happened via `getSignatureStatuses` and finalize the row to
  *      CONFIRMED or FAILED. Armed when a send is submitted, re-checks every
- *      PENDING_RECHECK_MS while PENDING rows remain, and stops when none do.
+ *      PENDING_RECHECK_MS while a recent send is PENDING (every
+ *      PENDING_STALE_RECHECK_MS once only old ones are), and stops when none
+ *      are.
  *      The status guard is enforced via the WHERE clause (`status='PENDING'`),
  *      so a row already finalized by the webhook path is untouched.
  *
@@ -73,6 +77,9 @@ const USER_CATCH_UP_WAIT_MS = 3_000;
  * (a second check finds nothing PENDING-and-old enough because the first
  * finalized them).
  */
+/** Whether any send is PENDING, and whether one is inside the horizon. */
+type PendingState = 'recent' | 'stale' | 'none';
+
 @Injectable()
 export class ReconcilerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ReconcilerService.name);
@@ -121,18 +128,20 @@ export class ReconcilerService implements OnModuleInit, OnModuleDestroy {
   async checkPending(): Promise<void> {
     if (this.pendingCheckRunning) return;
     this.pendingCheckRunning = true;
-    let more: boolean;
+    let pending: PendingState;
     try {
       await this.tick();
-      more = await this.hasRecentPending();
+      pending = await this.pendingState();
     } catch (err) {
       this.logger.error('tailer.reconcile.pending_check failed', err);
-      more = true;
+      pending = 'recent';
     } finally {
       this.pendingCheckRunning = false;
     }
-    if (more && !this.pendingTimer) {
-      this.schedulePendingCheck(PENDING_RECHECK_MS);
+    if (pending !== 'none' && !this.pendingTimer) {
+      this.schedulePendingCheck(
+        pending === 'recent' ? PENDING_RECHECK_MS : PENDING_STALE_RECHECK_MS,
+      );
     }
   }
 
@@ -150,15 +159,20 @@ export class ReconcilerService implements OnModuleInit, OnModuleDestroy {
     this.pendingTimer.unref?.();
   }
 
-  private async hasRecentPending(): Promise<boolean> {
+  private async pendingState(): Promise<PendingState> {
     const result = (await this.db.client.execute(sql`
-      SELECT 1 AS pending
+      SELECT
+        bool_or(COALESCE(
+          submitted_at > (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${PENDING_RECHECK_HORIZON_MS / 1000}`)} seconds',
+          false
+        )) AS "recent"
       FROM transfers
       WHERE status = 'PENDING'
-        AND submitted_at > (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${PENDING_RECHECK_HORIZON_MS / 1000}`)} seconds'
-      LIMIT 1
-    `)) as unknown as { rows?: unknown[] };
-    return (result.rows ?? []).length > 0;
+    `)) as unknown as { rows?: { recent: boolean | null }[] };
+    // bool_or over no rows is NULL: nothing is PENDING.
+    const recent = result.rows?.[0]?.recent ?? null;
+    if (recent === null) return 'none';
+    return recent ? 'recent' : 'stale';
   }
 
   /**

@@ -75,6 +75,8 @@ interface OutstandingRow {
   // flag returned by the reconciler's outstanding SELECT. Defaults to
   // false so existing cases keep their pre-expiry behavior.
   expired?: boolean;
+  /** Submitted longer ago than the reconciler's recent-send horizon. */
+  pastHorizon?: boolean;
 }
 
 function makeFakeDb(opts: {
@@ -102,6 +104,20 @@ function makeFakeDb(opts: {
     calls.push({ kind: 'execute', payload: str });
     // The reconciler issues its outstanding-PENDING SELECT via execute()
     // (raw SQL). Return the seeded outstanding rows when we see that shape.
+    // The pending check's "anything left, and is any of it recent" query.
+    if (str.includes('bool_or')) {
+      return Promise.resolve({
+        rows: [
+          {
+            recent:
+              outstanding.length === 0
+                ? null
+                : outstanding.some((r) => !r.pastHorizon),
+          },
+        ],
+        rowCount: 1,
+      });
+    }
     const isOutstandingSelect =
       str.includes('SELECT') &&
       str.includes('transfers') &&
@@ -858,6 +874,79 @@ describe('ReconcilerService pending check', () => {
     expect(statuses).toHaveBeenCalledTimes(3);
     expect(reconciler.isPendingCheckArmed()).toBe(true);
     reconciler.onModuleDestroy();
+  });
+
+  it('keeps checking a send past the horizon, every ten minutes', async () => {
+    // An RPC that has been failing for over an hour: the send is still
+    // PENDING and must not be abandoned until a restart.
+    const { db } = makeFakeDb({
+      outstanding: [
+        {
+          signature: 'sig-wedged',
+          smartAccountId: 'sa1',
+          submittedAt: new Date(Date.now() - 2 * 60 * 60_000),
+          pastHorizon: true,
+        },
+      ],
+    });
+    const statuses = jest.fn().mockRejectedValue(new Error('rpc down'));
+    const reconciler = new ReconcilerService(
+      db,
+      makeFakeSolana({ getSignatureStatuses: statuses }),
+      makeTailer(db),
+    );
+
+    reconciler.armPendingCheck();
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(statuses).toHaveBeenCalledTimes(1);
+    expect(reconciler.isPendingCheckArmed()).toBe(true);
+
+    // Not every 30 seconds any more.
+    await jest.advanceTimersByTimeAsync(9 * 60_000);
+    expect(statuses).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(statuses).toHaveBeenCalledTimes(2);
+    expect(reconciler.isPendingCheckArmed()).toBe(true);
+    reconciler.onModuleDestroy();
+  });
+
+  it('stops once a send past the horizon finally settles', async () => {
+    const outstanding: OutstandingRow[] = [
+      {
+        signature: 'sig-late',
+        smartAccountId: 'sa1',
+        submittedAt: new Date(Date.now() - 2 * 60 * 60_000),
+        pastHorizon: true,
+      },
+    ];
+    const { db } = makeFakeDb({ outstanding });
+    const statuses = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('rpc down'))
+      .mockImplementation(() => {
+        outstanding.length = 0;
+        return Promise.resolve([
+          {
+            signature: 'sig-late',
+            slot: 9n,
+            confirmationStatus: 'finalized',
+            err: null,
+          },
+        ]);
+      });
+    const reconciler = new ReconcilerService(
+      db,
+      makeFakeSolana({ getSignatureStatuses: statuses }),
+      makeTailer(db),
+    );
+
+    reconciler.armPendingCheck();
+    await jest.advanceTimersByTimeAsync(30_000);
+    await jest.advanceTimersByTimeAsync(10 * 60_000);
+
+    expect(statuses).toHaveBeenCalledTimes(2);
+    expect(reconciler.isPendingCheckArmed()).toBe(false);
   });
 
   it('a second send while armed shares the scheduled check', async () => {
