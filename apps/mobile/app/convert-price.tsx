@@ -113,6 +113,18 @@ export default function ConvertPriceScreen() {
       ? card.currency
       : (codes.find((code) => code === "GBP") ?? codes[0]);
   const from = picked ?? fallback;
+  // Rates arrived but name no currency besides the dollar: nothing to convert.
+  if (!from) {
+    return (
+      <ErrorState
+        message="Rates are not available right now. Try again in a moment."
+        onRetry={() => void rates.refetch()}
+        onClose={() =>
+          router.canGoBack() ? router.back() : router.replace("/(tabs)")
+        }
+      />
+    );
+  }
   const rate = perUsd[from];
   const shown = typed ?? startingPrice(rate);
   const price = parseTypedPrice(shown);
@@ -127,7 +139,13 @@ export default function ConvertPriceScreen() {
         <CurrencyChip code={from} onPress={() => setPicking(true)} />
         <TextInput
           value={shown}
-          onChangeText={(text) => setTyped(text.replace(/[^0-9.,]/g, ""))}
+          onChangeText={(text) => {
+            const next = text.replace(/[^0-9.,]/g, "");
+            // A second decimal mark is a slip, not a new price: ignore it.
+            if (Number.isFinite(parseTypedPrice(next)) || next === "") {
+              setTyped(next);
+            }
+          }}
           keyboardType="decimal-pad"
           selectTextOnFocus
           accessibilityLabel={`Price in ${from}`}

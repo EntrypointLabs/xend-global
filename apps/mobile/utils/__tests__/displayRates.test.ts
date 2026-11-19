@@ -102,4 +102,9 @@ describe("parseTypedPrice", () => {
     expect(parseTypedPrice("10.000", ",")).toBe(10000);
     expect(parseTypedPrice("12.345,67", ",")).toBe(12345.67);
   });
+
+  it("rejects more than one decimal mark", () => {
+    expect(parseTypedPrice("1.2.3", ".")).toBeNaN();
+    expect(parseTypedPrice("1,2,3", ",")).toBeNaN();
+  });
 });
