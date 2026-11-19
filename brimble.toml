@@ -4,6 +4,7 @@
 # to apps/backend/Dockerfile.
 [services.api]
 type = "web"
+region = "eu-central"
 
 [services.api.build]
 dockerfile = "backend.Dockerfile"
@@ -16,5 +17,43 @@ watch = [
 ]
 
 [services.api.deploy]
+before_start = "npx drizzle-kit migrate"
 port = 8000
 health = "/health"
+
+# Test deployment on devnet. KAFKA_BROKERS is unset on purpose: no broker
+# until Pay with Prydd launches.
+[services.api.env]
+NODE_ENV = "production"
+SOLANA_CLUSTER = "devnet"
+EXPO_PUBLIC_USDC_MINT_ADDRESS = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+DATABASE_URL = "{{@db.PRIVATE_CONNECTION_STRING}}"
+REDIS_URL = "{{@cache.PRIVATE_CONNECTION_STRING}}"
+
+[services.api.secrets]
+required = [
+  "PRIVY_APP_ID",
+  "PRIVY_APP_SECRET",
+  "HELIUS_API_KEY",
+  "HELIUS_RPC_URL",
+  "HELIUS_WEBHOOK_SECRET",
+  "SETTLEMENT_AUTHORITY_SECRET_KEY",
+  "INTERNAL_API_SECRET",
+  "CHECKOUT_RETURN_URL_SECRET",
+]
+
+[databases.db]
+engine = "postgresql"
+version = "17"
+region = "eu-central"
+cpu = 0.25
+memory = "0.5gb"
+disk = "10gb"
+
+[databases.cache]
+engine = "redis"
+version = "7"
+region = "eu-central"
+cpu = 0.25
+memory = "0.5gb"
+disk = "10gb"
