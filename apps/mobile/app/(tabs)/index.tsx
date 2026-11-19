@@ -28,7 +28,7 @@ import { WidgetsModal } from "@/components/ui/organisms/home/WidgetsModal";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useWalletName } from "@/hooks/useWalletName";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
-import { GlassButton } from "@/components/ui/atoms/Glass";
+import { GlassButton, LIQUID_GLASS } from "@/components/ui/atoms/Glass";
 import {
   StatusCarousel,
   type StatusItem,
@@ -44,6 +44,7 @@ import {
   OnPhotoProvider,
   PhotoBackdrop,
   surfaceFor,
+  useOnPhoto,
   useSurface,
 } from "@/components/ui/glass";
 import { useColorfulTheme } from "@/contexts/AppearanceContext";
@@ -412,16 +413,19 @@ function ActionButton({
   primary?: boolean;
 }) {
   const S = useSurface();
+  const onPhoto = useOnPhoto();
   return (
-    <HapticPressable
+    <GlassButton
+      radius={999}
       accessibilityRole="button"
       onPress={onPress}
-      className={cn(
-        "flex-1 items-center rounded-full py-3",
-        primary ? S.primaryButton : S.secondaryButton
-      )}
+      // Add money keeps its weight as tinted glass, the fill it had before;
+      // Send and Swap are clear glass.
+      tintColor={primary ? (onPhoto ? "#FFFFFF" : "#0A0A0A") : undefined}
+      className="flex-1 items-center rounded-full py-3"
+      fallbackClassName={primary ? S.primaryButton : S.secondaryButton}
       // PLATFORM-SHADOW
-      style={primary ? S.primaryRaised : S.raised}
+      style={LIQUID_GLASS ? undefined : primary ? S.primaryRaised : S.raised}
     >
       <Typography
         weight="600"
@@ -432,7 +436,7 @@ function ActionButton({
       >
         {label}
       </Typography>
-    </HapticPressable>
+    </GlassButton>
   );
 }
 
