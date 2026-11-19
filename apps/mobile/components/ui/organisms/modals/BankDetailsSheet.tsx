@@ -9,6 +9,7 @@ import { ActivityIndicator, Share, View } from "react-native";
 import {
   BottomSheetModal,
   BottomSheetTextInput,
+  BottomSheetScrollView,
   BottomSheetView,
   BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
@@ -488,9 +489,16 @@ export const BankDetailsSheet = forwardRef<
             </Typography>
           </View>
 
-          <View className="mx-6">{body}</View>
-
-          <View className="h-full flex-1" />
+          {/* Scrolls, with the footer pinned below it: the setup card and the
+          wallet card together run taller than the sheet on short phones. */}
+          <BottomSheetScrollView
+            className="flex-1"
+            contentContainerClassName="px-6 pb-4"
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {body}
+          </BottomSheetScrollView>
 
           <View className="mx-6 mb-8 gap-3">
             {__DEV__ && data ? (
