@@ -1,0 +1,18 @@
+# The backend Dockerfile builds from the repo root: it copies workspace
+# packages alongside apps/backend, so the root directory stays the repo root.
+[services.api]
+type = "web"
+
+[services.api.build]
+dockerfile = "apps/backend/Dockerfile"
+watch = [
+  "apps/backend/**",
+  "packages/smart-account/**",
+  "packages/typescript-config/**",
+  "package.json",
+  "package-lock.json",
+]
+
+[services.api.deploy]
+port = 8000
+health = "/health"
