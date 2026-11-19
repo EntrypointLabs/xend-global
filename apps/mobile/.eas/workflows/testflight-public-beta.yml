@@ -1,0 +1,17 @@
+name: TestFlight Public Beta
+
+# Runs once App Store Connect finishes receiving a build that testflight.yml
+# uploaded. Distributing by App Store Connect build ID keeps this on the free
+# EAS plan; the build_id variant of the testflight job needs a paid plan.
+on:
+  app_store_connect:
+    build_upload:
+      states: ['complete']
+
+jobs:
+  distribute:
+    name: Send to Public Beta
+    type: testflight
+    params:
+      asc_build_id: ${{ app_store_connect.build_upload.build.id }}
+      external_groups: ['Public Beta']
