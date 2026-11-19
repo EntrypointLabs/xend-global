@@ -213,7 +213,11 @@ export class TailerService {
 }
 
 /**
- * The arrival in the Consumer's terms: "5 SOL", "10 USDC".
+ * The arrival in the Consumer's terms: "5 SOL", "4.99 USDC", "1,234,567.5 USDC".
+ *
+ * Cut to two decimals rather than rounded, so a notice never claims more than
+ * arrived. An amount under 0.01 keeps its first two significant digits
+ * instead, or a small SOL arrival would read as "You received 0 SOL".
  *
  * Falls back to the raw amount when the chain did not report decimals, and to
  * the bare number when nothing could name the mint. Both are wrong-looking but
@@ -221,14 +225,27 @@ export class TailerService {
  */
 function describeAmount(evt: ConfirmedTransferEvent, symbol: string): string {
   if (evt.decimals === null)
-    return `${evt.amountRaw.toString()} ${symbol}`.trim();
+    return `${groupDigits(evt.amountRaw)} ${symbol}`.trim();
 
   const divisor = 10n ** BigInt(evt.decimals);
   const whole = evt.amountRaw / divisor;
-  const fraction = evt.amountRaw % divisor;
-  const amount =
-    fraction === 0n
-      ? whole.toString()
-      : `${whole}.${fraction.toString().padStart(evt.decimals, '0').replace(/0+$/, '')}`;
+  const digits = (evt.amountRaw % divisor)
+    .toString()
+    .padStart(evt.decimals, '0');
+  const firstSignificant = digits.search(/[1-9]/);
+  const kept =
+    whole === 0n && firstSignificant >= DISPLAY_DECIMALS
+      ? digits.slice(0, firstSignificant + 2)
+      : digits.slice(0, DISPLAY_DECIMALS);
+  const fraction = kept.replace(/0+$/, '');
+  const amount = fraction
+    ? `${groupDigits(whole)}.${fraction}`
+    : groupDigits(whole);
   return `${amount} ${symbol}`.trim();
+}
+
+const DISPLAY_DECIMALS = 2;
+
+function groupDigits(value: bigint): string {
+  return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }

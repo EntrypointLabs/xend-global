@@ -50,8 +50,18 @@ export interface HeliusEnhancedTransaction {
   transactionError?: { InstructionError?: unknown } | null;
   tokenTransfers?: HeliusTokenTransfer[];
   nativeTransfers?: HeliusNativeTransfer[];
-  /** Every account the transaction touched, transfer or not. */
-  accountData?: { account: string }[];
+  /**
+   * Every account the transaction touched, transfer or not. A real delivery
+   * carries a mint's decimals only here: `tokenTransfers` state whole tokens
+   * and have no `rawTokenAmount`.
+   */
+  accountData?: {
+    account: string;
+    tokenBalanceChanges?: {
+      mint: string;
+      rawTokenAmount?: { tokenAmount: string; decimals: number };
+    }[];
+  }[];
 }
 
 export type HeliusWebhookBody = HeliusEnhancedTransaction[];
@@ -66,11 +76,10 @@ export type HeliusWebhookBody = HeliusEnhancedTransaction[];
  * from the reconciler poll path that maps cluster errors to FAILED.
  *
  * When `rawTokenAmount.tokenAmount` is present it is used directly
- * (preserves u64 precision). When only the float `tokenAmount` is
- * present (older schema), the raw integer is reconstructed from
- * `tokenAmount * 10^decimals` — lossy for very large amounts but
- * acceptable for stablecoins (which Helius returns with rawTokenAmount
- * populated).
+ * (preserves u64 precision). Otherwise, which is every real delivery, the
+ * raw integer is reconstructed from the whole-token float as
+ * `tokenAmount * 10^decimals`, with the mint's decimals taken from
+ * `accountData[].tokenBalanceChanges`. Lossy for very large amounts.
  */
 export class EventParser {
   private readonly logger = new Logger(EventParser.name);
@@ -83,7 +92,10 @@ export class EventParser {
       const confirmedAt = new Date(tx.timestamp * 1000);
       const slot = BigInt(tx.slot);
       const legs = new LegCounter();
+      const mintDecimals = decimalsByMint(tx);
       for (const t of tx.tokenTransfers ?? []) {
+        const decimals =
+          t.rawTokenAmount?.decimals ?? mintDecimals.get(t.mint) ?? null;
         if (!t.fromUserAccount || !t.toUserAccount) continue;
         let amountRaw: bigint;
         if (t.rawTokenAmount?.tokenAmount) {
@@ -97,11 +109,11 @@ export class EventParser {
           }
         } else if (typeof t.tokenAmount === 'number') {
           // Reconstruct integer from the float. Lossy for >2^53 raw,
-          // but stablecoin amounts (6 decimals) stay well inside the
-          // safe-integer range for any consumer-scale transfer.
-          const decimals = t.rawTokenAmount?.decimals ?? 6;
+          // but consumer-scale amounts stay well inside the safe-integer
+          // range. Six is only a guess for a mint the delivery never
+          // describes, and is recorded as unknown below.
           amountRaw = BigInt(
-            Math.round(t.tokenAmount * Math.pow(10, decimals)),
+            Math.round(t.tokenAmount * Math.pow(10, decimals ?? 6)),
           );
         } else {
           continue;
@@ -117,7 +129,7 @@ export class EventParser {
           slot,
           mint: t.mint,
           amountRaw,
-          decimals: t.rawTokenAmount?.decimals ?? null,
+          decimals,
           fromAddress: t.fromUserAccount,
           toAddress: t.toUserAccount,
           confirmedAt,
@@ -151,4 +163,15 @@ export class EventParser {
     }
     return events;
   }
+}
+
+function decimalsByMint(tx: HeliusEnhancedTransaction): Map<string, number> {
+  const byMint = new Map<string, number>();
+  for (const account of tx.accountData ?? []) {
+    for (const change of account.tokenBalanceChanges ?? []) {
+      const decimals = change.rawTokenAmount?.decimals;
+      if (typeof decimals === 'number') byMint.set(change.mint, decimals);
+    }
+  }
+  return byMint;
 }
