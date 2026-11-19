@@ -448,17 +448,25 @@ export const BankDetailsSheet = forwardRef<
         </Card>
       </View>
     );
-    // The naira setup flow brings its own button; otherwise there is always
-    // something to share once the address is known.
-    if (!footer || active) {
-      footer = (
-        <PillButton
-          title="Share account details"
-          tone="quiet"
-          onPress={() => handleShare(active)}
-        />
+    // Once the address is known there is always something to share, even
+    // mid-setup: the wallet is usable before the naira account exists. During
+    // setup it sits under the setup flow's own button rather than replacing it.
+    const share = (
+      <PillButton
+        title="Share account details"
+        tone="quiet"
+        onPress={() => handleShare(active)}
+      />
+    );
+    footer =
+      footer && !active ? (
+        <View className="gap-3">
+          {footer}
+          {share}
+        </View>
+      ) : (
+        share
       );
-    }
   }
 
   return (
