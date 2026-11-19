@@ -40,6 +40,8 @@ export function FeatureScreen({
       // A tap on a control while the keyboard is up should reach it, not
       // only dismiss the keyboard: the currency chip must open in one tap.
       keyboardShouldPersistTaps="handled"
+      // A drag down the page puts the keyboard away, as in Messages.
+      keyboardDismissMode="on-drag"
     >
       {children}
     </ScrollView>

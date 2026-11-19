@@ -1,5 +1,13 @@
 import React, { useMemo, useState } from "react";
-import { FlatList, Modal, TextInput, View } from "react-native";
+import {
+  FlatList,
+  InputAccessoryView,
+  Keyboard,
+  Modal,
+  Platform,
+  TextInput,
+  View,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -16,6 +24,7 @@ import {
   formatCodeRate,
   formatCurrencyAmount,
   deviceDecimalSeparator,
+  finishTypedPrice,
   parseTypedPrice,
   startingPrice,
 } from "@/utils/displayRates";
@@ -23,6 +32,7 @@ import { cn } from "@/utils/cn";
 import { currencyFlagUrl, currencyName } from "@/utils/currencies";
 
 const INK = "#0E0F0C";
+const DONE_BAR = "convert-price-done";
 const DISPLAY = { fontFamily: "Montserrat_900Black" } as const;
 
 /** A currency's round flag, or a globe where no one country fits. */
@@ -148,7 +158,14 @@ export default function ConvertPriceScreen() {
               setTyped(next);
             }
           }}
+          onBlur={() =>
+            setTyped((value) =>
+              value === null ? value : finishTypedPrice(value)
+            )
+          }
           keyboardType="decimal-pad"
+          // The decimal pad has no return key, so iOS gets a Done bar above it.
+          inputAccessoryViewID={DONE_BAR}
           selectTextOnFocus
           accessibilityLabel={`Price in ${from}`}
           className="flex-1 text-right text-[52px] text-[#0E0F0C]"
@@ -185,6 +202,23 @@ export default function ConvertPriceScreen() {
           {"Today's reference rate."}
         </Typography>
       </View>
+
+      {Platform.OS === "ios" ? (
+        <InputAccessoryView nativeID={DONE_BAR}>
+          <View className="flex-row justify-end border-t border-black/[0.08] bg-[#F7F7F7] px-4 py-2">
+            <HapticPressable
+              accessibilityRole="button"
+              accessibilityLabel="Done"
+              onPress={() => Keyboard.dismiss()}
+              className="rounded-full px-4 py-2"
+            >
+              <Typography weight="600" className="text-[16px] text-[#0E0F0C]">
+                Done
+              </Typography>
+            </HapticPressable>
+          </View>
+        </InputAccessoryView>
+      ) : null}
 
       <CurrencyPicker
         visible={picking}
