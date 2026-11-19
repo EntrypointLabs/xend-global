@@ -2,6 +2,7 @@ import React from "react";
 import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 
 import { GlassButton } from "@/components/ui/atoms/Glass";
@@ -45,6 +46,8 @@ export function FeatureScreen({
 
   return (
     <View className="flex-1 bg-white" style={{ paddingTop: insets.top + 8 }}>
+      {/* Always white, whatever the system theme sets the bar to. */}
+      <StatusBar style="dark" />
       <View className="px-5 pb-4">
         <GlassButton
           radius={999}
