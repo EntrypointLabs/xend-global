@@ -27,8 +27,8 @@ health = "/health"
 NODE_ENV = "production"
 SOLANA_CLUSTER = "devnet"
 EXPO_PUBLIC_USDC_MINT_ADDRESS = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
-DATABASE_URL = "{{@db.PRIVATE_CONNECTION_STRING}}"
-REDIS_URL = "{{@cache.PRIVATE_CONNECTION_STRING}}"
+DATABASE_URL = "{{@prydd-pg.PRIVATE_CONNECTION_STRING}}"
+REDIS_URL = "{{@prydd-redis.PRIVATE_CONNECTION_STRING}}"
 
 [services.api.secrets]
 required = [
@@ -42,18 +42,20 @@ required = [
   "CHECKOUT_RETURN_URL_SECRET",
 ]
 
-[databases.db]
+[databases.prydd-pg]
 engine = "postgresql"
 version = "17"
 region = "eu-central"
-cpu = 0.25
-memory = "0.5gb"
+cpu = 0.5
+memory = "1gb"
+public = false
 disk = "10gb"
 
-[databases.cache]
+[databases.prydd-redis]
 engine = "redis"
 version = "7"
 region = "eu-central"
-cpu = 0.25
-memory = "0.5gb"
+cpu = 0.5
+memory = "1gb"
+public = false
 disk = "10gb"
