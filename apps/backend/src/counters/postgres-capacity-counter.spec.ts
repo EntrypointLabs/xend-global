@@ -11,7 +11,7 @@ describe('PostgresCapacityCounter', () => {
       return Promise.resolve({ rows: [], rowCount: 2 });
     });
     const db = { client: { execute } } as unknown as DbService;
-    const counter = new PostgresCapacityCounter(db);
+    const counter = new PostgresCapacityCounter(db, {} as never);
 
     await counter.purgeExpired();
 

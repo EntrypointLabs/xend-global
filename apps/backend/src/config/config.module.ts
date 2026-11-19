@@ -197,6 +197,15 @@ export const USDC_MINT_BY_CLUSTER = {
           .uri({ scheme: ['redis', 'rediss'] })
           .required(),
 
+        // Pay with Prydd's background jobs (settlement, Merchant webhook
+        // retries, Payment expiry and repair, off-ramp reconcile, capacity
+        // purge). Off unless set, so a wallet-only deployment makes no
+        // database queries while idle and a scale-to-zero Postgres can sleep.
+        PAY_WITH_PRYDD_ENABLED: Joi.boolean()
+          .truthy('1')
+          .falsy('0', '')
+          .default(false),
+
         // Kafka: payment lifecycle events (see ADR 0012 for the topic catalog).
         // KAFKA_BROKERS is a comma-separated host:port list. SASL vars stay
         // blank for local docker-compose; managed brokers require them.

@@ -21,6 +21,7 @@ import { settlementConfirmations } from '../metrics/metrics';
 import { SettlementProvisioningService } from './settlement-provisioning.service';
 import { SettlementRouter } from './settlement-router';
 import type { SettlementCompletion } from './settlement-provider.interface';
+import { payWithPryddEnabled } from '../config/pay-with-prydd';
 
 type FailureReason = string | { code: string; [key: string]: unknown };
 type IntentRow = typeof paymentIntents.$inferSelect;
@@ -408,6 +409,11 @@ export class SettlementConfirmationService implements OnModuleInit {
    * refuses an immediate duplicate co-sign.
    */
   @Cron(CronExpression.EVERY_30_SECONDS)
+  async scheduledReconcileSettling(): Promise<void> {
+    if (!payWithPryddEnabled(this.config)) return;
+    await this.reconcileSettling();
+  }
+
   async reconcileSettling(): Promise<void> {
     await this.sweepSettlingLeg();
     await this.resumeClaimedSettlements();

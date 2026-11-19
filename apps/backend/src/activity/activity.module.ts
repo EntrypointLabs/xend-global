@@ -10,12 +10,13 @@ import { TailerService } from './tailer.service';
 import { WebhookController } from './webhook.controller';
 import { EventsModule } from '../events/events.module';
 import { PaymentActivityService } from './payment-activity.service';
+import { SettingsActivityModule } from './settings-activity.signal';
 
 /**
  * RPC tailer: webhook receiver + reconciler for confirmed transfers.
  *
- * ScheduleModule.forRoot() registers the cron metadata scanner so the
- * @Cron on ReconcilerService.tick() actually fires.
+ * ScheduleModule.forRoot() registers the cron metadata scanner for the whole
+ * app's @Cron and @Interval jobs.
  */
 @Module({
   // PricesModule values a transfer at the moment it is indexed.
@@ -27,6 +28,8 @@ import { PaymentActivityService } from './payment-activity.service';
     NotificationsModule,
     // TokensModule names the mint an arrival came in.
     TokensModule,
+    // The webhook tells the Settings watcher which accounts a delivery touched.
+    SettingsActivityModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [WebhookController],

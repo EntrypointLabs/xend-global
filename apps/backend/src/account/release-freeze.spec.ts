@@ -210,6 +210,7 @@ function setUp() {
     findByUserId: () => Promise.resolve(ACCOUNT),
     insert: (r) => Promise.resolve(r),
     listAll: () => Promise.resolve([ACCOUNT]),
+    findBySettingsAddresses: () => Promise.resolve([]),
     findUserEmail: () => Promise.resolve(CONTACT),
     withUserLock: <T>(_userId: string, fn: () => Promise<T>) => fn(),
     updateByUserId: (_userId, patch) => {

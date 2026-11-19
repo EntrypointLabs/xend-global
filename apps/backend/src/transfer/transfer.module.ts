@@ -5,6 +5,7 @@ import { AccountModule } from '../account/account.module';
 import { SolanaModule } from '../solana/solana.module';
 import { TokensModule } from '../tokens/tokens.module';
 import { AccountEventsModule } from '../activity/account-events.module';
+import { ActivityModule } from '../activity/activity.module';
 import { TurnkeyModule } from '../turnkey/turnkey.module';
 import { PreparedModule } from '../prepared/prepared.module';
 
@@ -16,11 +17,13 @@ import { PreparedModule } from '../prepared/prepared.module';
 @Module({
   // TokensModule names the mints on a page of activity. TurnkeyModule carries
   // the enrolled device keys a Spend's presence proof is checked against.
+  // ActivityModule's reconciler is armed by a submit and caught up by a list.
   imports: [
     SolanaModule,
     AccountModule,
     TokensModule,
     AccountEventsModule,
+    ActivityModule,
     TurnkeyModule,
     PreparedModule,
   ],

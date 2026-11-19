@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 
 import { DbService } from '../db/db.service';
 import { squadsAccounts, users } from '../db/schema';
@@ -33,6 +33,17 @@ export class DrizzleSquadsAccountStore implements SquadsAccountStore {
 
   async listAll(): Promise<SquadsAccountRow[]> {
     const rows = await this.db.client.select().from(squadsAccounts);
+    return rows.map(toRow);
+  }
+
+  async findBySettingsAddresses(
+    addresses: string[],
+  ): Promise<SquadsAccountRow[]> {
+    if (addresses.length === 0) return [];
+    const rows = await this.db.client
+      .select()
+      .from(squadsAccounts)
+      .where(inArray(squadsAccounts.settingsAddress, addresses));
     return rows.map(toRow);
   }
 

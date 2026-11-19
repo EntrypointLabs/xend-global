@@ -22,6 +22,21 @@ describe('HealthController', () => {
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
   });
 
+  it('answers liveness without touching Postgres or Redis', () => {
+    const dbPing = jest.fn();
+    const redisPing = jest.fn();
+    const controller = new HealthController(
+      { ping: dbPing } as unknown as DbService,
+      { ping: redisPing } as unknown as Redis,
+    );
+
+    // Platform checks call this every few seconds; a query here would keep a
+    // scale-to-zero database awake.
+    expect(controller.live()).toEqual({ status: 'ok' });
+    expect(dbPing).not.toHaveBeenCalled();
+    expect(redisPing).not.toHaveBeenCalled();
+  });
+
   it('reports ok when both dependencies answer', async () => {
     await expect(makeController({}).check()).resolves.toEqual({
       status: 'ok',

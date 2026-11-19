@@ -57,6 +57,13 @@ export class NairaTransfersService {
     return provider;
   }
   @Interval(60_000)
+  async scheduledSweepStale() {
+    // Sandbox rows only exist where the sandbox runs; elsewhere this would be
+    // a query every minute that keeps an idle database awake.
+    if (!this.available()) return;
+    await this.sweepStale();
+  }
+
   async sweepStale(ownerId?: string) {
     await this.db.client.execute(sql`UPDATE fiat_bank_transfers
       SET record = jsonb_set(jsonb_set(record, '{status}', '"needs_attention"'::jsonb), '{updatedAt}', to_jsonb(${new Date().toISOString()}::text))

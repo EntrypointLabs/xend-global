@@ -10,6 +10,7 @@ import {
   Query,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { eq } from 'drizzle-orm';
@@ -61,6 +62,7 @@ import {
   type SettleBody,
   type SettleResponse,
 } from './dtos';
+import { PayWithPryddEnabledGuard } from '../config/pay-with-prydd.guard';
 
 type IntentRow = typeof paymentIntents.$inferSelect;
 type MerchantRow = typeof merchants.$inferSelect;
@@ -105,6 +107,7 @@ interface SessionCarrier {
  * allowlist and correlation middleware apply. No guard class here.
  */
 @Controller('checkout')
+@UseGuards(PayWithPryddEnabledGuard)
 export class CheckoutController {
   private readonly logger = new Logger(CheckoutController.name);
 

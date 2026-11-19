@@ -16,6 +16,7 @@ import {
 } from '../events/event-consumer.interface';
 import type { PlatformEvent } from '../events/event-publisher.interface';
 import { ReconcilerService } from './reconciler.service';
+import { payWithPryddEnabled } from '../config/pay-with-prydd';
 
 /** Index confirmed Payments promptly even when the chain webhook is delayed.
  * Uses the existing chain reader and idempotent Activity writer, never an
@@ -32,7 +33,7 @@ export class PaymentActivityService implements OnModuleInit {
     @Inject(EVENT_CONSUMER) private readonly consumer: EventConsumer,
     private readonly db: DbService,
     private readonly reconciler: ReconcilerService,
-    config: ConfigService,
+    private readonly config: ConfigService,
   ) {
     this.executionCluster = config.getOrThrow<string>('SOLANA_CLUSTER');
   }
@@ -101,6 +102,11 @@ export class PaymentActivityService implements OnModuleInit {
    * event during a prolonged RPC/indexer outage.
    */
   @Cron(CronExpression.EVERY_MINUTE)
+  async scheduledRepairMissingPayments(): Promise<void> {
+    if (!payWithPryddEnabled(this.config)) return;
+    await this.repairMissingPayments();
+  }
+
   async repairMissingPayments(): Promise<void> {
     if (this.repairing) return;
     this.repairing = true;

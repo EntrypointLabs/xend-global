@@ -41,6 +41,7 @@ import {
 } from './dtos';
 import { IdempotencyKeyReuseError } from './merchant.errors';
 import { isLivePayment } from '../payment/payment-mode';
+import { PayWithPryddEnabledGuard } from '../config/pay-with-prydd.guard';
 
 type IntentRow = typeof paymentIntents.$inferSelect;
 
@@ -67,7 +68,7 @@ function stableStringify(value: unknown): string {
  * by Idempotency-Key.
  */
 @Controller('v1')
-@UseGuards(ApiKeyGuard)
+@UseGuards(ApiKeyGuard, PayWithPryddEnabledGuard)
 export class MerchantController {
   constructor(
     private readonly intents: PaymentIntentService,

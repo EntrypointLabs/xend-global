@@ -59,6 +59,13 @@ export class NairaAccountsService {
   }
 
   @Interval(60_000)
+  async scheduledSweepStale() {
+    // Sandbox rows only exist where the sandbox runs; elsewhere this would be
+    // a query every minute that keeps an idle database awake.
+    if (!this.available(this.provider())) return;
+    await this.sweepStale();
+  }
+
   async sweepStale(ownerId?: string) {
     await this.db.client.execute(sql`
       UPDATE fiat_bank_accounts SET status = 'needs_attention', updated_at = now()

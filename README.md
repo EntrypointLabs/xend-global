@@ -143,7 +143,9 @@ docker build -f apps/backend/Dockerfile -t prydd-backend .
 ```
 
 It runs as `node`, listens on `PORT` (8008 in the example env), and answers
-`GET /health` with the state of Postgres and Redis. The image carries its own
+`GET /health` with the state of Postgres and Redis. Point container and platform
+health checks at `GET /health/live` instead, which touches neither: a check that
+queries Postgres every few seconds stops a scale-to-zero database from sleeping. The image carries its own
 migrations, so apply them before the first request reaches a new release:
 
 ```

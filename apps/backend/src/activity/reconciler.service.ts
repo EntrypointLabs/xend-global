@@ -1,5 +1,10 @@
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { smartAccounts, squadsAccounts, tailerState } from '../db/schema';
@@ -11,7 +16,7 @@ import type {
 import { TailerService } from './tailer.service';
 
 const RECONCILE_BATCH = 256;
-/** Outstanding-PENDING age threshold before the cron tick will touch a row. */
+/** Outstanding-PENDING age threshold before the tick will touch a row. */
 const PENDING_AGE_MS = 30_000;
 /**
  * Max time a PENDING row whose signature the cluster still does not know
@@ -24,42 +29,59 @@ const PENDING_AGE_MS = 30_000;
  */
 const PENDING_EXPIRY_MS = 120_000;
 
+/** How long after the last check a still-PENDING send is looked at again. */
+const PENDING_RECHECK_MS = 30_000;
 /**
- * How often the boot replay is repeated while the process is up.
- *
- * Every transfer is on chain, so nothing is ever truly lost; what is lost is a
- * webhook delivery. Without this, a missed delivery stays missing until the
- * next restart, because the 30-second tick only finalizes transfers we already
- * know about and never goes looking for ones we never heard of.
- *
- * Five minutes rather than the tick's 30 seconds because a sweep costs a
- * signature page plus a parse per signature at or above each wallet's
- * bookmark, where the tick costs one batched getSignatureStatuses.
+ * A send still PENDING this long after submission is anomalous: normally it
+ * has landed or been force-failed many checks ago, so something upstream (an
+ * RPC that keeps failing, say) is wrong. It is still checked until it settles,
+ * but every PENDING_STALE_RECHECK_MS rather than every PENDING_RECHECK_MS, so
+ * one wedged row wakes an idle database a few times an hour, not constantly.
  */
-const REPLAY_SWEEP_CRON = '0 */5 * * * *';
+const PENDING_RECHECK_HORIZON_MS = 60 * 60 * 1000;
+const PENDING_STALE_RECHECK_MS = 10 * 60 * 1000;
+/**
+ * At most one on-chain catch-up per Consumer in this window. Opening the app
+ * fetches activity, and a Consumer who pulls to refresh should not pay for a
+ * signature scan each time.
+ */
+const USER_CATCH_UP_INTERVAL_MS = 5 * 60 * 1000;
+/**
+ * How long the activity fetch waits for a catch-up before answering without
+ * it. The catch-up carries on, and the next fetch shows what it found.
+ */
+const USER_CATCH_UP_WAIT_MS = 3_000;
 
 /**
- * The safety net for the webhook hot path. Two duties:
+ * The safety net for the webhook hot path. Nothing here runs on a timer while
+ * nobody is using the app, so a scale-to-zero Postgres can sleep:
  *   1. Boot replay (onModuleInit): for each wallet in `smart_accounts`,
  *      stream confirmed transfers since `tailer_state.last_indexed_slot`
  *      and write them via TailerService. Catches up anything missed
  *      while the process was down.
- *   2. Replay sweep (@Cron, 5-minutely): the same replay again, so a
- *      delivery missed while the process was up self-heals rather than
- *      waiting for a restart.
- *   3. 30-second poll (@Cron): for every PENDING `transfers` row older
- *      than the age threshold, ask the cluster what happened via
- *      `getSignatureStatuses` and finalize the row to CONFIRMED or
- *      FAILED. The status guard is enforced via the WHERE clause
- *      (`status='PENDING'`) — a row already finalized by the webhook
- *      path is untouched.
+ *   2. Per-Consumer catch-up (`catchUpUser`): the same replay for one
+ *      Consumer's wallets, run when they fetch their activity, at most once
+ *      per USER_CATCH_UP_INTERVAL_MS. A webhook delivery missed while the
+ *      process was up is written the next time its owner opens the app.
+ *   3. Pending check (`armPendingCheck`, and once at boot): for every
+ *      PENDING `transfers` row older than the age threshold, ask the cluster
+ *      what happened via `getSignatureStatuses` and finalize the row to
+ *      CONFIRMED or FAILED. Armed when a send is submitted, re-checks every
+ *      PENDING_RECHECK_MS while a recent send is PENDING (every
+ *      PENDING_STALE_RECHECK_MS once only old ones are), and stops when none
+ *      are.
+ *      The status guard is enforced via the WHERE clause (`status='PENDING'`),
+ *      so a row already finalized by the webhook path is untouched.
  *
- * Re-entrancy: the cron's WHERE clauses + status guards make double-
- * execution safe (the second tick finds nothing PENDING-and-old enough
- * because the first tick finalized them).
+ * Re-entrancy: the WHERE clauses + status guards make double-execution safe
+ * (a second check finds nothing PENDING-and-old enough because the first
+ * finalized them).
  */
+/** Whether any send is PENDING, and whether one is inside the horizon. */
+type PendingState = 'recent' | 'stale' | 'none';
+
 @Injectable()
-export class ReconcilerService implements OnModuleInit {
+export class ReconcilerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ReconcilerService.name);
 
   // Rolling counters for the "percent of confirmations via
@@ -67,7 +89,9 @@ export class ReconcilerService implements OnModuleInit {
   private reconcileFinalizedCount = 0;
   private webhookFinalizedCount = 0;
 
-  private replaySweepRunning = false;
+  private pendingTimer: NodeJS.Timeout | null = null;
+  private pendingCheckRunning = false;
+  private readonly lastCatchUpAt = new Map<string, number>();
 
   constructor(
     private readonly db: DbService,
@@ -77,25 +101,132 @@ export class ReconcilerService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.replayAllWallets();
+    // Sends left PENDING by a restart have nobody to arm a check for them.
+    await this.checkPending();
+  }
+
+  onModuleDestroy(): void {
+    if (this.pendingTimer) clearTimeout(this.pendingTimer);
+    this.pendingTimer = null;
+  }
+
+  /**
+   * Called once a send is submitted. The first check waits until the row is
+   * old enough for the tick to consider it; an already-scheduled check covers
+   * this send too.
+   */
+  armPendingCheck(): void {
+    if (this.pendingTimer) return;
+    this.schedulePendingCheck(PENDING_AGE_MS);
+  }
+
+  /**
+   * Finalize what can be finalized, then keep checking only while sends are
+   * still PENDING. A failed check is retried rather than dropped, since the
+   * rows it was looking at are still waiting.
+   */
+  async checkPending(): Promise<void> {
+    if (this.pendingCheckRunning) return;
+    this.pendingCheckRunning = true;
+    let pending: PendingState;
+    try {
+      await this.tick();
+      pending = await this.pendingState();
+    } catch (err) {
+      this.logger.error('tailer.reconcile.pending_check failed', err);
+      pending = 'recent';
+    } finally {
+      this.pendingCheckRunning = false;
+    }
+    if (pending !== 'none' && !this.pendingTimer) {
+      this.schedulePendingCheck(
+        pending === 'recent' ? PENDING_RECHECK_MS : PENDING_STALE_RECHECK_MS,
+      );
+    }
+  }
+
+  /** Whether a timer is waiting to run the next pending check. */
+  isPendingCheckArmed(): boolean {
+    return this.pendingTimer !== null;
+  }
+
+  private schedulePendingCheck(delayMs: number): void {
+    this.pendingTimer = setTimeout(() => {
+      this.pendingTimer = null;
+      void this.checkPending();
+    }, delayMs);
+    // A pending check must never be what keeps the process alive.
+    this.pendingTimer.unref?.();
+  }
+
+  private async pendingState(): Promise<PendingState> {
+    const result = (await this.db.client.execute(sql`
+      SELECT
+        bool_or(COALESCE(
+          submitted_at > (now() AT TIME ZONE 'UTC') - INTERVAL '${sql.raw(`${PENDING_RECHECK_HORIZON_MS / 1000}`)} seconds',
+          false
+        )) AS "recent"
+      FROM transfers
+      WHERE status = 'PENDING'
+    `)) as unknown as { rows?: { recent: boolean | null }[] };
+    // bool_or over no rows is NULL: nothing is PENDING.
+    const recent = result.rows?.[0]?.recent ?? null;
+    if (recent === null) return 'none';
+    return recent ? 'recent' : 'stale';
+  }
+
+  /**
+   * Replay one Consumer's wallets, so a deposit whose webhook delivery was
+   * missed appears when they next look at their activity. Rate limited per
+   * Consumer, and bounded in how long the caller waits: the replay carries on
+   * past USER_CATCH_UP_WAIT_MS and the next fetch shows what it wrote.
+   */
+  async catchUpUser(userId: string, now = Date.now()): Promise<void> {
+    const last = this.lastCatchUpAt.get(userId);
+    if (last !== undefined && now - last < USER_CATCH_UP_INTERVAL_MS) return;
+    this.lastCatchUpAt.set(userId, now);
+    this.forgetCatchUpsBefore(now - USER_CATCH_UP_INTERVAL_MS);
+
+    const run = this.replayWallets(await this.walletsOf(userId), 'catch_up');
+    let timer: NodeJS.Timeout | undefined;
+    const waited = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, USER_CATCH_UP_WAIT_MS);
+      timer.unref?.();
+    });
+    await Promise.race([run, waited]).finally(() => clearTimeout(timer));
+  }
+
+  private forgetCatchUpsBefore(cutoff: number): void {
+    for (const [userId, at] of this.lastCatchUpAt) {
+      if (at < cutoff) this.lastCatchUpAt.delete(userId);
+    }
   }
 
   /**
    * Replay any confirmed transfers that landed while the service was
    * down. Bounded by `tailer_state.last_indexed_slot` per wallet.
-   * Catches exceptions per-wallet so a single broken wallet does not
-   * block the rest of the boot sequence.
    */
-  async replayAllWallets(reason: 'boot' | 'sweep' = 'boot'): Promise<void> {
-    // Both address families, because both can receive during the migration
-    // window: the vault is where a Consumer is told to deposit, and the Privy
-    // wallet still holds anything sent before enrolment.
+  async replayAllWallets(): Promise<void> {
+    await this.replayWallets(await this.walletsOf(), 'boot');
+  }
+
+  /**
+   * Both address families, because both can receive during the migration
+   * window: the vault is where a Consumer is told to deposit, and the Privy
+   * wallet still holds anything sent before enrolment. Every Consumer's when
+   * `userId` is omitted.
+   */
+  private async walletsOf(
+    userId?: string,
+  ): Promise<{ id: string; walletAddress: string }[]> {
     const [privyWallets, vaults] = await Promise.all([
       this.db.client
         .select({
           id: smartAccounts.id,
           walletAddress: smartAccounts.walletAddress,
         })
-        .from(smartAccounts),
+        .from(smartAccounts)
+        .where(userId ? eq(smartAccounts.userId, userId) : undefined),
       // Keyed by the owner's smart_accounts row, not by squads_accounts.id:
       // transfers.smart_account_id is a foreign key into smart_accounts, so a
       // vault's own id violates the constraint and aborts that wallet's replay.
@@ -108,10 +239,20 @@ export class ReconcilerService implements OnModuleInit {
         .innerJoin(
           smartAccounts,
           eq(smartAccounts.userId, squadsAccounts.userId),
-        ),
+        )
+        .where(userId ? eq(squadsAccounts.userId, userId) : undefined),
     ]);
-    const wallets = [...privyWallets, ...vaults];
+    return [...privyWallets, ...vaults];
+  }
 
+  /**
+   * Catches exceptions per wallet so a single broken wallet does not block
+   * the rest.
+   */
+  private async replayWallets(
+    wallets: { id: string; walletAddress: string }[],
+    reason: 'boot' | 'catch_up',
+  ): Promise<void> {
     if (wallets.length === 0) {
       this.logger.log(
         `tailer.reconcile.${reason} wallets=0 (nothing to replay)`,
@@ -126,7 +267,7 @@ export class ReconcilerService implements OnModuleInit {
         totalReplayed += replayed;
       } catch (err) {
         this.logger.error(
-          `Boot replay failed for ${w.walletAddress}; reconciliation poll will catch up`,
+          `tailer.reconcile.${reason} failed for ${w.walletAddress}; the owner's next activity fetch retries`,
           err,
         );
       }
@@ -190,35 +331,6 @@ export class ReconcilerService implements OnModuleInit {
     return count;
   }
 
-  /**
-   * Re-run the replay on a timer. Bounded by each wallet's
-   * `tailer_state.last_indexed_slot`, so a quiet wallet costs a signature
-   * page and nothing else.
-   */
-  @Cron(REPLAY_SWEEP_CRON)
-  async sweep(): Promise<void> {
-    // Never let sweeps stack. A sweep slower than the interval would other-
-    // wise have its successor re-scan the same slots against the same
-    // bookmarks, doubling the RPC load to reach the same result.
-    if (this.replaySweepRunning) {
-      this.logger.debug(
-        'tailer.reconcile.sweep skipped (previous sweep still running)',
-      );
-      return;
-    }
-    this.replaySweepRunning = true;
-    try {
-      await this.replayAllWallets('sweep');
-    } catch (err) {
-      // replayAllWallets already catches per wallet, so reaching here means
-      // the wallet enumeration itself failed. The next sweep retries.
-      this.logger.error('tailer.reconcile.sweep failed', err);
-    } finally {
-      this.replaySweepRunning = false;
-    }
-  }
-
-  @Cron('*/30 * * * * *')
   async tick(): Promise<void> {
     const t0 = Date.now();
 
@@ -331,7 +443,7 @@ export class ReconcilerService implements OnModuleInit {
         this.reconcileFinalizedCount++;
       }
       // else: still in flight (or not yet aged past expiry) — leave
-      // PENDING; the next tick checks again.
+      // PENDING; the next check looks again.
     }
 
     const duration = Date.now() - t0;
