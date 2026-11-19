@@ -1,0 +1,54 @@
+# Production backend on Brimble. The Dockerfile builds from the repo root
+# because it copies workspace packages alongside apps/backend, and Brimble only
+# accepts a Dockerfile at the root, so backend.Dockerfile links to it.
+#
+# Postgres (Neon) and Redis (Upstash) live outside Brimble, so DATABASE_URL and
+# REDIS_URL are secrets, like every key below. Secret values are set with
+# `brimble env set`, never in this file.
+[services.prydd-api]
+type = "web"
+region = "eu-central"
+
+[services.prydd-api.build]
+dockerfile = "backend.Dockerfile"
+watch = [
+  "apps/backend/**",
+  "packages/smart-account/**",
+  "packages/typescript-config/**",
+  "package.json",
+  "package-lock.json",
+]
+
+[services.prydd-api.deploy]
+before_start = "npx drizzle-kit migrate"
+port = 8000
+# Liveness only: a probe that touched Postgres would keep Neon from sleeping.
+health = "/health/live"
+
+[services.prydd-api.resources]
+cpu = 0.25
+memory = "0.5gb"
+
+# KAFKA_BROKERS stays unset until Pay with Prydd launches (ADR 0038).
+[services.prydd-api.env]
+NODE_ENV = "production"
+SOLANA_CLUSTER = "mainnet"
+EXPO_PUBLIC_USDC_MINT_ADDRESS = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+
+[services.prydd-api.secrets]
+required = [
+  "DATABASE_URL",
+  "REDIS_URL",
+  "JWT_SECRET",
+  "PRIVY_APP_ID",
+  "PRIVY_APP_SECRET",
+  "HELIUS_API_KEY",
+  "HELIUS_RPC_URL",
+  "HELIUS_WEBHOOK_SECRET",
+  "HELIUS_WEBHOOK_ID",
+  "SETTLEMENT_AUTHORITY_SECRET_KEY",
+  "RECOVERY_VAULT_KEY",
+  "INTERNAL_API_SECRET",
+  "CHECKOUT_RETURN_URL_SECRET",
+  "RESEND_API_KEY",
+]
