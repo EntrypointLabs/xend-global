@@ -12,6 +12,8 @@ WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY apps/backend/package.json ./apps/backend/package.json
 COPY packages/smart-account/package.json ./packages/smart-account/package.json
+# The lockfile installs the Squads SDK from this tarball, so npm ci needs it.
+COPY packages/smart-account/vendor ./packages/smart-account/vendor
 COPY packages/typescript-config/package.json ./packages/typescript-config/package.json
 RUN npm ci --workspace @prydd/backend --workspace @prydd/smart-account \
   --include-workspace-root --ignore-scripts --legacy-peer-deps
