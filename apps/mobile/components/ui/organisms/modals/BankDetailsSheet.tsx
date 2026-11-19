@@ -9,6 +9,7 @@ import { ActivityIndicator, Share, View } from "react-native";
 import {
   BottomSheetModal,
   BottomSheetTextInput,
+  BottomSheetScrollView,
   BottomSheetView,
   BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
@@ -24,6 +25,7 @@ import { ScreenThemeProvider } from "@/contexts/ScreenThemeContext";
 import { Footnote, PillButton } from "@/components/ui/kit";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserId } from "@/hooks/useUserId";
+import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { apiClient } from "@/utils/apiClient";
 import type { BankAccountRecordSchema } from "@/utils/bank-accounts";
 import { copyToClipboard } from "@/utils/clipboard";
@@ -73,7 +75,21 @@ function errorMessage(error: unknown) {
     : "Something went wrong. Please try again.";
 }
 
-export const BankDetailsSheet = forwardRef<BottomSheetModal>((_, ref) => {
+interface BankDetailsSheetProps {
+  /**
+   * `receive` is the naira account alone, reached from Receive. `account` is
+   * every way to be paid in one place: the naira account and, under it, the
+   * wallet address.
+   */
+  variant?: "receive" | "account";
+}
+
+export const BankDetailsSheet = forwardRef<
+  BottomSheetModal,
+  BankDetailsSheetProps
+>(({ variant = "receive" }, ref) => {
+  const withWallet = variant === "account";
+  const address = useWalletAddress();
   const snapPoints = useMemo(() => ["94%"], []);
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
@@ -153,10 +169,20 @@ export const BankDetailsSheet = forwardRef<BottomSheetModal>((_, ref) => {
     }
   };
 
-  const handleShare = (account: ActiveAccount) => {
-    void Share.share({
-      message: `Bank: ${account.bankName}\nAccount number: ${account.accountNumber}\nAccount name: ${account.accountName}`,
-    });
+  const handleShare = (account: ActiveAccount | null) => {
+    const lines: string[] = [];
+    if (account) {
+      lines.push(
+        `Bank: ${account.bankName}`,
+        `Account number: ${account.accountNumber}`,
+        `Account name: ${account.accountName}`
+      );
+    }
+    if (withWallet && address) {
+      if (lines.length > 0) lines.push("");
+      lines.push(`Solana wallet: ${address}`);
+    }
+    if (lines.length > 0) void Share.share({ message: lines.join("\n") });
   };
 
   const active =
@@ -403,6 +429,46 @@ export const BankDetailsSheet = forwardRef<BottomSheetModal>((_, ref) => {
     );
   }
 
+  if (withWallet && address) {
+    body = (
+      <View className="gap-4">
+        {body}
+        <Card>
+          <CardTitle
+            title="Wallet address"
+            subtitle="Only send Solana assets to this address"
+          />
+          <Divider
+            type="dashed"
+            color={DIVIDER_COLOR}
+            dashGap={6}
+            className="my-5"
+          />
+          <CopyRow label="Solana" value={address} copyLabel="wallet address" />
+        </Card>
+      </View>
+    );
+    // Once the address is known there is always something to share, even
+    // mid-setup: the wallet is usable before the naira account exists. During
+    // setup it sits under the setup flow's own button rather than replacing it.
+    const share = (
+      <PillButton
+        title="Share account details"
+        tone="quiet"
+        onPress={() => handleShare(active)}
+      />
+    );
+    footer =
+      footer && !active ? (
+        <View className="gap-3">
+          {footer}
+          {share}
+        </View>
+      ) : (
+        share
+      );
+  }
+
   return (
     <BottomSheetModal
       ref={ref}
@@ -421,15 +487,26 @@ export const BankDetailsSheet = forwardRef<BottomSheetModal>((_, ref) => {
       <ScreenThemeProvider>
         <BottomSheetView className="h-full flex-1 bg-[#F0F0F0]">
           <View className="mb-8 items-center px-4">
-            <TabHeaderText className="text-center">Receive</TabHeaderText>
+            <TabHeaderText className="text-center">
+              {withWallet ? "Account details" : "Receive"}
+            </TabHeaderText>
             <Typography weight="500" className="mt-1 text-sm text-black/30">
-              Receive naira via bank transfer
+              {withWallet
+                ? "Everything someone needs to pay you"
+                : "Receive naira via bank transfer"}
             </Typography>
           </View>
 
-          <View className="mx-6">{body}</View>
-
-          <View className="h-full flex-1" />
+          {/* Scrolls, with the footer pinned below it: the setup card and the
+          wallet card together run taller than the sheet on short phones. */}
+          <BottomSheetScrollView
+            className="flex-1"
+            contentContainerClassName="px-6 pb-4"
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {body}
+          </BottomSheetScrollView>
 
           <View className="mx-6 mb-8 gap-3">
             {__DEV__ && data ? (

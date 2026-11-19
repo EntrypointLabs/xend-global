@@ -52,9 +52,9 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
           ]
         : []),
       {
-        title: "Prydd Card",
-        icon: require("@/assets/icons/card.png"),
-        onPress: () => router.push("/card?from=/(tabs)" as never),
+        title: "Earn",
+        icon: require("@/assets/icons/earn.png"),
+        onPress: () => router.push("/earn"),
         disabled: false,
       },
     ] as const;

@@ -37,6 +37,9 @@ export function FeatureScreen({
       className="flex-1"
       contentContainerClassName="px-5 pb-8"
       showsVerticalScrollIndicator={false}
+      // A tap on a control while the keyboard is up should reach it, not
+      // only dismiss the keyboard: the currency chip must open in one tap.
+      keyboardShouldPersistTaps="handled"
     >
       {children}
     </ScrollView>
