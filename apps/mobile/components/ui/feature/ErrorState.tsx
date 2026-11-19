@@ -31,7 +31,7 @@ export function ErrorState({
         <Illustration name="error" size={150} />
         <Typography
           weight="700"
-          className="mt-8 text-center text-[22px] leading-[28px] tracking-[-0.4px] text-[#0E0F0C]"
+          className="mt-8 text-center text-[28px] leading-[34px] tracking-[-0.6px] text-[#0E0F0C]"
         >
           Oops. Something went wrong.
         </Typography>

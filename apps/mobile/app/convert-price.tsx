@@ -101,7 +101,7 @@ export default function ConvertPriceScreen() {
           keyboardType="decimal-pad"
           selectTextOnFocus
           accessibilityLabel={`Price in ${from}`}
-          className="flex-1 text-right text-[40px] text-[#0E0F0C]"
+          className="flex-1 text-right text-[52px] text-[#0E0F0C]"
           style={DISPLAY}
         />
       </View>
@@ -115,7 +115,7 @@ export default function ConvertPriceScreen() {
           numberOfLines={1}
           adjustsFontSizeToFit
           accessibilityLabel={`${formatCurrencyAmount(usd, "USD")} US dollars`}
-          className="flex-1 text-right text-[40px] text-[#0E0F0C]"
+          className="flex-1 text-right text-[52px] text-[#0E0F0C]"
           style={DISPLAY}
         >
           {formatCurrencyAmount(usd, "USD")}

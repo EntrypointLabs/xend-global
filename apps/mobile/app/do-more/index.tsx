@@ -72,7 +72,7 @@ export default function DoMoreScreen() {
         <Typography
           accessibilityRole="header"
           weight="700"
-          className="mt-6 text-[26px] leading-[32px] tracking-[-0.5px] text-[#0E0F0C]"
+          className="mt-7 text-[34px] leading-[40px] tracking-[-0.8px] text-[#0E0F0C]"
         >
           Do more with Prydd
         </Typography>
@@ -122,7 +122,7 @@ export default function DoMoreScreen() {
               offsets.current[section] = event.nativeEvent.layout.y;
             }}
           >
-            <Typography weight="500" className="text-[13px] text-black/50">
+            <Typography weight="500" className="text-[16px] text-black/55">
               {section}
             </Typography>
             <View className="mt-3">

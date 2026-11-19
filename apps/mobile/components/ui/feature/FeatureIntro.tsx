@@ -54,7 +54,7 @@ export function FeatureIntro({
   cta,
 }: FeatureIntroProps) {
   const { width } = useWindowDimensions();
-  const art = Math.min(width - 40, 360) * 0.62;
+  const art = Math.min(width - 40, 360) * 0.72;
 
   return (
     <FeatureScreen
@@ -69,7 +69,7 @@ export function FeatureIntro({
       <View className="overflow-hidden rounded-[28px] bg-[#F2F2F0] px-6 pb-6 pt-7">
         <Typography
           accessibilityRole="header"
-          className="text-[30px] uppercase leading-[30px] tracking-[-0.8px] text-[#0E0F0C]"
+          className="text-[40px] uppercase leading-[38px] tracking-[-1.2px] text-[#0E0F0C]"
           style={{ fontFamily: "Montserrat_900Black" }}
         >
           {headline}
