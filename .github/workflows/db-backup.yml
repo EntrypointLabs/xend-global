@@ -1,0 +1,45 @@
+name: Database backup
+
+# Neon's free tier only restores to points in the last 6 hours, so this keeps
+# 30 days of nightly dumps. Artifacts are readable by anyone with repo access,
+# so each dump is encrypted first; the passphrase is also stored as the
+# BACKUP_PASSPHRASE env var on the Brimble prydd-api project.
+#
+# Restore:
+#   gh run download <run-id> -n db-backup-<run-id>
+#   openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE \
+#     -in prydd.dump.enc -out prydd.dump
+#   pg_restore --no-owner --no-acl -d "$DATABASE_URL" prydd.dump
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump and encrypt
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          docker run --rm -e DATABASE_URL postgres:17-alpine \
+            pg_dump -Fc --no-owner --no-acl "$DATABASE_URL" > prydd.dump
+          test -s prydd.dump
+          openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:BACKUP_PASSPHRASE \
+            -in prydd.dump -out prydd.dump.enc
+          rm prydd.dump
+          ls -l prydd.dump.enc
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: prydd.dump.enc
+          retention-days: 30
+          if-no-files-found: error
