@@ -1,12 +1,12 @@
 # The backend Dockerfile builds from the repo root: it copies workspace
 # packages alongside apps/backend, so the root directory stays the repo root.
-# Brimble only accepts a Dockerfile at the root, so backend.Dockerfile links
-# to apps/backend/Dockerfile.
-[services.api]
+# Brimble only accepts a Dockerfile at the root, so backend.Dockerfile and
+# relayer.Dockerfile link to the ones under apps/.
+[services.prydd-api-test]
 type = "web"
 region = "eu-central"
 
-[services.api.build]
+[services.prydd-api-test.build]
 dockerfile = "backend.Dockerfile"
 watch = [
   "apps/backend/**",
@@ -16,7 +16,7 @@ watch = [
   "package-lock.json",
 ]
 
-[services.api.deploy]
+[services.prydd-api-test.deploy]
 before_start = "npx drizzle-kit migrate"
 port = 8000
 health = "/health"
@@ -24,12 +24,14 @@ health = "/health"
 # Test deployment on devnet. KAFKA_BROKERS is unset on purpose: no broker
 # until Pay with Prydd launches. Postgres is on Neon and Redis on Upstash,
 # so DATABASE_URL and REDIS_URL are secrets set outside this file.
-[services.api.env]
+[services.prydd-api-test.env]
 NODE_ENV = "production"
 SOLANA_CLUSTER = "devnet"
 EXPO_PUBLIC_USDC_MINT_ADDRESS = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+RELAYER_URL = "http://prydd-relayer.service.brimble.internal:8787"
+RELAYER_INTERNAL_AUTH_SECRET = "{{@prydd-relayer.RELAYER_INTERNAL_AUTH_SECRET}}"
 
-[services.api.secrets]
+[services.prydd-api-test.secrets]
 required = [
   "DATABASE_URL",
   "REDIS_URL",
@@ -42,3 +44,27 @@ required = [
   "INTERNAL_API_SECRET",
   "CHECKOUT_RETURN_URL_SECRET",
 ]
+
+# The fee-payer relayer has no unauthenticated route, so it runs as a worker:
+# no public URL and no platform HTTP probe. The backend reaches it over the
+# private network. It shares the backend's Helius credentials by reference.
+[services.prydd-relayer]
+type = "worker"
+region = "eu-central"
+
+[services.prydd-relayer.build]
+dockerfile = "relayer.Dockerfile"
+watch = ["apps/relayer/**"]
+
+[services.prydd-relayer.deploy]
+port = 8787
+
+[services.prydd-relayer.env]
+NODE_ENV = "production"
+SOLANA_CLUSTER = "devnet"
+USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+RELAYER_HELIUS_RPC_URL = "{{@prydd-api-test.HELIUS_RPC_URL}}"
+RELAYER_HELIUS_API_KEY = "{{@prydd-api-test.HELIUS_API_KEY}}"
+
+[services.prydd-relayer.secrets]
+required = ["RELAYER_FEE_PAYER_SECRET_KEY", "RELAYER_INTERNAL_AUTH_SECRET"]
