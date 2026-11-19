@@ -152,12 +152,16 @@ npm --workspace @prydd/backend run db:migrate
 
 ### Environment
 
-`NODE_ENV` has no default and the process refuses to boot without it. Nine more
+`NODE_ENV` has no default and the process refuses to boot without it. Eight more
 values are required everywhere:
 
-`DATABASE_URL`, `KAFKA_BROKERS`, `PRIVY_APP_ID`, `PRIVY_APP_SECRET`,
-`HELIUS_API_KEY`, `HELIUS_RPC_URL`, `HELIUS_WEBHOOK_SECRET`,
-`INTERNAL_API_SECRET`, `CHECKOUT_RETURN_URL_SECRET`.
+`DATABASE_URL`, `PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `HELIUS_API_KEY`,
+`HELIUS_RPC_URL`, `HELIUS_WEBHOOK_SECRET`, `INTERNAL_API_SECRET`,
+`CHECKOUT_RETURN_URL_SECRET`.
+
+`KAFKA_BROKERS` is optional. Without it the backend boots with no broker, logs
+and drops platform events, and Merchant webhooks never fire, so Pay with Prydd
+needs it set before it goes live (ADR 0038).
 
 Set these for a real deployment as well:
 
