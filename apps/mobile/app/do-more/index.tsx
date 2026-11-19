@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Path, Rect } from "react-native-svg";
 
@@ -53,6 +54,7 @@ export default function DoMoreScreen() {
 
   return (
     <View className="flex-1 bg-white" style={{ paddingTop: insets.top + 8 }}>
+      <StatusBar style="dark" />
       <View className="px-5">
         <HapticPressable
           accessibilityRole="button"

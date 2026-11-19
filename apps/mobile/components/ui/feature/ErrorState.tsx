@@ -1,6 +1,7 @@
 import React from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 
 import { Typography } from "@/components/ui/atoms/Typography";
 import { PillButton } from "@/components/ui/kit";
@@ -27,6 +28,7 @@ export function ErrorState({
       className="flex-1 bg-white px-5"
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom + 12 }}
     >
+      <StatusBar style="dark" />
       <View className="flex-1 items-center justify-center">
         <Illustration name="error" size={150} />
         <Typography
