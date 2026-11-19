@@ -145,3 +145,7 @@ The catalog above was written before any producer existed. The topics that are p
 | `events.dead-letter` | the Kafka consumer, for a message whose handler failed past its retries                  |
 
 `payment.settling` and `refund.recorded` were named in the original catalog and have no producer; a refund is recorded as a `payments` row with `refund_of_payment_id` and surfaces through `payment.succeeded` for the reverse leg. `payout.failed` and `events.dead-letter` were not in the original catalog and are contracts from the day they were first produced. `events.dead-letter` is the parking topic for a consumed message that could not be handled, so a poison message stops a partition once rather than forever; it is being added alongside the compose seed list and must stay in both places.
+
+## Update 2026-11-19 (broker optional for the wallet launch)
+
+The wallet launches before Pay with Prydd, and no wallet flow publishes an event, so [ADR-0038](./0038-kafka-is-optional-until-pay-with-prydd-launches.md) makes `KAFKA_BROKERS` optional: without it, events are logged and dropped and no consumer runs. The topology above is unchanged and applies again, broker required, before Pay goes live.

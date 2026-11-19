@@ -87,8 +87,9 @@ You do **not** need an ADR for routine choices like file naming, single-feature 
 | [0035](./0035-merchant-portal-owner-surface-and-audit.md)                | Owner-authenticated merchant portal surface, audit trail and least-privilege reads                                                  | Accepted                             | Backend / Security       |
 | [0036](./0036-checkout-cancel-dismisses-the-attempt.md)                  | Checkout Cancel dismisses the attempt, it does not terminally cancel the intent                                                     | Accepted                             | Frontend / Checkout      |
 | [0037](./0037-ios-app-id-under-the-entrypointlabs-apple-team.md)         | iOS ships as `xyz.entrypointlabs.prydd` under the EntrypointLabs Apple team                                                         | Accepted                             | Mobile / Release         |
+| [0038](./0038-kafka-is-optional-until-pay-with-prydd-launches.md)        | Kafka is optional until Pay with Prydd launches                                                                                     | Accepted                             | Backend / Infrastructure |
 
-> 0014 is reserved for a conditional relayer decision (a Kora reversal, see the 0012 update) and remains an intentional gap. The next free number is 0037.
+> 0014 is reserved for a conditional relayer decision (a Kora reversal, see the 0012 update) and remains an intentional gap. The next free number is 0039.
 
 ## Generating new ADR numbers
 

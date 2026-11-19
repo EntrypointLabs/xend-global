@@ -200,7 +200,8 @@ export const USDC_MINT_BY_CLUSTER = {
         // Kafka: payment lifecycle events (see ADR 0012 for the topic catalog).
         // KAFKA_BROKERS is a comma-separated host:port list. SASL vars stay
         // blank for local docker-compose; managed brokers require them.
-        KAFKA_BROKERS: Joi.string().required(),
+        // Unset runs without a broker: events are logged and dropped (ADR 0038).
+        KAFKA_BROKERS: Joi.string().optional().allow(''),
         KAFKA_CLIENT_ID: Joi.string().default('prydd-backend'),
         KAFKA_SSL: Joi.boolean().default(false),
         KAFKA_SASL_MECHANISM: Joi.string()
