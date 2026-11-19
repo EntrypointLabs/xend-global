@@ -15,6 +15,7 @@ import { useDisplayRates } from "@/hooks/useDisplayRates";
 import {
   formatCodeRate,
   formatCurrencyAmount,
+  deviceDecimalSeparator,
   parseTypedPrice,
   startingPrice,
 } from "@/utils/displayRates";
@@ -142,7 +143,8 @@ export default function ConvertPriceScreen() {
           onChangeText={(text) => {
             const next = text.replace(/[^0-9.,]/g, "");
             // A second decimal mark is a slip, not a new price: ignore it.
-            if (Number.isFinite(parseTypedPrice(next)) || next === "") {
+            // A lone mark is fine mid-typing: ".50" starts with it.
+            if (next.split(deviceDecimalSeparator()).length <= 2) {
               setTyped(next);
             }
           }}
