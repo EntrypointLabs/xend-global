@@ -29,7 +29,7 @@ jobs:
           BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
         run: |
           set -euo pipefail
-          docker run --rm -e DATABASE_URL postgres:17-alpine \
+          docker run --rm -e DATABASE_URL postgres:18-alpine \
             pg_dump -Fc --no-owner --no-acl "$DATABASE_URL" > prydd.dump
           test -s prydd.dump
           openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:BACKUP_PASSPHRASE \
