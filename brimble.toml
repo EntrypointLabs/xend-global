@@ -1,10 +1,12 @@
 # The backend Dockerfile builds from the repo root: it copies workspace
 # packages alongside apps/backend, so the root directory stays the repo root.
+# Brimble only accepts a Dockerfile at the root, so backend.Dockerfile links
+# to apps/backend/Dockerfile.
 [services.api]
 type = "web"
 
 [services.api.build]
-dockerfile = "apps/backend/Dockerfile"
+dockerfile = "backend.Dockerfile"
 watch = [
   "apps/backend/**",
   "packages/smart-account/**",
