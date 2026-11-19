@@ -94,3 +94,69 @@ export function formatLocalAmount(
 ): string {
   return money(localSymbol, amount(usd * perUsd, currency));
 }
+
+/** An amount in a currency's own minor units, without a symbol: "1,530.25". */
+export function formatCurrencyAmount(value: number, currency: string): string {
+  return amount(value, currency);
+}
+
+/**
+ * The same rate as `formatRateLabel`, written with codes for screens that show
+ * the currency beside it: "1 GBP = 1.32 USD", "1 USD = 1,530.25 NGN".
+ */
+export function formatCodeRate(currency: string, perUsd: number): string {
+  return perUsd >= 1
+    ? `1 USD = ${amount(perUsd, currency)} ${currency}`
+    : `1 ${currency} = ${amount(1 / perUsd)} USD`;
+}
+
+/**
+ * A round price that means something in the currency: 1 where a unit is worth
+ * about a dollar or more, otherwise the next power of ten above a dollar's
+ * worth, so naira opens on 10,000 rather than a price that converts to $0.00.
+ */
+export function startingPrice(
+  perUsd: number,
+  decimal: string = deviceDecimalSeparator()
+): string {
+  const value = perUsd < 10 ? 1 : 10 ** Math.ceil(Math.log10(perUsd));
+  const group = decimal === "," ? "." : ",";
+  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, group);
+}
+
+/** The decimal mark the phone's own number keypad types: "." or ",". */
+export function deviceDecimalSeparator(): string {
+  return (1.5).toLocaleString().includes(",") ? "," : ".";
+}
+
+/**
+ * A typed price as a number. Which mark is the decimal depends on the phone:
+ * "1,5" is one and a half where the keypad types a comma, and the other mark
+ * is grouping, so "10.000" there is ten thousand. More than one decimal mark
+ * is not a price, so it reads as NaN rather than whatever comes before the
+ * second one.
+ */
+export function parseTypedPrice(
+  text: string,
+  decimal: string = deviceDecimalSeparator()
+): number {
+  const group = decimal === "," ? "." : ",";
+  if (text.split(decimal).length > 2) return Number.NaN;
+  const plain = text
+    .replace(/\s/g, "")
+    .split(group)
+    .join("")
+    .replace(decimal, ".");
+  return Number.parseFloat(plain);
+}
+
+/**
+ * A typed price as it should read once the field is left: ".50" becomes
+ * "0.50", so a price started from the decimal mark still reads as a number.
+ */
+export function finishTypedPrice(
+  text: string,
+  decimal: string = deviceDecimalSeparator()
+): string {
+  return text.startsWith(decimal) ? `0${text}` : text;
+}

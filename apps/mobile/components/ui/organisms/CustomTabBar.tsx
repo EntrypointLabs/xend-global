@@ -19,6 +19,7 @@ import { ActionMenu } from "./ActionMenu";
 
 import { BlurView } from "expo-blur";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
+import { glowFor, Sheen } from "@/components/ui/atoms/Glass";
 import {
   setTabBarCollapsed,
   useTabBarCollapsed,
@@ -75,6 +76,8 @@ export function CustomTabBar({
   const isHome = segments[0] === "(tabs)" && segments[1] === undefined;
   const colorful = useColorfulTheme();
   const onPhoto = isPhotoRoute(segments, colorful);
+  // The same fill as Add money: white on the photo, black on white.
+  const fabTint = onPhoto ? "#FFFFFF" : "#0A0A0A";
   const isSettingsSubPage =
     segments[0] === "(tabs)" &&
     segments[1] === "settings" &&
@@ -174,12 +177,12 @@ export function CustomTabBar({
                 // The same fill as Add money in each theme: white on the
                 // photo, black on white. One primary action, one solid fill.
                 // On liquid glass that fill becomes the glass's tint instead.
-                "h-[50px] w-[50px] items-center justify-center overflow-hidden rounded-[28px]",
+                "h-[50px] w-[50px] items-center justify-center rounded-[28px]",
                 !LIQUID && (onPhoto ? "bg-white" : "bg-black"),
                 readOnly && "opacity-30"
               )}
               // PLATFORM-SHADOW
-              style={LIQUID ? undefined : fabShadow}
+              style={LIQUID ? glowFor(fabTint) : fabShadow}
               onPress={handleFabPress}
               disabled={readOnly}
               accessibilityLabel={
@@ -189,11 +192,12 @@ export function CustomTabBar({
               {LIQUID && (
                 <GlassView
                   glassEffectStyle="regular"
-                  tintColor={onPhoto ? "#FFFFFF" : "#0A0A0A"}
+                  tintColor={fabTint}
                   isInteractive
                   style={[StyleSheet.absoluteFill, { borderRadius: 28 }]}
                 />
               )}
+              {LIQUID && <Sheen />}
               <Ionicons
                 name="add"
                 size={28}

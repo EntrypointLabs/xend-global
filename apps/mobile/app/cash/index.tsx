@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { ScreenLayout } from "@/components/ui/layout";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { GlassButton } from "@/components/ui/atoms/Glass";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { ActionPill } from "@/components/ui/molecules";
 import { SendModal } from "@/components/ui/organisms/modals/SendModal";
@@ -211,15 +212,18 @@ export default function CashScreen() {
         {/* Bottom Actions */}
         <View className="absolute bottom-0 left-0 right-0 flex-row items-center justify-between bg-transparent">
           {/* Back Button */}
-          <HapticPressable
-            className="h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm"
+          <GlassButton
+            radius={999}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            className="h-14 w-14 items-center justify-center rounded-full"
             onPress={() => router.back()}
           >
             <Ionicons name="chevron-back" size={24} color="black" />
-          </HapticPressable>
+          </GlassButton>
 
           {/* Action Pill */}
-          <ActionPill items={actionItems} />
+          <ActionPill liquid items={actionItems} />
         </View>
       </View>
 

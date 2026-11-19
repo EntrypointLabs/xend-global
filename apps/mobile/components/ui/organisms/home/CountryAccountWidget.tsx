@@ -141,10 +141,19 @@ export function CountryAccountWidget({
           />
           <BottomHaze />
 
+          {/* Read as one element, but only over the area above the dock:
+          stretched over the whole card it overlapped the dock's buttons, and
+          VoiceOver's touch exploration could land on the card instead. */}
           <View
             accessible
             accessibilityLabel={`${card.name}, ${balanceLabel} available to spend, ${rateLabel}`}
-            style={FILL}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              height: DOCK.top * s,
+            }}
           >
             <View
               className="absolute flex-row items-center self-center overflow-hidden rounded-full"

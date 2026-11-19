@@ -1,4 +1,27 @@
-import { formatLocalAmount, formatRateLabel } from "@/utils/displayRates";
+import {
+  formatCodeRate,
+  formatCurrencyAmount,
+  formatLocalAmount,
+  finishTypedPrice,
+  formatRateLabel,
+  parseTypedPrice,
+  startingPrice,
+} from "@/utils/displayRates";
+
+describe("formatCodeRate", () => {
+  it("writes the rate from whichever side is at least one", () => {
+    expect(formatCodeRate("NGN", 1530.25)).toBe("1 USD = 1,530.25 NGN");
+    expect(formatCodeRate("GBP", 0.758)).toBe("1 GBP = 1.32 USD");
+    expect(formatCodeRate("JPY", 159.29)).toBe("1 USD = 159 JPY");
+  });
+});
+
+describe("formatCurrencyAmount", () => {
+  it("uses each currency's own minor units", () => {
+    expect(formatCurrencyAmount(1932.321, "NGN")).toBe("1,932.32");
+    expect(formatCurrencyAmount(1932.5, "JPY")).toBe("1,933");
+  });
+});
 
 describe("formatRateLabel", () => {
   it("leads with the local currency when it is worth more than a dollar", () => {
@@ -52,5 +75,54 @@ describe("minor units by currency", () => {
 
   it("writes three-decimal currencies with three", () => {
     expect(formatLocalAmount("KD", 10, 0.3071, "KWD")).toBe("KD 3.071");
+  });
+});
+
+describe("startingPrice", () => {
+  it("opens on a price that converts to more than a few cents", () => {
+    expect(startingPrice(0.758, ".")).toBe("1");
+    expect(startingPrice(3.6725, ".")).toBe("1");
+    expect(startingPrice(33.89, ".")).toBe("100");
+    expect(startingPrice(1530.25, ".")).toBe("10,000");
+  });
+
+  it("groups with the mark the keypad does not use for decimals", () => {
+    expect(startingPrice(1530.25, ",")).toBe("10.000");
+  });
+});
+
+describe("parseTypedPrice", () => {
+  it("reads a point as the decimal where the keypad types one", () => {
+    expect(parseTypedPrice("1.5", ".")).toBe(1.5);
+    expect(parseTypedPrice("10,000", ".")).toBe(10000);
+    expect(parseTypedPrice("12,345.67", ".")).toBe(12345.67);
+  });
+
+  it("reads a comma as the decimal where the keypad types one", () => {
+    expect(parseTypedPrice("1,5", ",")).toBe(1.5);
+    expect(parseTypedPrice("10.000", ",")).toBe(10000);
+    expect(parseTypedPrice("12.345,67", ",")).toBe(12345.67);
+  });
+
+  it("reads a price typed from its decimal mark", () => {
+    expect(parseTypedPrice(".50", ".")).toBe(0.5);
+    expect(parseTypedPrice(",50", ",")).toBe(0.5);
+  });
+
+  it("rejects more than one decimal mark", () => {
+    expect(parseTypedPrice("1.2.3", ".")).toBeNaN();
+    expect(parseTypedPrice("1,2,3", ",")).toBeNaN();
+  });
+});
+
+describe("finishTypedPrice", () => {
+  it("puts a zero before a price started from the decimal mark", () => {
+    expect(finishTypedPrice(".50", ".")).toBe("0.50");
+    expect(finishTypedPrice(",50", ",")).toBe("0,50");
+  });
+
+  it("leaves any other price alone", () => {
+    expect(finishTypedPrice("12.50", ".")).toBe("12.50");
+    expect(finishTypedPrice("", ".")).toBe("");
   });
 });

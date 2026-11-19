@@ -4,6 +4,7 @@ import { Redirect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { GlassButton } from "@/components/ui/atoms/Glass";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
 import { useFeature } from "@/hooks/useFeature";
@@ -235,14 +236,17 @@ function SwapScreen() {
         </Typography>
       </HapticPressable>
 
-      <View className="absolute left-5 top-2">
-        <HapticPressable
+      <View className="absolute left-5 top-[16px]">
+        <GlassButton
+          radius={999}
           accessibilityRole="button"
           accessibilityLabel="Go back"
           onPress={() => router.back()}
+          className="size-11 items-center justify-center rounded-full"
+          fallbackClassName=""
         >
           <Ionicons name="chevron-back" size={22} color="#000" />
-        </HapticPressable>
+        </GlassButton>
       </View>
     </ScreenLayout>
   );

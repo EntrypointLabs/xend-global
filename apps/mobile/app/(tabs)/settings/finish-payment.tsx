@@ -12,6 +12,7 @@ import * as Sentry from "@sentry/react-native";
 import { ScreenLayout } from "@/components/ui/layout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { GlassButton } from "@/components/ui/atoms/Glass";
 import {
   SpendCheckModal,
   type SpendCheckState,
@@ -462,12 +463,16 @@ export default function FinishPaymentScreen() {
         )}
 
         <View className="flex-row items-center justify-between">
-          <HapticPressable
+          <GlassButton
+            radius={999}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
             onPress={() => router.back()}
-            className="h-14 w-14 items-center justify-center rounded-full bg-white shadow-md shadow-black/10"
+            className="h-14 w-14 items-center justify-center rounded-full"
+            fallbackClassName="bg-white shadow-md shadow-black/10"
           >
             <Ionicons name="chevron-back" size={22} color="#000" />
-          </HapticPressable>
+          </GlassButton>
         </View>
       </View>
 
