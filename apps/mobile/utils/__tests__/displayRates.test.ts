@@ -2,6 +2,7 @@ import {
   formatCodeRate,
   formatCurrencyAmount,
   formatLocalAmount,
+  finishTypedPrice,
   formatRateLabel,
   parseTypedPrice,
   startingPrice,
@@ -111,5 +112,17 @@ describe("parseTypedPrice", () => {
   it("rejects more than one decimal mark", () => {
     expect(parseTypedPrice("1.2.3", ".")).toBeNaN();
     expect(parseTypedPrice("1,2,3", ",")).toBeNaN();
+  });
+});
+
+describe("finishTypedPrice", () => {
+  it("puts a zero before a price started from the decimal mark", () => {
+    expect(finishTypedPrice(".50", ".")).toBe("0.50");
+    expect(finishTypedPrice(",50", ",")).toBe("0,50");
+  });
+
+  it("leaves any other price alone", () => {
+    expect(finishTypedPrice("12.50", ".")).toBe("12.50");
+    expect(finishTypedPrice("", ".")).toBe("");
   });
 });

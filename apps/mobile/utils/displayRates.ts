@@ -149,3 +149,14 @@ export function parseTypedPrice(
     .replace(decimal, ".");
   return Number.parseFloat(plain);
 }
+
+/**
+ * A typed price as it should read once the field is left: ".50" becomes
+ * "0.50", so a price started from the decimal mark still reads as a number.
+ */
+export function finishTypedPrice(
+  text: string,
+  decimal: string = deviceDecimalSeparator()
+): string {
+  return text.startsWith(decimal) ? `0${text}` : text;
+}
