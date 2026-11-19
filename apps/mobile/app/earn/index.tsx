@@ -8,6 +8,7 @@ import { useFeature } from "@/hooks/useFeature";
 import { cn } from "@/utils/cn";
 import BalanceView from "@/components/BalanceView";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { GlassButton, GlassSurface } from "@/components/ui/atoms/Glass";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
@@ -136,16 +137,20 @@ export default function EarnScreen() {
       </ScrollView>
 
       <View className="absolute bottom-2 left-5 right-5 flex-row items-center gap-3">
-        <HapticPressable
+        <GlassButton
+          radius={999}
           accessibilityRole="button"
           accessibilityLabel="Go back"
           onPress={() => router.back()}
-          className="h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm"
+          className="h-14 w-14 items-center justify-center rounded-full"
         >
           <Ionicons name="chevron-back" size={22} color="#000" />
-        </HapticPressable>
+        </GlassButton>
 
-        <View className="ml-auto flex-row items-center gap-6 rounded-full bg-white px-6 py-4 shadow-sm">
+        <GlassSurface
+          radius={999}
+          className="ml-auto flex-row items-center gap-6 rounded-full px-6 py-4"
+        >
           <HapticPressable
             accessibilityRole="button"
             accessibilityLabel="Deposit into Earn"
@@ -178,7 +183,7 @@ export default function EarnScreen() {
               Withdraw
             </Typography>
           </HapticPressable>
-        </View>
+        </GlassSurface>
       </View>
 
       <ReceiveModal

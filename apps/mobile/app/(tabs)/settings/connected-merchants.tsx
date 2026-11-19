@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { ScreenLayout } from "@/components/ui/layout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { GlassButton } from "@/components/ui/atoms/Glass";
 import { Ionicons } from "@expo/vector-icons";
 import { useSessions, useRevokeSession } from "@/hooks/useSessions";
 import type { SessionSummary } from "@/utils/apiClient";
@@ -141,12 +142,16 @@ export default function ConnectedMerchantsScreen() {
         )}
 
         <View className="flex-row items-center justify-between">
-          <HapticPressable
+          <GlassButton
+            radius={999}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
             onPress={() => router.back()}
-            className="h-14 w-14 items-center justify-center rounded-full bg-white shadow-md shadow-black/10"
+            className="h-14 w-14 items-center justify-center rounded-full"
+            fallbackClassName="bg-white shadow-md shadow-black/10"
           >
             <Ionicons name="chevron-back" size={22} color="#000" />
-          </HapticPressable>
+          </GlassButton>
         </View>
       </View>
     </ScreenLayout>

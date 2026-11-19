@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import Svg, { Path, Rect } from "react-native-svg";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { GlassButton } from "@/components/ui/atoms/Glass";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { useFeature } from "@/hooks/useFeature";
 import { cn } from "@/utils/cn";
@@ -54,21 +55,16 @@ export default function DoMoreScreen() {
   return (
     <View className="flex-1 bg-white" style={{ paddingTop: insets.top + 8 }}>
       <View className="px-5">
-        <HapticPressable
+        <GlassButton
+          radius={999}
           accessibilityRole="button"
           accessibilityLabel="Close"
           onPress={goBack}
-          className="size-12 items-center justify-center rounded-full border border-black/[0.08] bg-white"
-          // PLATFORM-SHADOW
-          style={{
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.06,
-            shadowRadius: 6,
-          }}
+          className="size-11 items-center justify-center rounded-full"
+          fallbackClassName="border border-black/[0.08] bg-white"
         >
-          <Ionicons name="close" size={24} color="#0A0A0A" />
-        </HapticPressable>
+          <Ionicons name="close" size={22} color="#0A0A0A" />
+        </GlassButton>
         <Typography
           accessibilityRole="header"
           weight="700"

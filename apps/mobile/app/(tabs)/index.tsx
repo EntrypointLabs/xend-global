@@ -28,6 +28,7 @@ import { WidgetsModal } from "@/components/ui/organisms/home/WidgetsModal";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useWalletName } from "@/hooks/useWalletName";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { GlassButton } from "@/components/ui/atoms/Glass";
 import {
   StatusCarousel,
   type StatusItem,
@@ -168,8 +169,11 @@ function HomeScreenContent() {
           bounds would shear the shadows off at the screen's left and right. */}
           <ScrollView
             {...collapseOnScroll}
-            className="-mx-5 flex-1"
-            contentContainerClassName="px-5"
+            // The scroll view clips what it draws, so it starts higher and
+            // pads back down: the hide-balance glass and its shadow get room
+            // above the first row instead of being cut flat at the edge.
+            className="-mx-5 -mt-4 flex-1"
+            contentContainerClassName="px-5 pt-4"
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{
               paddingBottom: FLOATING_CHROME_HEIGHT + CHROME_GAP + size(24),
@@ -181,19 +185,21 @@ function HomeScreenContent() {
                   {walletName}
                 </TabHeaderText>
               </View>
-              <HapticPressable
+              <GlassButton
+                radius={999}
                 accessibilityRole="button"
                 accessibilityLabel={hidden ? "Show balances" : "Hide balances"}
                 hitSlop={HEADER_HIT_SLOP}
                 onPress={() => setHidden((value) => !value)}
-                className="h-9 w-9 items-center justify-center"
+                className="h-9 w-9 items-center justify-center rounded-full"
+                fallbackClassName=""
               >
                 <Ionicons
                   name={hidden ? "eye-off-outline" : "eye-outline"}
-                  size={22}
+                  size={20}
                   color={S.colors.caption}
                 />
-              </HapticPressable>
+              </GlassButton>
             </View>
 
             <View>

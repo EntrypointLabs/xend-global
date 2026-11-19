@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
-import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { GlassButton } from "@/components/ui/atoms/Glass";
 
 /** Pushed over Home: back arrow for a step inside a flow, a cross to leave it. */
 export type FeatureLeave = "back" | "close";
@@ -46,25 +46,20 @@ export function FeatureScreen({
   return (
     <View className="flex-1 bg-white" style={{ paddingTop: insets.top + 8 }}>
       <View className="px-5 pb-4">
-        <HapticPressable
+        <GlassButton
+          radius={999}
           accessibilityRole="button"
           accessibilityLabel={leave === "close" ? "Close" : "Back"}
           onPress={goBack}
-          className="size-11 items-center justify-center rounded-full border border-black/[0.08] bg-white"
-          // PLATFORM-SHADOW
-          style={{
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.06,
-            shadowRadius: 6,
-          }}
+          className="size-11 items-center justify-center rounded-full"
+          fallbackClassName="border border-black/[0.08] bg-white"
         >
           <Ionicons
             name={leave === "close" ? "close" : "arrow-back"}
             size={22}
             color="#0A0A0A"
           />
-        </HapticPressable>
+        </GlassButton>
       </View>
       {body}
       {footer ? (
