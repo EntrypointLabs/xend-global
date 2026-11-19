@@ -60,6 +60,7 @@ function fakeStore(row: SquadsAccountRow) {
     findByUserId: () => Promise.resolve(current),
     insert: (r) => Promise.resolve(r),
     listAll: () => Promise.resolve([current]),
+    findBySettingsAddresses: () => Promise.resolve([]),
     findUserEmail: () => Promise.resolve('consumer@example.com'),
     withUserLock: <T>(_userId: string, fn: () => Promise<T>) => fn(),
     updateByUserId: (_userId, patch) => {

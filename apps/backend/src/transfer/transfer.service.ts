@@ -49,6 +49,7 @@ import type {
   SubmitResponse,
   TransferRow,
 } from './dtos';
+import { ReconcilerService } from '../activity/reconciler.service';
 
 /**
  * A prepared transfer intent. Held in the prepared-transaction store only
@@ -135,6 +136,7 @@ export class TransferService {
     @Inject(APPROVAL_SIGNER_STORE)
     private readonly approvalSigners: ApprovalSignerStore,
     @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
+    private readonly reconciler: ReconcilerService,
   ) {
     // Pull the stablecoin mint allowlist from env so devnet vs mainnet
     // mints can swap without code changes.
@@ -578,6 +580,10 @@ export class TransferService {
     // 6. Erase the intent: it has served its purpose.
     await this.prepared.delete(intentKey(req.intentId));
 
+    // 7. The webhook normally finalizes the row; this is the fallback for a
+    //    delivery that never comes.
+    this.reconciler.armPendingCheck();
+
     return {
       transferId: row.id,
       signature,
@@ -670,6 +676,11 @@ export class TransferService {
     opts: { cursor?: string; limit?: number } = {},
   ): Promise<ListTransfersResponse> {
     const limit = Math.min(opts.limit ?? 20, 100);
+
+    // Opening the app lands here, so this is where a deposit whose webhook
+    // delivery was missed gets written. Only the first page: paging further
+    // back is the same visit.
+    if (!opts.cursor) await this.reconciler.catchUpUser(userId);
 
     const [account] = await this.db.client
       .select()

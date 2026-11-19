@@ -91,6 +91,7 @@ function store(
     findByUserId: () => Promise.resolve(current),
     insert: (r) => Promise.resolve(r),
     listAll: () => Promise.resolve([]),
+    findBySettingsAddresses: () => Promise.resolve([]),
     findUserEmail: () => Promise.resolve('consumer@example.com'),
     withUserLock: lock,
     updateByUserId: (_userId, patch) => {

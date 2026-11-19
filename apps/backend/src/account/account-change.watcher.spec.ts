@@ -4,6 +4,7 @@ import type {
   StagedChange,
 } from './account-change.service';
 import type { SquadsAccountRow, SquadsAccountStore } from './account.interface';
+import { SettingsActivitySignal } from '../activity/settings-activity.signal';
 import { AccountChangeWatcher } from './account-change.watcher';
 
 function account(userId: string): SquadsAccountRow {
@@ -53,12 +54,21 @@ function setUp(
   } as unknown as AccountEventsService;
   const store = {
     listAll: () => Promise.resolve(accounts),
+    findBySettingsAddresses: (addresses: string[]) =>
+      Promise.resolve(
+        accounts.filter((a) => addresses.includes(a.settingsAddress)),
+      ),
   } as unknown as SquadsAccountStore;
+  const settingsActivity = new SettingsActivitySignal();
+  const watcher = new AccountChangeWatcher(
+    changes,
+    events,
+    store,
+    settingsActivity,
+  );
+  watcher.onModuleInit();
 
-  return {
-    watcher: new AccountChangeWatcher(changes, events, store),
-    recorded,
-  };
+  return { watcher, recorded, settingsActivity };
 }
 
 describe('AccountChangeWatcher', () => {
@@ -105,5 +115,36 @@ describe('AccountChangeWatcher', () => {
     await watcher.tick();
 
     expect(recorded.map((r) => r.userId)).toEqual(['user-2']);
+  });
+
+  it('checks an Account as soon as a delivery touches its Settings', async () => {
+    const { watcher, recorded } = setUp({
+      'user-1': staged(),
+      'user-2': staged({ transactionIndex: '3' }),
+    });
+
+    await watcher.onSettingsActivity(['settings-user-2', 'someone-else']);
+
+    // Only the Account the delivery touched, not every Account.
+    expect(recorded).toEqual([
+      { userId: 'user-2', params: { changeIndex: '3', change: undefined } },
+    ]);
+  });
+
+  it('hears deliveries through the signal the webhook emits on', async () => {
+    const { recorded, settingsActivity } = setUp({ 'user-1': staged() });
+
+    settingsActivity.emit(['settings-user-1']);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(recorded).toHaveLength(1);
+  });
+
+  it('ignores a delivery that touches no Account Settings', async () => {
+    const { watcher, recorded } = setUp({ 'user-1': staged() });
+
+    await watcher.onSettingsActivity(['vault-user-1']);
+
+    expect(recorded).toEqual([]);
   });
 });

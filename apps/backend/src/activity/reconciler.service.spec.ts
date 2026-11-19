@@ -562,7 +562,7 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
     );
     const reconciler = new ReconcilerService(db, solana, tailer);
 
-    await reconciler.onModuleInit();
+    await reconciler.replayAllWallets();
 
     expect(streamFn).toHaveBeenCalledWith(wallet, 100n);
     // The single replayed event triggered a payment-correlation SELECT plus
@@ -616,96 +616,52 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
     );
   });
 
-  it('sweeps on a timer so a missed delivery does not wait for a restart', async () => {
-    const wallet = 'WaLLeT8888888888888888888888888888888888';
-    const { db } = makeFakeDb({
-      smartAccounts: [{ id: 'sa1', walletAddress: wallet }],
-      bookmark: { walletAddress: wallet, lastIndexedSlot: 100n },
-    });
-    const streamFn = jest.fn().mockImplementation(async function* () {
-      yield {
-        signature: 'sig-swept',
-        slot: 200n,
-        mint: 'USDC',
-        amountRaw: 1_000_000n,
-        decimals: 6,
-        fromAddress: 'someone',
-        toAddress: wallet,
-        confirmedAt: new Date(),
-      };
-    });
-    const solana = makeFakeSolana({ streamConfirmedTransfers: streamFn });
-    const tailer = new TailerService(
-      db,
-      fakePriceProvider(),
-      fakeNotifications(),
-      fakeNamer(),
-    );
-    const upsert = jest.spyOn(tailer, 'upsertConfirmedTransfer');
-    const reconciler = new ReconcilerService(db, solana, tailer);
+  it('boot also checks sends a restart left PENDING, and keeps watching them', async () => {
+    jest.useFakeTimers();
+    try {
+      const { db } = makeFakeDb({
+        smartAccounts: [],
+        outstanding: [
+          {
+            signature: 'sig-left-pending',
+            smartAccountId: 'sa1',
+            submittedAt: new Date(Date.now() - 60_000),
+          },
+        ],
+      });
+      const statuses = jest.fn().mockResolvedValue([
+        {
+          signature: 'sig-left-pending',
+          slot: null,
+          confirmationStatus: 'processed',
+          err: null,
+        },
+      ]);
+      const solana = makeFakeSolana({ getSignatureStatuses: statuses });
+      const reconciler = new ReconcilerService(db, solana, makeTailer(db));
 
-    await reconciler.sweep();
+      await reconciler.onModuleInit();
 
-    expect(streamFn).toHaveBeenCalledWith(wallet, 100n);
-    expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ signature: 'sig-swept' }),
-      'sa1',
-      wallet,
-    );
+      expect(statuses).toHaveBeenCalledTimes(1);
+      expect(reconciler.isPendingCheckArmed()).toBe(true);
+      reconciler.onModuleDestroy();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
-  it('does not let a slow sweep stack with the next one', async () => {
-    const wallet = 'WaLLeT9999999999999999999999999999999999';
-    const { db } = makeFakeDb({
-      smartAccounts: [{ id: 'sa1', walletAddress: wallet }],
-    });
-    let release: (() => void) | undefined;
-    const inFlight = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let entered: (() => void) | undefined;
-    const streamEntered = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const streamFn = jest.fn().mockImplementation(async function* () {
-      entered?.();
-      await inFlight;
-      yield {
-        signature: 'sig-slow',
-        slot: 10n,
-        mint: 'USDC',
-        amountRaw: 1n,
-        decimals: 6,
-        fromAddress: 'x',
-        toAddress: wallet,
-        confirmedAt: new Date(),
-      };
-    });
-    const solana = makeFakeSolana({ streamConfirmedTransfers: streamFn });
-    const tailer = new TailerService(
+  it('boot arms nothing when no send is PENDING', async () => {
+    const { db } = makeFakeDb({ smartAccounts: [] });
+    const reconciler = new ReconcilerService(
       db,
-      fakePriceProvider(),
-      fakeNotifications(),
-      fakeNamer(),
+      makeFakeSolana(),
+      makeTailer(db),
     );
-    const reconciler = new ReconcilerService(db, solana, tailer);
 
-    const first = reconciler.sweep();
-    // Wait until the first sweep is genuinely mid-stream, so the second one
-    // lands in the window the guard exists for rather than before it opens.
-    await streamEntered;
+    await reconciler.onModuleInit();
 
-    await reconciler.sweep();
-    expect(streamFn).toHaveBeenCalledTimes(1);
-
-    release?.();
-    await first;
-
-    // Once the first finishes the guard clears and sweeping resumes.
-    await reconciler.sweep();
-    expect(streamFn).toHaveBeenCalledTimes(2);
+    expect(reconciler.isPendingCheckArmed()).toBe(false);
   });
-
   it('boot replay with no smart_accounts is a no-op', async () => {
     const { db, calls } = makeFakeDb({ smartAccounts: [] });
     const solana = makeFakeSolana();
@@ -717,7 +673,7 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
     );
     const reconciler = new ReconcilerService(db, solana, tailer);
 
-    await reconciler.onModuleInit();
+    await reconciler.replayAllWallets();
     expect(calls.filter((c) => c.kind === 'execute')).toHaveLength(0);
     expect(solana.streamConfirmedTransfers).not.toHaveBeenCalled();
   });
@@ -757,7 +713,7 @@ describe('ReconcilerService.onModuleInit (boot replay)', () => {
     );
     const reconciler = new ReconcilerService(db, solana, tailer);
 
-    await reconciler.onModuleInit();
+    await reconciler.replayAllWallets();
     expect(streamFn).toHaveBeenCalledTimes(2);
     // wallet2 replay produced an event → 3 executes (correlation SELECT +
     // transfers UPSERT + tailer_state UPSERT).
@@ -799,5 +755,239 @@ describe('Payment replay behind an advanced bookmark', () => {
       'account',
       'vault',
     );
+  });
+});
+
+// ── on-demand pending check ──────────────────────────────────────────
+
+function makeTailer(db: DbService): TailerService {
+  return new TailerService(
+    db,
+    fakePriceProvider(),
+    fakeNotifications(),
+    fakeNamer(),
+  );
+}
+
+describe('ReconcilerService pending check', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('makes no query until a send arms it', async () => {
+    const { db, calls } = makeFakeDb({});
+    const reconciler = new ReconcilerService(
+      db,
+      makeFakeSolana(),
+      makeTailer(db),
+    );
+
+    await jest.advanceTimersByTimeAsync(10 * 60_000);
+
+    expect(calls).toHaveLength(0);
+    expect(reconciler.isPendingCheckArmed()).toBe(false);
+  });
+
+  it('checks once the armed send is old enough, then stops when none remain', async () => {
+    const outstanding: OutstandingRow[] = [
+      {
+        signature: 'sig-sent',
+        smartAccountId: 'sa1',
+        submittedAt: new Date(),
+      },
+    ];
+    const { db } = makeFakeDb({ outstanding });
+    const statuses = jest.fn().mockImplementation(() => {
+      // The cluster confirms it, so the next look finds nothing PENDING.
+      outstanding.length = 0;
+      return Promise.resolve([
+        {
+          signature: 'sig-sent',
+          slot: 7n,
+          confirmationStatus: 'confirmed',
+          err: null,
+        },
+      ]);
+    });
+    const reconciler = new ReconcilerService(
+      db,
+      makeFakeSolana({ getSignatureStatuses: statuses }),
+      makeTailer(db),
+    );
+
+    reconciler.armPendingCheck();
+    await jest.advanceTimersByTimeAsync(29_000);
+    expect(statuses).not.toHaveBeenCalled();
+
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(statuses).toHaveBeenCalledTimes(1);
+    expect(reconciler.isPendingCheckArmed()).toBe(false);
+
+    await jest.advanceTimersByTimeAsync(10 * 60_000);
+    expect(statuses).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-checks every 30 seconds while a send stays PENDING', async () => {
+    const { db } = makeFakeDb({
+      outstanding: [
+        {
+          signature: 'sig-slow',
+          smartAccountId: 'sa1',
+          submittedAt: new Date(),
+        },
+      ],
+    });
+    const statuses = jest.fn().mockResolvedValue([
+      {
+        signature: 'sig-slow',
+        slot: null,
+        confirmationStatus: 'processed',
+        err: null,
+      },
+    ]);
+    const reconciler = new ReconcilerService(
+      db,
+      makeFakeSolana({ getSignatureStatuses: statuses }),
+      makeTailer(db),
+    );
+
+    reconciler.armPendingCheck();
+    await jest.advanceTimersByTimeAsync(30_000);
+    await jest.advanceTimersByTimeAsync(30_000);
+    await jest.advanceTimersByTimeAsync(30_000);
+
+    expect(statuses).toHaveBeenCalledTimes(3);
+    expect(reconciler.isPendingCheckArmed()).toBe(true);
+    reconciler.onModuleDestroy();
+  });
+
+  it('a second send while armed shares the scheduled check', async () => {
+    const { db } = makeFakeDb({});
+    const reconciler = new ReconcilerService(
+      db,
+      makeFakeSolana(),
+      makeTailer(db),
+    );
+    const execute = db.client.execute as jest.Mock;
+
+    reconciler.armPendingCheck();
+    reconciler.armPendingCheck();
+    await jest.advanceTimersByTimeAsync(30_000);
+
+    // One tick SELECT and one "anything left" SELECT, not two of each.
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a check whose query failed instead of dropping the sends', async () => {
+    const { db } = makeFakeDb({});
+    (db.client.execute as jest.Mock).mockRejectedValueOnce(
+      new Error('connection reset'),
+    );
+    const reconciler = new ReconcilerService(
+      db,
+      makeFakeSolana(),
+      makeTailer(db),
+    );
+
+    reconciler.armPendingCheck();
+    await jest.advanceTimersByTimeAsync(30_000);
+
+    expect(reconciler.isPendingCheckArmed()).toBe(true);
+    reconciler.onModuleDestroy();
+  });
+});
+
+// ── per-Consumer catch-up ─────────────────────────────────────────────
+
+describe('ReconcilerService.catchUpUser', () => {
+  it('writes a deposit whose webhook was missed when its owner looks', async () => {
+    const wallet = 'WaLLeT8888888888888888888888888888888888';
+    const { db } = makeFakeDb({
+      smartAccounts: [{ id: 'sa1', walletAddress: wallet }],
+      bookmark: { walletAddress: wallet, lastIndexedSlot: 100n },
+    });
+    const streamFn = jest.fn().mockImplementation(async function* () {
+      yield {
+        signature: 'sig-missed',
+        slot: 200n,
+        mint: 'USDC',
+        amountRaw: 1_000_000n,
+        decimals: 6,
+        fromAddress: 'someone',
+        toAddress: wallet,
+        confirmedAt: new Date(),
+      };
+    });
+    const tailer = makeTailer(db);
+    const upsert = jest.spyOn(tailer, 'upsertConfirmedTransfer');
+    const reconciler = new ReconcilerService(
+      db,
+      makeFakeSolana({ streamConfirmedTransfers: streamFn }),
+      tailer,
+    );
+
+    await reconciler.catchUpUser('user-1');
+
+    expect(streamFn).toHaveBeenCalledWith(wallet, 100n);
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ signature: 'sig-missed' }),
+      'sa1',
+      wallet,
+    );
+  });
+
+  it('scans a Consumer at most once every five minutes', async () => {
+    const wallet = 'WaLLeT9999999999999999999999999999999999';
+    const { db } = makeFakeDb({
+      smartAccounts: [{ id: 'sa1', walletAddress: wallet }],
+    });
+    const streamFn = jest.fn().mockImplementation(async function* () {
+      // A quiet wallet: nothing past its bookmark.
+    });
+    const reconciler = new ReconcilerService(
+      db,
+      makeFakeSolana({ streamConfirmedTransfers: streamFn }),
+      makeTailer(db),
+    );
+    const t0 = 1_000_000;
+
+    await reconciler.catchUpUser('user-1', t0);
+    await reconciler.catchUpUser('user-1', t0 + 60_000);
+    expect(streamFn).toHaveBeenCalledTimes(1);
+
+    // Another Consumer is not held back by the first one's window.
+    await reconciler.catchUpUser('user-2', t0 + 60_000);
+    expect(streamFn).toHaveBeenCalledTimes(2);
+
+    await reconciler.catchUpUser('user-1', t0 + 5 * 60_000);
+    expect(streamFn).toHaveBeenCalledTimes(3);
+  });
+
+  it('answers within three seconds when the chain is slow', async () => {
+    jest.useFakeTimers();
+    try {
+      const wallet = 'WaLLeTAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+      const { db } = makeFakeDb({
+        smartAccounts: [{ id: 'sa1', walletAddress: wallet }],
+      });
+      // An RPC that never answers.
+      const streamFn = jest.fn().mockImplementation(() => ({
+        [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }),
+      }));
+      const reconciler = new ReconcilerService(
+        db,
+        makeFakeSolana({ streamConfirmedTransfers: streamFn }),
+        makeTailer(db),
+      );
+
+      let answered = false;
+      void reconciler.catchUpUser('user-1').then(() => {
+        answered = true;
+      });
+      await jest.advanceTimersByTimeAsync(3_000);
+
+      expect(answered).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

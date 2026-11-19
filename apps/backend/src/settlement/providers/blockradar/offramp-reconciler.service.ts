@@ -8,6 +8,7 @@ import {
   EVENT_PUBLISHER,
   type EventPublisher,
 } from '../../../events/event-publisher.interface';
+import { payWithPryddEnabled } from '../../../config/pay-with-prydd';
 
 const BATCH = 100;
 const TIMEOUT_REASON = JSON.stringify({ code: 'OFFRAMP_TIMEOUT' });
@@ -45,6 +46,11 @@ export class OfframpReconcilerService {
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
+  async scheduledTick(): Promise<void> {
+    if (!payWithPryddEnabled(this.config)) return;
+    await this.tick();
+  }
+
   async tick(): Promise<void> {
     const stuckMinutes =
       this.config.get<number>('SETTLEMENT_OFFRAMP_STUCK_MINUTES') ?? 120;

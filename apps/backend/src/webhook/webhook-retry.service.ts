@@ -5,6 +5,7 @@ import { and, asc, eq, lt, lte, or, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { webhookDeliveries } from '../db/schema';
 import { WebhookDeliveryService } from './webhook-delivery.service';
+import { payWithPryddEnabled } from '../config/pay-with-prydd';
 
 const RETRY_BATCH = 50;
 
@@ -30,6 +31,11 @@ export class WebhookRetryService {
   ) {}
 
   @Cron('*/30 * * * * *')
+  async scheduledTick(): Promise<void> {
+    if (!payWithPryddEnabled(this.config)) return;
+    await this.tick();
+  }
+
   async tick(): Promise<void> {
     const now = new Date();
     const staleMinutes =

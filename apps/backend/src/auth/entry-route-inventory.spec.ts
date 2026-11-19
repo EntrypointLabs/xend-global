@@ -197,6 +197,7 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   // Nomba HMAC authenticates this receiver, never a Consumer session.
   'POST /webhooks/nomba/sandbox',
   'GET /health',
+  'GET /health/live',
   'GET /features',
   'GET /fx/display-rates',
   'GET /metrics',

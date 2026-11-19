@@ -13,6 +13,7 @@ import {
   MerchantNotFoundError,
   MerchantSuspendedError,
 } from './payment.errors';
+import { payWithPryddEnabled } from '../config/pay-with-prydd';
 
 type IntentRow = typeof paymentIntents.$inferSelect;
 type PaymentIntentStatus = IntentRow['status'];
@@ -218,6 +219,11 @@ export class PaymentIntentService implements OnModuleInit {
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
+  async scheduledExpireStale(): Promise<void> {
+    if (!payWithPryddEnabled(this.config)) return;
+    await this.expireStale();
+  }
+
   async expireStale(): Promise<void> {
     const now = new Date();
     const expired = await this.db.client

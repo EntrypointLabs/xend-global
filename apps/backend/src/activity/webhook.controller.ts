@@ -19,9 +19,13 @@ import { smartAccounts, squadsAccounts } from '../db/schema';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import { EventParser } from './event-parser';
-import type { HeliusWebhookBody } from './event-parser';
+import type {
+  HeliusEnhancedTransaction,
+  HeliusWebhookBody,
+} from './event-parser';
 import { ReconcilerService } from './reconciler.service';
 import { TailerService } from './tailer.service';
+import { SettingsActivitySignal } from './settings-activity.signal';
 
 /**
  * POST /webhooks/helius.
@@ -57,6 +61,7 @@ export class WebhookController {
     private readonly reconciler: ReconcilerService,
     private readonly config: ConfigService,
     private readonly dedupe: InboundWebhookDedupe,
+    private readonly settingsActivity: SettingsActivitySignal,
   ) {}
 
   /**
@@ -102,6 +107,11 @@ export class WebhookController {
     // Throws HttpException(401) on mismatch; no DB writes happen before
     // this line.
     this.solana.verifyWebhookSignature(rawBody, signature);
+
+    // A staged settings change moves no money, so the parser below finds
+    // nothing in it. The accounts it touched are what tell the Settings
+    // watcher to look.
+    this.settingsActivity.emit(touchedAccounts(body));
 
     const events = this.parser.parseDecoded(body);
     this.logger.log(
@@ -203,4 +213,15 @@ export class WebhookController {
 
     return { processed, skipped };
   }
+}
+
+function touchedAccounts(body: unknown): string[] {
+  if (!Array.isArray(body)) return [];
+  const accounts = new Set<string>();
+  for (const tx of body as HeliusEnhancedTransaction[]) {
+    for (const entry of tx?.accountData ?? []) {
+      if (typeof entry?.account === 'string') accounts.add(entry.account);
+    }
+  }
+  return [...accounts];
 }

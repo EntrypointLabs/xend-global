@@ -32,9 +32,14 @@ function withTimeout<T>(work: Promise<T>, label: string): Promise<T> {
 }
 
 /**
- * Liveness for the load balancer: unauthenticated, exempt from throttling
- * (a probe that trips the rate limit would take a healthy instance out of
- * rotation), and 503 the moment Postgres or Redis stops answering.
+ * Unauthenticated and exempt from throttling: a probe that trips the rate
+ * limit would take a healthy instance out of rotation.
+ *
+ * Two probes, because a platform health check fires every few seconds and a
+ * scale-to-zero Postgres never sleeps if each one queries it. `GET /health/live`
+ * touches no dependency and is what container and platform checks call.
+ * `GET /health` is readiness: 503 the moment Postgres or Redis stops answering,
+ * for deploy gates and humans.
  */
 @Controller('health')
 @SkipThrottle()
@@ -45,6 +50,11 @@ export class HealthController {
     private readonly db: DbService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
+
+  @Get('live')
+  live(): { status: 'ok' } {
+    return { status: 'ok' };
+  }
 
   @Get()
   async check(): Promise<HealthReport> {

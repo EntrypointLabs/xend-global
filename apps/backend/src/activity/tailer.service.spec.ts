@@ -9,6 +9,7 @@ import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { ConfirmedTransferEvent } from '../solana/solana-rpc.interface';
 import { HttpException, HttpStatus } from '@nestjs/common';
+import { SettingsActivitySignal } from './settings-activity.signal';
 
 /** Names the mints these tests use; anything else goes unnamed, as in life. */
 function fakeNamer(): TokenNamer {
@@ -759,6 +760,7 @@ function makeController(opts: {
   controller: WebhookController;
   calls: FakeDbCall[];
   solana: SolanaRpc;
+  settingsActivity: SettingsActivitySignal;
 } {
   const { db, calls } = makeFakeDb(
     opts.ownedAccounts ?? [],
@@ -779,6 +781,7 @@ function makeController(opts: {
     recordWebhookFinalization: jest.fn(),
   } as unknown as import('./reconciler.service').ReconcilerService;
   const killSwitch = opts.killSwitch ?? false;
+  const settingsActivity = new SettingsActivitySignal();
   const controller = new WebhookController(
     db,
     tailer,
@@ -793,8 +796,9 @@ function makeController(opts: {
       claim: () => Promise.resolve(true),
       release: () => Promise.resolve(),
     } as unknown as import('../db/inbound-webhook-dedupe').InboundWebhookDedupe,
+    settingsActivity,
   );
-  return { controller, calls, solana };
+  return { controller, calls, solana, settingsActivity };
 }
 
 describe('WebhookController POST /webhooks/helius', () => {
@@ -819,6 +823,37 @@ describe('WebhookController POST /webhooks/helius', () => {
     expect(calls).toHaveLength(3);
     expect(calls[1].sql).toMatch(/INSERT INTO transfers/);
     expect(calls[1].sql).toMatch(/CASE/);
+  });
+
+  it('tells the Settings watcher which accounts a transfer-less delivery touched', async () => {
+    const { controller, calls, settingsActivity } = makeController({});
+    const heard: string[][] = [];
+    settingsActivity.listen((addresses) => {
+      heard.push(addresses);
+      return Promise.resolve();
+    });
+    // A staged settings change: no money moves, so nothing is parsed.
+    const body = [
+      {
+        signature: 'sig-config',
+        slot: 1,
+        timestamp: 1717090000,
+        type: 'UNKNOWN',
+        transactionError: null,
+        accountData: [{ account: 'Settings111' }, { account: 'Payer111' }],
+      },
+    ];
+
+    const res = await controller.receive(
+      { rawBody: Buffer.from(JSON.stringify(body)) } as unknown,
+      'auth-header',
+      'sig-header',
+      body,
+    );
+
+    expect(res.processed).toBe(0);
+    expect(heard).toEqual([['Settings111', 'Payer111']]);
+    expect(calls).toHaveLength(0);
   });
 
   it('records a deposit that only touches the vault address', async () => {

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AccountEventsModule } from '../activity/account-events.module';
+import { SettingsActivityModule } from '../activity/settings-activity.signal';
 import { AttestationModule } from '../attestation/attestation.module';
 import { DbModule } from '../db/db.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -37,6 +38,7 @@ import { AccountService } from './account.service';
     WalletModule,
     NotificationsModule,
     AccountEventsModule,
+    SettingsActivityModule,
     SpendModule,
     PreparedModule,
   ],

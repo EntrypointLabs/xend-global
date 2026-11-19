@@ -20,7 +20,7 @@ const url = process.env.PAYMENT_ATOMICITY_TEST_DATABASE_URL;
       }),
     );
     await db.onModuleInit();
-    counter = new PostgresCapacityCounter(db);
+    counter = new PostgresCapacityCounter(db, new ConfigService({}));
   });
   afterAll(async () => {
     await db.client.execute(

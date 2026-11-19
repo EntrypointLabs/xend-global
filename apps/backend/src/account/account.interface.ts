@@ -76,6 +76,8 @@ export interface SquadsAccountStore {
   findByUserId(userId: string): Promise<SquadsAccountRow | null>;
   /** Every Account, for the sweeps that have to check all of them. */
   listAll(): Promise<SquadsAccountRow[]>;
+  /** The Accounts among these Settings addresses; others are ignored. */
+  findBySettingsAddresses(addresses: string[]): Promise<SquadsAccountRow[]>;
   insert(row: SquadsAccountRow): Promise<SquadsAccountRow>;
   /**
    * The Consumer's email, which anchors the recovery signer.

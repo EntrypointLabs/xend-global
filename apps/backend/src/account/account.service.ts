@@ -140,6 +140,16 @@ export class AccountService {
         err,
       );
     }
+    // Settings too, so a change staged against this Account reaches the
+    // watcher as it happens. Best-effort: the hourly sweep is the safety net.
+    try {
+      await this.solana.registerWebhookAddress(created.settingsAddress);
+    } catch (err) {
+      this.logger.error(
+        `Failed to register webhook address for settings ${created.settingsAddress} (continuing; the hourly settings sweep covers it)`,
+        err,
+      );
+    }
 
     return row;
   }

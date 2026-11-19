@@ -50,6 +50,8 @@ export interface HeliusEnhancedTransaction {
   transactionError?: { InstructionError?: unknown } | null;
   tokenTransfers?: HeliusTokenTransfer[];
   nativeTransfers?: HeliusNativeTransfer[];
+  /** Every account the transaction touched, transfer or not. */
+  accountData?: { account: string }[];
 }
 
 export type HeliusWebhookBody = HeliusEnhancedTransaction[];

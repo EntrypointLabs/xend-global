@@ -11,6 +11,7 @@ import type { AccountEventsService } from '../activity/account-events.service';
 import type { SpendService } from '../account/spend.service';
 import type { TokenMetadataProvider } from '../tokens/token-metadata.interface';
 import { TransferService } from './transfer.service';
+import type { ReconcilerService } from '../activity/reconciler.service';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { ApprovalSignerStore } from '../turnkey/approval-signer.store';
@@ -326,6 +327,10 @@ function makeService(opts: {
   };
   const db = makeFakeDb(store);
   const config = opts.config ?? makeConfig();
+  const reconciler = {
+    armPendingCheck: jest.fn(),
+    catchUpUser: jest.fn().mockResolvedValue(undefined),
+  };
   // No Squads Account by default, so these tests exercise the pre-multisig
   // Privy path they were written for. The vault path has its own coverage.
   const accounts = {
@@ -360,8 +365,9 @@ function makeService(opts: {
       listByUser: () => Promise.resolve(opts.enrolledKeys ?? []),
     } as unknown as ApprovalSignerStore,
     new InMemoryPreparedTxStore(),
+    reconciler as unknown as ReconcilerService,
   );
-  return { service, store, account };
+  return { service, store, account, reconciler };
 }
 
 // ── prepare ───────────────────────────────────────────────────────────
@@ -526,7 +532,7 @@ describe('TransferService.submit', () => {
     const recipient = Keypair.generate().publicKey.toBase58();
     const sendRawTransaction = jest.fn().mockResolvedValue('sig-happy');
     const solana = makeSolana({ sendRawTransaction });
-    const { service, store } = makeService({ solana });
+    const { service, store, reconciler } = makeService({ solana });
 
     const prep = await service.prepare('u_test', {
       toAddress: recipient,
@@ -540,6 +546,8 @@ describe('TransferService.submit', () => {
       signedTxBase64,
     });
 
+    // Nothing else checks on a send the webhook never confirms.
+    expect(reconciler.armPendingCheck).toHaveBeenCalledTimes(1);
     expect(out.signature).toBe('sig-happy');
     expect(out.status).toBe('PENDING');
     expect(out.transferId).toEqual(expect.any(String));
@@ -988,6 +996,20 @@ describe('TransferService.list', () => {
     // Page is in reverse-chrono order
     expect(page1.transfers[0].id).toBe('t_2');
     expect(page1.transfers[1].id).toBe('t_1');
+  });
+
+  it('catches up missed deposits on the first page only', async () => {
+    const { service, reconciler } = makeService({ solana: makeSolana({}) });
+
+    await service.list('u_test');
+    expect(reconciler.catchUpUser).toHaveBeenCalledWith('u_test');
+
+    await service.list('u_test', {
+      cursor: Buffer.from(
+        JSON.stringify({ createdAt: new Date().toISOString(), id: 'x' }),
+      ).toString('base64'),
+    });
+    expect(reconciler.catchUpUser).toHaveBeenCalledTimes(1);
   });
 
   it('names a row from the mint, not from what the Consumer still holds', async () => {

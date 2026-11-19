@@ -32,6 +32,7 @@ function fakeStore(seed?: SquadsAccountRow) {
       return Promise.resolve(row);
     },
     listAll: () => Promise.resolve([]),
+    findBySettingsAddresses: () => Promise.resolve([]),
     findUserEmail: () => Promise.resolve('consumer@example.com'),
     withUserLock: <T>(_userId: string, fn: () => Promise<T>) => fn(),
     updateByUserId: () =>
@@ -122,6 +123,25 @@ describe('AccountService.createAccount', () => {
       vaultAddress: VAULT,
       approvalSubOrgId: SUB_ORG,
     });
+  });
+
+  it('subscribes the vault and the Settings to the activity webhook', async () => {
+    const { store } = fakeStore();
+    const { chain } = fakeChain();
+    const { turnkey } = fakeTurnkey();
+    const { solana, registered } = fakeSolana();
+
+    await new AccountService(
+      chain,
+      store,
+      turnkey,
+      fakeRecovery().recovery,
+      solana,
+    ).createAccount(params());
+
+    // Settings is how a change staged against the Account reaches the watcher
+    // without anything polling for it.
+    expect(registered).toEqual([VAULT, SETTINGS]);
   });
 
   it('returns the existing Account rather than creating a second', async () => {
@@ -343,6 +363,7 @@ describe('AccountService.createAccount under concurrency', () => {
         return Promise.resolve(row);
       },
       listAll: () => Promise.resolve([]),
+      findBySettingsAddresses: () => Promise.resolve([]),
       updateByUserId: () =>
         Promise.reject(new Error('updateByUserId is not exercised here')),
       findUserEmail: () => Promise.resolve('consumer@example.com'),

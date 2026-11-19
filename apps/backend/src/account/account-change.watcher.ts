@@ -1,13 +1,17 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 
 import { AccountEventsService } from '../activity/account-events.service';
+import { SettingsActivitySignal } from '../activity/settings-activity.signal';
 import { AccountChangeService } from './account-change.service';
 import { SQUADS_ACCOUNT_STORE } from './account.interface';
 import type { SquadsAccountRow, SquadsAccountStore } from './account.interface';
 
-/** Often enough to matter against a 24-hour lock, rarely enough to be cheap. */
-const WATCH_CRON = '0 */5 * * * *';
+/**
+ * The backstop for a webhook delivery that never came. Hourly leaves 23 of
+ * the lock's 24 hours to react, and lets an idle database sleep between runs.
+ */
+const WATCH_CRON = '0 0 * * * *';
 
 /**
  * Finds settings changes nobody told the Consumer about, and tells them.
@@ -18,9 +22,11 @@ const WATCH_CRON = '0 */5 * * * *';
  * The lock only buys anything if somebody is watching, and the Consumer is the
  * only party who knows whether they made the change.
  *
- * Polled rather than driven by a webhook because the trigger is a change to the
- * Settings account, which is not a transfer and so not something the activity
- * webhook is subscribed to.
+ * Driven by the activity webhook: each Account's Settings address is
+ * subscribed alongside its vault, so a transaction that stages or votes on a
+ * change is delivered here and checked straight away. An hourly sweep of every
+ * Account covers a delivery Helius dropped, or an Account whose subscription
+ * failed when it was created.
  *
  * A change staged through our own endpoints was recorded, and announced, the
  * moment it was staged, and recording it again here is a no-op. What this
@@ -28,14 +34,28 @@ const WATCH_CRON = '0 */5 * * * *';
  * through here gets its only notice from this loop.
  */
 @Injectable()
-export class AccountChangeWatcher {
+export class AccountChangeWatcher implements OnModuleInit {
   private readonly logger = new Logger(AccountChangeWatcher.name);
+  private readonly checking = new Set<string>();
 
   constructor(
     private readonly changes: AccountChangeService,
     private readonly events: AccountEventsService,
     @Inject(SQUADS_ACCOUNT_STORE) private readonly store: SquadsAccountStore,
+    private readonly settingsActivity: SettingsActivitySignal,
   ) {}
+
+  onModuleInit(): void {
+    this.settingsActivity.listen((addresses) =>
+      this.onSettingsActivity(addresses),
+    );
+  }
+
+  /** Check the Accounts whose Settings a delivered transaction touched. */
+  async onSettingsActivity(addresses: string[]): Promise<void> {
+    const accounts = await this.store.findBySettingsAddresses(addresses);
+    await this.checkEach(accounts);
+  }
 
   @Cron(WATCH_CRON)
   async tick(): Promise<void> {
@@ -47,7 +67,15 @@ export class AccountChangeWatcher {
       return;
     }
 
+    await this.checkEach(accounts);
+  }
+
+  private async checkEach(accounts: SquadsAccountRow[]): Promise<void> {
     for (const account of accounts) {
+      // A send and the proposal it rides on arrive as separate deliveries;
+      // one read of the chain answers both.
+      if (this.checking.has(account.userId)) continue;
+      this.checking.add(account.userId);
       // One Account's unreadable settings must not stop the rest being
       // checked: this is the notice that has to arrive.
       try {
@@ -57,6 +85,8 @@ export class AccountChangeWatcher {
           `account_change.check_failed userId=${account.userId}`,
           err,
         );
+      } finally {
+        this.checking.delete(account.userId);
       }
     }
   }

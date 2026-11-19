@@ -4,7 +4,12 @@ import { Cron } from '@nestjs/schedule';
 import { SIGNUP_TOKEN_TTL_MS } from './signup.service';
 import { SIGNUP_STORE, type SignupStore } from './signup.store';
 
-const REAP_CRON = '0 */10 * * * *';
+/**
+ * Daily: an abandoned row blocks nothing, because a later sign-up for the same
+ * address reuses it, so this is housekeeping and need not wake an idle
+ * database more often than once a day.
+ */
+const REAP_CRON = '0 47 3 * * *';
 
 /**
  * Past the token's life plus the code's, so a row is only ever reaped once
