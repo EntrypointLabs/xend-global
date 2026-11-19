@@ -115,7 +115,34 @@ export function formatCodeRate(currency: string, perUsd: number): string {
  * about a dollar or more, otherwise the next power of ten above a dollar's
  * worth, so naira opens on 10,000 rather than a price that converts to $0.00.
  */
-export function startingPrice(perUsd: number): string {
+export function startingPrice(
+  perUsd: number,
+  decimal: string = deviceDecimalSeparator()
+): string {
   const value = perUsd < 10 ? 1 : 10 ** Math.ceil(Math.log10(perUsd));
-  return value.toLocaleString("en-US");
+  const group = decimal === "," ? "." : ",";
+  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, group);
+}
+
+/** The decimal mark the phone's own number keypad types: "." or ",". */
+export function deviceDecimalSeparator(): string {
+  return (1.5).toLocaleString().includes(",") ? "," : ".";
+}
+
+/**
+ * A typed price as a number. Which mark is the decimal depends on the phone:
+ * "1,5" is one and a half where the keypad types a comma, and the other mark
+ * is grouping, so "10.000" there is ten thousand.
+ */
+export function parseTypedPrice(
+  text: string,
+  decimal: string = deviceDecimalSeparator()
+): number {
+  const group = decimal === "," ? "." : ",";
+  const plain = text
+    .replace(/\s/g, "")
+    .split(group)
+    .join("")
+    .replace(decimal, ".");
+  return Number.parseFloat(plain);
 }

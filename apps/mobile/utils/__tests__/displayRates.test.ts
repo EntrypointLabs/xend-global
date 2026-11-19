@@ -3,6 +3,7 @@ import {
   formatCurrencyAmount,
   formatLocalAmount,
   formatRateLabel,
+  parseTypedPrice,
   startingPrice,
 } from "@/utils/displayRates";
 
@@ -78,9 +79,27 @@ describe("minor units by currency", () => {
 
 describe("startingPrice", () => {
   it("opens on a price that converts to more than a few cents", () => {
-    expect(startingPrice(0.758)).toBe("1");
-    expect(startingPrice(3.6725)).toBe("1");
-    expect(startingPrice(33.89)).toBe("100");
-    expect(startingPrice(1530.25)).toBe("10,000");
+    expect(startingPrice(0.758, ".")).toBe("1");
+    expect(startingPrice(3.6725, ".")).toBe("1");
+    expect(startingPrice(33.89, ".")).toBe("100");
+    expect(startingPrice(1530.25, ".")).toBe("10,000");
+  });
+
+  it("groups with the mark the keypad does not use for decimals", () => {
+    expect(startingPrice(1530.25, ",")).toBe("10.000");
+  });
+});
+
+describe("parseTypedPrice", () => {
+  it("reads a point as the decimal where the keypad types one", () => {
+    expect(parseTypedPrice("1.5", ".")).toBe(1.5);
+    expect(parseTypedPrice("10,000", ".")).toBe(10000);
+    expect(parseTypedPrice("12,345.67", ".")).toBe(12345.67);
+  });
+
+  it("reads a comma as the decimal where the keypad types one", () => {
+    expect(parseTypedPrice("1,5", ",")).toBe(1.5);
+    expect(parseTypedPrice("10.000", ",")).toBe(10000);
+    expect(parseTypedPrice("12.345,67", ",")).toBe(12345.67);
   });
 });

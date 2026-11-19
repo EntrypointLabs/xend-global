@@ -15,6 +15,7 @@ import { useDisplayRates } from "@/hooks/useDisplayRates";
 import {
   formatCodeRate,
   formatCurrencyAmount,
+  parseTypedPrice,
   startingPrice,
 } from "@/utils/displayRates";
 import { cn } from "@/utils/cn";
@@ -107,7 +108,7 @@ export default function ConvertPriceScreen() {
   const from = picked ?? fallback;
   const rate = perUsd[from];
   const shown = typed ?? startingPrice(rate);
-  const price = Number.parseFloat(shown.replace(/,/g, ""));
+  const price = parseTypedPrice(shown);
   const usd = Number.isFinite(price) && rate ? price / rate : 0;
 
   return (
