@@ -28,7 +28,7 @@ health = "/health"
 NODE_ENV = "production"
 SOLANA_CLUSTER = "devnet"
 EXPO_PUBLIC_USDC_MINT_ADDRESS = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
-RELAYER_URL = "http://prydd-relayer.service.brimble.internal:8787"
+RELAYER_URL = "https://prydd-relayer.brimble.app"
 RELAYER_FEE_PAYER_ADDRESS = "53D7E3JQVF4vKV9AFSiR1KiMQUAY5PavSQSqqhWe2fcL"
 RELAYER_INTERNAL_AUTH_SECRET = "{{@prydd-relayer.RELAYER_INTERNAL_AUTH_SECRET}}"
 
@@ -46,16 +46,19 @@ required = [
   "CHECKOUT_RETURN_URL_SECRET",
 ]
 
-# The fee-payer relayer has no unauthenticated route, so it runs as a worker:
-# no public URL and no platform HTTP probe. The backend reaches it over the
-# private network. It shares the backend's Helius credentials by reference.
+# Brimble's internal DNS did not resolve for this workspace, so the relayer is
+# a public web service for the devnet test. Every route, /health included,
+# requires the shared x-relayer-auth secret, and the platform probe is off
+# because no route answers without it. It shares the backend's Helius
+# credentials by reference.
 [services.prydd-relayer]
-type = "worker"
+type = "web"
 region = "eu-central"
 
 [services.prydd-relayer.build]
 dockerfile = "relayer.Dockerfile"
 watch = ["apps/relayer/**"]
+health_check = false
 
 [services.prydd-relayer.deploy]
 port = 8787
