@@ -22,16 +22,17 @@ port = 8000
 health = "/health"
 
 # Test deployment on devnet. KAFKA_BROKERS is unset on purpose: no broker
-# until Pay with Prydd launches.
+# until Pay with Prydd launches. Postgres is on Neon and Redis on Upstash,
+# so DATABASE_URL and REDIS_URL are secrets set outside this file.
 [services.api.env]
 NODE_ENV = "production"
 SOLANA_CLUSTER = "devnet"
 EXPO_PUBLIC_USDC_MINT_ADDRESS = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
-DATABASE_URL = "{{@prydd-pg.PRIVATE_CONNECTION_STRING}}"
-REDIS_URL = "{{@prydd-redis.PRIVATE_CONNECTION_STRING}}"
 
 [services.api.secrets]
 required = [
+  "DATABASE_URL",
+  "REDIS_URL",
   "PRIVY_APP_ID",
   "PRIVY_APP_SECRET",
   "HELIUS_API_KEY",
@@ -41,21 +42,3 @@ required = [
   "INTERNAL_API_SECRET",
   "CHECKOUT_RETURN_URL_SECRET",
 ]
-
-[databases.prydd-pg]
-engine = "postgresql"
-version = "17"
-region = "eu-central"
-cpu = 0.5
-memory = "1gb"
-public = false
-disk = "10gb"
-
-[databases.prydd-redis]
-engine = "redis"
-version = "7"
-region = "eu-central"
-cpu = 0.5
-memory = "1gb"
-public = false
-disk = "10gb"
