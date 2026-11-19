@@ -132,13 +132,16 @@ export function deviceDecimalSeparator(): string {
 /**
  * A typed price as a number. Which mark is the decimal depends on the phone:
  * "1,5" is one and a half where the keypad types a comma, and the other mark
- * is grouping, so "10.000" there is ten thousand.
+ * is grouping, so "10.000" there is ten thousand. More than one decimal mark
+ * is not a price, so it reads as NaN rather than whatever comes before the
+ * second one.
  */
 export function parseTypedPrice(
   text: string,
   decimal: string = deviceDecimalSeparator()
 ): number {
   const group = decimal === "," ? "." : ",";
+  if (text.split(decimal).length > 2) return Number.NaN;
   const plain = text
     .replace(/\s/g, "")
     .split(group)
