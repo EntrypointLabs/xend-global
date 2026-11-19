@@ -12,6 +12,8 @@ WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY apps/backend/package.json ./apps/backend/package.json
 COPY packages/smart-account/package.json ./packages/smart-account/package.json
+# The lockfile installs the Squads SDK from this tarball, so npm ci needs it.
+COPY packages/smart-account/vendor ./packages/smart-account/vendor
 COPY packages/typescript-config/package.json ./packages/typescript-config/package.json
 RUN npm ci --workspace @prydd/backend --workspace @prydd/smart-account \
   --include-workspace-root --ignore-scripts --legacy-peer-deps
@@ -45,4 +47,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8000)+'/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "dist/main"]
+CMD ["node", "dist/src/main"]
