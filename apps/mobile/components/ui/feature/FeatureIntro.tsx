@@ -54,7 +54,7 @@ export function FeatureIntro({
   cta,
 }: FeatureIntroProps) {
   const { width } = useWindowDimensions();
-  const art = Math.min(width - 40, 360) * 0.72;
+  const art = Math.min(width - 40, 360) * 0.62;
 
   return (
     <FeatureScreen
@@ -69,7 +69,7 @@ export function FeatureIntro({
       <View className="overflow-hidden rounded-[28px] bg-[#F2F2F0] px-6 pb-6 pt-7">
         <Typography
           accessibilityRole="header"
-          className="text-[40px] uppercase leading-[38px] tracking-[-1.2px] text-[#0E0F0C]"
+          className="text-[30px] uppercase leading-[30px] tracking-[-0.8px] text-[#0E0F0C]"
           style={{ fontFamily: "Montserrat_900Black" }}
         >
           {headline}
@@ -79,22 +79,22 @@ export function FeatureIntro({
         </View>
       </View>
 
-      <View className="mt-8 gap-7">
+      <View className="mt-7 gap-6">
         {benefits.map((benefit) => (
-          <View key={benefit.title} className="flex-row gap-4">
-            <View className="size-12 items-center justify-center rounded-full border border-black/[0.1]">
-              <Ionicons name={benefit.icon} size={22} color="#0E0F0C" />
+          <View key={benefit.title} className="flex-row gap-3.5">
+            <View className="size-10 items-center justify-center rounded-full border border-black/[0.1]">
+              <Ionicons name={benefit.icon} size={19} color="#0E0F0C" />
             </View>
             <View className="flex-1">
               <Typography
                 weight="600"
-                className="text-[17px] leading-[22px] text-[#0E0F0C]"
+                className="text-[15px] leading-[20px] text-[#0E0F0C]"
               >
                 {benefit.title}
               </Typography>
               <Typography
                 weight="500"
-                className="mt-1 text-[15px] leading-[21px] text-black/55"
+                className="mt-0.5 text-[13px] leading-[18px] text-black/50"
               >
                 {benefit.body}
               </Typography>

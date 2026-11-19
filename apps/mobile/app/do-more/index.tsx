@@ -72,7 +72,7 @@ export default function DoMoreScreen() {
         <Typography
           accessibilityRole="header"
           weight="700"
-          className="mt-7 text-[34px] leading-[40px] tracking-[-0.8px] text-[#0E0F0C]"
+          className="mt-6 text-[26px] leading-[32px] tracking-[-0.5px] text-[#0E0F0C]"
         >
           Do more with Prydd
         </Typography>
@@ -91,14 +91,14 @@ export default function DoMoreScreen() {
             accessibilityState={{ selected: section === current }}
             onPress={() => jump(section)}
             className={cn(
-              "rounded-full px-5 py-3",
+              "rounded-full px-4 py-2.5",
               section === current ? "bg-black/[0.06]" : "bg-transparent"
             )}
           >
             <Typography
               weight="600"
               className={cn(
-                "text-[17px]",
+                "text-[15px]",
                 section === current ? "text-[#0E0F0C]" : "text-black/45"
               )}
             >
@@ -117,12 +117,12 @@ export default function DoMoreScreen() {
         {sections.map((section) => (
           <View
             key={section}
-            className="px-5 pt-7"
+            className="px-5 pt-6"
             onLayout={(event) => {
               offsets.current[section] = event.nativeEvent.layout.y;
             }}
           >
-            <Typography weight="500" className="text-[16px] text-black/55">
+            <Typography weight="500" className="text-[13px] text-black/50">
               {section}
             </Typography>
             <View className="mt-3">
@@ -145,41 +145,41 @@ function Row({ item, onPress }: { item: DoMoreItem; onPress: () => void }) {
       accessibilityRole="button"
       accessibilityLabel={`${item.title}. ${item.description}`}
       onPress={onPress}
-      className="flex-row items-center gap-4 py-3.5"
+      className="flex-row items-center gap-3.5 py-3"
     >
       <View
-        className="size-14 items-center justify-center rounded-full"
+        className="size-12 items-center justify-center rounded-full"
         // DYNAMIC-COLOR (per-feature tile)
         style={{ backgroundColor: item.tile }}
       >
         {item.icon === "jar" ? (
           <JarGlyph color={item.glyph} />
         ) : (
-          <Ionicons name={item.icon} size={24} color={item.glyph} />
+          <Ionicons name={item.icon} size={21} color={item.glyph} />
         )}
       </View>
       <View className="flex-1">
         <Typography
           weight="600"
-          className="text-[18px] leading-[23px] text-[#0E0F0C]"
+          className="text-[15px] leading-[20px] text-[#0E0F0C]"
         >
           {item.title}
         </Typography>
         <Typography
           weight="500"
-          className="mt-0.5 text-[15px] leading-[21px] text-black/55"
+          className="mt-0.5 text-[13px] leading-[18px] text-black/50"
         >
           {item.description}
         </Typography>
       </View>
-      <Ionicons name="chevron-forward" size={20} color="#00000059" />
+      <Ionicons name="chevron-forward" size={18} color="#00000059" />
     </HapticPressable>
   );
 }
 
 function JarGlyph({ color }: { color: string }) {
   return (
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+    <Svg width={21} height={21} viewBox="0 0 24 24" fill="none">
       <Rect
         x={7}
         y={3}

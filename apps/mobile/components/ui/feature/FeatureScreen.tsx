@@ -50,7 +50,7 @@ export function FeatureScreen({
           accessibilityRole="button"
           accessibilityLabel={leave === "close" ? "Close" : "Back"}
           onPress={goBack}
-          className="size-12 items-center justify-center rounded-full border border-black/[0.08] bg-white"
+          className="size-11 items-center justify-center rounded-full border border-black/[0.08] bg-white"
           // PLATFORM-SHADOW
           style={{
             shadowColor: "#000",
@@ -61,7 +61,7 @@ export function FeatureScreen({
         >
           <Ionicons
             name={leave === "close" ? "close" : "arrow-back"}
-            size={24}
+            size={22}
             color="#0A0A0A"
           />
         </HapticPressable>

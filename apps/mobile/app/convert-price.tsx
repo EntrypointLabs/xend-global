@@ -90,7 +90,7 @@ export default function ConvertPriceScreen() {
 
   return (
     <FeatureScreen>
-      <Typography weight="500" className="mt-4 text-[17px] text-black/70">
+      <Typography weight="500" className="mt-4 text-[14px] text-black/60">
         It costs
       </Typography>
       <View className="mt-2 flex-row items-center justify-between gap-4">
@@ -101,12 +101,12 @@ export default function ConvertPriceScreen() {
           keyboardType="decimal-pad"
           selectTextOnFocus
           accessibilityLabel={`Price in ${from}`}
-          className="flex-1 text-right text-[52px] text-[#0E0F0C]"
+          className="flex-1 text-right text-[40px] text-[#0E0F0C]"
           style={DISPLAY}
         />
       </View>
 
-      <Typography weight="500" className="mt-8 text-[17px] text-black/70">
+      <Typography weight="500" className="mt-7 text-[14px] text-black/60">
         You pay
       </Typography>
       <View className="mt-2 flex-row items-center justify-between gap-4">
@@ -115,7 +115,7 @@ export default function ConvertPriceScreen() {
           numberOfLines={1}
           adjustsFontSizeToFit
           accessibilityLabel={`${formatCurrencyAmount(usd, "USD")} US dollars`}
-          className="flex-1 text-right text-[52px] text-[#0E0F0C]"
+          className="flex-1 text-right text-[40px] text-[#0E0F0C]"
           style={DISPLAY}
         >
           {formatCurrencyAmount(usd, "USD")}
@@ -124,14 +124,14 @@ export default function ConvertPriceScreen() {
 
       <View className="mt-8 border-t border-black/[0.08] pt-6">
         <View className="flex-row items-center justify-between">
-          <Typography weight="600" className="text-[17px] text-[#0E0F0C]">
+          <Typography weight="600" className="text-[15px] text-[#0E0F0C]">
             Exchange rate
           </Typography>
-          <Typography weight="600" className="text-[17px] text-[#0E0F0C]">
+          <Typography weight="600" className="text-[15px] text-[#0E0F0C]">
             {formatCodeRate(from, rate)}
           </Typography>
         </View>
-        <Typography weight="500" className="mt-2 text-[14px] text-black/45">
+        <Typography weight="500" className="mt-1.5 text-[12px] text-black/45">
           {"Today's reference rate."}
         </Typography>
       </View>
@@ -166,12 +166,12 @@ function CurrencyChip({
       }
       disabled={!onPress}
       onPress={onPress}
-      className="flex-row items-center gap-2 rounded-full bg-black/[0.05] py-3 pl-4 pr-4"
+      className="flex-row items-center gap-1.5 rounded-full bg-black/[0.05] px-3.5 py-2.5"
     >
-      <Typography weight="600" className="text-[18px] text-[#0E0F0C]">
+      <Typography weight="600" className="text-[15px] text-[#0E0F0C]">
         {code}
       </Typography>
-      {onPress ? <Ionicons name="chevron-down" size={18} color={INK} /> : null}
+      {onPress ? <Ionicons name="chevron-down" size={16} color={INK} /> : null}
     </HapticPressable>
   );
 }
@@ -199,7 +199,7 @@ function CurrencyPicker({
     >
       <View className="flex-1 bg-white px-5 pt-6">
         <View className="flex-row items-center justify-between">
-          <Typography weight="700" className="text-[22px] text-[#0E0F0C]">
+          <Typography weight="700" className="text-[18px] text-[#0E0F0C]">
             Choose a currency
           </Typography>
           <HapticPressable
@@ -224,10 +224,10 @@ function CurrencyPicker({
               className="flex-row items-center justify-between py-4"
             >
               <View>
-                <Typography weight="600" className="text-[17px] text-[#0E0F0C]">
+                <Typography weight="600" className="text-[15px] text-[#0E0F0C]">
                   {item}
                 </Typography>
-                <Typography weight="500" className="text-[14px] text-black/50">
+                <Typography weight="500" className="text-[13px] text-black/50">
                   {currencyName(item)}
                 </Typography>
               </View>
