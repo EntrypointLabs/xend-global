@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { FlatList, Modal, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
@@ -17,18 +18,39 @@ import {
   startingPrice,
 } from "@/utils/displayRates";
 import { cn } from "@/utils/cn";
+import { currencyCountry, currencyName } from "@/utils/currencies";
+import { FLAG_IMAGES } from "@/utils/flagImages";
 
 const INK = "#0E0F0C";
 const DISPLAY = { fontFamily: "Montserrat_900Black" } as const;
 
-const currencyName = (() => {
-  try {
-    const names = new Intl.DisplayNames(["en"], { type: "currency" });
-    return (code: string) => names.of(code) ?? code;
-  } catch {
-    return (code: string) => code;
+/** A currency's round flag, or a globe where no one country fits. */
+function CurrencyFlag({ code, size }: { code: string; size: number }) {
+  const country = currencyCountry(code);
+  const source = country ? FLAG_IMAGES[country] : undefined;
+  if (source) {
+    return (
+      <View
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        className="overflow-hidden rounded-full border border-black/[0.08]"
+        style={{ width: size, height: size }}
+      >
+        <Image source={source} style={{ width: "100%", height: "100%" }} />
+      </View>
+    );
   }
-})();
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      className="items-center justify-center rounded-full bg-black/[0.06]"
+      style={{ width: size, height: size }}
+    >
+      <Ionicons name="globe-outline" size={size * 0.6} color={INK} />
+    </View>
+  );
+}
 
 /**
  * What a price in front of you costs in dollars, at the rate the country card
@@ -166,8 +188,9 @@ function CurrencyChip({
       }
       disabled={!onPress}
       onPress={onPress}
-      className="flex-row items-center gap-1.5 rounded-full bg-black/[0.05] px-3.5 py-2.5"
+      className="flex-row items-center gap-2 rounded-full bg-black/[0.05] py-2 pl-2 pr-3.5"
     >
+      <CurrencyFlag code={code} size={26} />
       <Typography weight="600" className="text-[15px] text-[#0E0F0C]">
         {code}
       </Typography>
@@ -221,14 +244,16 @@ function CurrencyPicker({
               accessibilityRole="button"
               accessibilityState={{ selected: item === current }}
               onPress={() => onPick(item)}
-              className="flex-row items-center justify-between py-4"
+              accessibilityLabel={`${currencyName(item)}, ${item}`}
+              className="flex-row items-center gap-3.5 py-3"
             >
-              <View>
+              <CurrencyFlag code={item} size={36} />
+              <View className="flex-1">
                 <Typography weight="600" className="text-[15px] text-[#0E0F0C]">
-                  {item}
+                  {currencyName(item)}
                 </Typography>
                 <Typography weight="500" className="text-[13px] text-black/50">
-                  {currencyName(item)}
+                  {item}
                 </Typography>
               </View>
               <Ionicons
