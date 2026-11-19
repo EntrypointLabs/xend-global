@@ -1,4 +1,4 @@
-name: TestFlight Public Beta
+name: TestFlight external testers
 
 # Runs once App Store Connect finishes receiving a build that testflight.yml
 # uploaded. Distributing by App Store Connect build ID keeps this on the free
@@ -10,8 +10,8 @@ on:
 
 jobs:
   distribute:
-    name: Send to Public Beta
+    name: Send to external testers
     type: testflight
     params:
       asc_build_id: ${{ app_store_connect.build_upload.build.id }}
-      external_groups: ['Public Beta']
+      external_groups: ['first testers external']
