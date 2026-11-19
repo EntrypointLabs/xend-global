@@ -483,6 +483,50 @@ describe('TailerService arrival notices', () => {
     });
   });
 
+  it('groups the digits of a large arrival', async () => {
+    const { db } = makeFakeDb();
+    const notifications = fakeNotifications();
+    const tailer = new TailerService(db, fakePriceProvider(), notifications, {
+      symbolFor: jest.fn().mockResolvedValue('USDC'),
+    } as unknown as TokenNamer);
+
+    await tailer.upsertConfirmedTransfer(
+      arrival({ mint: 'UsdcMint', amountRaw: 1_234_567_500_000n, decimals: 6 }),
+      'sa_1',
+      OWNED_WALLET,
+    );
+
+    expect(notifications.notifyArrival).toHaveBeenCalledWith({
+      smartAccountId: 'sa_1',
+      amount: '1,234,567.5 USDC',
+    });
+  });
+
+  it.each([
+    [4_999_108n, 6, '4.99 USDC'],
+    [10_000_000n, 6, '10 USDC'],
+    [4_900_000n, 6, '4.9 USDC'],
+    [1_500_000n, 9, '0.0015 USDC'],
+    [1_234_567n, 9, '0.0012 USDC'],
+  ])('shows %s at %s decimals as %s', async (amountRaw, decimals, expected) => {
+    const { db } = makeFakeDb();
+    const notifications = fakeNotifications();
+    const tailer = new TailerService(db, fakePriceProvider(), notifications, {
+      symbolFor: jest.fn().mockResolvedValue('USDC'),
+    } as unknown as TokenNamer);
+
+    await tailer.upsertConfirmedTransfer(
+      arrival({ mint: 'UsdcMint', amountRaw, decimals }),
+      'sa_1',
+      OWNED_WALLET,
+    );
+
+    expect(notifications.notifyArrival).toHaveBeenCalledWith({
+      smartAccountId: 'sa_1',
+      amount: expected,
+    });
+  });
+
   it('announces the amount alone when nothing can name the mint', async () => {
     const { db } = makeFakeDb();
     const notifications = fakeNotifications();
@@ -726,6 +770,71 @@ describe('EventParser.parseDecoded', () => {
     expect(events).toEqual([]);
   });
 
+  it("takes a mint's decimals from accountData, as a real delivery states them", () => {
+    const USDC = 'UsdcMint00000000000000000000000000000000000';
+    const events = parser.parseDecoded([
+      {
+        signature: 'sig-real-shape',
+        slot: 1,
+        timestamp: 1717090000,
+        transactionError: null,
+        tokenTransfers: [
+          {
+            fromUserAccount: SENDER_WALLET,
+            toUserAccount: OWNED_WALLET,
+            mint: USDC,
+            tokenAmount: 4.999108,
+          },
+        ],
+        accountData: [
+          {
+            account: 'ownedTokenAccount',
+            tokenBalanceChanges: [
+              {
+                mint: USDC,
+                rawTokenAmount: { tokenAmount: '4999108', decimals: 6 },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(events[0].amountRaw).toBe(4_999_108n);
+    expect(events[0].decimals).toBe(6);
+  });
+
+  it('scales a non-6-decimal mint by its own decimals', () => {
+    const events = parser.parseDecoded([
+      {
+        signature: 'sig-nine',
+        slot: 1,
+        timestamp: 1717090000,
+        transactionError: null,
+        tokenTransfers: [
+          {
+            fromUserAccount: SENDER_WALLET,
+            toUserAccount: OWNED_WALLET,
+            mint: 'nineDecimalMint',
+            tokenAmount: 2.5,
+          },
+        ],
+        accountData: [
+          {
+            account: 'ownedTokenAccount',
+            tokenBalanceChanges: [
+              {
+                mint: 'nineDecimalMint',
+                rawTokenAmount: { tokenAmount: '-2500000000', decimals: 9 },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(events[0].amountRaw).toBe(2_500_000_000n);
+    expect(events[0].decimals).toBe(9);
+  });
+
   it('reconstructs amountRaw from float when rawTokenAmount missing', () => {
     const events = parser.parseDecoded([
       {
@@ -739,13 +848,14 @@ describe('EventParser.parseDecoded', () => {
             toUserAccount: OWNED_WALLET,
             mint: 'm',
             tokenAmount: 2.5,
-            // no rawTokenAmount; default 6 decimals
+            // no rawTokenAmount and no accountData: 6 is assumed, not recorded
           },
         ],
       },
     ]);
     expect(events).toHaveLength(1);
     expect(events[0].amountRaw).toBe(2_500_000n);
+    expect(events[0].decimals).toBeNull();
   });
 });
 
