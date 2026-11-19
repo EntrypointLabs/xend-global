@@ -18,10 +18,9 @@ import { useInvestments } from "@/hooks/useInvestments";
 import { useSendGate } from "@/hooks/useSendGate";
 import { formatMoney } from "@/utils/balances";
 import { useBalances } from "@/hooks/useBalances";
-import { useHomeWidgets } from "@/hooks/useHomeWidgets";
 import { useCollapseOnScroll } from "@/hooks/useTabBarCollapse";
 import { CountryAccountWidget } from "@/components/ui/organisms/home/CountryAccountWidget";
-import { WidgetsModal } from "@/components/ui/organisms/home/WidgetsModal";
+import { BankDetailsSheet } from "@/components/ui/organisms/modals/BankDetailsSheet";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useWalletName } from "@/hooks/useWalletName";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
@@ -108,8 +107,7 @@ function HomeScreenContent() {
     maximumFractionDigits: 2,
   });
   const address = useWalletAddress();
-  const { visibility, setVisible } = useHomeWidgets();
-  const [widgetsOpen, setWidgetsOpen] = useState(false);
+  const accountDetailsRef = useRef<BottomSheetModal>(null);
   const { name: walletName } = useWalletName();
   const sendFlowModalRef = useRef<BottomSheetModal>(null);
   const [sendMode, setSendMode] = useState<SendMode>("crypto");
@@ -273,7 +271,7 @@ function HomeScreenContent() {
               style={{ marginBottom: size(SECTION_GAP) }}
             />
 
-            {countryCard && visibility.country ? (
+            {countryCard ? (
               <View
                 style={{
                   marginTop: size(CARD_DROP),
@@ -295,26 +293,20 @@ function HomeScreenContent() {
 
             <HapticPressable
               accessibilityRole="button"
-              accessibilityLabel="Add widgets"
-              onPress={() => setWidgetsOpen(true)}
+              accessibilityLabel="Account details"
+              onPress={() => accountDetailsRef.current?.present()}
               className={cn(
                 "mb-6 flex-row items-center gap-1.5 self-center rounded-full px-5 py-3",
                 S.quietPill
               )}
             >
-              <Ionicons name="add" size={18} color={S.colors.ink} />
+              <Ionicons name="wallet-outline" size={17} color={S.colors.ink} />
               <Typography weight="600" className={cn("text-sm", S.ink)}>
-                Add widgets
+                Account details
               </Typography>
             </HapticPressable>
           </ScrollView>
-          <WidgetsModal
-            visible={widgetsOpen}
-            onClose={() => setWidgetsOpen(false)}
-            visibility={visibility}
-            card={countryCard}
-            onChange={setVisible}
-          />
+          <BankDetailsSheet ref={accountDetailsRef} variant="account" />
           <SendModal
             visible={isSendModalVisible}
             onClose={hideAllModals}
