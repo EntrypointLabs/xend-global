@@ -1,4 +1,8 @@
-import { currencyCountry, currencyName } from "@/utils/currencies";
+import {
+  currencyCountry,
+  currencyFlagUrl,
+  currencyName,
+} from "@/utils/currencies";
 
 describe("currencyName", () => {
   it("names a currency in full", () => {
@@ -24,5 +28,16 @@ describe("currencyCountry", () => {
 
   it("has no flag for a currency without a country", () => {
     expect(currencyCountry("XDR")).toBeNull();
+  });
+});
+
+describe("currencyFlagUrl", () => {
+  it("points at the served round flag", () => {
+    expect(currencyFlagUrl("NGN")).toBe("https://prydd.co/flags/v1/ng.webp");
+    expect(currencyFlagUrl("EUR")).toBe("https://prydd.co/flags/v1/eu.webp");
+  });
+
+  it("has none for a currency without a country", () => {
+    expect(currencyFlagUrl("XDR")).toBeNull();
   });
 });
