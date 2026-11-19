@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Redirect, Slot, useSegments } from "expo-router";
+import { Redirect, Stack, useSegments } from "expo-router";
 import { AppState, AppStateStatus, LogBox, Platform, View } from "react-native";
 import { SEED_DEMO } from "@/utils/devSeed";
 
@@ -121,6 +121,20 @@ if (SENTRY_ENABLED) {
   });
 }
 
+const FULL_SCREEN_ROUTES = [
+  "do-more/index",
+  "do-more/[feature]",
+  "split-bill",
+  "convert-price",
+  "find-atm",
+] as const;
+
+const SLIDE_OVER = {
+  animation: "slide_from_right",
+  gestureEnabled: true,
+  fullScreenGestureEnabled: true,
+} as const;
+
 function AuthLayout() {
   const segments = useSegments();
   const { isAuthenticated, needsContactEmail } = useAuth();
@@ -143,7 +157,13 @@ function AuthLayout() {
         <ModalFlowProvider>
           <ToastProvider>
             <BlurTargetHost>
-              <Slot />
+              {/* Every route switches in place as before; the full-screen
+              feature pages slide over Home and swipe back to it. */}
+              <Stack screenOptions={{ headerShown: false, animation: "none" }}>
+                {FULL_SCREEN_ROUTES.map((name) => (
+                  <Stack.Screen key={name} name={name} options={SLIDE_OVER} />
+                ))}
+              </Stack>
             </BlurTargetHost>
             <StatusBar
               style={colorScheme === "dark" || onPhoto ? "light" : "dark"}

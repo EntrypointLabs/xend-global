@@ -94,3 +94,28 @@ export function formatLocalAmount(
 ): string {
   return money(localSymbol, amount(usd * perUsd, currency));
 }
+
+/** An amount in a currency's own minor units, without a symbol: "1,530.25". */
+export function formatCurrencyAmount(value: number, currency: string): string {
+  return amount(value, currency);
+}
+
+/**
+ * The same rate as `formatRateLabel`, written with codes for screens that show
+ * the currency beside it: "1 GBP = 1.32 USD", "1 USD = 1,530.25 NGN".
+ */
+export function formatCodeRate(currency: string, perUsd: number): string {
+  return perUsd >= 1
+    ? `1 USD = ${amount(perUsd, currency)} ${currency}`
+    : `1 ${currency} = ${amount(1 / perUsd)} USD`;
+}
+
+/**
+ * A round price that means something in the currency: 1 where a unit is worth
+ * about a dollar or more, otherwise the next power of ten above a dollar's
+ * worth, so naira opens on 10,000 rather than a price that converts to $0.00.
+ */
+export function startingPrice(perUsd: number): string {
+  const value = perUsd < 10 ? 1 : 10 ** Math.ceil(Math.log10(perUsd));
+  return value.toLocaleString("en-US");
+}

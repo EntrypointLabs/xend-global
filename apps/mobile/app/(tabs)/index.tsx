@@ -20,7 +20,10 @@ import { formatMoney } from "@/utils/balances";
 import { useBalances } from "@/hooks/useBalances";
 import { useHomeWidgets } from "@/hooks/useHomeWidgets";
 import { useCollapseOnScroll } from "@/hooks/useTabBarCollapse";
-import { CountryAccountWidget } from "@/components/ui/organisms/home/CountryAccountWidget";
+import {
+  CountryAccountWidget,
+  type CountryWidgetAction,
+} from "@/components/ui/organisms/home/CountryAccountWidget";
 import { WidgetsModal } from "@/components/ui/organisms/home/WidgetsModal";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useWalletName } from "@/hooks/useWalletName";
@@ -71,6 +74,13 @@ const NUDGE_ART: Record<NudgeKey, Pick<StatusItem, "art">> = {
   earn: { art: "earn" },
   "bank-payout": { art: "bank" },
 };
+
+const CARD_ACTION_ROUTES = {
+  atm: "/find-atm",
+  convert: "/convert-price",
+  split: "/split-bill",
+  more: "/do-more",
+} as const satisfies Record<CountryWidgetAction, string>;
 
 function HomeScreenContent() {
   const colorful = useColorfulTheme();
@@ -282,6 +292,7 @@ function HomeScreenContent() {
               >
                 <CountryAccountWidget
                   card={countryCard}
+                  onAction={(action) => router.push(CARD_ACTION_ROUTES[action])}
                   {...localLabels(
                     countryCard,
                     rates,
