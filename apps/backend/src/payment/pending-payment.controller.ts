@@ -33,6 +33,7 @@ import {
   IntentNotFoundError,
   IntentStateConflictError,
 } from './payment.errors';
+import { PayWithPryddEnabledGuard } from '../config/pay-with-prydd.guard';
 
 interface AuthenticatedRequest extends Request {
   user: { userId: string; walletAddress: string };
@@ -110,6 +111,7 @@ export class PendingPaymentController {
    * been spent on it.
    */
   @Post(':reference/prepare')
+  @UseGuards(PayWithPryddEnabledGuard)
   async prepare(
     @Req() req: AuthenticatedRequest,
     @Param('reference') reference: string,
@@ -149,6 +151,7 @@ export class PendingPaymentController {
   }
 
   @Post(':reference/submit')
+  @UseGuards(PayWithPryddEnabledGuard)
   async submit(
     @Req() req: AuthenticatedRequest,
     @Param('reference') reference: string,

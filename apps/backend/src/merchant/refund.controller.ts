@@ -27,6 +27,7 @@ import {
   RefundNotFoundError,
   RefundNotSupportedError,
 } from './merchant.errors';
+import { PayWithPryddEnabledGuard } from '../config/pay-with-prydd.guard';
 
 /**
  * Ops-initiated refund surface (InternalGuard). The merchants.prydd.co
@@ -35,7 +36,7 @@ import {
  * Idempotency-Key; without one it is refused before anything is read.
  */
 @Controller('internal')
-@UseGuards(InternalGuard)
+@UseGuards(InternalGuard, PayWithPryddEnabledGuard)
 export class RefundController {
   constructor(private readonly refunds: RefundService) {}
 
