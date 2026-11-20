@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Mark } from "./ui";
 
 export function MerchantSessionBoundary({
   ready,
@@ -18,6 +19,7 @@ export function MerchantSessionBoundary({
         aria-busy="true"
         aria-label="Loading Merchant workspace"
       >
+        <Mark size={28} />
         <p role="status">Loading your dashboard...</p>
       </main>
     );

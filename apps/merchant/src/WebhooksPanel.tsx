@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { PortalClient } from "./portal";
+import { formatWhen } from "./PaymentsPanel";
+import { deliveryLabel } from "./PaymentDetail";
+import {
+  CodeTabs,
+  ErrorCard,
+  Icon,
+  PageHeader,
+  SkeletonRows,
+  StatusChip,
+} from "./ui";
 
 export type WebhookEndpoint = {
   id: string;
@@ -22,9 +32,10 @@ type Delivery = {
   createdAt: string;
 };
 
-function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleString();
-}
+// Delivery runs off the event bus, which production keeps off for now; the
+// page must not imply endpoints receive events until it is switched on.
+const DELIVERY_ENABLED =
+  import.meta.env.VITE_WEBHOOK_DELIVERY_ENABLED === "true";
 
 export function WebhooksPanel({
   client,
@@ -140,30 +151,48 @@ export function WebhooksPanel({
   }
 
   return (
-    <section className="panel webhooks-workspace" aria-busy={busy}>
-      <div className="workspace-page-title">
-        <h1>Webhooks</h1>
-        <p>
-          Prydd posts a signed event to your endpoint for each Payment outcome,
-          including <code>payment.succeeded</code>, <code>payment.failed</code>{" "}
-          and <code>payment.expired</code>. Verify the signature and confirm the
-          type is <code>payment.succeeded</code> before fulfilling an order; a
-          failed or expired event is signed too, and a browser redirect alone is
-          not proof of payment.
-        </p>
-      </div>
+    <section className="webhooks-workspace" aria-busy={busy}>
+      <PageHeader
+        eyebrow="Developers"
+        title="Webhooks"
+        description={
+          <>
+            Prydd posts a signed event to your endpoint for each Payment
+            outcome, including <code>payment.succeeded</code>,{" "}
+            <code>payment.failed</code> and <code>payment.expired</code>. Verify
+            the signature and confirm the type is <code>payment.succeeded</code>{" "}
+            before fulfilling an order; a failed or expired event is signed too,
+            and a browser redirect alone is not proof of payment.
+          </>
+        }
+      />
+
+      {!DELIVERY_ENABLED && (
+        <div className="notice" role="note">
+          <Icon name="info" />
+          <div>
+            <strong>Event delivery is not switched on yet</strong>
+            Endpoints you add are saved and start receiving signed events once
+            delivery opens. Until then, confirm each Payment from your server
+            with <code>GET /v1/payment_intents/:id</code>.
+          </div>
+        </div>
+      )}
 
       {error && (
-        <p className="error" role="alert">
+        <p className="banner-error" role="alert">
           {error}
         </p>
       )}
 
-      <form className="webhook-create" onSubmit={(e) => void create(e)}>
-        <div className="section-head">
-          <h2>Add an endpoint</h2>
+      <section className="card">
+        <div className="card-head">
+          <div>
+            <h2>Add an endpoint</h2>
+            <p>HTTPS only. Private and loopback addresses are rejected.</p>
+          </div>
         </div>
-        <div className="webhook-create-fields">
+        <form className="webhook-create" onSubmit={(e) => void create(e)}>
           <label>
             Endpoint URL
             <input
@@ -173,19 +202,11 @@ export function WebhooksPanel({
               placeholder="https://your-store.com/webhooks/prydd"
               onChange={(e) => setUrl(e.target.value)}
             />
-            <small>
-              HTTPS only. Private and loopback addresses are rejected.
-            </small>
           </label>
           <label>
             Mode
             {cluster === "devnet" ? (
-              <>
-                <input type="text" value="Test" readOnly />
-                <small>
-                  On devnet, execution webhooks are delivered to test endpoints.
-                </small>
-              </>
+              <input type="text" value="Test" readOnly />
             ) : (
               <select
                 value={mode}
@@ -196,34 +217,61 @@ export function WebhooksPanel({
               </select>
             )}
           </label>
-        </div>
-        <div className="actions">
-          <button disabled={busy || revealActive}>Add endpoint</button>
-        </div>
-      </form>
+          <button disabled={busy || revealActive}>
+            <Icon name="plus" size={15} />
+            Add endpoint
+          </button>
+        </form>
+        {cluster === "devnet" && (
+          <p className="footnote spaced">
+            On devnet, execution webhooks are delivered to test endpoints.
+          </p>
+        )}
+      </section>
 
-      {status === "loading" && <p role="status">Loading endpoints…</p>}
-      {status === "error" && (
-        <button className="secondary" onClick={() => void load()}>
-          Try again
-        </button>
-      )}
-      {status === "ready" && endpoints && endpoints.length === 0 && (
-        <p>No endpoints yet. Add one to start receiving signed events.</p>
-      )}
-
-      <div className="key-cards">
-        {endpoints?.map((endpoint) => (
-          <WebhookCard
-            key={endpoint.id}
-            endpoint={endpoint}
-            client={client}
-            busy={busy || revealActive}
-            onRotate={() => void rotate(endpoint.id)}
-            onDelete={() => void remove(endpoint.id)}
+      <section className="section">
+        <div className="section-label">
+          <h2>Endpoints</h2>
+        </div>
+        {status === "loading" && <SkeletonRows rows={2} />}
+        {status === "error" && (
+          <ErrorCard
+            title="Could not load endpoints"
+            message={error}
+            onRetry={() => void load()}
           />
-        ))}
-      </div>
+        )}
+        {status === "ready" && endpoints && endpoints.length === 0 && (
+          <div className="integrate">
+            <div className="empty start">
+              <div className="empty-icon">
+                <Icon name="webhook" />
+              </div>
+              <strong>No endpoints yet</strong>
+              <p>
+                Add one to receive signed events. Your handler verifies the
+                signature with the secret you get once, then acts only on{" "}
+                <code>payment.succeeded</code>.
+              </p>
+            </div>
+            <CodeTabs tabs={["verify"]} label="Webhook handler" />
+          </div>
+        )}
+        {endpoints && endpoints.length > 0 && (
+          <div className="endpoints">
+            {endpoints.map((endpoint) => (
+              <WebhookCard
+                key={endpoint.id}
+                endpoint={endpoint}
+                client={client}
+                busy={busy || revealActive}
+                onRotate={() => void rotate(endpoint.id)}
+                onDelete={() => void remove(endpoint.id)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
     </section>
   );
 }
@@ -275,28 +323,30 @@ function WebhookCard({
   }
 
   return (
-    <article className="key-card webhook-card">
-      <div className="section-head">
-        <h3 className="webhook-url">{endpoint.url}</h3>
-        <span className="badge">
+    <article className="endpoint">
+      <div className="endpoint-head">
+        <div>
+          <h3 className="endpoint-url">{endpoint.url}</h3>
+          <p className="endpoint-meta">
+            Added {formatWhen(endpoint.createdAt)}
+            {endpoint.eventTypes
+              ? ` · ${endpoint.eventTypes.join(", ")}`
+              : " · all event types"}
+            {endpoint.secondaryExpiresAt
+              ? ` · previous secret valid until ${formatWhen(endpoint.secondaryExpiresAt)}`
+              : ""}
+          </p>
+        </div>
+        <span className="chip plain">
           {endpoint.mode === "live" ? "Live" : "Test"}
         </span>
       </div>
-      <small>
-        Added {formatWhen(endpoint.createdAt)}
-        {endpoint.eventTypes
-          ? ` · ${endpoint.eventTypes.join(", ")}`
-          : " · all event types"}
-        {endpoint.secondaryExpiresAt
-          ? ` · previous secret valid until ${formatWhen(endpoint.secondaryExpiresAt)}`
-          : ""}
-      </small>
-      <div className="webhook-actions actions">
-        <button className="secondary" disabled={busy} onClick={onRotate}>
+      <div className="actions">
+        <button className="secondary small" disabled={busy} onClick={onRotate}>
           Rotate secret
         </button>
         <button
-          className="secondary"
+          className="secondary small"
           disabled={loadingDeliveries}
           onClick={() => void loadDeliveries(true)}
         >
@@ -304,67 +354,77 @@ function WebhookCard({
         </button>
         {confirming ? (
           <>
-            <button className="secondary" disabled={busy} onClick={onDelete}>
+            <button className="danger small" disabled={busy} onClick={onDelete}>
               Confirm delete
             </button>
-            <button className="secondary" onClick={() => setConfirming(false)}>
+            <button
+              className="quiet small"
+              onClick={() => setConfirming(false)}
+            >
               Keep
             </button>
           </>
         ) : (
-          <button className="secondary" onClick={() => setConfirming(true)}>
+          <button className="quiet small" onClick={() => setConfirming(true)}>
             Delete
           </button>
         )}
       </div>
       {deliveryError && (
-        <p className="error" role="alert">
+        <p className="inline-error" role="alert">
           {deliveryError}
         </p>
       )}
       {deliveries && (
-        <div className="webhook-deliveries">
+        <div className="deliveries">
           {deliveries.length === 0 ? (
             <p>No deliveries yet.</p>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Event</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Attempt</th>
-                  <th scope="col">HTTP</th>
-                  <th scope="col">When</th>
-                </tr>
-              </thead>
-              <tbody>
-                {deliveries.map((delivery) => (
-                  <tr key={delivery.id}>
-                    <td>{delivery.eventType}</td>
-                    <td>
-                      <span
-                        className="payment-status"
-                        data-status={delivery.status}
-                      >
-                        {delivery.status}
-                      </span>
-                    </td>
-                    <td>{delivery.attemptNo}</td>
-                    <td>{delivery.responseStatus ?? "—"}</td>
-                    <td>{formatWhen(delivery.createdAt)}</td>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Event</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Attempt</th>
+                    <th scope="col">HTTP</th>
+                    <th scope="col">When</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {deliveries.map((delivery) => (
+                    <tr key={delivery.id}>
+                      <td>
+                        <code>{delivery.eventType}</code>
+                      </td>
+                      <td>
+                        <StatusChip status={delivery.status}>
+                          {deliveryLabel(delivery.status)}
+                        </StatusChip>
+                      </td>
+                      <td className="muted-cell">{delivery.attemptNo}</td>
+                      <td className="muted-cell">
+                        {delivery.responseStatus ?? "None"}
+                      </td>
+                      <td className="muted-cell">
+                        {formatWhen(delivery.createdAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
           {cursor && (
-            <button
-              className="secondary"
-              disabled={loadingDeliveries}
-              onClick={() => void loadDeliveries(false)}
-            >
-              {loadingDeliveries ? "Loading…" : "Load more"}
-            </button>
+            <div className="table-foot">
+              <button
+                className="secondary small"
+                disabled={loadingDeliveries}
+                onClick={() => void loadDeliveries(false)}
+              >
+                {loadingDeliveries ? "Loading…" : "Load more"}
+              </button>
+            </div>
           )}
         </div>
       )}

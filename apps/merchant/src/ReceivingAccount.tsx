@@ -1,5 +1,31 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import type { PortalClient } from "./portal";
+import { CopyButton } from "./ui";
+
+function ReceivingSection({
+  subtitle,
+  connected,
+  children,
+}: {
+  subtitle: string;
+  connected: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section className="settings-section">
+      <header>
+        <h2>Receiving account</h2>
+        <p>{subtitle}</p>
+        {connected && (
+          <span className="chip" data-tone="success">
+            Connected
+          </span>
+        )}
+      </header>
+      <div className="settings-body">{children}</div>
+    </section>
+  );
+}
 
 export type Destination = {
   address: string | null;
@@ -46,33 +72,42 @@ export function ReceivingAccount(props: {
   if (destination?.bankAccount) {
     const bank = destination.bankAccount;
     return (
-      <section className="panel">
-        <p className="eyebrow">01 / RECEIVING ACCOUNT</p>
-        <h2>Receiving account connected.</h2>
-        <p>Payments are paid out in naira to this bank account.</p>
+      <ReceivingSection
+        subtitle="Payments are paid out in naira to this bank account."
+        connected
+      >
         <dl className="bank-account">
-          <dt>Account name</dt>
-          <dd>{bank.accountName}</dd>
-          <dt>Bank</dt>
-          <dd>{bank.bankName}</dd>
-          <dt>Account number</dt>
-          <dd>
-            <span aria-hidden="true">•••• </span>
-            <span className="visually-hidden">ending in </span>
-            {bank.accountLast4}
-          </dd>
+          <div>
+            <dt>Account name</dt>
+            <dd>{bank.accountName}</dd>
+          </div>
+          <div>
+            <dt>Bank</dt>
+            <dd>{bank.bankName}</dd>
+          </div>
+          <div>
+            <dt>Account number</dt>
+            <dd className="num">
+              <span aria-hidden="true">•••• </span>
+              <span className="visually-hidden">ending in </span>
+              {bank.accountLast4}
+            </dd>
+          </div>
         </dl>
-      </section>
+      </ReceivingSection>
     );
   }
 
   const choosing = !destination && props.nairaAvailable;
   return (
-    <section className="panel">
-      <p className="eyebrow">01 / RECEIVING ACCOUNT</p>
-      <h2>
-        {destination ? "Receiving account connected." : "Give payments a home."}
-      </h2>
+    <ReceivingSection
+      subtitle={
+        destination
+          ? "Where your USDC lands when a Payment confirms."
+          : "Choose where confirmed Payments land."
+      }
+      connected={Boolean(destination)}
+    >
       {choosing && (
         <fieldset className="settlement-choice">
           <legend>How you get paid</legend>
@@ -105,10 +140,16 @@ export function ReceivingAccount(props: {
         />
       ) : (
         <>
-          <p>Merchant-controlled USDC on Solana. Network: {props.cluster}.</p>
-          <code className="address">
-            {destination?.address ?? props.receivingWallet}
-          </code>
+          <p className="card-body">
+            Merchant-controlled USDC on Solana, {props.cluster}.
+          </p>
+          <div className="copy-field">
+            <code>{destination?.address ?? props.receivingWallet}</code>
+            <CopyButton
+              value={destination?.address ?? props.receivingWallet}
+              label="Copy address"
+            />
+          </div>
           {!destination && (
             <button
               disabled={busy}
@@ -119,12 +160,12 @@ export function ReceivingAccount(props: {
                 })
               }
             >
-              Initialize USDC account ↗
+              Initialize USDC account
             </button>
           )}
         </>
       )}
-    </section>
+    </ReceivingSection>
   );
 }
 

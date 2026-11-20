@@ -4,12 +4,19 @@ export function RevokeKey({
   fingerprint,
   onRevoke,
   disabled = false,
+  confirming,
+  onConfirmingChange,
 }: {
   fingerprint: string;
   onRevoke: () => Promise<void>;
   disabled?: boolean;
+  /** Lets the parent lay the confirmation out across the whole key row. */
+  confirming?: boolean;
+  onConfirmingChange?: (confirming: boolean) => void;
 }) {
-  const [confirming, setConfirming] = useState(false);
+  const [ownConfirming, setOwnConfirming] = useState(false);
+  const isConfirming = confirming ?? ownConfirming;
+  const setConfirming = onConfirmingChange ?? setOwnConfirming;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submitting = useRef(false);
@@ -33,43 +40,48 @@ export function RevokeKey({
     }
   }
 
-  return (
-    <div className="key-revoke">
-      {confirming ? (
-        <>
-          <p>
-            Revoke {fingerprint}? Integrations using this key will stop working.
-            This cannot be undone. Existing Payments are not cancelled.
-          </p>
-          <div className="actions">
-            <button type="button" disabled={busy} onClick={() => void revoke()}>
-              {busy ? "Revoking…" : "Confirm revocation"}
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy}
-              onClick={() => {
-                setConfirming(false);
-                setError("");
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-          {error && <p role="alert">{error}</p>}
-        </>
-      ) : (
+  return isConfirming ? (
+    <div className="key-revoke-confirm">
+      <p>
+        Revoke {fingerprint}? Integrations using this key will stop working.
+        This cannot be undone. Existing Payments are not cancelled.
+      </p>
+      <div className="actions">
         <button
           type="button"
-          className="secondary"
-          aria-label={`Revoke key ${fingerprint}`}
-          disabled={disabled}
-          onClick={() => setConfirming(true)}
+          className="danger small"
+          disabled={busy}
+          onClick={() => void revoke()}
         >
-          Revoke key
+          {busy ? "Revoking…" : "Confirm revocation"}
         </button>
+        <button
+          type="button"
+          className="secondary small"
+          disabled={busy}
+          onClick={() => {
+            setConfirming(false);
+            setError("");
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+      {error && (
+        <p className="inline-error" role="alert">
+          {error}
+        </p>
       )}
     </div>
+  ) : (
+    <button
+      type="button"
+      className="quiet small"
+      aria-label={`Revoke key ${fingerprint}`}
+      disabled={disabled}
+      onClick={() => setConfirming(true)}
+    >
+      Revoke
+    </button>
   );
 }

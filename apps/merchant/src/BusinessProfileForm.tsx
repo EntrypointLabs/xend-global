@@ -117,160 +117,173 @@ export function BusinessProfileForm({
     setEditing(false);
   }
   return (
-    <section className="panel business-profile">
-      <div className="section-head">
-        <div>
-          <h2>Business details</h2>
-          <p>Manage how your business appears and how to reach you.</p>
+    <section className="settings-section profile-card">
+      <header>
+        <h2>Business details</h2>
+        <p>How your business appears and how to reach you.</p>
+      </header>
+      <div className="settings-body">
+        <div className="profile-edit actions">
+          {!editing && (
+            <button
+              type="button"
+              className="secondary small"
+              onClick={() => {
+                setEditing(true);
+                setSaved(false);
+              }}
+            >
+              Edit business details
+            </button>
+          )}
         </div>
-        {!editing && (
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => {
-              setEditing(true);
-              setSaved(false);
-            }}
-          >
-            Edit business details
-          </button>
-        )}
-      </div>
-      <label>
-        Sign-in email
-        <input
-          value={merchant.signInEmail ?? "No email linked"}
-          readOnly
-          type="text"
-        />
-        <small>
-          From your verified sign-in identity. Editing business contact details
-          does not change your sign-in.
-        </small>
-      </label>
-      <form
-        onSubmit={async (event) => {
-          event.preventDefault();
-          if (!editing || submitting.current) return;
-          submitting.current = true;
-          setBusy(true);
-          setError("");
-          setFieldErrors({});
-          setSaved(false);
-          try {
-            const next = await onSave({
-              displayName,
-              profile,
-              expectedVersion: baseline.profileVersion,
-            });
-            setBaseline(next);
-            reset(next);
-            setSaved(true);
-          } catch (failure) {
-            if (failure instanceof PortalRequestError)
-              setFieldErrors(failure.fieldErrors);
-            setError(
-              failure instanceof Error
-                ? failure.message
-                : "Your changes could not be saved. Please try again.",
-            );
-          } finally {
-            submitting.current = false;
-            setBusy(false);
-          }
-        }}
-      >
-        <fieldset disabled={busy}>
-          <div className="profile-fields">
-            <label>
-              Business display name
-              <input
-                required
-                minLength={2}
-                maxLength={100}
-                value={displayName}
-                readOnly={!editing}
-                aria-invalid={Boolean(fieldErrors.displayName)}
-                aria-describedby={
-                  fieldErrors.displayName ? `${formId}-displayName` : undefined
-                }
-                onChange={(e) => {
-                  setDisplayName(e.target.value);
-                  setFieldErrors((previous) => ({
-                    ...previous,
-                    displayName: "",
-                  }));
-                }}
-              />
-              {fieldErrors.displayName && (
-                <small id={`${formId}-displayName`} className="field-error">
-                  {fieldErrors.displayName}
-                </small>
-              )}
-            </label>
-            {fields.map(([key, label, type, max]) => (
-              <label key={key}>
-                {label}
+        <label className="signin-email">
+          Sign-in email
+          <input
+            value={merchant.signInEmail ?? "No email linked"}
+            readOnly
+            type="text"
+          />
+          <small>
+            From your verified sign-in identity. Editing business contact
+            details does not change your sign-in.
+          </small>
+        </label>
+        <form
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (!editing || submitting.current) return;
+            submitting.current = true;
+            setBusy(true);
+            setError("");
+            setFieldErrors({});
+            setSaved(false);
+            try {
+              const next = await onSave({
+                displayName,
+                profile,
+                expectedVersion: baseline.profileVersion,
+              });
+              setBaseline(next);
+              reset(next);
+              setSaved(true);
+            } catch (failure) {
+              if (failure instanceof PortalRequestError)
+                setFieldErrors(failure.fieldErrors);
+              setError(
+                failure instanceof Error
+                  ? failure.message
+                  : "Your changes could not be saved. Please try again.",
+              );
+            } finally {
+              submitting.current = false;
+              setBusy(false);
+            }
+          }}
+        >
+          <fieldset disabled={busy}>
+            <div className="profile-fields">
+              <label className="span-2">
+                Business display name
                 <input
-                  type={type}
-                  maxLength={max}
-                  value={profile[key]}
-                  aria-invalid={Boolean(fieldErrors[`profile.${key}`])}
+                  required
+                  minLength={2}
+                  maxLength={100}
+                  value={displayName}
+                  readOnly={!editing}
+                  aria-invalid={Boolean(fieldErrors.displayName)}
                   aria-describedby={
-                    fieldErrors[`profile.${key}`]
-                      ? `${formId}-${key}`
+                    fieldErrors.displayName
+                      ? `${formId}-displayName`
                       : undefined
-                  }
-                  readOnly={
-                    !editing ||
-                    (key === "legalName" && merchant.kybStatus === "verified")
                   }
                   onChange={(e) => {
-                    setProfile({ ...profile, [key]: e.target.value });
+                    setDisplayName(e.target.value);
                     setFieldErrors((previous) => ({
                       ...previous,
-                      [`profile.${key}`]: "",
+                      displayName: "",
                     }));
                   }}
-                  placeholder={
-                    editing && key === "website"
-                      ? "https://your-business.com"
-                      : undefined
-                  }
                 />
-                {fieldErrors[`profile.${key}`] && (
-                  <small id={`${formId}-${key}`} className="field-error">
-                    {fieldErrors[`profile.${key}`]}
-                  </small>
-                )}
-                {key === "legalName" && merchant.kybStatus === "verified" && (
-                  <small>Changes require verification review.</small>
-                )}
-                {key === "contactEmail" && (
-                  <small>
-                    Contact information only; not a verified sign-in or recovery
-                    address.
+                {fieldErrors.displayName && (
+                  <small id={`${formId}-displayName`} className="field-error">
+                    {fieldErrors.displayName}
                   </small>
                 )}
               </label>
-            ))}
-          </div>
-          {editing && (
-            <div className="actions">
-              <button type="submit">{busy ? "Saving…" : "Save changes"}</button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => reset(baseline)}
-              >
-                Cancel
-              </button>
+              {fields.map(([key, label, type, max]) => (
+                <label
+                  key={key}
+                  className={
+                    key === "legalName" || key === "website"
+                      ? "span-2"
+                      : undefined
+                  }
+                >
+                  {label}
+                  <input
+                    type={type}
+                    maxLength={max}
+                    value={profile[key]}
+                    aria-invalid={Boolean(fieldErrors[`profile.${key}`])}
+                    aria-describedby={
+                      fieldErrors[`profile.${key}`]
+                        ? `${formId}-${key}`
+                        : undefined
+                    }
+                    readOnly={
+                      !editing ||
+                      (key === "legalName" && merchant.kybStatus === "verified")
+                    }
+                    onChange={(e) => {
+                      setProfile({ ...profile, [key]: e.target.value });
+                      setFieldErrors((previous) => ({
+                        ...previous,
+                        [`profile.${key}`]: "",
+                      }));
+                    }}
+                    placeholder={
+                      editing && key === "website"
+                        ? "https://your-business.com"
+                        : undefined
+                    }
+                  />
+                  {fieldErrors[`profile.${key}`] && (
+                    <small id={`${formId}-${key}`} className="field-error">
+                      {fieldErrors[`profile.${key}`]}
+                    </small>
+                  )}
+                  {key === "legalName" && merchant.kybStatus === "verified" && (
+                    <small>Changes require verification review.</small>
+                  )}
+                  {key === "contactEmail" && (
+                    <small>
+                      Contact information only; not a verified sign-in or
+                      recovery address.
+                    </small>
+                  )}
+                </label>
+              ))}
             </div>
-          )}
-        </fieldset>
-        {error && <p role="alert">{error}</p>}
-        {saved && <p role="status">Business details saved.</p>}
-      </form>
+            {editing && (
+              <div className="actions">
+                <button type="submit">
+                  {busy ? "Saving…" : "Save changes"}
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => reset(baseline)}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </fieldset>
+          {error && <p role="alert">{error}</p>}
+          {saved && <p role="status">Business details saved.</p>}
+        </form>
+      </div>
     </section>
   );
 }
