@@ -1,19 +1,19 @@
 import type { Metadata, Viewport } from "next";
-import { Montserrat, JetBrains_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Montserrat } from "next/font/google";
 import Link from "next/link";
 import { CartProvider } from "@/components/CartProvider";
 import { Header } from "@/components/Header";
 import "./globals.css";
 
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-geist-mono",
+});
 const montserrat = Montserrat({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["500"],
   variable: "--font-montserrat",
-});
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-mono",
 });
 
 export const metadata: Metadata = {
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   icons: { icon: "/icon.svg" },
 };
 
-export const viewport: Viewport = { themeColor: "#f4f4f4" };
+export const viewport: Viewport = { themeColor: "#ffffff" };
 
 export default function RootLayout({
   children,
@@ -30,22 +30,25 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${montserrat.variable} ${mono.variable}`}>
+    <html
+      lang="en"
+      className={`${geist.variable} ${geistMono.variable} ${montserrat.variable}`}
+    >
       <body className="font-sans">
         <CartProvider>
           <Header />
-          <main className="pb-24">{children}</main>
-          <footer className="border-t border-line">
-            <div className="mx-auto flex max-w-[1320px] flex-col gap-3 px-5 py-10 text-[12px] text-mute sm:flex-row sm:items-center sm:justify-between sm:px-8">
-              <p>
-                A working store. Real USDC, real stock, settled on Solana
-                through Pay with Prydd.
+          <main>{children}</main>
+          <footer className="bg-night text-night-mute">
+            <div className="flex flex-col gap-4 px-4 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <p className="font-brand text-[13px] tracking-[0.24em] text-night-text">
+                PRYDD
               </p>
-              <div className="flex gap-5">
-                <Link href="/orders" className="hover:text-ink">
+              <div className="label flex flex-wrap gap-x-6 gap-y-2">
+                <span>Settled in USDC on Solana</span>
+                <Link href="/orders" className="hover:text-night-text">
                   Find an order
                 </Link>
-                <a href="https://prydd.co" className="hover:text-ink">
+                <a href="https://prydd.co" className="hover:text-night-text">
                   prydd.co
                 </a>
               </div>

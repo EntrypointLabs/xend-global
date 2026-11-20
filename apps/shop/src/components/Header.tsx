@@ -1,41 +1,66 @@
 "use client";
 
 import Link from "next/link";
-import { Lockup } from "./Logo";
+import { usePathname } from "next/navigation";
+import { Symbol } from "./Logo";
 import { useBag } from "./CartProvider";
 
 export function Header() {
   const { count, ready } = useBag();
+  const home = usePathname() === "/";
   return (
-    <header className="sticky top-0 z-30 border-b border-line/70 bg-canvas/85 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-[1320px] items-center justify-between px-5 sm:px-8">
+    <header className="pointer-events-none fixed inset-x-0 top-0 z-30 text-white mix-blend-difference">
+      <div className="grid h-14 grid-cols-3 items-center px-4 sm:px-6">
+        <nav className="pointer-events-auto flex items-center gap-5 justify-self-start">
+          {home ? (
+            <Link href="/orders" className="label hover:opacity-60">
+              Orders
+            </Link>
+          ) : (
+            <Link
+              href="/"
+              className="label flex items-center gap-2 hover:opacity-60"
+              aria-label="Back to the store"
+            >
+              <svg
+                viewBox="0 0 16 16"
+                className="h-3.5 w-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M10 3 5 8l5 5" />
+              </svg>
+              Store
+            </Link>
+          )}
+        </nav>
         <Link
           href="/"
-          className="flex items-center gap-3"
+          className="pointer-events-auto justify-self-center"
           aria-label="Prydd Store home"
         >
-          <Lockup />
-          <span className="hidden border-l border-line pl-3 text-[13px] text-mute sm:inline">
-            Store
+          <Symbol className="h-[18px] w-auto" />
+        </Link>
+        <Link
+          href="/checkout"
+          className="label pointer-events-auto flex items-center gap-2 justify-self-end hover:opacity-60"
+          aria-label={`Bag, ${count} ${count === 1 ? "item" : "items"}`}
+        >
+          <svg
+            viewBox="0 0 16 16"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.3"
+          >
+            <path d="M3 5.5h10l-.7 8H3.7z" />
+            <path d="M5.5 5.5V4a2.5 2.5 0 0 1 5 0v1.5" />
+          </svg>
+          <span className="tnum min-w-[1ch]">
+            {ready && count > 0 ? count : ""}
           </span>
         </Link>
-        <nav className="flex items-center gap-1 text-[13px] font-medium">
-          <Link
-            href="/orders"
-            className="rounded-full px-3.5 py-2 text-ink/70 transition-colors hover:bg-canvas-2 hover:text-ink"
-          >
-            Orders
-          </Link>
-          <Link
-            href="/checkout"
-            className="flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-canvas transition-transform active:scale-[0.97]"
-          >
-            Bag
-            <span className="tnum min-w-[1ch] text-[12px] text-canvas/70">
-              {ready ? count : ""}
-            </span>
-          </Link>
-        </nav>
       </div>
     </header>
   );

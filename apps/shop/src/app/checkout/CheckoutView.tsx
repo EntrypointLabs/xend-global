@@ -90,18 +90,11 @@ export function CheckoutView({
 
   if (items.length === 0) {
     return (
-      <div className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center px-5 text-center">
-        <h1 className="text-[32px] font-medium tracking-[-0.02em]">
-          Nothing in here yet.
-        </h1>
-        <p className="mt-3 text-[15px] text-mute">
-          Fourteen objects, from an $8 sticker sheet to a $240 shell.
-        </p>
-        <Link
-          href="/"
-          className="mt-8 rounded-full bg-ink px-6 py-3 text-[14px] font-medium text-canvas"
-        >
-          Browse the issue
+      <div className="flex min-h-[80vh] flex-col items-center justify-center px-4 text-center">
+        <p className="label">Your bag is empty</p>
+        <p className="label mt-1 text-mute">Items you add will appear here</p>
+        <Link href="/" className="label mt-8 bg-ink px-6 py-3 text-white">
+          Continue shopping
         </Link>
       </div>
     );
@@ -141,111 +134,114 @@ export function CheckoutView({
     if (id) router.push(`/orders/${id}?from=${hint}`);
   };
 
+  const field =
+    "h-12 w-full border border-night-line bg-transparent px-3.5 text-[14px] text-night-text outline-none transition-colors placeholder:uppercase placeholder:tracking-[0.04em] placeholder:text-[12px] placeholder:font-mono placeholder:text-night-mute focus:border-night-text aria-[invalid=true]:border-alert";
+
   return (
-    <div className="mx-auto grid max-w-[1120px] gap-10 px-5 pt-10 sm:px-8 md:grid-cols-[1fr_420px] md:gap-14 md:pt-14">
-      <section>
-        <div className="flex items-baseline justify-between border-b border-line pb-5">
-          <h1 className="text-[28px] font-medium tracking-[-0.02em]">Bag</h1>
-          <button
-            type="button"
-            onClick={clear}
-            className="text-[13px] text-mute hover:text-ink"
-          >
-            Empty bag
-          </button>
-        </div>
-        <ul className="divide-y divide-line">
-          {items.map((i) => {
-            const left = stock?.[skuFor(i.productId, i.size)];
-            const isShort = left !== undefined && left < i.qty;
-            return (
-              <li
-                key={`${i.productId}-${i.size}`}
-                className="flex gap-4 py-5 sm:gap-5"
-              >
-                <Link
-                  href={`/products/${i.product.slug}`}
-                  className="w-[84px] shrink-0 overflow-hidden rounded-2xl bg-canvas-2 sm:w-[104px]"
+    <div className="grid min-h-dvh md:grid-cols-[1fr_minmax(380px,40%)]">
+      <section className="px-4 pb-16 pt-20 sm:px-6 md:pt-24">
+        <div className="mx-auto max-w-[620px]">
+          <div className="label flex items-baseline justify-between">
+            <h1>Bag</h1>
+            <button
+              type="button"
+              onClick={clear}
+              className="text-mute hover:text-ink"
+            >
+              Empty bag
+            </button>
+          </div>
+          <ul className="mt-6 border-t border-line">
+            {items.map((i) => {
+              const left = stock?.[skuFor(i.productId, i.size)];
+              const isShort = left !== undefined && left < i.qty;
+              return (
+                <li
+                  key={`${i.productId}-${i.size}`}
+                  className="flex gap-4 border-b border-line py-4"
                 >
-                  <ProductArt
-                    kind={i.product.art}
-                    tone={i.product.tone}
-                    id={`bag-${i.productId}-${i.size}`}
-                    label={i.product.name}
-                    className="aspect-[4/5] w-full"
-                  />
-                </Link>
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="truncate text-[15px] font-medium">
-                      {i.product.name}
+                  <Link
+                    href={`/products/${i.product.slug}`}
+                    className="w-[76px] shrink-0 sm:w-[92px]"
+                  >
+                    <ProductArt
+                      kind={i.product.art}
+                      tone={i.product.tone}
+                      id={`bag-${i.productId}-${i.size}`}
+                      label={i.product.name}
+                      className="aspect-[4/5] w-full"
+                    />
+                  </Link>
+                  <div className="label flex min-w-0 flex-1 flex-col py-1">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="truncate">
+                        {i.product.code} {i.product.name}
+                      </p>
+                      <p className="tnum shrink-0">
+                        {formatUsd(i.product.priceCents * i.qty)}
+                      </p>
+                    </div>
+                    <p className="text-mute">
+                      {i.product.line}
+                      {i.size ? ` · ${i.size}` : ""}
                     </p>
-                    <p className="tnum shrink-0 font-medium text-[14px]">
-                      {formatUsd(i.product.priceCents * i.qty)}
-                    </p>
+                    {isShort && (
+                      <p className="mt-1 text-alert">
+                        {left === 0
+                          ? "Sold out. Remove it to continue"
+                          : `Only ${left} left. Lower the quantity`}
+                      </p>
+                    )}
+                    <div className="mt-auto flex items-center pt-3">
+                      <button
+                        type="button"
+                        aria-label="Remove one"
+                        onClick={() => setQty(i.productId, i.size, i.qty - 1)}
+                        className="flex h-7 w-7 items-center justify-center border border-line hover:border-ink"
+                      >
+                        −
+                      </button>
+                      <span className="tnum w-9 text-center">{i.qty}</span>
+                      <button
+                        type="button"
+                        aria-label="Add one"
+                        disabled={
+                          i.qty >= 5 || (left !== undefined && i.qty >= left)
+                        }
+                        onClick={() => setQty(i.productId, i.size, i.qty + 1)}
+                        className="flex h-7 w-7 items-center justify-center border border-line hover:border-ink disabled:opacity-30"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
-                  <p className="text-[13px] text-mute">
-                    {i.product.line}
-                    {i.size ? ` · ${i.size}` : ""}
-                  </p>
-                  {isShort && (
-                    <p className="mt-1 text-[13px] text-alert">
-                      {left === 0
-                        ? "Sold out. Remove it to continue."
-                        : `Only ${left} left. Lower the quantity to continue.`}
-                    </p>
-                  )}
-                  <div className="mt-auto flex items-center gap-1 pt-3">
-                    <button
-                      type="button"
-                      aria-label="Remove one"
-                      onClick={() => setQty(i.productId, i.size, i.qty - 1)}
-                      className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-[16px] hover:border-ink/40"
-                    >
-                      −
-                    </button>
-                    <span className="tnum w-8 text-center font-medium text-[14px]">
-                      {i.qty}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label="Add one"
-                      disabled={
-                        i.qty >= 5 || (left !== undefined && i.qty >= left)
-                      }
-                      onClick={() => setQty(i.productId, i.size, i.qty + 1)}
-                      className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-[16px] hover:border-ink/40 disabled:opacity-30"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       </section>
 
-      <aside className="md:sticky md:top-24 md:self-start">
-        <div className="rounded-2xl bg-white p-6 border border-line sm:p-7">
-          <dl className="space-y-2.5 text-[14px]">
-            <div className="flex justify-between">
-              <dt className="text-mute">Subtotal</dt>
-              <dd className="tnum font-medium">{formatUsd(total)}</dd>
+      <aside className="bg-night px-4 pb-16 pt-12 text-night-text sm:px-6 md:pt-24">
+        <div className="mx-auto max-w-[420px] md:sticky md:top-24">
+          <dl className="label space-y-2">
+            <div className="flex justify-between text-night-mute">
+              <dt>Subtotal</dt>
+              <dd className="tnum">{formatUsd(total)}</dd>
             </div>
-            <div className="flex justify-between">
-              <dt className="text-mute">Shipping</dt>
+            <div className="flex justify-between text-night-mute">
+              <dt>Shipping</dt>
               <dd>Free</dd>
             </div>
-            <div className="flex items-baseline justify-between border-t border-line pt-4">
-              <dt className="text-[15px] font-medium">Total</dt>
-              <dd className="tnum font-medium text-[26px] tracking-[-0.02em]">
+            <div className="flex items-baseline justify-between border-t border-night-line pt-4">
+              <dt>Total</dt>
+              <dd className="tnum font-sans text-[28px] tracking-[-0.02em] normal-case">
                 {formatUsd(total)}
               </dd>
             </div>
           </dl>
 
-          <div className="mt-6 space-y-2.5">
+          <div className="mt-8 space-y-1.5">
             <label className="block">
               <span className="sr-only">Email</span>
               <input
@@ -257,7 +253,7 @@ export function CheckoutView({
                 onChange={(e) => setEmail(e.target.value)}
                 onBlur={() => setTouched(true)}
                 aria-invalid={touched && !emailOk}
-                className="h-12 w-full rounded-xl border border-line bg-canvas/50 px-4 text-[15px] outline-none transition-colors placeholder:text-ink/55 focus:border-ink aria-[invalid=true]:border-alert"
+                className={field}
               />
             </label>
             <label className="block">
@@ -269,20 +265,20 @@ export function CheckoutView({
                 onChange={(e) => setName(e.target.value)}
                 onBlur={() => setTouched(true)}
                 aria-invalid={touched && !nameOk}
-                className="h-12 w-full rounded-xl border border-line bg-canvas/50 px-4 text-[15px] outline-none transition-colors placeholder:text-ink/55 focus:border-ink aria-[invalid=true]:border-alert"
+                className={field}
               />
             </label>
           </div>
 
-          <div className="relative mt-5">
+          <div className="relative mt-3">
             <div
-              className={`pay-hero transition-opacity ${canPay ? "" : "pointer-events-none opacity-35"}`}
+              className={`pay-hero transition-opacity ${canPay ? "" : "pointer-events-none opacity-30"}`}
               aria-disabled={!canPay}
             >
               <PryddPayButton
                 checkoutOrigin={checkoutOrigin}
                 apiBase={apiBase}
-                theme="light"
+                theme="dark"
                 createIntent={createIntent}
                 onResult={(result) => {
                   if (result.status === "succeeded") {
@@ -317,7 +313,7 @@ export function CheckoutView({
           {(error || notice || (touched && !canPay)) && (
             <p
               role="status"
-              className={`mt-3 text-[13px] ${error ? "text-alert" : "text-mute"}`}
+              className={`mt-3 text-[13px] ${error ? "text-[#ff6b61]" : "text-night-mute"}`}
             >
               {error ??
                 notice ??
@@ -327,34 +323,22 @@ export function CheckoutView({
             </p>
           )}
 
-          <div className="mt-6 flex gap-3 border-t border-line pt-5 text-[13px] leading-relaxed text-mute">
-            <span
-              className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${overLimit ? "bg-ink" : "bg-ok"}`}
-            />
-            <p>
-              {overLimit ? (
-                <>
-                  <span className="font-medium text-ink">
-                    Over $100, so your phone approves it.
-                  </span>{" "}
-                  After you confirm here, the Prydd app shows this order full
-                  screen. Approve it there and this page updates on its own.
-                </>
-              ) : (
-                <>
-                  <span className="font-medium text-ink">
-                    One Face ID and you are done.
-                  </span>{" "}
-                  Paid in USDC from your Prydd Account. No card number, no form.
-                </>
-              )}
+          <div className="mt-8 border-t border-night-line pt-5">
+            <p className="label">
+              {overLimit
+                ? "Over $100: your phone approves it"
+                : "Under $100: one Face ID"}
+            </p>
+            <p className="mt-2 text-[13px] leading-relaxed text-night-mute">
+              {overLimit
+                ? "After you confirm here, the Prydd app shows this order full screen. Approve it there and this page updates on its own."
+                : "Paid in USDC from your Prydd Account. No card number, no form."}
             </p>
           </div>
+          <p className="label mt-10 text-night-mute">
+            Settled in USDC on Solana. Stock is held when payment confirms.
+          </p>
         </div>
-        <p className="mt-4 px-2 text-center text-[12px] text-mute">
-          Prices in US dollars, settled in USDC on Solana. Stock is held when
-          your payment confirms.
-        </p>
       </aside>
     </div>
   );

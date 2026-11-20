@@ -3,10 +3,14 @@ import type { ArtKind, Tone } from "@/lib/catalog";
 export const SYMBOL_PATH =
   "M 48 40 L 94 40 C 102 40 107 35 113 29 L 119 23 C 123 19 127 18 135 18 L 180 18 L 180 158 C 180 163 177 166 172 166 L 114 166 C 112 166 110 167 108 169 L 94 182 C 92 184 90 184 87 184 L 28 184 C 23 184 20 181 20 176 L 20 91 C 20 85 24 82 30 82 L 58 82 L 58 144 C 58 147 60 149 63 149 L 86 149 C 89 149 91 148 94 145 L 110 129 C 112 127 115 126 119 126 L 143 126 L 143 59 L 133 59 C 125 59 119 65 114 71 C 109 76 104 78 96 78 L 58 78 C 45 78 36 58 36 50 C 36 44 42 40 48 40 Z";
 
-const TONES: Record<
-  Tone,
-  { hi: string; base: string; lo: string; mark: string }
-> = {
+type Shade = { hi: string; base: string; lo: string; mark: string };
+
+const ON_DARK: Partial<Record<Tone, Shade>> = {
+  ink: { hi: "#55555a", base: "#2a2a2d", lo: "#161618", mark: "#3c3c40" },
+  graphite: { hi: "#8a8b90", base: "#5d5e63", lo: "#38393c", mark: "#4a4b4f" },
+};
+
+const TONES: Record<Tone, Shade> = {
   ink: { hi: "#3b3b3e", base: "#1b1b1d", lo: "#0a0a0b", mark: "#2c2c2f" },
   bone: { hi: "#f7f4ee", base: "#e7e2d7", lo: "#cbc4b4", mark: "#141414" },
   graphite: { hi: "#77787d", base: "#505156", lo: "#2f3033", mark: "#3e3f43" },
@@ -43,14 +47,16 @@ export function ProductArt({
   id,
   className,
   label,
+  dark = false,
 }: {
   kind: ArtKind;
   tone: Tone;
   id: string;
   className?: string;
   label: string;
+  dark?: boolean;
 }) {
-  const t = TONES[tone];
+  const t = (dark && ON_DARK[tone]) || TONES[tone];
   const g = (name: string) => `${id}-${name}`;
   const fill = `url(#${g("cloth")})`;
 
@@ -62,10 +68,6 @@ export function ProductArt({
       aria-label={label}
     >
       <defs>
-        <radialGradient id={g("bg")} cx="50%" cy="38%" r="75%">
-          <stop offset="0%" stopColor="var(--art-hi, #f3f2ee)" />
-          <stop offset="100%" stopColor="var(--art-lo, #dedcd5)" />
-        </radialGradient>
         <linearGradient id={g("cloth")} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor={t.hi} />
           <stop offset="55%" stopColor={t.base} />
@@ -88,23 +90,23 @@ export function ProductArt({
           <feDropShadow
             dx="0"
             dy="14"
-            stdDeviation="16"
+            stdDeviation="12"
             floodColor="#000"
-            floodOpacity="0.16"
+            floodOpacity={dark ? 0 : 0.08}
           />
         </filter>
       </defs>
-
-      <rect width="600" height="750" fill={`url(#${g("bg")})`} />
-      <ellipse
-        cx="300"
-        cy="640"
-        rx="200"
-        ry="22"
-        fill="#000"
-        opacity="0.13"
-        filter={`url(#${g("soft")})`}
-      />
+      {!dark && (
+        <ellipse
+          cx="300"
+          cy="650"
+          rx="170"
+          ry="14"
+          fill="#000"
+          opacity="0.07"
+          filter={`url(#${g("soft")})`}
+        />
+      )}
 
       <g filter={`url(#${g("lift")})`}>
         {kind === "tee" && (

@@ -14,7 +14,7 @@ People seeing Prydd for the first time in a demo (investors, merchants, press), 
 
 ## Brand personality
 
-Monochrome, calm, precise. Black and white only (no brand accent color yet), Montserrat Medium, the sharp Passage symbol, and the sculpted metallic symbol on large surfaces. Objects presented like a printed catalogue issue.
+An even blend of yeezy.com and vercel.store. Products float with no frames or cards, labelled by product code (TS-01) in Geist Mono caps, with square corners and icon-light navigation. Everyday items under $100 live on Yeezy's white; items over $100, their product pages and the checkout payment panel live on Vercel's black. The Prydd symbol sits in the header and the Montserrat PRYDD wordmark only in the footer.
 
 ## Anti-references
 

@@ -19,6 +19,7 @@ export interface Product {
   id: string;
   slug: string;
   number: string;
+  code: string;
   name: string;
   line: string;
   priceCents: number;
@@ -36,6 +37,7 @@ const APPAREL = ["S", "M", "L", "XL"];
 export const PRODUCTS: Product[] = [
   {
     id: "tee-ink",
+    code: "TS-01",
     slug: "passage-tee-ink",
     number: "01",
     name: "Passage Tee",
@@ -55,6 +57,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "tee-bone",
+    code: "TS-02",
     slug: "passage-tee-bone",
     number: "02",
     name: "Passage Tee",
@@ -74,6 +77,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "hoodie-graphite",
+    code: "HD-01",
     slug: "heavyweight-hoodie",
     number: "03",
     name: "Heavyweight Hoodie",
@@ -93,6 +97,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "cap-ink",
+    code: "CP-01",
     slug: "six-panel-cap",
     number: "04",
     name: "Six-Panel Cap",
@@ -108,6 +113,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "socks",
+    code: "SK-01",
     slug: "crew-socks",
     number: "05",
     name: "Crew Socks",
@@ -123,6 +129,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "mat",
+    code: "DM-01",
     slug: "desk-mat",
     number: "06",
     name: "Desk Mat",
@@ -138,6 +145,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "tote",
+    code: "TB-01",
     slug: "canvas-tote",
     number: "07",
     name: "Canvas Tote",
@@ -157,6 +165,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "stickers",
+    code: "ST-01",
     slug: "sticker-sheet",
     number: "08",
     name: "Sticker Sheet",
@@ -176,6 +185,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "mug",
+    code: "MG-01",
     slug: "ceramic-mug",
     number: "09",
     name: "Ceramic Mug",
@@ -191,6 +201,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "pin",
+    code: "PN-01",
     slug: "enamel-pin",
     number: "10",
     name: "Enamel Pin",
@@ -206,6 +217,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "jacket",
+    code: "JK-01",
     slug: "shell-jacket",
     number: "11",
     name: "Shell Jacket",
@@ -225,6 +237,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "headphones",
+    code: "HP-01",
     slug: "studio-headphones",
     number: "12",
     name: "Studio Headphones",
@@ -240,6 +253,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "object",
+    code: "OB-01",
     slug: "sculpted-symbol",
     number: "13",
     name: "Sculpted Symbol",
@@ -260,6 +274,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "bundle",
+    code: "BX-01",
     slug: "founders-bundle",
     number: "14",
     name: "Founders Bundle",

@@ -23,11 +23,11 @@ function OrderRow({ order }: { order: Order }) {
     <li>
       <Link
         href={`/orders/${order.id}`}
-        className="flex items-center justify-between gap-4 py-4 transition-colors hover:bg-canvas-2/60 sm:px-2"
+        className="label flex items-center justify-between gap-4 border-b border-line py-3.5 hover:bg-canvas-2"
       >
         <div className="min-w-0">
-          <p className="font-mono text-[13px]">{order.number}</p>
-          <p className="truncate text-[13px] text-mute">
+          <p>{order.number}</p>
+          <p className="truncate text-mute">
             {count} {count === 1 ? "item" : "items"} ·{" "}
             {new Date(order.createdAt).toLocaleDateString("en-US", {
               month: "short",
@@ -35,14 +35,14 @@ function OrderRow({ order }: { order: Order }) {
             })}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-4">
-          <span className="flex items-center gap-2 text-[13px]">
+        <div className="flex shrink-0 items-center gap-5">
+          <span className="flex items-center gap-2">
             <span
-              className={`h-1.5 w-1.5 rounded-full ${good ? "bg-ok" : order.status === "awaiting_payment" ? "bg-ink" : "bg-mute/50"}`}
+              className={`h-1.5 w-1.5 ${good ? "bg-ok" : order.status === "awaiting_payment" ? "bg-ink" : "bg-mute/50"}`}
             />
             {LABEL[order.status]}
           </span>
-          <span className="tnum w-16 text-right font-medium text-[14px]">
+          <span className="tnum w-14 text-right">
             {formatUsd(order.totalCents)}
           </span>
         </div>
@@ -66,15 +66,15 @@ export function OrdersLookup() {
 
   const visibleMine =
     mine?.filter((o) => o.status !== "failed" || o.intentId) ?? [];
+  const input =
+    "h-12 w-full border border-line bg-white px-3.5 text-[14px] outline-none placeholder:font-mono placeholder:text-[12px] placeholder:uppercase placeholder:tracking-[0.04em] placeholder:text-mute focus:border-ink";
 
   return (
-    <div className="mx-auto max-w-[760px] px-5 pt-12 sm:px-8 md:pt-16">
-      <h1 className="text-[clamp(2rem,4.4vw,3rem)] font-medium tracking-[-0.03em]">
-        Find an order.
-      </h1>
+    <div className="mx-auto max-w-[620px] px-4 pb-24 pt-24 sm:pt-28">
+      <h1 className="label text-center">Find an order</h1>
 
       <form
-        className="mt-8 grid gap-2.5 sm:grid-cols-[1.4fr_1fr_auto]"
+        className="mt-8 grid gap-1.5 sm:grid-cols-[1.4fr_1fr_auto]"
         onSubmit={async (e) => {
           e.preventDefault();
           setBusy(true);
@@ -89,30 +89,30 @@ export function OrdersLookup() {
           placeholder="Email used at checkout"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="h-12 rounded-xl border border-line bg-white px-4 text-[15px] outline-none placeholder:text-ink/55 focus:border-ink"
+          className={input}
         />
         <input
-          placeholder="Order number, optional"
+          placeholder="Order number"
           value={number}
           onChange={(e) => setNumber(e.target.value)}
-          className="h-12 rounded-xl border border-line bg-white px-4 font-mono text-[14px] uppercase outline-none placeholder:font-sans placeholder:normal-case placeholder:text-ink/55 focus:border-ink"
+          className={`${input} font-mono uppercase`}
         />
         <button
           disabled={busy}
-          className="h-12 rounded-xl bg-ink px-6 text-[14px] font-medium text-canvas disabled:opacity-50"
+          className="label h-12 bg-ink px-6 text-white disabled:opacity-50"
         >
           {busy ? "Looking" : "Look up"}
         </button>
       </form>
 
       {found && (
-        <section className="mt-10">
-          <h2 className="border-b border-line pb-3 text-[15px] font-medium">
+        <section className="mt-12">
+          <h2 className="label border-b border-ink pb-3">
             {found.length === 0
-              ? "No orders found for that email."
+              ? "No orders for that email"
               : `${found.length} ${found.length === 1 ? "order" : "orders"}`}
           </h2>
-          <ul className="divide-y divide-line">
+          <ul>
             {found.map((o) => (
               <OrderRow key={o.id} order={o} />
             ))}
@@ -120,18 +120,16 @@ export function OrdersLookup() {
         </section>
       )}
 
-      <section className="mt-14">
-        <h2 className="border-b border-line pb-3 text-[15px] font-medium">
-          On this device
-        </h2>
+      <section className="mt-12">
+        <h2 className="label border-b border-ink pb-3">On this device</h2>
         {mine === null ? (
-          <p className="py-4 text-[14px] text-mute">Loading</p>
+          <p className="label py-4 text-mute">Loading</p>
         ) : visibleMine.length === 0 ? (
-          <p className="py-4 text-[14px] text-mute">
-            Orders you place in this browser show up here.
+          <p className="label py-4 text-mute">
+            Orders you place in this browser show up here
           </p>
         ) : (
-          <ul className="divide-y divide-line">
+          <ul>
             {visibleMine.map((o) => (
               <OrderRow key={o.id} order={o} />
             ))}

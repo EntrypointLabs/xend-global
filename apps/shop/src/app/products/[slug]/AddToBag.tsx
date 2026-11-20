@@ -8,10 +8,12 @@ export function AddToBag({
   productId,
   sizes,
   stock,
+  dark,
 }: {
   productId: string;
   sizes: string[] | null;
   stock: Record<string, number>;
+  dark: boolean;
 }) {
   const { add } = useBag();
   const firstInStock = sizes?.find((s) => (stock[s] ?? 0) > 0) ?? null;
@@ -20,22 +22,30 @@ export function AddToBag({
   const available = sizes ? (size ? (stock[size] ?? 0) : 0) : (stock[""] ?? 0);
   const soldOut = sizes ? !firstInStock : available === 0;
 
+  const idle = dark
+    ? "border-night-line hover:border-night-mute"
+    : "border-line hover:border-ink/40";
+  const on = dark
+    ? "border-night-text bg-night-text text-night"
+    : "border-ink bg-ink text-white";
+  const primary = dark ? "bg-night-text text-night" : "bg-ink text-white";
+
   return (
-    <div className="mt-8">
+    <div className="mt-10">
       {sizes && (
         <fieldset>
-          <legend className="mb-3 flex w-full justify-between text-[13px]">
-            <span className="font-medium">Size</span>
+          <legend className="label mb-3 flex w-full justify-between">
+            <span>Size</span>
             {size && available > 0 && available <= 5 && (
-              <span className="text-mute">
-                Only {available} left in {size}
+              <span className={dark ? "text-night-mute" : "text-mute"}>
+                {available} left in {size}
               </span>
             )}
           </legend>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-4 gap-1.5">
             {sizes.map((s) => {
               const out = (stock[s] ?? 0) === 0;
-              const on = s === size;
+              const selected = s === size;
               return (
                 <button
                   key={s}
@@ -45,12 +55,8 @@ export function AddToBag({
                     setSize(s);
                     setAdded(false);
                   }}
-                  aria-pressed={on}
-                  className={`h-12 rounded-xl border text-[14px] font-medium transition-colors ${
-                    on
-                      ? "border-ink bg-ink text-canvas"
-                      : "border-line hover:border-ink/40"
-                  } disabled:cursor-not-allowed disabled:border-dashed disabled:text-ink/30 disabled:line-through`}
+                  aria-pressed={selected}
+                  className={`label h-11 border transition-colors ${selected ? on : idle} disabled:cursor-not-allowed disabled:opacity-35 disabled:line-through`}
                 >
                   {s}
                 </button>
@@ -60,29 +66,29 @@ export function AddToBag({
         </fieldset>
       )}
 
-      <div className="mt-5 flex gap-3">
-        <button
-          type="button"
-          disabled={soldOut || (sizes !== null && !size)}
-          onClick={() => {
-            add({ productId, size: sizes ? size : null, qty: 1 });
-            setAdded(true);
-          }}
-          className="h-14 flex-1 rounded-full bg-ink text-[15px] font-medium text-canvas transition-transform active:scale-[0.98] disabled:bg-ink/25"
+      <button
+        type="button"
+        disabled={soldOut || (sizes !== null && !size)}
+        onClick={() => {
+          add({ productId, size: sizes ? size : null, qty: 1 });
+          setAdded(true);
+        }}
+        className={`label mt-3 h-12 w-full transition-opacity active:opacity-80 disabled:cursor-not-allowed disabled:opacity-35 ${primary}`}
+      >
+        {soldOut ? "Sold out" : added ? "Added. Add another" : "Add to bag"}
+      </button>
+      {added && (
+        <Link
+          href="/checkout"
+          className={`label mt-1.5 flex h-12 w-full items-center justify-center border transition-colors ${idle}`}
         >
-          {soldOut ? "Sold out" : added ? "Added. Add another" : "Add to bag"}
-        </button>
-        {added && (
-          <Link
-            href="/checkout"
-            className="flex h-14 items-center rounded-full border border-ink/15 px-6 text-[15px] font-medium transition-colors hover:bg-canvas-2"
-          >
-            Check out
-          </Link>
-        )}
-      </div>
+          Check out
+        </Link>
+      )}
       {!sizes && available > 0 && available <= 5 && (
-        <p className="mt-3 text-[13px] text-mute">Only {available} left.</p>
+        <p className={`label mt-3 ${dark ? "text-night-mute" : "text-mute"}`}>
+          {available} left
+        </p>
       )}
     </div>
   );
