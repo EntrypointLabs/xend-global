@@ -149,6 +149,7 @@ describe("mountPryddButton glass sheet with a popup ceremony", () => {
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_sheet_1" }),
       onResult: () => {},
     });
@@ -184,6 +185,7 @@ describe("mountPryddButton glass sheet with a popup ceremony", () => {
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_usdc" }),
       onResult: () => {},
     });
@@ -335,6 +337,7 @@ describe("mountPryddButton glass sheet with a popup ceremony", () => {
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_xss" }),
       onResult: () => {},
     });
@@ -410,6 +413,7 @@ describe("mountPryddButton glass sheet with a popup ceremony", () => {
       mount: container(),
       checkoutOrigin: ORIGIN,
       apiBase: API,
+      presentation: "modal",
       createIntent: () =>
         new Promise<{ reference: string }>((r) => {
           resolveIntent = r;

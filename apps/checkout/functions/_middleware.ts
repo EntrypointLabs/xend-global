@@ -137,6 +137,25 @@ function withFrameAncestors(existing: string | null, origin: string): string {
   return [...kept, `frame-ancestors ${origin}`].join('; ');
 }
 
+/**
+ * The one merchant origin a document load may be framed by, or null to keep
+ * the static deny. Shared by the Pages function below and the Vercel
+ * middleware at the project root.
+ */
+export async function frameAncestorFor(
+  request: Request,
+  apiBase: string | undefined,
+): Promise<string | null> {
+  if (!isDocumentRequest(request)) return null;
+  const launch = readLaunch(request.url);
+  if (!launch) return null;
+  return merchantOriginFor(
+    apiBase ?? new URL(request.url).origin,
+    launch.reference,
+    launch.opener,
+  );
+}
+
 export async function onRequest(context: PagesContext): Promise<Response> {
   const response = await context.next();
 

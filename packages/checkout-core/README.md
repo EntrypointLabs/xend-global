@@ -51,13 +51,17 @@ import { mountPryddButton } from "@prydd/checkout-core";
 
 ## How the sheet works
 
-Tapping the button draws a sheet on your page showing the merchant name and
-the amount, read from `GET /checkout/intents/:reference` on `apiBase`. Tapping
-Pay swaps the sheet's body for Prydd's hosted checkout in a cross-origin frame,
-so the shopper's Face ID or fingerprint runs on Prydd's origin without a second
-window ever appearing. The result comes back over the same exact-origin
-postMessage channel, with the same nonce and reference correlation, as the
-popup flow.
+Tapping the button draws a sheet on your page and opens Prydd's hosted
+checkout inside it, in a cross-origin frame. That frame shows your store name
+and the amount from Prydd's own record, and its single "Pay with passkey" tap
+starts Face ID or fingerprint on Prydd's origin, so a payment is one tap plus
+the passkey and no second window ever appears. The embedded sheet follows the
+light or dark theme of the sheet around it. The result comes back over the same
+exact-origin postMessage channel, with the same nonce and reference
+correlation, as the popup flow.
+
+Payments above the shopper's daily one-signature limit are approved on their
+phone: the sheet waits for that approval and finishes on its own.
 
 The checkout announces itself as soon as it loads, and that handshake is what
 tells the SDK the inline ceremony is live. If it never arrives, the popup takes

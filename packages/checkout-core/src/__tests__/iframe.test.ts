@@ -39,27 +39,14 @@ function stubSummary(): ReturnType<typeof vi.fn> {
   return fetchMock;
 }
 
-// The confirm button arms only after a delay AND a real interaction, so a
-// clickjacked sheet cannot be tapped through. Tests have to clear both.
-async function armedConfirm(): Promise<HTMLButtonElement> {
-  const root = shadow();
-  const cta = await vi.waitFor(() => {
-    const el = root.querySelector<HTMLButtonElement>("[data-confirm]");
-    if (!el) throw new Error("confirm not rendered");
-    return el;
-  });
-  root.dispatchEvent(new Event("pointermove"));
-  await vi.waitFor(
-    () => {
-      if (cta.disabled) throw new Error("confirm not armed");
-    },
-    { timeout: 2000 },
-  );
-  return cta;
-}
-
 function frame(): HTMLIFrameElement | null {
   return shadow().querySelector("iframe");
+}
+
+async function frameMounted(): Promise<void> {
+  await vi.waitFor(() => {
+    if (!frame()) throw new Error("frame not mounted");
+  });
 }
 
 function postFromFrame(
@@ -152,7 +139,7 @@ afterEach(() => {
 });
 
 describe("mountPryddButton inline ceremony", () => {
-  it("is the default presentation, and confirms into a frame instead of a window", async () => {
+  it("is the default presentation, and opens straight into a frame instead of a window", async () => {
     const openSpy = vi.spyOn(window, "open");
     stubSummary();
 
@@ -164,7 +151,7 @@ describe("mountPryddButton inline ceremony", () => {
       onResult: () => {},
     });
     document.querySelector("button")!.click();
-    (await armedConfirm()).click();
+    await frameMounted();
 
     const el = frame();
     expect(el).not.toBeNull();
@@ -173,6 +160,7 @@ describe("mountPryddButton inline ceremony", () => {
     const url = new URL(el!.src);
     expect(url.origin).toBe(ORIGIN);
     expect(url.searchParams.get("mode")).toBe("iframe");
+    expect(["light", "dark"]).toContain(url.searchParams.get("theme"));
     expect(url.searchParams.get("intent")).toBe("pi_inline");
     expect(url.searchParams.get("nonce")).toBeTruthy();
     expect(url.searchParams.get("opener")).toBe(window.location.origin);
@@ -190,7 +178,7 @@ describe("mountPryddButton inline ceremony", () => {
       onResult: () => {},
     });
     document.querySelector("button")!.click();
-    (await armedConfirm()).click();
+    await frameMounted();
 
     const el = frame()!;
     expect(el.getAttribute("allow")).toBe("publickey-credentials-get");
@@ -215,7 +203,7 @@ describe("mountPryddButton inline ceremony", () => {
       onResult,
     });
     document.querySelector("button")!.click();
-    (await armedConfirm()).click();
+    await frameMounted();
 
     const nonce = new URL(frame()!.src).searchParams.get("nonce")!;
     postFromFrame(nonce, "pi_frame_msg");
@@ -244,7 +232,7 @@ describe("mountPryddButton inline ceremony", () => {
     });
     const payButton = document.querySelector<HTMLButtonElement>("button")!;
     payButton.click();
-    (await armedConfirm()).click();
+    await frameMounted();
 
     const nonce = new URL(frame()!.src).searchParams.get("nonce")!;
     postUnresolved(nonce, "pi_frame_timeout");
@@ -273,7 +261,7 @@ describe("mountPryddButton inline ceremony", () => {
       onResult,
     });
     document.querySelector("button")!.click();
-    (await armedConfirm()).click();
+    await frameMounted();
 
     const nonce = new URL(frame()!.src).searchParams.get("nonce")!;
     postFromFrame(nonce, "pi_forged", "https://pay.prydd.co.evil.test");
@@ -298,7 +286,7 @@ describe("mountPryddButton inline ceremony", () => {
       onUnresolved,
     });
     document.querySelector("button")!.click();
-    (await armedConfirm()).click();
+    await frameMounted();
 
     const el = frame()!;
     postReady(new URL(el.src).searchParams.get("nonce")!);
@@ -328,7 +316,7 @@ describe("mountPryddButton inline ceremony", () => {
       onResult: () => {},
     });
     document.querySelector("button")!.click();
-    (await armedConfirm()).click();
+    await frameMounted();
 
     const el = frame()!;
     const nonce = new URL(el.src).searchParams.get("nonce")!;
@@ -355,7 +343,7 @@ describe("mountPryddButton inline ceremony", () => {
       onResult,
     });
     document.querySelector("button")!.click();
-    (await armedConfirm()).click();
+    await frameMounted();
 
     const nonce = new URL(frame()!.src).searchParams.get("nonce")!;
     postReady(nonce);
@@ -388,7 +376,7 @@ describe("mountPryddButton inline ceremony", () => {
       onResult: () => {},
     });
     document.querySelector("button")!.click();
-    (await armedConfirm()).click();
+    await frameMounted();
 
     // A frame the checkout refused to be embedded in never leaves about:blank,
     // so it stays readable from here after it settles.
@@ -415,7 +403,7 @@ describe("mountPryddButton inline ceremony", () => {
       onResult,
     });
     document.querySelector("button")!.click();
-    (await armedConfirm()).click();
+    await frameMounted();
 
     const frameNonce = new URL(frame()!.src).searchParams.get("nonce")!;
     expect(openSpy).not.toHaveBeenCalled();
@@ -457,8 +445,7 @@ describe("mountPryddButton inline ceremony", () => {
       onUnresolved,
     });
     document.querySelector("button")!.click();
-    const cta = await armedConfirm();
-    cta.click();
+    await frameMounted();
     const frameNonce = new URL(frame()!.src).searchParams.get("nonce")!;
     const assign = stubLocationAssign();
 
@@ -512,7 +499,7 @@ describe("mountPryddButton inline ceremony", () => {
       onResult,
     });
     document.querySelector("button")!.click();
-    (await armedConfirm()).click();
+    await frameMounted();
     const nonce = new URL(frame()!.src).searchParams.get("nonce")!;
 
     shadow().querySelector<HTMLElement>("[data-close]")!.click();

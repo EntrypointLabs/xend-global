@@ -57,6 +57,8 @@ export interface IntentView {
   usdcSettlementRaw: string;
   merchantOrigin: string;
   sessionRecognized: boolean;
+  /** A phone approval for this intent is already pending. */
+  awaitingApproval?: boolean;
   expiresAt: string;
   livemode: boolean;
   /**
@@ -158,14 +160,35 @@ function toErrorCode(raw: unknown): CheckoutErrorCode {
 
 const useFixture = import.meta.env.DEV && API_BASE === '';
 
+const fixtureParams = () => new URLSearchParams(window.location.search);
+const FIXTURE_APPROVAL_KEY = 'prydd.fixture.approvalAt';
+
+/**
+ * Local design fixture. `?amount=<cents>` prices the order in dollars and
+ * `?approval=1` walks the above-limit path, approving on the "phone" a few
+ * seconds after the request.
+ */
+function fixtureStatus(): IntentStatus {
+  const at = Number(sessionStorage.getItem(FIXTURE_APPROVAL_KEY));
+  if (!at) return 'requires_payment';
+  const elapsed = Date.now() - at;
+  if (elapsed > 9_000) {
+    sessionStorage.removeItem(FIXTURE_APPROVAL_KEY);
+    return 'succeeded';
+  }
+  if (elapsed > 6_000) return 'processing';
+  return 'requires_payment';
+}
+
 function fixtureIntent(reference: string): IntentView {
+  const cents = fixtureParams().get('amount') ?? '4800';
   return {
     reference,
-    status: 'requires_payment',
-    merchantDisplayName: 'Sabi Market',
-    displayCurrency: 'NGN',
-    displayAmountMinor: '4500000',
-    usdcSettlementRaw: '30000000',
+    status: fixtureStatus(),
+    merchantDisplayName: 'Prydd Supply',
+    displayCurrency: 'USD',
+    displayAmountMinor: cents,
+    usdcSettlementRaw: `${cents}0000`,
     merchantOrigin: window.location.origin,
     // Both fixture states stay reachable: `?recognized=1` demos the one-tap
     // return visit, without it the full passkey ceremony shows.
@@ -213,15 +236,48 @@ export async function getIntent(
 ): Promise<IntentView> {
   if (useFixture) return fixtureIntent(reference);
   const query = opener ? `?opener=${encodeURIComponent(opener)}` : '';
-  return request<IntentView>(
+  const raw = await request<IntentView & { status: string }>(
     `/checkout/intents/${encodeURIComponent(reference)}${query}`,
   );
+  return { ...raw, status: toIntentStatus(raw.status) };
+}
+
+/**
+ * The backend names its lifecycle stages (created, authorized, settling); the
+ * surface only needs waiting, approved-and-settling, or an outcome. An
+ * authorized intent still counts as waiting: a Consumer who opens the phone
+ * prompt and then declines ends on canceled, never on "approved".
+ */
+export function toIntentStatus(raw: string): IntentStatus {
+  switch (raw) {
+    case 'created':
+    case 'authorized':
+    case 'requires_payment':
+      return 'requires_payment';
+    case 'settling':
+    case 'processing':
+      return 'processing';
+    case 'succeeded':
+    case 'failed':
+    case 'canceled':
+    case 'expired':
+      return raw;
+    default:
+      return 'requires_payment';
+  }
 }
 
 export async function authorize(
   input: AuthorizeInput,
 ): Promise<AuthorizeResult> {
-  if (useFixture) return { status: 'succeeded' };
+  if (useFixture) {
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    if (fixtureParams().has('approval')) {
+      sessionStorage.setItem(FIXTURE_APPROVAL_KEY, String(Date.now()));
+      throw new CheckoutApiError('APPROVAL_REQUIRED', 'fixture', 403);
+    }
+    return { status: 'succeeded' };
+  }
   const result = await request<AuthorizeResult>('/checkout/authorize', {
     method: 'POST',
     body: JSON.stringify(input),
