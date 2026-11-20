@@ -33,8 +33,18 @@ export interface PushMessage {
    * What the notice is about, carried so the app can open the right screen
    * when it is tapped. Read by the device, never shown.
    */
-  data?: { kind: NoticeKind };
+  data?: { kind: NoticeKind; reference?: string; url?: string };
+  /**
+   * `time_sensitive` breaks through Focus on iOS and rides the high-priority
+   * Android channel. Reserved for a notice that is useless if it arrives late.
+   */
+  urgency?: 'time_sensitive';
+  /** After this the provider drops an undelivered notice instead of late-delivering it. */
+  expiresAt?: Date;
 }
+
+/** The Android channel the app creates for notices that cannot wait. */
+export const URGENT_ANDROID_CHANNEL = 'payment-approval';
 
 export interface PushSender {
   /**

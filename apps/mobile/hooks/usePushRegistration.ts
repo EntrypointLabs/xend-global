@@ -12,6 +12,9 @@ import { useUserId } from "@/hooks/useUserId";
 import { getPushToken } from "@/utils/pushDevice";
 import { AWAITING_PAYMENTS_KEY } from "@/hooks/useAwaitingPayments";
 import { requestPendingChangeReview } from "@/hooks/usePendingChangeAcknowledgement";
+import { requestApproval } from "@/utils/approvalRequests";
+import { SEED_DEMO } from "@/utils/devSeed";
+import { demoApproval } from "@/utils/devSeedApproval";
 
 /**
  * What a notice is about, and where tapping it lands. Mirrors the server's
@@ -26,7 +29,6 @@ const DESTINATIONS: Record<string, string> = {
   arrival: "/(tabs)/history",
   security_alert: "/(tabs)",
   pending_change: "/(tabs)",
-  payment_approval: "/settings/finish-payment",
 };
 
 const PAYMENT_APPROVAL_KIND = "payment_approval";
@@ -40,6 +42,15 @@ function noticeKind(
     | Record<string, unknown>
     | undefined;
   return typeof data?.kind === "string" ? data.kind : undefined;
+}
+
+function noticeReference(
+  notification: Notifications.Notification | undefined
+): string | undefined {
+  const data = notification?.request.content.data as
+    | Record<string, unknown>
+    | undefined;
+  return typeof data?.reference === "string" ? data.reference : undefined;
 }
 
 /**
@@ -79,10 +90,17 @@ export function useNotificationRouting() {
     if (!response) return;
     const kind = noticeKind(response.notification);
 
-    // The list the Payment screen renders was fetched before this Payment
-    // existed.
+    // The approval takeover sits above every screen, so there is nowhere to
+    // navigate: name the Payment and let it come forward once the list (fetched
+    // before this Payment existed) catches up.
     if (kind === PAYMENT_APPROVAL_KIND) {
       void queryClient.invalidateQueries({ queryKey: AWAITING_PAYMENTS_KEY });
+      const reference = noticeReference(response.notification);
+      if (reference) {
+        if (SEED_DEMO) demoApproval.request(reference);
+        requestApproval(reference);
+      }
+      return;
     }
 
     // The review lives on the home screen and is what a staged change is
@@ -164,6 +182,15 @@ export function usePushRegistration() {
         await Notifications.setNotificationChannelAsync("default", {
           name: "Default",
           importance: Notifications.AndroidImportance.DEFAULT,
+        });
+        // Named by the server's URGENT_ANDROID_CHANNEL. Heads-up and sound,
+        // because someone is waiting at a till for this one.
+        await Notifications.setNotificationChannelAsync("payment-approval", {
+          name: "Payment approvals",
+          importance: Notifications.AndroidImportance.MAX,
+          lockscreenVisibility:
+            Notifications.AndroidNotificationVisibility.PRIVATE,
+          sound: "default",
         });
       }
 

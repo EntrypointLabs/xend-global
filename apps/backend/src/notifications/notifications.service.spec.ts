@@ -198,6 +198,13 @@ describe('NotificationsService', () => {
   });
 
   describe('notifyPaymentNeedsApproval', () => {
+    const PAYMENT = {
+      reference: 'pi_1',
+      merchantName: 'Sabi Market',
+      amount: '₦200,000',
+      expiresAt: new Date('2026-11-20T12:00:00.000Z'),
+    };
+
     it('names the Merchant and the amount on the notice itself', async () => {
       // A notice that says only "a payment needs you" makes the Consumer open
       // the app to find out whether it is even theirs.
@@ -205,19 +212,31 @@ describe('NotificationsService', () => {
       const { sender, sent } = makeRecordingSender();
       const service = new NotificationsService(db, sender);
 
-      await service.notifyPaymentNeedsApproval('u_1', {
-        merchantName: 'Sabi Market',
-        amount: '₦200,000',
-      });
+      await service.notifyPaymentNeedsApproval('u_1', PAYMENT);
 
       expect(sent).toHaveLength(1);
       // One notice per device the Consumer has.
       expect(sent[0]).toHaveLength(2);
-      expect(sent[0][0].title).toBe('Finish your payment');
-      expect(sent[0][0].body).toContain('Sabi Market');
-      expect(sent[0][0].body).toContain('₦200,000');
-      // Carried so the app opens the Payment rather than the home screen.
-      expect(sent[0][0].data).toEqual({ kind: 'payment_approval' });
+      expect(sent[0][0].title).toBe('Approve ₦200,000 to Sabi Market');
+      // Carried so the app opens this Payment's approval, not the home screen.
+      expect(sent[0][0].data).toEqual({
+        kind: 'payment_approval',
+        reference: 'pi_1',
+        url: 'xend://approve/pi_1',
+      });
+    });
+
+    it('breaks through Focus and expires with the quote', async () => {
+      // Somebody is standing at a till. A notice held back by Focus, or
+      // delivered after the quote lapsed, is a Payment abandoned.
+      const { db } = makeFakeDb({ deviceTokens: ['tok-1'] });
+      const { sender, sent } = makeRecordingSender();
+      const service = new NotificationsService(db, sender);
+
+      await service.notifyPaymentNeedsApproval('u_1', PAYMENT);
+
+      expect(sent[0][0].urgency).toBe('time_sensitive');
+      expect(sent[0][0].expiresAt).toEqual(PAYMENT.expiresAt);
     });
 
     it('reaches a Consumer who has turned arrival notices off', async () => {
@@ -230,10 +249,7 @@ describe('NotificationsService', () => {
       const sender = makeSender();
       const service = new NotificationsService(db, sender);
 
-      await service.notifyPaymentNeedsApproval('u_1', {
-        merchantName: 'Sabi Market',
-        amount: '₦200,000',
-      });
+      await service.notifyPaymentNeedsApproval('u_1', PAYMENT);
 
       expect(sender.send).toHaveBeenCalledTimes(1);
     });
@@ -243,10 +259,7 @@ describe('NotificationsService', () => {
       const sender = makeSender();
       const service = new NotificationsService(db, sender);
 
-      await service.notifyPaymentNeedsApproval('u_1', {
-        merchantName: 'Sabi Market',
-        amount: '₦200,000',
-      });
+      await service.notifyPaymentNeedsApproval('u_1', PAYMENT);
 
       expect(sender.send).not.toHaveBeenCalled();
     });
@@ -260,10 +273,7 @@ describe('NotificationsService', () => {
       const service = new NotificationsService(db, sender);
 
       await expect(
-        service.notifyPaymentNeedsApproval('u_1', {
-          merchantName: 'Sabi Market',
-          amount: '₦200,000',
-        }),
+        service.notifyPaymentNeedsApproval('u_1', PAYMENT),
       ).resolves.toBeUndefined();
     });
 
@@ -273,10 +283,7 @@ describe('NotificationsService', () => {
       const { db, deleted } = makeFakeDb({ deviceTokens: ['tok-1', 'tok-2'] });
       const service = new NotificationsService(db, makeSender(['tok-2']));
 
-      await service.notifyPaymentNeedsApproval('u_1', {
-        merchantName: 'Sabi Market',
-        amount: '₦200,000',
-      });
+      await service.notifyPaymentNeedsApproval('u_1', PAYMENT);
 
       expect(deleted).toHaveLength(1);
     });

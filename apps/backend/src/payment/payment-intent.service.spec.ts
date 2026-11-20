@@ -401,3 +401,101 @@ describe('PaymentIntentService.onModuleInit', () => {
     expect(returning).toHaveBeenCalledWith({ id: paymentIntents.id });
   });
 });
+
+describe('PaymentIntentService.declineApproval', () => {
+  const deferred = (over: Partial<IntentRow> = {}) =>
+    intentRow({
+      consumerId: 'u_1',
+      approvalDeferredAt: new Date(),
+      ...over,
+    });
+
+  it('moves a waiting Payment to canceled and tells the platform', async () => {
+    const db = makeFakeDb({
+      intentSelects: [[deferred()]],
+      intentUpdates: [[deferred({ status: 'canceled' })]],
+    });
+    const { publisher, events } = makePublisher();
+    const service = new PaymentIntentService(db, config, publisher);
+
+    const row = await service.declineApproval('pi_1', 'u_1');
+
+    expect(row.status).toBe('canceled');
+    expect(events).toEqual([
+      expect.objectContaining({
+        topic: 'payment.canceled',
+        key: 'pi_1',
+        payload: { intentId: 'pi_1', reason: 'consumer_declined' },
+      }),
+    ]);
+  });
+
+  it('is a no-op on a Payment already declined', async () => {
+    // A double tap, or a retry after a lost response, must not error.
+    const db = makeFakeDb({
+      intentSelects: [[deferred({ status: 'canceled' })]],
+    });
+    const { publisher, events } = makePublisher();
+    const service = new PaymentIntentService(db, config, publisher);
+
+    const row = await service.declineApproval('pi_1', 'u_1');
+
+    expect(row.status).toBe('canceled');
+    expect(events).toHaveLength(0);
+  });
+
+  it('refuses once the phone has authorized the Payment', async () => {
+    // Approve won the race: capacity is held and the Spend is pinned.
+    const db = makeFakeDb({
+      intentSelects: [
+        [deferred({ status: 'authorized' })],
+        [deferred({ status: 'authorized' })],
+      ],
+      intentUpdates: [[]],
+    });
+    const { publisher, events } = makePublisher();
+    const service = new PaymentIntentService(db, config, publisher);
+
+    await expect(service.declineApproval('pi_1', 'u_1')).rejects.toMatchObject({
+      code: 'INTENT_STATE_CONFLICT',
+    });
+    expect(events).toHaveLength(0);
+  });
+
+  it('hides a Payment that belongs to someone else', async () => {
+    const db = makeFakeDb({
+      intentSelects: [[deferred({ consumerId: 'u_2' })]],
+    });
+    const { publisher } = makePublisher();
+    const service = new PaymentIntentService(db, config, publisher);
+
+    await expect(service.declineApproval('pi_1', 'u_1')).rejects.toMatchObject({
+      code: 'INTENT_NOT_FOUND',
+    });
+  });
+
+  it('hides an intent Checkout never handed to the phone', async () => {
+    // Merchant cancellation is not the Consumer's to make (ADR 0036).
+    const db = makeFakeDb({
+      intentSelects: [[deferred({ approvalDeferredAt: null })]],
+    });
+    const { publisher } = makePublisher();
+    const service = new PaymentIntentService(db, config, publisher);
+
+    await expect(service.declineApproval('pi_1', 'u_1')).rejects.toMatchObject({
+      code: 'INTENT_NOT_FOUND',
+    });
+  });
+
+  it('reports an expired quote rather than canceling it', async () => {
+    const db = makeFakeDb({
+      intentSelects: [[deferred({ expiresAt: new Date(Date.now() - 1000) })]],
+    });
+    const { publisher } = makePublisher();
+    const service = new PaymentIntentService(db, config, publisher);
+
+    await expect(service.declineApproval('pi_1', 'u_1')).rejects.toMatchObject({
+      code: 'INTENT_EXPIRED',
+    });
+  });
+});

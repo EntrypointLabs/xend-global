@@ -26,8 +26,10 @@ async function main(): Promise<void> {
   });
   try {
     await app.get(NotificationsService).notifyPaymentNeedsApproval(userId, {
+      reference: arg('reference') ?? 'pi_test',
       merchantName: arg('merchant') ?? 'Sabi Market',
       amount: arg('amount') ?? '₦200,000',
+      expiresAt: new Date(Date.now() + 15 * 60_000),
     });
   } finally {
     await app.close();

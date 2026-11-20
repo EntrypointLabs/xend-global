@@ -8,6 +8,7 @@ import { EVENT_PUBLISHER } from '../events/event-publisher.interface';
 import { paymentIntentTransitions } from '../metrics/metrics';
 import type { EventPublisher } from '../events/event-publisher.interface';
 import {
+  IntentExpiredError,
   IntentNotFoundError,
   IntentStateConflictError,
   MerchantNotFoundError,
@@ -287,6 +288,42 @@ export class PaymentIntentService implements OnModuleInit {
   }
 
   /**
+   * The Consumer said no to a Payment Checkout handed to their phone.
+   *
+   * Terminal, unlike a Checkout Cancel, because here the Consumer is signed in
+   * and owns the Payment. Only from `created`: once the phone has prepared it
+   * the Spend is authorized and capacity is held, and declining is no longer
+   * this transition's to make. The conditional update is the race arbiter
+   * against an Approve landing at the same moment.
+   */
+  async declineApproval(
+    intentId: string,
+    consumerId: string,
+  ): Promise<IntentRow> {
+    const intent = await this.findById(intentId);
+    if (intent.consumerId !== consumerId || !intent.approvalDeferredAt) {
+      throw new IntentNotFoundError(`intent ${intentId} not found`);
+    }
+    if (intent.status === 'canceled') return intent;
+    if (
+      intent.status === 'created' &&
+      intent.expiresAt.getTime() <= Date.now()
+    ) {
+      throw new IntentExpiredError(`intent ${intentId} expired`);
+    }
+
+    const declined = await this.transition(intentId, 'created', 'canceled');
+    await this.events.publish({
+      topic: 'payment.canceled',
+      key: intentId,
+      payload: { intentId, reason: 'consumer_declined' },
+      correlationId: intentId,
+    });
+    this.logger.log(`payment.declined intent_id=${intentId}`);
+    return declined;
+  }
+
+  /**
    * Payments waiting on this Consumer's phone: still payable, not yet expired,
    * newest first. A Consumer standing at a checkout that just told them to open
    * the app should find it at the top.
@@ -300,7 +337,9 @@ export class PaymentIntentService implements OnModuleInit {
         and(
           eq(paymentIntents.consumerId, consumerId),
           eq(paymentIntents.executionCluster, executionCluster),
-          eq(paymentIntents.status, 'created'),
+          // `authorized` is a phone prepare that was never signed; it can
+          // still be approved or declined from here.
+          inArray(paymentIntents.status, ['created', 'authorized']),
           isNotNull(paymentIntents.approvalDeferredAt),
           gt(paymentIntents.expiresAt, new Date()),
         ),
