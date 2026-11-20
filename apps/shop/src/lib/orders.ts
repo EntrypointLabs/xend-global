@@ -250,12 +250,17 @@ export async function reconcileOrder(orderId: string): Promise<Order | null> {
   await sql`UPDATE orders SET payment_status = ${intent.status}, last_checked_at = now() WHERE id = ${orderId}`;
 
   if (intent.status === "succeeded") return fulfil(row, intent);
+  const lapsed =
+    intent.status === "created" && Date.parse(intent.expires_at) < Date.now();
   if (
+    lapsed ||
     intent.status === "failed" ||
     intent.status === "expired" ||
     intent.status === "canceled"
   ) {
-    const status: OrderStatus = intent.status;
+    const status: OrderStatus = lapsed
+      ? "expired"
+      : (intent.status as OrderStatus);
     const [closed] = await sql<Row[]>`
       UPDATE orders SET status = ${status}
       WHERE id = ${orderId} AND status = 'awaiting_payment' RETURNING *`;
@@ -322,4 +327,18 @@ export async function reconcileOpenOrders(
     }
   }
   return { checked: rows.length, paid };
+}
+
+/** Re-checks any order still waiting so a list never shows a payment abandoned hours ago as pending. */
+export async function refreshOpen(orders: Order[]): Promise<Order[]> {
+  return Promise.all(
+    orders.map(async (o) => {
+      if (o.status !== "awaiting_payment" || !o.intentId) return o;
+      try {
+        return (await reconcileOrder(o.id)) ?? o;
+      } catch {
+        return o;
+      }
+    }),
+  );
 }

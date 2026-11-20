@@ -64,8 +64,7 @@ export function OrdersLookup() {
       .catch(() => setMine([]));
   }, []);
 
-  const visibleMine =
-    mine?.filter((o) => o.status !== "failed" || o.intentId) ?? [];
+  const visibleMine = mine ?? [];
   const input =
     "h-12 w-full border border-line bg-white px-3.5 text-[14px] outline-none placeholder:font-mono placeholder:text-[12px] placeholder:uppercase placeholder:tracking-[0.04em] placeholder:text-mute focus:border-ink";
 

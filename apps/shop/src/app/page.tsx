@@ -17,10 +17,9 @@ export default async function Home() {
   return (
     <>
       <section id="everyday" className="px-4 pb-24 pt-24 sm:px-6 sm:pt-28">
-        <div className="label mx-auto mb-10 flex max-w-[1400px] flex-col items-center gap-1 text-center text-mute sm:mb-14">
-          <p className="text-ink">Issue 01</p>
-          <p>Under $100. One Face ID.</p>
-        </div>
+        <p className="label mx-auto mb-10 max-w-[1400px] text-center text-mute sm:mb-14">
+          Under $100. One Face ID.
+        </p>
         <div className="mx-auto grid max-w-[1400px] grid-cols-2 gap-x-4 gap-y-12 sm:grid-cols-3 md:grid-cols-5">
           {everyday.map((p) => (
             <ProductCard

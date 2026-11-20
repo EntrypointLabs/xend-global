@@ -34,10 +34,10 @@ export default function RootLayout({
       lang="en"
       className={`${geist.variable} ${geistMono.variable} ${montserrat.variable}`}
     >
-      <body className="font-sans">
+      <body className="flex min-h-dvh flex-col font-sans">
         <CartProvider>
           <Header />
-          <main>{children}</main>
+          <main className="flex-1">{children}</main>
           <footer className="bg-night text-night-mute">
             <div className="flex flex-col gap-4 px-4 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <p className="font-brand text-[13px] tracking-[0.24em] text-night-text">

@@ -9,6 +9,7 @@ import {
   placeOrder,
   reconcileOpenOrders,
   reconcileOrder,
+  refreshOpen,
   displayStock,
   type CartLine,
   type Order,
@@ -83,11 +84,19 @@ export async function lookupOrders(
   number: string,
 ): Promise<Order[]> {
   if (!email.trim()) return [];
-  return ordersFor(email, number.trim() || undefined);
+  return refreshOpen(await ordersFor(email, number.trim() || undefined));
 }
 
 export async function recentOrders(ids: string[]): Promise<Order[]> {
-  return ordersByIds(ids.filter((id) => /^ord_[0-9a-f]{20}$/.test(id)));
+  const orders = await refreshOpen(
+    await ordersByIds(ids.filter((id) => /^ord_[0-9a-f]{20}$/.test(id))),
+  );
+  return orders.filter(
+    (o) =>
+      o.status === "paid" ||
+      o.status === "needs_review" ||
+      o.status === "awaiting_payment",
+  );
 }
 
 export async function currentStock(): Promise<Record<string, number>> {
