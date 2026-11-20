@@ -1,0 +1,5 @@
+{
+  "framework": "nextjs",
+  "installCommand": "npm install --ignore-scripts --no-audit --no-fund",
+  "crons": [{ "path": "/api/reconcile", "schedule": "0 9 * * *" }]
+}
