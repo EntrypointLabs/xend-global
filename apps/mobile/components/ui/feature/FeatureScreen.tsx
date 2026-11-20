@@ -83,7 +83,7 @@ export function FeatureScreen({
         {body}
         {footer ? (
           <View
-            className="border-t border-black/[0.06] px-5 pt-4"
+            className="px-5 pt-4"
             style={{ paddingBottom: insets.bottom + 12 }}
           >
             {footer}

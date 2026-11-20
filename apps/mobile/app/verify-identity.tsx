@@ -8,6 +8,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { PillButton, Footnote } from "@/components/ui/kit";
 import { FeatureScreen } from "@/components/ui/feature/FeatureScreen";
+import { Illustration } from "@/components/ui/feature/Illustration";
 import { ScreenVerificationCodeInput } from "@/components/ui/organisms";
 import { useNow } from "@/hooks/useNow";
 import { apiClient } from "@/utils/apiClient";
@@ -105,10 +106,9 @@ export default function VerifyIdentityScreen() {
   if (current?.status === "verified") {
     return (
       <Result
-        icon="checkmark-circle"
-        tone="success"
+        art="verify"
         title="You're verified"
-        body="You can now add and send more than ₦50,000 a day."
+        body="Your naira limit is lifted: no more ₦50,000 daily cap on deposits or bank sends."
         action={{ title: "Done", onPress: close }}
       />
     );
@@ -119,7 +119,7 @@ export default function VerifyIdentityScreen() {
         icon="hourglass-outline"
         tone="muted"
         title="We're checking your details"
-        body="This usually takes a few hours. We'll let you know as soon as it's done."
+        body="This usually takes a few hours. Open this page again to see when it's done."
         action={{ title: "Close", onPress: close }}
       />
     );
@@ -159,21 +159,24 @@ export default function VerifyIdentityScreen() {
           />
         }
       >
-        <View className="overflow-hidden rounded-[28px] bg-[#F2F2F0] px-6 pb-6 pt-7">
+        <View className="overflow-hidden rounded-[28px] bg-[#F2F2F0] px-6 pb-5 pt-7">
           <Typography
             accessibilityRole="header"
-            className="text-[34px] uppercase leading-[34px] tracking-[-1px] text-[#0E0F0C]"
+            className="max-w-[210px] text-[34px] uppercase leading-[34px] tracking-[-1px] text-[#0E0F0C]"
             style={DISPLAY}
           >
             Raise your limit
           </Typography>
-          <View className="mt-6 items-center pb-2">
-            <View className="size-[132px] items-center justify-center rounded-full bg-white">
-              <View className="size-[92px] items-center justify-center rounded-full bg-success/15">
-                <Ionicons name="shield-checkmark" size={46} color="#16A34A" />
-              </View>
-            </View>
+          <Typography
+            weight="500"
+            className="mt-2 max-w-[200px] text-[14px] leading-[20px] text-black/55"
+          >
+            One BVN check, about a minute.
+          </Typography>
+          <View className="absolute -bottom-3 -right-3">
+            <Illustration name="verify" size={150} />
           </View>
+          <View className="h-16" />
         </View>
         <View className="mt-7 gap-6">
           <Benefit
@@ -326,6 +329,11 @@ export default function VerifyIdentityScreen() {
           </HapticPressable>
         )}
       </View>
+      <Footnote className="mt-6 text-center">
+        {
+          "No code? It goes to the number your bank has on your BVN. If that's an old number, update it at your bank."
+        }
+      </Footnote>
     </FeatureScreen>
   );
 }
@@ -364,13 +372,15 @@ function Benefit({
 
 function Result({
   icon,
-  tone,
+  tone = "muted",
+  art,
   title,
   body,
   action,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
-  tone: "success" | "muted";
+  icon?: keyof typeof Ionicons.glyphMap;
+  tone?: "success" | "muted";
+  art?: "verify";
   title: string;
   body: string;
   action: { title: string; onPress: () => void };
@@ -382,19 +392,23 @@ function Result({
       footer={<PillButton title={action.title} onPress={action.onPress} />}
     >
       <View className="flex-1 items-center justify-center pb-16">
-        <View
-          className={
-            tone === "success"
-              ? "size-16 items-center justify-center rounded-full bg-success/15"
-              : "size-16 items-center justify-center rounded-full bg-black/[0.05]"
-          }
-        >
-          <Ionicons
-            name={icon}
-            size={32}
-            color={tone === "success" ? "#16A34A" : "#0E0F0C"}
-          />
-        </View>
+        {art ? (
+          <Illustration name={art} size={170} />
+        ) : (
+          <View
+            className={
+              tone === "success"
+                ? "size-16 items-center justify-center rounded-full bg-success/15"
+                : "size-16 items-center justify-center rounded-full bg-black/[0.05]"
+            }
+          >
+            <Ionicons
+              name={icon ?? "information-circle-outline"}
+              size={32}
+              color={tone === "success" ? "#16A34A" : "#0E0F0C"}
+            />
+          </View>
+        )}
         <Typography
           accessibilityRole="header"
           weight="700"

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -50,6 +50,11 @@ function groupAccountNumber(digits: string) {
     : digits;
 }
 
+/** The partner sends names like "Paj Inc.(Pay NGN 50,000.00)". */
+function tidyAccountName(name: string) {
+  return name.replace(/\s*\(/g, " (");
+}
+
 /** The deposit to pick back up when the screen opens again, if any. */
 function resumable(orders: FiatOrder[]): Stage | null {
   const live = orders.find(
@@ -84,9 +89,11 @@ export default function AddNairaScreen() {
   const [stage, setStage] = useState<Stage | null>(null);
 
   useEffect(() => {
-    if (stage || !ordersQuery.isFetched) return;
+    // A cached list can still show a deposit as in flight after it finished,
+    // which would reopen its tracker instead of a fresh form.
+    if (stage || !ordersQuery.isFetchedAfterMount) return;
     setStage(resumable(ordersQuery.data?.orders ?? []) ?? { kind: "amount" });
-  }, [stage, ordersQuery.isFetched, ordersQuery.data]);
+  }, [stage, ordersQuery.isFetchedAfterMount, ordersQuery.data]);
 
   if (!stage) return <FeatureScreen leave="close">{null}</FeatureScreen>;
   if (stage.kind === "amount")
@@ -106,11 +113,13 @@ export default function AddNairaScreen() {
 function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const amountInput = useRef<TextInput>(null);
   const [typed, setTyped] = useState("");
   const [debounced, setDebounced] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const amount = Number(typed || "0");
+  const size = amountSize(typed.length);
 
   useEffect(() => {
     const id = setTimeout(() => setDebounced(amount), 450);
@@ -218,12 +227,14 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
       <Typography weight="500" className="mt-7 text-[14px] text-black/60">
         You send
       </Typography>
-      <View className="mt-1 flex-row items-center">
+      <HapticPressable
+        feedback="none"
+        accessible={false}
+        onPress={() => amountInput.current?.focus()}
+        className="mt-1 flex-row items-center"
+      >
         <Typography
-          className={cn(
-            "text-[52px] leading-[60px]",
-            typed ? "text-[#0E0F0C]" : "text-black/20"
-          )}
+          className={cn(size.text, typed ? "text-[#0E0F0C]" : "text-black/20")}
           style={DISPLAY}
         >
           ₦
@@ -241,6 +252,7 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
             </Typography>
           )}
           <TextInput
+            ref={amountInput}
             value={typed ? Number(typed).toLocaleString("en-NG") : ""}
             onChangeText={(text) => {
               setError(null);
@@ -249,11 +261,11 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
             keyboardType="number-pad"
             accessibilityLabel="Amount in naira"
             accessibilityHint="Or pick an amount below"
-            className="h-[72px] py-0 text-[52px] text-[#0E0F0C]"
+            className={cn("h-[72px] py-0 text-[#0E0F0C]", size.input)}
             style={DISPLAY}
           />
         </View>
-      </View>
+      </HapticPressable>
 
       <View className="mt-3 flex-row flex-wrap gap-2">
         {PRESETS.map((preset) => (
@@ -334,6 +346,15 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
       ) : null}
     </FeatureScreen>
   );
+}
+
+/** Steps the display type down so a long amount stays on one line. */
+function amountSize(digits: number) {
+  if (digits > 7)
+    return { text: "text-[34px] leading-[40px]", input: "text-[34px]" };
+  if (digits > 5)
+    return { text: "text-[42px] leading-[50px]", input: "text-[42px]" };
+  return { text: "text-[52px] leading-[60px]", input: "text-[52px]" };
 }
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -492,7 +513,8 @@ function PayStage({
             />
             <CopyRow
               label="Account name"
-              value={i.accountName ?? ""}
+              value={tidyAccountName(i.accountName ?? "")}
+              copyValue={i.accountName ?? ""}
               copyLabel="account name"
             />
           </View>

@@ -20,6 +20,8 @@ const ART: Record<IllustrationName, ImageSourcePropType | null> = {
   // Stands in until its own render is made: the convert coin already reads
   // as money changing form.
   deposit: require("@/assets/illustrations/convert.webp"),
+  // Same stand-in until the identity render (a painted shield) is made.
+  verify: require("@/assets/illustrations/convert.webp"),
 };
 
 export type IllustrationName =
@@ -30,7 +32,8 @@ export type IllustrationName =
   | "convert"
   | "atm"
   | "error"
-  | "deposit";
+  | "deposit"
+  | "verify";
 
 export function Illustration({
   name,
