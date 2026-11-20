@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { ViewTransition } from "react";
 import {
   formatUsd,
   ONE_SIGNATURE_LIMIT_CENTS,
@@ -41,14 +42,20 @@ export default async function ProductPage({ params }: Props) {
     <div className={`min-h-dvh ${dark ? "bg-night text-night-text" : ""}`}>
       <div className="mx-auto grid max-w-[1400px] gap-8 px-4 pb-24 pt-16 sm:px-6 md:grid-cols-[1fr_380px] md:gap-12 lg:grid-cols-[1fr_420px]">
         <div className="md:sticky md:top-14 md:flex md:h-[calc(100dvh-3.5rem)] md:items-center">
-          <ProductArt
-            kind={product.art}
-            tone={product.tone}
-            dark={dark}
-            id={`pdp-${product.id}`}
-            label={`${product.name}, ${product.line}`}
-            className="settle mx-auto aspect-[4/5] w-full max-w-[640px]"
-          />
+          <ViewTransition
+            name={`product-${product.slug}`}
+            share="product-morph"
+            default="none"
+          >
+            <ProductArt
+              kind={product.art}
+              tone={product.tone}
+              dark={dark}
+              id={`pdp-${product.id}`}
+              label={`${product.name}, ${product.line}`}
+              className="mx-auto aspect-[4/5] w-full max-w-[640px]"
+            />
+          </ViewTransition>
         </div>
 
         <div className="md:pt-24">

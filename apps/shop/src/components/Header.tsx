@@ -4,10 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Symbol } from "./Logo";
 import { useBag } from "./CartProvider";
+import { useCloseProduct } from "./ProductMotion";
 
 export function Header() {
   const { count, ready } = useBag();
   const home = usePathname() === "/";
+  const { close } = useCloseProduct();
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-30 text-white mix-blend-difference">
       <div className="grid h-14 grid-cols-3 items-center px-4 sm:px-6">
@@ -17,6 +19,7 @@ export function Header() {
           ) : (
             <Link
               href="/"
+              onClick={close}
               className="label flex items-center gap-2 hover:opacity-60"
               aria-label="Back to the store"
             >

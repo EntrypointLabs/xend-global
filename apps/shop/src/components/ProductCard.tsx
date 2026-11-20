@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ViewTransition } from "react";
 import { formatUsd, type Product } from "@/lib/catalog";
 import { ProductArt } from "./ProductArt";
 
@@ -21,20 +22,27 @@ export function ProductCard({
   return (
     <Link
       href={`/products/${product.slug}`}
+      data-product={product.slug}
       className="group block"
       aria-label={`${product.name}, ${product.line}, ${formatUsd(product.priceCents)}${soldOut ? ", sold out" : ""}`}
     >
       <div className="relative">
-        <ProductArt
-          kind={product.art}
-          tone={product.tone}
-          dark={dark}
-          id={`card-${product.id}`}
-          label={`${product.name}, ${product.line}`}
-          className={`aspect-[4/5] w-full transition-transform duration-500 ease-out-quint group-hover:scale-[1.04] ${
-            soldOut ? "opacity-40" : ""
-          }`}
-        />
+        <ViewTransition
+          name={`product-${product.slug}`}
+          share="product-morph"
+          default="none"
+        >
+          <ProductArt
+            kind={product.art}
+            tone={product.tone}
+            dark={dark}
+            id={`card-${product.id}`}
+            label={`${product.name}, ${product.line}`}
+            className={`aspect-[4/5] w-full transition-transform duration-500 ease-out-quint group-hover:scale-[1.04] ${
+              soldOut ? "opacity-40" : ""
+            }`}
+          />
+        </ViewTransition>
         {tag && (
           <span
             className={`label absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap px-1.5 py-0.5 ${

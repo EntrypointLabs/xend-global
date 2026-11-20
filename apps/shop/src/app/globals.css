@@ -88,9 +88,91 @@ p {
   font-size: 16px;
 }
 
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+::view-transition-group(*) {
+  animation-duration: 0.2s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:root:active-view-transition-type(product-open, product-close) {
+  --product-ease: cubic-bezier(0.2, 0, 0, 1);
+  --product-duration: 0.36s;
+}
+
+:root:active-view-transition-type(product-open, product-close)::view-transition-old(root) {
+  animation: vt-out var(--product-duration) var(--product-ease) both;
+}
+
+:root:active-view-transition-type(product-open, product-close)::view-transition-new(root) {
+  animation: vt-in var(--product-duration) var(--product-ease) both;
+}
+
+:root:active-view-transition-type(product-open, product-close)::view-transition-group(.product-morph) {
+  animation-duration: var(--product-duration);
+  animation-timing-function: var(--product-ease);
+}
+
+@keyframes vt-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes vt-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.fly-away {
+  animation: fly-away 0.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes fly-away {
+  to {
+    transform: translateY(calc(var(--fly, 1) * 55vh));
+    opacity: 0;
+  }
+}
+
+.fly-in {
+  animation: fly-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes fly-in {
+  from {
+    transform: translateY(calc(var(--fly, 1) * 55vh));
+    opacity: 0;
+  }
+}
+
+.fly-fade-out {
+  animation: vt-out 0.15s ease-out forwards;
+}
+
+.fly-fade-in {
+  animation: vt-in 0.3s ease-out 0.12s both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .settle,
-  .pulse-dot {
+  .pulse-dot,
+  .fly-away,
+  .fly-in,
+  .fly-fade-out,
+  .fly-fade-in {
     animation: none;
+  }
+
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
   }
 }
