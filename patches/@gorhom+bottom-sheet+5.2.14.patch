@@ -1,0 +1,104 @@
+diff --git a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetTextInput/BottomSheetTextInput.tsx b/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetTextInput/BottomSheetTextInput.tsx
+index 861d276..5b9d398 100644
+--- a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetTextInput/BottomSheetTextInput.tsx
++++ b/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetTextInput/BottomSheetTextInput.tsx
+@@ -12,6 +12,7 @@ import type {
+ } from 'react-native';
+ import { TextInput as RNTextInput } from 'react-native';
+ import { TextInput } from 'react-native-gesture-handler';
++import { runOnUI } from 'react-native-reanimated';
+ import { useBottomSheetInternal } from '../../hooks';
+ import { findNodeHandle } from '../../utilities';
+ import type { BottomSheetTextInputProps } from './types';
+@@ -31,10 +32,13 @@ const BottomSheetTextInputComponent = forwardRef<
+   //#region callbacks
+   const handleOnFocus = useCallback(
+     (args: NativeSyntheticEvent<TextInputFocusEventData>) => {
+-      animatedKeyboardState.set(state => ({
+-        ...state,
+-        target: args.nativeEvent.target,
+-      }));
++      // Written on the UI thread so it queues behind any pending keyboard
++      // show/hide update instead of racing it from the JS thread.
++      const target = args.nativeEvent.target;
++      runOnUI(() => {
++        'worklet';
++        animatedKeyboardState.set(state => ({ ...state, target }));
++      })();
+       if (onFocus) {
+         onFocus(args);
+       }
+@@ -43,27 +47,31 @@ const BottomSheetTextInputComponent = forwardRef<
+   );
+   const handleOnBlur = useCallback(
+     (args: NativeSyntheticEvent<TextInputFocusEventData>) => {
+-      const keyboardState = animatedKeyboardState.get();
+       const currentFocusedInput = findNodeHandle(
+         RNTextInput.State.currentlyFocusedInput()
+       );
++      const shouldIgnoreBlurEvent = Boolean(
++        currentFocusedInput &&
++          textInputNodesRef.current.has(currentFocusedInput)
++      );
++      const target = args.nativeEvent.target;
+ 
+       /**
+-       * we need to make sure that we only remove the target
+-       * if the target belong to the current component and
+-       * if the currently focused input is not in the targets set.
++       * Only remove the target if it belongs to this input and focus did not
++       * move to another input in the sheet. Read and written on the UI thread:
++       * a JS-thread read here can see SHOWN before a queued HIDDEN lands and
++       * write it back, leaving the sheet shortened by the keyboard's height.
+        */
+-      const shouldRemoveCurrentTarget =
+-        keyboardState.target === args.nativeEvent.target;
+-      const shouldIgnoreBlurEvent =
+-        currentFocusedInput &&
+-        textInputNodesRef.current.has(currentFocusedInput);
+-
+-      if (shouldRemoveCurrentTarget && !shouldIgnoreBlurEvent) {
+-        animatedKeyboardState.set(state => ({
+-          ...state,
+-          target: undefined,
+-        }));
++      if (!shouldIgnoreBlurEvent) {
++        runOnUI(() => {
++          'worklet';
++          if (animatedKeyboardState.get().target === target) {
++            animatedKeyboardState.set(state => ({
++              ...state,
++              target: undefined,
++            }));
++          }
++        })();
+       }
+ 
+       if (onBlur) {
+@@ -91,17 +99,19 @@ const BottomSheetTextInputComponent = forwardRef<
+         return;
+       }
+ 
+-      const keyboardState = animatedKeyboardState.get();
+       /**
+        * remove the keyboard state target if it belong
+        * to the current component.
+        */
+-      if (keyboardState.target === componentNode) {
+-        animatedKeyboardState.set(state => ({
+-          ...state,
+-          target: undefined,
+-        }));
+-      }
++      runOnUI(() => {
++        'worklet';
++        if (animatedKeyboardState.get().target === componentNode) {
++          animatedKeyboardState.set(state => ({
++            ...state,
++            target: undefined,
++          }));
++        }
++      })();
+ 
+       if (textInputNodesRef.current.has(componentNode)) {
+         textInputNodesRef.current.delete(componentNode);
