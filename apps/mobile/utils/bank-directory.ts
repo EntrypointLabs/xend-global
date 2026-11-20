@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-export const BankSchema = z.object({ code: z.string(), name: z.string() });
+export const BankSchema = z.object({
+  code: z.string(),
+  name: z.string(),
+  /** Names a logo bundled in assets/banks; absent means a monogram. */
+  logoKey: z.string().nullable().optional(),
+});
 export const BankListSchema = z.object({ banks: z.array(BankSchema) });
 export const ResolvedBankRecipientSchema = z.object({
   accountNumber: z.string().regex(/^\d{10}$/),

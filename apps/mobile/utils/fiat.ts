@@ -118,6 +118,7 @@ export const VerificationConsentSchema = z.object({
 export const PayoutBankSchema = z.object({
   code: z.string(),
   name: z.string(),
+  logoKey: z.string().nullable().optional(),
 });
 export type FiatLimits = z.infer<typeof FiatLimitsSchema>;
 export type Verification = z.infer<typeof VerificationSchema>;

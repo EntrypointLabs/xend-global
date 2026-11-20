@@ -22,6 +22,7 @@ import BankRecipientStep from "./BankRecipientStep";
 import AmountStep from "./AmountStep";
 import { QRScannerModal } from "./QRScannerModal";
 import type { BankRecipient, SendMode } from "./bankAccount";
+import { BANK_SHEET_BG } from "./BankSheetParts";
 
 export interface SendFlowModalRef {
   present: () => void;
@@ -42,6 +43,7 @@ const springConfig = {};
 export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
   ({ mode = "crypto", onClose }, ref) => {
     const snapPoints = useMemo(() => ["94%"], []);
+    const background = mode === "bank" ? BANK_SHEET_BG : "#F0F0F0";
     const scannerRef = useRef<BottomSheetModal>(null);
 
     const [, setStep] = useState<Step>("Recipient");
@@ -129,17 +131,23 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
           keyboardBlurBehavior="restore"
           android_keyboardInputMode="adjustResize"
           handleIndicatorStyle={{ display: "none" }}
-          backgroundStyle={{ backgroundColor: "#F0F0F0" }}
+          backgroundStyle={{ backgroundColor: background }}
           containerStyle={{ zIndex: 1 }}
         >
-          <BottomSheetView className="h-full flex-1 overflow-hidden bg-[#F0F0F0]">
+          <BottomSheetView
+            className="h-full flex-1 overflow-hidden"
+            style={{ backgroundColor: background }}
+          >
             <Animated.View
               className="w-[200%] flex-1 flex-row"
               style={requestLayout}
             >
               <View className="w-full flex-1">
                 {mode === "bank" ? (
-                  <BankRecipientStep onNext={handleBankNext} />
+                  <BankRecipientStep
+                    onNext={handleBankNext}
+                    onClose={handleClose}
+                  />
                 ) : (
                   <RecipientStep
                     onClose={handleClose}

@@ -168,7 +168,7 @@ async function waitForTransfer(
 
 const ORDER_POLL_MS = 5_000;
 const ORDER_POLL_LIMIT = 120;
-const BANK_SEND_ROUTE = "paycrest:usdc-ngn";
+export const BANK_SEND_ROUTE = "paycrest:usdc-ngn";
 
 /** The payout's settled state, or "pending" while it is still moving. */
 async function waitForFiatOrder(
@@ -424,7 +424,8 @@ export function useSendExecutor() {
   const prepareBank = useCallback(
     async (
       recipient: BankRecipient,
-      recipientMinor: string
+      recipientMinor: string,
+      note = ""
     ): Promise<BankPrepared> => {
       try {
         const quote = await apiClient.fiatQuote(
@@ -440,6 +441,7 @@ export function useSendExecutor() {
           {
             bankCode: recipient.bankCode,
             accountNumber: recipient.accountNumber,
+            ...(note.trim() ? { narration: note.trim() } : {}),
           }
         );
         const i = order.instructions;

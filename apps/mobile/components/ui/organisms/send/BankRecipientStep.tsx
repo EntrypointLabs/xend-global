@@ -1,15 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Keyboard,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
-} from "react-native";
+import { ActivityIndicator, Keyboard, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import {
-  BottomSheetFlatList,
+  BottomSheetModal,
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
@@ -17,8 +11,8 @@ import { TextInput } from "react-native-gesture-handler";
 import { useQuery } from "@tanstack/react-query";
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
-import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { PillButton } from "@/components/ui/kit";
+import { Illustration } from "@/components/ui/feature/Illustration";
 import { useUnifiedFiat } from "@/hooks/useUnifiedFiat";
 import { apiClient, apiErrorMessage, apiErrorStatus } from "@/utils/apiClient";
 import { BankAccountNotFoundError, type Bank } from "@/utils/bank-directory";
@@ -31,19 +25,27 @@ import {
   groupAccountNumber,
   isAccountNumber,
 } from "./bankAccount";
-import { RecipientEmptyState, RecipientRow } from "./RecipientParts";
+import { BankLogo } from "./BankLogo";
+import { BankSearchSheet } from "./BankSearchSheet";
+import {
+  BANK_SHEET_BG,
+  BankSheetFooter,
+  BankSheetTop,
+  DISPLAY,
+} from "./BankSheetParts";
 
 interface BankRecipientStepProps {
   onNext: (recipient: BankRecipient) => void;
+  onClose: () => void;
   recipient?: string;
   setRecipient?: (recipient: string) => void;
 }
 
-type Stage =
-  | { name: "number" }
-  | { name: "bank"; showAll: boolean; error: string | null }
-  | { name: "checking"; bank: Bank }
-  | { name: "confirmed"; recipient: BankRecipient };
+type Check =
+  | { state: "idle" }
+  | { state: "checking" }
+  | { state: "found"; recipient: BankRecipient }
+  | { state: "failed"; message: string };
 
 type RecentAccount = {
   accountNumber: string;
@@ -51,88 +53,11 @@ type RecentAccount = {
   sends: number;
 };
 
-const BANK_ROW_HEIGHT = 56;
 const BANK_LIST_STALE_MS = 6 * 60 * 60 * 1000;
-
-function BankIcon({ size = "md" }: { size?: "md" | "lg" }) {
-  return (
-    <View
-      className={cn(
-        "items-center justify-center rounded-2xl bg-black/5",
-        size === "md" ? "size-10" : "size-12"
-      )}
-    >
-      <MaterialCommunityIcons
-        name="bank-outline"
-        size={size === "md" ? 20 : 24}
-        color="black"
-      />
-    </View>
-  );
-}
-
-function BankRow({ bank, onPress }: { bank: Bank; onPress: () => void }) {
-  return (
-    <HapticPressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={bank.name}
-      className="mx-5 h-[56px] flex-row items-center gap-3"
-    >
-      <BankIcon />
-      <Typography
-        weight="500"
-        numberOfLines={1}
-        className="flex-1 text-[15px] text-black"
-      >
-        {bank.name}
-      </Typography>
-      <Ionicons name="chevron-forward" size={16} color="#00000066" />
-    </HapticPressable>
-  );
-}
-
-function SheetHeader({
-  title,
-  onBack,
-}: {
-  title: string;
-  onBack?: () => void;
-}) {
-  return (
-    <View className="mb-8 flex-row items-center justify-between px-4">
-      {onBack ? (
-        <HapticPressable
-          onPress={onBack}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          className="size-10 items-center justify-center rounded-full bg-black/5"
-        >
-          <Ionicons name="chevron-back" size={20} color="black" />
-        </HapticPressable>
-      ) : (
-        <View className="size-10" />
-      )}
-      <TabHeaderText className="pb-0 text-center font-semibold">
-        {title}
-      </TabHeaderText>
-      <View className="size-10" />
-    </View>
-  );
-}
-
-function matchesSearch(name: string, query: string): boolean {
-  const haystack = name.toLowerCase();
-  return query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((word) => haystack.includes(word));
-}
 
 function resolveFailure(error: unknown, bankName: string): string {
   if (error instanceof BankAccountNotFoundError)
-    return `We couldn't find this account at ${bankName}. Check the number or pick another bank.`;
+    return `No account with this number at ${bankName}. Check the number or pick another bank.`;
   if (apiErrorStatus(error) === 429)
     return (
       apiErrorMessage(error) ??
@@ -141,20 +66,50 @@ function resolveFailure(error: unknown, bankName: string): string {
   return `We couldn't reach ${bankName} right now. Try again or pick another bank.`;
 }
 
+/**
+ * The shared Divider reads the screen theme, which the send sheet's portal
+ * does not provide. iOS only dashes a full border, so one edge of it shows.
+ */
+function DashedRule() {
+  return (
+    <View className="my-4 h-px overflow-hidden">
+      <View className="h-[3px] border border-dashed border-black/20" />
+    </View>
+  );
+}
+
+/** A short bank name for a suggestion chip. */
+function shortBankName(name: string) {
+  // "Paycom (Opay)": the brand people know is the one in brackets.
+  const brand = name.match(/\(([^)]+)\)/)?.[1];
+  return (brand ?? name)
+    .replace(/\(.*?\)/g, "")
+    .replace(/\b(Microfinance Bank|MFB|Bank of Nigeria|Plc|Limited)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Who the money goes to, on one page: the account number, then its bank (a
+ * suggestion from the number, or a search), then the name the bank holds.
+ */
 export default function BankRecipientStep({
   onNext,
+  onClose,
   recipient,
   setRecipient,
 }: BankRecipientStepProps) {
   const inputRef = useRef<TextInput | null>(null);
+  const searchRef = useRef<BottomSheetModal>(null);
   const [localNumber, setLocalNumber] = useState(recipient ?? "");
   const accountNumber = recipient ?? localNumber;
   const setAccountNumber = setRecipient ?? setLocalNumber;
-  const [stage, setStage] = useState<Stage>({ name: "number" });
-  const [search, setSearch] = useState("");
+  const [bank, setBank] = useState<Bank | null>(null);
+  const [check, setCheck] = useState<Check>({ state: "idle" });
   const checkId = useRef(0);
+  const isComplete = isAccountNumber(accountNumber);
 
-  const { data, isLoading } = useUnifiedFiat("NGN");
+  const { data } = useUnifiedFiat("NGN");
   // Payout banks are the payout partner's list, so a picked code is the one
   // the payout order carries.
   const banksQuery = useQuery({
@@ -163,13 +118,15 @@ export default function BankRecipientStep({
     staleTime: BANK_LIST_STALE_MS,
     gcTime: BANK_LIST_STALE_MS,
   });
-  const isComplete = isAccountNumber(accountNumber);
-  // NUBAN guesses come from the bank-account adapter, which payouts do not
-  // use; with no guesses the picker opens on the searchable full list.
-  const candidatesQuery = { data: [] as Bank[], isLoading: false };
+  const candidatesQuery = useQuery({
+    queryKey: ["fiat", "payout-banks", "candidates", accountNumber],
+    queryFn: () => apiClient.payoutBankCandidates(accountNumber),
+    enabled: isComplete,
+    staleTime: BANK_LIST_STALE_MS,
+  });
 
   const banksByCode = useMemo(
-    () => new Map((banksQuery.data ?? []).map((bank) => [bank.code, bank])),
+    () => new Map((banksQuery.data ?? []).map((b) => [b.code, b])),
     [banksQuery.data]
   );
 
@@ -190,425 +147,335 @@ export default function BankRecipientStep({
   }, [data?.orders]);
 
   useEffect(() => {
-    if (stage.name !== "number") return;
     const timer = setTimeout(() => inputRef.current?.focus(), 300);
     return () => clearTimeout(timer);
-  }, [stage.name]);
+  }, []);
 
-  const chooseBank = () => {
-    Keyboard.dismiss();
-    setSearch("");
-    setStage({ name: "bank", showAll: false, error: null });
-  };
-
-  const check = async (number: string, bank: Bank) => {
+  const lookUp = async (number: string, picked: Bank) => {
     Keyboard.dismiss();
     const id = ++checkId.current;
-    setStage({ name: "checking", bank });
+    setBank(picked);
+    setCheck({ state: "checking" });
     try {
       const { accountName } = await apiClient.payoutAccountLookup(
-        bank.code,
+        picked.code,
         number
       );
       if (id !== checkId.current) return;
-      const confirmed = {
-        accountNumber: number,
-        bankCode: bank.code,
-        bankName: bank.name,
-        accountName: accountName ?? "Account holder",
-      };
-      setStage({ name: "confirmed", recipient: confirmed });
+      setCheck({
+        state: "found",
+        recipient: {
+          accountNumber: number,
+          bankCode: picked.code,
+          bankName: picked.name,
+          accountName: accountName ?? "Account holder",
+          logoKey: picked.logoKey ?? null,
+        },
+      });
     } catch (error) {
       if (id !== checkId.current) return;
-      setStage({
-        name: "bank",
-        showAll: false,
-        error: resolveFailure(error, bank.name),
+      setCheck({
+        state: "failed",
+        message: resolveFailure(error, picked.name),
       });
     }
   };
 
-  const backToNumber = () => {
+  const resetBank = () => {
     checkId.current += 1;
-    setStage({ name: "number" });
+    setBank(null);
+    setCheck({ state: "idle" });
   };
 
-  const backToBanks = () => {
-    checkId.current += 1;
-    setSearch("");
-    setStage({ name: "bank", showAll: false, error: null });
-  };
-
-  const handleChange = (text: string) => {
-    const next = text.replace(/\D/g, "").slice(0, ACCOUNT_NUMBER_LENGTH);
+  const changeNumber = (next: string) => {
+    if (next !== accountNumber) resetBank();
     setAccountNumber(next);
-    if (next.length === ACCOUNT_NUMBER_LENGTH && accountNumber !== next)
-      chooseBank();
+    if (isAccountNumber(next)) Keyboard.dismiss();
   };
 
   const handlePaste = async () => {
     const text = await Clipboard.getStringAsync();
     const pasted = text ? extractAccountNumber(text) : null;
-    if (!pasted) return;
-    setAccountNumber(pasted);
-    chooseBank();
+    if (pasted) changeNumber(pasted);
   };
 
-  const handleContinue = () => {
-    if (isComplete) chooseBank();
+  const openSearch = () => {
+    Keyboard.dismiss();
+    searchRef.current?.present();
+  };
+
+  const pickFromSearch = (picked: Bank) => {
+    searchRef.current?.dismiss();
+    void lookUp(accountNumber, picked);
   };
 
   const openRecent = (account: RecentAccount) => {
-    setAccountNumber(account.accountNumber);
-    const bank = account.bankCode ? banksByCode.get(account.bankCode) : null;
-    if (bank) void check(account.accountNumber, bank);
-    else chooseBank();
+    changeNumber(account.accountNumber);
+    const known = account.bankCode ? banksByCode.get(account.bankCode) : null;
+    if (known) void lookUp(account.accountNumber, known);
   };
 
-  if (stage.name === "checking" || stage.name === "confirmed") {
-    const confirmed = stage.name === "confirmed" ? stage.recipient : null;
-    const bankName =
-      stage.name === "confirmed" ? stage.recipient.bankName : stage.bank.name;
-    return (
-      <View className="flex-1 bg-[#F0F0F0]">
-        <SheetHeader title="Confirm recipient" onBack={backToBanks} />
-        <View className="mx-4 rounded-[24px] border border-white bg-[#F9F9F9] p-5">
-          <BankIcon size="lg" />
-          {confirmed ? (
-            <>
-              <Typography
-                weight="700"
-                className="mt-4 text-[22px] leading-[28px] text-black"
-              >
-                {confirmed.accountName}
-              </Typography>
-              <Typography
-                weight="500"
-                className="mt-1 text-[13px] tabular-nums text-black/40"
-              >
-                {`${bankName} · ${groupAccountNumber(confirmed.accountNumber)}`}
-              </Typography>
-            </>
-          ) : (
-            <>
-              <View className="mt-4 flex-row items-center gap-2">
-                <ActivityIndicator size="small" color="#00000040" />
-                <Typography weight="500" className="text-[15px] text-black/40">
-                  Checking account…
-                </Typography>
-              </View>
-              <Typography
-                weight="500"
-                className="mt-1 text-[13px] tabular-nums text-black/30"
-              >
-                {`${bankName} · ${groupAccountNumber(accountNumber)}`}
-              </Typography>
-            </>
-          )}
-        </View>
-        {confirmed ? (
-          <Typography
-            weight="400"
-            className="mx-5 mt-3 text-[12px] leading-[18px] text-black/40"
-          >
-            This is the name the bank has on the account. Make sure it is who
-            you want to pay.
-          </Typography>
-        ) : null}
-        <View className="mx-4 mt-6 flex-row gap-3">
-          <PillButton
-            title="Change bank"
-            tone="quiet"
-            onPress={backToBanks}
-            className="flex-1"
-          />
-          <PillButton
-            title="Continue"
-            onPress={() => confirmed && onNext(confirmed)}
-            disabled={!confirmed}
-            className="flex-1"
-          />
-        </View>
-      </View>
-    );
-  }
-
-  if (stage.name === "bank") {
-    const candidates = candidatesQuery.data ?? [];
-    const noSuggestions = !candidatesQuery.isLoading && candidates.length === 0;
-    const showAll = stage.showAll || noSuggestions || search.length > 0;
-    const allBanks = banksQuery.data ?? [];
-    const filtered = search
-      ? allBanks.filter((bank) => matchesSearch(bank.name, search))
-      : allBanks;
-    const pick = (bank: Bank) => void check(accountNumber, bank);
-
-    const intro = (
-      <View className="mx-5 mb-4">
-        <Typography weight="500" className="text-[13px] text-black/40">
-          {`Account ${groupAccountNumber(accountNumber)}`}
-        </Typography>
-        {stage.error ? (
-          <Typography
-            weight="500"
-            className="mt-2 text-[13px] leading-5 text-destructive"
-          >
-            {stage.error}
-          </Typography>
-        ) : null}
-      </View>
-    );
-
-    return (
-      <View className="flex-1 bg-[#F0F0F0]">
-        <SheetHeader title="Which bank?" onBack={backToNumber} />
-        {intro}
-        {showAll ? (
-          <>
-            <View className="mx-4 mb-3 h-12 flex-row items-center gap-2 rounded-full bg-black/5 px-4">
-              <Ionicons name="search" size={16} color="#00000066" />
-              <BottomSheetTextInput
-                className="flex-1 py-0 font-inter-medium text-[15px] text-black"
-                placeholder="Search banks"
-                placeholderTextColor="#0000004D"
-                value={search}
-                onChangeText={setSearch}
-                autoCorrect={false}
-                autoCapitalize="none"
-                returnKeyType="search"
-              />
-              {search ? (
-                <HapticPressable
-                  onPress={() => setSearch("")}
-                  accessibilityLabel="Clear search"
-                >
-                  <Ionicons name="close-circle" size={18} color="lightgrey" />
-                </HapticPressable>
-              ) : null}
-            </View>
-            {banksQuery.isLoading ? (
-              <View className="items-center py-10">
-                <ActivityIndicator size="small" color="#00000040" />
-              </View>
-            ) : banksQuery.isError ? (
-              <View className="mx-4 rounded-3xl border border-black/[0.07] bg-black/[0.02] p-5">
-                <Typography weight="600" className="text-[15px] text-black">
-                  Could not load banks
-                </Typography>
-                <Typography
-                  weight="500"
-                  className="mt-1 text-[13px] text-black/40"
-                >
-                  Check your connection and try again.
-                </Typography>
-                <PillButton
-                  title="Try again"
-                  tone="quiet"
-                  size="sm"
-                  className="mt-3"
-                  onPress={() => void banksQuery.refetch()}
-                />
-              </View>
-            ) : (
-              <BottomSheetFlatList
-                data={filtered}
-                keyExtractor={(bank: Bank) => bank.code}
-                renderItem={({ item }: { item: Bank }) => (
-                  <BankRow bank={item} onPress={() => pick(item)} />
-                )}
-                getItemLayout={(_: unknown, index: number) => ({
-                  length: BANK_ROW_HEIGHT,
-                  offset: BANK_ROW_HEIGHT * index,
-                  index,
-                })}
-                initialNumToRender={16}
-                maxToRenderPerBatch={24}
-                windowSize={7}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="on-drag"
-                showsVerticalScrollIndicator={false}
-                ListEmptyComponent={
-                  <Typography
-                    weight="500"
-                    className="mx-5 py-10 text-center text-[15px] text-black/30"
-                  >
-                    {`No banks match "${search}"`}
-                  </Typography>
-                }
-              />
-            )}
-          </>
-        ) : (
-          <BottomSheetScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            <Typography weight="600" className="mx-5 mb-1 text-[15px]">
-              Likely banks
-            </Typography>
-            {candidatesQuery.isLoading ? (
-              <View className="items-center py-10">
-                <ActivityIndicator size="small" color="#00000040" />
-              </View>
-            ) : (
-              candidates.map((bank) => (
-                <BankRow
-                  key={bank.code}
-                  bank={bank}
-                  onPress={() => pick(bank)}
-                />
-              ))
-            )}
-            <View className="mx-5 my-2 h-px bg-black/10" />
-            <HapticPressable
-              onPress={() => setStage({ ...stage, showAll: true })}
-              accessibilityRole="button"
-              className="mx-5 h-[56px] flex-row items-center gap-3"
-            >
-              <View className="size-10 items-center justify-center rounded-2xl bg-black/5">
-                <Ionicons name="list" size={20} color="black" />
-              </View>
-              <Typography
-                weight="600"
-                className="flex-1 text-[15px] text-black"
-              >
-                Show all banks
-              </Typography>
-              <Ionicons name="chevron-forward" size={16} color="#00000066" />
-            </HapticPressable>
-          </BottomSheetScrollView>
-        )}
-      </View>
-    );
-  }
-
-  const sends = isComplete
-    ? recentAccounts
-        .filter((a) => a.accountNumber === accountNumber)
-        .reduce((total, a) => total + a.sends, 0)
-    : 0;
-  const helper = !isComplete
-    ? "Enter a 10-digit account number"
-    : sends === 0
-      ? "New account"
-      : `${sends} send${sends === 1 ? "" : "s"}`;
+  const suggestions = (candidatesQuery.data ?? []).slice(0, 4);
+  const found = check.state === "found" ? check.recipient : null;
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View className="flex-1 bg-[#F0F0F0]">
-        <SheetHeader title="Choose recipient" />
-
-        <View className="mx-4 mb-8 rounded-[24px] border border-white bg-[#F9F9F9] p-4">
-          <TouchableOpacity
-            className="relative bg-transparent"
-            onPress={() => inputRef.current?.focus()}
+    <View className="flex-1" style={{ backgroundColor: BANK_SHEET_BG }}>
+      <BankSheetTop leave="close" onPress={onClose} />
+      <BottomSheetScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerClassName="px-5 pb-10"
+      >
+        <View className="h-[104px] justify-center overflow-hidden rounded-[24px] bg-[#F2F2F0] px-5">
+          <Typography
+            accessibilityRole="header"
+            className="max-w-[210px] text-[24px] uppercase leading-[26px] tracking-[-0.6px] text-[#0E0F0C]"
+            style={DISPLAY}
           >
-            <BottomSheetTextInput
-              className="-ml-1 mb-1.5 w-[235px] py-0 font-inter-medium text-base text-black/90"
-              placeholder="Account number"
-              placeholderTextColor="#0000004D"
-              value={accountNumber}
-              onChangeText={handleChange}
-              keyboardType="number-pad"
-              maxLength={ACCOUNT_NUMBER_LENGTH}
-              autoCorrect={false}
-              ref={inputRef}
-              returnKeyType="go"
-              onSubmitEditing={handleContinue}
-              submitBehavior="blurAndSubmit"
-            />
-            <TouchableOpacity
-              onPress={() => inputRef.current?.focus()}
-              className="mb-2.5 flex-row items-center justify-start gap-1"
-            >
-              {isComplete && (
-                <MaterialCommunityIcons
-                  name="clock-time-nine"
-                  size={14}
-                  color="lightgrey"
-                />
-              )}
-              <Typography weight="600" className="text-xs text-black/30">
-                {helper}
-              </Typography>
-            </TouchableOpacity>
-
-            {accountNumber.length > 0 && (
-              <HapticPressable
-                className="absolute -right-5 -top-5 z-10 p-5"
-                onPress={() => setAccountNumber("")}
-              >
-                <Ionicons name="close-circle" size={20} color="lightgrey" />
-              </HapticPressable>
-            )}
-          </TouchableOpacity>
-
-          <View className="flex-row gap-2.5">
-            <HapticPressable
-              className={cn(
-                "rounded-full px-6 py-[8px]",
-                isComplete ? "bg-black" : "bg-black/30"
-              )}
-              onPress={handleContinue}
-              disabled={!isComplete}
-            >
-              <Typography weight="600" className="text-white">
-                Continue
-              </Typography>
-            </HapticPressable>
-
-            <HapticPressable
-              className="flex-row items-center gap-1 rounded-full bg-black/10 px-6 py-[8px]"
-              onPress={handlePaste}
-            >
-              <Ionicons name="document" size={16} color="black" />
-              <Typography weight="600" className="text-black">
-                Paste
-              </Typography>
-            </HapticPressable>
+            Send to a bank
+          </Typography>
+          <Typography
+            weight="500"
+            className="mt-1.5 max-w-[200px] text-[13px] leading-[18px] text-black/55"
+          >
+            Naira to any Nigerian account.
+          </Typography>
+          <View className="absolute -bottom-4 right-0">
+            <Illustration name="deposit" size={112} />
           </View>
         </View>
 
+        <View className="mt-5 rounded-[24px] border border-black/[0.08] bg-white px-5 py-4">
+          <Typography weight="500" className="text-[13px] text-black/55">
+            Account number
+          </Typography>
+          <View className="mt-1 flex-row items-center">
+            <BottomSheetTextInput
+              ref={inputRef}
+              className="flex-1 py-1 font-inter-medium text-[22px] tabular-nums tracking-[1.5px] text-[#0E0F0C]"
+              placeholder="0000000000"
+              placeholderTextColor="#00000040"
+              value={accountNumber}
+              onChangeText={(text) =>
+                changeNumber(
+                  text.replace(/\D/g, "").slice(0, ACCOUNT_NUMBER_LENGTH)
+                )
+              }
+              keyboardType="number-pad"
+              maxLength={ACCOUNT_NUMBER_LENGTH}
+              autoCorrect={false}
+              accessibilityLabel="Account number"
+            />
+            {accountNumber ? (
+              <HapticPressable
+                accessibilityRole="button"
+                accessibilityLabel="Clear account number"
+                className="size-10 items-center justify-center"
+                onPress={() => {
+                  changeNumber("");
+                  inputRef.current?.focus();
+                }}
+              >
+                <Ionicons name="close-circle" size={20} color="#00000040" />
+              </HapticPressable>
+            ) : (
+              <PillButton
+                title="Paste"
+                tone="quiet"
+                size="sm"
+                className="self-center"
+                onPress={() => void handlePaste()}
+              />
+            )}
+          </View>
+
+          {isComplete ? (
+            <>
+              <DashedRule />
+              <Typography weight="500" className="text-[13px] text-black/55">
+                Bank
+              </Typography>
+              {bank ? (
+                <HapticPressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${bank.name}. Change bank`}
+                  onPress={openSearch}
+                  className="mt-2 flex-row items-center gap-3"
+                >
+                  <BankLogo name={bank.name} logoKey={bank.logoKey} />
+                  <Typography
+                    weight="600"
+                    numberOfLines={1}
+                    className="flex-1 text-[16px] text-[#0E0F0C]"
+                  >
+                    {bank.name}
+                  </Typography>
+                  <Typography weight="600" className="text-[14px] text-info">
+                    Change
+                  </Typography>
+                </HapticPressable>
+              ) : candidatesQuery.isLoading ? (
+                <View className="mt-3 h-10 flex-row items-center gap-2">
+                  <ActivityIndicator size="small" color="#00000059" />
+                  <Typography
+                    weight="500"
+                    className="text-[14px] text-black/55"
+                  >
+                    Finding the bank…
+                  </Typography>
+                </View>
+              ) : (
+                <View className="mt-2 flex-row flex-wrap gap-2">
+                  {suggestions.map((suggested) => (
+                    <HapticPressable
+                      key={suggested.code}
+                      accessibilityRole="button"
+                      accessibilityLabel={suggested.name}
+                      onPress={() => void lookUp(accountNumber, suggested)}
+                      className="h-11 flex-row items-center gap-2 rounded-full bg-black/[0.04] pl-1.5 pr-4"
+                    >
+                      <BankLogo
+                        name={suggested.name}
+                        logoKey={suggested.logoKey}
+                        size="sm"
+                      />
+                      <Typography
+                        weight="600"
+                        className="text-[14px] text-[#0E0F0C]"
+                      >
+                        {shortBankName(suggested.name)}
+                      </Typography>
+                    </HapticPressable>
+                  ))}
+                  <HapticPressable
+                    accessibilityRole="button"
+                    onPress={openSearch}
+                    className={cn(
+                      "h-11 flex-row items-center gap-2 rounded-full px-4",
+                      suggestions.length
+                        ? "bg-black/[0.04]"
+                        : "flex-1 bg-black/[0.04]"
+                    )}
+                  >
+                    <Ionicons name="search" size={16} color="#0E0F0C" />
+                    <Typography
+                      weight="600"
+                      className="text-[14px] text-[#0E0F0C]"
+                    >
+                      {suggestions.length ? "Other bank" : "Choose bank"}
+                    </Typography>
+                  </HapticPressable>
+                </View>
+              )}
+            </>
+          ) : null}
+
+          {bank ? (
+            <>
+              <DashedRule />
+              <Typography weight="500" className="text-[13px] text-black/55">
+                Account name
+              </Typography>
+              {check.state === "checking" ? (
+                <View className="mt-2 h-7 flex-row items-center gap-2">
+                  <ActivityIndicator size="small" color="#00000059" />
+                  <Typography
+                    weight="500"
+                    className="text-[14px] text-black/55"
+                  >
+                    {`Checking with ${shortBankName(bank.name)}…`}
+                  </Typography>
+                </View>
+              ) : found ? (
+                <View className="mt-1 flex-row items-center gap-2">
+                  <Typography
+                    weight="700"
+                    numberOfLines={1}
+                    className="shrink text-[18px] leading-[26px] text-[#0E0F0C]"
+                  >
+                    {found.accountName}
+                  </Typography>
+                  <Ionicons name="checkmark-circle" size={18} color="#16A34A" />
+                </View>
+              ) : check.state === "failed" ? (
+                <Typography
+                  weight="500"
+                  className="mt-1 text-[14px] leading-[20px] text-destructive"
+                >
+                  {check.message}
+                </Typography>
+              ) : null}
+            </>
+          ) : null}
+        </View>
+
         {recentAccounts.length > 0 ? (
-          <BottomSheetScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            <Typography weight="600" className="mb-4 ml-5 text-lg">
+          <View className="mt-8">
+            <Typography
+              weight="600"
+              className="mb-2 text-[15px] text-[#0E0F0C]"
+            >
               Recent accounts
             </Typography>
             {recentAccounts.map((account) => {
-              const bank = account.bankCode
+              const known = account.bankCode
                 ? banksByCode.get(account.bankCode)
                 : undefined;
               const grouped = groupAccountNumber(account.accountNumber);
               const sendCount = `${account.sends} send${account.sends === 1 ? "" : "s"}`;
               return (
-                <RecipientRow
+                <HapticPressable
                   key={`${account.bankCode ?? ""}:${account.accountNumber}`}
-                  title={bank?.name ?? grouped}
-                  subtitle={bank ? grouped : sendCount}
-                  icon={
-                    <MaterialCommunityIcons
-                      name="bank-outline"
-                      size={22}
-                      color="black"
-                    />
-                  }
+                  accessibilityRole="button"
                   onPress={() => openRecent(account)}
-                />
+                  className="h-[60px] flex-row items-center gap-3"
+                >
+                  <BankLogo
+                    name={known?.name ?? grouped}
+                    logoKey={known?.logoKey}
+                  />
+                  <View className="flex-1">
+                    <Typography
+                      weight="600"
+                      numberOfLines={1}
+                      className="text-[15px] text-[#0E0F0C]"
+                    >
+                      {known?.name ?? grouped}
+                    </Typography>
+                    <Typography
+                      weight="500"
+                      className="text-[13px] tabular-nums text-black/55"
+                    >
+                      {known ? grouped : sendCount}
+                    </Typography>
+                  </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={16}
+                    color="#00000066"
+                  />
+                </HapticPressable>
               );
             })}
-          </BottomSheetScrollView>
-        ) : (
-          !isLoading && (
-            <RecipientEmptyState
-              title="You have no accounts yet"
-              subtitle="Enter an account number to continue"
-            />
-          )
-        )}
-      </View>
-    </TouchableWithoutFeedback>
+          </View>
+        ) : null}
+      </BottomSheetScrollView>
+      <BankSheetFooter>
+        <PillButton
+          title="Continue"
+          disabled={!found}
+          onPress={() => found && onNext(found)}
+        />
+      </BankSheetFooter>
+
+      <BankSearchSheet
+        ref={searchRef}
+        banks={banksQuery.data ?? []}
+        loading={banksQuery.isLoading}
+        failed={banksQuery.isError}
+        onRetry={() => void banksQuery.refetch()}
+        onPick={pickFromSearch}
+      />
+    </View>
   );
 }

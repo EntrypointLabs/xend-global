@@ -890,6 +890,17 @@ class BackendClient {
       .parse(await this.request<unknown>("/fiat/payout-banks", { auth: true }))
       .banks;
   }
+  async payoutBankCandidates(accountNumber: string) {
+    if (SEED_DEMO) return demoFiat.payoutCandidates(accountNumber);
+    return z
+      .object({ banks: z.array(PayoutBankSchema) })
+      .parse(
+        await this.request<unknown>(
+          `/fiat/payout-banks/candidates/${encodeURIComponent(accountNumber)}`,
+          { auth: true }
+        )
+      ).banks;
+  }
   async payoutAccountLookup(bankCode: string, accountNumber: string) {
     if (SEED_DEMO) return demoFiat.payoutLookup(bankCode, accountNumber);
     return z.object({ accountName: z.string().nullable() }).parse(

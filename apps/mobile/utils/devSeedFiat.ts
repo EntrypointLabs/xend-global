@@ -152,16 +152,16 @@ const publicTransfer = ({ settlesAt: _, ...t }: (typeof state.transfers)[0]) =>
 const publicOrder = ({ startedAt: _, ...o }: (typeof state.orders)[0]) => o;
 
 const DEMO_BANKS: Bank[] = [
-  { code: "044", name: "Access Bank" },
-  { code: "011", name: "First Bank of Nigeria" },
-  { code: "058", name: "GTBank" },
-  { code: "090267", name: "Kuda Microfinance Bank" },
-  { code: "090405", name: "Moniepoint Bank" },
+  { code: "044", name: "Access Bank", logoKey: "access-bank" },
+  { code: "011", name: "First Bank of Nigeria", logoKey: "first-bank" },
+  { code: "058", name: "GTBank", logoKey: "gtbank" },
+  { code: "090267", name: "Kuda Microfinance Bank", logoKey: "kuda" },
+  { code: "090405", name: "Moniepoint Bank", logoKey: "moniepoint" },
   { code: "090645", name: "Nombank MFB" },
   { code: "100033", name: "Palmpay" },
-  { code: "305", name: "Paycom (Opay)" },
-  { code: "033", name: "United Bank for Africa" },
-  { code: "057", name: "Zenith Bank" },
+  { code: "305", name: "Paycom (Opay)", logoKey: "opay" },
+  { code: "033", name: "United Bank for Africa", logoKey: "uba" },
+  { code: "057", name: "Zenith Bank", logoKey: "zenith-bank" },
 ];
 
 export const demoFiat = {
@@ -488,6 +488,16 @@ export const demoFiat = {
   async payoutBanks() {
     await latency();
     return DEMO_BANKS;
+  },
+
+  // Tobi's number shows the suggested-bank path; any other number shows the
+  // search path, as a number with no check-digit match would.
+  async payoutCandidates(accountNumber: string) {
+    await latency();
+    const codes = accountNumber === "0987654321" ? ["058", "305", "044"] : [];
+    return codes
+      .map((code) => DEMO_BANKS.find((bank) => bank.code === code))
+      .filter((bank): bank is Bank => bank !== undefined);
   },
 
   async payoutLookup(_bankCode: string, accountNumber: string) {

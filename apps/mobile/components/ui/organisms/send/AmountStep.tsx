@@ -1,10 +1,14 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { View, TouchableOpacity, ActivityIndicator } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { Keypad } from "@/components/ui/molecules";
+import { Image } from "expo-image";
+import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { Ionicons } from "@expo/vector-icons";
 import { formatAmount, truncateAddress } from "@/utils/helper";
 import { useBalances } from "@/hooks/useBalances";
+import { useEarnPosition } from "@/hooks/useEarn";
 import HapticPressable from "../../atoms/HapticPressable";
 import { cn } from "@/utils/cn";
 import { useAccount } from "@/hooks/useAccount";
@@ -19,9 +23,20 @@ import {
   nairaAllowanceLeft,
   type FiatOrder,
 } from "@/utils/fiat";
-import { PillButton } from "@/components/ui/kit";
-import { useSendExecutor, type SendStart } from "@/hooks/useSendExecutor";
+import { Footnote, PillButton } from "@/components/ui/kit";
+import {
+  BANK_SEND_ROUTE,
+  useSendExecutor,
+  type SendStart,
+} from "@/hooks/useSendExecutor";
 import { groupAccountNumber, type BankRecipient } from "./bankAccount";
+import { BankLogo } from "./BankLogo";
+import {
+  BANK_SHEET_BG,
+  BankSheetFooter,
+  BankSheetTop,
+  DISPLAY,
+} from "./BankSheetParts";
 
 interface StepProps {
   onBack: () => void;
@@ -39,7 +54,7 @@ export default function AmountStep(props: AmountStepProps) {
   return props.recipient ? (
     <BankAmountStep {...props} recipient={props.recipient} />
   ) : (
-    <View className="flex-1 bg-[#F0F0F0]" />
+    <View className="flex-1" style={{ backgroundColor: BANK_SHEET_BG }} />
   );
 }
 
@@ -94,23 +109,112 @@ function BankAmountStep({
 }: StepProps & { recipient: BankRecipient }) {
   const router = useRouter();
   const { prepareBank, fundBank } = useSendExecutor();
-  const { usdc } = useBalances();
+  const { usdc, portfolio } = useBalances();
+  const { balance: earnBalance } = useEarnPosition();
   const limits = useQuery({
     queryKey: ["fiat", "limits"],
     queryFn: () => apiClient.fiatLimits(),
   });
   const [review, setReview] = useState<FiatOrder | null>(null);
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [writingNote, setWritingNote] = useState(false);
+
+  const minor = fiatAmountMinor(amount.replace(/\.$/, ""), 2);
+  const [debounced, setDebounced] = useState<string | null>(null);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(minor), 450);
+    return () => clearTimeout(id);
+  }, [minor]);
+
+  const kobo = minor ? BigInt(minor) : 0n;
+  const quote = useQuery({
+    queryKey: ["fiat", "quote", BANK_SEND_ROUTE, "credit", debounced],
+    queryFn: () => apiClient.fiatQuote(BANK_SEND_ROUTE, debounced!, "credit"),
+    enabled: debounced !== null && BigInt(debounced) >= MIN_PAYOUT_KOBO,
+    staleTime: 60_000,
+    placeholderData: (previous) => previous,
+  });
+
+  const verified = limits.data?.verified === true;
   const left =
-    limits.data && !limits.data.verified
-      ? nairaAllowanceLeft(limits.data)
-      : null;
+    limits.data && !verified ? nairaAllowanceLeft(limits.data) : null;
+  const tooSmall = kobo > 0n && kobo < MIN_PAYOUT_KOBO;
+  const overLimit = left !== null && kobo > left;
+  const usdcMinor = BigInt(Math.floor(usdc * 1_000_000));
+  const priced =
+    quote.data && debounced === minor && !tooSmall ? quote.data : null;
+  const short = priced ? BigInt(priced.debit.amountMinor) > usdcMinor : false;
+  const ready = kobo >= MIN_PAYOUT_KOBO && !short;
+  const naira = displayMoney("NGN", (minor ?? "0").toString());
+  const usdcLabel = `${usdc.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`;
+  // Home's headline also counts investments and Earn; only USDC cash can be
+  // paid out to a bank, so say why the two numbers differ.
+  const elsewhere =
+    portfolio.cashUsd + portfolio.investmentsUsd + earnBalance - usdc >= 0.01;
+
+  const openVerify = () => {
+    // The sheet sits above every screen, so it closes before the page opens.
+    onClose();
+    router.push("/verify-identity");
+  };
+
+  const handleKeyPress = (key: string) => {
+    if (busy) return;
+    setFailure(null);
+    setAmount((prev) => {
+      if (key === "backspace") return prev.slice(0, -1);
+      if (key === ".") return prev.includes(".") ? prev : (prev || "0") + ".";
+      const [, fraction] = prev.split(".");
+      if (fraction !== undefined && fraction.length >= 2) return prev;
+      if (prev === "0") return key;
+      const next = prev + key;
+      return next.replace(".", "").length > 11 ? prev : next;
+    });
+  };
+
+  const handleContinue = async () => {
+    if (busy || !ready || !minor) return;
+    if (overLimit) {
+      openVerify();
+      return;
+    }
+    setBusy(true);
+    setFailure(null);
+    try {
+      const prepared = await prepareBank(recipient, minor, note);
+      if (prepared.status === "review") setReview(prepared.order);
+      else if (prepared.status === "verify") openVerify();
+      else if (prepared.status === "failed") setFailure(prepared.reason);
+    } catch {
+      setFailure("Something went wrong. Nothing has been sent.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const formatted = useMemo(() => {
+    if (!amount) return "₦0";
+    const [whole, fraction] = amount.split(".");
+    const grouped = formatAmount({
+      amount: whole || "0",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+    return `₦${grouped}${fraction !== undefined ? `.${fraction}` : ""}`;
+  }, [amount]);
+
+  const insets = useSafeAreaInsets();
 
   if (review) {
     return (
       <BankReview
         order={review}
         recipient={recipient}
-        balanceMinor={BigInt(Math.floor(usdc * 1_000_000))}
+        note={note.trim()}
+        balanceMinor={usdcMinor}
         onBack={() => setReview(null)}
         onConfirm={() => fundBank(review)}
         onSending={onClose}
@@ -118,60 +222,164 @@ function BankAmountStep({
     );
   }
 
+  // One line under the amount: the USDC it costs, or what is wrong with it.
+  const helper: { text: string; tone: "muted" | "error" } = failure
+    ? { text: failure, tone: "error" }
+    : tooSmall
+      ? { text: "The smallest bank transfer is ₦1,000.", tone: "error" }
+      : short
+        ? {
+            text: elsewhere
+              ? `More than your ${usdcLabel}. Only USDC cash can go to a bank.`
+              : `More than your ${usdcLabel}.`,
+            tone: "error",
+          }
+        : overLimit && left !== null
+          ? {
+              text: `Over the ${displayMoney("NGN", left.toString())} you can send today without verifying.`,
+              tone: "error",
+            }
+          : kobo >= MIN_PAYOUT_KOBO
+            ? {
+                text: priced
+                  ? `≈ ${displayMoney("USDC", priced.debit.amountMinor)} from your Account`
+                  : "Checking the rate…",
+                tone: "muted",
+              }
+            : { text: "", tone: "muted" };
+
   return (
-    <AmountPad
-      recipientLabel={recipient.accountName}
-      recipientDetail={`${groupAccountNumber(recipient.accountNumber)} · ${recipient.bankName}`}
-      prefix="₦"
-      maxDecimals={2}
-      chip={
-        <View className="flex-row items-center rounded-full bg-white px-3 py-1.5 shadow-sm">
-          <View className="mr-2 h-5 w-5 items-center justify-center rounded-full bg-black">
-            <Typography weight="700" className="text-[11px] text-white">
-              ₦
-            </Typography>
-          </View>
-          <Typography weight="700">NGN</Typography>
+    <View className="flex-1" style={{ backgroundColor: BANK_SHEET_BG }}>
+      <BankSheetTop leave="back" onPress={onBack} disabled={busy} />
+      <View className="flex-row items-center justify-center gap-3 px-5">
+        <BankLogo name={recipient.bankName} logoKey={recipient.logoKey} />
+        <View className="shrink">
+          <Typography
+            weight="600"
+            numberOfLines={1}
+            className="text-[15px] text-[#0E0F0C]"
+          >
+            {recipient.accountName}
+          </Typography>
+          <Typography
+            weight="500"
+            numberOfLines={1}
+            className="text-[13px] tabular-nums text-black/55"
+          >
+            {`${recipient.bankName} · ${groupAccountNumber(recipient.accountNumber)}`}
+          </Typography>
         </View>
-      }
-      balanceLabel={`Paid from ${usdc.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`}
-      statusOf={(amount) => {
-        const minor = fiatAmountMinor(amount, 2);
-        if (!minor) return "idle";
-        return BigInt(minor) >= MIN_PAYOUT_KOBO ? "ready" : "idle";
-      }}
-      noteFor={(amount) => {
-        const minor = fiatAmountMinor(amount, 2);
-        if (minor && BigInt(minor) < MIN_PAYOUT_KOBO)
-          return "The smallest bank transfer is ₦1,000.";
-        if (minor && left !== null && BigInt(minor) > left)
-          return `You'll verify with your BVN first. ${displayMoney("NGN", left.toString())} left today without it.`;
-        return null;
-      }}
-      onBack={onBack}
-      onContinue={async (amount) => {
-        const minor = fiatAmountMinor(amount, 2);
-        if (!minor)
-          return { status: "failed", reason: "This amount is not valid." };
-        const prepared = await prepareBank(recipient, minor);
-        if (prepared.status === "review") {
-          setReview(prepared.order);
-          return { status: "cancelled" };
-        }
-        if (prepared.status === "verify") {
-          // The sheet sits above every screen, so it closes before the page opens.
-          onClose();
-          router.push("/verify-identity");
-          return { status: "cancelled" };
-        }
-        return prepared;
-      }}
-      onSending={onClose}
-    />
+      </View>
+
+      <View
+        className={cn(
+          "flex-1 items-center px-5",
+          writingNote ? "justify-start pt-8" : "justify-center"
+        )}
+      >
+        <Typography
+          accessibilityLabel={`Amount ${naira}`}
+          numberOfLines={1}
+          className={cn(
+            "text-center",
+            displayStep(formatted, "lg"),
+            amount ? "text-[#0E0F0C]" : "text-black/20"
+          )}
+          style={DISPLAY}
+        >
+          {formatted}
+        </Typography>
+        <Typography
+          weight="500"
+          className={cn(
+            "mt-1 min-h-5 text-center text-[14px] tabular-nums",
+            helper.tone === "error" ? "text-destructive" : "text-black/55"
+          )}
+        >
+          {helper.text}
+        </Typography>
+
+        <View className="mt-5 h-11 w-full flex-row items-center gap-2 rounded-full bg-black/[0.04] px-4">
+          <Image
+            source={require("@/assets/icons/support.png")}
+            style={{ width: 16, height: 16 }}
+            tintColor="#000000BF"
+            contentFit="contain"
+            accessibilityElementsHidden
+          />
+          <BottomSheetTextInput
+            className="flex-1 py-0 font-inter-medium text-[15px] tracking-normal text-[#0E0F0C]"
+            placeholder={`Note for ${recipient.accountName.split(" ")[0]} (optional)`}
+            placeholderTextColor="#0000008C"
+            value={note}
+            onChangeText={(text) => setNote(text.slice(0, NOTE_MAX))}
+            onFocus={() => setWritingNote(true)}
+            onBlur={() => setWritingNote(false)}
+            returnKeyType="done"
+            maxLength={NOTE_MAX}
+            accessibilityLabel="Note, shown on the recipient's bank alert"
+          />
+        </View>
+      </View>
+
+      <View className="mx-5 mb-1 flex-row items-center justify-between rounded-full bg-black/[0.04] py-2 pl-2 pr-4">
+        <View className="flex-row items-center gap-1.5 rounded-full bg-white py-1 pl-1.5 pr-3">
+          <Typography className="text-[15px]">🇳🇬</Typography>
+          <Typography weight="600" className="text-[14px] text-[#0E0F0C]">
+            NGN
+          </Typography>
+        </View>
+        <Typography
+          weight="500"
+          className="text-[13px] tabular-nums text-black/55"
+        >
+          {left !== null
+            ? `${displayMoney("NGN", left.toString())} left today · ${usdcLabel}`
+            : `${usdcLabel} available`}
+        </Typography>
+      </View>
+
+      {writingNote ? null : (
+        <View className="px-3">
+          <Keypad onKeyPress={handleKeyPress} />
+        </View>
+      )}
+      <View className="px-5 pt-1" style={{ paddingBottom: insets.bottom + 8 }}>
+        <PillButton
+          title={overLimit ? `Verify to send ${naira}` : "Review"}
+          disabled={!ready}
+          loading={busy}
+          onPress={() => void handleContinue()}
+        />
+      </View>
+    </View>
   );
 }
 
+// Nigerian banks cut narrations short; the backend trims to the same length.
+const NOTE_MAX = 60;
+
 const MIN_PAYOUT_KOBO = 100_000n;
+
+/**
+ * Montserrat Black naira amounts in fixed steps by length. iOS auto-fit text
+ * collapses to a sliver inside a centred column, so the size is chosen here.
+ */
+function displayStep(text: string, scale: "lg" | "md") {
+  const long = text.length > 10;
+  const longer = text.length > 13;
+  if (scale === "lg")
+    return longer
+      ? "text-[38px] leading-[46px]"
+      : long
+        ? "text-[46px] leading-[56px]"
+        : "text-[56px] leading-[66px]";
+  return longer
+    ? "text-[30px] leading-[38px]"
+    : long
+      ? "text-[36px] leading-[44px]"
+      : "text-[44px] leading-[52px]";
+}
 
 /** Every on-chain digit that will move, but never fewer than two places. */
 function exactUsdc(amountMinor: string): string {
@@ -188,6 +396,7 @@ function exactUsdc(amountMinor: string): string {
 function BankReview({
   order,
   recipient,
+  note,
   balanceMinor,
   onBack,
   onConfirm,
@@ -195,6 +404,7 @@ function BankReview({
 }: {
   order: FiatOrder;
   recipient: BankRecipient;
+  note: string;
   balanceMinor: bigint;
   onBack: () => void;
   onConfirm: () => Promise<SendStart>;
@@ -211,7 +421,9 @@ function BankReview({
   // Kobo per whole USDC, so it prints as naira with displayMoney.
   const rateKobo =
     quotedMinor > 0n
-      ? (BigInt(order.quote.credit.amountMinor) * 1_000_000n) / quotedMinor
+      ? (BigInt(order.quote.credit.amountMinor) * 1_000_000n +
+          quotedMinor / 2n) /
+        quotedMinor
       : 0n;
 
   const confirm = async () => {
@@ -236,99 +448,83 @@ function BankReview({
   };
 
   return (
-    <View className="flex-1 bg-[#F0F0F0] px-4">
-      <View className="mb-6 flex-row items-center justify-between">
-        <HapticPressable
-          onPress={onBack}
-          disabled={busy}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          className="size-10 items-center justify-center rounded-full bg-black/5"
+    <View className="flex-1" style={{ backgroundColor: BANK_SHEET_BG }}>
+      <BankSheetTop leave="back" onPress={onBack} disabled={busy} />
+      <View className="flex-1 items-center justify-center px-6 pb-10">
+        <BankLogo
+          name={recipient.bankName}
+          logoKey={recipient.logoKey}
+          size="lg"
+        />
+        <Typography
+          weight="600"
+          numberOfLines={1}
+          className="mt-3 text-[16px] text-[#0E0F0C]"
         >
-          <Ionicons name="chevron-back" size={20} color="black" />
-        </HapticPressable>
-        <Typography weight="700" className="text-lg">
-          Review
-        </Typography>
-        <View className="size-10" />
-      </View>
-
-      <View className="items-center">
-        <Typography weight="500" className="text-[14px] text-black/60">
-          {recipient.accountName} gets
+          {recipient.accountName}
         </Typography>
         <Typography
-          weight="700"
-          className="mt-1 text-[44px] tracking-tight text-black"
+          weight="500"
+          numberOfLines={1}
+          className="mt-0.5 text-[13px] tabular-nums text-black/55"
+        >
+          {`${recipient.bankName} · ${groupAccountNumber(recipient.accountNumber)}`}
+        </Typography>
+
+        <Typography
+          accessibilityRole="header"
+          numberOfLines={1}
+          className={cn("mt-8 text-[#0E0F0C]", displayStep(naira, "lg"))}
+          style={DISPLAY}
         >
           {naira}
         </Typography>
         <Typography
           weight="500"
-          className="mt-1 text-[13px] tabular-nums text-black/60"
+          className="mt-1 text-[14px] tabular-nums text-black/55"
         >
-          {`${recipient.bankName} · ${groupAccountNumber(recipient.accountNumber)}`}
+          {`${exactUsdc(deposit.amountMinor)} from your Account`}
         </Typography>
-      </View>
 
-      <View className="mt-8 gap-4 rounded-[28px] border border-black/5 bg-white p-6">
-        <ReviewRow
-          label="You send"
-          value={exactUsdc(deposit.amountMinor)}
-          strong
-        />
-        <ReviewRow
-          label="Partner fee"
-          value={feeMinor > 0n ? exactUsdc(feeMinor.toString()) : "None"}
-        />
-        <ReviewRow
-          label="Rate"
-          value={`${displayMoney("NGN", rateKobo.toString())} per 1 USDC`}
-        />
-        <ReviewRow label="Arrives" value="Usually within minutes" />
-      </View>
-
-      <View className="min-h-5 flex-1 justify-end pb-3">
-        {failure || short ? (
-          <Typography
-            weight="500"
-            className="text-center text-sm text-destructive"
-          >
-            {failure ?? "You don't have enough USDC for this transfer."}
-          </Typography>
+        {note ? (
+          <View className="mt-6 max-w-full flex-row items-center gap-2 rounded-full bg-black/[0.04] py-2 pl-3 pr-4">
+            <Image
+              source={require("@/assets/icons/support.png")}
+              style={{ width: 14, height: 14 }}
+              tintColor="#000000BF"
+              contentFit="contain"
+              accessibilityElementsHidden
+            />
+            <Typography
+              weight="500"
+              numberOfLines={2}
+              className="shrink text-[14px] text-[#0E0F0C]"
+            >
+              {note}
+            </Typography>
+          </View>
         ) : null}
       </View>
-      <PillButton
-        title={`Send ${naira}`}
-        disabled={short}
-        loading={busy}
-        onPress={() => void confirm()}
-        className="mb-2"
-      />
-    </View>
-  );
-}
 
-function ReviewRow({
-  label,
-  value,
-  strong = false,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-}) {
-  return (
-    <View className="flex-row items-center justify-between">
-      <Typography weight="500" className="text-[15px] text-black/60">
-        {label}
-      </Typography>
       <Typography
-        weight={strong ? "700" : "600"}
-        className="text-[15px] tabular-nums text-black"
+        weight="500"
+        className="px-6 pb-1 text-center text-[13px] leading-[19px] text-black/55"
       >
-        {value}
+        {`${feeMinor > 0n ? `Includes ${exactUsdc(feeMinor.toString())} partner fee` : "No partner fee"} · ${displayMoney("NGN", rateKobo.toString())} per USDC · Usually arrives within minutes`}
       </Typography>
+      <BankSheetFooter>
+        {failure || short ? (
+          <Footnote tone="error" className="pb-3 text-center">
+            {failure ?? "You don't have enough USDC for this transfer."}
+          </Footnote>
+        ) : null}
+        <PillButton
+          title={`Send ${naira}`}
+          disabled={short}
+          loading={busy}
+          onPress={() => void confirm()}
+        />
+      </BankSheetFooter>
     </View>
   );
 }
