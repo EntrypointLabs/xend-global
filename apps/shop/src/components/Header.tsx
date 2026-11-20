@@ -11,11 +11,9 @@ export function Header() {
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-30 text-white mix-blend-difference">
       <div className="grid h-14 grid-cols-3 items-center px-4 sm:px-6">
-        <nav className="pointer-events-auto flex items-center gap-5 justify-self-start">
+        <div className="pointer-events-auto justify-self-start">
           {home ? (
-            <Link href="/orders" className="label hover:opacity-60">
-              Orders
-            </Link>
+            <span className="label">Issue 01</span>
           ) : (
             <Link
               href="/"
@@ -34,7 +32,7 @@ export function Header() {
               Store
             </Link>
           )}
-        </nav>
+        </div>
         <Link
           href="/"
           className="pointer-events-auto justify-self-center"
@@ -42,25 +40,30 @@ export function Header() {
         >
           <Symbol className="h-[18px] w-auto" />
         </Link>
-        <Link
-          href="/checkout"
-          className="label pointer-events-auto flex items-center gap-2 justify-self-end hover:opacity-60"
-          aria-label={`Bag, ${count} ${count === 1 ? "item" : "items"}`}
-        >
-          <svg
-            viewBox="0 0 16 16"
-            className="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.3"
+        <nav className="pointer-events-auto flex items-center gap-5 justify-self-end">
+          <Link href="/orders" className="label hover:opacity-60">
+            Orders
+          </Link>
+          <Link
+            href="/checkout"
+            className="label flex items-center gap-2 hover:opacity-60"
+            aria-label={`Bag, ${count} ${count === 1 ? "item" : "items"}`}
           >
-            <path d="M3 5.5h10l-.7 8H3.7z" />
-            <path d="M5.5 5.5V4a2.5 2.5 0 0 1 5 0v1.5" />
-          </svg>
-          <span className="tnum min-w-[1ch]">
-            {ready && count > 0 ? count : ""}
-          </span>
-        </Link>
+            <svg
+              viewBox="0 0 16 16"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.3"
+            >
+              <path d="M3 5.5h10l-.7 8H3.7z" />
+              <path d="M5.5 5.5V4a2.5 2.5 0 0 1 5 0v1.5" />
+            </svg>
+            <span className="tnum min-w-[1ch]">
+              {ready && count > 0 ? count : ""}
+            </span>
+          </Link>
+        </nav>
       </div>
     </header>
   );
