@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #ffffff;
+  --color-canvas-2: #f2f2f2;
+  --color-ink: #000000;
+  --color-ink-2: #0a0a0a;
+  --color-mute: #6f6f6f;
+  --color-line: #e3e3e3;
+  --color-night: #000000;
+  --color-night-text: #ededed;
+  --color-night-mute: #8f8f8f;
+  --color-night-line: #262626;
+  --color-alert: #c4271d;
+  --color-ok: #1e7a46;
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-brand: var(--font-montserrat), ui-sans-serif, sans-serif;
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+@layer components {
+  .label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.4;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes settle {
+  from {
+    transform: translateY(10px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+.settle {
+  animation: settle 0.8s var(--ease-out-quint) both;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+.pay-hero .prydd-pay-btn {
+  width: 100%;
+  min-height: 56px;
+  border-radius: 2px;
+  font-size: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settle,
+  .pulse-dot {
+    animation: none;
+  }
+}
