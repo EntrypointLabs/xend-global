@@ -2,6 +2,7 @@ import { useEffect, useState, type MouseEvent } from 'react';
 import type { IntentView } from '../lib/api';
 import { PaymentSheet } from './PaymentSheet';
 import { quoteExpired, useQuoteExpired } from '../lib/useQuoteExpired';
+import { CancelButton, ExpiredNotice, PayButton } from './PayButton';
 
 interface ConfirmSheetProps {
   intent: IntentView;
@@ -60,27 +61,16 @@ export function ConfirmSheet({
 
   return (
     <PaymentSheet intent={intent}>
-      {expired && !busy && (
-        <p role="status" className="text-brand-muted text-sm">
-          This quote expired. Return to the store for a new quote.
-        </p>
-      )}
-      <button
-        type="button"
-        onClick={handleConfirm}
+      {expired && !busy && <ExpiredNotice />}
+      <PayButton
+        label={
+          busy ? 'Confirming' : expired ? 'Quote expired' : 'Confirm payment'
+        }
+        busy={busy}
         disabled={busy || !armed || expired}
-        className="bg-brand-ink text-brand-black mt-8 w-full rounded-2xl py-4 text-base font-semibold disabled:opacity-60"
-      >
-        {busy ? 'Confirming' : expired ? 'Quote expired' : 'Confirm payment'}
-      </button>
-      <button
-        type="button"
-        onClick={onCancel}
-        disabled={busy}
-        className="text-brand-muted mt-2 w-full py-3 text-sm disabled:opacity-50"
-      >
-        Cancel
-      </button>
+        onClick={handleConfirm}
+      />
+      <CancelButton onClick={onCancel} disabled={busy} />
     </PaymentSheet>
   );
 }

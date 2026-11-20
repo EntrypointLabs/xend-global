@@ -1,5 +1,6 @@
 import type { CheckoutStatus } from '@prydd/checkout-protocol';
 import { StatusSheet } from './StatusSheet';
+import { DoneCheck } from './glyphs';
 
 interface ResultProps {
   status: CheckoutStatus;
@@ -12,32 +13,10 @@ interface ResultProps {
   terminal?: boolean;
 }
 
-function SuccessCheck() {
-  // The only green on the surface, reserved for the passkey success checkmark.
-  return (
-    <span className="border-success flex h-16 w-16 items-center justify-center rounded-full border-2">
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        className="text-success h-8 w-8"
-        aria-hidden="true"
-      >
-        <path
-          d="M5 13l4 4L19 7"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </span>
-  );
-}
-
 function NeutralDot() {
   return (
-    <span className="border-brand-line bg-brand-surface flex h-16 w-16 items-center justify-center rounded-full border-2">
-      <span className="bg-brand-muted h-2.5 w-2.5 rounded-full" />
+    <span className="neutral-mark" aria-hidden="true">
+      <span />
     </span>
   );
 }
@@ -60,8 +39,8 @@ function copyFor(
   switch (status) {
     case 'succeeded':
       return {
-        title: 'Payment complete',
-        detail: 'Your receipt is on its way.',
+        title: 'Done',
+        detail: 'Payment complete. Your receipt is on its way.',
       };
     case 'expired':
       return {
@@ -110,13 +89,9 @@ export function Result({
   return (
     <StatusSheet>
       <div className="payment-result" role="status" aria-live="polite">
-        {isSuccess ? <SuccessCheck /> : <NeutralDot />}
-        <h1 className="text-brand-ink mt-6 text-xl font-semibold tracking-tight">
-          {base.title}
-        </h1>
-        <p className="text-brand-muted mt-2 text-sm leading-relaxed">
-          {detail}
-        </p>
+        {isSuccess ? <DoneCheck /> : <NeutralDot />}
+        <h1 className="state-title">{base.title}</h1>
+        <p className="state-detail">{detail}</p>
       </div>
     </StatusSheet>
   );

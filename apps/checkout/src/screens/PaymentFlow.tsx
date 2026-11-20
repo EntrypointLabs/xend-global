@@ -11,6 +11,7 @@ import {
   type TerminalResult,
 } from '../lib/api';
 import { ConfirmSheet } from './ConfirmSheet';
+import { CancelButton, ExpiredNotice, PayButton } from './PayButton';
 import { PaymentSheet } from './PaymentSheet';
 import { quoteExpired, useQuoteExpired } from '../lib/useQuoteExpired';
 
@@ -110,47 +111,34 @@ function PaymentFlowInner({
 
   return (
     <PaymentSheet intent={intent}>
-      {expired && !busy && (
-        <p role="status" className="text-brand-muted text-sm">
-          This quote expired. Return to the store for a new quote.
-        </p>
-      )}
+      {expired && !busy && <ExpiredNotice />}
       {failed ? (
         <>
-          <p className="text-brand-muted mt-6 text-sm leading-relaxed">
-            That did not go through. Reload and try again.
+          <p role="alert" className="notice">
+            That did not go through. Try again in a moment.
           </p>
-          <button
-            type="button"
+          <PayButton
+            label="Try again"
+            busy={false}
+            disabled={false}
             onClick={() => window.location.reload()}
-            className="bg-brand-ink text-brand-black mt-4 w-full rounded-2xl py-4 text-base font-semibold"
-          >
-            Try again
-          </button>
+          />
         </>
       ) : (
-        <button
-          type="button"
-          onClick={run}
+        <PayButton
+          label={
+            busy
+              ? 'Waiting for passkey'
+              : expired
+                ? 'Quote expired'
+                : 'Pay with passkey'
+          }
+          busy={busy}
           disabled={busy || expired}
-          className="bg-brand-ink text-brand-black mt-8 w-full rounded-2xl py-4 text-base font-semibold disabled:opacity-60"
-        >
-          {busy
-            ? 'Waiting for confirmation'
-            : expired
-              ? 'Quote expired'
-              : 'Pay with passkey'}
-        </button>
+          onClick={run}
+        />
       )}
-
-      <button
-        type="button"
-        onClick={onCancel}
-        disabled={busy}
-        className="text-brand-muted mt-2 w-full py-3 text-sm disabled:opacity-50"
-      >
-        Cancel
-      </button>
+      <CancelButton onClick={onCancel} disabled={busy} />
     </PaymentSheet>
   );
 }

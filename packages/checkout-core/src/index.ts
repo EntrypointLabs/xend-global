@@ -1,7 +1,12 @@
 import { renderButton, type ButtonHandle } from "./button";
 import { detectEnvironment } from "./environment";
 import { listenForResult, type ListenHandle } from "./message-listener";
-import { openModal, type CheckoutSummary, type ModalHandle } from "./modal";
+import {
+  openModal,
+  resolveTheme,
+  type CheckoutSummary,
+  type ModalHandle,
+} from "./modal";
 import {
   buildCheckoutUrl,
   generateNonce,
@@ -344,6 +349,7 @@ export function mountPryddButton(config: PryddButtonConfig): PryddButtonHandle {
           nonce,
           mode: "iframe",
           opener,
+          theme: resolveTheme(theme, doc),
         }),
       );
       // Three signals, in descending order of certainty. The surface's mount
@@ -420,8 +426,15 @@ export function mountPryddButton(config: PryddButtonConfig): PryddButtonHandle {
           finish("expired");
           return;
         }
-        sheet?.showConfirm(summary);
         button.setState("ready");
+        // The embedded surface shows the amount from Prydd's own origin and
+        // carries the one tap that starts the passkey, so the sheet goes
+        // straight to it rather than asking the shopper to confirm twice.
+        if (presentation === "iframe") {
+          handleConfirm();
+          return;
+        }
+        sheet?.showConfirm(summary);
       })
       .catch(() => {
         // Nothing to report: no intent was ever created, so there is no

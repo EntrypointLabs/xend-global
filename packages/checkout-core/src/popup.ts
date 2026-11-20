@@ -10,6 +10,8 @@ export interface LaunchParams {
    * Merchant's allowlist.
    */
   opener?: string;
+  /** The sheet's resolved theme, so an embedded surface matches its glass. */
+  theme?: "light" | "dark";
 }
 
 /**
@@ -29,6 +31,7 @@ function applyLaunchParams(url: URL, opts: LaunchParams): void {
   url.searchParams.set("nonce", opts.nonce);
   url.searchParams.set("mode", opts.mode);
   if (opts.opener) url.searchParams.set("opener", opts.opener);
+  if (opts.theme) url.searchParams.set("theme", opts.theme);
 }
 
 /**

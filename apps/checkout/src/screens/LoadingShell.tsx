@@ -8,13 +8,18 @@ import { StatusSheet } from './StatusSheet';
 export function LoadingShell() {
   return (
     <StatusSheet>
-      <div className="payment-result" role="status" aria-live="polite">
-        <span className="text-brand-ink text-3xl font-medium tracking-tight">
-          Preparing your Payment
-        </span>
-        <span className="bg-brand-line h-1 w-24 overflow-hidden rounded-full">
-          <span className="bg-brand-muted block h-full w-1/2 animate-pulse rounded-full motion-reduce:animate-none" />
-        </span>
+      <div
+        className="payment-result skeleton"
+        role="status"
+        aria-live="polite"
+        aria-label="Preparing your Payment"
+      >
+        <span className="sk sk-mark" />
+        <span className="sk sk-line" />
+        <span className="sk sk-total" />
+        <span className="sk sk-row" />
+        <span className="sk sk-row" />
+        <span className="sk sk-cta" />
       </div>
     </StatusSheet>
   );
