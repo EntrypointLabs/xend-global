@@ -146,7 +146,6 @@ function MerchantWorkspace() {
     label: string;
   } | null>(null);
   const [keyName, setKeyName] = useState("");
-  const [searchDraft, setSearchDraft] = useState("");
   const search = useSearch();
 
   async function run(action: () => Promise<void>) {
@@ -200,7 +199,6 @@ function MerchantWorkspace() {
   const navItem = (
     target: Parameters<typeof pagePath>[0],
     label: string,
-    icon: Parameters<typeof Icon>[0]["name"],
     active: boolean,
   ) => (
     <button
@@ -208,7 +206,6 @@ function MerchantWorkspace() {
       aria-current={active ? "page" : undefined}
       onClick={() => go(pagePath(target))}
     >
-      <Icon name={icon} />
       {label}
     </button>
   );
@@ -227,9 +224,9 @@ function MerchantWorkspace() {
         accountLoading={account.status === "loading"}
       >
         <div className="shell merchant-entry">
-          <div className="entry-top">
+          <header className="entry-top">
             <Wordmark />
-          </div>
+          </header>
           <main className="entry-panel" aria-busy={busy}>
             <div className="entry-card">
               {!authenticated ? (
@@ -337,7 +334,6 @@ function MerchantWorkspace() {
     );
   }
 
-  const initial = data.merchant.displayName.trim().charAt(0).toUpperCase();
   const liveBlocked =
     data.merchant.kybStatus !== "verified" || !data.destination;
 
@@ -348,45 +344,45 @@ function MerchantWorkspace() {
       accountLoading={account.status === "loading"}
     >
       <div className="shell workspace" data-page={page}>
-        <aside className="rail">
+        <header className="topnav">
           <a
-            className="rail-account"
+            className="topnav-brand"
             href={pagePath("overview")}
+            aria-label="Prydd home"
             onClick={(e) => {
               e.preventDefault();
               go(pagePath("overview"));
             }}
           >
-            <span className="avatar" aria-hidden="true">
-              {initial}
-            </span>
-            <div>
-              <strong>{data.merchant.displayName}</strong>
-              <span>{data.merchant.signInEmail ?? "Owner"}</span>
-            </div>
+            <Wordmark />
           </a>
           <nav aria-label="Merchant workspace">
-            <div className="rail-group">
-              {navItem("overview", "Home", "home", page === "overview")}
-              {navItem(
-                "payments",
-                "Payments",
-                "payments",
-                page === "payments" || page === "payment",
-              )}
-              {navItem("audit", "Activity", "activity", page === "audit")}
-              {navItem("account", "Account", "account", page === "account")}
-            </div>
-            <div className="rail-group">
-              <p>Developers</p>
-              {navItem("developers", "API keys", "key", page === "developers")}
-              {navItem("webhooks", "Webhooks", "webhook", page === "webhooks")}
-            </div>
+            {navItem("overview", "Home", page === "overview")}
+            {navItem(
+              "payments",
+              "Payments",
+              page === "payments" || page === "payment",
+            )}
+            {navItem("developers", "Developers", page === "developers")}
+            {navItem("webhooks", "Webhooks", page === "webhooks")}
+            {navItem("audit", "Activity", page === "audit")}
           </nav>
-          <div className="rail-foot">
-            <Wordmark />
+          <div className="topnav-actions">
+            <span className="network-chip" data-network={data.cluster}>
+              <i aria-hidden="true" />
+              {data.cluster}
+            </span>
             <button
-              className="icon-button"
+              className={`round-button${page === "account" ? " selected" : ""}`}
+              aria-label={`Account for ${data.merchant.displayName}`}
+              aria-current={page === "account" ? "page" : undefined}
+              title="Account"
+              onClick={() => go(pagePath("account"))}
+            >
+              <Icon name="settings" size={18} />
+            </button>
+            <button
+              className="round-button"
               aria-label="Sign out"
               title="Sign out"
               onClick={() => {
@@ -397,38 +393,8 @@ function MerchantWorkspace() {
                 void logout();
               }}
             >
-              <Icon name="signout" size={16} />
+              <Icon name="signout" size={18} />
             </button>
-          </div>
-        </aside>
-        <header className="topbar">
-          <form
-            className="search"
-            role="search"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const q = searchDraft.trim();
-              go(
-                q
-                  ? `${pagePath("payments")}?q=${encodeURIComponent(q)}`
-                  : pagePath("payments"),
-              );
-            }}
-          >
-            <Icon name="search" size={15} />
-            <input
-              type="search"
-              aria-label="Search Payments"
-              placeholder="Search Payments by ID or order reference"
-              value={searchDraft}
-              onChange={(e) => setSearchDraft(e.target.value)}
-            />
-          </form>
-          <div className="topbar-right">
-            <span className="network-chip" data-network={data.cluster}>
-              <i aria-hidden="true" />
-              {data.cluster}
-            </span>
           </div>
         </header>
         <main className="workspace-main" id="overview" aria-busy={busy}>
@@ -452,6 +418,8 @@ function MerchantWorkspace() {
                 onPayment={(id) => navigate(paymentPath(id))}
                 onAccount={() => navigate(pagePath("account"))}
                 onDevelopers={() => navigate(pagePath("developers"))}
+                receivingConnected={Boolean(data.destination)}
+                kybStatus={data.merchant.kybStatus}
               />
             ) : page === "payments" ? (
               <PaymentsPanel

@@ -1,15 +1,75 @@
+import { useState } from "react";
 import { formatUsdc as money } from "./money";
-import { statusLabel } from "./PaymentsPanel";
-import { CodeTabs, Icon, IntegrationSteps, PageHeader, StatusChip } from "./ui";
+import { formatWhen, statusLabel } from "./PaymentsPanel";
+import { CodeTabs, Icon, IntegrationSteps, StatusChip } from "./ui";
 
-type Payment = { id: string; status: string; amountRaw: string; mode: string };
+type Payment = {
+  id: string;
+  status: string;
+  amountRaw: string;
+  mode: string;
+  createdAt?: string;
+};
+
+type Range = "today" | "week" | "all";
+
+const RANGES: { value: Range; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "week", label: "This week" },
+  { value: "all", label: "All recent" },
+];
 
 const W = 1000;
-const H = 210;
-const LEFT = 8;
-const RIGHT = 70;
-const TOP = 16;
-const BOTTOM = 178;
+const H = 260;
+const LEFT = 64;
+const RIGHT = 12;
+const TOP = 14;
+const BOTTOM = 222;
+
+function shortDate(iso: string | undefined): string {
+  return iso
+    ? new Date(iso).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      })
+    : "";
+}
+
+// Summary tiles read better at cents; the hero keeps full USDC precision.
+function cents(raw: bigint): string {
+  const rounded = (raw + 5_000n) / 10_000n;
+  const whole = (rounded / 100n)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${whole}.${(rounded % 100n).toString().padStart(2, "0")}`;
+}
+
+function inRange(payment: Payment, range: Range, now: number): boolean {
+  if (range === "all") return true;
+  if (!payment.createdAt) return false;
+  const at = new Date(payment.createdAt).getTime();
+  if (range === "week") return now - at <= 7 * 86_400_000;
+  return new Date(at).toDateString() === new Date(now).toDateString();
+}
+
+function CopyIdButton({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="secondary"
+      onClick={() => {
+        void navigator.clipboard?.writeText(id).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1600);
+        });
+      }}
+    >
+      <Icon name={copied ? "check" : "copy"} size={15} />
+      {copied ? "Copied" : "Copy ID"}
+    </button>
+  );
+}
 
 function VolumeChart({
   ordered,
@@ -18,6 +78,7 @@ function VolumeChart({
   ordered: Payment[];
   volume: bigint;
 }) {
+  const [hover, setHover] = useState<number | null>(null);
   const highest = ordered.reduce(
     (max, p) => (BigInt(p.amountRaw) > max ? BigInt(p.amountRaw) : max),
     1n,
@@ -29,8 +90,8 @@ function VolumeChart({
       : LEFT + (i * span) / (ordered.length - 1);
   const y = (raw: string) =>
     BOTTOM - Number((BigInt(raw) * BigInt(BOTTOM - TOP)) / highest);
-  // Horizontal-tangent cubic segments: smooth, and never overshoot a point
-  // the way a Catmull-Rom spline can.
+  // Flat-shouldered cubic segments: the curve eases between points without
+  // overshooting them.
   const pts = ordered.map((p, i) => [x(i), y(p.amountRaw)] as const);
   const line = pts
     .map(([px, py], i) => {
@@ -41,92 +102,132 @@ function VolumeChart({
     })
     .join(" ");
   const area = `${line} L ${x(ordered.length - 1)},${BOTTOM} L ${x(0)},${BOTTOM} Z`;
+  const active = hover === null ? null : ordered[hover];
+
   return (
-    <svg
-      className="volume-chart"
-      viewBox={`0 0 ${W} ${H}`}
-      role="img"
-      aria-label={`${ordered.length} confirmed Payments, ${money(volume)} USDC total. Values plotted from oldest to newest.`}
-    >
-      <defs>
-        <linearGradient id="volume-fill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#2563eb" stopOpacity="0.14" />
-          <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {[0, 1, 2, 3].map((step) => {
-        const gy = TOP + ((BOTTOM - TOP) * step) / 3;
-        return (
-          <g key={step}>
-            <line
-              x1={LEFT}
-              x2={W - RIGHT + 12}
-              y1={gy}
-              y2={gy}
-              stroke="#0a0a0a"
-              strokeOpacity={step === 3 ? 0.12 : 0.06}
-            />
-            <text
-              x={W - 2}
-              y={gy + 4}
-              textAnchor="end"
-              fill="#0a0a0a"
-              fillOpacity="0.4"
-              fontSize="11"
-              style={{ fontVariantNumeric: "tabular-nums" }}
-            >
-              {money((highest * BigInt(3 - step)) / 3n)}
-            </text>
-          </g>
-        );
-      })}
-      {ordered.length > 1 && (
-        <>
-          <path d={area} fill="url(#volume-fill)" />
-          <path
-            d={line}
-            fill="none"
-            stroke="#2563eb"
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        </>
-      )}
-      {ordered.map((p, i) => (
-        <circle
-          key={p.id}
-          cx={x(i)}
-          cy={y(p.amountRaw)}
-          r={i === ordered.length - 1 ? 4.5 : 3}
-          fill={i === ordered.length - 1 ? "#2563eb" : "#fff"}
-          stroke="#2563eb"
-          strokeWidth="1.6"
-        >
-          <title>
-            {p.id}: {money(BigInt(p.amountRaw))} USDC
-          </title>
-        </circle>
-      ))}
-      <text x={LEFT} y={H - 6} fill="#0a0a0a" fillOpacity="0.4" fontSize="11">
-        Oldest shown
-      </text>
-      <text
-        x={W - RIGHT}
-        y={H - 6}
-        textAnchor="end"
-        fill="#0a0a0a"
-        fillOpacity="0.4"
-        fontSize="11"
+    <div className="chart-frame">
+      <svg
+        className="volume-chart"
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label={`${ordered.length} confirmed Payments, ${money(volume)} USDC total. Values plotted from oldest to newest.`}
+        onMouseLeave={() => setHover(null)}
+        onMouseMove={(event) => {
+          const box = event.currentTarget.getBoundingClientRect();
+          const vx = ((event.clientX - box.left) / box.width) * W;
+          const index =
+            ordered.length === 1
+              ? 0
+              : Math.round(((vx - LEFT) / span) * (ordered.length - 1));
+          setHover(Math.max(0, Math.min(ordered.length - 1, index)));
+        }}
       >
-        Latest
-      </text>
-    </svg>
+        <defs>
+          <linearGradient id="volume-fill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#1c1c1c" stopOpacity="0.1" />
+            <stop offset="100%" stopColor="#1c1c1c" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[0, 1, 2, 3, 4].map((step) => {
+          const gy = TOP + ((BOTTOM - TOP) * step) / 4;
+          return (
+            <g key={step}>
+              <line
+                x1={LEFT}
+                x2={W - RIGHT}
+                y1={gy}
+                y2={gy}
+                stroke="#1c1c1c"
+                strokeOpacity="0.07"
+              />
+              <text
+                x={LEFT - 14}
+                y={gy + 4}
+                textAnchor="end"
+                fill="#1c1c1c"
+                fillOpacity="0.5"
+                fontSize="13"
+              >
+                {money((highest * BigInt(4 - step)) / 4n)}
+              </text>
+            </g>
+          );
+        })}
+        {ordered.length > 1 && (
+          <>
+            <path d={area} fill="url(#volume-fill)" />
+            <path
+              d={line}
+              fill="none"
+              stroke="#1c1c1c"
+              strokeWidth="2.2"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          </>
+        )}
+        {hover !== null && (
+          <line
+            x1={x(hover)}
+            x2={x(hover)}
+            y1={TOP}
+            y2={BOTTOM}
+            stroke="#1c1c1c"
+            strokeOpacity="0.15"
+          />
+        )}
+        {ordered.map((p, i) => (
+          <circle
+            key={p.id}
+            cx={x(i)}
+            cy={y(p.amountRaw)}
+            r={hover === i ? 5 : 3}
+            fill="#fff"
+            stroke="#1c1c1c"
+            strokeWidth="1.8"
+          >
+            <title>
+              {p.id}: {money(BigInt(p.amountRaw))} USDC
+            </title>
+          </circle>
+        ))}
+        <text x={LEFT} y={H - 8} fill="#1c1c1c" fillOpacity="0.5" fontSize="13">
+          {shortDate(ordered[0]?.createdAt) || "Oldest shown"}
+        </text>
+        <text
+          x={W - RIGHT}
+          y={H - 8}
+          textAnchor="end"
+          fill="#1c1c1c"
+          fillOpacity="0.5"
+          fontSize="13"
+        >
+          {shortDate(ordered[ordered.length - 1]?.createdAt) || "Latest"}
+        </text>
+      </svg>
+      {active && hover !== null && (
+        <div
+          className="chart-tip"
+          aria-hidden="true"
+          // Positioned from the hovered point's chart coordinates.
+          style={{
+            left: `${(x(hover) / W) * 100}%`,
+            top: `${(y(active.amountRaw) / H) * 100}%`,
+          }}
+        >
+          <div>
+            <span>Received</span>
+            <strong>{money(BigInt(active.amountRaw))} USDC</strong>
+          </div>
+          {active.createdAt && <small>{formatWhen(active.createdAt)}</small>}
+        </div>
+      )}
+    </div>
   );
 }
 
 export function OverviewDashboard({
-  payments,
+  payments: allPayments,
   activeKeys,
   cluster,
   name,
@@ -134,6 +235,8 @@ export function OverviewDashboard({
   onAccount,
   onPayment,
   onDevelopers,
+  receivingConnected,
+  kybStatus,
 }: {
   payments: Payment[];
   activeKeys: number;
@@ -143,7 +246,12 @@ export function OverviewDashboard({
   onAccount: () => void;
   onPayment?: (id: string) => void;
   onDevelopers?: () => void;
+  receivingConnected?: boolean;
+  kybStatus?: string;
 }) {
+  const [range, setRange] = useState<Range>("all");
+  const [now] = useState(() => Date.now());
+  const payments = allPayments.filter((p) => inRange(p, range, now));
   const confirmed = payments.filter(
     (p) => p.status === "succeeded" && p.mode !== "test",
   );
@@ -152,179 +260,299 @@ export function OverviewDashboard({
     ["created", "authorized", "settling"].includes(p.status),
   ).length;
   const ordered = [...confirmed].reverse();
-  const attention = payments.filter((p) =>
-    ["failed", "expired"].includes(p.status),
+  const largest = confirmed.reduce(
+    (max, p) => (BigInt(p.amountRaw) > max ? BigInt(p.amountRaw) : max),
+    0n,
   );
+  const average = confirmed.length ? volume / BigInt(confirmed.length) : 0n;
+  const failed = payments.filter((p) =>
+    ["failed", "expired"].includes(p.status),
+  ).length;
+  const simulations = payments.filter((p) => p.mode === "test").length;
   const open = (id: string) => (onPayment ? onPayment(id) : onPayments());
+  const first = ordered[0]?.createdAt;
+  const last = ordered[ordered.length - 1]?.createdAt;
+  const rangeText =
+    first && last
+      ? `${shortDate(first)} to ${shortDate(last)}`
+      : RANGES.find((r) => r.value === range)!.label;
+
+  const stats = [
+    {
+      label: "Received",
+      value: money(volume),
+      unit: "USDC",
+      icon: "payments" as const,
+      note: "Confirmed on-chain, simulations excluded",
+    },
+    {
+      label: "Confirmed Payments",
+      value: String(confirmed.length),
+      icon: "check" as const,
+      note: `Settled to ${name}`,
+    },
+    {
+      label: "Awaiting payment",
+      value: String(awaiting),
+      icon: "clock" as const,
+      note: "Not counted as received",
+    },
+    {
+      label: "Active API keys",
+      value: String(activeKeys),
+      icon: "key" as const,
+      note: "Your integration credentials",
+    },
+  ];
+
+  const setup = [
+    {
+      title: "Receiving account",
+      sub: "Where your USDC lands",
+      badge: receivingConnected ? "Connected" : "Not set up",
+      tone: receivingConnected ? "succeeded" : "created",
+      onClick: onAccount,
+      label: "View receiving account",
+    },
+    {
+      title: "Business verification",
+      sub: "Needed for live keys",
+      badge:
+        kybStatus === "verified"
+          ? "Verified"
+          : kybStatus === "rejected"
+            ? "Not approved"
+            : "Pending",
+      tone:
+        kybStatus === "verified"
+          ? "succeeded"
+          : kybStatus === "rejected"
+            ? "failed"
+            : "pending",
+      onClick: onAccount,
+      label: "View business verification",
+    },
+    {
+      title: "API keys",
+      sub: "For your server",
+      badge: `${activeKeys} active`,
+      tone: activeKeys ? "succeeded" : "created",
+      onClick: onDevelopers ?? onAccount,
+      label: "View API keys",
+    },
+    {
+      title: "Network",
+      sub: "Where Payments settle",
+      badge: cluster.charAt(0).toUpperCase() + cluster.slice(1),
+      tone: "created",
+      onClick: onAccount,
+      label: "View network",
+    },
+  ];
 
   return (
-    <div className="overview-content">
-      <PageHeader title="Home" />
-
-      <div className="today">
-        <section className="hero-card" aria-label="Received">
-          <p className="hero-label">Received</p>
-          <div className="hero-figure">
-            <strong>{money(volume)}</strong>
-            <span>USDC</span>
+    <div className="overview">
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h1>Merchant Dashboard</h1>
+            <p>Monitor your Payments and USDC received at a glance.</p>
           </div>
-          <p className="hero-caption">
-            {payments.length
-              ? `Confirmed on-chain across your latest ${payments.length} Payments. Simulations are not counted.`
-              : "Confirmed on-chain Payments add up here. Simulations are not counted."}
-          </p>
-          {ordered.length ? (
-            <VolumeChart ordered={ordered} volume={volume} />
-          ) : (
-            <div className="chart-empty">
-              Your first confirmed Payment will appear here.
-            </div>
-          )}
-          <div className="stat-row">
-            <article className="stat">
-              <span>Confirmed Payments</span>
-              <strong>{confirmed.length}</strong>
-            </article>
-            <article className="stat">
-              <span>Awaiting payment</span>
-              <strong>{awaiting}</strong>
-            </article>
-            <article className="stat">
-              <span>Active API keys</span>
-              <strong>{activeKeys}</strong>
-            </article>
-          </div>
-        </section>
-
-        <aside className="today-side">
-          <section className="panel-grey">
-            <h2>Settlement</h2>
-            <p>Payments settle directly to {name}.</p>
-            <div className="kv-row">
-              <span>Asset</span>
-              <strong>USDC on Solana</strong>
-            </div>
-            <div className="kv-row">
-              <span>Network</span>
-              <strong className="network-name">{cluster}</strong>
-            </div>
-            <div className="kv-row">
-              <span>Conversion</span>
-              <strong>None automatic</strong>
-            </div>
-            <button className="link panel-link" onClick={onAccount}>
-              View receiving account
-            </button>
-          </section>
-          {onDevelopers && (
-            <section className="panel-grey">
-              <h2>API keys</h2>
-              <p>Your server creates Payments with a secret key.</p>
-              <div className="kv-row">
-                <span>Active keys</span>
-                <strong>{activeKeys}</strong>
-              </div>
-              <button className="link panel-link" onClick={onDevelopers}>
-                Go to API keys
+          <div className="segmented" role="radiogroup" aria-label="Range">
+            {RANGES.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={range === option.value}
+                onClick={() => setRange(option.value)}
+              >
+                {option.label}
               </button>
+            ))}
+          </div>
+        </div>
+        <div className="stat-grid">
+          {stats.map((stat) => (
+            <article className="stat-card" key={stat.label}>
+              <div className="stat-card-top">
+                <div>
+                  <span>{stat.label}</span>
+                  <p className="stat-value">
+                    <strong>{stat.value}</strong>
+                    {stat.unit && <small>{stat.unit}</small>}
+                  </p>
+                </div>
+                <i className="icon-tile" aria-hidden="true">
+                  <Icon name={stat.icon} size={18} />
+                </i>
+              </div>
+              <p className="stat-card-note">{stat.note}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <div className="overview-columns">
+        <div className="overview-main">
+          <section className="panel chart-panel">
+            <div className="panel-head">
+              <div>
+                <h2>Received over time</h2>
+                <p>USDC per confirmed Payment, oldest to newest</p>
+              </div>
+              <span className="range-chip">
+                <Icon name="calendar" size={15} />
+                {rangeText}
+              </span>
+            </div>
+            {ordered.length ? (
+              <VolumeChart ordered={ordered} volume={volume} />
+            ) : (
+              <div className="chart-empty">
+                Your first confirmed Payment will appear here.
+              </div>
+            )}
+            {ordered.length > 0 && (
+              <div className="mini-tiles">
+                <div className="mini-tile">
+                  <strong>{cents(average)} USDC</strong>
+                  <p>
+                    <span>Average Payment</span>
+                    <b>{confirmed.length}</b>
+                  </p>
+                </div>
+                <div className="mini-tile">
+                  <strong>{cents(largest)} USDC</strong>
+                  <p>
+                    <span>Largest Payment</span>
+                  </p>
+                </div>
+                <div className="mini-tile">
+                  <strong>{failed}</strong>
+                  <p>
+                    <span>Failed or expired</span>
+                    <b>of {payments.length}</b>
+                  </p>
+                </div>
+                <div className="mini-tile">
+                  <strong>{simulations}</strong>
+                  <p>
+                    <span>Simulations</span>
+                    <b>of {payments.length}</b>
+                  </p>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {allPayments.length === 0 && (
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <h2>Take your first Payment</h2>
+                  <p>Four steps from an API key to a confirmed Payment.</p>
+                </div>
+              </div>
+              <div className="integrate">
+                <IntegrationSteps />
+                <CodeTabs tabs={["react", "script", "server"]} />
+              </div>
             </section>
           )}
-        </aside>
-      </div>
 
-      {payments.length === 0 ? (
-        <section>
-          <div className="section-label">
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <h2>Account setup</h2>
+                <p>What your business needs to take live Payments</p>
+              </div>
+            </div>
+            <div className="setup-grid">
+              {setup.map((item) => (
+                <button
+                  key={item.title}
+                  type="button"
+                  className="setup-tile"
+                  aria-label={item.label}
+                  onClick={item.onClick}
+                >
+                  <div>
+                    <strong>{item.title}</strong>
+                    <span>{item.sub}</span>
+                  </div>
+                  <span className="count-badge" data-tone={item.tone}>
+                    {item.badge}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <aside className="panel overview-side">
+          <div className="panel-head">
             <div>
-              <h2>Take your first Payment</h2>
-              <p>No Payments yet.</p>
+              <h2>Recent Payments</h2>
+              <p>Latest activity from your Checkout</p>
             </div>
           </div>
-          <div className="integrate">
-            <IntegrationSteps />
-            <CodeTabs tabs={["react", "script", "server"]} />
-          </div>
-          <div className="card-foot">
-            <button className="secondary small" onClick={onPayments}>
-              View all Payments
-            </button>
-          </div>
-        </section>
-      ) : (
-        <section>
-          <div className="section-label">
-            <h2>Your overview</h2>
-          </div>
-          <div className="overview-grid">
-            <section className="card">
-              <div className="card-head">
-                <h2>Recent Payments</h2>
-                <button className="link" onClick={onPayments}>
-                  View all Payments
-                </button>
-              </div>
-              <div className="row-list">
-                {payments.slice(0, 6).map((p) => (
-                  <button
-                    type="button"
-                    className="list-row"
-                    key={p.id}
-                    onClick={() => open(p.id)}
-                  >
-                    <div>
+          {payments.length ? (
+            <div className="request-list">
+              {payments.slice(0, 4).map((p, index) => (
+                <article className="request-card" key={p.id}>
+                  <div className="request-body">
+                    <div className="request-top">
                       <strong>{money(BigInt(p.amountRaw))} USDC</strong>
-                      <small>
-                        <span>
-                          {p.mode === "test" ? "Simulation" : "On-chain"}
+                      {p.createdAt && (
+                        <span className="date-badge">
+                          {shortDate(p.createdAt)}
                         </span>
-                        {" · "}
-                        <code>{p.id}</code>
-                      </small>
+                      )}
                     </div>
-                    <StatusChip status={p.status}>
-                      {statusLabel(p.status)}
-                    </StatusChip>
-                    <Icon name="chevron" size={16} />
-                  </button>
-                ))}
-              </div>
-            </section>
-            <section className="card">
-              <div className="card-head">
-                <h2>Failed and expired</h2>
-              </div>
-              {attention.length ? (
-                <div className="row-list">
-                  {attention.slice(0, 4).map((p) => (
-                    <button
-                      type="button"
-                      className="list-row"
-                      key={p.id}
-                      onClick={() => open(p.id)}
-                    >
-                      <div>
-                        <strong>{money(BigInt(p.amountRaw))} USDC</strong>
-                        <small>
-                          <code>{p.id}</code>
-                        </small>
-                      </div>
+                    <p className="request-meta">
                       <StatusChip status={p.status}>
                         {statusLabel(p.status)}
                       </StatusChip>
-                      <Icon name="chevron" size={16} />
+                      <span>
+                        {p.mode === "test" ? "Simulation" : "On-chain"}
+                      </span>
+                    </p>
+                    <code className="request-id">{p.id}</code>
+                  </div>
+                  <div className="request-actions">
+                    <button
+                      type="button"
+                      className={index === 0 ? undefined : "secondary"}
+                      onClick={() => open(p.id)}
+                    >
+                      <Icon name="arrow" size={15} />
+                      View details
                     </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="card-sub">Nothing failed or expired recently.</p>
-              )}
-            </section>
-          </div>
-          <p className="dataset-note">
-            Based on the latest {payments.length} Payments returned by the
-            server. Not your account Balance or an all-time total.
-          </p>
-        </section>
+                    <CopyIdButton id={p.id} />
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="empty">
+              <div className="empty-icon">
+                <Icon name="payments" />
+              </div>
+              <p>No Payments yet.</p>
+            </div>
+          )}
+          <button className="secondary wide" onClick={onPayments}>
+            View all Payments
+          </button>
+        </aside>
+      </div>
+
+      {allPayments.length > 0 && (
+        <p className="dataset-note">
+          Based on the latest {allPayments.length} Payments returned by the
+          server. Not your account Balance or an all-time total.
+        </p>
       )}
     </div>
   );
