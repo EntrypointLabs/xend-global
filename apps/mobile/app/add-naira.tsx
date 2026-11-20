@@ -228,19 +228,31 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
         >
           ₦
         </Typography>
-        <TextInput
-          value={typed ? Number(typed).toLocaleString("en-NG") : ""}
-          onChangeText={(text) => {
-            setError(null);
-            setTyped(text.replace(/\D/g, "").replace(/^0+/, "").slice(0, 9));
-          }}
-          placeholder="0"
-          placeholderTextColor="#00000033"
-          keyboardType="number-pad"
-          accessibilityLabel="Amount in naira"
-          className="ml-1 flex-1 text-[52px] text-[#0E0F0C]"
-          style={DISPLAY}
-        />
+        <View className="ml-1 h-[72px] flex-1 justify-center">
+          {/* iOS draws a native placeholder this large with a clipped top, so
+              the empty state is drawn here in the same type as the ₦. */}
+          {typed ? null : (
+            <Typography
+              pointerEvents="none"
+              className="absolute left-0 text-[52px] leading-[60px] text-black/20"
+              style={DISPLAY}
+            >
+              0
+            </Typography>
+          )}
+          <TextInput
+            value={typed ? Number(typed).toLocaleString("en-NG") : ""}
+            onChangeText={(text) => {
+              setError(null);
+              setTyped(text.replace(/\D/g, "").replace(/^0+/, "").slice(0, 9));
+            }}
+            keyboardType="number-pad"
+            accessibilityLabel="Amount in naira"
+            accessibilityHint="Or pick an amount below"
+            className="h-[72px] py-0 text-[52px] text-[#0E0F0C]"
+            style={DISPLAY}
+          />
+        </View>
       </View>
 
       <View className="mt-3 flex-row flex-wrap gap-2">
