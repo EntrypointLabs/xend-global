@@ -597,3 +597,90 @@ describe('PaymentAuthorizationService.authorizeSimulated (test mode)', () => {
     ).rejects.toBeInstanceOf(IntentStateConflictError);
   });
 });
+
+describe('PaymentAuthorizationService.withdrawUnsigned', () => {
+  const authorizedAt = new Date('2026-11-20T10:00:00.000Z');
+
+  function withAttemptUpdate(withdrawn: { id: string }[]) {
+    const { db } = makeDb();
+    (db.client as unknown as { update: () => unknown }).update = () => {
+      const chain = {
+        set: () => chain,
+        where: () => chain,
+        returning: () => Promise.resolve(withdrawn),
+      };
+      return chain;
+    };
+    return db;
+  }
+
+  it('fails the unsigned attempt, cancels the intent and hands capacity back', async () => {
+    const db = withAttemptUpdate([{ id: 'att_1' }]);
+    const { capacity, releaseCapacity } = makeCapacity();
+    const { intents, transition } = makeIntents(
+      intentRow({ status: 'authorized', consumerId: 'c1', authorizedAt }),
+    );
+    const { sessions } = makeSessions();
+    const { publisher, events } = makePublisher();
+    const service = new PaymentAuthorizationService(
+      db,
+      capacity,
+      intents,
+      sessions,
+      publisher,
+    );
+
+    await service.withdrawUnsigned('pi_1', 'c1');
+
+    expect(transition).toHaveBeenCalledWith('pi_1', 'authorized', 'canceled');
+    // Released in the windows it was reserved in, not today's.
+    expect(releaseCapacity).toHaveBeenCalledWith('c1', '2000000', authorizedAt);
+    expect(events.map((e) => e.topic)).toEqual(['payment.canceled']);
+  });
+
+  it('refuses once the signed Spend has been submitted', async () => {
+    // The attempt is settling: money may be moving, so a decline cannot win.
+    const db = withAttemptUpdate([]);
+    const { capacity, releaseCapacity } = makeCapacity();
+    const { intents, transition } = makeIntents(
+      intentRow({ status: 'authorized', consumerId: 'c1', authorizedAt }),
+    );
+    const { sessions } = makeSessions();
+    const { publisher, events } = makePublisher();
+    const service = new PaymentAuthorizationService(
+      db,
+      capacity,
+      intents,
+      sessions,
+      publisher,
+    );
+
+    await expect(service.withdrawUnsigned('pi_1', 'c1')).rejects.toBeInstanceOf(
+      IntentStateConflictError,
+    );
+    expect(transition).not.toHaveBeenCalled();
+    expect(releaseCapacity).not.toHaveBeenCalled();
+    expect(events).toHaveLength(0);
+  });
+
+  it('refuses an intent that is not an authorization of this Consumer', async () => {
+    const { db } = makeDb();
+    const { capacity } = makeCapacity();
+    const { intents } = makeIntents(
+      intentRow({ status: 'authorized', consumerId: 'someone-else' }),
+    );
+    const { sessions } = makeSessions();
+    const { publisher } = makePublisher();
+    const service = new PaymentAuthorizationService(
+      db,
+      capacity,
+      intents,
+      sessions,
+      publisher,
+    );
+
+    await expect(service.withdrawUnsigned('pi_1', 'c1')).rejects.toBeInstanceOf(
+      IntentStateConflictError,
+    );
+  });
+});

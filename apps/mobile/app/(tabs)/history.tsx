@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { router } from "expo-router";
 import { PhotoScreen, useSurface } from "@/components/ui/glass";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { formatMoney } from "@/utils/balances";
@@ -24,6 +23,7 @@ import {
   mapTransferRowToActivityEntry,
   type ActivityEntry,
 } from "@/utils/activity";
+import { requestApproval } from "@/utils/approvalRequests";
 
 export default function HistoryScreen() {
   const address = useWalletAddress();
@@ -81,7 +81,7 @@ export default function HistoryScreen() {
     // than a record. There is no receipt to open, so it goes where it can be
     // finished instead.
     if (item.kind === "awaiting") {
-      router.push("/settings/finish-payment" as never);
+      requestApproval(item.id.replace(/^awaiting:/, ""));
       return;
     }
     setSelectedItem(item);

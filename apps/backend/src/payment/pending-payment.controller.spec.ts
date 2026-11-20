@@ -6,6 +6,7 @@ import type { SettlementService } from '../settlement/settlement.service';
 import { CapacityExceededError } from '../capability/capability.errors';
 import { PendingPaymentController } from './pending-payment.controller';
 import type { PaymentIntentService } from './payment-intent.service';
+import { IntentExpiredError, IntentStateConflictError } from './payment.errors';
 
 const OWNER = 'u_1';
 
@@ -72,8 +73,10 @@ function makeController(
   intentFakes: Partial<{
     findById: jest.Mock;
     listAwaitingApproval: jest.Mock;
+    declineApproval: jest.Mock;
   }>,
   authorize: jest.Mock = jest.fn().mockResolvedValue({ status: 'authorized' }),
+  withdrawUnsigned: jest.Mock = jest.fn().mockResolvedValue(undefined),
 ) {
   const intents = {
     findById: jest.fn().mockResolvedValue(intentRow()),
@@ -83,11 +86,17 @@ function makeController(
   const settlementFakes = makeSettlement();
   const controller = new PendingPaymentController(
     intents as unknown as PaymentIntentService,
-    { authorize } as unknown as PaymentAuthorizationService,
+    { authorize, withdrawUnsigned } as unknown as PaymentAuthorizationService,
     settlementFakes.settlement,
     makeDb(),
   );
-  return { controller, intents, authorize, ...settlementFakes };
+  return {
+    controller,
+    intents,
+    authorize,
+    withdrawUnsigned,
+    ...settlementFakes,
+  };
 }
 
 async function expectRejectHttp(
@@ -122,6 +131,7 @@ describe('PendingPaymentController.list', () => {
         usdcSettlementRaw: '30000000',
         deferredAt: '2026-08-29T10:00:00.000Z',
         expiresAt: '2026-08-29T11:00:00.000Z',
+        merchantReference: null,
       },
     ]);
   });
@@ -227,5 +237,90 @@ describe('PendingPaymentController.submit', () => {
       'INTENT_NOT_FOUND',
     );
     expect(submitSettlement).not.toHaveBeenCalled();
+  });
+});
+
+describe('PendingPaymentController.decline', () => {
+  it('declines as the signed-in Consumer and answers with the new status', async () => {
+    const declineApproval = jest
+      .fn()
+      .mockResolvedValue(intentRow({ status: 'canceled' }));
+    const { controller } = makeController({ declineApproval });
+
+    await expect(controller.decline(makeReq(), 'pi_1')).resolves.toEqual({
+      status: 'canceled',
+    });
+    expect(declineApproval).toHaveBeenCalledWith('pi_1', OWNER);
+  });
+
+  it('maps an Approve that already won to 409', async () => {
+    const declineApproval = jest
+      .fn()
+      .mockRejectedValue(new IntentStateConflictError('authorized'));
+    const { controller } = makeController({ declineApproval });
+
+    await expectRejectHttp(
+      controller.decline(makeReq(), 'pi_1'),
+      409,
+      'INTENT_STATE_CONFLICT',
+    );
+  });
+
+  it('maps an expired quote to 410', async () => {
+    const declineApproval = jest
+      .fn()
+      .mockRejectedValue(new IntentExpiredError('expired'));
+    const { controller } = makeController({ declineApproval });
+
+    await expectRejectHttp(
+      controller.decline(makeReq(), 'pi_1'),
+      410,
+      'INTENT_EXPIRED',
+    );
+  });
+});
+
+describe('PendingPaymentController phone retries and late declines', () => {
+  it('re-pins without authorizing again when an earlier prepare was never signed', async () => {
+    // The device-key prompt was closed after prepare. "Try again" has to work.
+    const { controller, authorize, buildSettlement, pinSettlement } =
+      makeController({
+        findById: jest
+          .fn()
+          .mockResolvedValue(intentRow({ status: 'authorized' })),
+      });
+
+    await controller.prepare(makeReq(), 'pi_1');
+
+    expect(buildSettlement).toHaveBeenCalled();
+    expect(authorize).not.toHaveBeenCalled();
+    expect(pinSettlement).toHaveBeenCalled();
+  });
+
+  it('withdraws an unsigned authorization when the Consumer declines', async () => {
+    const declineApproval = jest.fn();
+    const { controller, withdrawUnsigned } = makeController({
+      findById: jest
+        .fn()
+        .mockResolvedValue(intentRow({ status: 'authorized' })),
+      declineApproval,
+    });
+
+    await expect(controller.decline(makeReq(), 'pi_1')).resolves.toEqual({
+      status: 'canceled',
+    });
+    expect(withdrawUnsigned).toHaveBeenCalledWith('pi_1', OWNER);
+    expect(declineApproval).not.toHaveBeenCalled();
+  });
+
+  it("hides a decline aimed at another Consumer's Payment", async () => {
+    const { controller, withdrawUnsigned } = makeController({});
+
+    await expectRejectHttp(
+      controller.decline(makeReq('u_other'), 'pi_1'),
+      404,
+      'INTENT_NOT_FOUND',
+    );
+    expect(withdrawUnsigned).not.toHaveBeenCalled();
   });
 });

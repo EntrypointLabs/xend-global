@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { and, eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { paymentAttempts } from '../db/schema';
 import { EVENT_PUBLISHER } from '../events/event-publisher.interface';
@@ -209,6 +210,56 @@ export class PaymentAuthorizationService {
       status: 'authorized',
       ...(rotatedSessionToken ? { rotatedSessionToken } : {}),
     };
+  }
+
+  /**
+   * Undoes a phone authorization the Consumer never signed: they prepared the
+   * Payment, closed the device-key prompt, and then declined.
+   *
+   * Refused once the signed Spend has been submitted, because by then the
+   * attempt is `settling` and money may already be moving. Failing the attempt
+   * is the race arbiter against that submit, and capacity is handed back in the
+   * same transaction that took it.
+   */
+  async withdrawUnsigned(intentId: string, consumerId: string): Promise<void> {
+    const intent = await this.intents.findById(intentId);
+    if (intent.status !== 'authorized' || intent.consumerId !== consumerId) {
+      throw new IntentStateConflictError(
+        `intent ${intentId} is ${intent.status}, not withdrawable`,
+      );
+    }
+
+    await this.db.withTransaction(async () => {
+      const withdrawn = await this.db.client
+        .update(paymentAttempts)
+        .set({ status: 'failed', updatedAt: new Date() })
+        .where(
+          and(
+            eq(paymentAttempts.intentId, intentId),
+            eq(paymentAttempts.status, 'authorized'),
+          ),
+        )
+        .returning({ id: paymentAttempts.id });
+      if (withdrawn.length === 0) {
+        throw new IntentStateConflictError(
+          `intent ${intentId} already has a submitted signature`,
+        );
+      }
+      await this.intents.transition(intentId, 'authorized', 'canceled');
+      await this.capacity.releaseCapacity(
+        consumerId,
+        intent.usdcSettlementRaw,
+        intent.authorizedAt ?? undefined,
+      );
+    });
+
+    await this.events.publish({
+      topic: 'payment.canceled',
+      key: intentId,
+      payload: { intentId, reason: 'consumer_declined' },
+      correlationId: intentId,
+    });
+    this.logger.log(`payment.declined intent_id=${intentId} after=authorized`);
   }
 
   private async insertAttempt(intentId: string): Promise<string> {

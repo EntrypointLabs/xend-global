@@ -37,6 +37,11 @@ export const IntentSummarySchema = z.object({
   expiresAt: z.string(),
   livemode: z.boolean(),
   cancelUrl: z.string().optional(),
+  /**
+   * Checkout handed this Payment to the Consumer's phone. Lets a reloaded
+   * checkout go straight back to waiting rather than asking to pay again.
+   */
+  awaitingApproval: z.boolean().optional(),
 });
 export type IntentSummary = z.infer<typeof IntentSummarySchema>;
 
