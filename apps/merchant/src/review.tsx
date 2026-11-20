@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
-import "./workspace.css";
+
 import type { PortalClient } from "./portal";
 import { WebhooksPanel } from "./WebhooksPanel";
 import { PaymentsPanel } from "./PaymentsPanel";

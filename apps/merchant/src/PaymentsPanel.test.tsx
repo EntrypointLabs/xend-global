@@ -49,13 +49,10 @@ describe("PaymentsPanel", () => {
     render(<PaymentsPanel client={client} />);
     await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
 
-    fireEvent.change(screen.getByLabelText("Status"), {
-      target: { value: "succeeded" },
-    });
     fireEvent.change(screen.getByLabelText("Search"), {
       target: { value: "order-9" },
     });
-    fireEvent.click(screen.getByText("Apply"));
+    fireEvent.click(screen.getByRole("radio", { name: "Confirmed" }));
 
     await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
     const query = String(get.mock.calls[1]?.[0]);

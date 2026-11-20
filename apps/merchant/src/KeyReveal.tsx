@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Icon } from "./ui";
 
 export function KeyReveal({
   secret,
@@ -19,8 +20,9 @@ export function KeyReveal({
     }
   }
   return (
-    <div className="key-reveal">
+    <div className="secret-reveal">
       <strong>
+        <Icon name="key" />
         {label ? `${label}. ` : ""}Copy this now. It is shown only once.
       </strong>
       <code>{secret}</code>
@@ -28,12 +30,15 @@ export function KeyReveal({
         Keep this secret on your server. Never include it in browser code or a
         public repository.
       </p>
-      <button className="secondary" onClick={() => void copy()}>
-        Copy key
-      </button>
-      <button className="quiet" onClick={onDismiss}>
-        Dismiss
-      </button>
+      <div className="actions">
+        <button className="small" onClick={() => void copy()}>
+          <Icon name="copy" size={15} />
+          Copy key
+        </button>
+        <button className="quiet small" onClick={onDismiss}>
+          Dismiss
+        </button>
+      </div>
       <p role="status" aria-live="polite">
         {status}
       </p>

@@ -1,35 +1,18 @@
 export function MerchantEntryStory() {
   return (
     <section className="entry-story" aria-label="Pay with Prydd for business">
-      <p className="entry-kicker">PAY WITH PRYDD / FOR BUSINESS</p>
       <div>
-        <h1>
-          Your business.
-          <br />
-          Paid in digital dollars.
-        </h1>
-        <p>
-          Price in naira or dollars. Receive USDC directly into your business
-          account.
-        </p>
+        <strong>Settled in USDC</strong>
+        <span>On Solana, when the Payment confirms.</span>
       </div>
-      <p className="entry-footnote">
-        Settled when the Payment confirms.
-        <br />
-        No automatic conversion. No bank payouts.
-      </p>
+      <div>
+        <strong>Drop-in checkout</strong>
+        <span>A React component or one script tag.</span>
+      </div>
+      <div>
+        <strong>No conversion</strong>
+        <span>No automatic bank payouts in V1.</span>
+      </div>
     </section>
-  );
-}
-
-export function MerchantEntryBrand() {
-  return (
-    <a className="wordmark entry-brand" href="/" aria-label="Prydd v1">
-      <span className="version-pill">v1</span>
-      <span className="brand-symbol" aria-hidden="true">
-        ↗
-      </span>
-      prydd
-    </a>
   );
 }
