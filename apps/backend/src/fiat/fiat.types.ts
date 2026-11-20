@@ -1,3 +1,4 @@
+import type { LimitCheck } from './verification/limits';
 import type {
   FiatInstructions,
   FiatRoute,
@@ -8,6 +9,8 @@ import type {
 export interface FiatQuote extends ProviderFiatQuote {
   id: string;
   route: FiatRoute;
+  /** Absent for simulated routes, which move no real money. */
+  verification?: LimitCheck;
 }
 export interface FiatOrder {
   id: string;
@@ -18,6 +21,8 @@ export interface FiatOrder {
   createdAt: string;
   updatedAt: string;
   simulation: boolean;
+  /** The provider's on-chain signature for the USDC leg, once reported. */
+  settlementSignature?: string;
 }
 export type SimulationEvent =
   | 'payment_received'

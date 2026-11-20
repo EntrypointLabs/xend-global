@@ -1,5 +1,5 @@
 import React from "react";
-import { ScrollView, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -20,11 +20,14 @@ export function FeatureScreen({
   leave = "back",
   footer,
   scroll = true,
+  avoidKeyboard = false,
   children,
 }: {
   leave?: FeatureLeave;
   footer?: React.ReactNode;
   scroll?: boolean;
+  /** Lifts the footer above the keyboard, for pages typed into. */
+  avoidKeyboard?: boolean;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -69,15 +72,24 @@ export function FeatureScreen({
           />
         </GlassButton>
       </View>
-      {body}
-      {footer ? (
-        <View
-          className="border-t border-black/[0.06] px-5 pt-4"
-          style={{ paddingBottom: insets.bottom + 12 }}
-        >
-          {footer}
-        </View>
-      ) : null}
+      <KeyboardAvoidingView
+        className="flex-1"
+        enabled={avoidKeyboard}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        // The footer already clears the home indicator; over the keyboard
+        // that inset would show as a gap.
+        keyboardVerticalOffset={-insets.bottom}
+      >
+        {body}
+        {footer ? (
+          <View
+            className="border-t border-black/[0.06] px-5 pt-4"
+            style={{ paddingBottom: insets.bottom + 12 }}
+          >
+            {footer}
+          </View>
+        ) : null}
+      </KeyboardAvoidingView>
     </View>
   );
 }

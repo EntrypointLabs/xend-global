@@ -6,6 +6,7 @@ import { SimulatorFiatProvider } from './providers/simulator-fiat.provider';
 import type { FiatStore } from './fiat.repository';
 import type { FiatOrder, FiatQuote, StoredFiatOrder } from './fiat.types';
 import { FiatError } from './fiat.errors';
+import type { FiatVerificationService } from './verification/verification.service';
 import { decimalToMinor, minorToDecimal } from './fiat-money';
 
 jest.mock('./fiat.repository', () => ({ FIAT_STORE: Symbol('test-store') }));
@@ -38,6 +39,23 @@ class MemoryStore implements FiatStore {
       .filter((r) => r.userId === userId)
       .map((r) => copy(r.order));
   }
+  async since(userId: string, since: Date) {
+    return [...this.orders.values()]
+      .filter(
+        (r) =>
+          r.userId === userId &&
+          Date.parse(r.order.createdAt) >= since.getTime(),
+      )
+      .map((r) => copy(r.order));
+  }
+  async byProviderReference(provider: string, reference: string) {
+    const row = [...this.orders.values()].find(
+      (r) =>
+        r.providerReference === reference &&
+        r.order.route.provider === provider,
+    );
+    return row ? copy(row) : null;
+  }
   async create(row: StoredFiatOrder) {
     if (
       [...this.orders.values()].some(
@@ -53,7 +71,7 @@ class MemoryStore implements FiatStore {
   async save(row: StoredFiatOrder) {
     this.orders.set(row.order.id, copy(row));
   }
-  async vault() {
+  async vault(): Promise<string | null> {
     return null;
   }
   async event(
@@ -326,5 +344,144 @@ describe('fiat decimal boundaries', () => {
     for (const value of ['1.001', '-1', '1e3', 'NaN'])
       expect(() => decimalToMinor(value, 2)).toThrow();
     expect(decimalToMinor('1.2300', 2)).toBe('123');
+  });
+});
+
+describe('FiatService real ramp orders', () => {
+  const VAULT = '4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T';
+  class RampStore extends MemoryStore {
+    async vault(): Promise<string | null> {
+      return VAULT;
+    }
+  }
+  const route = {
+    id: 'ramp:ngn-usdc',
+    provider: 'ramp',
+    direction: 'receive' as const,
+    environment: 'production' as const,
+    sourceCurrency: 'NGN' as const,
+    destinationCurrency: 'USDC' as const,
+    network: 'solana' as const,
+    quoteAvailable: true,
+    orderAvailable: true,
+    accountKinds: ['temporary' as const],
+    holdsFiat: false,
+    thirdPartyPayments: 'unknown' as const,
+  };
+  let reported: { status: FiatOrder['status'] } = {
+    status: 'awaiting_payment',
+  };
+  const ramp = {
+    name: 'ramp',
+    routes: async () => [route],
+    quote: async (_r: unknown, amountMinor: string) => ({
+      reference: 'r',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      debit: { currency: 'NGN' as const, amountMinor, decimals: 2 as const },
+      credit: {
+        currency: 'USDC' as const,
+        amountMinor: '1000000',
+        decimals: 6 as const,
+      },
+      fees: [],
+      fields: [],
+      paymentStep: 'manual_transfer' as const,
+    }),
+    createOrder: jest.fn(async (input: { idempotencyKey: string }) => ({
+      reference: `ref-${input.idempotencyKey}`,
+      status: 'awaiting_payment' as const,
+      instructions: {
+        kind: 'bank_transfer' as const,
+        message: 'pay',
+        accountNumber: '9912345678',
+        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+      },
+    })),
+    getOrder: jest.fn(async (reference: string) => ({
+      reference,
+      status: reported.status,
+    })),
+  };
+  let customer: string | null;
+  let service: FiatService;
+  beforeEach(() => {
+    customer = null;
+    reported = { status: 'awaiting_payment' };
+    ramp.createOrder.mockClear();
+    const settings: Record<string, string> = {
+      NODE_ENV: 'test',
+      FIAT_ENABLED_PROVIDERS: 'ramp',
+      FIAT_WEBHOOK_BASE_URL: 'https://api.example/',
+    };
+    const config = { get: (key: string) => settings[key] } as ConfigService;
+    service = new FiatService(
+      new FiatProviderRegistry([ramp], config),
+      new RampStore(),
+      {
+        verifiedCustomerId: async () => customer,
+      } as unknown as FiatVerificationService,
+      config,
+    );
+  });
+  const quote = (naira: number) =>
+    service.quote('ada', {
+      routeId: 'ramp:ngn-usdc',
+      amountMinor: String(naira * 100),
+    });
+  const create = (quoteId: string, key: string) =>
+    service.create('ada', { quoteId, idempotencyKey: key, fields: {} });
+
+  it('lets an unverified Consumer move ₦50,000 and asks for BVN above it', async () => {
+    const ok = await quote(50_000);
+    expect(ok.verification?.verificationRequired).toBe(false);
+    const order = await create(ok.id, 'key-000001');
+    expect(order.status).toBe('awaiting_payment');
+    expect(ramp.createOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        destinationAddress: VAULT,
+        webhookUrl: 'https://api.example/webhooks/fiat/ramp',
+      }),
+    );
+    expect(ramp.createOrder.mock.calls[0][0]).not.toHaveProperty('customerId');
+
+    const next = await quote(1);
+    expect(next.verification?.verificationRequired).toBe(true);
+    await expect(create(next.id, 'key-000002')).rejects.toEqual(
+      errorCode('VERIFICATION_REQUIRED'),
+    );
+    expect(ramp.createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends the verified customer id and lifts the limit', async () => {
+    customer = 'cus_1';
+    const big = await quote(400_000);
+    expect(big.verification?.verificationRequired).toBe(false);
+    await create(big.id, 'key-000003');
+    expect(ramp.createOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ customerId: 'cus_1' }),
+    );
+  });
+
+  it('records what the provider reports, and a refusal leaves nothing to review', async () => {
+    const q = await quote(10_000);
+    const order = await create(q.id, 'key-000004');
+    reported = { status: 'completed' };
+    const updated = await service.refreshFromProvider(
+      'ramp',
+      `ref-${order.id}`,
+    );
+    expect(updated?.status).toBe('completed');
+
+    ramp.createOrder.mockRejectedValueOnce(
+      new FiatError('PROVIDER_REFUSED', 'no', 422),
+    );
+    const refused = await quote(1_000);
+    await expect(create(refused.id, 'key-000005')).rejects.toEqual(
+      errorCode('PROVIDER_REFUSED'),
+    );
+    const { orders } = await service.list('ada');
+    expect(orders.find((o) => o.quote.id === refused.id)?.status).toBe(
+      'failed',
+    );
   });
 });

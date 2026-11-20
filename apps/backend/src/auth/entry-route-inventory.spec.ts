@@ -129,6 +129,16 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /fiat/unified/orders/:id/advance',
   'POST /fiat/unified/quotes',
   'POST /fiat/unified/receive',
+  // Naira ramps and the BVN check behind them move money or identity, so
+  // they wait for the passkey like any other spend.
+  'GET /fiat/limits',
+  'GET /fiat/payout-banks',
+  'POST /fiat/payout-banks/lookup',
+  'GET /fiat/verification',
+  'GET /fiat/verification/consent',
+  'POST /fiat/verification',
+  'POST /fiat/verification/code',
+  'POST /fiat/verification/code/resend',
   // A fixed local development identity, never authenticated by an entry token.
   'GET /dev/fiat/balances',
   'GET /dev/fiat/banking/accounts',
@@ -196,6 +206,10 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /webhooks/helius',
   // Nomba HMAC authenticates this receiver, never a Consumer session.
   'POST /webhooks/nomba/sandbox',
+  // PAJ and Paycrest sign these; each delivery only triggers a re-read.
+  'POST /webhooks/fiat/paj',
+  'POST /webhooks/fiat/paj/kyc',
+  'POST /webhooks/fiat/paycrest',
   'GET /health',
   'GET /health/live',
   'GET /features',

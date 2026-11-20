@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
-import { Image, View } from "react-native";
-import type { BottomSheetModal } from "@gorhom/bottom-sheet";
+import { Image, Platform, View } from "react-native";
+import { router } from "expo-router";
 import { ActionModal } from "../ActionModal";
 import {
   ModalOptionsList,
@@ -9,7 +9,6 @@ import {
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { Typography } from "@/components/ui/atoms/Typography";
-import { BankDetailsSheet } from "./BankDetailsSheet";
 
 const bankIcon = require("@/assets/icons/bank.png");
 const walletIcon = require("@/assets/icons/wallet.png");
@@ -32,7 +31,6 @@ export function ReceiveModal({
   cryptoOnly = false,
 }: ReceiveModalProps) {
   const { hideAllModals } = useModalFlow();
-  const bankSheetRef = useRef<BottomSheetModal>(null);
   // Null until the backend has answered with the Account. The option waits
   // rather than falling back to a signer's address, which is not where the
   // Consumer's money belongs.
@@ -43,16 +41,25 @@ export function ReceiveModal({
     onOpenQRCode();
   };
 
+  const pendingRoute = useRef<"/add-naira" | null>(null);
+
   const handleReceiveFromBank = () => {
     hideAllModals();
     onClose();
-    bankSheetRef.current?.present();
+    if (Platform.OS === "ios") pendingRoute.current = "/add-naira";
+    else router.push("/add-naira");
+  };
+
+  const handleDismissed = () => {
+    const route = pendingRoute.current;
+    pendingRoute.current = null;
+    if (route) router.push(route);
   };
 
   const fiatOption: ActionOption = {
     key: "fiat",
     title: "Fiat",
-    description: "Receive naira via bank account",
+    description: "Add naira by bank transfer",
     icon: bankIcon,
     onPress: handleReceiveFromBank,
   };
@@ -72,7 +79,11 @@ export function ReceiveModal({
 
   return (
     <>
-      <ActionModal visible={visible} onClose={onClose}>
+      <ActionModal
+        visible={visible}
+        onClose={onClose}
+        onDismissed={handleDismissed}
+      >
         <View className="mb-5 flex-col items-center justify-center">
           <Image
             source={require("@/assets/icons/recieve.png")}
@@ -91,7 +102,6 @@ export function ReceiveModal({
         </View>
         <ModalOptionsList options={receiveOptions} />
       </ActionModal>
-      {cryptoOnly ? null : <BankDetailsSheet ref={bankSheetRef} />}
     </>
   );
 }

@@ -127,6 +127,8 @@ const FULL_SCREEN_ROUTES = [
   "split-bill",
   "convert-price",
   "find-atm",
+  "add-naira",
+  "verify-identity",
 ] as const;
 
 const SLIDE_OVER = {

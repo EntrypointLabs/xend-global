@@ -30,9 +30,72 @@ const BanksSchema = z.array(
   z.object({ code: z.string().min(1), name: z.string().min(1) }),
 );
 
+// PAJ sends amounts as JSON numbers. They are converted to integer minor
+// units at the adapter, never added or multiplied as floats.
+const Amount = z.number().finite().nonnegative();
+
+const TransactionSchema = z.object({
+  id: z.string().min(1),
+  address: z.string().optional().nullable(),
+  signature: z.string().optional().nullable(),
+  amount: Amount.optional().nullable(),
+  usdcAmount: Amount.optional().nullable(),
+  fiatAmount: Amount.optional().nullable(),
+  rate: Amount.optional().nullable(),
+  status: z.string().min(1),
+  createdAt: z.string().optional().nullable(),
+  accountNumber: z.string().optional().nullable(),
+  accountName: z.string().optional().nullable(),
+  bank: z.string().optional().nullable(),
+  fee: Amount.optional().nullable(),
+});
+
+const KycStatus = z.enum(['OTP_SENT', 'VERIFIED', 'IN_REVIEW', 'DECLINED']);
+const DeclineCode = z.enum([
+  'ID_NOT_VERIFIED',
+  'ATTEMPTS_EXCEEDED',
+  'ALREADY_LINKED',
+]);
+
+const KycSessionSchema = z.object({
+  sessionId: z.string().optional(),
+  status: KycStatus,
+  customerId: z.string().optional(),
+  tier: z.number().optional(),
+  declineCode: DeclineCode.optional(),
+  expiresAt: z.string().optional(),
+});
+
+const KycCustomerSchema = z.object({
+  customerId: z.string().min(1),
+  status: KycStatus,
+  tier: z.number().optional(),
+  declineCode: DeclineCode.optional(),
+});
+
+const KycConsentSchema = z.object({
+  version: z.string().min(1),
+  text: z.string().min(1),
+});
+
 export type PajBank = z.infer<typeof BanksSchema>[number];
 export type PajRates = z.infer<typeof RatesSchema>;
 export type PajBankAccount = z.infer<typeof BankAccountSchema>;
+export type PajTransaction = z.infer<typeof TransactionSchema>;
+export type PajKycSession = z.infer<typeof KycSessionSchema>;
+export type PajKycCustomer = z.infer<typeof KycCustomerSchema>;
+export type PajKycConsent = z.infer<typeof KycConsentSchema>;
+
+const SOLANA_USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+
+interface RampCommon {
+  /** Whole naira, or omitted when `amount` names the token side instead. */
+  fiatAmount?: number;
+  /** USDC, as a decimal number of whole tokens. */
+  amount?: number;
+  webhookURL?: string;
+  customerId?: string;
+}
 
 export class PajRequestError extends Error {
   constructor(
@@ -80,6 +143,123 @@ export class PajClient {
         body: input,
         timeoutMs: REGISTRATION_TIMEOUT_MS,
       }),
+    );
+  }
+
+  /**
+   * Not idempotent: PAJ takes no request key, so a timeout may have opened an
+   * order anyway. Callers treat any non-4xx failure as uncertain and never
+   * resubmit it.
+   */
+  async createOnramp(
+    input: RampCommon & { recipient: string; mint?: string },
+  ): Promise<PajTransaction> {
+    return TransactionSchema.parse(
+      await this.request('/pub/v2/onramp', {
+        method: 'POST',
+        body: {
+          currency: 'NGN',
+          chain: 'SOLANA',
+          mint: input.mint ?? SOLANA_USDC_MINT,
+          recipient: input.recipient,
+          ...rampAmounts(input),
+        },
+        timeoutMs: REGISTRATION_TIMEOUT_MS,
+      }),
+    );
+  }
+
+  /** Same uncertainty rule as createOnramp. */
+  async createOfframp(
+    input: RampCommon & {
+      bankCode: string;
+      accountNumber: string;
+      mint?: string;
+    },
+  ): Promise<PajTransaction> {
+    return TransactionSchema.parse(
+      await this.request('/pub/v2/offramp', {
+        method: 'POST',
+        body: {
+          currency: 'NGN',
+          chain: 'SOLANA',
+          mint: input.mint ?? SOLANA_USDC_MINT,
+          bankCode: input.bankCode,
+          accountNumber: input.accountNumber,
+          ...rampAmounts(input),
+        },
+        timeoutMs: REGISTRATION_TIMEOUT_MS,
+      }),
+    );
+  }
+
+  /** Null when PAJ has no such order, which includes one deleted after 72h. */
+  async getTransaction(id: string): Promise<PajTransaction | null> {
+    try {
+      return TransactionSchema.parse(
+        await this.request(`/pub/v2/transaction/${encodeURIComponent(id)}`, {
+          timeoutMs: DEFAULT_TIMEOUT_MS,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof PajRequestError && error.status === 404) return null;
+      throw error;
+    }
+  }
+
+  async kycConsent(): Promise<PajKycConsent> {
+    return KycConsentSchema.parse(
+      await this.request('/pub/v2/kyc/consent', {
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      }),
+    );
+  }
+
+  /** The BVN goes straight through; it is never stored or logged here. */
+  async createKycSession(input: {
+    externalUserId: string;
+    bvn: string;
+    consentVersion: string;
+  }): Promise<PajKycSession> {
+    return KycSessionSchema.parse(
+      await this.request('/pub/v2/kyc/sessions', {
+        method: 'POST',
+        body: {
+          externalUserId: input.externalUserId,
+          idNumber: input.bvn,
+          idType: 'BVN',
+          country: 'NG',
+          consentVersion: input.consentVersion,
+        },
+        timeoutMs: REGISTRATION_TIMEOUT_MS,
+      }),
+    );
+  }
+
+  async verifyKycOtp(sessionId: string, otp: string): Promise<PajKycSession> {
+    return KycSessionSchema.parse(
+      await this.request(
+        `/pub/v2/kyc/sessions/${encodeURIComponent(sessionId)}/verify-otp`,
+        { method: 'POST', body: { otp }, timeoutMs: DEFAULT_TIMEOUT_MS },
+      ),
+    );
+  }
+
+  async resendKycOtp(sessionId: string): Promise<PajKycSession> {
+    return KycSessionSchema.parse(
+      await this.request(
+        `/pub/v2/kyc/sessions/${encodeURIComponent(sessionId)}/resend-otp`,
+        { method: 'POST', body: {}, timeoutMs: DEFAULT_TIMEOUT_MS },
+      ),
+    );
+  }
+
+  async getKycCustomer(customerId: string): Promise<PajKycCustomer> {
+    return KycCustomerSchema.parse(
+      await this.request(
+        `/pub/v2/customers/${encodeURIComponent(customerId)}`,
+        { timeoutMs: DEFAULT_TIMEOUT_MS },
+      ),
     );
   }
 
@@ -143,6 +323,18 @@ export class PajClient {
     }
     return response.json();
   }
+}
+
+function rampAmounts(input: RampCommon): Record<string, unknown> {
+  if ((input.fiatAmount === undefined) === (input.amount === undefined)) {
+    throw new PajRequestError(0, 'send exactly one of fiatAmount or amount');
+  }
+  return {
+    ...(input.fiatAmount !== undefined ? { fiatAmount: input.fiatAmount } : {}),
+    ...(input.amount !== undefined ? { amount: input.amount } : {}),
+    ...(input.webhookURL ? { webhookURL: input.webhookURL } : {}),
+    ...(input.customerId ? { customerId: input.customerId } : {}),
+  };
 }
 
 /** Validation failures arrive as an array of messages, the rest as a string. */

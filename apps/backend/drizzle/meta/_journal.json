@@ -456,6 +456,13 @@
       "when": 1794575165452,
       "tag": "0064_bank_notification_requery",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1795193976296,
+      "tag": "0065_fiat_verifications",
+      "breakpoints": true
     }
   ]
 }

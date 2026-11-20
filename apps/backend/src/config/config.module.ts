@@ -19,8 +19,21 @@ export const USDC_MINT_BY_CLUSTER = {
           .valid('development', 'production', 'test')
           .required(),
         PORT: Joi.number().default(8000),
-        // Fiat execution remains simulated; production exposes no test routes.
+        // Consumer fiat providers; production also needs FIAT_PRODUCTION_PROVIDERS.
         FIAT_ENABLED_PROVIDERS: Joi.string().allow('').default(''),
+        // Production runs only the providers named in both lists.
+        FIAT_PRODUCTION_PROVIDERS: Joi.string().allow('').default(''),
+        FIAT_UNVERIFIED_LIMIT_NAIRA: Joi.number().min(0).default(50000),
+        FIAT_DEPOSIT_WINDOW_MINUTES: Joi.number().min(5).max(4320).default(30),
+        // Public origin PAJ posts per-order updates to, e.g. https://api.prydd.co
+        FIAT_WEBHOOK_BASE_URL: Joi.string().uri().allow('').optional(),
+        FIAT_PSEUDONYM_SECRET: Joi.string().allow('').optional(),
+        PAYCREST_API_BASE: Joi.string()
+          .uri()
+          .default('https://api.paycrest.io'),
+        PAYCREST_API_KEY: Joi.string().allow('').optional(),
+        // Paycrest signs webhooks with the API secret.
+        PAYCREST_API_SECRET: Joi.string().allow('').optional(),
         FIAT_LOCAL_DEMO: Joi.boolean().default(false),
         FIAT_UNIFIED_SIMULATION: Joi.boolean().default(false),
         NOMBA_SANDBOX_CLIENT_ID: Joi.string().allow('').optional(),

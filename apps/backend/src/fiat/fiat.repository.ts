@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { createId } from '@paralleldrive/cuid2';
 import { DbService } from '../db/db.service';
 import {
@@ -18,6 +18,12 @@ export interface FiatStore {
   order(userId: string, id: string): Promise<StoredFiatOrder | null>;
   byKey(userId: string, key: string): Promise<StoredFiatOrder | null>;
   list(userId: string): Promise<FiatOrder[]>;
+  /** Every order created at or after `since`, for the rolling allowance. */
+  since(userId: string, since: Date): Promise<FiatOrder[]>;
+  byProviderReference(
+    provider: string,
+    reference: string,
+  ): Promise<StoredFiatOrder | null>;
   create(row: StoredFiatOrder): Promise<boolean>;
   save(row: StoredFiatOrder): Promise<void>;
   vault(userId: string): Promise<string | null>;
@@ -79,6 +85,28 @@ export class PgFiatStore implements FiatStore {
         .orderBy(desc(fiatOrders.createdAt))
         .limit(30)
     ).map((r) => r.payload);
+  }
+  async since(userId: string, since: Date) {
+    return (
+      await this.db.client
+        .select({ payload: fiatOrders.payload })
+        .from(fiatOrders)
+        .where(
+          and(eq(fiatOrders.userId, userId), gte(fiatOrders.createdAt, since)),
+        )
+    ).map((r) => r.payload);
+  }
+  async byProviderReference(provider: string, reference: string) {
+    const [row] = await this.db.client
+      .select()
+      .from(fiatOrders)
+      .where(
+        and(
+          eq(fiatOrders.providerReference, reference),
+          sql`${fiatOrders.payload}->'route'->>'provider' = ${provider}`,
+        ),
+      );
+    return row ? this.unpack(row) : null;
   }
   async create(row: StoredFiatOrder) {
     const inserted = await this.db.client

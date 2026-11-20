@@ -155,19 +155,18 @@ export default function BankRecipientStep({
   const checkId = useRef(0);
 
   const { data, isLoading } = useUnifiedFiat("NGN");
+  // Payout banks are the payout partner's list, so a picked code is the one
+  // the payout order carries.
   const banksQuery = useQuery({
-    queryKey: ["fiat", "banks"],
-    queryFn: () => apiClient.banks(),
+    queryKey: ["fiat", "payout-banks"],
+    queryFn: () => apiClient.payoutBanks(),
     staleTime: BANK_LIST_STALE_MS,
     gcTime: BANK_LIST_STALE_MS,
   });
   const isComplete = isAccountNumber(accountNumber);
-  const candidatesQuery = useQuery({
-    queryKey: ["fiat", "bank-candidates", accountNumber],
-    queryFn: () => apiClient.bankCandidates(accountNumber),
-    enabled: isComplete && stage.name !== "number",
-    staleTime: Infinity,
-  });
+  // NUBAN guesses come from the bank-account adapter, which payouts do not
+  // use; with no guesses the picker opens on the searchable full list.
+  const candidatesQuery = { data: [] as Bank[], isLoading: false };
 
   const banksByCode = useMemo(
     () => new Map((banksQuery.data ?? []).map((bank) => [bank.code, bank])),
@@ -207,8 +206,17 @@ export default function BankRecipientStep({
     const id = ++checkId.current;
     setStage({ name: "checking", bank });
     try {
-      const confirmed = await apiClient.resolveBankRecipient(number, bank.code);
+      const { accountName } = await apiClient.payoutAccountLookup(
+        bank.code,
+        number
+      );
       if (id !== checkId.current) return;
+      const confirmed = {
+        accountNumber: number,
+        bankCode: bank.code,
+        bankName: bank.name,
+        accountName: accountName ?? "Account holder",
+      };
       setStage({ name: "confirmed", recipient: confirmed });
     } catch (error) {
       if (id !== checkId.current) return;

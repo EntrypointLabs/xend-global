@@ -31,6 +31,7 @@ const ACCOUNT_READY_MS = 4_000;
 const TRANSFER_SETTLE_MS = 3_000;
 const ORDER_STEP_MS = 6_000;
 const NGN_PER_USDC = 1_500n;
+const DEMO_LIMIT_MINOR = 5_000_000n;
 const UNIFIED_STEP_MS = 2_500;
 
 const KNOWN_RECIPIENTS: Record<string, string> = {
@@ -56,6 +57,7 @@ const state: {
   transfers: (NairaTransfer & { settlesAt?: number })[];
   orders: (FiatOrder & { startedAt: number })[];
   quotes: Map<string, FiatQuote>;
+  verification: "unverified" | "code_sent" | "verified";
 } = {
   account: null,
   accountReadyAt: 0,
@@ -67,6 +69,7 @@ const state: {
   transfers: [],
   orders: [],
   quotes: new Map(),
+  verification: "unverified",
 };
 
 function settleAccount() {
@@ -118,8 +121,16 @@ function settleTransfers() {
 }
 
 const ORDER_STEPS: Record<"receive" | "send", FiatOrder["status"][]> = {
-  receive: ["awaiting_payment", "processing", "completed"],
-  send: ["processing", "completed"],
+  receive: [
+    "awaiting_payment",
+    "awaiting_payment",
+    "awaiting_payment",
+    "awaiting_payment",
+    "awaiting_payment",
+    "processing",
+    "completed",
+  ],
+  send: ["awaiting_payment", "processing", "completed"],
 };
 
 function advanceOrders() {
@@ -319,85 +330,151 @@ export const demoFiat = {
 
   routes(): FiatRoute[] {
     const route = (direction: "receive" | "send"): FiatRoute => ({
-      id: `fonbnk:${direction}`,
-      provider: "fonbnk",
+      id: direction === "receive" ? "paj:ngn-usdc" : "paycrest:usdc-ngn",
+      provider: direction === "receive" ? "paj" : "paycrest",
       direction,
-      environment: "sandbox",
+      environment: "production",
       sourceCurrency: direction === "receive" ? "NGN" : "USDC",
       destinationCurrency: direction === "receive" ? "USDC" : "NGN",
       network: "solana",
       quoteAvailable: true,
       orderAvailable: true,
-      accountKinds: [],
+      accountKinds: direction === "receive" ? ["temporary"] : [],
       holdsFiat: false,
-      thirdPartyPayments: "unknown",
+      thirdPartyPayments: direction === "receive" ? "unknown" : "supported",
     });
     return [route("receive"), route("send")];
   },
 
-  async quote(routeId: string, amountMinor: string): Promise<FiatQuote> {
+  async quote(
+    routeId: string,
+    amountMinor: string,
+    side: "debit" | "credit" = "debit"
+  ): Promise<FiatQuote> {
     await latency();
     const route = this.routes().find((r) => r.id === routeId);
     if (!route) throw new Error("Demo route is unavailable");
     const receive = route.direction === "receive";
-    const credit = receive
-      ? (BigInt(amountMinor) * 10_000n) / NGN_PER_USDC
-      : (BigInt(amountMinor) * NGN_PER_USDC) / 10_000n;
+    const amount = BigInt(amountMinor);
+    // Receive: kobo in, USDC out. Send (credit): kobo to the bank, USDC out.
+    const naira =
+      receive || side === "credit" ? amount : (amount * NGN_PER_USDC) / 10_000n;
+    const usdc = receive
+      ? (amount * 10_000n) / NGN_PER_USDC
+      : side === "credit"
+        ? (amount * 10_000n + NGN_PER_USDC - 1n) / NGN_PER_USDC
+        : amount;
     const quote: FiatQuote = {
       id: `demo-quote-${uuid()}`,
       route,
       reference: "demo-provider-quote",
-      expiresAt: iso(Date.now() + 600_000),
-      debit: {
-        currency: route.sourceCurrency,
-        amountMinor,
-        decimals: receive ? 2 : 6,
-      },
-      credit: {
-        currency: route.destinationCurrency,
-        amountMinor: credit.toString(),
-        decimals: receive ? 6 : 2,
-      },
+      expiresAt: iso(Date.now() + 120_000),
+      debit: receive
+        ? { currency: "NGN", amountMinor: naira.toString(), decimals: 2 }
+        : { currency: "USDC", amountMinor: usdc.toString(), decimals: 6 },
+      credit: receive
+        ? { currency: "USDC", amountMinor: usdc.toString(), decimals: 6 }
+        : { currency: "NGN", amountMinor: naira.toString(), decimals: 2 },
       fees: [],
       fields: receive
         ? []
         : [
+            { key: "bankCode", label: "Bank", required: true, type: "text" },
             {
               key: "accountNumber",
-              label: "Destination account number",
+              label: "Account number",
               required: true,
               type: "text",
             },
           ],
-      paymentStep: "manual_transfer",
+      paymentStep: receive ? "manual_transfer" : "account_transfer",
+      verification: this.check(naira),
     };
     state.quotes.set(quote.id, quote);
     return quote;
+  },
+
+  check(nairaMinor: bigint) {
+    const used = BigInt(this.usedMinor());
+    return {
+      limitMinor: DEMO_LIMIT_MINOR.toString(),
+      usedMinor: used.toString(),
+      verificationRequired:
+        state.verification !== "verified" &&
+        (nairaMinor > DEMO_LIMIT_MINOR || used + nairaMinor > DEMO_LIMIT_MINOR),
+    };
+  },
+
+  usedMinor() {
+    const since = Date.now() - 24 * 3_600_000;
+    return state.orders
+      .filter(
+        (o) =>
+          !["failed", "expired", "returned"].includes(o.status) &&
+          Date.parse(o.createdAt) >= since
+      )
+      .reduce(
+        (sum, o) =>
+          sum +
+          BigInt(
+            o.quote.debit.currency === "NGN"
+              ? o.quote.debit.amountMinor
+              : o.quote.credit.amountMinor
+          ),
+        0n
+      )
+      .toString();
+  },
+
+  async limits() {
+    await latency();
+    return {
+      verified: state.verification === "verified",
+      limitMinor: DEMO_LIMIT_MINOR.toString(),
+      usedMinor: this.usedMinor(),
+      windowHours: 24,
+    };
   },
 
   async createOrder(quoteId: string, fields: Record<string, string>) {
     await latency();
     const quote = state.quotes.get(quoteId);
     if (!quote) throw new Error("Get a fresh quote before continuing.");
+    if (quote.verification?.verificationRequired)
+      throw Object.assign(new Error("Verify your identity to continue."), {
+        data: { code: "VERIFICATION_REQUIRED" },
+        status: 403,
+      });
     const receive = quote.route.direction === "receive";
+    const fee = 100_000n;
     const order = {
       id: `demo-order-${uuid()}`,
       route: quote.route,
       quote,
-      status: receive ? "awaiting_payment" : "processing",
+      status: "awaiting_payment",
       instructions: receive
         ? {
             kind: "bank_transfer",
-            message:
-              "Transfer the exact amount from your bank app. Your USDC arrives once the payment is confirmed.",
-            accountNumber: "8012345678",
-            bankName: "Wema Bank",
-            accountName: "Fonbnk Collections",
-            expiresAt: quote.expiresAt,
+            message: "Transfer this exact amount once, from any Nigerian bank.",
+            accountNumber: "9912345678",
+            bankName: "Nombank MFB",
+            accountName: `Paj Inc.(Pay NGN ${Number(BigInt(quote.debit.amountMinor) / 100n).toLocaleString("en-NG")}.00)`,
+            transferAmount: quote.debit,
+            expiresAt: iso(Date.now() + 30 * 60_000),
           }
         : {
             kind: "crypto_transfer",
-            message: `Naira will be paid to ${fields.accountNumber ?? "your account"} once the USDC settles.`,
+            message:
+              "Send this exact USDC from your Account to start the payout.",
+            depositAddress: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            depositAmount: {
+              currency: "USDC",
+              amountMinor: (BigInt(quote.debit.amountMinor) + fee).toString(),
+              decimals: 6,
+            },
+            payoutAccountName:
+              KNOWN_RECIPIENTS[fields.accountNumber ?? ""] ?? "Account holder",
+            expiresAt: iso(Date.now() + 30 * 60_000),
           },
       createdAt: iso(),
       updatedAt: iso(),
@@ -406,6 +483,55 @@ export const demoFiat = {
     } satisfies (typeof state.orders)[0];
     state.orders.unshift(order);
     return publicOrder(order);
+  },
+
+  async payoutBanks() {
+    await latency();
+    return DEMO_BANKS;
+  },
+
+  async payoutLookup(_bankCode: string, accountNumber: string) {
+    await latency();
+    const accountName = KNOWN_RECIPIENTS[accountNumber];
+    if (!accountName) throw new BankAccountNotFoundError();
+    return { accountName };
+  },
+
+  async verification() {
+    await latency();
+    return { status: state.verification };
+  },
+
+  async verificationConsent() {
+    await latency();
+    return {
+      version: "v1",
+      text: "I agree that Paj may check my BVN with the Nigeria Inter-Bank Settlement System and send a code to the phone number on my BVN record, to confirm my identity for naira transfers.",
+    };
+  },
+
+  async startVerification(bvn: string) {
+    await latency();
+    if (!/^\d{11}$/.test(bvn)) throw new Error("Check your BVN and try again.");
+    state.verification = "code_sent";
+    return {
+      status: state.verification,
+      codeExpiresAt: iso(Date.now() + 10 * 60_000),
+    };
+  },
+
+  async confirmVerification(code: string) {
+    await latency();
+    if (code !== "123456")
+      throw Object.assign(
+        new Error("That code didn't match. Check it and try again."),
+        {
+          data: { code: "WRONG_CODE" },
+          status: 422,
+        }
+      );
+    state.verification = "verified";
+    return { status: state.verification };
   },
 
   async orders() {

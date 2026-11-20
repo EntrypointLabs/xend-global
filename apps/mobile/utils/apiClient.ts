@@ -26,6 +26,10 @@ import {
   FiatQuoteSchema,
   FiatOrderSchema,
   FiatSimulationEvent,
+  FiatLimitsSchema,
+  PayoutBankSchema,
+  VerificationConsentSchema,
+  VerificationSchema,
 } from "@/utils/fiat";
 import { z } from "zod";
 
@@ -858,13 +862,82 @@ class BackendClient {
       .object({ routes: z.array(FiatRouteSchema) })
       .parse(await this.request<unknown>("/fiat/routes", { auth: true }));
   }
-  async fiatQuote(routeId: string, amountMinor: string) {
-    if (SEED_DEMO) return demoFiat.quote(routeId, amountMinor);
+  /** `credit` fixes what the recipient gets; `debit` what leaves the Account. */
+  async fiatQuote(
+    routeId: string,
+    amountMinor: string,
+    side: "debit" | "credit" = "debit"
+  ) {
+    if (SEED_DEMO) return demoFiat.quote(routeId, amountMinor, side);
     return FiatQuoteSchema.parse(
       await this.request<unknown>("/fiat/quotes", {
         auth: true,
         method: "POST",
-        body: JSON.stringify({ routeId, amountMinor }),
+        body: JSON.stringify({ routeId, amountMinor, side }),
+      })
+    );
+  }
+  async fiatLimits() {
+    if (SEED_DEMO) return demoFiat.limits();
+    return FiatLimitsSchema.parse(
+      await this.request<unknown>("/fiat/limits", { auth: true })
+    );
+  }
+  async payoutBanks() {
+    if (SEED_DEMO) return demoFiat.payoutBanks();
+    return z
+      .object({ banks: z.array(PayoutBankSchema) })
+      .parse(await this.request<unknown>("/fiat/payout-banks", { auth: true }))
+      .banks;
+  }
+  async payoutAccountLookup(bankCode: string, accountNumber: string) {
+    if (SEED_DEMO) return demoFiat.payoutLookup(bankCode, accountNumber);
+    return z.object({ accountName: z.string().nullable() }).parse(
+      await this.request<unknown>("/fiat/payout-banks/lookup", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ bankCode, accountNumber }),
+      })
+    );
+  }
+  async verification() {
+    if (SEED_DEMO) return demoFiat.verification();
+    return VerificationSchema.parse(
+      await this.request<unknown>("/fiat/verification", { auth: true })
+    );
+  }
+  async verificationConsent() {
+    if (SEED_DEMO) return demoFiat.verificationConsent();
+    return VerificationConsentSchema.parse(
+      await this.request<unknown>("/fiat/verification/consent", { auth: true })
+    );
+  }
+  async startVerification(bvn: string, consentVersion: string) {
+    if (SEED_DEMO) return demoFiat.startVerification(bvn);
+    return VerificationSchema.parse(
+      await this.request<unknown>("/fiat/verification", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ bvn, consentVersion }),
+      })
+    );
+  }
+  async confirmVerification(code: string) {
+    if (SEED_DEMO) return demoFiat.confirmVerification(code);
+    return VerificationSchema.parse(
+      await this.request<unknown>("/fiat/verification/code", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ code }),
+      })
+    );
+  }
+  async resendVerificationCode() {
+    if (SEED_DEMO) return demoFiat.verification();
+    return VerificationSchema.parse(
+      await this.request<unknown>("/fiat/verification/code/resend", {
+        auth: true,
+        method: "POST",
       })
     );
   }
