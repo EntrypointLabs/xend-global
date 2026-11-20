@@ -107,6 +107,7 @@ export class PaycrestFiatProvider implements FiatProvider {
           type: 'text',
           required: true,
         },
+        { key: 'narration', label: 'Note', type: 'text', required: false },
       ],
       paymentStep: 'account_transfer',
     };
@@ -153,6 +154,7 @@ export class PaycrestFiatProvider implements FiatProvider {
         institution: bankCode,
         accountNumber,
         accountName,
+        memo: payoutNarration(input.fields.narration),
       }),
     );
     const account = created.providerAccount;
@@ -292,3 +294,19 @@ export function paycrestStatus(status: string): FiatStatus | null {
       return null;
   }
 }
+
+/**
+ * The narration on the recipient's bank alert. Nigerian banks cut it short and
+ * reject unusual characters, so it is kept plain and brief.
+ */
+export function payoutNarration(note: string | undefined): string {
+  const plain = (note ?? '')
+    .replace(/[^A-Za-z0-9 .,'&()/-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, NARRATION_MAX)
+    .trim();
+  return plain || 'Prydd transfer';
+}
+
+const NARRATION_MAX = 60;

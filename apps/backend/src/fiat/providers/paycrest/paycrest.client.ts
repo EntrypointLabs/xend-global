@@ -122,6 +122,7 @@ export class PaycrestClient {
     institution: string;
     accountNumber: string;
     accountName: string;
+    memo: string;
   }): Promise<PaycrestCreatedOrder> {
     return CreatedOrderSchema.parse(
       await this.request('/v2/sender/orders', {
@@ -148,7 +149,7 @@ export class PaycrestClient {
               institution: input.institution,
               accountIdentifier: input.accountNumber,
               accountName: input.accountName,
-              memo: input.reference,
+              memo: input.memo,
             },
           },
         },

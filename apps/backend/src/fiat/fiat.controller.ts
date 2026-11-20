@@ -14,6 +14,7 @@ import { FiatService } from './fiat.service';
 import { FiatVerificationService } from './verification/verification.service';
 import { PayoutBanksService } from './providers/paycrest/payout-banks.service';
 import {
+  AccountNumberParam,
   BankAccountLookupRequest,
   FiatQuoteRequest,
   FiatOrderRequest,
@@ -45,6 +46,12 @@ export class FiatController {
   }
   @Get('payout-banks') payoutBankList() {
     return this.payoutBanks.list();
+  }
+  @Get('payout-banks/candidates/:accountNumber') payoutBankCandidates(
+    @Param('accountNumber', new ZodValidationPipe(AccountNumberParam))
+    accountNumber: string,
+  ) {
+    return this.payoutBanks.candidates(accountNumber);
   }
   @Post('payout-banks/lookup') lookupPayoutAccount(
     @Body(new ZodValidationPipe(BankAccountLookupRequest))

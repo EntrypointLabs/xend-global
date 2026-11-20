@@ -32,6 +32,7 @@ export const VerificationStartRequest = z
 export const VerificationCodeRequest = z
   .object({ code: z.string().regex(/^\d{4,8}$/) })
   .strict();
+export const AccountNumberParam = z.string().regex(/^\d{10}$/);
 export const BankAccountLookupRequest = z
   .object({
     bankCode: z.string().min(1).max(40),

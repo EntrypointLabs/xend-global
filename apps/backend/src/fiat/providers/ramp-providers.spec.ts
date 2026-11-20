@@ -193,6 +193,7 @@ describe('Paycrest bank payouts', () => {
     expect(quote.fields.map((f) => f.key)).toEqual([
       'bankCode',
       'accountNumber',
+      'narration',
     ]);
     expect(quote.paymentStep).toBe('account_transfer');
   });
@@ -228,11 +229,16 @@ describe('Paycrest bank payouts', () => {
       idempotencyKey: 'order-9',
       route,
       quote,
-      fields: { bankCode: 'GTBINGLA', accountNumber: '0123456789' },
+      fields: {
+        bankCode: 'GTBINGLA',
+        accountNumber: '0123456789',
+        narration: 'Rent for May',
+      },
       destinationAddress: VAULT,
     });
     expect(client.createOrder).toHaveBeenCalledWith(
       expect.objectContaining({
+        memo: 'Rent for May',
         usdc: '30',
         rate: '1500',
         reference: 'order-9',
