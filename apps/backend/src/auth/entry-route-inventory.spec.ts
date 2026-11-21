@@ -133,6 +133,7 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   // they wait for the passkey like any other spend.
   'GET /fiat/limits',
   'GET /fiat/payout-banks',
+  'GET /fiat/payout-banks/candidates/:accountNumber',
   'POST /fiat/payout-banks/lookup',
   'GET /fiat/verification',
   'GET /fiat/verification/consent',
