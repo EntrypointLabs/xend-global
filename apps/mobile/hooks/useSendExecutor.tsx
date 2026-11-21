@@ -10,10 +10,7 @@ import { toByteArray, fromByteArray } from "base64-js";
 import { VersionedTransaction } from "@solana/web3.js";
 import { useAccount, ACCOUNT_QUERY_KEY } from "@/hooks/useAccount";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
-import {
-  signBankSendPresence,
-  signPresenceProof,
-} from "@/modules/hardware-key/src/presence";
+import { signPresenceProof } from "@/modules/hardware-key/src/presence";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import {
   apiClient,
@@ -24,11 +21,13 @@ import { checkSpend, MISMATCH_MESSAGE } from "@/utils/verifyTransaction";
 import { isUserCanceledSign } from "@/utils/signing";
 import { getUsdcMint } from "@/utils/cluster";
 import { showToast } from "@/utils/toast";
-import type { UnifiedOrder } from "@/utils/unified-fiat";
 import {
-  encodeBankDestination,
-  type BankRecipient,
-} from "@/components/ui/organisms/send/bankAccount";
+  fiatErrorCode,
+  fiatErrorMessage,
+  minorToPlain,
+  type FiatOrder,
+} from "@/utils/fiat";
+import type { BankRecipient } from "@/components/ui/organisms/send/bankAccount";
 
 /**
  * How a send left the amount step. Everything up to and including the
@@ -40,6 +39,12 @@ export type SendStart =
   | { status: "cancelled" }
   | { status: "failed"; reason: string }
   | { status: "sending" };
+
+/** Where preparing a bank send left off: ready to review, or blocked. */
+export type BankPrepared =
+  | { status: "review"; order: FiatOrder }
+  | { status: "verify" }
+  | { status: "failed"; reason: string };
 
 const SEND_TOAST_ID = "send";
 const SENDING_TOAST_MS = 15_000;
@@ -82,10 +87,10 @@ function toastFailed(reason: string, error?: unknown) {
   );
 }
 
-function toastOnItsWay() {
+function toastPaidOut() {
   showToast(
-    "On its way",
-    <Ionicons name="time-outline" size={16} className="text-black" />,
+    "Paid to their bank",
+    <Ionicons name="checkmark-circle" size={16} className="text-success" />,
     { id: SEND_TOAST_ID, durationMs: FAILED_TOAST_MS }
   );
 }
@@ -117,17 +122,6 @@ type PendingSubmission = {
 let pendingCrypto: { key: string; submission: PendingSubmission } | null = null;
 
 /**
- * An order create that failed ambiguously. Replaying the same quote and
- * idempotency key returns the order if it was made, rather than making a
- * second one.
- */
-let pendingBank: {
-  key: string;
-  quoteId: string;
-  idempotencyKey: string;
-} | null = null;
-
-/**
  * Submit the signed intent, retrying once on an ambiguous failure. A known
  * recoverable code (INTENT_EXPIRED / RPC_UNAVAILABLE) is rethrown for the
  * caller to handle; any other failure (timeout / dropped connection) may
@@ -145,31 +139,6 @@ async function submitPrepared(
     return await apiClient.submitTransfer(prepared);
   }
 }
-
-type BankRefusal = "balance" | "expired" | "other";
-
-/**
- * A refusal means nothing was created and a fresh attempt is safe. Anything
- * else (a dropped connection, a server error) may have created the order, so
- * the retry has to replay the same request rather than start a new one.
- */
-function bankRefusal(err: unknown): BankRefusal | null {
-  const e = err as { status?: unknown; data?: { message?: unknown } } & Error;
-  const text = String(e?.data?.message ?? e?.message ?? "");
-  const refused =
-    (typeof e?.status === "number" && e.status >= 400 && e.status < 500) ||
-    /balance|expired/i.test(text);
-  if (!refused) return null;
-  if (/balance/i.test(text)) return "balance";
-  if (/expired/i.test(text)) return "expired";
-  return "other";
-}
-
-const REFUSAL_MESSAGE: Record<BankRefusal, string> = {
-  balance: "That amount is more than your balance. Nothing has been sent.",
-  expired: TOO_SLOW,
-  other: SOMETHING_WRONG,
-};
 
 const TRANSFER_POLL_MS = 1_000;
 
@@ -197,22 +166,25 @@ async function waitForTransfer(
   return "PENDING";
 }
 
-const ORDER_POLL_MS = 1_500;
-const ORDER_POLL_LIMIT = 40;
+const ORDER_POLL_MS = 5_000;
+const ORDER_POLL_LIMIT = 120;
+export const BANK_SEND_ROUTE = "paycrest:usdc-ngn";
 
-/** The order's final state, or "pending" if it is still moving when the wait runs out. */
-async function waitForOrder(
+/** The payout's settled state, or "pending" while it is still moving. */
+async function waitForFiatOrder(
   id: string
-): Promise<"completed" | "failed" | "pending"> {
+): Promise<"completed" | "returned" | "pending"> {
   for (let i = 0; i < ORDER_POLL_LIMIT; i++) {
-    try {
-      const snapshot = await apiClient.unifiedFiat("NGN");
-      const status = snapshot.orders.find((o) => o.id === id)?.status;
-      if (status === "completed" || status === "failed") return status;
-    } catch {
-      // A missed read says nothing about the order; the next one might.
-    }
     await new Promise((resolve) => setTimeout(resolve, ORDER_POLL_MS));
+    try {
+      const { status } = await apiClient.fiatOrder(id);
+      if (status === "completed") return "completed";
+      if (status === "returned" || status === "return_pending")
+        return "returned";
+      if (status === "failed" || status === "expired") return "pending";
+    } catch {
+      // A missed read says nothing about the payout; the next one might.
+    }
   }
   return "pending";
 }
@@ -444,100 +416,86 @@ export function useSendExecutor() {
   );
 
   /**
-   * Bank send: quote, biometric, create the order, then wait for it to settle.
-   *
-   * The biometric is signed over the quote so it is tied to this payout. The
-   * backend is a simulation today and does not check it; it is here so a bank
-   * send cannot leave an unlocked phone without a face or fingerprint.
+   * First half of a bank send: price the payout, check the allowance, and open
+   * the payout order. No money moves here; an order that is never funded just
+   * expires at the partner. The result carries the exact USDC to send, fee
+   * included, for the review screen.
    */
-  const sendBank = useCallback(
+  const prepareBank = useCallback(
     async (
       recipient: BankRecipient,
-      recipientMinor: string
-    ): Promise<SendStart> => {
-      const destination = encodeBankDestination(recipient);
-      const key = `${destination}:${recipientMinor}`;
-
-      if (pendingBank && pendingBank.key !== key) pendingBank = null;
-
-      let create: { quoteId: string; idempotencyKey: string };
+      recipientMinor: string,
+      note = ""
+    ): Promise<BankPrepared> => {
       try {
-        if (pendingBank) {
-          create = pendingBank;
-        } else {
-          let quoteId: string;
-          try {
-            const quote = await apiClient.unifiedQuote({
-              destinationCurrency: "NGN",
-              destination,
-              recipientMinor,
-            });
-            quoteId = quote.id;
-          } catch (err) {
-            const refusal = bankRefusal(err);
-            if (refusal)
-              return { status: "failed", reason: REFUSAL_MESSAGE[refusal] };
-            throw err;
+        const quote = await apiClient.fiatQuote(
+          BANK_SEND_ROUTE,
+          recipientMinor,
+          "credit"
+        );
+        if (quote.verification?.verificationRequired)
+          return { status: "verify" };
+        const order = await apiClient.fiatCreateOrder(
+          quote.id,
+          Crypto.randomUUID(),
+          {
+            bankCode: recipient.bankCode,
+            accountNumber: recipient.accountNumber,
+            ...(note.trim() ? { narration: note.trim() } : {}),
           }
-          create = { quoteId, idempotencyKey: Crypto.randomUUID() };
+        );
+        const i = order.instructions;
+        if (
+          i.kind !== "crypto_transfer" ||
+          !i.depositAddress ||
+          !i.depositAmount ||
+          i.depositAmount.currency !== "USDC"
+        ) {
+          Sentry.captureException(new Error("bank order without deposit"), {
+            tags: { surface: "send.bank" },
+          });
+          return { status: "failed", reason: SOMETHING_WRONG };
         }
-
-        try {
-          await signBankSendPresence(create.quoteId, SIGN_PROMPT.send);
-        } catch (err) {
-          if (isUserCanceledSign(err)) return { status: "cancelled" };
-          throw err;
-        }
-      } catch (error) {
-        Sentry.captureException(error, { tags: { surface: "send.bank" } });
-        return { status: "failed", reason: SOMETHING_WRONG };
+        return { status: "review", order };
+      } catch (err) {
+        if (fiatErrorCode(err) === "VERIFICATION_REQUIRED")
+          return { status: "verify" };
+        const reason = fiatErrorMessage(err);
+        if (!reason)
+          Sentry.captureException(err, { tags: { surface: "send.bank" } });
+        return { status: "failed", reason: reason ?? SOMETHING_WRONG };
       }
-
-      pendingBank = { key, ...create };
-      toastSending();
-      void (async () => {
-        let order: UnifiedOrder;
-        try {
-          order = await apiClient.unifiedCreateOrder(
-            create.quoteId,
-            create.idempotencyKey,
-            true
-          );
-        } catch (err) {
-          const refusal = bankRefusal(err);
-          if (!refusal) {
-            Sentry.captureException(err, { tags: { surface: "send.bank" } });
-            toastFailed(UNKNOWN_OUTCOME);
-            return;
-          }
-          pendingBank = null;
-          toastFailed(REFUSAL_MESSAGE[refusal], err);
-          return;
-        }
-        // The order exists, so a later send of the same amount is a new
-        // payment, not a replay of this one.
-        pendingBank = null;
-
-        const settled =
-          order.status === "completed" || order.status === "failed"
-            ? order.status
-            : await waitForOrder(order.id);
-        queryClient.invalidateQueries({ queryKey: ["fiat"] });
-        if (settled === "pending") {
-          toastOnItsWay();
-          return;
-        }
-        if (settled === "failed") {
-          toastFailed(`bank order ${order.id} failed`);
-          return;
-        }
-        toastSent();
-      })();
-
-      return { status: "sending" };
     },
-    [queryClient]
+    []
   );
 
-  return { sendCrypto, sendBank };
+  /**
+   * Second half: the Account pays the order's deposit address through the
+   * ordinary signed transfer, so the same checks and prompts guard it as any
+   * send. The bank leg is then followed in the background.
+   */
+  const fundBank = useCallback(
+    async (order: FiatOrder): Promise<SendStart> => {
+      const { depositAddress, depositAmount } = order.instructions;
+      if (!depositAddress || !depositAmount)
+        return { status: "failed", reason: SOMETHING_WRONG };
+      const start = await sendCrypto(
+        depositAddress,
+        minorToPlain(depositAmount.amountMinor, depositAmount.decimals)
+      );
+      if (start.status === "sending") {
+        void (async () => {
+          const settled = await waitForFiatOrder(order.id);
+          queryClient.invalidateQueries({ queryKey: ["fiat"] });
+          if (settled === "returned")
+            toastFailed("The bank payout failed. Your USDC was returned.");
+          else if (settled === "completed") toastPaidOut();
+        })();
+      }
+      return start;
+    },
+    [sendCrypto, queryClient]
+  );
+
+  return { sendCrypto, prepareBank, fundBank };
 }

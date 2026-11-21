@@ -28,6 +28,7 @@ export type BankRecipient = {
   bankCode: string;
   bankName: string;
   accountName: string;
+  logoKey?: string | null;
 };
 
 /**

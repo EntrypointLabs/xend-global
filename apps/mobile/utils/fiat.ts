@@ -35,6 +35,11 @@ const field = z.discriminatedUnion("type", [
     options: z.array(z.object({ value: z.string(), label: z.string() })).min(1),
   }),
 ]);
+const LimitCheckSchema = z.object({
+  limitMinor: z.string().regex(/^\d+$/),
+  usedMinor: z.string().regex(/^\d+$/),
+  verificationRequired: z.boolean(),
+});
 export const FiatQuoteSchema = z.object({
   id: z.string(),
   route: FiatRouteSchema,
@@ -44,7 +49,13 @@ export const FiatQuoteSchema = z.object({
   credit: money,
   fees: z.array(money),
   fields: z.array(field),
-  paymentStep: z.enum(["manual_transfer", "redirect", "simulation"]),
+  paymentStep: z.enum([
+    "manual_transfer",
+    "account_transfer",
+    "redirect",
+    "simulation",
+  ]),
+  verification: LimitCheckSchema.optional(),
 });
 export const FiatOrderSchema = z.object({
   id: z.string(),
@@ -72,6 +83,10 @@ export const FiatOrderSchema = z.object({
     accountNumber: z.string().optional(),
     bankName: z.string().optional(),
     accountName: z.string().optional(),
+    transferAmount: money.optional(),
+    depositAddress: z.string().optional(),
+    depositAmount: money.optional(),
+    payoutAccountName: z.string().optional(),
     expiresAt: z.string().optional(),
     url: z.string().optional(),
   }),
@@ -79,6 +94,36 @@ export const FiatOrderSchema = z.object({
   updatedAt: z.string(),
   simulation: z.boolean(),
 });
+export const FiatLimitsSchema = z.object({
+  verified: z.boolean(),
+  limitMinor: z.string().regex(/^\d+$/),
+  usedMinor: z.string().regex(/^\d+$/),
+  windowHours: z.number(),
+});
+export const VerificationSchema = z.object({
+  status: z.enum([
+    "unverified",
+    "code_sent",
+    "in_review",
+    "verified",
+    "declined",
+  ]),
+  declineCode: z.string().optional(),
+  codeExpiresAt: z.string().optional(),
+});
+export const VerificationConsentSchema = z.object({
+  version: z.string(),
+  text: z.string(),
+});
+export const PayoutBankSchema = z.object({
+  code: z.string(),
+  name: z.string(),
+  logoKey: z.string().nullable().optional(),
+});
+export type FiatLimits = z.infer<typeof FiatLimitsSchema>;
+export type Verification = z.infer<typeof VerificationSchema>;
+export type PayoutBank = z.infer<typeof PayoutBankSchema>;
+export type FiatMoney = z.infer<typeof money>;
 export type FiatRoute = z.infer<typeof FiatRouteSchema>;
 export type FiatQuote = z.infer<typeof FiatQuoteSchema>;
 export type FiatOrder = z.infer<typeof FiatOrderSchema>;
@@ -98,6 +143,18 @@ export function fiatAmountMinor(input: string, decimals: 2 | 6): string | null {
     (whole + fraction.padEnd(decimals, "0")).replace(/^0+/, "") || "0";
   return minor === "0" ? null : minor;
 }
+/** Naira left before verification is needed: the allowance minus the last 24h. */
+export function nairaAllowanceLeft(limits: FiatLimits): bigint {
+  const left = BigInt(limits.limitMinor) - BigInt(limits.usedMinor);
+  return left > 0n ? left : 0n;
+}
+/** Minor units as a plain decimal string, for sendCrypto and display. */
+export function minorToPlain(amountMinor: string, decimals: number): string {
+  const digits = amountMinor.padStart(decimals + 1, "0");
+  const whole = digits.slice(0, -decimals).replace(/^0+(?=\d)/, "");
+  const fraction = digits.slice(-decimals).replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole;
+}
 export function fiatMoneyLabel(value: z.infer<typeof money>): string {
   const digits = value.amountMinor.padStart(value.decimals + 1, "0");
   return `${digits.slice(0, -value.decimals)}.${digits.slice(-value.decimals)} ${value.currency}`;
@@ -114,4 +171,20 @@ export function fiatFieldsValid(
         (f.type !== "select" || f.options.some((o) => o.value === value)))
     );
   });
+}
+
+type CodedError = { data?: { code?: unknown; message?: unknown } };
+
+/** The backend's typed refusal code, from the API or the demo backend. */
+export function fiatErrorCode(err: unknown): string | null {
+  const code = (err as CodedError | null)?.data?.code;
+  return typeof code === "string" ? code : null;
+}
+
+/** A sentence safe to show: the backend's own, or the demo's. */
+export function fiatErrorMessage(err: unknown): string | null {
+  const message = (err as CodedError | null)?.data?.message;
+  if (typeof message === "string") return message;
+  if (fiatErrorCode(err) && err instanceof Error) return err.message;
+  return null;
 }

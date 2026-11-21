@@ -36,9 +36,16 @@ import { FIAT_PROVIDERS } from './fiat-provider.interface';
 import { FIAT_STORE, PgFiatStore } from './fiat.repository';
 import { SimulatorFiatProvider } from './providers/simulator-fiat.provider';
 import { FonbnkFiatProvider } from './providers/fonbnk-fiat.provider';
+import { PajFiatProvider } from './providers/paj-fiat.provider';
+import { PaycrestClient } from './providers/paycrest/paycrest.client';
+import { PaycrestFiatProvider } from './providers/paycrest/paycrest-fiat.provider';
+import { PayoutBanksService } from './providers/paycrest/payout-banks.service';
+import { FiatVerificationService } from './verification/verification.service';
+import { FiatWebhookController } from './fiat-webhook.controller';
+import { PajModule } from '../settlement/providers/paj/paj.module';
 
 @Module({
-  imports: [SolanaModule],
+  imports: [SolanaModule, PajModule],
   exports: [BankingRegistry],
   controllers: [
     NombaWebhookController,
@@ -49,6 +56,7 @@ import { FonbnkFiatProvider } from './providers/fonbnk-fiat.provider';
     ObservedBalancesController,
     ObservedBalancesLocalController,
     FiatController,
+    FiatWebhookController,
     UnifiedFiatController,
     UnifiedLocalController,
     NairaAccountsController,
@@ -69,14 +77,26 @@ import { FonbnkFiatProvider } from './providers/fonbnk-fiat.provider';
     FiatProviderRegistry,
     SimulatorFiatProvider,
     FonbnkFiatProvider,
+    PajFiatProvider,
+    PaycrestClient,
+    PaycrestFiatProvider,
+    PayoutBanksService,
+    FiatVerificationService,
     { provide: FIAT_STORE, useClass: PgFiatStore },
     {
       provide: FIAT_PROVIDERS,
-      inject: [SimulatorFiatProvider, FonbnkFiatProvider],
+      inject: [
+        SimulatorFiatProvider,
+        FonbnkFiatProvider,
+        PajFiatProvider,
+        PaycrestFiatProvider,
+      ],
       useFactory: (
         simulator: SimulatorFiatProvider,
         fonbnk: FonbnkFiatProvider,
-      ) => [simulator, fonbnk],
+        paj: PajFiatProvider,
+        paycrest: PaycrestFiatProvider,
+      ) => [simulator, fonbnk, paj, paycrest],
     },
   ],
 })

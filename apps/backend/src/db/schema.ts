@@ -106,6 +106,7 @@ export const fiatOrders = pgTable(
     uniqueIndex('fiat_order_request_unique').on(t.userId, t.idempotencyKey),
     uniqueIndex('fiat_order_quote_unique').on(t.quoteId),
     index('fiat_order_owner_idx').on(t.userId, t.createdAt),
+    index('fiat_order_provider_ref_idx').on(t.providerReference),
   ],
 );
 export const fiatOrderEvents = pgTable(
@@ -122,6 +123,43 @@ export const fiatOrderEvents = pgTable(
       .notNull(),
   },
   (t) => [uniqueIndex('fiat_order_event_unique').on(t.orderId, t.eventKey)],
+);
+
+/**
+ * A Consumer's identity check with a ramp partner. The BVN itself is never
+ * stored: only the partner's customer id and the outcome.
+ */
+export const fiatVerifications = pgTable(
+  'fiat_verifications',
+  {
+    userId: text('user_id')
+      .primaryKey()
+      .references(() => users.id),
+    provider: text('provider').notNull(),
+    /** Pseudonym sent to the partner in place of the Prydd user id. */
+    externalUserId: text('external_user_id').notNull(),
+    customerId: text('customer_id'),
+    sessionId: text('session_id'),
+    status: text('status').notNull(),
+    tier: integer('tier'),
+    declineCode: text('decline_code'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex('fiat_verification_external_unique').on(
+      t.provider,
+      t.externalUserId,
+    ),
+    uniqueIndex('fiat_verification_customer_unique').on(
+      t.provider,
+      t.customerId,
+    ),
+  ],
 );
 
 // ---------- Enums ----------

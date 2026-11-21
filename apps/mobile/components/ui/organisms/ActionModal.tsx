@@ -31,6 +31,11 @@ export interface ActionModalProps {
   children: React.ReactNode;
   useStarburstModal?: boolean;
   primaryColor?: string;
+  /**
+   * iOS only: runs once the modal has fully left the screen. A route pushed
+   * while the native modal is still up is dropped, so navigation waits here.
+   */
+  onDismissed?: () => void;
 }
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -75,6 +80,7 @@ export function ActionModal({
   title = "",
   children,
   useStarburstModal = false,
+  onDismissed,
 }: ActionModalProps): ReactElement {
   const backgroundColor = useThemeColor({}, "background");
   const textColor = useThemeColor({}, "text");
@@ -120,6 +126,7 @@ export function ActionModal({
       transparent={true}
       animationType="fade"
       onRequestClose={onClose}
+      onDismiss={onDismissed}
       statusBarTranslucent
     >
       <GestureHandlerRootView style={{ flex: 1 }}>

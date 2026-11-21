@@ -33,3 +33,35 @@ export function nextFiatStatus(
     );
   return next;
 }
+
+const SETTLED: ReadonlySet<FiatStatus> = new Set([
+  'completed',
+  'failed',
+  'returned',
+]);
+
+/**
+ * Applies a provider's reported status. A settled order never changes, and a
+ * report never moves an order back to waiting for payment. An expired
+ * deposit that the provider later sees paid moves forward, because the
+ * provider keeps the account open after the app stops showing it.
+ */
+export function providerFiatStatus(
+  current: FiatStatus,
+  reported: FiatStatus,
+): FiatStatus {
+  if (SETTLED.has(current) || reported === current) return current;
+  if (reported === 'creating') return current;
+  if (reported === 'awaiting_payment') {
+    return current === 'creating' || current === 'needs_attention'
+      ? reported
+      : current;
+  }
+  if (reported === 'expired') {
+    return current === 'awaiting_payment' || current === 'creating'
+      ? reported
+      : current;
+  }
+  if (current === 'return_pending' && reported !== 'returned') return current;
+  return reported;
+}

@@ -6,6 +6,7 @@ import type {
   FiatRoute,
   ProviderFiatQuote,
   ProviderFiatOrder,
+  ProviderFiatOrderStatus,
 } from '../fiat-provider.interface';
 import { FiatError } from '../fiat.errors';
 
@@ -72,7 +73,7 @@ export class SimulatorFiatProvider implements FiatProvider {
       },
     };
   }
-  async getOrder(): Promise<ProviderFiatOrder> {
+  async getOrder(): Promise<ProviderFiatOrderStatus | null> {
     throw new FiatError(
       'SIMULATION_LOCAL_STATE',
       'Simulation state is stored by Prydd.',

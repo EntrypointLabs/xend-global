@@ -11,10 +11,18 @@ export class FiatProviderRegistry {
     private readonly config: ConfigService,
   ) {}
   private enabled(): FiatProvider[] {
-    if (this.config.get('NODE_ENV') === 'production') return [];
-    const names = String(this.config.get('FIAT_ENABLED_PROVIDERS') ?? '')
-      .split(',')
-      .map((s) => s.trim());
+    const names = list(this.config.get('FIAT_ENABLED_PROVIDERS'));
+    if (this.config.get('NODE_ENV') === 'production') {
+      // Production needs a second, explicit opt-in per provider, and test
+      // providers can never be opted in.
+      const live = list(this.config.get('FIAT_PRODUCTION_PROVIDERS'));
+      return this.providers.filter(
+        (p) =>
+          names.includes(p.name) &&
+          live.includes(p.name) &&
+          !TEST_ONLY.has(p.name),
+      );
+    }
     return this.providers.filter((p) => names.includes(p.name));
   }
   provider(name: string): FiatProvider {
@@ -50,4 +58,13 @@ export class FiatProviderRegistry {
       );
     return route;
   }
+}
+
+const TEST_ONLY: ReadonlySet<string> = new Set(['simulator', 'fonbnk']);
+
+function list(value: unknown): string[] {
+  return (typeof value === 'string' ? value : '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 }

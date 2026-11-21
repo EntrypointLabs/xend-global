@@ -10,6 +10,7 @@ import type {
   FiatProvider,
   FiatRoute,
   ProviderFiatOrder,
+  ProviderFiatOrderStatus,
   ProviderFiatQuote,
 } from '../fiat-provider.interface';
 
@@ -160,7 +161,7 @@ export class FonbnkFiatProvider implements FiatProvider {
     return Promise.reject(this.executionUnavailable());
   }
 
-  getOrder(reference: string): Promise<ProviderFiatOrder> {
+  getOrder(reference: string): Promise<ProviderFiatOrderStatus | null> {
     void reference;
     return Promise.reject(this.executionUnavailable());
   }

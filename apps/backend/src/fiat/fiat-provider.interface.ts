@@ -44,7 +44,12 @@ export interface ProviderFiatQuote {
   credit: FiatMoney;
   fees: FiatMoney[];
   fields: FiatField[];
-  paymentStep: 'manual_transfer' | 'redirect' | 'simulation';
+  /** account_transfer: the Consumer's Account sends USDC to the order's deposit address. */
+  paymentStep:
+    | 'manual_transfer'
+    | 'account_transfer'
+    | 'redirect'
+    | 'simulation';
 }
 export interface FiatInstructions {
   kind: 'simulation' | 'bank_transfer' | 'crypto_transfer' | 'redirect';
@@ -52,6 +57,13 @@ export interface FiatInstructions {
   accountNumber?: string;
   bankName?: string;
   accountName?: string;
+  /** The exact naira the sender's bank must transfer, for bank_transfer. */
+  transferAmount?: FiatMoney;
+  /** Where the Account sends USDC for crypto_transfer, valid for this order only. */
+  depositAddress?: string;
+  depositAmount?: FiatMoney;
+  /** Resolved payout beneficiary, for a send. */
+  payoutAccountName?: string;
   expiresAt?: string;
   url?: string;
 }
@@ -60,10 +72,26 @@ export interface ProviderFiatOrder {
   status: FiatStatus;
   instructions: FiatInstructions;
 }
+/** A provider's current word on an order. Instructions are kept from creation. */
+export interface ProviderFiatOrderStatus {
+  reference: string;
+  status: FiatStatus;
+  /** On-chain signature of the USDC leg, when the provider reports one. */
+  signature?: string;
+}
+/**
+ * `debit` fixes what leaves the Consumer; `credit` fixes what the recipient
+ * gets, which is how a naira bank send is usually asked for.
+ */
+export type FiatQuoteSide = 'debit' | 'credit';
 export interface FiatProvider {
   readonly name: string;
   routes(): Promise<FiatRoute[]>;
-  quote(route: FiatRoute, amountMinor: string): Promise<ProviderFiatQuote>;
+  quote(
+    route: FiatRoute,
+    amountMinor: string,
+    side?: FiatQuoteSide,
+  ): Promise<ProviderFiatQuote>;
   createOrder(input: {
     idempotencyKey: string;
     route: FiatRoute;
@@ -71,6 +99,10 @@ export interface FiatProvider {
     fields: Record<string, string>;
     /** Server-resolved Squads vault, never a caller-supplied destination. */
     destinationAddress: string;
+    /** The provider's verified-customer id, sent only when the order needs it. */
+    customerId?: string;
+    webhookUrl?: string;
   }): Promise<ProviderFiatOrder>;
-  getOrder(reference: string): Promise<ProviderFiatOrder>;
+  /** Null when the provider has no record of the reference. */
+  getOrder(reference: string): Promise<ProviderFiatOrderStatus | null>;
 }
