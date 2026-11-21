@@ -210,8 +210,8 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /webhooks/helius',
   // Nomba HMAC authenticates this receiver, never a Consumer session.
   'POST /webhooks/nomba/sandbox',
-  // PAJ and Paycrest sign these; each delivery only triggers a re-read.
-  'POST /webhooks/fiat/paj',
+  // Provider callbacks: each proves itself and only triggers a re-read.
+  'POST /webhooks/fiat/paj/orders/:orderId/:token',
   'POST /webhooks/fiat/paj/kyc',
   'POST /webhooks/fiat/paycrest',
   'GET /health',

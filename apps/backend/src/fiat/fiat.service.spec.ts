@@ -56,6 +56,10 @@ class MemoryStore implements FiatStore {
     );
     return row ? copy(row) : null;
   }
+  async byId(orderId: string) {
+    const row = this.orders.get(orderId);
+    return row ? copy(row) : null;
+  }
   async create(row: StoredFiatOrder) {
     if (
       [...this.orders.values()].some(
@@ -355,8 +359,8 @@ describe('FiatService real ramp orders', () => {
     }
   }
   const route = {
-    id: 'ramp:ngn-usdc',
-    provider: 'ramp',
+    id: 'paj:ngn-usdc',
+    provider: 'paj',
     direction: 'receive' as const,
     environment: 'production' as const,
     sourceCurrency: 'NGN' as const,
@@ -372,7 +376,7 @@ describe('FiatService real ramp orders', () => {
     status: 'awaiting_payment',
   };
   const ramp = {
-    name: 'ramp',
+    name: 'paj',
     routes: async () => [route],
     quote: async (_r: unknown, amountMinor: string) => ({
       reference: 'r',
@@ -410,8 +414,9 @@ describe('FiatService real ramp orders', () => {
     ramp.createOrder.mockClear();
     const settings: Record<string, string> = {
       NODE_ENV: 'test',
-      FIAT_ENABLED_PROVIDERS: 'ramp',
+      FIAT_ENABLED_PROVIDERS: 'paj',
       FIAT_WEBHOOK_BASE_URL: 'https://api.example/',
+      FIAT_WEBHOOK_TOKEN_SECRET: 'hook-secret',
     };
     const config = { get: (key: string) => settings[key] } as ConfigService;
     service = new FiatService(
@@ -425,7 +430,7 @@ describe('FiatService real ramp orders', () => {
   });
   const quote = (naira: number) =>
     service.quote('ada', {
-      routeId: 'ramp:ngn-usdc',
+      routeId: 'paj:ngn-usdc',
       amountMinor: String(naira * 100),
     });
   const create = (quoteId: string, key: string) =>
@@ -437,10 +442,13 @@ describe('FiatService real ramp orders', () => {
     const order = await create(ok.id, 'key-000001');
     expect(order.status).toBe('awaiting_payment');
     expect(ramp.createOrder).toHaveBeenCalledWith(
-      expect.objectContaining({
-        destinationAddress: VAULT,
-        webhookUrl: 'https://api.example/webhooks/fiat/ramp',
-      }),
+      expect.objectContaining({ destinationAddress: VAULT }),
+    );
+    const hook = ramp.createOrder.mock.calls[0][0] as { webhookUrl?: string };
+    expect(hook.webhookUrl).toMatch(
+      new RegExp(
+        `^https://api\\.example/webhooks/fiat/paj/orders/${order.id}/[0-9a-f]{40}$`,
+      ),
     );
     expect(ramp.createOrder.mock.calls[0][0]).not.toHaveProperty('customerId');
 
@@ -466,10 +474,7 @@ describe('FiatService real ramp orders', () => {
     const q = await quote(10_000);
     const order = await create(q.id, 'key-000004');
     reported = { status: 'completed' };
-    const updated = await service.refreshFromProvider(
-      'ramp',
-      `ref-${order.id}`,
-    );
+    const updated = await service.refreshFromProvider('paj', `ref-${order.id}`);
     expect(updated?.status).toBe('completed');
 
     ramp.createOrder.mockRejectedValueOnce(
@@ -483,5 +488,32 @@ describe('FiatService real ramp orders', () => {
     expect(orders.find((o) => o.quote.id === refused.id)?.status).toBe(
       'failed',
     );
+  });
+
+  it('acts on a PAJ callback only with its own order token', async () => {
+    const q = await quote(10_000);
+    const order = await create(q.id, 'key-000006');
+    const url = (
+      ramp.createOrder.mock.calls.at(-1)![0] as unknown as {
+        webhookUrl: string;
+      }
+    ).webhookUrl;
+    const token = url.split('/').at(-1)!;
+
+    reported = { status: 'completed' };
+    await expect(
+      service.refreshFromOrderHook(order.id, '0'.repeat(40)),
+    ).resolves.toBe('rejected');
+    await expect(
+      service.refreshFromOrderHook('someone-elses-order', token),
+    ).resolves.toBe('rejected');
+    const { orders: before } = await service.list('ada');
+    expect(before.find((o) => o.id === order.id)?.status).toBe(
+      'awaiting_payment',
+    );
+
+    const updated = await service.refreshFromOrderHook(order.id, token);
+    expect(updated).not.toBe('rejected');
+    expect((updated as FiatOrder).status).toBe('completed');
   });
 });
