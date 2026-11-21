@@ -28,6 +28,8 @@ export const USDC_MINT_BY_CLUSTER = {
         // Public origin PAJ posts per-order updates to, e.g. https://api.prydd.co
         FIAT_WEBHOOK_BASE_URL: Joi.string().uri().allow('').optional(),
         FIAT_PSEUDONYM_SECRET: Joi.string().allow('').optional(),
+        // Keys the per-order token in PAJ callback URLs. Falls back to JWT_SECRET.
+        FIAT_WEBHOOK_TOKEN_SECRET: Joi.string().allow('').optional(),
         PAYCREST_API_BASE: Joi.string()
           .uri()
           .default('https://api.paycrest.io'),

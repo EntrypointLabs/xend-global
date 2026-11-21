@@ -128,30 +128,27 @@ export class FiatVerificationService {
     return row?.status === 'VERIFIED' ? row.customerId : null;
   }
 
-  /** A decision PAJ reports later, usually the end of a manual review. */
-  async applyDecision(input: {
+  /**
+   * A decision PAJ reports later, usually the end of a manual review. The
+   * callback is unsigned, so it is acted on only when it names a customer
+   * this person already has with us, and the status comes from PAJ's API.
+   */
+  async applyHook(input: {
     externalUserId: string;
-    customerId?: string;
-    status: string;
-    tier?: number;
+    customerId: string;
   }): Promise<boolean> {
-    if (!PUBLIC_STATUS[input.status]) return false;
-    const updated = await this.db.client
-      .update(fiatVerifications)
-      .set({
-        status: input.status,
-        ...(input.customerId ? { customerId: input.customerId } : {}),
-        tier: input.tier ?? null,
-        updatedAt: new Date(),
-      })
+    const [row] = await this.db.client
+      .select()
+      .from(fiatVerifications)
       .where(
         and(
           eq(fiatVerifications.provider, PROVIDER),
           eq(fiatVerifications.externalUserId, input.externalUserId),
         ),
-      )
-      .returning({ userId: fiatVerifications.userId });
-    return updated.length > 0;
+      );
+    if (!row?.customerId || row.customerId !== input.customerId) return false;
+    await this.refresh(row);
+    return true;
   }
 
   private async refresh(row: Row): Promise<Row> {

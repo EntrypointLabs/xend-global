@@ -24,6 +24,8 @@ export interface FiatStore {
     provider: string,
     reference: string,
   ): Promise<StoredFiatOrder | null>;
+  /** Any owner's order, for callbacks that prove themselves another way. */
+  byId(orderId: string): Promise<StoredFiatOrder | null>;
   create(row: StoredFiatOrder): Promise<boolean>;
   save(row: StoredFiatOrder): Promise<void>;
   vault(userId: string): Promise<string | null>;
@@ -106,6 +108,13 @@ export class PgFiatStore implements FiatStore {
           sql`${fiatOrders.payload}->'route'->>'provider' = ${provider}`,
         ),
       );
+    return row ? this.unpack(row) : null;
+  }
+  async byId(orderId: string) {
+    const [row] = await this.db.client
+      .select()
+      .from(fiatOrders)
+      .where(eq(fiatOrders.id, orderId));
     return row ? this.unpack(row) : null;
   }
   async create(row: StoredFiatOrder) {
