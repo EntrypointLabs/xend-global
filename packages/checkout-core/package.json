@@ -3,6 +3,11 @@
   "version": "0.0.0",
   "description": "Pay with Prydd checkout button and result relay. Framework-agnostic, zero runtime dependencies.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EntrypointLabs/xend-global.git",
+    "directory": "packages/checkout-core"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
