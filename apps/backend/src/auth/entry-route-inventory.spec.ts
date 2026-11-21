@@ -68,6 +68,9 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'GET /payments/pending/:reference/status',
   'POST /payments/pending/:reference/prepare',
   'POST /payments/pending/:reference/submit',
+  // Declining ends a Merchant's Payment for good, so it needs the same
+  // session as approving it.
+  'POST /payments/pending/:reference/decline',
   'GET /account/sweep',
   // Enrolling a credential or a signer on an existing Account.
   'POST /auth/passkey-credentials',

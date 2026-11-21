@@ -26,7 +26,8 @@
       "associatedDomains": ["applinks:prydd.co", "webcredentials:prydd.co"],
       "bundleIdentifier": "xyz.entrypointlabs.prydd",
       "entitlements": {
-        "com.apple.developer.devicecheck.appattest-environment": "production"
+        "com.apple.developer.devicecheck.appattest-environment": "production",
+        "com.apple.developer.usernotifications.time-sensitive": true
       }
     },
     "android": {
@@ -43,6 +44,18 @@
           "data": [
             {
               "scheme": "xend"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "prydd.co",
+              "pathPrefix": "/approve"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]

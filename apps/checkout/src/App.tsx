@@ -141,7 +141,11 @@ export function App() {
           deliverResult(intent, intent.status as CheckoutStatus);
           return;
         }
-        setPhase({ kind: 'pay', intent });
+        setPhase(
+          intent.awaitingApproval
+            ? { kind: 'approval', intent }
+            : { kind: 'pay', intent },
+        );
       })
       .catch(() => {
         if (!stale) setPhase({ kind: 'fatal' });
@@ -196,6 +200,14 @@ export function App() {
     [deliverResult],
   );
 
+  const approvalIntent = phase.kind === 'approval' ? phase.intent : null;
+  const handleApprovalOutcome = useCallback(
+    (status: CheckoutStatus) => {
+      if (approvalIntent) deliverResult(approvalIntent, status);
+    },
+    [approvalIntent, deliverResult],
+  );
+
   switch (phase.kind) {
     case 'fatal':
       return <Result status="failed" />;
@@ -219,6 +231,8 @@ export function App() {
       return (
         <ApprovalRequired
           intent={phase.intent}
+          opener={launch?.opener ?? null}
+          onOutcome={handleApprovalOutcome}
           onCancel={() => deliverCancel(phase.intent)}
         />
       );

@@ -291,6 +291,7 @@ describe('CheckoutController.getSummary', () => {
 
     expect(Object.keys(summary).sort()).toEqual(
       [
+        'awaitingApproval',
         'expiresAt',
         'livemode',
         'merchantDisplayName',
@@ -308,6 +309,19 @@ describe('CheckoutController.getSummary', () => {
     const serialized = JSON.stringify(summary);
     expect(summary.usdcSettlementRaw).toBe('1000000');
     expect(serialized).not.toContain('fxRate');
+    expect(summary.awaitingApproval).toBe(false);
+  });
+
+  it('tells a reloaded checkout the Payment is waiting on the phone', async () => {
+    const { controller, intents } = makeController(merchantRow());
+    intents.findById.mockResolvedValue(
+      intentRow({ status: 'created', approvalDeferredAt: new Date() }),
+    );
+    const summary = await controller.getSummary(makeReq(), 'pi_1');
+    expect(summary).toMatchObject({
+      status: 'created',
+      awaitingApproval: true,
+    });
   });
 
   it('reports real devnet execution as non-live', async () => {
@@ -723,11 +737,103 @@ describe('CheckoutController.authorize', () => {
     // use to a Consumer who has already closed it.
     expect(notifications.notifyPaymentNeedsApproval).toHaveBeenCalledWith(
       'c1',
-      {
+      expect.objectContaining({
+        reference: 'pi_1',
         merchantName: 'Acme Store',
         amount: '₦1,600',
-      },
+      }),
     );
+  });
+
+  describe('ringing the phone for an above-limit Payment', () => {
+    function aboveLimit() {
+      const identity = {
+        resolveByProviderToken: jest.fn().mockResolvedValue({
+          consumerId: 'c1',
+          accountAddress: 'Vault1',
+          email: null,
+        }),
+      };
+      const settlement = {
+        buildSettlement: jest.fn().mockResolvedValue(builtSettlement(true)),
+        pinSettlement: jest.fn(),
+        verifySettlementProof: jest.fn(),
+        submitSettlement: jest.fn(),
+      };
+      const made = makeController(merchantRow(), { identity, settlement });
+      made.intents.deferToApproval.mockResolvedValue(intentRow());
+      return made;
+    }
+
+    const authorize = (controller: CheckoutController) =>
+      controller
+        .authorize(makeReq(), makeRes().res, {
+          reference: 'pi_1',
+          providerToken: 'privy-id-token',
+        })
+        .catch(() => undefined);
+
+    it('carries the quote expiry so a lapsed notice is dropped, not delivered late', async () => {
+      const { controller, intents, notifications } = aboveLimit();
+      const expiresAt = new Date(Date.now() + 600_000);
+      intents.findById.mockResolvedValue(
+        intentRow({ status: 'created', expiresAt }),
+      );
+
+      await authorize(controller);
+
+      expect(notifications.notifyPaymentNeedsApproval).toHaveBeenCalledWith(
+        'c1',
+        expect.objectContaining({ reference: 'pi_1', expiresAt }),
+      );
+    });
+
+    it('does not ring again while a checkout retries inside the quiet window', async () => {
+      const { controller, intents, notifications } = aboveLimit();
+      intents.findById.mockResolvedValue(
+        intentRow({
+          status: 'created',
+          consumerId: 'c1',
+          approvalDeferredAt: new Date(Date.now() - 5_000),
+        }),
+      );
+
+      await authorize(controller);
+
+      expect(intents.deferToApproval).toHaveBeenCalledWith('pi_1', 'c1');
+      expect(notifications.notifyPaymentNeedsApproval).not.toHaveBeenCalled();
+    });
+
+    it('rings again once the first ask has gone quiet', async () => {
+      // The first notice may have been swiped away.
+      const { controller, intents, notifications } = aboveLimit();
+      intents.findById.mockResolvedValue(
+        intentRow({
+          status: 'created',
+          consumerId: 'c1',
+          approvalDeferredAt: new Date(Date.now() - 60_000),
+        }),
+      );
+
+      await authorize(controller);
+
+      expect(notifications.notifyPaymentNeedsApproval).toHaveBeenCalledTimes(1);
+    });
+
+    it('rings a different Consumer even inside the window', async () => {
+      const { controller, intents, notifications } = aboveLimit();
+      intents.findById.mockResolvedValue(
+        intentRow({
+          status: 'created',
+          consumerId: 'someone-else',
+          approvalDeferredAt: new Date(Date.now() - 5_000),
+        }),
+      );
+
+      await authorize(controller);
+
+      expect(notifications.notifyPaymentNeedsApproval).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('header path authorizes and hands the rotated token back in the body', async () => {

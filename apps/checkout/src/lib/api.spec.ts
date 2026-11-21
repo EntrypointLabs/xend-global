@@ -160,3 +160,14 @@ describe('redirect settlement polling', () => {
     ]);
   });
 });
+
+describe('toIntentStatus', () => {
+  it('maps backend lifecycle stages onto what the surface shows', async () => {
+    const { toIntentStatus } = await import('./api');
+    expect(toIntentStatus('created')).toBe('requires_payment');
+    expect(toIntentStatus('authorized')).toBe('requires_payment');
+    expect(toIntentStatus('settling')).toBe('processing');
+    expect(toIntentStatus('canceled')).toBe('canceled');
+    expect(toIntentStatus('succeeded')).toBe('succeeded');
+  });
+});

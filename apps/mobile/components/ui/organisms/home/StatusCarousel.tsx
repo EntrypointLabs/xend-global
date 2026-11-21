@@ -25,6 +25,7 @@ import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { usePendingChangeAcknowledgement } from "@/hooks/usePendingChangeAcknowledgement";
 import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { cn } from "@/utils/cn";
+import { requestApproval } from "@/utils/approvalRequests";
 
 export type StatusItem = StatusCardProps & { key: string };
 
@@ -128,7 +129,10 @@ export function StatusCarousel({ empty, nudges, style }: StatusCarouselProps) {
         waiting.length === 1
           ? `${waiting[0].merchantDisplayName} is waiting`
           : "Tap to finish them",
-      onPress: () => router.push("/settings/finish-payment" as never),
+      onPress: () =>
+        waiting.length === 1
+          ? requestApproval(waiting[0].reference)
+          : router.push("/settings/finish-payment" as never),
     });
   }
 

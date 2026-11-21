@@ -61,6 +61,7 @@ import {
   seedWallet,
 } from "@/utils/devSeed";
 import { demoFiat } from "@/utils/devSeedFiat";
+import { demoApproval } from "@/utils/devSeedApproval";
 import {
   FeedbackResponseSchema,
   SupportRequestResponseSchema,
@@ -515,6 +516,8 @@ export const AwaitingPaymentSchema = z.object({
   /** When Checkout handed this over, which is when the Consumer was asked. */
   deferredAt: z.string().datetime(),
   expiresAt: z.string().datetime(),
+  /** The Merchant's own order reference, when they gave one. */
+  merchantReference: z.string().nullable().optional(),
 });
 export type AwaitingPayment = z.infer<typeof AwaitingPaymentSchema>;
 
@@ -1833,7 +1836,7 @@ class BackendClient {
   /** GET /payments/pending — Payments a Merchant is waiting on, that only
    *  this phone can finish. */
   async listAwaitingPayments(): Promise<AwaitingPayment[]> {
-    if (SEED_DEMO) return [];
+    if (SEED_DEMO) return demoApproval.list();
     const raw = await this.request<unknown>("/payments/pending", {
       auth: true,
     });
@@ -1843,6 +1846,7 @@ class BackendClient {
   /** POST /payments/pending/:reference/prepare — builds the Spend and
    *  authorizes the Payment. The transaction comes back needing both signers. */
   async preparePayment(reference: string): Promise<PreparePaymentResponse> {
+    if (SEED_DEMO) return demoApproval.prepare(reference);
     const raw = await this.request<unknown>(
       `/payments/pending/${encodeURIComponent(reference)}/prepare`,
       { method: "POST", auth: true }
@@ -1851,6 +1855,7 @@ class BackendClient {
   }
 
   async paymentStatus(reference: string): Promise<string> {
+    if (SEED_DEMO) return demoApproval.status(reference);
     const raw = await this.request<unknown>(
       `/payments/pending/${encodeURIComponent(reference)}/status`,
       { auth: true }
@@ -1864,11 +1869,23 @@ class BackendClient {
     reference: string,
     signedTxBase64: string
   ): Promise<string> {
+    if (SEED_DEMO) return demoApproval.submit(reference);
     const raw = await this.request<unknown>(
       `/payments/pending/${encodeURIComponent(reference)}/submit`,
       { method: "POST", body: JSON.stringify({ signedTxBase64 }), auth: true }
     );
     return SubmitPaymentResponseSchema.parse(raw).signature;
+  }
+
+  /** POST /payments/pending/:reference/decline. Terminal: the checkout reads
+   *  `canceled` and stops waiting. */
+  async declinePayment(reference: string): Promise<string> {
+    if (SEED_DEMO) return demoApproval.decline(reference);
+    const raw = await this.request<unknown>(
+      `/payments/pending/${encodeURIComponent(reference)}/decline`,
+      { method: "POST", auth: true }
+    );
+    return z.object({ status: z.string() }).parse(raw).status;
   }
 
   /** GET /transfers — cursor-paginated list of the authenticated user's

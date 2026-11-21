@@ -75,6 +75,26 @@ that an unauthenticated `merchant-portal/me` is rejected with 401, and that deep
 links into the SPA return the app shell rather than a 404. It exits non-zero on
 the first failure.
 
+## Vercel deployment
+
+The portal is the Vercel project `prydd-merchant` (team `giftstacks-projects`),
+served at `merchant.prydd.co` through an `A` record to `76.76.21.21`. It runs
+split-origin: build with `VITE_API_BASE=https://api.prydd.co` and the Merchant
+Privy app id in `VITE_PRIVY_APP_ID`, and keep both portal origins on the
+backend's `CORS_ALLOWED_ORIGINS`. The backend must also have
+`MERCHANT_PRIVY_APP_ID` and `MERCHANT_PRIVY_APP_SECRET` for that same app, or
+every signed-in request returns 503.
+
+The Webhooks page tells merchants that event delivery is not on yet. Build with
+`VITE_WEBHOOK_DELIVERY_ENABLED=true` once delivery runs in production.
+
+## Reviewing the UI without signing in
+
+`npx vite --mode review` (from `apps/merchant`) swaps Privy for a stub and
+serves fixture data, so every route can be checked without a real account. Add
+`?state=empty`, `?state=new`, `?state=signedout` or `?state=error` to see the
+other states. Production builds never include it.
+
 ## Deferred
 
 Mainnet execution and above-limit physical-device acceptance remain separate,

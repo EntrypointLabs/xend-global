@@ -9,13 +9,13 @@ describe('Checkout result disclosure', () => {
     expect(html).toContain('Check Activity');
     expect(html).not.toContain('Payment complete');
     expect(html).not.toContain('receipt is on its way');
-    expect(html).not.toContain('border-success');
+    expect(html).not.toContain('success-mark');
   });
 
   it('reserves the success mark for confirmed success', () => {
     const html = renderToStaticMarkup(<Result status="succeeded" />);
     expect(html).toContain('Payment complete');
-    expect(html).toContain('border-success');
+    expect(html).toContain('success-mark');
     expect(html).toContain('role="status"');
   });
 
@@ -24,7 +24,7 @@ describe('Checkout result disclosure', () => {
     (status) => {
       const html = renderToStaticMarkup(<Result status={status} />);
       expect(html).not.toContain('Payment complete');
-      expect(html).not.toContain('border-success');
+      expect(html).not.toContain('success-mark');
       expect(html).toContain('Prydd');
     },
   );

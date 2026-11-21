@@ -30,6 +30,7 @@ import Constants from "expo-constants";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { FullWindowOverlay } from "react-native-screens";
+import { PaymentApprovalHost } from "@/components/payment-approval/PaymentApprovalHost";
 import {
   focusManager,
   QueryClient,
@@ -302,6 +303,7 @@ function RootLayout() {
                         <AuthLayout />
                       </BottomSheetModalProvider>
                     </View>
+                    <PaymentApprovalHost />
                     <AppCover />
                   </BlurTargetProvider>
                 </AppLockProvider>

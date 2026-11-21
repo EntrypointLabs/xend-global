@@ -90,7 +90,9 @@ const CSS = `
 @keyframes spin { to { transform: rotate(360deg); } }
 /* The ceremony frame is an inset panel under the Prydd lockup, so it reads as
    Prydd's own surface and never as merchant chrome. */
-.frame { display: block; width: 100%; height: min(58vh, 440px); border: 1px solid var(--fedge); border-radius: 16px; background: var(--field); }
+.frame { display: block; width: 100%; height: min(calc(100dvh - 80px), 520px); border: 0; background: transparent; }
+[data-theme="light"] .frame { color-scheme: light; }
+[data-theme="dark"] .frame { color-scheme: dark; }
 button:focus-visible { outline: 3px solid #80b5ff; outline-offset: 3px; }
 .sheet { max-height: calc(100dvh - 24px); overflow-y: auto; }
 .mname, .amt .v, .sub { overflow-wrap: anywhere; }
@@ -140,7 +142,10 @@ function formatAmount(currency: string, minorRaw: string): string {
   return `${negative ? "-" : ""}${symbol}${grouped}${fractionPart}`;
 }
 
-function resolveTheme(theme: ModalTheme, doc: Document): "light" | "dark" {
+export function resolveTheme(
+  theme: ModalTheme,
+  doc: Document,
+): "light" | "dark" {
   if (theme === "light" || theme === "dark") return theme;
   const win = doc.defaultView;
   return win?.matchMedia?.("(prefers-color-scheme: dark)").matches
@@ -282,9 +287,7 @@ export function openModal(opts: ModalOptions): ModalHandle {
     },
     showFrame(src) {
       dismissible = false;
-      render(
-        `<div class="foot" style="margin:0 0 10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="var(--muted2)" stroke-width="1.7"/><path d="M8 11V8a4 4 0 018 0v3" stroke="var(--muted2)" stroke-width="1.7"/></svg>Confirming on Prydd</div>`,
-      );
+      render("");
       const frame = doc.createElement("iframe");
       frame.className = "frame";
       frame.title = "Prydd checkout";

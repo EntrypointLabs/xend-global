@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/.turbo
+apps/mobile/ios
+apps/mobile/android
+apps/mobile/.expo
+apps/checkout/public/merchant-demo.html
+apps/checkout/public/prydd-checkout.iife.js
+apps/checkout/.env.local
+**/.env
+**/.env.*
+!**/.env.example
+docs
+graphify-out

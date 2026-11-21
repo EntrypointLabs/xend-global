@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { URGENT_ANDROID_CHANNEL } from './push-sender.interface';
 import type { PushMessage, PushSender } from './push-sender.interface';
 
 const EXPO_PUSH_ENDPOINT = 'https://exp.host/--/api/v2/push/send';
@@ -44,6 +45,16 @@ export class ExpoPushAdapter implements PushSender {
               body: m.body,
               ...(m.data ? { data: m.data } : {}),
               sound: 'default',
+              ...(m.urgency === 'time_sensitive'
+                ? {
+                    priority: 'high',
+                    interruptionLevel: 'time-sensitive',
+                    channelId: URGENT_ANDROID_CHANNEL,
+                  }
+                : {}),
+              ...(m.expiresAt
+                ? { expiration: Math.floor(m.expiresAt.getTime() / 1000) }
+                : {}),
             })),
           ),
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),

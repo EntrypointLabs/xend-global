@@ -3,7 +3,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { pushDevices, users } from '../db/schema';
 import { NOTICE_KIND, PUSH_SENDER } from './push-sender.interface';
-import type { NoticeKind, PushSender } from './push-sender.interface';
+import type { PushMessage, PushSender } from './push-sender.interface';
 
 export interface ArrivalNotice {
   smartAccountId: string;
@@ -126,16 +126,29 @@ export class NotificationsService {
    */
   async notifyPaymentNeedsApproval(
     userId: string,
-    payment: { merchantName: string; amount: string },
+    payment: {
+      reference: string;
+      merchantName: string;
+      amount: string;
+      expiresAt: Date;
+    },
   ): Promise<void> {
     await this.notifyUser(
       userId,
       {
-        title: 'Finish your payment',
+        title: `Approve ${payment.amount} to ${payment.merchantName}`,
         // Named and priced: a Consumer with a notice that says only "a payment
         // needs you" has to open the app to find out whether it is theirs.
-        body: `${payment.merchantName} is waiting on ${payment.amount}. Tap to confirm on this phone.`,
-        data: { kind: NOTICE_KIND.paymentApproval },
+        body: 'Tap to approve or decline on this phone.',
+        data: {
+          kind: NOTICE_KIND.paymentApproval,
+          reference: payment.reference,
+          url: `xend://approve/${encodeURIComponent(payment.reference)}`,
+        },
+        urgency: 'time_sensitive',
+        // A notice for a quote that has lapsed would open a takeover that can
+        // only say "expired".
+        expiresAt: payment.expiresAt,
       },
       NOTICE_KIND.paymentApproval,
     );
@@ -151,7 +164,7 @@ export class NotificationsService {
    */
   private async notifyUser(
     userId: string,
-    alert: { title: string; body: string; data?: { kind: NoticeKind } },
+    alert: Omit<PushMessage, 'token'>,
     kind: string,
   ): Promise<void> {
     try {
@@ -165,12 +178,7 @@ export class NotificationsService {
       }
 
       const { invalidTokens } = await this.push.send(
-        devices.map((d) => ({
-          token: d.token,
-          title: alert.title,
-          body: alert.body,
-          ...(alert.data ? { data: alert.data } : {}),
-        })),
+        devices.map((d) => ({ ...alert, token: d.token })),
       );
       this.logger.log(
         `push.${kind}_sent userId=${userId} devices=${devices.length}`,

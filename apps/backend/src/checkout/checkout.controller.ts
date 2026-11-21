@@ -69,6 +69,7 @@ type MerchantRow = typeof merchants.$inferSelect;
 
 const AUTHORIZE_WAIT_MS = 15_000;
 const AUTHORIZE_POLL_MS = 500;
+const APPROVAL_RENOTIFY_MS = 30_000;
 
 /**
  * The Session carrier for a surface that cannot use the cookie. A third-party
@@ -169,6 +170,9 @@ export class CheckoutController {
         sessionRecognized,
         expiresAt: intent.expiresAt.toISOString(),
         livemode: isLivePayment(intent.mode, intent.executionCluster),
+        awaitingApproval:
+          intent.approvalDeferredAt !== null &&
+          intent.approvalDeferredAt !== undefined,
       };
 
       // Redirect-mode cancel happens BEFORE any authorize call, so the signed
@@ -287,6 +291,7 @@ export class CheckoutController {
         // nothing is authorized, but without this the Payment is unfindable
         // from the app: an intent only learns its Consumer when it is
         // authorized, and this one deliberately never gets that far.
+        const previouslyAsked = intent.approvalDeferredAt;
         await this.intents.deferToApproval(reference, consumerId);
 
         // Then reach for the phone. The popup says to open the app, but the
@@ -294,14 +299,27 @@ export class CheckoutController {
         // row only exist once they look. Detached: the Payment is correctly
         // refused whether or not a notice gets out, and somebody at a till is
         // not kept waiting on a push provider.
-        const merchant = await this.merchantName(intent.merchantId);
-        void this.notifications.notifyPaymentNeedsApproval(consumerId, {
-          merchantName: merchant,
-          amount: formatDisplayMoney(
-            intent.displayCurrency,
-            intent.displayAmountMinor,
-          ),
-        });
+        //
+        // A checkout that retries authorize while it waits would otherwise ring
+        // the phone on every attempt. A second ask after a quiet spell still
+        // goes out, because the first may have been swiped away.
+        const recentlyAsked =
+          previouslyAsked !== null &&
+          previouslyAsked !== undefined &&
+          intent.consumerId === consumerId &&
+          Date.now() - previouslyAsked.getTime() < APPROVAL_RENOTIFY_MS;
+        if (!recentlyAsked) {
+          const merchant = await this.merchantName(intent.merchantId);
+          void this.notifications.notifyPaymentNeedsApproval(consumerId, {
+            reference,
+            merchantName: merchant,
+            amount: formatDisplayMoney(
+              intent.displayCurrency,
+              intent.displayAmountMinor,
+            ),
+            expiresAt: intent.expiresAt,
+          });
+        }
 
         throw new ApprovalRequiredError(
           `intent ${reference} is above the one-signature band and has to be approved from the Prydd app`,

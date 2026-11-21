@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PortalClient } from "./portal";
+import { formatWhen } from "./PaymentsPanel";
+import { ErrorCard, Icon, PageHeader, SkeletonRows } from "./ui";
 
 type AuditEntry = {
   id: string;
@@ -28,6 +30,13 @@ const METADATA_LABELS: Record<string, string> = {
   fingerprint: "Key",
   rotatedFrom: "Replaced key",
 };
+
+function iconFor(action: string) {
+  if (action.startsWith("api_key")) return "key" as const;
+  if (action.startsWith("webhook")) return "webhook" as const;
+  if (action.startsWith("kyb")) return "shield" as const;
+  return "account" as const;
+}
 
 function label(action: string): string {
   return ACTION_LABELS[action] ?? action;
@@ -83,51 +92,61 @@ export function AuditPanel({ client }: { client: PortalClient }) {
   }, [load]);
 
   return (
-    <section className="panel audit-workspace" aria-busy={status === "loading"}>
-      <div className="workspace-page-title">
-        <h1>Activity log</h1>
-        <p>
-          A record of sensitive changes to your account: business details, API
-          keys, webhook endpoints and verification.
-        </p>
-      </div>
+    <section className="audit-workspace" aria-busy={status === "loading"}>
+      <PageHeader
+        title="Activity"
+        description="A record of sensitive changes to your account: business details, API keys, webhook endpoints and verification."
+      />
 
       {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
+        <ErrorCard
+          title="Could not load activity"
+          message={error}
+          onRetry={() => void load(true, null)}
+        />
       )}
 
-      {status !== "loading" && entries.length === 0 && !error ? (
-        <p>No activity recorded yet.</p>
-      ) : (
-        <ol className="audit-list">
-          {entries.map((entry) => (
-            <li key={entry.id} className="audit-entry">
-              <div className="audit-entry-main">
-                <strong>{label(entry.action)}</strong>
-                <time dateTime={entry.at}>
-                  {new Date(entry.at).toLocaleString()}
-                </time>
+      {!(error && entries.length === 0) && (
+        <div>
+          {status === "loading" ? (
+            <SkeletonRows rows={5} />
+          ) : entries.length === 0 && !error ? (
+            <div className="empty">
+              <div className="empty-icon">
+                <Icon name="activity" />
               </div>
-              <span className="audit-entry-detail">
-                {`By ${entry.actor}`}
-                {describe(entry) ? ` · ${describe(entry)}` : ""}
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
-
-      {cursor && (
-        <div className="actions">
-          <button
-            className="secondary"
-            disabled={status === "more"}
-            onClick={() => void load(false, cursor)}
-          >
-            {status === "more" ? "Loading…" : "Load more"}
-          </button>
+              <p>No activity recorded yet.</p>
+            </div>
+          ) : (
+            <ol className="audit-list">
+              {entries.map((entry) => (
+                <li key={entry.id} className="audit-entry">
+                  <span className="audit-dot" aria-hidden="true">
+                    <Icon name={iconFor(entry.action)} size={15} />
+                  </span>
+                  <div>
+                    <strong>{label(entry.action)}</strong>
+                    <span className="audit-entry-detail">
+                      {`By ${entry.actor}`}
+                      {describe(entry) ? ` · ${describe(entry)}` : ""}
+                    </span>
+                  </div>
+                  <time dateTime={entry.at}>{formatWhen(entry.at)}</time>
+                </li>
+              ))}
+            </ol>
+          )}
+          {cursor && (
+            <div className="card-foot">
+              <button
+                className="secondary small"
+                disabled={status === "more"}
+                onClick={() => void load(false, cursor)}
+              >
+                {status === "more" ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </section>

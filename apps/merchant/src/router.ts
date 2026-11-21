@@ -28,6 +28,14 @@ export function usePathname(): string {
   );
 }
 
+export function useSearch(): string {
+  return useSyncExternalStore(
+    subscribe,
+    () => window.location.search,
+    () => "",
+  );
+}
+
 /** Push a new path without a full reload, then let subscribers re-read it. */
 export function navigate(to: string): void {
   if (to === window.location.pathname + window.location.search) return;

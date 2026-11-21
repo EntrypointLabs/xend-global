@@ -8,6 +8,7 @@ import {
 import type { PortalClient } from "./portal";
 import { formatUsdc, formatDisplayAmount } from "./money";
 import { navigate, paymentPath } from "./router";
+import { ErrorCard, Icon, PageHeader, SkeletonRows, StatusChip } from "./ui";
 
 export type PaymentSummary = {
   id: string;
@@ -20,15 +21,9 @@ export type PaymentSummary = {
   createdAt: string;
 };
 
-const STATUSES = [
-  "created",
-  "authorized",
-  "settling",
-  "succeeded",
-  "failed",
-  "expired",
-  "canceled",
-] as const;
+// The filters a merchant reaches for; "authorized" and "canceled" stay
+// searchable but are too rare to earn a pill.
+const FILTERS = ["succeeded", "created", "settling", "failed", "expired"];
 
 export function statusLabel(status: string): string {
   if (status === "succeeded") return "Confirmed";
@@ -36,20 +31,34 @@ export function statusLabel(status: string): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleString();
+export function formatWhen(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
-export function PaymentsPanel({ client }: { client: PortalClient }) {
+export function PaymentsPanel({
+  client,
+  onDevelopers,
+}: {
+  client: PortalClient;
+  onDevelopers?: () => void;
+}) {
   const [rows, setRows] = useState<PaymentSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "more">(
     "loading",
   );
   const [error, setError] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [query, setQuery] = useState("");
-  const [applied, setApplied] = useState({ status: "", q: "" });
+  const [initialQuery] = useState(
+    () => new URLSearchParams(window.location.search).get("q")?.trim() ?? "",
+  );
+  const [query, setQuery] = useState(initialQuery);
+  const [applied, setApplied] = useState({ status: "", q: initialQuery });
   // Each request takes a generation; a filter change or a new load bumps it, so
   // a slower earlier response (e.g. a "Load more" for the previous filters that
   // resolves after the filter changed) is discarded instead of mixing rows.
@@ -91,136 +100,178 @@ export function PaymentsPanel({ client }: { client: PortalClient }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applied]);
 
-  function apply(event: FormEvent) {
-    event.preventDefault();
+  function apply(next: { status: string; q: string }) {
     setRows([]);
     setCursor(null);
-    setApplied({ status: statusFilter, q: query.trim() });
+    setApplied(next);
+  }
+  function search(event: FormEvent) {
+    event.preventDefault();
+    apply({ status: applied.status, q: query.trim() });
   }
 
+  const filtered = applied.status !== "" || applied.q !== "";
   return (
-    <section
-      className="panel payments-workspace"
-      aria-busy={status === "loading"}
-    >
-      <div className="section-head">
-        <div className="workspace-page-title">
-          <h1>Payments</h1>
-          <p>Every Checkout attempt and its confirmed outcome</p>
-        </div>
-      </div>
+    <section className="payments-workspace" aria-busy={status === "loading"}>
+      <PageHeader
+        title="Payments"
+        description="Every Checkout attempt and its confirmed outcome."
+      />
 
-      <form className="payments-filters" onSubmit={apply}>
-        <label>
-          Status
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="">All</option>
-            {STATUSES.map((value) => (
-              <option key={value} value={value}>
-                {statusLabel(value)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Search
+      <div className="toolbar">
+        <div className="filter-pills" role="radiogroup" aria-label="Status">
+          {["", ...FILTERS].map((value) => (
+            <button
+              key={value || "all"}
+              type="button"
+              role="radio"
+              aria-checked={applied.status === value}
+              onClick={() => apply({ status: value, q: query.trim() })}
+            >
+              {value ? statusLabel(value) : "All"}
+            </button>
+          ))}
+        </div>
+        <form className="search" role="search" onSubmit={search}>
+          <Icon name="search" size={15} />
+          <label className="visually-hidden" htmlFor="payments-search">
+            Search
+          </label>
           <input
+            id="payments-search"
             type="search"
             value={query}
-            placeholder="Reference or order id"
+            placeholder="Search ID or reference"
             onChange={(e) => setQuery(e.target.value)}
           />
-        </label>
-        <button className="secondary">Apply</button>
-      </form>
+        </form>
+      </div>
 
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-
-      {status !== "loading" && rows.length === 0 && !error ? (
-        <p>No Payments match. Your Checkout attempts appear here.</p>
-      ) : (
-        <div
-          className="table-wrap"
-          role="region"
-          aria-label="Payments"
-          tabIndex={0}
-        >
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Reference</th>
-                <th scope="col">Amount</th>
-                <th scope="col">USDC</th>
-                <th scope="col">Status</th>
-                <th scope="col">Mode</th>
-                <th scope="col">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((payment) => (
-                <tr
-                  key={payment.id}
-                  className="payment-row"
-                  tabIndex={0}
-                  role="link"
-                  onClick={() => navigate(paymentPath(payment.id))}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      navigate(paymentPath(payment.id));
-                    }
-                  }}
-                >
-                  <td>
-                    <code>{payment.id}</code>
-                    {payment.merchantReference && (
-                      <span className="payment-ref">
-                        {payment.merchantReference}
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    {formatDisplayAmount(
-                      payment.displayCurrency,
-                      payment.displayAmountMinor,
-                    )}
-                  </td>
-                  <td>
-                    {formatUsdc(payment.usdcSettlementRaw, { suffix: true })}
-                  </td>
-                  <td>
-                    <span
-                      className="payment-status"
-                      data-status={payment.status}
-                    >
-                      {statusLabel(payment.status)}
-                    </span>
-                  </td>
-                  <td>{payment.mode === "test" ? "Simulation" : "On-chain"}</td>
-                  <td>{formatWhen(payment.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {error ? (
+        <ErrorCard
+          title="Could not load Payments"
+          message={error}
+          onRetry={() => void load(true, applied)}
+        />
+      ) : status === "loading" ? (
+        <div className="table-card">
+          <div className="table-skeleton">
+            <SkeletonRows rows={6} />
+          </div>
         </div>
-      )}
-
-      {cursor && (
-        <div className="actions">
-          <button
-            className="secondary"
-            disabled={status === "more"}
-            onClick={() => void load(false, applied)}
+      ) : rows.length === 0 ? (
+        <div className="table-card">
+          {filtered ? (
+            <div className="empty">
+              <div className="empty-icon">
+                <Icon name="payments" />
+              </div>
+              <strong>No Payments match</strong>
+              <p>Try another status or search term.</p>
+            </div>
+          ) : (
+            <div className="empty">
+              <div className="empty-icon">
+                <Icon name="payments" />
+              </div>
+              <strong>No Payments yet</strong>
+              <p>
+                Every Checkout attempt appears here the moment your server
+                creates it, simulations included.
+              </p>
+              {onDevelopers && (
+                <div className="actions">
+                  <button className="small" onClick={onDevelopers}>
+                    Set up Checkout
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="table-card">
+          <div
+            className="table-wrap"
+            role="region"
+            aria-label="Payments"
+            tabIndex={0}
           >
-            {status === "more" ? "Loading…" : "Load more"}
-          </button>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Amount</th>
+                  <th scope="col">Status</th>
+                  <th scope="col" className="right">
+                    USDC
+                  </th>
+                  <th scope="col">Payment</th>
+                  <th scope="col">Mode</th>
+                  <th scope="col">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((payment) => (
+                  <tr
+                    key={payment.id}
+                    className="payment-row"
+                    tabIndex={0}
+                    role="link"
+                    onClick={() => navigate(paymentPath(payment.id))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        navigate(paymentPath(payment.id));
+                      }
+                    }}
+                  >
+                    <td className="amount-cell">
+                      {formatDisplayAmount(
+                        payment.displayCurrency,
+                        payment.displayAmountMinor,
+                      )}
+                      <span>{payment.displayCurrency}</span>
+                    </td>
+                    <td>
+                      <StatusChip status={payment.status}>
+                        {statusLabel(payment.status)}
+                      </StatusChip>
+                    </td>
+                    <td className="right muted-cell">
+                      {formatUsdc(payment.usdcSettlementRaw, { suffix: true })}
+                    </td>
+                    <td className="id-cell">
+                      <code>{payment.id}</code>
+                      {payment.merchantReference && (
+                        <span>{payment.merchantReference}</span>
+                      )}
+                    </td>
+                    <td className="muted-cell">
+                      {payment.mode === "test" ? "Simulation" : "On-chain"}
+                    </td>
+                    <td className="muted-cell">
+                      {formatWhen(payment.createdAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="table-foot">
+            <span>
+              {rows.length} {rows.length === 1 ? "result" : "results"}
+              {cursor ? " so far" : ""}
+            </span>
+            {cursor && (
+              <button
+                className="secondary small"
+                disabled={status === "more"}
+                onClick={() => void load(false, applied)}
+              >
+                {status === "more" ? "Loading…" : "Load more"}
+              </button>
+            )}
+          </div>
         </div>
       )}
     </section>

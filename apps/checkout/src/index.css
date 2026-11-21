@@ -1,9 +1,9 @@
 @import 'tailwindcss';
 
 /*
- * Brand tokens. Brand black is #0a0a0a, never pure black.
- * The success token is the ONLY green on the surface and is reserved
- * for the passkey success checkmark. Positive amounts are never green.
+ * Brand black is #0a0a0a, never pure black. The success token is the ONLY
+ * green on the surface and is reserved for the confirmed-success mark.
+ * Positive amounts are never green.
  */
 @theme {
   --color-brand-black: #0a0a0a;
@@ -11,10 +11,58 @@
   --color-brand-muted: #a1a1aa;
   --color-brand-line: #262626;
   --color-brand-surface: #141414;
-  --color-success: #12b76a;
+  --color-success: #30d158;
+  --color-ink: var(--ink);
+}
 
-  --font-display:
-    'Inter Display', 'Inter', system-ui, -apple-system, sans-serif;
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --stage: #070708;
+  --sheet: #161618;
+  --sheet-edge: rgb(255 255 255 / 0.09);
+  --well: rgb(255 255 255 / 0.055);
+  --well-edge: rgb(255 255 255 / 0.06);
+  --rule: rgb(255 255 255 / 0.07);
+  --ink: #f5f5f7;
+  --muted: #9b9ba3;
+  --faint: #86868e;
+  --cta: #f5f5f7;
+  --cta-ink: #0a0a0a;
+  --mark: #2a2a2e;
+  --shadow: none;
+  --focus: #8ab8ff;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --stage: #ececef;
+  --sheet: #ffffff;
+  --sheet-edge: transparent;
+  --well: #f4f4f6;
+  --well-edge: rgb(0 0 0 / 0.04);
+  --rule: rgb(0 0 0 / 0.07);
+  --ink: #111114;
+  --muted: #6a6a72;
+  --faint: #74747c;
+  --cta: #0a0a0a;
+  --cta-ink: #ffffff;
+  --mark: #e9e9ed;
+  --shadow: 0 2rem 5rem -1.5rem rgb(20 20 30 / 0.22);
+  --focus: #1a73e8;
+}
+
+/* Over the SDK's translucent glass the page behind bleeds through, so the
+   secondary text needs more weight than on an opaque sheet. */
+:root[data-framed][data-theme='dark'] {
+  --muted: #c2c2ca;
+  --faint: #a4a4ac;
+  --well: rgb(255 255 255 / 0.09);
+}
+:root[data-framed][data-theme='light'] {
+  --muted: #55555c;
+  --faint: #6e6e76;
+  --well: rgb(255 255 255 / 0.7);
 }
 
 html,
@@ -25,12 +73,18 @@ body,
 
 body {
   margin: 0;
-  background-color: var(--color-brand-black);
-  color: var(--color-brand-ink);
-  font-family: var(--font-display);
-  font-weight: 500;
+  background: var(--stage);
+  color: var(--ink);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Inside the merchant's glass sheet the SDK already draws the card. */
+:root[data-framed] body {
+  background: transparent;
 }
 
 .payment-stage {
@@ -38,122 +92,491 @@ body {
   display: grid;
   place-items: center;
   padding: 1.5rem;
-  background: #090909;
 }
 
 .payment-sheet {
-  width: min(100%, 26rem);
-  overflow: hidden;
-  border: 1px solid #343434;
+  width: min(100%, 24.5rem);
+  border: 1px solid var(--sheet-edge);
   border-radius: 1.75rem;
-  background: #1c1c1e;
-  box-shadow: 0 1.5rem 5rem #0006;
-  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  background: var(--sheet);
+  box-shadow: var(--shadow);
+  padding: 0.25rem 1.375rem 1.125rem;
+  animation: sheet-in 0.42s cubic-bezier(0.22, 0.9, 0.24, 1) both;
 }
 
-.payment-header,
-.payment-account {
+:root[data-settled] .payment-sheet {
+  animation: none;
+}
+
+:root[data-framed] .payment-stage {
+  padding: 0;
+  align-items: start;
+}
+:root[data-framed] .payment-sheet {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0 0.25rem 0.25rem;
+  animation: none;
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem) scale(0.985);
+  }
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 3.25rem;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.brand-mark {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.merchant {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0 0;
+}
+.merchant-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  background: var(--mark);
+  font-size: 1.0625rem;
+  font-weight: 650;
+}
+.merchant-text {
+  display: grid;
+  min-width: 0;
+}
+.merchant-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.merchant-host {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.total {
+  padding: 1.5rem 0 1.25rem;
+}
+.total-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.total-value {
+  margin-top: 0.25rem;
+  font-size: clamp(2.5rem, 11vw, 3.125rem);
+  line-height: 1;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.payment-more-info {
+  border-radius: 1rem;
+  background: var(--well);
+  border: 1px solid var(--well-edge);
+  padding: 0 0.9375rem;
+  font-size: 0.875rem;
+}
+.payment-more-info .row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid #38383a;
+  min-height: 2.875rem;
 }
-
-.payment-wordmark {
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.06em;
+.payment-more-info .row + .row {
+  border-top: 1px solid var(--rule);
 }
-.payment-header-label,
-.payment-account {
-  font-size: 0.875rem;
+.payment-more-info dt {
+  color: var(--muted);
 }
-.payment-header-label,
-.payment-account > span {
-  color: #b3b3bb;
+.payment-more-info dd {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 550;
+  text-align: right;
 }
-.payment-purchase {
-  padding: 1.75rem 1.5rem;
-  text-align: center;
-}
-.payment-merchant-mark {
+.cash-chip {
   display: grid;
   place-items: center;
-  width: 3rem;
-  height: 3rem;
-  margin: 0 auto 1rem;
-  border-radius: 0.875rem;
-  background: #38383a;
-  font-size: 1.5rem;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 0.4rem;
+  background: var(--cta);
+  color: var(--cta-ink);
 }
-.payment-purchase h1 {
-  font-size: 1rem;
-  overflow-wrap: anywhere;
-}
-.payment-total {
-  margin-top: 0.375rem;
-  font-size: clamp(2rem, 8vw, 2.75rem);
-  letter-spacing: -0.04em;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-.payment-more-info {
-  margin: 0 1.5rem 1rem;
-  font-size: 0.8125rem;
-}
+
 .payment-actions {
-  padding: 0 1.5rem 1rem;
+  display: grid;
+  gap: 0.125rem;
+  padding-top: 1.125rem;
 }
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  width: 100%;
+  height: 3.375rem;
+  border: 0;
+  border-radius: 0.9375rem;
+  background: var(--cta);
+  color: var(--cta-ink);
+  font: inherit;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    transform 0.16s ease,
+    opacity 0.2s ease;
+}
+.cta:enabled:active {
+  transform: scale(0.98);
+}
+.cta:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.cta[aria-busy='true']:disabled {
+  opacity: 0.85;
+}
+.cta-quiet {
+  background: var(--well);
+  color: var(--ink);
+  font-size: 0.9375rem;
+}
+
+.cancel {
+  min-height: 2.75rem;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.cancel:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.cta:focus-visible,
+.cancel:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.notice {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.sheet-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding-top: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--faint);
+}
+
+.spinner {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--cta-ink) 25%, transparent);
+  border-top-color: var(--cta-ink);
+  animation: spin 0.75s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Terminal and waiting states */
 .payment-state {
-  padding: 2rem 0 1rem;
+  padding: 1rem 0 0.5rem;
 }
 .payment-result {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
   text-align: center;
-  padding: 0 1.5rem 1.5rem;
+  padding: 0.5rem 0.5rem 0.75rem;
 }
-.payment-state .payment-actions a:focus-visible {
-  outline: 3px solid #90bfff;
-  outline-offset: 4px;
+.state-title {
+  margin-top: 1.25rem;
+  text-wrap: balance;
+  font-size: 1.375rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
 }
-.payment-actions button {
-  min-height: 2.75rem;
-  touch-action: manipulation;
+.state-detail {
+  margin-top: 0.4rem;
+  text-wrap: pretty;
+  max-width: 19rem;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  color: var(--muted);
 }
-.payment-actions button:enabled:active {
-  opacity: 0.75;
+
+.success-mark {
+  width: 4.75rem;
+  height: 4.75rem;
+  color: var(--color-success);
 }
-.payment-actions button:focus-visible {
-  outline: 3px solid #90bfff;
-  outline-offset: 4px;
+.success-mark svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
-.payment-actions button:first-child {
-  margin-top: 1rem;
+.success-ring {
+  stroke-width: 2.5;
+  stroke-dasharray: 151;
+  stroke-dashoffset: 151;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  animation: draw 0.55s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+.success-tick {
+  stroke-width: 3.5;
+  stroke-dasharray: 36;
+  stroke-dashoffset: 36;
+  animation: draw 0.32s 0.42s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.neutral-mark {
+  display: grid;
+  place-items: center;
+  width: 4.75rem;
+  height: 4.75rem;
+  border-radius: 50%;
+  background: var(--well);
+}
+.neutral-mark span {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.approval {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1.75rem 0.25rem 0.25rem;
+}
+.approval .state-title {
+  margin-top: 1.5rem;
+}
+.countdown {
+  margin-top: 0.875rem;
+  font-size: 0.8125rem;
+  color: var(--faint);
+}
+
+.phone {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 7rem;
+  height: 7rem;
+}
+.phone-body {
+  position: relative;
+  width: 3.4rem;
+  fill: var(--sheet);
+  stroke: var(--ink);
+  stroke-width: 2.5;
+  animation: nudge 2.4s ease-in-out infinite;
+}
+.phone-notch,
+.phone-line,
+.phone-cta {
+  stroke: none;
+  fill: var(--ink);
+}
+.phone-card {
+  stroke: none;
+  fill: var(--well);
+}
+.phone-line-dim {
+  fill: var(--faint);
+}
+.phone-cta {
+  animation: tap 2.4s ease-in-out infinite;
+}
+.phone-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--faint);
+  opacity: 0;
+  animation: ring 2.4s ease-out infinite;
+}
+.phone-ring-late {
+  animation-delay: 1.2s;
+}
+@keyframes ring {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1.15);
+    opacity: 0;
+  }
+}
+@keyframes nudge {
+  0%,
+  60%,
+  100% {
+    transform: rotate(0);
+  }
+  66% {
+    transform: rotate(-5deg);
+  }
+  72% {
+    transform: rotate(5deg);
+  }
+  78% {
+    transform: rotate(-3deg);
+  }
+  84% {
+    transform: rotate(0);
+  }
+}
+@keyframes tap {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.skeleton {
+  align-items: stretch;
+  gap: 0.75rem;
+  text-align: left;
+}
+.sk {
+  display: block;
+  border-radius: 0.5rem;
+  background: var(--well);
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+.sk-mark {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+}
+.sk-line {
+  width: 40%;
+  height: 0.75rem;
+}
+.sk-total {
+  width: 55%;
+  height: 2.75rem;
+  margin: 0.5rem 0;
+}
+.sk-row {
+  height: 2.875rem;
+  border-radius: 0.75rem;
+}
+.sk-cta {
+  height: 3.375rem;
+  margin-top: 0.75rem;
+  border-radius: 0.9375rem;
+}
+@keyframes shimmer {
+  50% {
+    opacity: 0.45;
+  }
 }
 
 @media (max-width: 480px) {
-  .payment-stage {
+  :root:not([data-framed]) .payment-stage {
     padding: 0;
     align-items: end;
   }
-  .payment-sheet {
+  :root:not([data-framed]) .payment-sheet {
     width: 100%;
     border-radius: 1.75rem 1.75rem 0 0;
     border-bottom: 0;
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: calc(1.125rem + env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .payment-sheet,
+  .phone-body,
+  .phone-cta,
+  .phone-ring,
+  .sk {
+    animation: none;
+  }
+  .success-ring,
+  .success-tick {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .spinner {
+    animation-duration: 1.5s;
   }
 }
 
 @media (prefers-contrast: more) {
   .payment-sheet,
-  .payment-header,
-  .payment-account {
-    border-color: #a1a1aa;
+  .payment-more-info {
+    border-color: var(--muted);
   }
 }

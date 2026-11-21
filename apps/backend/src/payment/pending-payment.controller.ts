@@ -51,6 +51,8 @@ export interface PendingPaymentView {
   /** When Checkout handed this over, which is when the Consumer was asked. */
   deferredAt: string;
   expiresAt: string;
+  /** The Merchant's own order reference, when they gave one. */
+  merchantReference: string | null;
 }
 
 /**
@@ -98,6 +100,7 @@ export class PendingPaymentController {
             intent.approvalDeferredAt ?? intent.createdAt
           ).toISOString(),
           expiresAt: intent.expiresAt.toISOString(),
+          merchantReference: intent.merchantReference ?? null,
         };
       }),
     );
@@ -117,15 +120,21 @@ export class PendingPaymentController {
     @Param('reference') reference: string,
   ): Promise<{ unsignedTxBase64: string; needsApprovalSignature: boolean }> {
     try {
-      await this.assertOwned(req.user.userId, reference);
+      const intent = await this.assertOwned(req.user.userId, reference);
       const built = await this.settlement.buildSettlement(
         reference,
         req.user.userId,
       );
-      await this.auth.authorize({
-        intentId: reference,
-        consumerId: req.user.userId,
-      });
+      // Already authorized means an earlier prepare on this phone was never
+      // signed (the device-key prompt was closed). Re-pinning a fresh build
+      // over the unsubmitted attempt is what lets "try again" work; a
+      // submitted attempt is no longer `authorized` and the pin refuses it.
+      if (intent.status !== 'authorized') {
+        await this.auth.authorize({
+          intentId: reference,
+          consumerId: req.user.userId,
+        });
+      }
       await this.settlement.pinSettlement(reference, built);
       return {
         unsignedTxBase64: built.unsignedTxBase64,
@@ -144,6 +153,28 @@ export class PendingPaymentController {
     try {
       await this.assertOwned(req.user.userId, reference);
       const intent = await this.intents.findById(reference);
+      return { status: intent.status };
+    } catch (err) {
+      this.mapServiceError(err);
+    }
+  }
+
+  /** Answered with the same status the checkout reads, so both sides agree. */
+  @Post(':reference/decline')
+  async decline(
+    @Req() req: AuthenticatedRequest,
+    @Param('reference') reference: string,
+  ): Promise<{ status: string }> {
+    try {
+      const current = await this.assertOwned(req.user.userId, reference);
+      if (current.status === 'authorized') {
+        await this.auth.withdrawUnsigned(reference, req.user.userId);
+        return { status: 'canceled' };
+      }
+      const intent = await this.intents.declineApproval(
+        reference,
+        req.user.userId,
+      );
       return { status: intent.status };
     } catch (err) {
       this.mapServiceError(err);
@@ -174,11 +205,15 @@ export class PendingPaymentController {
    * Consumer asking for it is answered as though it does not exist, so this
    * never confirms that somebody else's Payment is real.
    */
-  private async assertOwned(userId: string, reference: string): Promise<void> {
+  private async assertOwned(
+    userId: string,
+    reference: string,
+  ): Promise<Awaited<ReturnType<PaymentIntentService['findById']>>> {
     const intent = await this.intents.findById(reference);
     if (intent.consumerId !== userId || !intent.approvalDeferredAt) {
       throw new IntentNotFoundError(`intent ${reference} not found`);
     }
+    return intent;
   }
 
   private mapServiceError(err: unknown): never {
