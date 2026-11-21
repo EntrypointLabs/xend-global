@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { createId } from '@paralleldrive/cuid2';
 import { FiatProviderRegistry } from './fiat-provider.registry';
 import { FIAT_STORE } from './fiat.repository';
@@ -396,8 +396,8 @@ export class FiatService {
           fields: input.fields,
           destinationAddress: vault ?? '',
           ...(customerId ? { customerId } : {}),
-          ...(this.webhookUrl(route.provider)
-            ? { webhookUrl: this.webhookUrl(route.provider) }
+          ...(this.webhookUrl(route.provider, row.order.id)
+            ? { webhookUrl: this.webhookUrl(route.provider, row.order.id) }
             : {}),
         });
       row.providerReference = providerOrder.reference;
@@ -433,11 +433,46 @@ export class FiatService {
       );
     }
   }
-  private webhookUrl(provider: string): string | undefined {
+  /**
+   * PAJ signs nothing we can verify yet, so each deposit order gets its own
+   * callback URL carrying a token only that order's URL has. The token is
+   * derived from the order id, so nothing extra is stored or sent to the app.
+   */
+  private webhookUrl(provider: string, orderId: string): string | undefined {
     const base = this.config?.get<string>('FIAT_WEBHOOK_BASE_URL');
-    return base
-      ? `${base.replace(/\/$/, '')}/webhooks/fiat/${provider}`
-      : undefined;
+    const token = this.hookToken(orderId);
+    if (provider !== 'paj' || !base || !token) return undefined;
+    return `${base.replace(/\/$/, '')}/webhooks/fiat/paj/orders/${encodeURIComponent(orderId)}/${token}`;
+  }
+
+  private hookToken(orderId: string): string | null {
+    const secret =
+      this.config?.get<string>('FIAT_WEBHOOK_TOKEN_SECRET') ||
+      this.config?.get<string>('JWT_SECRET');
+    if (!secret) return null;
+    return createHmac('sha256', secret)
+      .update(`paj-order:${orderId}`)
+      .digest('hex')
+      .slice(0, 40);
+  }
+
+  /**
+   * A PAJ callback for one order. A wrong token is refused; a right one only
+   * prompts a fresh read of the order from PAJ, never trusts the body.
+   */
+  async refreshFromOrderHook(
+    orderId: string,
+    token: string,
+  ): Promise<'rejected' | FiatOrder | null> {
+    const expected = this.hookToken(orderId);
+    if (!expected) return 'rejected';
+    const a = Buffer.from(expected, 'utf-8');
+    const b = Buffer.from(token, 'utf-8');
+    if (a.length !== b.length || !timingSafeEqual(a, b)) return 'rejected';
+    const row = await this.store.byId(orderId);
+    if (!row?.providerReference || row.order.route.provider !== 'paj')
+      return null;
+    return this.applyProvider(row);
   }
 
   async simulate(userId: string, id: string, input: FiatSimulationRequestBody) {
