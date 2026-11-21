@@ -4,9 +4,10 @@ name: SDK Release
 # while changesets are pending, and publishes when that PR merges. Runs only
 # on main; never from a PR branch.
 #
-# Node 24 ships npm 11, which publishes through npm trusted publishing (OIDC)
-# when a trusted publisher is configured for the package, and falls back to
-# NPM_TOKEN otherwise. Both paths attach provenance.
+# Publishing authenticates through npm trusted publishing (GitHub OIDC), so
+# there is no npm token in the repo. Each package has a trusted publisher on
+# npmjs.com bound to this workflow file; renaming the file breaks publishing
+# until those entries are updated. npm attaches provenance automatically.
 on:
   push:
     branches: [main]
@@ -36,5 +37,3 @@ jobs:
           publish: npm run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
