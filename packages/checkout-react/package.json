@@ -3,6 +3,11 @@
   "version": "0.0.0",
   "description": "React wrapper for the Pay with Prydd checkout button.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EntrypointLabs/xend-global.git",
+    "directory": "packages/checkout-react"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {

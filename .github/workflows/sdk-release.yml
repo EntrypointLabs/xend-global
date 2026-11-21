@@ -4,9 +4,9 @@ name: SDK Release
 # while changesets are pending, and publishes when that PR merges. Runs only
 # on main; never from a PR branch.
 #
-# NPM_TOKEN is an npm automation token provisioned by a human as a repo secret
-# (see ADR 0018). The FIRST real publish is additionally gated on the phase
-# interop hard gate and npm org ownership confirmation; do not remove that gate.
+# Node 24 ships npm 11, which publishes through npm trusted publishing (OIDC)
+# when a trusted publisher is configured for the package, and falls back to
+# NPM_TOKEN otherwise. Both paths attach provenance.
 on:
   push:
     branches: [main]
@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           registry-url: https://registry.npmjs.org
       - run: npm ci
