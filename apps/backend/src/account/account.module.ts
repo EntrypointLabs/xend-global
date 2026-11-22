@@ -23,6 +23,7 @@ import { RecoveryChangeService } from './recovery-change.service';
 import { SpendModule } from './spend.module';
 import { SpendingLimitChangeService } from './spending-limit-change.service';
 import { SpendingLimitService } from './spending-limit.service';
+import { SwapAccessService } from './swap-access.service';
 import { SweepService } from './sweep.service';
 import { ACCOUNT_CHAIN, PROVISIONING_CHAIN } from './account.interface';
 import { AccountService } from './account.service';
@@ -52,6 +53,7 @@ import { AccountService } from './account.service';
     AccountChangeWatcher,
     RecoveryChangeService,
     SpendingLimitChangeService,
+    SwapAccessService,
     DeviceRotationService,
     PrimaryRotationService,
     { provide: ACCOUNT_CHAIN, useClass: Web3AccountChain },
@@ -66,6 +68,7 @@ import { AccountService } from './account.service';
     AccountChangeService,
     RecoveryChangeService,
     SpendingLimitChangeService,
+    SwapAccessService,
     DeviceRotationService,
     PrimaryRotationService,
   ],

@@ -46,6 +46,7 @@ import {
   DeviceNotAttestedError,
   IncompleteSignerSetError,
   SpendingLimitChangeError,
+  SwapAccessError,
 } from './account.errors';
 import { AccountService } from './account.service';
 import { SweepService } from './sweep.service';
@@ -87,6 +88,7 @@ import { RecoveryChallengeService } from '../recovery/recovery-challenge.service
 import { DeviceRotationService } from './device-rotation.service';
 import { spendingLimitSeed } from './account.interface';
 import { SpendingLimitChangeService } from './spending-limit-change.service';
+import { SwapAccessService } from './swap-access.service';
 import { SpendingLimitService } from './spending-limit.service';
 
 interface AuthenticatedRequest extends Request {
@@ -112,6 +114,7 @@ export class AccountController {
     private readonly rotations: DeviceRotationService,
     private readonly primaryRotations: PrimaryRotationService,
     private readonly spendingLimitChanges: SpendingLimitChangeService,
+    private readonly swapAccess: SwapAccessService,
   ) {}
 
   /**
@@ -588,6 +591,59 @@ export class AccountController {
     }
   }
 
+  /** Whether this Account can swap, and if not, how far turning it on has got. */
+  @Get('swap-access')
+  async swapAccessStatus(@Req() req: AuthenticatedRequest) {
+    try {
+      return await this.swapAccess.status(req.user.userId);
+    } catch (err) {
+      throw this.swapAccessFailure(req.user.userId, 'status', err);
+    }
+  }
+
+  /**
+   * Starts turning Swap on for an Account set up before Swap existed.
+   *
+   * It widens what the Account's two keys can do together, so it runs through
+   * both approvals and the 24 hour delay like any other settings change.
+   */
+  @Post('swap-access/start')
+  async startSwapAccess(@Req() req: AuthenticatedRequest) {
+    try {
+      return await this.swapAccess.start(req.user.userId);
+    } catch (err) {
+      throw this.swapAccessFailure(req.user.userId, 'start', err);
+    }
+  }
+
+  /** The next step, or done. Also what reconciles the change with the chain. */
+  @Post('swap-access/next')
+  async nextSwapAccessStep(@Req() req: AuthenticatedRequest) {
+    try {
+      return await this.swapAccess.next(req.user.userId);
+    } catch (err) {
+      throw this.swapAccessFailure(req.user.userId, 'next', err);
+    }
+  }
+
+  @Post('swap-access/submit')
+  async submitSwapAccessStep(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(SubmitSpendingLimitChangeSchema))
+    body: SubmitSpendingLimitChangeDto,
+  ) {
+    try {
+      return {
+        signature: await this.swapAccess.submit(
+          req.user.userId,
+          body.signedTxBase64,
+        ),
+      };
+    } catch (err) {
+      throw this.swapAccessFailure(req.user.userId, 'submit', err);
+    }
+  }
+
   /**
    * Picks up an enrolment that already attested this device.
    *
@@ -855,6 +911,17 @@ export class AccountController {
     return toHttp(err);
   }
 
+  private swapAccessFailure(
+    userId: string,
+    operation: string,
+    err: unknown,
+  ): HttpException {
+    this.logger.error(
+      `account.swap_access_failed userId=${userId} op=${operation}: ${describeError(err)}`,
+    );
+    return toHttp(err);
+  }
+
   private async assertNotAnActiveSigner(userId: string, address: string) {
     const account = await this.accounts.findByUserId(userId);
     if (
@@ -1043,7 +1110,8 @@ function toHttp(err: unknown): HttpException {
     err instanceof RecoveryChangeInFlightError ||
     err instanceof ContactRecoverySignerError ||
     err instanceof ContactEmailTakenError ||
-    err instanceof SpendingLimitChangeError
+    err instanceof SpendingLimitChangeError ||
+    err instanceof SwapAccessError
   ) {
     return new HttpException(
       { code: err.code, message: err.message },

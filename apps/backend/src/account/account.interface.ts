@@ -70,6 +70,8 @@ export interface SquadsAccountRow {
   pendingSpendingLimitCreating?: boolean | null;
   pendingSpendingLimitPeriod?: string | null;
   pendingSpendingLimitPrevious?: string | null;
+  /** Set only while the allowlist update is in flight. See SwapAccessService. */
+  pendingSwapAccessChangeIndex?: string | null;
 }
 
 export interface SquadsAccountStore {
@@ -252,6 +254,14 @@ export interface ProvisioningChain {
     policySeed: bigint,
   ): Promise<import('@prydd/smart-account').SpendingLimit>;
   policyExists(settingsAddress: string, policySeed: bigint): Promise<boolean>;
+  /**
+   * The programs a program-interaction policy admits, in constraint order.
+   * Empty when the policy does not exist.
+   */
+  readAllowedPrograms(
+    settingsAddress: string,
+    policySeed: bigint,
+  ): Promise<import('@solana/web3.js').PublicKey[]>;
   /** Null when no proposal was ever created at that index. */
   readProposal(
     settingsAddress: string,

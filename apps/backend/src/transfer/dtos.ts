@@ -86,6 +86,12 @@ export const TransferRowSchema = z.object({
   kind: z.enum(['transfer', 'payment']),
   merchantName: z.string().nullable(),
   /**
+   * True when the movement was one side of the Consumer's own swap, so the
+   * counterparty is a trading venue rather than anyone they paid or were paid
+   * by. Absent on an ordinary transfer.
+   */
+  swap: z.boolean().optional(),
+  /**
    * What the transfer was worth in USD when it happened, as a decimal string.
    *
    * Frozen at index time rather than priced on read: five SOL received while

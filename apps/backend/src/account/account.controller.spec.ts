@@ -26,6 +26,7 @@ import type { RecoveryChallengeService } from '../recovery/recovery-challenge.se
 import type { DeviceRotationService } from './device-rotation.service';
 import type { PrimaryRotationService } from './primary-rotation.service';
 import type { SpendingLimitChangeService } from './spending-limit-change.service';
+import type { SwapAccessService } from './swap-access.service';
 
 const USDC = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const SEED = 7n;
@@ -80,6 +81,7 @@ function makeController(
     {} as unknown as DeviceRotationService,
     {} as unknown as PrimaryRotationService,
     {} as unknown as SpendingLimitChangeService,
+    {} as unknown as SwapAccessService,
   );
   return { controller, asked };
 }
@@ -171,6 +173,7 @@ describe('AccountController.enrol', () => {
       {} as unknown as DeviceRotationService,
       {} as unknown as PrimaryRotationService,
       {} as unknown as SpendingLimitChangeService,
+      {} as unknown as SwapAccessService,
     );
     return { controller, createAccount, verify };
   }
@@ -231,6 +234,7 @@ describe('AccountController.startDeviceRotation', () => {
       { start } as unknown as DeviceRotationService,
       {} as unknown as PrimaryRotationService,
       {} as unknown as SpendingLimitChangeService,
+      {} as unknown as SwapAccessService,
     );
 
     // The same answer enrolment gives, and for the same reason: the app falls
@@ -384,6 +388,7 @@ describe('AccountController recovery key changes', () => {
       {} as unknown as DeviceRotationService,
       {} as unknown as PrimaryRotationService,
       {} as unknown as SpendingLimitChangeService,
+      {} as unknown as SwapAccessService,
     );
     return { controller, recovery, store, claimed };
   }
@@ -437,6 +442,7 @@ describe('AccountController Spending Limit changes', () => {
       {} as unknown as DeviceRotationService,
       {} as unknown as PrimaryRotationService,
       changes as SpendingLimitChangeService,
+      {} as unknown as SwapAccessService,
     );
   }
 

@@ -13,7 +13,8 @@ export type StagedChangeKind =
   | 'device'
   | 'contact_email'
   | 'passkey'
-  | 'spending_limit';
+  | 'spending_limit'
+  | 'swap_access';
 
 export interface SecurityEvent {
   userId: string;
@@ -385,6 +386,12 @@ function staged(
           body: `It becomes${subject ? ` ${subject}` : ''} after a 24 hour delay. If this was not you, open Prydd and reject it.`,
           kind,
         };
+      case 'swap_access':
+        return {
+          title: 'Swap is being turned on',
+          body: 'It is ready after a 24 hour delay. If this was not you, open Prydd and reject it.',
+          kind,
+        };
       default:
         return {
           title: 'Check your Prydd account',
@@ -412,6 +419,8 @@ function staged(
         return subject
           ? `A change of your spending limit to ${subject} was started`
           : 'A change of your spending limit was started';
+      case 'swap_access':
+        return 'Turning on Swap for your account was started';
       default:
         return 'Someone started a change to the security settings of your account';
     }

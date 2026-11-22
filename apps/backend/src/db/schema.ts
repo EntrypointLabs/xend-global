@@ -762,8 +762,39 @@ export const squadsAccounts = pgTable('squads_accounts', {
   pendingSpendingLimitPeriod: text('pending_spending_limit_period'),
   /** The terms being replaced, kept because the outcome is recorded against them. */
   pendingSpendingLimitPrevious: text('pending_spending_limit_previous'),
+  /**
+   * The change in flight that brings the above-limit policy up to the current
+   * program allowlist, which is what lets an Account provisioned before Swap
+   * use it. Null means nothing is staged.
+   */
+  pendingSwapAccessChangeIndex: text('pending_swap_access_change_index'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/**
+ * swaps: the swaps this backend broadcast, by signature.
+ *
+ * A swap reaches Activity as the movements it caused, which arrive from the
+ * chain indexer with no idea why they happened: money left for an address
+ * nobody knows and something else arrived. This is what says those rows were
+ * the Consumer's own swap. It is a label for rows that exist anyway, never a
+ * record of whether the swap settled.
+ */
+export const swaps = pgTable('swaps', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => createId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id),
+  signature: text('signature').notNull().unique(),
+  inputMint: text('input_mint').notNull(),
+  outputMint: text('output_mint').notNull(),
+  /** Integer strings at each mint's own decimals. The output is as quoted. */
+  amountInRaw: text('amount_in_raw').notNull(),
+  amountOutRaw: text('amount_out_raw').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 /**

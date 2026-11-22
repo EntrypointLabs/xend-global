@@ -39,7 +39,7 @@ function signPrepared(unsignedTxBase64: string): string {
   tx.signatures = tx.signatures.map(() => new Uint8Array(64).fill(7));
   return Buffer.from(tx.serialize()).toString('base64');
 }
-import { smartAccounts, transfers } from '../db/schema';
+import { smartAccounts, swaps, transfers } from '../db/schema';
 
 /**
  * Integration tests for TransferService (prepare / submit / list):
@@ -64,22 +64,29 @@ type TransfersRow = typeof transfers.$inferSelect;
 interface FakeStore {
   smartAccounts: SmartAccountsRow[];
   transfers: TransfersRow[];
+  /** Signatures this backend broadcast as swaps. */
+  swaps?: { signature: string }[];
 }
 
+type Collection = 'smartAccounts' | 'transfers' | 'swaps';
+
 function makeFakeDb(store: FakeStore): DbService {
-  const collectionFor = (tbl: unknown): 'smartAccounts' | 'transfers' => {
+  const collectionFor = (tbl: unknown): Collection => {
     if (tbl === smartAccounts) return 'smartAccounts';
     if (tbl === transfers) return 'transfers';
+    if (tbl === swaps) return 'swaps';
     throw new Error('unknown table');
   };
 
-  const makeSelectChain = (collection: 'smartAccounts' | 'transfers') => {
+  const makeSelectChain = (collection: Collection) => {
     // We track ordering + limit so the list() path tests work, but
     // ignore the where(opaque) predicate (caller asserts on overall
     // outcome with at most a few seeded rows).
     const ctx: { limit?: number; orderDesc?: boolean } = {};
     const execute = () => {
-      let rows = (store[collection] as Record<string, unknown>[]).slice();
+      let rows = (
+        (store[collection] ?? []) as Record<string, unknown>[]
+      ).slice();
       if (ctx.orderDesc) {
         rows = rows.sort((a, b) => {
           const ad = (a.createdAt as Date).getTime();
@@ -1194,6 +1201,45 @@ describe('TransferService.list', () => {
     const out = await service.list('u_test');
     expect(out.transfers[0].kind).toBe('payment');
     expect(out.transfers[0].merchantName).toBe('Cafe Neo');
+  });
+
+  it('marks the rows of a swap this backend broadcast, and no others', async () => {
+    const account = makeAccount();
+    const leg = (id: string, signature: string) =>
+      ({
+        id,
+        smartAccountId: account.id,
+        intentId: null,
+        signature,
+        legIndex: 0,
+        direction: 'SEND',
+        mint: usdcMint,
+        amountRaw: '100000000',
+        fromAddress: account.walletAddress,
+        toAddress: Keypair.generate().publicKey.toBase58(),
+        status: 'CONFIRMED',
+        slot: null,
+        createdAt: new Date(id === 't_swap' ? '2026-02-02' : '2026-02-01'),
+        submittedAt: null,
+        confirmedAt: null,
+        failureReason: null,
+        kind: 'transfer',
+      }) as unknown as TransfersRow;
+    const { service } = makeService({
+      solana: makeSolana({}),
+      account,
+      store: {
+        smartAccounts: [account],
+        transfers: [leg('t_swap', 'sig_swap'), leg('t_send', 'sig_send')],
+        swaps: [{ signature: 'sig_swap' }],
+      },
+    });
+
+    const out = await service.list('u_test');
+    expect(out.transfers.map((t) => [t.id, t.swap])).toEqual([
+      ['t_swap', true],
+      ['t_send', undefined],
+    ]);
   });
 
   it('maps a plain transfer to kind=transfer with a null merchant name', async () => {

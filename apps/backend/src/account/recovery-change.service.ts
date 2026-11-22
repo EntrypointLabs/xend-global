@@ -190,7 +190,8 @@ export class RecoveryChangeService {
     if (
       account.pendingApprovalChangeIndex ||
       account.pendingPrimaryChangeIndex ||
-      account.pendingSpendingLimitChangeIndex
+      account.pendingSpendingLimitChangeIndex ||
+      account.pendingSwapAccessChangeIndex
     ) {
       // A rotation has already claimed the next index. Staging here would
       // claim it again, and whichever change landed second would be settled
