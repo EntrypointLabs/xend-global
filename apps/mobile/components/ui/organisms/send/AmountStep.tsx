@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, TouchableOpacity, ActivityIndicator } from "react-native";
+import {
+  View,
+  TouchableOpacity,
+  ActivityIndicator,
+  Keyboard,
+  Pressable,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { Keypad } from "@/components/ui/molecules";
@@ -175,6 +181,8 @@ function BankAmountStep({
   };
 
   const handleContinue = async () => {
+    Keyboard.dismiss();
+    setWritingNote(false);
     if (busy || !ready || !minor) return;
     if (overLimit) {
       openVerify();
@@ -248,7 +256,12 @@ function BankAmountStep({
             : { text: "", tone: "muted" };
 
   return (
-    <View className="flex-1" style={{ backgroundColor: BANK_SHEET_BG }}>
+    <Pressable
+      accessible={false}
+      onPress={Keyboard.dismiss}
+      className="flex-1"
+      style={{ backgroundColor: BANK_SHEET_BG }}
+    >
       <BankSheetTop leave="back" onPress={onBack} disabled={busy} />
       <View className="flex-row items-center justify-center gap-3 px-5">
         <BankLogo name={recipient.bankName} logoKey={recipient.logoKey} />
@@ -351,7 +364,7 @@ function BankAmountStep({
           onPress={() => void handleContinue()}
         />
       </View>
-    </View>
+    </Pressable>
   );
 }
 
