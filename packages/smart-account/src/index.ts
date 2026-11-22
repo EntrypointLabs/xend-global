@@ -16,6 +16,7 @@ export {
   type SettingsChangeAction,
   type SettingsChangeDescription,
   type SpendDescription,
+  type SwapDescription,
   type TransactionDescription,
   type TransferDescription,
   type UnknownDescription,
@@ -45,6 +46,7 @@ export {
   buildRotatePrimarySigner,
   buildRotateRecoverySigner,
   buildSetTimeLock,
+  buildUpdateAboveLimitAllowlist,
   buildUpdateSpendingLimit,
   SettingsChangeRefusedError,
   type AddRecoverySignerParams,
@@ -62,6 +64,7 @@ export {
   type SetTimeLockParams,
   type SpendingLimitChangeResult,
   type SpendingLimitTerms,
+  type UpdateAboveLimitAllowlistParams,
   type UpdateSpendingLimitParams,
 } from "./policy.js";
 
@@ -77,6 +80,16 @@ export {
 } from "./spend.js";
 
 export {
+  buildSwap,
+  JUPITER_ROUTE_ACCOUNTS,
+  minimumAmountOut,
+  readJupiterRouteTerms,
+  TOKEN_ACCOUNT_RENT_LAMPORTS,
+  type BuildSwapParams,
+  type JupiterRouteTerms,
+} from "./swap.js";
+
+export {
   ACCOUNT_THRESHOLD,
   SETTINGS_TIME_LOCK_SECONDS,
   type AccountAddresses,
@@ -87,6 +100,7 @@ export {
 
 export {
   AccountStateError,
+  decodeAllowedPrograms,
   decodeProposal,
   decodeSpendingLimit,
   deriveProposalAddress,
@@ -103,9 +117,11 @@ export {
   ABOVE_LIMIT_PROGRAM_ALLOWLIST,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   COMPUTE_BUDGET_PROGRAM_ID,
+  JUPITER_PROGRAM_ID,
   SYSTEM_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
+  WRAPPED_SOL_MINT,
 } from "./programs.js";
 
 export { PROGRAM_ID } from "@sqds/smart-account";

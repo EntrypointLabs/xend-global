@@ -540,6 +540,64 @@ export function buildRotateApprovalSigner({
   };
 }
 
+export interface UpdateAboveLimitAllowlistParams {
+  addresses: AccountAddresses;
+  /** The two signers the policy already names, restated unchanged. */
+  primary: PublicKey;
+  approval: PublicKey;
+  aboveLimitSeed: bigint;
+  /** Proposes the change. Must be a signer with `Initiate`, so S1. */
+  proposer: PublicKey;
+  /** Funds the rent. Defaults to `proposer`. */
+  rentPayer?: PublicKey;
+  /** The Settings account's current `transactionIndex`, plus one. */
+  transactionIndex: bigint;
+  /** What the policy admits afterwards. Defaults to {@link ABOVE_LIMIT_PROGRAM_ALLOWLIST}. */
+  allowedPrograms?: readonly PublicKey[];
+}
+
+/**
+ * Brings an Account's above-limit policy up to the current program allowlist.
+ *
+ * A policy keeps the allowlist it was created with, so an Account provisioned
+ * before a program joined the list cannot call it until this lands. Nothing
+ * else about the policy moves: the same two signers, the same threshold. New
+ * programs sit on the end of the list, so the constraints a Spend already
+ * names by index stay where they are.
+ *
+ * It is a settings change like any other, so it waits out the Settings time
+ * lock between approval and execution.
+ */
+export function buildUpdateAboveLimitAllowlist({
+  addresses,
+  primary,
+  approval,
+  aboveLimitSeed,
+  proposer,
+  rentPayer,
+  transactionIndex,
+  allowedPrograms = ABOVE_LIMIT_PROGRAM_ALLOWLIST,
+}: UpdateAboveLimitAllowlistParams): RotateApprovalSignerResult {
+  const policy = derivePolicyAddress(addresses.settings, aboveLimitSeed);
+  return {
+    policies: [policy],
+    propose: proposeSettingsChange({
+      addresses,
+      transactionIndex,
+      proposer,
+      rentPayer,
+      actions: [
+        aboveLimitPolicyUpdateAction({
+          policy,
+          primary,
+          approval,
+          allowedPrograms,
+        }),
+      ],
+    }),
+  };
+}
+
 export interface RotatePrimarySignerParams {
   addresses: AccountAddresses;
   /** The primary signer being retired, whose passkey is gone. */
