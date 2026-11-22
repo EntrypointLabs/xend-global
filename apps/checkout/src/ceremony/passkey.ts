@@ -13,12 +13,9 @@ export interface CeremonyResult {
 }
 
 /*
- * @privy-io/expo's linkWithPasskey takes relyingParty per call. The web SDK
- * has no equivalent: it starts the ceremony without naming a relying party and
- * uses the rp.id Privy returns. A live local probe on a www host returned that
- * www host, not its registrable root, whereas mobile signup explicitly uses
- * https://prydd.co. Verify the returned rp.id on pay.prydd.co before relying
- * on app-made passkeys there; an extra ignored option cannot pin it.
+ * @privy-io/expo names the relying party per call; the web SDK does not, so
+ * Privy would answer with this page's own host. `pinPasskeyRelyingParty` adds
+ * prydd.co to that request so the checkout finds the passkey made in the app.
  */
 /*
  * The wire carries transactions as base64 and the Privy Solana SDK takes and
