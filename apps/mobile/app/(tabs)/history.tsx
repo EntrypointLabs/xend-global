@@ -15,7 +15,10 @@ import { useTransfersInfinite, usePendingWatch } from "@/hooks/useTransfers";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useCollapseOnScroll } from "@/hooks/useTabBarCollapse";
 import { useBalances } from "@/hooks/useBalances";
-import { useAwaitingPayments } from "@/hooks/useAwaitingPayments";
+import {
+  useAwaitingPayments,
+  useCanSeeAwaitingPayments,
+} from "@/hooks/useAwaitingPayments";
 import {
   awaitingPaymentActivityEntry,
   groupIntoSections,
@@ -38,7 +41,8 @@ export default function HistoryScreen() {
     refetch,
   } = useTransfersInfinite();
 
-  const { data: awaiting } = useAwaitingPayments();
+  const { data: awaiting, refetch: refetchAwaiting } = useAwaitingPayments();
+  const canSeeAwaiting = useCanSeeAwaitingPayments();
 
   const [selectedItem, setSelectedItem] = useState<ActivityEntry | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -99,11 +103,17 @@ export default function HistoryScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refetch();
+      // Everything the feed shows, so a pull also catches a Payment that
+      // started or finished waiting on this phone.
+      // refetch() ignores a query's `enabled`, so the gate is repeated here.
+      await Promise.all([
+        refetch(),
+        canSeeAwaiting ? refetchAwaiting() : undefined,
+      ]);
     } finally {
       setRefreshing(false);
     }
-  }, [refetch]);
+  }, [refetch, refetchAwaiting, canSeeAwaiting]);
 
   return (
     <PhotoScreen scene="sky" warm blurred>
