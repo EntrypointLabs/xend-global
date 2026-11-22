@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -7,6 +7,8 @@ import { TOKEN_PRICE_PROVIDER } from '../prices/token-price.interface';
 import type { TokenPriceProvider } from '../prices/token-price.interface';
 import type { ConfirmedTransferEvent } from '../solana/solana-rpc.interface';
 import type { WalletAddress } from '../wallet/wallet-provider.interface';
+import { RampActivityService } from '../fiat/ramp-activity';
+import type { RampDetails } from '../fiat/ramp-activity';
 
 /**
  * The write side of the activity feed. Called by both the webhook hot
@@ -35,6 +37,7 @@ export class TailerService {
     @Inject(TOKEN_PRICE_PROVIDER) private readonly prices: TokenPriceProvider,
     private readonly notifications: NotificationsService,
     private readonly namer: TokenNamer,
+    @Optional() private readonly ramps?: RampActivityService,
   ) {}
 
   /**
@@ -165,8 +168,10 @@ export class TailerService {
         decimals = COALESCE(transfers.decimals, EXCLUDED.decimals),
         usd_value = COALESCE(transfers.usd_value, EXCLUDED.usd_value),
         usd_priced_at = COALESCE(transfers.usd_priced_at, EXCLUDED.usd_priced_at)
-      RETURNING (xmax = 0) AS inserted
-    `)) as unknown as { rows: { inserted: boolean }[] };
+      RETURNING id, created_at, (xmax = 0) AS inserted
+    `)) as unknown as {
+      rows: { id: string; created_at: Date | string; inserted: boolean }[];
+    };
     const isNewRow = written.rows?.[0]?.inserted === true;
 
     // Update the per-wallet bookmark. Take MAX so out-of-order events
@@ -190,8 +195,26 @@ export class TailerService {
       // written and the balance already moved; failing to mention it must not
       // turn a recorded arrival into a failed one.
       const symbol = await this.namer.symbolFor(evt.mint);
+      // A naira deposit is told in naira: the Consumer paid ₦10,000 from their
+      // bank, and "6.9 USDC" is not a sum they recognise.
+      const row = written.rows[0];
+      const ramp = await this.ramps?.forSmartAccount(smartAccountId, {
+        id: row.id,
+        direction: 'RECEIVE',
+        mint: evt.mint,
+        toAddress: evt.toAddress,
+        signature: evt.signature,
+        amountRaw: evt.amountRaw.toString(),
+        decimals: evt.decimals,
+        createdAt: new Date(row.created_at),
+      });
       await this.notifications
-        .notifyArrival({ smartAccountId, amount: describeAmount(evt, symbol) })
+        .notifyArrival({
+          smartAccountId,
+          amount: ramp
+            ? describeRampArrival(ramp, evt)
+            : describeAmount(evt, symbol),
+        })
         .catch((err) => this.logger.warn('tailer.notify_failed', err));
     }
 
@@ -224,6 +247,12 @@ export class TailerService {
  * honest; inventing a scale or a ticker would be worse.
  */
 function describeAmount(evt: ConfirmedTransferEvent, symbol: string): string {
+  const dollars = symbol === 'USDC' && evt.decimals !== null;
+  if (
+    dollars &&
+    evt.amountRaw >= 10n ** BigInt(Math.max((evt.decimals ?? 0) - 2, 0))
+  )
+    return describeDollars(evt.amountRaw, evt.decimals ?? 0);
   if (evt.decimals === null)
     return `${groupDigits(evt.amountRaw)} ${symbol}`.trim();
 
@@ -241,10 +270,34 @@ function describeAmount(evt: ConfirmedTransferEvent, symbol: string): string {
   const amount = fraction
     ? `${groupDigits(whole)}.${fraction}`
     : groupDigits(whole);
-  return `${amount} ${symbol}`.trim();
+  // Under a cent, dollars keep the significant digits rather than read $0.00.
+  return dollars ? `$${amount}` : `${amount} ${symbol}`.trim();
 }
 
 const DISPLAY_DECIMALS = 2;
+
+/** USDC as dollars, cut to cents so a notice never claims more than arrived. */
+function describeDollars(amountRaw: bigint, decimals: number): string {
+  const cents =
+    decimals >= 2
+      ? amountRaw / 10n ** BigInt(decimals - 2)
+      : amountRaw * 10n ** BigInt(2 - decimals);
+  return `$${groupDigits(cents / 100n)}.${(cents % 100n).toString().padStart(2, '0')}`;
+}
+
+/** "₦10,000 ($6.90)": the naira the Consumer sent, then what it became. */
+function describeRampArrival(
+  ramp: RampDetails,
+  evt: ConfirmedTransferEvent,
+): string {
+  const scale = 10n ** BigInt(ramp.fiatDecimals);
+  const minor = BigInt(ramp.fiatAmountMinor);
+  const fraction = (minor % scale).toString().padStart(ramp.fiatDecimals, '0');
+  const naira = `₦${groupDigits(minor / scale)}${/[1-9]/.test(fraction) ? `.${fraction}` : ''}`;
+  return evt.decimals === null
+    ? naira
+    : `${naira} (${describeDollars(evt.amountRaw, evt.decimals)})`;
+}
 
 function groupDigits(value: bigint): string {
   return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');

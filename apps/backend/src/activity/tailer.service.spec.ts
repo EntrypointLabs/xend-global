@@ -479,7 +479,7 @@ describe('TailerService arrival notices', () => {
 
     expect(notifications.notifyArrival).toHaveBeenCalledWith({
       smartAccountId: 'sa_1',
-      amount: '10 USDC',
+      amount: '$10.00',
     });
   });
 
@@ -498,16 +498,16 @@ describe('TailerService arrival notices', () => {
 
     expect(notifications.notifyArrival).toHaveBeenCalledWith({
       smartAccountId: 'sa_1',
-      amount: '1,234,567.5 USDC',
+      amount: '$1,234,567.50',
     });
   });
 
   it.each([
-    [4_999_108n, 6, '4.99 USDC'],
-    [10_000_000n, 6, '10 USDC'],
-    [4_900_000n, 6, '4.9 USDC'],
-    [1_500_000n, 9, '0.0015 USDC'],
-    [1_234_567n, 9, '0.0012 USDC'],
+    [4_999_108n, 6, '$4.99'],
+    [10_000_000n, 6, '$10.00'],
+    [4_900_000n, 6, '$4.90'],
+    [1_500_000n, 9, '$0.0015'],
+    [1_234_567n, 9, '$0.0012'],
   ])('shows %s at %s decimals as %s', async (amountRaw, decimals, expected) => {
     const { db } = makeFakeDb();
     const notifications = fakeNotifications();

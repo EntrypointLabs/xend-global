@@ -20,6 +20,8 @@ import {
   type ActivityEntry,
 } from "@/utils/activity";
 import { AccountEventMark } from "@/components/ui/organisms/ActivityItem";
+import { RampTransactionDetail } from "./RampTransactionDetail";
+import { formatDollarsMinor } from "@/utils/ramp";
 
 interface TransactionDetailModalProps {
   visible: boolean;
@@ -83,6 +85,19 @@ export function TransactionDetailModal({
   }
 
   const status = STATUS_META[item.status];
+
+  if (item.ramp) {
+    return (
+      <RampTransactionDetail
+        visible={visible}
+        onClose={onClose}
+        item={item}
+        status={status}
+        onCopy={copyToClipboard}
+      />
+    );
+  }
+
   const amount = formatAmount(item.amountRaw, item.decimals);
   // Named from the shared token table rather than a hardcoded USDC check,
   // which left every other asset showing a bare number with no unit.
@@ -91,7 +106,9 @@ export function TransactionDetailModal({
     item.tokenSymbol,
     item.tokenName
   );
-  const usd = item.usdValue ?? null;
+  // USDC reads as dollars, once, rather than as a token with its dollar value.
+  const isDollars = symbol === "USDC";
+  const usd = isDollars ? null : (item.usdValue ?? null);
   const date = format(
     new Date(activityDetailTimestamp(item)),
     "MMM d, yyyy 'at' h:mma"
@@ -131,8 +148,9 @@ export function TransactionDetailModal({
         </Typography>
 
         <Typography weight="700" className="mb-1 text-3xl">
-          {amount}
-          {symbol ? ` ${symbol}` : ""}
+          {isDollars
+            ? formatDollarsMinor(item.amountRaw, item.decimals)
+            : `${amount}${symbol ? ` ${symbol}` : ""}`}
         </Typography>
 
         {usd !== null && (

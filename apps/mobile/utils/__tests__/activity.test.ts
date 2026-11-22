@@ -439,7 +439,7 @@ describe("balance selectors", () => {
         arrivalLabel(
           row({ mint: USDC_MINT, amountRaw: "10000000", decimals: 6 })
         )
-      ).toBe("Received 10 USDC");
+      ).toBe("Received $10.00");
     });
 
     it("omits a ticker it does not have", () => {
@@ -670,8 +670,8 @@ describe("mapAccountEventToActivityEntry", () => {
       "SELF"
     );
 
-    expect(statusLabel(named)).toBe("Named Wallet");
-    expect(statusLabel(renamed)).toBe("Renamed Wallet");
+    expect(statusLabel(named)).toBe("Named Account");
+    expect(statusLabel(renamed)).toBe("Renamed Account");
   });
 
   it("dates the entry when it happened", () => {

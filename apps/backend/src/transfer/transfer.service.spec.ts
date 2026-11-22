@@ -12,6 +12,7 @@ import type { SpendService } from '../account/spend.service';
 import type { TokenMetadataProvider } from '../tokens/token-metadata.interface';
 import { TransferService } from './transfer.service';
 import type { ReconcilerService } from '../activity/reconciler.service';
+import type { RampActivityService } from '../fiat/ramp-activity';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
 import type { ApprovalSignerStore } from '../turnkey/approval-signer.store';
@@ -366,6 +367,9 @@ function makeService(opts: {
     } as unknown as ApprovalSignerStore,
     new InMemoryPreparedTxStore(),
     reconciler as unknown as ReconcilerService,
+    {
+      forUser: () => Promise.resolve(new Map()),
+    } as unknown as RampActivityService,
   );
   return { service, store, account, reconciler };
 }
