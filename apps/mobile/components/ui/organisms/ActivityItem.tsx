@@ -205,7 +205,7 @@ function RampItem({
           weight="600"
           className={cn(
             "ml-1.5 text-[13px]",
-            tone.ink ? tone.muted : "text-black/50"
+            tone.ink ? tone.muted : "text-black/40"
           )}
         >
           {dollars}
