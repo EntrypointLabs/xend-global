@@ -10,6 +10,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
+import { Image as ExpoImage } from "expo-image";
 
 cssInterop(SafeAreaView, { className: "style" });
 cssInterop(KeyboardAvoidingView, { className: "style" });
@@ -18,3 +19,6 @@ cssInterop(Ionicons, { className: "style" });
 // `rounded-full` was dropped (rendering a square box) and the tab-bar blur
 // strip lost its positioning classes.
 cssInterop(BlurView, { className: "style" });
+// expo-image does not forward className either; MerchantAvatar sizes its logo
+// with one.
+cssInterop(ExpoImage, { className: "style" });

@@ -48,6 +48,11 @@ function usdcMint(): string {
   return getUsdcMint();
 }
 
+const siteIcon = (domain: string) =>
+  `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+
+const MISSING_LOGO = "https://prydd.co/__seed__/no-such-logo.png";
+
 const hoursAgo = (h: number) =>
   new Date(Date.now() - h * 3_600_000).toISOString();
 
@@ -208,6 +213,24 @@ export function seedTransfers(): TransferListResponse {
           confirmedAt: hoursAgo(3),
         },
         {
+          id: "t-00",
+          direction: "SEND",
+          mint,
+          amountRaw: "8000000",
+          fromAddress: WALLET,
+          toAddress: other,
+          status: "CONFIRMED",
+          signature: sig("p0"),
+          memo: null,
+          kind: "payment",
+          merchantName: "Prydd Shop",
+          // Answers 404, the way a Merchant with no logo and no site icon does.
+          merchantLogoUrl: MISSING_LOGO,
+          merchantCategory: "shopping",
+          createdAt: hoursAgo(1),
+          confirmedAt: hoursAgo(1),
+        },
+        {
           id: "t-01",
           direction: "RECEIVE",
           mint,
@@ -234,6 +257,8 @@ export function seedTransfers(): TransferListResponse {
           memo: null,
           kind: "payment",
           merchantName: "Blue Bottle Coffee",
+          merchantLogoUrl: siteIcon("bluebottlecoffee.com"),
+          merchantCategory: "food_drink",
           createdAt: hoursAgo(6),
           confirmedAt: hoursAgo(6),
         },
@@ -279,6 +304,8 @@ export function seedTransfers(): TransferListResponse {
           memo: null,
           kind: "payment",
           merchantName: "Whole Foods Market",
+          merchantLogoUrl: null,
+          merchantCategory: "groceries",
           createdAt: hoursAgo(74),
           confirmedAt: hoursAgo(74),
         },
@@ -324,6 +351,8 @@ export function seedTransfers(): TransferListResponse {
           memo: null,
           kind: "payment",
           merchantName: "Uber",
+          merchantLogoUrl: siteIcon("uber.com"),
+          merchantCategory: "transport",
           createdAt: hoursAgo(146),
           confirmedAt: hoursAgo(146),
         },
@@ -336,8 +365,19 @@ export function seedSessions(): ListSessionsResponse {
   return {
     sessions: [
       {
+        id: "s-00",
+        merchantDisplayName: "Prydd Shop",
+        merchantLogoUrl: MISSING_LOGO,
+        merchantCategory: "shopping",
+        createdAt: hoursAgo(48),
+        lastUsedAt: hoursAgo(1),
+        expiresAt: hoursAgo(-660),
+      },
+      {
         id: "s-01",
         merchantDisplayName: "Blue Bottle Coffee",
+        merchantLogoUrl: siteIcon("bluebottlecoffee.com"),
+        merchantCategory: "food_drink",
         createdAt: hoursAgo(240),
         lastUsedAt: hoursAgo(6),
         expiresAt: hoursAgo(-480),
@@ -345,6 +385,8 @@ export function seedSessions(): ListSessionsResponse {
       {
         id: "s-02",
         merchantDisplayName: "Whole Foods Market",
+        merchantLogoUrl: null,
+        merchantCategory: "groceries",
         createdAt: hoursAgo(400),
         lastUsedAt: hoursAgo(74),
         expiresAt: hoursAgo(-320),
@@ -352,6 +394,8 @@ export function seedSessions(): ListSessionsResponse {
       {
         id: "s-03",
         merchantDisplayName: "Spotify",
+        merchantLogoUrl: siteIcon("spotify.com"),
+        merchantCategory: "entertainment",
         createdAt: hoursAgo(720),
         lastUsedAt: hoursAgo(30),
         expiresAt: hoursAgo(-600),

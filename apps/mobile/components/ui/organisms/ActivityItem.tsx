@@ -10,6 +10,7 @@ import { cn } from "@/utils/cn";
 import { describeToken } from "@/utils/tokens";
 import { formatUsdFromString } from "@/utils/balances";
 import { TokenMark } from "@/components/ui/atoms/TokenMark";
+import { MerchantAvatar } from "@/components/ui/atoms/MerchantAvatar";
 import { formatMoney } from "@/utils/money";
 import { GLASS, useOnPhoto } from "@/components/ui/glass";
 import { RampMark } from "@/components/ui/atoms/RampMark";
@@ -98,12 +99,19 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
       className="flex-row items-center gap-3.5 py-3"
       onPress={onPress}
     >
-      <TokenMark
-        mint={entry.mint}
-        label={name}
-        iconUrl={entry.iconUrl}
-        size={40}
-      />
+      {isPayment ? (
+        <MerchantAvatar
+          logoUrl={entry.merchantLogoUrl}
+          category={entry.merchantCategory}
+        />
+      ) : (
+        <TokenMark
+          mint={entry.mint}
+          label={name}
+          iconUrl={entry.iconUrl}
+          size={40}
+        />
+      )}
       <View className="flex-1 flex-row items-center justify-between">
         <View className="flex-col">
           <Typography weight="600" className={cn("mb-0.5", tone.ink)}>
