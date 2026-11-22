@@ -1,5 +1,11 @@
 # @prydd/checkout-core
 
+## 0.1.1
+
+### Patch Changes
+
+- c2c477b: First release published through npm trusted publishing. No code changes.
+
 ## 0.1.0
 
 ### Minor Changes

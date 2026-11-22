@@ -1,6 +1,6 @@
 {
   "name": "@prydd/checkout-react",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "React wrapper for the Pay with Prydd checkout button.",
   "license": "MIT",
   "repository": {
@@ -43,7 +43,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@prydd/checkout-core": "^0.1.0"
+    "@prydd/checkout-core": "^0.1.1"
   },
   "peerDependencies": {
     "react": ">=18"
