@@ -1,6 +1,7 @@
 import type { ConfigService } from '@nestjs/config';
 import type { DbService } from '../db/db.service';
 import {
+  iconCandidates,
   iconLinksIn,
   MerchantLogoService,
   readCapped,
@@ -115,5 +116,27 @@ describe('readCapped', () => {
       headers: { 'content-length': '5000' },
     });
     await expect(readCapped(res, 1000)).resolves.toBeNull();
+  });
+});
+
+describe('iconCandidates', () => {
+  it('tries at most six URLs however many icon links a page lists', () => {
+    const html = Array.from(
+      { length: 500 },
+      (_, i) => `<link rel="icon" href="/i${i}.png">`,
+    ).join('');
+    const urls = iconCandidates(html, 'https://shop.prydd.co');
+    expect(urls).toHaveLength(6);
+    expect(urls.slice(-2)).toEqual([
+      'https://shop.prydd.co/apple-touch-icon.png',
+      'https://shop.prydd.co/favicon.ico',
+    ]);
+  });
+
+  it('falls back to the conventional paths without a page', () => {
+    expect(iconCandidates(null, 'https://shop.prydd.co')).toEqual([
+      'https://shop.prydd.co/apple-touch-icon.png',
+      'https://shop.prydd.co/favicon.ico',
+    ]);
   });
 });

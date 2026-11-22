@@ -26,6 +26,23 @@ const DRAWABLE_TYPES = new Set<string>([
 /** How long a found (or not found) site icon is trusted before looking again. */
 const SITE_ICON_TTL_MS = 24 * 60 * 60 * 1000;
 const SITE_FETCH_TIMEOUT_MS = 3_000;
+/** The most a single logo lookup may spend across every URL it tries. */
+const SITE_DISCOVERY_BUDGET_MS = 8_000;
+/** Icon links taken from a page, before the two conventional fallbacks. */
+const MAX_PAGE_ICON_LINKS = 4;
+
+/** At most six URLs to try for a store's icon: its best page links, then the conventional paths. */
+export function iconCandidates(html: string | null, origin: string): string[] {
+  const fromPage = html ? iconLinksIn(html, origin) : [];
+  return [
+    ...new Set([
+      ...fromPage.slice(0, MAX_PAGE_ICON_LINKS),
+      `${origin}/apple-touch-icon.png`,
+      `${origin}/favicon.ico`,
+    ]),
+  ];
+}
+
 /** A home page or icon larger than this is not read at all. */
 const MAX_SITE_BYTES = MAX_LOGO_BYTES * 4;
 
@@ -242,15 +259,20 @@ export class MerchantLogoService {
   private async findSiteIcon(origins: string[]): Promise<Logo | null> {
     const origin = origins.find((o) => o.startsWith('https://'));
     if (!origin) return null;
-    const candidates: string[] = [];
-    const home = await this.fetchSafely(origin);
-    if (home && /text\/html/i.test(home.contentType)) {
-      candidates.push(...iconLinksIn(home.data.toString('utf8'), origin));
-    }
-    candidates.push(`${origin}/apple-touch-icon.png`, `${origin}/favicon.ico`);
+    // The page is the Merchant's to write, so the whole search is bounded in
+    // both the number of URLs tried and the time spent trying them.
+    const deadline = Date.now() + SITE_DISCOVERY_BUDGET_MS;
+    const remaining = () => deadline - Date.now();
 
-    for (const url of [...new Set(candidates)]) {
-      const icon = await this.fetchSafely(url);
+    const home = await this.fetchSafely(origin, remaining());
+    const html =
+      home && /text\/html/i.test(home.contentType)
+        ? home.data.toString('utf8')
+        : null;
+
+    for (const url of iconCandidates(html, origin)) {
+      if (remaining() <= 0) break;
+      const icon = await this.fetchSafely(url, remaining());
       const type = icon?.contentType.split(';')[0].trim().toLowerCase();
       if (icon && type && DRAWABLE_TYPES.has(type) && icon.data.length > 0) {
         return { contentType: type, data: icon.data };
@@ -259,7 +281,11 @@ export class MerchantLogoService {
     return null;
   }
 
-  private async fetchSafely(url: string): Promise<Logo | null> {
+  private async fetchSafely(
+    url: string,
+    budgetMs: number,
+  ): Promise<Logo | null> {
+    if (budgetMs <= 0) return null;
     try {
       await assertPublicHttpsUrl(url, {
         allowPrivate:
@@ -267,7 +293,7 @@ export class MerchantLogoService {
       });
       const res = await fetch(url, {
         redirect: 'manual',
-        signal: AbortSignal.timeout(SITE_FETCH_TIMEOUT_MS),
+        signal: AbortSignal.timeout(Math.min(SITE_FETCH_TIMEOUT_MS, budgetMs)),
         headers: { accept: 'text/html,image/*;q=0.9' },
       });
       if (res.status !== 200) return null;
