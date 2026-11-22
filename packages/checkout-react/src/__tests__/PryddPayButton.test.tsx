@@ -10,7 +10,7 @@ describe("PryddPayButton", () => {
     const onReady = vi.fn();
     const { container } = render(
       <PryddPayButton
-        checkoutOrigin={ORIGIN}
+        checkoutUrl={ORIGIN}
         createIntent={createIntent}
         onResult={() => {}}
         onReady={onReady}
@@ -25,7 +25,7 @@ describe("PryddPayButton", () => {
   it("does not remount the button when a callback prop identity changes", () => {
     const { container, rerender } = render(
       <PryddPayButton
-        checkoutOrigin={ORIGIN}
+        checkoutUrl={ORIGIN}
         createIntent={createIntent}
         onResult={() => {}}
       />,
@@ -35,7 +35,7 @@ describe("PryddPayButton", () => {
 
     rerender(
       <PryddPayButton
-        checkoutOrigin={ORIGIN}
+        checkoutUrl={ORIGIN}
         createIntent={createIntent}
         onResult={() => "a different function identity"}
       />,
@@ -49,7 +49,7 @@ describe("PryddPayButton", () => {
     (presentation) => {
       const { container } = render(
         <PryddPayButton
-          checkoutOrigin={ORIGIN}
+          checkoutUrl={ORIGIN}
           apiBase="https://api.prydd.test"
           presentation={presentation}
           createIntent={createIntent}
@@ -65,7 +65,7 @@ describe("PryddPayButton", () => {
   it("forwards theme and presentation to the core button", () => {
     const { container, rerender } = render(
       <PryddPayButton
-        checkoutOrigin={ORIGIN}
+        checkoutUrl={ORIGIN}
         createIntent={createIntent}
         onResult={() => {}}
         theme="dark"
@@ -78,7 +78,7 @@ describe("PryddPayButton", () => {
     // A mount-time option change is the one thing that rebuilds the button.
     rerender(
       <PryddPayButton
-        checkoutOrigin={ORIGIN}
+        checkoutUrl={ORIGIN}
         createIntent={createIntent}
         onResult={() => {}}
         theme="light"

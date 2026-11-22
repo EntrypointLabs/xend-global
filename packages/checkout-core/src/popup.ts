@@ -41,10 +41,10 @@ function applyLaunchParams(url: URL, opts: LaunchParams): void {
  * full URL.
  */
 export function buildLaunchUrl(
-  checkoutOrigin: string,
+  checkoutUrl: string,
   opts: LaunchParams,
 ): string {
-  const url = new URL(checkoutOrigin);
+  const url = new URL(checkoutUrl);
   applyLaunchParams(url, opts);
   return url.toString();
 }
@@ -56,10 +56,10 @@ export function buildLaunchUrl(
  * This is the ONLY place that builds a launch URL carrying an intent.
  */
 export function buildCheckoutUrl(
-  checkoutOrigin: string,
+  checkoutUrl: string,
   opts: LaunchParams & { reference: string },
 ): string {
-  const url = new URL(checkoutOrigin);
+  const url = new URL(checkoutUrl);
   url.searchParams.set("intent", opts.reference);
   applyLaunchParams(url, opts);
   return url.toString();
@@ -82,12 +82,12 @@ export function openerOrigin(): string | undefined {
  * null if the popup was blocked.
  */
 export function openCheckoutWindow(
-  checkoutOrigin: string,
+  checkoutUrl: string,
   nonce: string,
   opener?: string,
 ): Window | null {
   return window.open(
-    buildLaunchUrl(checkoutOrigin, { nonce, mode: "popup", opener }),
+    buildLaunchUrl(checkoutUrl, { nonce, mode: "popup", opener }),
     "prydd-checkout",
     "popup,width=420,height=640",
   );

@@ -258,7 +258,6 @@ export function ErrorCard({
 }
 
 const API = "https://api.prydd.co";
-const CHECKOUT = "https://pay.prydd.co";
 
 export const SNIPPETS = {
   server: {
@@ -289,8 +288,6 @@ return { reference: intent.id };`,
 export function Checkout() {
   return (
     <PryddPayButton
-      checkoutOrigin="${CHECKOUT}"
-      apiBase="${API}"
       createIntent={async () => {
         const res = await fetch("/api/prydd/intent", { method: "POST" });
         return res.json(); // { reference }
@@ -309,8 +306,6 @@ export function Checkout() {
 <div id="pay"></div>
 <script>
   PryddCheckout.mountPryddButton({
-    checkoutOrigin: "${CHECKOUT}",
-    apiBase: "${API}",
     mount: document.getElementById("pay"),
     createIntent: async () => {
       const res = await fetch("/api/prydd/intent", { method: "POST" });

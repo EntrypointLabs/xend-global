@@ -101,6 +101,9 @@ const proxy = {
 };
 
 export default defineConfig(({ mode }) => ({
+  // Served at prydd.co/pay: passkeys made in the app belong to prydd.co, and
+  // the browser only offers them to pages on that host.
+  base: '/pay/',
   // Allow a user-owned cache when an earlier privileged dev server owned it.
   cacheDir: process.env.PRYDD_VITE_CACHE_DIR ?? 'node_modules/.vite',
   plugins: [

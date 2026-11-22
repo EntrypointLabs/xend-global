@@ -33,8 +33,6 @@ export class PryddApiError extends Error {
 
 export const pryddConfig = {
   apiBase: process.env.PRYDD_API_BASE ?? "https://api.prydd.co",
-  checkoutOrigin:
-    process.env.NEXT_PUBLIC_PRYDD_CHECKOUT_ORIGIN ?? "https://pay.prydd.co",
 };
 
 function secretKey(): string {

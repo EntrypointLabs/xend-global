@@ -47,26 +47,36 @@ function isLoopbackHost(hostname: string): boolean {
   );
 }
 
-function assertHttpsOrigin(origin: string): void {
+export const DEFAULT_CHECKOUT_URL = "https://prydd.co/pay";
+export const DEFAULT_API_BASE = "https://api.prydd.co";
+
+/**
+ * The checkout is served under a path on prydd.co because passkeys made in the
+ * Prydd app belong to prydd.co, and the browser only offers them to pages on
+ * that host. Messages are still matched against its origin alone.
+ */
+function resolveCheckoutUrl(value: string): { url: string; origin: string } {
   let url: URL;
   try {
-    url = new URL(origin);
+    url = new URL(value);
   } catch {
-    throw new Error(`checkoutOrigin must be a valid URL, got: ${origin}`);
+    throw new Error(`checkoutUrl must be a valid URL, got: ${value}`);
   }
   // https everywhere, with an http carve-out for loopback hosts so a checkout
   // running on a local dev server can be integrated against without TLS.
   const httpLoopback = url.protocol === "http:" && isLoopbackHost(url.hostname);
   if (url.protocol !== "https:" && !httpLoopback) {
     throw new Error(
-      `checkoutOrigin must be https (http allowed only for localhost), got: ${origin}`,
+      `checkoutUrl must be https (http allowed only for localhost), got: ${value}`,
     );
   }
-  if (url.origin !== origin.replace(/\/$/, "")) {
+  if (url.search || url.hash) {
     throw new Error(
-      `checkoutOrigin must be a bare origin (no path), got: ${origin}`,
+      `checkoutUrl must not carry a query or fragment, got: ${value}`,
     );
   }
+  const path = url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
+  return { url: `${url.origin}${path}`, origin: url.origin };
 }
 
 /**
@@ -98,7 +108,7 @@ function frameReachedCheckout(frame: HTMLIFrameElement): boolean {
 
 /** Script-tag callers are untyped, so an unrecognised value opens the popup. */
 function resolvePresentation(value: unknown): CheckoutPresentation {
-  if (value === undefined || value === null) return "iframe";
+  if (value === undefined || value === null) return "modal";
   if (
     value === "iframe" ||
     value === "modal" ||
@@ -133,28 +143,28 @@ async function fetchSummary(
 /**
  * Mount the Pay with Prydd button.
  *
- * The default "iframe" presentation draws the glass sheet on the merchant page
- * and, when the shopper taps Pay, swaps the sheet's body for a cross-origin
- * frame carrying the ceremony: no second window, and the passkey still never
- * leaves Prydd's origin. If that frame is refused or never loads, the popup
- * takes over behind the same sheet. "modal" is the same sheet with the popup
- * from the start; "popup" skips the sheet entirely. Every window is opened
- * SYNCHRONOUSLY in the click handler with the intent-less URL, before any
+ * The default "modal" presentation draws the glass sheet on the merchant page
+ * and runs the passkey ceremony in a Prydd window. "iframe" runs it inside the
+ * sheet instead, but Prydd's wallet provider refuses to load under a merchant's
+ * page, so it only suits pages Prydd itself controls. "popup" skips the sheet.
+ * Every window is opened SYNCHRONOUSLY in the click handler with the
+ * intent-less URL, before any
  * awaited work, so iOS Safari does not block it. In a webview / Opera Mini /
  * when the popup is blocked, the flow falls back to a full-page redirect.
  */
 export function mountPryddButton(config: PryddButtonConfig): PryddButtonHandle {
   const {
-    checkoutOrigin,
     createIntent,
     mount,
     onResult,
     onUnresolved,
     onReady,
-    apiBase,
+    apiBase = DEFAULT_API_BASE,
     theme = "auto",
   } = config;
-  assertHttpsOrigin(checkoutOrigin);
+  const { url: checkoutUrl, origin: checkoutOrigin } = resolveCheckoutUrl(
+    config.checkoutUrl ?? DEFAULT_CHECKOUT_URL,
+  );
   const presentation = resolvePresentation(config.presentation);
   const wantsSheet = presentation === "iframe" || presentation === "modal";
   if (wantsSheet && config.presentation && !apiBase) {
@@ -189,7 +199,7 @@ export function mountPryddButton(config: PryddButtonConfig): PryddButtonHandle {
   ): void => {
     onUnresolved?.({ reference, status: "unresolved", reason });
     redirectTo(
-      buildCheckoutUrl(checkoutOrigin, {
+      buildCheckoutUrl(checkoutUrl, {
         reference,
         nonce,
         mode: "redirect",
@@ -207,7 +217,7 @@ export function mountPryddButton(config: PryddButtonConfig): PryddButtonHandle {
     const wantPopup =
       presentation !== "redirect" && detectEnvironment().canPopup;
     const win = wantPopup
-      ? openCheckoutWindow(checkoutOrigin, nonce, opener)
+      ? openCheckoutWindow(checkoutUrl, nonce, opener)
       : null;
     const usePopup = wantPopup && win !== null;
 
@@ -218,7 +228,7 @@ export function mountPryddButton(config: PryddButtonConfig): PryddButtonHandle {
         if (usePopup && win) {
           navigatePopup(
             win,
-            buildCheckoutUrl(checkoutOrigin, {
+            buildCheckoutUrl(checkoutUrl, {
               reference,
               nonce,
               mode: "popup",
@@ -301,9 +311,7 @@ export function mountPryddButton(config: PryddButtonConfig): PryddButtonHandle {
 
     function runPopup(nonce: string, opener: string | undefined): void {
       const canPopup = detectEnvironment().canPopup;
-      popup = canPopup
-        ? openCheckoutWindow(checkoutOrigin, nonce, opener)
-        : null;
+      popup = canPopup ? openCheckoutWindow(checkoutUrl, nonce, opener) : null;
       if (!popup) {
         settled = true;
         sheet?.close();
@@ -317,7 +325,7 @@ export function mountPryddButton(config: PryddButtonConfig): PryddButtonHandle {
       }
       navigatePopup(
         popup,
-        buildCheckoutUrl(checkoutOrigin, {
+        buildCheckoutUrl(checkoutUrl, {
           reference,
           nonce,
           mode: "popup",
@@ -344,7 +352,7 @@ export function mountPryddButton(config: PryddButtonConfig): PryddButtonHandle {
 
     function runFrame(nonce: string, opener: string | undefined): void {
       const frame = sheet?.showFrame(
-        buildCheckoutUrl(checkoutOrigin, {
+        buildCheckoutUrl(checkoutUrl, {
           reference,
           nonce,
           mode: "iframe",

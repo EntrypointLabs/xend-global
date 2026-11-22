@@ -1,7 +1,7 @@
 import { next } from '@vercel/functions';
 import { frameAncestorFor } from './functions/_middleware.js';
 
-export const config = { matcher: '/((?!assets/|api/).*)' };
+export const config = { matcher: '/((?!assets/|api/|pay/assets/|pay/api/).*)' };
 
 /**
  * The checkout may only be framed by the merchant the intent belongs to, as

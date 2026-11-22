@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PrivyProvider } from '@privy-io/react-auth';
 import { usePasskeyCeremony } from '../ceremony/passkey';
-import { pinPasskeyRelyingParty } from '../ceremony/relyingParty';
 import { PRIVY_APP_ID } from '../lib/config';
 import { solanaRpcs } from '../lib/solana';
 import {
@@ -15,8 +14,6 @@ import { ConfirmSheet } from './ConfirmSheet';
 import { CancelButton, ExpiredNotice, PayButton } from './PayButton';
 import { PaymentSheet } from './PaymentSheet';
 import { quoteExpired, useQuoteExpired } from '../lib/useQuoteExpired';
-
-pinPasskeyRelyingParty(globalThis);
 
 export interface PaymentFlowProps {
   intent: IntentView;

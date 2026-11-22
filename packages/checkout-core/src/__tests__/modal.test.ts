@@ -110,7 +110,7 @@ describe("mountPryddButton glass sheet with a popup ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
       presentation: "modal",
       createIntent: () => pending,
@@ -147,7 +147,7 @@ describe("mountPryddButton glass sheet with a popup ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
       presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_sheet_1" }),
@@ -183,7 +183,7 @@ describe("mountPryddButton glass sheet with a popup ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
       presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_usdc" }),
@@ -208,7 +208,7 @@ describe("mountPryddButton glass sheet with a popup ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
       presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_confirm" }),
@@ -253,7 +253,7 @@ describe("mountPryddButton glass sheet with a popup ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
       presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_msg" }),
@@ -299,7 +299,7 @@ describe("mountPryddButton glass sheet with a popup ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
       presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_blocked" }),
@@ -335,7 +335,7 @@ describe("mountPryddButton glass sheet with a popup ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
       presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_xss" }),
@@ -365,7 +365,7 @@ describe("mountPryddButton glass sheet with a popup ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
       presentation: "modal",
       createIntent: () => Promise.resolve({ reference: "pi_cancel" }),
@@ -411,7 +411,7 @@ describe("mountPryddButton glass sheet with a popup ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
       presentation: "modal",
       createIntent: () =>
