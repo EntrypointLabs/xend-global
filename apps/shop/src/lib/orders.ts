@@ -249,18 +249,24 @@ function requireLivemode(): boolean {
  * with the secret key, so neither the browser result nor an unverified request
  * can fulfil anything. Safe to call any number of times.
  */
-export async function reconcileOrder(orderId: string): Promise<Order | null> {
+export async function reconcileOrder(
+  orderId: string,
+  { force = false }: { force?: boolean } = {},
+): Promise<Order | null> {
   const sql = await db();
   const [row] = await sql<Row[]>`SELECT * FROM orders WHERE id = ${orderId}`;
   if (!row) return null;
   if (row.status !== "awaiting_payment" || !row.intent_id) return toOrder(row);
 
   // Claim the check in the row itself, so concurrent pollers cannot both read
-  // the API for the same order.
+  // the API for the same order. A webhook is never throttled: it is the one
+  // caller that is told something changed, and skipping it would acknowledge
+  // the event without acting on it.
   const [claimed] = await sql<Row[]>`
     UPDATE orders SET last_checked_at = now()
     WHERE id = ${orderId}
-      AND (last_checked_at IS NULL
+      AND (${force}
+           OR last_checked_at IS NULL
            OR last_checked_at < now() - make_interval(secs => ${MIN_CHECK_SECONDS}))
     RETURNING *`;
   if (!claimed) return toOrder(row);
@@ -269,7 +275,7 @@ export async function reconcileOrder(orderId: string): Promise<Order | null> {
   try {
     intent = await getIntent(row.intent_id);
   } catch (err) {
-    if (err instanceof PryddApiError && err.status === 429) {
+    if (!force && err instanceof PryddApiError && err.status === 429) {
       await sql`
         UPDATE orders
         SET last_checked_at = now() + make_interval(secs => ${RATE_LIMITED_BACKOFF_SECONDS})
