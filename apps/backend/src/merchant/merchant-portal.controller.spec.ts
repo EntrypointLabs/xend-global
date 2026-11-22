@@ -1,3 +1,4 @@
+import type { MerchantLogoService } from './merchant-logo.service';
 import { ServiceUnavailableException } from '@nestjs/common';
 import {
   PrivyUnavailableError,
@@ -95,6 +96,12 @@ function setup(
         })[key],
     } as unknown as ConfigService,
     { record } as unknown as MerchantAuditService,
+    {
+      logoUrl: (id: string) => `https://api.prydd.co/v1/merchant-logos/${id}`,
+      describe: jest.fn().mockResolvedValue({ updatedAt: null, source: null }),
+      upload: jest.fn(),
+      remove: jest.fn(),
+    } as unknown as MerchantLogoService,
   );
   return {
     controller,
@@ -361,6 +368,14 @@ describe('Merchant portal cluster scope', () => {
       {
         record: jest.fn().mockResolvedValue(undefined),
       } as unknown as MerchantAuditService,
+      {
+        logoUrl: (id: string) => `https://api.prydd.co/v1/merchant-logos/${id}`,
+        describe: jest
+          .fn()
+          .mockResolvedValue({ updatedAt: null, source: null }),
+        upload: jest.fn(),
+        remove: jest.fn(),
+      } as unknown as MerchantLogoService,
     );
 
     await controller.me('Bearer token');

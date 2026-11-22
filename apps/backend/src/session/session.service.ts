@@ -3,7 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
-import { merchants, sessions } from '../db/schema';
+import { merchantLogos, merchants, sessions } from '../db/schema';
+import { merchantLogoUrl } from '../merchant/merchant-logo.url';
 import { EVENT_PUBLISHER } from '../events/event-publisher.interface';
 import type { EventPublisher } from '../events/event-publisher.interface';
 import { RATE_COUNTER } from '../counters/rate-counter.interface';
@@ -253,12 +254,16 @@ export class SessionService implements OnModuleInit {
       .select({
         id: sessions.id,
         merchantDisplayName: merchants.displayName,
+        merchantId: merchants.id,
+        merchantCategory: merchants.category,
+        merchantLogoUpdatedAt: merchantLogos.updatedAt,
         createdAt: sessions.createdAt,
         lastUsedAt: sessions.lastUsedAt,
         expiresAt: sessions.expiresAt,
       })
       .from(sessions)
       .innerJoin(merchants, eq(sessions.merchantId, merchants.id))
+      .leftJoin(merchantLogos, eq(merchantLogos.merchantId, merchants.id))
       .where(
         and(
           eq(sessions.consumerId, consumerId),
@@ -270,6 +275,12 @@ export class SessionService implements OnModuleInit {
     return rows.map((r) => ({
       id: r.id,
       merchantDisplayName: r.merchantDisplayName,
+      merchantCategory: r.merchantCategory,
+      merchantLogoUrl: merchantLogoUrl(
+        this.config.get<string>('PUBLIC_API_URL'),
+        r.merchantId,
+        r.merchantLogoUpdatedAt,
+      ),
       createdAt: r.createdAt.toISOString(),
       lastUsedAt: r.lastUsedAt.toISOString(),
       expiresAt: r.expiresAt.toISOString(),

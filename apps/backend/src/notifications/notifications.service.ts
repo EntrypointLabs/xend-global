@@ -194,6 +194,35 @@ export class NotificationsService {
     }
   }
 
+  /**
+   * A Payment the Consumer made has settled. Follows the same preference as an
+   * arrival: it is news about money that moved, not something they must act on.
+   */
+  async notifyPaymentMade(
+    userId: string,
+    payment: { merchantName: string; amount: string },
+  ): Promise<void> {
+    try {
+      const [user] = await this.db.client
+        .select({ enabled: users.notificationsEnabled })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      if (!user?.enabled) return;
+      await this.notifyUser(
+        userId,
+        {
+          title: `Paid ${payment.merchantName}`,
+          body: `You paid ${payment.amount} to ${payment.merchantName}.`,
+          data: { kind: NOTICE_KIND.arrival },
+        },
+        'payment_made',
+      );
+    } catch (err) {
+      this.logger.warn('push.payment_made_failed', err);
+    }
+  }
+
   async notifyArrival(notice: ArrivalNotice): Promise<void> {
     try {
       // The owner is reached through smart_accounts: the tailer knows the

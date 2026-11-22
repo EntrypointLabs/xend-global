@@ -20,7 +20,14 @@ import { AccountEventsService } from '../activity/account-events.service';
 import { SpendService } from '../account/spend.service';
 import { DbService } from '../db/db.service';
 import { RampActivityService } from '../fiat/ramp-activity';
-import { smartAccounts, transfers, payments, merchants } from '../db/schema';
+import {
+  smartAccounts,
+  transfers,
+  payments,
+  merchants,
+  merchantLogos,
+} from '../db/schema';
+import { merchantLogoUrl } from '../merchant/merchant-logo.url';
 import { PREPARED_TX_STORE } from '../prepared/prepared-tx.interface';
 import type { PreparedTxStore } from '../prepared/prepared-tx.interface';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
@@ -731,6 +738,9 @@ export class TransferService {
         signature: transfers.signature,
         kind: transfers.kind,
         merchantName: merchants.displayName,
+        merchantId: merchants.id,
+        merchantCategory: merchants.category,
+        merchantLogoUpdatedAt: merchantLogos.updatedAt,
         usdValue: transfers.usdValue,
         decimals: transfers.decimals,
         createdAt: transfers.createdAt,
@@ -739,6 +749,7 @@ export class TransferService {
       .from(transfers)
       .leftJoin(payments, eq(transfers.paymentId, payments.id))
       .leftJoin(merchants, eq(payments.merchantId, merchants.id))
+      .leftJoin(merchantLogos, eq(merchantLogos.merchantId, merchants.id))
       .where(
         cursorWhere
           ? and(eq(transfers.smartAccountId, account.id), cursorWhere)
@@ -792,6 +803,14 @@ export class TransferService {
           // Defensive default: the column is notNull default 'transfer'.
           kind: r.kind ?? 'transfer',
           merchantName: r.merchantName ?? null,
+          merchantCategory: r.merchantCategory ?? null,
+          merchantLogoUrl: r.merchantId
+            ? merchantLogoUrl(
+                this.config.get<string>('PUBLIC_API_URL'),
+                r.merchantId,
+                r.merchantLogoUpdatedAt,
+              )
+            : null,
           usdValue: r.usdValue ?? null,
           decimals: r.decimals ?? null,
           tokenName: metadata.get(r.mint)?.name ?? null,
