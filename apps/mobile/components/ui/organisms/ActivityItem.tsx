@@ -71,9 +71,13 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
   // existing debit sign + text-destructive styling apply unchanged.
   const label = isPayment
     ? (entry.merchantName ?? "Merchant")
-    : isSend
-      ? `To: ${truncateAddress(entry.counterparty)}`
-      : `From: ${truncateAddress(entry.counterparty)}`;
+    : entry.isSwap
+      ? isSend
+        ? "You paid"
+        : "You received"
+      : isSend
+        ? `To: ${truncateAddress(entry.counterparty)}`
+        : `From: ${truncateAddress(entry.counterparty)}`;
 
   const valueColorClass = isInactive
     ? tone.muted

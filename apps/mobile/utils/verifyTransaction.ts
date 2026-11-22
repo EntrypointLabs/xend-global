@@ -1,9 +1,12 @@
 import {
+  ABOVE_LIMIT_PROGRAM_ALLOWLIST,
   describeTransaction,
   type SettingsChangeAction,
   type TransactionDescription,
 } from "@prydd/smart-account";
-import { PublicKey } from "@solana/web3.js";
+import { type AddressLookupTableAccount, PublicKey } from "@solana/web3.js";
+
+import { WRAPPED_SOL_MINT } from "@/utils/swap";
 
 /**
  * What the backend built has to match what the Consumer was shown. The Account
@@ -70,9 +73,14 @@ interface Budget {
   removeSigners: number;
 }
 
-function describe(base64: string, vault: string): TransactionDescription {
+function describe(
+  base64: string,
+  vault: string,
+  lookupTables?: readonly AddressLookupTableAccount[]
+): TransactionDescription {
   return describeTransaction(base64, {
     addresses: { vault: new PublicKey(vault) },
+    lookupTables,
   });
 }
 
@@ -113,6 +121,173 @@ export function checkSpend(
   }
   if (description.amount !== BigInt(expected.amountRaw)) {
     return "it sends a different amount";
+  }
+  return null;
+}
+
+export interface ExpectedSwap {
+  /** The Account both sides of the swap belong to. */
+  vault: string;
+  /** The two keys that have to sign. A swap naming any other is not this Account's. */
+  signers: string[];
+  /** Mints as the quote named them, with native SOL as its wrapped mint. */
+  inputMint: string;
+  outputMint: string;
+  amountInRaw: string;
+  /** The price on screen, and how far short of it the swap may settle. */
+  quotedAmountOutRaw: string;
+  slippageBps: number;
+}
+
+/**
+ * Returns the reason a prepared swap does not match, or null when it does.
+ *
+ * The Account's policy lets its two keys run any route through the swap
+ * program, so nothing on chain holds a swap to the price the Consumer saw.
+ * This does: the pair, the amount paid, the price and the floor under it all
+ * have to be the ones quoted.
+ *
+ * `lookupTables` are the tables the message names, read by this phone. A
+ * route spans more accounts than a message can list inline.
+ */
+export function checkSwap(
+  base64: string,
+  expected: ExpectedSwap,
+  lookupTables: readonly AddressLookupTableAccount[]
+): string | null {
+  let description: TransactionDescription;
+  try {
+    description = describe(base64, expected.vault, lookupTables);
+  } catch (err) {
+    return `it could not be read (${(err as Error).message})`;
+  }
+
+  if (description.kind !== "swap") {
+    return description.kind === "unknown"
+      ? `it is not a swap (${description.reason})`
+      : `it is not a swap (${description.kind})`;
+  }
+  if (description.vault.toBase58() !== expected.vault) {
+    return "it swaps out of another account";
+  }
+  const signers = description.signers.map((signer) => signer.toBase58());
+  if (
+    signers.length !== expected.signers.length ||
+    !expected.signers.every((signer) => signers.includes(signer))
+  ) {
+    return "it is signed for by keys that are not this account's";
+  }
+  const named = (mint: PublicKey | "SOL") =>
+    mint === "SOL" ? WRAPPED_SOL_MINT : mint.toBase58();
+  // A swap that left the output wrapped would also name the wrapped mint, so
+  // SOL is only SOL when the swap itself says it unwraps it.
+  const isNative = (mint: string) => mint === WRAPPED_SOL_MINT;
+  if (
+    named(description.inputMint) !== expected.inputMint ||
+    (description.inputMint === "SOL") !== isNative(expected.inputMint)
+  ) {
+    return "it pays with a different currency";
+  }
+  if (
+    named(description.outputMint) !== expected.outputMint ||
+    (description.outputMint === "SOL") !== isNative(expected.outputMint)
+  ) {
+    return "it buys a different currency";
+  }
+  if (description.amountIn !== BigInt(expected.amountInRaw)) {
+    return "it pays a different amount";
+  }
+  if (description.quotedAmountOut !== BigInt(expected.quotedAmountOutRaw)) {
+    return "it is priced differently";
+  }
+  if (description.slippageBps !== expected.slippageBps) {
+    return "it allows a different shortfall";
+  }
+  return null;
+}
+
+export interface ExpectedSwapAccess {
+  vault: string;
+  /** The Account's two spending keys, which the rule must go on naming. */
+  primary: string;
+  approval: string;
+}
+
+/**
+ * Returns the reason a step of turning Swap on does not match, or null when it
+ * does.
+ *
+ * The change rewrites the rule that governs every Spend above the limit, so
+ * it is held to the one rewrite Swap needs and nothing looser: the same two
+ * keys, both still required, no delay added, and exactly the programs this
+ * build of the app knows. A rule naming a third key or one more program would
+ * be a way into the Account that only shows a day later.
+ */
+export function checkSwapAccess(
+  base64: string,
+  expected: ExpectedSwapAccess
+): string | null {
+  let description: TransactionDescription;
+  try {
+    description = describe(base64, expected.vault);
+  } catch (err) {
+    return `it could not be read (${(err as Error).message})`;
+  }
+
+  const keys = [expected.primary, expected.approval];
+  // The steps after staging carry an approval or the execute and no actions.
+  if (description.kind === "vote") {
+    if (description.vault.toBase58() !== expected.vault) {
+      return "it approves a change on another account";
+    }
+    return description.votes.every(
+      (vote) => vote.kind !== "reject" && keys.includes(vote.signer.toBase58())
+    )
+      ? null
+      : "it carries a vote that is not this account's";
+  }
+  if (description.kind !== "settings") {
+    return description.kind === "unknown"
+      ? `it is not a settings change (${description.reason})`
+      : `it is not a settings change (${description.kind})`;
+  }
+  if (description.vault.toBase58() !== expected.vault) {
+    return "it changes another account";
+  }
+  if (
+    !description.votes.every(
+      (vote) => vote.kind === "approve" && keys.includes(vote.signer.toBase58())
+    )
+  ) {
+    return "it carries a vote that is not this account's";
+  }
+
+  const [action, ...others] = description.actions;
+  if (!action || others.length > 0 || action.kind !== "policy-update") {
+    return "it changes more than the spending rule Swap needs";
+  }
+  const { terms } = action;
+  if (terms.kind !== "program-interaction" || !terms.programOnly) {
+    return "it rewrites a different kind of spending rule";
+  }
+  const signers = terms.signers.map((signer) => signer.toBase58());
+  if (
+    signers.length !== 2 ||
+    !keys.every((key) => signers.includes(key)) ||
+    terms.threshold !== 2 ||
+    terms.timeLock !== 0
+  ) {
+    return "it changes who can approve a payment";
+  }
+  const programs = terms.allowedPrograms.map((program) => program.toBase58());
+  const known = ABOVE_LIMIT_PROGRAM_ALLOWLIST.map((program) =>
+    program.toBase58()
+  );
+  if (
+    programs.length !== known.length ||
+    !programs.every((program, i) => program === known[i])
+  ) {
+    return "it allows programs this app does not know";
   }
   return null;
 }

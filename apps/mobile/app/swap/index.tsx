@@ -9,12 +9,13 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
 import { useFeature } from "@/hooks/useFeature";
 import { useBalances } from "@/hooks/useBalances";
+import { TurnOnSwap } from "@/components/swap/TurnOnSwap";
+import { useSwapAccess } from "@/hooks/useSwapAccess";
 import { useSwapQuote } from "@/hooks/useSwapQuote";
 import { useExecuteSwap } from "@/hooks/useExecuteSwap";
-import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useToast } from "@/contexts/ToastContext";
 import { getUsdcMint } from "@/utils/cluster";
-import { formatRawAmount, WRAPPED_SOL_MINT } from "@/utils/swapQuote";
+import { formatRawAmount, WRAPPED_SOL_MINT } from "@/utils/swap";
 import { localIconForMint } from "@/utils/tokens";
 import { cn } from "@/utils/cn";
 
@@ -28,7 +29,7 @@ interface SwapToken {
 
 const SOL: SwapToken = {
   symbol: "SOL",
-  // Socket prices native SOL under the wrapped mint on Solana.
+  // Native SOL is named by its wrapped mint, as the balance read names it.
   mint: WRAPPED_SOL_MINT,
   decimals: 9,
 };
@@ -36,7 +37,16 @@ const SOL: SwapToken = {
 /** The route survives the flag, so a deep link can still land here. */
 export default function SwapRoute() {
   const enabled = useFeature("swap");
+  const access = useSwapAccess();
   if (!enabled) return <Redirect href="/" />;
+  // Held blank rather than guessed: showing the keypad to an Account that
+  // cannot swap yet, then replacing it, reads as the app changing its mind.
+  if (access.isPending) return <ScreenLayout>{null}</ScreenLayout>;
+  // An answer that could not be read is not a refusal. The swap itself still
+  // says so if the Account turns out not to be ready.
+  if (access.data && access.data.state !== "ready") {
+    return <TurnOnSwap access={access.data} />;
+  }
   return <SwapScreen />;
 }
 
@@ -44,14 +54,13 @@ export default function SwapRoute() {
  * Swap between the Consumer's assets.
  *
  * The keypad drives the "you pay" amount; the receive side stays blank until a
- * quote is wired, because showing a converted figure without a real rate would
- * be inventing a price the Consumer might act on.
+ * live price arrives, because showing a converted figure without a real rate
+ * would be inventing a price the Consumer might act on.
  */
 function SwapScreen() {
   const router = useRouter();
   const { showToast } = useToast();
   const { tokens } = useBalances();
-  const address = useWalletAddress();
 
   const usdc: SwapToken = useMemo(
     () => ({ symbol: "USDC", mint: getUsdcMint(), decimals: 6 }),
@@ -80,7 +89,6 @@ function SwapScreen() {
     inputMint: payToken.mint,
     outputMint: receiveToken.mint,
     amountRaw,
-    userAddress: address ?? null,
     enabled: withinBalance,
   });
 
@@ -94,10 +102,8 @@ function SwapScreen() {
       showToast(outcome.message);
       return;
     }
-    router.replace({
-      pathname: "/success",
-      params: { signature: outcome.signature },
-    });
+    // Home, where the balance is. The toast follows the swap from here.
+    router.replace("/(tabs)");
   };
 
   const receiveDisplay = quote
@@ -196,7 +202,7 @@ function SwapScreen() {
               At least{" "}
               {formatRawAmount(quote.minOutAmountRaw, receiveToken.decimals)}{" "}
               {receiveToken.symbol}
-              {quote.provider ? ` · via ${quote.provider}` : ""}
+              {quote.venue ? ` · via ${quote.venue}` : ""}
             </Typography>
           ) : null}
         </View>

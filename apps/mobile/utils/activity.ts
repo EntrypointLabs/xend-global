@@ -3,6 +3,7 @@ import type {
   AwaitingPayment,
   TransferRow,
 } from "@/utils/apiClient";
+import { WRAPPED_SOL_MINT } from "@/utils/swap";
 import { describeToken, formatTokenAmount } from "@/utils/tokens";
 
 /**
@@ -20,6 +21,12 @@ export interface ActivityEntry {
   // "awaiting" are client-side only, since CONTEXT.md defines Activity as
   // covering non-money events too.
   kind: "transfer" | "payment" | "security" | "awaiting";
+  /**
+   * One side of the Consumer's own swap. Still a transfer, with a direction
+   * and an amount, but the other party is a trading venue: showing its
+   * address as someone they paid would misdescribe what they did.
+   */
+  isSwap?: boolean;
   /** Set only on `security` entries: what changed on the Account. */
   securityLabel?: string;
   /**
@@ -119,6 +126,7 @@ export function mapTransferRowToActivityEntry(
     direction,
     status: row.status.toLowerCase() as ActivityEntry["status"],
     kind: row.kind === "payment" ? "payment" : "transfer",
+    isSwap: row.swap === true,
     merchantName: row.merchantName,
     mint: row.mint,
     amountRaw: row.amountRaw,
@@ -190,9 +198,32 @@ export function statusLabel(entry: ActivityEntry): string {
     if (entry.status === "failed") return "Failed";
     return "Paid";
   }
+  if (entry.isSwap) {
+    if (entry.status === "pending") return "Swapping…";
+    if (entry.status === "failed") return "Failed";
+    return "Swapped";
+  }
   if (entry.status === "pending") return "Sending…";
   if (entry.status === "failed") return "Failed";
   return entry.direction === "send" ? "Sent" : "Received";
+}
+
+/**
+ * The rent a swap repays to whoever opened its wrapped SOL account.
+ *
+ * A real movement, so it stays in the transfers the balance chart walks, but
+ * it is plumbing: a third row of 0.002 SOL beside a swap's two sides reads as
+ * a fee the Consumer was charged, which it is not.
+ */
+const SWAP_RENT_REFUND_LAMPORTS = "2039280";
+
+export function isSwapRentRefund(row: TransferRow): boolean {
+  return (
+    row.swap === true &&
+    row.direction === "SEND" &&
+    row.mint === WRAPPED_SOL_MINT &&
+    row.amountRaw === SWAP_RENT_REFUND_LAMPORTS
+  );
 }
 
 /**

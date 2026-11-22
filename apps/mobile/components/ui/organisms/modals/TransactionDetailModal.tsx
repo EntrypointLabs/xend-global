@@ -158,7 +158,8 @@ export function TransactionDetailModal({
             </View>
           </View>
 
-          <View className={rowClass}>
+          {/* A swap's other side is a trading venue, not someone to name. */}
+          <View className={item.isSwap ? "hidden" : rowClass}>
             <Typography weight="600" className="text-black/30">
               {counterpartyLabel}
             </Typography>

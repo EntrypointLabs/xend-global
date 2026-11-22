@@ -18,9 +18,8 @@ const onUnlessFalse = (value: string | undefined) => value !== "false";
 
 export const BUILD_FEATURES: Record<FeatureName, boolean> = {
   /**
-   * Swap. It signs from the embedded wallet, but the Balance sits in the
-   * Account's vault, so it cannot reach the Consumer's money until it runs as
-   * a Spend.
+   * Swap. Runs as a Spend out of the Account's vault, through a venue that
+   * exists on mainnet only.
    */
   swap: onUnlessFalse(process.env.EXPO_PUBLIC_ENABLE_SWAP),
   /** Kamino deposits. The position reads correctly; there is no way to fund it. */
