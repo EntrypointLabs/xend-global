@@ -203,10 +203,7 @@ function RampItem({
         <ConversionArrow color={tone.ink ? "#FFFFFF8F" : "#00000040"} />
         <Typography
           weight="600"
-          className={cn(
-            "ml-1.5 text-[13px]",
-            tone.ink ? tone.muted : "text-black/40"
-          )}
+          className={cn("ml-1.5 text-[13px]", tone.muted)}
         >
           {dollars}
         </Typography>

@@ -8,14 +8,7 @@ import Svg, { Path } from "react-native-svg";
  */
 export function ConversionArrow({ color }: { color: string }) {
   return (
-    <Svg
-      width={38}
-      height={24}
-      viewBox="0 0 38 24"
-      fill="none"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-    >
+    <Svg width={38} height={24} viewBox="0 0 38 24" fill="none">
       <Path
         d="M1 0 V5 Q1 12 8 12 H35"
         stroke={color}
