@@ -688,6 +688,7 @@ export const demoRampActivity = {
   deposit: {
     orderId: "demo-dep-1",
     direction: "receive",
+    orderStatus: "completed",
     fiatCurrency: "NGN",
     fiatAmountMinor: "1000000",
     fiatDecimals: 2,
@@ -702,6 +703,7 @@ export const demoRampActivity = {
   kudaSend: {
     orderId: "demo-send-1",
     direction: "send",
+    orderStatus: "completed",
     fiatCurrency: "NGN",
     fiatAmountMinor: "500000",
     fiatDecimals: 2,
@@ -716,6 +718,7 @@ export const demoRampActivity = {
   gtbSend: {
     orderId: "demo-send-2",
     direction: "send",
+    orderStatus: "completed",
     fiatCurrency: "NGN",
     fiatAmountMinor: "4500000",
     fiatDecimals: 2,

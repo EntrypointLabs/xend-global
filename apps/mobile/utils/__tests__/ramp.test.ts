@@ -3,6 +3,7 @@ import {
   formatNaira,
   formatRate,
   rampCounterparty,
+  rampOutcome,
   shortBankName,
   type RampDetails,
 } from "@/utils/ramp";
@@ -65,5 +66,43 @@ describe("arrival toast for a naira deposit", () => {
       ramp: { ...send, direction: "receive", fiatAmountMinor: "1000000" },
     } as unknown as TransferRow;
     expect(arrivalLabel(row)).toBe("Received ₦10,000");
+  });
+});
+
+describe("sub-cent dollars", () => {
+  it("keeps a real movement under a cent instead of $0.00", () => {
+    expect(formatDollarsMinor("5000", 6)).toBe("$0.005");
+    expect(formatDollarsMinor("1234", 6)).toBe("$0.0012");
+    expect(formatDollarsMinor("0", 6)).toBe("$0.00");
+    expect(formatDollarsMinor("10000", 6)).toBe("$0.01");
+  });
+});
+
+describe("bank send outcome on the receipt", () => {
+  it("reports the payout, not just the funding leg", () => {
+    expect(
+      rampOutcome({ ...send, orderStatus: "processing" }, "confirmed")
+    ).toBe("processing");
+    expect(rampOutcome({ ...send, orderStatus: "returned" }, "confirmed")).toBe(
+      "refunded"
+    );
+    expect(
+      rampOutcome({ ...send, orderStatus: "completed" }, "confirmed")
+    ).toBe("completed");
+  });
+
+  it("leaves deposits and unconfirmed sends to the transfer status", () => {
+    expect(
+      rampOutcome(
+        { ...send, direction: "receive", orderStatus: "processing" },
+        "confirmed"
+      )
+    ).toBeNull();
+    expect(
+      rampOutcome({ ...send, orderStatus: "returned" }, "pending")
+    ).toBeNull();
+    expect(
+      rampOutcome({ ...send, orderStatus: undefined }, "confirmed")
+    ).toBeNull();
   });
 });

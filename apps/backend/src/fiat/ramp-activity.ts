@@ -1,8 +1,10 @@
 import { Injectable, Logger, Module } from '@nestjs/common';
-import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { ConfigService } from '@nestjs/config';
+import { and, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
-import { fiatOrders, smartAccounts } from '../db/schema';
-import type { FiatMoney } from './fiat-provider.interface';
+import { fiatOrders, smartAccounts, transfers } from '../db/schema';
+import type { FiatMoney, FiatStatus } from './fiat-provider.interface';
 import type { FiatOrder } from './fiat.types';
 import { bankLogoKey } from './providers/paycrest/bank-logos';
 
@@ -10,6 +12,11 @@ import { bankLogoKey } from './providers/paycrest/bank-logos';
 export interface RampDetails {
   orderId: string;
   direction: 'receive' | 'send';
+  /**
+   * The order's own outcome. For a bank send the USDC leg can be confirmed
+   * while the payout is still processing or has been returned.
+   */
+  orderStatus: FiatStatus;
   fiatCurrency: 'NGN';
   fiatAmountMinor: string;
   fiatDecimals: number;
@@ -28,6 +35,7 @@ export interface RampDetails {
 export interface RampTransferRef {
   id: string;
   direction: 'SEND' | 'RECEIVE';
+  mint: string;
   toAddress: string;
   signature: string | null;
   amountRaw: string;
@@ -98,6 +106,7 @@ export function rampDetails(order: FiatOrder): RampDetails | null {
   return {
     orderId: order.id,
     direction: order.route.direction,
+    orderStatus: order.status,
     fiatCurrency: 'NGN',
     fiatAmountMinor: fiat.amountMinor,
     fiatDecimals: fiat.decimals,
@@ -129,6 +138,7 @@ function withinTolerance(actual: bigint, expected: bigint): boolean {
 export function matchRampOrders(
   transfers: RampTransferRef[],
   orders: FiatOrder[],
+  usdcMint: string,
 ): Map<string, RampDetails> {
   const matched = new Map<string, RampDetails>();
   const claimed = new Set<string>();
@@ -150,6 +160,9 @@ export function matchRampOrders(
     claimed.add(order.id);
   };
 
+  // Ramps only ever move USDC; any other token is never a naira leg.
+  transfers = transfers.filter((t) => t.mint === usdcMint);
+
   for (const transfer of transfers) {
     const order =
       transfer.direction === 'SEND'
@@ -170,10 +183,7 @@ export function matchRampOrders(
     )
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
   const arrivals = transfers
-    .filter(
-      (t) =>
-        t.direction === 'RECEIVE' && t.decimals === 6 && !matched.has(t.id),
-    )
+    .filter((t) => t.direction === 'RECEIVE' && !matched.has(t.id))
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   for (const order of waiting) {
     const usdc = usdcLeg(order);
@@ -195,33 +205,130 @@ export function matchRampOrders(
 export class RampActivityService {
   private readonly logger = new Logger(RampActivityService.name);
 
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly config: ConfigService,
+  ) {}
+
+  private get usdcMint(): string {
+    return this.config.get<string>('EXPO_PUBLIC_USDC_MINT_ADDRESS') ?? '';
+  }
+
+  /**
+   * Orders near these transfers in time, plus any order they match exactly by
+   * signature or deposit address however old it is: PAJ keeps a deposit
+   * account open for days, and a late payment still settles.
+   */
+  private async ordersFor(
+    userId: string,
+    refs: RampTransferRef[],
+  ): Promise<FiatOrder[]> {
+    const times = refs.map((t) => t.createdAt.getTime());
+    const signatures = refs
+      .map((t) => t.signature)
+      .filter((v): v is string => !!v);
+    const addresses = refs
+      .filter((t) => t.direction === 'SEND')
+      .map((t) => t.toAddress);
+    const near = and(
+      gte(
+        fiatOrders.createdAt,
+        new Date(Math.min(...times) - LOOKUP_MARGIN_MS),
+      ),
+      lte(fiatOrders.createdAt, new Date(Math.max(...times) + 60_000)),
+    );
+    const exact: SQL[] = [];
+    if (signatures.length > 0)
+      exact.push(
+        inArray(sql`${fiatOrders.payload}->>'settlementSignature'`, signatures),
+      );
+    if (addresses.length > 0)
+      exact.push(
+        inArray(
+          sql`${fiatOrders.payload}->'instructions'->>'depositAddress'`,
+          addresses,
+        ),
+      );
+    const rows = await this.db.client
+      .select({ payload: fiatOrders.payload })
+      .from(fiatOrders)
+      .where(and(eq(fiatOrders.userId, userId), or(near, ...exact)));
+    return rows.map((r) => r.payload);
+  }
+
+  /**
+   * Every USDC arrival a still-unreported deposit could be matched to.
+   *
+   * The fallback gives an order to the earliest fitting arrival. Deciding that
+   * from one page, or from the single transfer a notice is about, would let
+   * two reads give the same order to two different arrivals.
+   */
+  private async candidateArrivals(
+    userId: string,
+    waiting: FiatOrder[],
+  ): Promise<RampTransferRef[]> {
+    if (waiting.length === 0) return [];
+    const opened = waiting.map((o) => Date.parse(o.createdAt));
+    const rows = await this.db.client
+      .select({
+        id: transfers.id,
+        direction: transfers.direction,
+        mint: transfers.mint,
+        toAddress: transfers.toAddress,
+        signature: transfers.signature,
+        amountRaw: transfers.amountRaw,
+        decimals: transfers.decimals,
+        createdAt: transfers.createdAt,
+      })
+      .from(transfers)
+      .innerJoin(smartAccounts, eq(transfers.smartAccountId, smartAccounts.id))
+      .where(
+        and(
+          eq(smartAccounts.userId, userId),
+          eq(transfers.direction, 'RECEIVE'),
+          eq(transfers.mint, this.usdcMint),
+          gte(transfers.createdAt, new Date(Math.min(...opened))),
+          lte(
+            transfers.createdAt,
+            new Date(Math.max(...opened) + FALLBACK_WINDOW_MS),
+          ),
+        ),
+      );
+    return rows;
+  }
 
   /** Never fails a read: a ramp that cannot be matched renders as a transfer. */
   async forUser(
     userId: string,
-    transfers: RampTransferRef[],
+    refs: RampTransferRef[],
   ): Promise<Map<string, RampDetails>> {
-    if (transfers.length === 0) return new Map();
+    if (refs.length === 0) return new Map();
     try {
-      const times = transfers.map((t) => t.createdAt.getTime());
-      const rows = await this.db.client
-        .select({ payload: fiatOrders.payload })
-        .from(fiatOrders)
-        .where(
-          and(
-            eq(fiatOrders.userId, userId),
-            gte(
-              fiatOrders.createdAt,
-              new Date(Math.min(...times) - LOOKUP_MARGIN_MS),
-            ),
-            lte(fiatOrders.createdAt, new Date(Math.max(...times) + 60_000)),
-          ),
-        );
-      return matchRampOrders(
-        transfers,
-        rows.map((r) => r.payload),
+      let orders = await this.ordersFor(userId, refs);
+      const waiting = orders.filter(
+        (o) =>
+          !o.simulation &&
+          o.route.direction === 'receive' &&
+          !o.settlementSignature &&
+          !DEAD_ORDER.has(o.status),
       );
+      const extra = await this.candidateArrivals(userId, waiting);
+      const all = new Map(refs.map((t) => [t.id, t]));
+      for (const t of extra) if (!all.has(t.id)) all.set(t.id, t);
+      if (extra.length > 0) {
+        // An extra arrival may be another order's exact match; that order has
+        // to be in hand or the fallback could take its transfer.
+        const known = new Set(orders.map((o) => o.id));
+        for (const o of await this.ordersFor(userId, extra))
+          if (!known.has(o.id)) orders = [...orders, o];
+      }
+      const matched = matchRampOrders([...all.values()], orders, this.usdcMint);
+      const result = new Map<string, RampDetails>();
+      for (const t of refs) {
+        const details = matched.get(t.id);
+        if (details) result.set(t.id, details);
+      }
+      return result;
     } catch (err) {
       this.logger.warn('ramp.match_failed; activity renders as transfers', err);
       return new Map();
@@ -236,7 +343,7 @@ export class RampActivityService {
       const [owner] = await this.db.client
         .select({ userId: smartAccounts.userId })
         .from(smartAccounts)
-        .where(sql`${smartAccounts.id} = ${smartAccountId}`)
+        .where(eq(smartAccounts.id, smartAccountId))
         .limit(1);
       if (!owner) return null;
       return (

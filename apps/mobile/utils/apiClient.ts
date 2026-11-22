@@ -596,6 +596,20 @@ export const TransferRowSchema = z.object({
     .object({
       orderId: z.string(),
       direction: z.enum(["receive", "send"]),
+      // Optional so a client still reads rows from a backend that predates it.
+      orderStatus: z
+        .enum([
+          "creating",
+          "awaiting_payment",
+          "processing",
+          "completed",
+          "expired",
+          "failed",
+          "needs_attention",
+          "return_pending",
+          "returned",
+        ])
+        .optional(),
       fiatCurrency: z.literal("NGN"),
       fiatAmountMinor: z.string(),
       fiatDecimals: z.number().int(),

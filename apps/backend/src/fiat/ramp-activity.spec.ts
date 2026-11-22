@@ -2,6 +2,9 @@ import { matchRampOrders, type RampTransferRef } from './ramp-activity';
 import type { FiatOrder } from './fiat.types';
 
 const OPENED = '2026-11-21T20:55:00.000Z';
+const USDC = 'UsdcMint1111';
+const run = (t: RampTransferRef[], o: FiatOrder[]) =>
+  matchRampOrders(t, o, USDC);
 
 function deposit(overrides: Partial<FiatOrder> = {}): FiatOrder {
   return {
@@ -52,6 +55,7 @@ function transfer(overrides: Partial<RampTransferRef>): RampTransferRef {
   return {
     id: 't1',
     direction: 'RECEIVE',
+    mint: USDC,
     toAddress: 'vault',
     signature: 'sig',
     amountRaw: '6904024',
@@ -68,7 +72,7 @@ describe('matchRampOrders', () => {
       toAddress: 'DepositAddr1111',
       amountRaw: '3512817',
     });
-    const match = matchRampOrders([t], [bankSend()]).get('t1');
+    const match = run([t], [bankSend()]).get('t1');
     expect(match).toMatchObject({
       direction: 'send',
       fiatAmountMinor: '500000',
@@ -77,12 +81,13 @@ describe('matchRampOrders', () => {
       logoKey: 'kuda',
       accountLast4: '6789',
       feeMinor: '23463',
+      orderStatus: 'completed',
     });
     expect(match?.rate).toBe('1432.92');
   });
 
   it('names a deposit by the signature its partner reported', () => {
-    const match = matchRampOrders(
+    const match = run(
       [transfer({ signature: 'pajSig', amountRaw: '1' })],
       [deposit({ settlementSignature: 'pajSig' })],
     ).get('t1');
@@ -92,7 +97,7 @@ describe('matchRampOrders', () => {
   });
 
   it('names a deposit that arrives before its signature is reported', () => {
-    const match = matchRampOrders(
+    const match = run(
       [transfer({ signature: 'unseen' })],
       [deposit({ status: 'processing' })],
     );
@@ -100,7 +105,7 @@ describe('matchRampOrders', () => {
   });
 
   it('leaves an ordinary arrival of a different size alone', () => {
-    const match = matchRampOrders(
+    const match = run(
       [transfer({ amountRaw: '5000000' })],
       [deposit({ status: 'processing' })],
     );
@@ -108,7 +113,7 @@ describe('matchRampOrders', () => {
   });
 
   it('does not take an arrival long after the order opened for the naira', () => {
-    const match = matchRampOrders(
+    const match = run(
       [transfer({ createdAt: new Date('2026-11-22T02:00:00.000Z') })],
       [deposit({ status: 'processing' })],
     );
@@ -116,16 +121,12 @@ describe('matchRampOrders', () => {
   });
 
   it('ignores expired orders and simulations', () => {
-    expect(
-      matchRampOrders([transfer({})], [deposit({ status: 'expired' })]).size,
-    ).toBe(0);
-    expect(
-      matchRampOrders([transfer({})], [deposit({ simulation: true })]).size,
-    ).toBe(0);
+    expect(run([transfer({})], [deposit({ status: 'expired' })]).size).toBe(0);
+    expect(run([transfer({})], [deposit({ simulation: true })]).size).toBe(0);
   });
 
   it('gives one deposit to one arrival only', () => {
-    const match = matchRampOrders(
+    const match = run(
       [
         transfer({ id: 'a' }),
         transfer({
@@ -136,5 +137,25 @@ describe('matchRampOrders', () => {
       [deposit({ status: 'processing' })],
     );
     expect([...match.keys()]).toEqual(['a']);
+  });
+
+  it('never takes another token for the naira, even at the quoted size', () => {
+    expect(
+      run(
+        [transfer({ mint: 'EurcMint', signature: 'unseen' })],
+        [deposit({ status: 'processing' })],
+      ).size,
+    ).toBe(0);
+  });
+
+  it('carries the bank send outcome apart from the funding leg', () => {
+    const t = transfer({
+      direction: 'SEND',
+      toAddress: 'DepositAddr1111',
+      amountRaw: '3512817',
+    });
+    expect(
+      run([t], [bankSend({ status: 'returned' })]).get('t1')?.orderStatus,
+    ).toBe('returned');
   });
 });

@@ -9,7 +9,13 @@ import { RampMark } from "@/components/ui/atoms/RampMark";
 import { cn } from "@/utils/cn";
 import { truncateAddress } from "@/utils/helper";
 import { activityDetailTimestamp, type ActivityEntry } from "@/utils/activity";
-import { formatDollarsMinor, formatNaira, formatRate } from "@/utils/ramp";
+import {
+  formatDollarsMinor,
+  formatNaira,
+  formatRate,
+  rampOutcome,
+  type RampOutcome,
+} from "@/utils/ramp";
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -21,6 +27,40 @@ export interface StatusMeta {
 }
 
 const MUTED = "rgba(0,0,0,0.3)";
+
+/** How a bank send's payout outcome reads, when it differs from the funding leg. */
+const OUTCOME_META: Record<RampOutcome, StatusMeta> = {
+  completed: {
+    label: "Completed",
+    color: "#34C759",
+    icon: "checkmark-circle",
+    textClass: "text-success",
+  },
+  processing: {
+    label: "Processing",
+    color: "#FF9500",
+    icon: "time",
+    textClass: "text-[#FF9500]",
+  },
+  refunding: {
+    label: "Refunding",
+    color: "#FF9500",
+    icon: "arrow-undo-circle",
+    textClass: "text-[#FF9500]",
+  },
+  refunded: {
+    label: "Refunded to your Account",
+    color: "#8E8E93",
+    icon: "arrow-undo-circle",
+    textClass: "text-black/50",
+  },
+  failed: {
+    label: "Failed",
+    color: "#FF3B30",
+    icon: "close-circle",
+    textClass: "text-destructive",
+  },
+};
 
 function Row({
   label,
@@ -82,7 +122,7 @@ export function RampTransactionDetail({
   visible,
   onClose,
   item,
-  status,
+  status: transferStatus,
   onCopy,
 }: {
   visible: boolean;
@@ -93,6 +133,8 @@ export function RampTransactionDetail({
 }) {
   const ramp = item.ramp!;
   const isSend = ramp.direction === "send";
+  const outcome = rampOutcome(ramp, item.status);
+  const status = outcome ? OUTCOME_META[outcome] : transferStatus;
   const naira = formatNaira(ramp.fiatAmountMinor, ramp.fiatDecimals);
   const dollars = formatDollarsMinor(item.amountRaw, item.decimals);
   const date = format(new Date(activityDetailTimestamp(item)), "MMM d, h:mma");

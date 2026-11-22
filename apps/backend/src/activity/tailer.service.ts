@@ -168,8 +168,10 @@ export class TailerService {
         decimals = COALESCE(transfers.decimals, EXCLUDED.decimals),
         usd_value = COALESCE(transfers.usd_value, EXCLUDED.usd_value),
         usd_priced_at = COALESCE(transfers.usd_priced_at, EXCLUDED.usd_priced_at)
-      RETURNING (xmax = 0) AS inserted
-    `)) as unknown as { rows: { inserted: boolean }[] };
+      RETURNING id, created_at, (xmax = 0) AS inserted
+    `)) as unknown as {
+      rows: { id: string; created_at: Date | string; inserted: boolean }[];
+    };
     const isNewRow = written.rows?.[0]?.inserted === true;
 
     // Update the per-wallet bookmark. Take MAX so out-of-order events
@@ -195,14 +197,16 @@ export class TailerService {
       const symbol = await this.namer.symbolFor(evt.mint);
       // A naira deposit is told in naira: the Consumer paid ₦10,000 from their
       // bank, and "6.9 USDC" is not a sum they recognise.
+      const row = written.rows[0];
       const ramp = await this.ramps?.forSmartAccount(smartAccountId, {
-        id: 'arrival',
+        id: row.id,
         direction: 'RECEIVE',
+        mint: evt.mint,
         toAddress: evt.toAddress,
         signature: evt.signature,
         amountRaw: evt.amountRaw.toString(),
         decimals: evt.decimals,
-        createdAt: new Date(),
+        createdAt: new Date(row.created_at),
       });
       await this.notifications
         .notifyArrival({
