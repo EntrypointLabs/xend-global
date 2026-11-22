@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/unbound-method */
-import { NotificationsService } from './notifications.service';
+import {
+  NotificationsService,
+  paymentMadeNotice,
+} from './notifications.service';
 import type { DbService } from '../db/db.service';
 import type { PushMessage, PushSender } from './push-sender.interface';
 
@@ -287,5 +290,45 @@ describe('NotificationsService', () => {
 
       expect(deleted).toHaveLength(1);
     });
+  });
+});
+
+describe('paymentMadeNotice', () => {
+  it('reads like a card spend, with the balance left', () => {
+    expect(
+      paymentMadeNotice({
+        merchantName: 'Prydd Shop',
+        category: 'shopping',
+        amount: '$8',
+        balance: '$42.10',
+        lowBalance: false,
+      }),
+    ).toEqual({
+      title: 'Prydd Shop',
+      body: '🛍️ Paid $8 at Prydd Shop\nUSD Balance: $42.10',
+    });
+  });
+
+  it('flags a low balance and falls back to a card for an unknown category', () => {
+    expect(
+      paymentMadeNotice({
+        merchantName: 'Corner Store',
+        category: null,
+        amount: '$5',
+        balance: '$3.20',
+        lowBalance: true,
+      }).body,
+    ).toBe('💳 Paid $5 at Corner Store\n⚠️ USD Balance: $3.20');
+  });
+
+  it('leaves the balance line out when it could not be read', () => {
+    expect(
+      paymentMadeNotice({
+        merchantName: 'Prydd Shop',
+        category: 'food_drink',
+        amount: '$12',
+        balance: null,
+      }).body,
+    ).toBe('🍽️ Paid $12 at Prydd Shop');
   });
 });

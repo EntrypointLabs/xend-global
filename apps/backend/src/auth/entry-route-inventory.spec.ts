@@ -190,6 +190,9 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'GET /merchant-portal/payments',
   'GET /merchant-portal/payments/:id',
   'GET /merchant-portal/audit',
+  'PUT /merchant-portal/branding',
+  'PUT /merchant-portal/logo',
+  'DELETE /merchant-portal/logo',
   'POST /internal/refunds',
   'POST /internal/webhook_endpoints',
   'GET /internal/merchants/:merchantId/webhook_endpoints',
@@ -216,6 +219,8 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /webhooks/fiat/paycrest',
   'GET /health',
   'GET /health/live',
+  // A public image a Merchant shows the world; no session reaches it.
+  'GET /v1/merchant-logos/:id',
   'GET /features',
   'GET /fx/display-rates',
   'GET /metrics',

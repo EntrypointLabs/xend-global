@@ -5,6 +5,7 @@ import { ScreenLayout } from "@/components/ui/layout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { GlassButton } from "@/components/ui/atoms/Glass";
+import { MerchantAvatar } from "@/components/ui/atoms/MerchantAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { useSessions, useRevokeSession } from "@/hooks/useSessions";
 import type { SessionSummary } from "@/utils/apiClient";
@@ -114,7 +115,11 @@ export default function ConnectedMerchantsScreen() {
                 key={session.id}
                 className="flex-row items-center justify-between py-3"
               >
-                <View className="flex-1 pr-3">
+                <MerchantAvatar
+                  logoUrl={session.merchantLogoUrl}
+                  category={session.merchantCategory}
+                />
+                <View className="flex-1 px-3.5">
                   <Typography weight="600" className="text-base text-black">
                     {session.merchantDisplayName}
                   </Typography>

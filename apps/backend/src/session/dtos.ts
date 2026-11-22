@@ -1,8 +1,12 @@
 import { z } from 'zod';
+import { MERCHANT_CATEGORIES } from '../db/schema';
 
 export const SessionSummarySchema = z.object({
   id: z.string(),
   merchantDisplayName: z.string(),
+  /** May 404 when the Merchant has no logo; the app then shows the category icon. */
+  merchantLogoUrl: z.string(),
+  merchantCategory: z.enum(MERCHANT_CATEGORIES),
   createdAt: z.string(),
   lastUsedAt: z.string(),
   expiresAt: z.string(),

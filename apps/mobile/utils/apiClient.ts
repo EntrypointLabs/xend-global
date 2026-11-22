@@ -32,6 +32,7 @@ import {
   VerificationSchema,
 } from "@/utils/fiat";
 import { z } from "zod";
+import { MERCHANT_CATEGORIES } from "@/utils/merchantCategory";
 
 import * as Sentry from "@sentry/react-native";
 
@@ -558,6 +559,13 @@ export type SubmitTransferResponse = z.infer<
   typeof SubmitTransferResponseSchema
 >;
 
+// A category this build does not know yet reads as none, so one new value on
+// the backend cannot fail the parse of a whole Activity page.
+const MerchantCategorySchema = z
+  .enum(MERCHANT_CATEGORIES)
+  .nullish()
+  .catch(null);
+
 export const TransferRowSchema = z.object({
   id: z.string(),
   direction: z.enum(["SEND", "RECEIVE"]),
@@ -573,6 +581,9 @@ export const TransferRowSchema = z.object({
   // is the presentation literal (never uppercased).
   kind: z.enum(["transfer", "payment"]),
   merchantName: z.string().nullable(),
+  /** Set only on Payments. May 404, so it is a candidate, not a promise. */
+  merchantLogoUrl: z.string().nullish(),
+  merchantCategory: MerchantCategorySchema,
   /**
    * What the transfer was worth in USD when it happened, as a decimal string.
    * Frozen server-side at index time, never re-priced on read.
@@ -670,6 +681,8 @@ export type TransferListResponse = z.infer<typeof TransferListResponseSchema>;
 export const SessionSummarySchema = z.object({
   id: z.string(),
   merchantDisplayName: z.string(),
+  merchantLogoUrl: z.string().nullish(),
+  merchantCategory: MerchantCategorySchema,
   createdAt: z.string().datetime(),
   lastUsedAt: z.string().datetime(),
   expiresAt: z.string().datetime(),

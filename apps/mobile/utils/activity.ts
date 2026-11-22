@@ -3,6 +3,7 @@ import type {
   AwaitingPayment,
   TransferRow,
 } from "@/utils/apiClient";
+import type { MerchantCategory } from "@/utils/merchantCategory";
 import { describeToken, formatTokenAmount } from "@/utils/tokens";
 import {
   formatDollarsMinor,
@@ -43,6 +44,9 @@ export interface ActivityEntry {
    */
   securityKind?: AccountEventRow["kind"];
   merchantName: string | null;
+  /** Set only on `payment` entries. */
+  merchantLogoUrl?: string | null;
+  merchantCategory?: MerchantCategory | null;
   /**
    * Set only on `awaiting` entries: the Merchant's own currency and the figure
    * they quoted.
@@ -127,6 +131,10 @@ export function mapTransferRowToActivityEntry(
     status: row.status.toLowerCase() as ActivityEntry["status"],
     kind: row.kind === "payment" ? "payment" : "transfer",
     merchantName: row.merchantName,
+    merchantLogoUrl:
+      row.kind === "payment" ? (row.merchantLogoUrl ?? null) : null,
+    merchantCategory:
+      row.kind === "payment" ? (row.merchantCategory ?? null) : null,
     mint: row.mint,
     amountRaw: row.amountRaw,
     // The row's own decimals first. The holdings lookup only knows mints the

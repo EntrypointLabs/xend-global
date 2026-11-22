@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MERCHANT_CATEGORIES } from '../db/schema';
 
 // DTOs for the /transfers/prepare, /transfers/submit, and
 // GET /transfers endpoints.
@@ -85,6 +86,10 @@ export const TransferRowSchema = z.object({
   // to match the SEND/RECEIVE direction enum or Zod rejects every real row.
   kind: z.enum(['transfer', 'payment']),
   merchantName: z.string().nullable(),
+  /** Set only for a Payment: the Merchant's logo, which may 404 when it has none. */
+  merchantLogoUrl: z.string().nullable(),
+  /** Set only for a Payment: what the Merchant sells, for a fallback icon. */
+  merchantCategory: z.enum(MERCHANT_CATEGORIES).nullable(),
   /**
    * What the transfer was worth in USD when it happened, as a decimal string.
    *

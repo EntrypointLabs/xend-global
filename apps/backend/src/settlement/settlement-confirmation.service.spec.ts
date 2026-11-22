@@ -1,3 +1,4 @@
+import type { NotificationsService } from '../notifications/notifications.service';
 import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { DbService } from '../db/db.service';
@@ -46,6 +47,8 @@ function makeDb(cfg: {
   claim?: { intentId: string }[][];
   payment?: typeof PAYMENT_ROW | null;
   inserts?: unknown[];
+  /** The payments row already existed, so the insert wrote nothing. */
+  insertConflict?: boolean;
 }): DbService {
   const claims = [...(cfg.claim ?? [])];
   const thenableWhere = (returningResult: unknown[]) => {
@@ -66,7 +69,10 @@ function makeDb(cfg: {
       values: (v: unknown) => ({
         onConflictDoNothing: () => {
           cfg.inserts?.push(v);
-          return Promise.resolve(undefined);
+          const written = cfg.insertConflict ? [] : [{ id: 'pay_1' }];
+          return Object.assign(Promise.resolve(undefined), {
+            returning: () => Promise.resolve(written),
+          });
         },
       }),
     }),
@@ -144,6 +150,8 @@ function makeIntents() {
     merchantId: 'm_1',
     consumerId: 'u_1',
     usdcSettlementRaw: '1000000',
+    displayCurrency: 'USD',
+    displayAmountMinor: '800',
   });
   const transition = jest.fn().mockResolvedValue({});
   return {
@@ -184,6 +192,7 @@ function makeService(deps: {
   provider: SettlementProvider;
   publisher: EventPublisher;
   budgetMs?: number;
+  notifications?: NotificationsService;
 }): SettlementConfirmationService {
   const service = new SettlementConfirmationService(
     deps.db,
@@ -193,6 +202,10 @@ function makeService(deps: {
     deps.provisioning ?? makeProvisioning(),
     new SettlementRouter([deps.provider]),
     deps.publisher,
+    deps.notifications ??
+      ({
+        notifyPaymentMade: jest.fn().mockResolvedValue(undefined),
+      } as unknown as NotificationsService),
   );
   service.onModuleInit();
   return service;
@@ -329,6 +342,58 @@ describe('SettlementConfirmationService', () => {
       expect(events[0].topic).toBe('payment.succeeded');
       expect(events[0].correlationId).toBe('pi_1');
       expect(events[0].payload.paymentId).toBe('pay_1');
+    });
+
+    it('tells the Consumer they paid, once, when it writes the payment row', async () => {
+      const { provider } = makeProvider({ status: 'complete' });
+      const { intents } = makeIntents();
+      const { publisher } = makePublisher();
+      const notifyPaymentMade = jest.fn().mockResolvedValue(undefined);
+      const service = makeService({
+        db: makeDb({ claim: [[{ intentId: 'pi_1' }]], payment: PAYMENT_ROW }),
+        intents,
+        provider,
+        publisher,
+        notifications: { notifyPaymentMade } as unknown as NotificationsService,
+      });
+
+      await service.finalizeSucceeded('pi_1', 'sig-1');
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(notifyPaymentMade).toHaveBeenCalledTimes(1);
+      expect(notifyPaymentMade.mock.calls[0]).toEqual([
+        'u_1',
+        {
+          merchantName: 'a merchant',
+          category: null,
+          amount: '$8',
+          balance: null,
+          lowBalance: false,
+        },
+      ]);
+    });
+
+    it('sends no second notice when the payment row was already written', async () => {
+      const { provider } = makeProvider({ status: 'complete' });
+      const { intents } = makeIntents();
+      const { publisher } = makePublisher();
+      const notifyPaymentMade = jest.fn().mockResolvedValue(undefined);
+      const service = makeService({
+        db: makeDb({
+          claim: [[{ intentId: 'pi_1' }]],
+          payment: PAYMENT_ROW,
+          insertConflict: true,
+        }),
+        intents,
+        provider,
+        publisher,
+        notifications: { notifyPaymentMade } as unknown as NotificationsService,
+      });
+
+      await service.finalizeSucceeded('pi_1', 'sig-1');
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(notifyPaymentMade).not.toHaveBeenCalled();
     });
 
     it('leaves the intent in settling and publishes nothing when the provider is pending', async () => {

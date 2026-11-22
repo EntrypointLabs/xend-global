@@ -39,8 +39,10 @@ const pajEnabled = /^(true|1|yes)$/i.test(process.env.PAJ_ENABLED ?? '');
  * without a module cycle, and only when the naira leg is enabled: an
  * unmounted receiver cannot be reached with a missing secret.
  */
+import { NotificationsModule } from '../notifications/notifications.module';
 @Module({
   imports: [
+    NotificationsModule,
     SolanaModule,
     PaymentModule,
     EventsModule,

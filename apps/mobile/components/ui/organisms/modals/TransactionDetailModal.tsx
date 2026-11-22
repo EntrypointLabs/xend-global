@@ -2,6 +2,7 @@ import React from "react";
 import { View, TouchableOpacity } from "react-native";
 import { ActionModal } from "../ActionModal";
 import { TokenMark } from "@/components/ui/atoms/TokenMark";
+import { MerchantAvatar } from "@/components/ui/atoms/MerchantAvatar";
 import { describeToken } from "@/utils/tokens";
 import { formatUsdFromString } from "@/utils/balances";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
@@ -117,8 +118,12 @@ export function TransactionDetailModal({
 
   const counterpartyLabel = item.direction === "send" ? "To" : "From";
   const contact = contacts.find((c) => c.address === item.counterparty);
+  const isPayment = item.kind === "payment";
+  // A Payment is to a Merchant, so it names them, as its Activity row does.
   const counterpartyDisplay =
-    contact?.name ?? truncateAddress(item.counterparty);
+    (isPayment ? item.merchantName : null) ??
+    contact?.name ??
+    truncateAddress(item.counterparty);
 
   const rowClass = "flex-row justify-between items-center py-2";
   return (
@@ -132,12 +137,20 @@ export function TransactionDetailModal({
         </HapticPressable>
 
         <View className="relative mb-3">
-          <TokenMark
-            mint={item.mint}
-            label={name}
-            iconUrl={item.iconUrl}
-            size={64}
-          />
+          {isPayment ? (
+            <MerchantAvatar
+              logoUrl={item.merchantLogoUrl}
+              category={item.merchantCategory}
+              size={64}
+            />
+          ) : (
+            <TokenMark
+              mint={item.mint}
+              label={name}
+              iconUrl={item.iconUrl}
+              size={64}
+            />
+          )}
           <View className="absolute right-0 top-0 overflow-hidden rounded-full bg-white">
             <Ionicons name={status.icon} size={16} color={status.color} />
           </View>

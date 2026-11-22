@@ -25,29 +25,34 @@ export function apiUrl(path: string): string {
 export interface PortalClient {
   get<T>(path: string): Promise<T>;
   post<T>(path: string, body?: unknown): Promise<T>;
+  put<T>(path: string, body?: unknown): Promise<T>;
+  delete<T>(path: string): Promise<T>;
 }
 
 export function createPortalClient(token: string | null): PortalClient {
   async function send<T>(
     path: string,
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PUT" | "DELETE",
     body?: unknown,
   ): Promise<T> {
     if (!token) throw new Error(MISSING_TOKEN);
+    const hasBody = method === "POST" || method === "PUT";
     const response = await fetch(apiUrl(`merchant-portal/${path}`), {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
-        ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
+        ...(hasBody ? { "Content-Type": "application/json" } : {}),
       },
-      body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
+      body: hasBody ? JSON.stringify(body ?? {}) : undefined,
     });
     const result: unknown = await response.json().catch(() => ({}));
-    if (!response.ok) throw new PortalRequestError(result);
+    if (!response.ok) throw new PortalRequestError(result, response.status);
     return result as T;
   }
   return {
     get: (path) => send(path, "GET"),
     post: (path, body) => send(path, "POST", body),
+    put: (path, body) => send(path, "PUT", body),
+    delete: (path) => send(path, "DELETE"),
   };
 }
