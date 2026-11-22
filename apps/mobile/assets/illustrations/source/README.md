@@ -37,8 +37,8 @@ palette, so they read at icon size. Saved at 256px. Activity shows them bare,
 with no disc behind them, and the event is part of the object rather than a
 corner badge.
 
-| File                   | Used on                | Subject                                                                                                                                       |
-| ---------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `recovery-key-added`   | Added Recovery Key     | Three chunky keys of slightly different shapes on one thick ring, with a round charm on the ring carrying an embossed plus. Violet `#7C5CFF`. |
-| `recovery-key-removed` | Removed Recovery Key   | The same render with the plus swapped for an embossed cross, then desaturated to neutral grey so a removed key reads as gone.                 |
-| `wallet-renamed`       | Renamed / Named Wallet | A chunky bifold wallet with a blank luggage-style name tag on a loop of cord. Blue `#0080FF`, the tag a lighter tint.                         |
+| File                   | Used on                | Subject                                                                                                                                                                        |
+| ---------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `recovery-key-added`   | Added Recovery Key     | Three chunky keys of slightly different shapes on one thick ring, with a round charm on the ring carrying an embossed plus. Rendered violet, recoloured to the money-in green. |
+| `recovery-key-removed` | Removed Recovery Key   | The same render with the plus swapped for an embossed cross, then desaturated to neutral grey so a removed key reads as gone.                                                  |
+| `wallet-renamed`       | Renamed / Named Wallet | A chunky bifold wallet with a blank luggage-style name tag on a loop of cord. Blue `#0080FF`, the tag a lighter tint.                                                          |
