@@ -71,9 +71,8 @@ export function useTransfersInfinite() {
  * Faster while a transfer of theirs is in flight, because that is the one
  * moment they are watching the screen waiting for a specific answer.
  *
- * A change to the newest row invalidates the feed AND the balances, since an
- * arrival moves both and refreshing one without the other leaves the two
- * disagreeing on screen.
+ * A change to the newest row invalidates the feed. The balance follows from
+ * `watchTransfersForBalance`, which reacts to this query and the feed alike.
  *
  * This is a poll, not a push. It stops when the app is backgrounded, so it
  * costs nothing while nobody is looking; a server-pushed channel would still
@@ -123,7 +122,6 @@ export function usePendingWatch(hasPending = false) {
         (lastHeadRef.current !== headKey || feedBehindHead)
       ) {
         queryClient.invalidateQueries({ queryKey: ["transfers", userId] });
-        queryClient.invalidateQueries({ queryKey: ["balances", userId] });
 
         // A gap far longer than the poll means the app was backgrounded, so
         // this arrival is news from while they were away rather than

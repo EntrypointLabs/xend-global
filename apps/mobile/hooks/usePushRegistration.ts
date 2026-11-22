@@ -31,6 +31,7 @@ const DESTINATIONS: Record<string, string> = {
   pending_change: "/(tabs)",
 };
 
+const ARRIVAL_KIND = "arrival";
 const PAYMENT_APPROVAL_KIND = "payment_approval";
 const PENDING_CHANGE_KIND = "pending_change";
 const HOME = "/(tabs)";
@@ -113,6 +114,26 @@ export function useNotificationRouting() {
 
     router.push(((kind && DESTINATIONS[kind]) ?? HOME) as never);
   }, [response, queryClient]);
+}
+
+/**
+ * A "Money in" notice that lands while the app is open refreshes Activity and
+ * the balance together, rather than waiting for the next poll to find the
+ * transfer the notice already announced.
+ */
+export function useArrivalNotices() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        if (noticeKind(notification) !== ARRIVAL_KIND) return;
+        void queryClient.invalidateQueries({ queryKey: ["transfers"] });
+        void queryClient.invalidateQueries({ queryKey: ["balances"] });
+      }
+    );
+    return () => sub.remove();
+  }, [queryClient]);
 }
 
 /** The Consumer's own answer about notifications, as the server holds it. */

@@ -63,7 +63,9 @@ import {
 import LoadingScreen from "@/components/ui/layout/LoadingScreen";
 import LockScreen from "@/components/ui/layout/LockScreen";
 import { usePendingWatch } from "@/hooks/useTransfers";
+import { watchTransfersForBalance } from "@/utils/balanceFollowsActivity";
 import {
+  useArrivalNotices,
   useNotificationRouting,
   usePushRegistration,
 } from "@/hooks/usePushRegistration";
@@ -80,6 +82,7 @@ if (SEED_DEMO) {
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2 } },
 });
+watchTransfersForBalance(queryClient);
 
 /**
  * Bridges React Native's AppState into React Query's focusManager so queries
@@ -327,6 +330,7 @@ function ActivityWatch() {
   usePendingWatch();
   usePushRegistration();
   useNotificationRouting();
+  useArrivalNotices();
   return null;
 }
 
