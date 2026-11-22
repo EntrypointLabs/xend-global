@@ -44,7 +44,7 @@ export function RampMark({
 
   return (
     <View
-      className="items-center justify-center rounded-full bg-black/5"
+      className="items-center justify-center rounded-full bg-[#F2F2F2]"
       style={disc}
     >
       {ramp.bankName ? (

@@ -782,6 +782,18 @@ class BackendClient {
       })
     );
   }
+  /**
+   * Tells the backend the Account was renamed, so it appears in Activity. The
+   * name itself stays on the device.
+   */
+  async recordAccountRename(name: string, previous: string | null) {
+    if (SEED_DEMO) return;
+    await this.request<void>("/account/name", {
+      auth: true,
+      method: "POST",
+      body: JSON.stringify({ name, previous }),
+    });
+  }
   async observedBalances() {
     if (SEED_DEMO) return demoFiat.observedBalances();
     return ObservedBalancesSchema.parse(

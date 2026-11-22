@@ -715,6 +715,22 @@ export const demoRampActivity = {
     logoKey: "kuda",
     accountLast4: "6789",
   },
+  // A send made before orders kept the bank: name only, no logo.
+  legacySend: {
+    orderId: "demo-send-0",
+    direction: "send",
+    orderStatus: "completed",
+    fiatCurrency: "NGN",
+    fiatAmountMinor: "200000",
+    fiatDecimals: 2,
+    rate: "1430.00",
+    feeMinor: null,
+    counterpartyName: "Chidi Nwosu",
+    bankName: null,
+    bankCode: null,
+    logoKey: null,
+    accountLast4: null,
+  },
   gtbSend: {
     orderId: "demo-send-2",
     direction: "send",
