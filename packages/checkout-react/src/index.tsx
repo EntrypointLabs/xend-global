@@ -17,17 +17,17 @@ export type {
 };
 
 export interface PryddPayButtonProps {
-  /** Exact checkout origin, e.g. "https://pay.prydd.co". */
-  checkoutOrigin: string;
+  /** Where the hosted checkout lives. Defaults to "https://prydd.co/pay". */
+  checkoutUrl?: string;
   /** Your server call that creates the intent and returns its reference. */
   createIntent: () => Promise<{ reference: string }>;
   /** Reference + status only. NOT settlement truth: confirm server-side. */
   onResult: (result: CheckoutResult) => void;
   onUnresolved?: (u: CheckoutUnresolved) => void;
   onReady?: () => void;
-  /** "iframe" (default: glass sheet, inline ceremony), "modal" (sheet plus a window), "popup" or "redirect". Webviews and blocked popups redirect on their own. */
+  /** "modal" (default: glass sheet plus a Prydd window), "iframe", "popup" or "redirect". Webviews and blocked popups redirect on their own. */
   presentation?: CheckoutPresentation;
-  /** Origin of the Prydd API. The sheet reads the intent summary from it; without one, the sheet presentations degrade to "popup". */
+  /** Origin of the Prydd API. Defaults to "https://api.prydd.co". */
   apiBase?: string;
   /** "auto" (default) follows the viewer's colour scheme; "light" / "dark" pin the material. */
   theme?: ButtonTheme;
@@ -40,20 +40,20 @@ export interface PryddPayButtonProps {
  * callbacks are held in a ref so re-rendering with new callback identities
  * does not tear down and rebuild the button (which would drop an in-flight
  * ceremony handle). The button remounts only when a mount-time option
- * (checkoutOrigin, presentation, theme, apiBase) changes.
+ * (checkoutUrl, presentation, theme, apiBase) changes.
  */
 export function PryddPayButton(props: PryddPayButtonProps): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   const latest = useRef(props);
   latest.current = props;
 
-  const { checkoutOrigin, presentation, theme, apiBase } = props;
+  const { checkoutUrl, presentation, theme, apiBase } = props;
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const handle = mountPryddButton({
       mount: el,
-      checkoutOrigin,
+      checkoutUrl,
       presentation,
       theme,
       apiBase,
@@ -63,7 +63,7 @@ export function PryddPayButton(props: PryddPayButtonProps): React.JSX.Element {
       onReady: () => latest.current.onReady?.(),
     });
     return () => handle.unmount();
-  }, [checkoutOrigin, presentation, theme, apiBase]);
+  }, [checkoutUrl, presentation, theme, apiBase]);
 
   return <div ref={ref} />;
 }

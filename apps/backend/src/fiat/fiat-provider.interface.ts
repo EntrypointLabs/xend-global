@@ -64,6 +64,10 @@ export interface FiatInstructions {
   depositAmount?: FiatMoney;
   /** Resolved payout beneficiary, for a send. */
   payoutAccountName?: string;
+  /** The beneficiary's bank, so Activity can still name it after the order ends. */
+  payoutBankCode?: string;
+  payoutBankName?: string;
+  payoutAccountNumber?: string;
   expiresAt?: string;
   url?: string;
 }

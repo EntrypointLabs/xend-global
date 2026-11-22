@@ -8,7 +8,7 @@ export const RP_ORIGIN = 'https://prydd.co';
 
 /**
  * Base URL for the checkout HTTP endpoints. In production this is a same-origin
- * /api path so the HttpOnly session cookie stays scoped to pay.prydd.co.
+ * /pay/api path so the HttpOnly session cookie stays first-party on prydd.co.
  */
 export const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 

@@ -72,7 +72,8 @@ describe("mountPryddButton sync-open handshake", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
+      presentation: "popup",
       createIntent,
       onResult: () => {},
     });
@@ -111,7 +112,8 @@ describe("mountPryddButton sync-open handshake", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
+      presentation: "popup",
       createIntent: () => Promise.resolve({ reference: "pi_ref_opener" }),
       onResult: () => {},
     });
@@ -124,37 +126,56 @@ describe("mountPryddButton sync-open handshake", () => {
     expect(navUrl.searchParams.get("opener")).toBe(window.location.origin);
   });
 
-  it("opens the popup when the default sheet has no apiBase to read the summary from", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const openSpy = vi
-      .spyOn(window, "open")
-      .mockImplementation(() => makeFakeWindow() as unknown as Window);
+  it("defaults to the sheet on prydd.co/pay, reading the summary from api.prydd.co", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        merchantDisplayName: "Sabi Market",
+        displayCurrency: "USD",
+        displayAmountMinor: "800",
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
       createIntent: () => Promise.resolve({ reference: "pi_default" }),
       onResult: () => {},
     });
     document.querySelector("button")!.click();
-    expect(openSpy).toHaveBeenCalledTimes(1);
-    expect(document.querySelector("[data-prydd-checkout]")).toBeNull();
-    // Nothing was asked for that could not be delivered, so nothing is said.
-    expect(warn).not.toHaveBeenCalled();
-    handle.unmount();
+    expect(document.querySelector("[data-prydd-checkout]")).not.toBeNull();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const summaryUrl = new URL(
+      String((fetchMock.mock.calls[0] as unknown[])[0]),
+    );
+    expect(summaryUrl.origin).toBe("https://api.prydd.co");
+  });
 
+  it("opens the checkout under the path it is given", () => {
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockImplementation(() => makeFakeWindow() as unknown as Window);
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
-      presentation: "modal",
-      createIntent: () => Promise.resolve({ reference: "pi_modal" }),
+      checkoutUrl: "https://prydd.co/pay",
+      presentation: "popup",
+      createIntent: () => Promise.resolve({ reference: "pi_path" }),
       onResult: () => {},
     });
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0]![0])).toContain("apiBase");
     document.querySelector("button")!.click();
-    expect(openSpy).toHaveBeenCalledTimes(2);
-    expect(document.querySelector("[data-prydd-checkout]")).toBeNull();
+    const launched = new URL(String(openSpy.mock.calls[0]![0]));
+    expect(launched.origin + launched.pathname).toBe("https://prydd.co/pay/");
+  });
+
+  it("refuses a checkout URL carrying a query", () => {
+    expect(() =>
+      mountPryddButton({
+        mount: container(),
+        checkoutUrl: "https://prydd.co/pay?x=1",
+        createIntent: () => Promise.resolve({ reference: "pi_q" }),
+        onResult: () => {},
+      }),
+    ).toThrow(/query/);
   });
 
   it("opens the popup for a presentation value it does not recognise", () => {
@@ -165,7 +186,7 @@ describe("mountPryddButton sync-open handshake", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       // Script-tag callers are untyped and can pass anything.
       presentation: "drawer" as unknown as "popup",
       apiBase: "https://api.prydd.test",
@@ -186,7 +207,7 @@ describe("mountPryddButton sync-open handshake", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       presentation: "redirect",
       createIntent: () => Promise.resolve({ reference: "pi_ref_redirect" }),
       onResult: () => {},
@@ -212,7 +233,8 @@ describe("mountPryddButton sync-open handshake", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
+      presentation: "popup",
       createIntent: () => Promise.resolve({ reference: "pi_ref_blocked" }),
       onResult: () => {},
       onUnresolved,
@@ -242,7 +264,7 @@ describe("mountPryddButton sync-open handshake", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       createIntent: () => Promise.resolve({ reference: "pi_ref_wv" }),
       onResult: () => {},
       onUnresolved,

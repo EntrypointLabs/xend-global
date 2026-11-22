@@ -10,6 +10,7 @@ import type {
   WalletResponse,
 } from "@/utils/apiClient";
 import { getUsdcMint } from "@/utils/cluster";
+import { demoRampActivity } from "@/utils/devSeedFiat";
 
 /**
  * Demo seed for screenshots and offline UI work. When enabled, `AuthContext`
@@ -158,6 +159,54 @@ export function seedTransfers(): TransferListResponse {
     nextCursor: null,
     transfers: (
       [
+        {
+          id: "t-ramp-in",
+          direction: "RECEIVE",
+          mint,
+          amountRaw: "6904024",
+          fromAddress: "Pay9rWb2CqKq4xYv8tN3dLmS7eHfUa1o5ZgXjQuAb1",
+          toAddress: WALLET,
+          status: "CONFIRMED",
+          signature: sig("r1"),
+          memo: null,
+          kind: "transfer",
+          merchantName: null,
+          ramp: demoRampActivity.deposit,
+          createdAt: hoursAgo(0.4),
+          confirmedAt: hoursAgo(0.4),
+        },
+        {
+          id: "t-ramp-kuda",
+          direction: "SEND",
+          mint,
+          amountRaw: "3512817",
+          fromAddress: WALLET,
+          toAddress: "Dep3kQe7VbN2mXc9pLs4dRw6TzYu8oJi1gHa5Kf8Ab2",
+          status: "CONFIRMED",
+          signature: sig("r2"),
+          memo: null,
+          kind: "transfer",
+          merchantName: null,
+          ramp: demoRampActivity.kudaSend,
+          createdAt: hoursAgo(0.2),
+          confirmedAt: hoursAgo(0.2),
+        },
+        {
+          id: "t-ramp-gtb",
+          direction: "SEND",
+          mint,
+          amountRaw: "30100000",
+          fromAddress: WALLET,
+          toAddress: "Gt8b2Xr8tYb3nM6kJ9hG4fD1sA7zC2vB5nM8kL3jH6gF",
+          status: "CONFIRMED",
+          signature: sig("r3"),
+          memo: null,
+          kind: "transfer",
+          merchantName: null,
+          ramp: demoRampActivity.gtbSend,
+          createdAt: hoursAgo(3),
+          confirmedAt: hoursAgo(3),
+        },
         {
           id: "t-01",
           direction: "RECEIVE",

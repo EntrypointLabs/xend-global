@@ -682,3 +682,52 @@ const publicUnified = ({
   startedAt: _,
   ...o
 }: (typeof state.unifiedOrders)[0]): UnifiedOrder => o;
+
+/** Naira ramp legs for the seeded Activity feed, as the backend joins them. */
+export const demoRampActivity = {
+  deposit: {
+    orderId: "demo-dep-1",
+    direction: "receive",
+    orderStatus: "completed",
+    fiatCurrency: "NGN",
+    fiatAmountMinor: "1000000",
+    fiatDecimals: 2,
+    rate: "1448.43",
+    feeMinor: null,
+    counterpartyName: null,
+    bankName: null,
+    bankCode: null,
+    logoKey: null,
+    accountLast4: null,
+  },
+  kudaSend: {
+    orderId: "demo-send-1",
+    direction: "send",
+    orderStatus: "completed",
+    fiatCurrency: "NGN",
+    fiatAmountMinor: "500000",
+    fiatDecimals: 2,
+    rate: "1432.92",
+    feeMinor: "23463",
+    counterpartyName: "Ada Okafor",
+    bankName: "Kuda Microfinance Bank",
+    bankCode: "KUDANGPC",
+    logoKey: "kuda",
+    accountLast4: "6789",
+  },
+  gtbSend: {
+    orderId: "demo-send-2",
+    direction: "send",
+    orderStatus: "completed",
+    fiatCurrency: "NGN",
+    fiatAmountMinor: "4500000",
+    fiatDecimals: 2,
+    rate: "1500.00",
+    feeMinor: "100000",
+    counterpartyName: "Tobi Adeyemi",
+    bankName: "Guaranty Trust Bank",
+    bankCode: "GTBINGLA",
+    logoKey: "gtbank",
+    accountLast4: "5678",
+  },
+} as const;

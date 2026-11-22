@@ -16,13 +16,7 @@ import {
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function CheckoutView({
-  checkoutOrigin,
-  apiBase,
-}: {
-  checkoutOrigin: string;
-  apiBase: string;
-}) {
+export function CheckoutView({ apiBase }: { apiBase: string }) {
   const router = useRouter();
   const { lines, ready, setQty, clear } = useBag();
   const [stock, setStock] = useState<Record<string, number> | null>(null);
@@ -276,7 +270,6 @@ export function CheckoutView({
               aria-disabled={!canPay}
             >
               <PryddPayButton
-                checkoutOrigin={checkoutOrigin}
                 apiBase={apiBase}
                 theme="dark"
                 createIntent={createIntent}

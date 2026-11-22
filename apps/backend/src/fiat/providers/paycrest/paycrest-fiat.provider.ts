@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import type {
   FiatProvider,
   FiatQuoteSide,
@@ -17,6 +17,7 @@ import {
   usdcToFiat,
 } from '../../rate-math';
 import { PaycrestClient, PaycrestRequestError } from './paycrest.client';
+import { PayoutBanksService } from './payout-banks.service';
 
 const ROUTE_ID = 'paycrest:usdc-ngn';
 // /rates carries no quote id or expiry, so the preview carries our own.
@@ -44,7 +45,10 @@ export class PaycrestFiatProvider implements FiatProvider {
   readonly name = 'paycrest';
   private readonly logger = new Logger(PaycrestFiatProvider.name);
 
-  constructor(private readonly paycrest: PaycrestClient) {}
+  constructor(
+    private readonly paycrest: PaycrestClient,
+    @Optional() private readonly banks?: PayoutBanksService,
+  ) {}
 
   // eslint-disable-next-line @typescript-eslint/require-await
   async routes(): Promise<FiatRoute[]> {
@@ -175,6 +179,7 @@ export class PaycrestFiatProvider implements FiatProvider {
         502,
       );
     }
+    const bankName = await this.bankName(bankCode);
     return {
       reference: created.id,
       status: 'awaiting_payment',
@@ -188,6 +193,9 @@ export class PaycrestFiatProvider implements FiatProvider {
           decimals: 6,
         },
         payoutAccountName: accountName,
+        payoutBankCode: bankCode,
+        ...(bankName ? { payoutBankName: bankName } : {}),
+        payoutAccountNumber: accountNumber,
         expiresAt: account.validUntil,
       },
     };
@@ -206,6 +214,16 @@ export class PaycrestFiatProvider implements FiatProvider {
       status,
       ...(order.txHash ? { signature: order.txHash } : {}),
     };
+  }
+
+  /** Decoration for Activity: an order never fails for want of a bank name. */
+  private async bankName(code: string): Promise<string | undefined> {
+    try {
+      const { banks } = (await this.banks?.list()) ?? { banks: [] };
+      return banks.find((bank) => bank.code === code)?.name;
+    } catch {
+      return undefined;
+    }
   }
 
   private async rate(usdc: bigint): Promise<QuoteReference> {

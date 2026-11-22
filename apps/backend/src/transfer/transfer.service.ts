@@ -19,6 +19,7 @@ import { AccountService } from '../account/account.service';
 import { AccountEventsService } from '../activity/account-events.service';
 import { SpendService } from '../account/spend.service';
 import { DbService } from '../db/db.service';
+import { RampActivityService } from '../fiat/ramp-activity';
 import {
   smartAccounts,
   transfers,
@@ -143,6 +144,7 @@ export class TransferService {
     private readonly approvalSigners: ApprovalSignerStore,
     @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
     private readonly reconciler: ReconcilerService,
+    private readonly ramps: RampActivityService,
   ) {
     // Pull the stablecoin mint allowlist from env so devnet vs mainnet
     // mints can swap without code changes.
@@ -777,6 +779,7 @@ export class TransferService {
     const swapped = await this.swapSignaturesAmong(
       page.flatMap((r) => (r.signature ? [r.signature] : [])),
     );
+    const ramps = await this.ramps.forUser(userId, page);
 
     const nextCursor = hasMore
       ? Buffer.from(
@@ -820,6 +823,7 @@ export class TransferService {
           tokenName: metadata.get(r.mint)?.name ?? null,
           tokenSymbol: metadata.get(r.mint)?.symbol ?? null,
           tokenIconUrl: metadata.get(r.mint)?.iconUrl ?? null,
+          ramp: ramps.get(r.id) ?? null,
           createdAt: r.createdAt.toISOString(),
           confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
         }),
