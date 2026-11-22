@@ -171,10 +171,22 @@ function RampItem({
       className="flex-row items-center gap-3.5 py-3"
       onPress={onPress}
     >
-      <View className="relative">
-        <RampMark ramp={ramp} />
+      {/* Two same-size marks, Revolut style, in the order the money moved:
+          where it came from on top, where it went below. */}
+      <View className="h-[40px] w-[40px]">
+        <View className="absolute left-0 top-0">
+          {isSend ? (
+            <TokenMark mint={entry.mint} label="$" size={26} />
+          ) : (
+            <RampMark ramp={ramp} size={26} />
+          )}
+        </View>
         <View className="absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white">
-          <TokenMark mint={entry.mint} label="$" size={16} />
+          {isSend ? (
+            <RampMark ramp={ramp} size={26} />
+          ) : (
+            <TokenMark mint={entry.mint} label="$" size={26} />
+          )}
         </View>
       </View>
       <View className="flex-1 flex-row items-center justify-between gap-3">
@@ -182,13 +194,18 @@ function RampItem({
           <Typography weight="600" className={cn("mb-0.5", tone.ink)}>
             {statusLabel(entry)}
           </Typography>
-          <Typography
-            weight="500"
-            numberOfLines={1}
-            className={cn("text-sm", tone.muted)}
-          >
-            {rampCounterparty(ramp)}
-          </Typography>
+          <View className="flex-row">
+            <Typography
+              weight="500"
+              numberOfLines={1}
+              className={cn("shrink text-sm", tone.muted)}
+            >
+              {rampCounterparty(ramp)}
+            </Typography>
+            <Typography weight="500" className={cn("text-sm", tone.muted)}>
+              {isSend ? " · USD → NGN" : " · NGN → USD"}
+            </Typography>
+          </View>
         </View>
         <View className="items-end gap-0.5">
           <Typography
