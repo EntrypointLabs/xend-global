@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   useLoginWithPasskey,
   useIdentityToken,
@@ -42,7 +42,7 @@ function toBase64(bytes: Uint8Array): string {
  * so we poll a ref for it. (Requires "identity tokens" enabled on the Privy app.)
  */
 export function usePasskeyCeremony() {
-  const { authenticated } = usePrivy();
+  const { ready, authenticated, logout } = usePrivy();
   const { loginWithPasskey } = useLoginWithPasskey();
   const { identityToken } = useIdentityToken();
   const { signTransaction } = useSignTransaction();
@@ -54,6 +54,24 @@ export function usePasskeyCeremony() {
   authedRef.current = authenticated;
   walletsRef.current = wallets;
 
+  // Every Payment asks for the passkey afresh. A sign-in left over from an
+  // earlier attempt may be someone else's, or a passkey the browser offered
+  // that has no Prydd Account, and reusing it would pin every retry to it.
+  // Cleared on load rather than on the tap, because Safari only lets the
+  // passkey prompt run straight from the tap.
+  const cleared = useRef(false);
+  useEffect(() => {
+    if (!ready || cleared.current) return;
+    cleared.current = true;
+    if (authenticated) void logout();
+  }, [ready, authenticated, logout]);
+
+  /** Forget the identity just used, so the next tap offers every passkey again. */
+  const forgetIdentity = useCallback(async () => {
+    tokenRef.current = null;
+    await logout();
+  }, [logout]);
+
   const awaitIdentityToken = useCallback(async (): Promise<string> => {
     for (let i = 0; i < 40; i++) {
       if (tokenRef.current) return tokenRef.current;
@@ -63,9 +81,9 @@ export function usePasskeyCeremony() {
   }, []);
 
   const runCeremony = useCallback(async (): Promise<CeremonyResult> => {
-    // Already authenticated (persisted Privy session) -> reuse the token, no
-    // prompt. Otherwise loginWithPasskey runs first (no awaited fetch before it,
-    // so Safari user activation stays valid). The checkout only AUTHENTICATES an
+    // Authenticated here only by a passkey chosen on this page (see the reset
+    // above). Otherwise loginWithPasskey runs first (no awaited fetch before
+    // it, so Safari user activation stays valid). The checkout only AUTHENTICATES an
     // existing consumer; identity (email + passkey + wallet) is created once in
     // the mobile app, never here.
     if (!authedRef.current) await loginWithPasskey();
@@ -119,5 +137,5 @@ export function usePasskeyCeremony() {
     [loginWithPasskey, signTransaction],
   );
 
-  return { runCeremony, signSpend };
+  return { runCeremony, signSpend, forgetIdentity };
 }

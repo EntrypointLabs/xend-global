@@ -5,6 +5,7 @@ import { PRIVY_APP_ID } from '../lib/config';
 import { solanaRpcs } from '../lib/solana';
 import {
   authorize,
+  CheckoutApiError,
   settle,
   settleUntilTerminal,
   type IntentView,
@@ -30,9 +31,10 @@ function PaymentFlowInner({
   onCancel,
   waitForTerminal = false,
 }: PaymentFlowProps) {
-  const { runCeremony, signSpend } = usePasskeyCeremony();
+  const { runCeremony, signSpend, forgetIdentity } = usePasskeyCeremony();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [wrongPasskey, setWrongPasskey] = useState(false);
   const inFlight = useRef(false);
   const abort = useRef<AbortController | null>(null);
   const expired = useQuoteExpired(intent.expiresAt);
@@ -60,6 +62,7 @@ function PaymentFlowInner({
     abort.current = controller;
     setBusy(true);
     setFailed(false);
+    setWrongPasskey(false);
     // No awaited fetch before the ceremony call, so Safari user activation holds.
     const credential = intent.sessionRecognized
       ? Promise.resolve(undefined)
@@ -86,8 +89,18 @@ function PaymentFlowInner({
             : await settle(input, controller.signal),
         );
       })
-      .catch((err: unknown) => {
+      .catch(async (err: unknown) => {
         if (controller.signal.aborted) return;
+        if (
+          err instanceof CheckoutApiError &&
+          err.code === 'UNKNOWN_CONSUMER'
+        ) {
+          // Nothing was charged and the intent is still payable: let the
+          // shopper pick another passkey here instead of ending the checkout.
+          await forgetIdentity().catch(() => undefined);
+          setWrongPasskey(true);
+          return;
+        }
         setFailed(true);
         onError(err);
       })
@@ -96,7 +109,15 @@ function PaymentFlowInner({
         inFlight.current = false;
         setBusy(false);
       });
-  }, [intent, runCeremony, signSpend, onTerminal, onError, waitForTerminal]);
+  }, [
+    intent,
+    runCeremony,
+    signSpend,
+    forgetIdentity,
+    onTerminal,
+    onError,
+    waitForTerminal,
+  ]);
 
   if (intent.sessionRecognized) {
     return (
@@ -112,6 +133,12 @@ function PaymentFlowInner({
   return (
     <PaymentSheet intent={intent}>
       {expired && !busy && <ExpiredNotice />}
+      {wrongPasskey && !busy && (
+        <p role="alert" className="notice">
+          That passkey isn&rsquo;t linked to a Prydd account. Try again and
+          choose the one you use in the Prydd app.
+        </p>
+      )}
       {failed ? (
         <>
           <p role="alert" className="notice">
