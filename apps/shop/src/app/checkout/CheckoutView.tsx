@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { PryddPayButton } from "@prydd/checkout-react";
-import { checkOrder, currentStock, startCheckout } from "@/app/actions";
+import {
+  checkOrder,
+  checkOrderNow,
+  currentStock,
+  startCheckout,
+} from "@/app/actions";
 import { rememberOrder, useBag, writeStorage } from "@/components/CartProvider";
 import { ProductArt } from "@/components/ProductArt";
 import {
@@ -121,6 +126,26 @@ export function CheckoutView({ apiBase }: { apiBase: string }) {
     rememberOrder(res.orderId);
     setWatching(res.orderId);
     return { reference: res.reference };
+  };
+
+  const settleClosedWindow = async () => {
+    const id = orderRef.current;
+    const order = id ? await checkOrderNow(id).catch(() => null) : null;
+    if (order?.status === "paid" || order?.status === "needs_review") {
+      clear();
+      goToOrder("paid");
+      return;
+    }
+    // Only a payment Prydd says was never started is safe to start again.
+    // Anything else, including not knowing, is shown as pending.
+    if (
+      order?.status !== "awaiting_payment" ||
+      order.paymentStatus !== "created"
+    ) {
+      goToOrder("pending");
+      return;
+    }
+    setNotice("The payment wasn't finished. Tap Pay with Prydd to try again.");
   };
 
   const goToOrder = (hint: string) => {
@@ -290,7 +315,22 @@ export function CheckoutView({ apiBase }: { apiBase: string }) {
                     );
                   }
                 }}
-                onUnresolved={() => goToOrder("pending")}
+                onUnresolved={(u) => {
+                  // The SDK is sending this whole page to Prydd to finish the
+                  // payment. Navigating here as well would cancel that.
+                  if (u.reason === "redirected" || u.reason === "popup_blocked")
+                    return;
+                  // A payment that may really be in flight gets the order page,
+                  // which keeps checking until it settles.
+                  if (u.reason === "confirmation_timeout") {
+                    goToOrder("pending");
+                    return;
+                  }
+                  // The Prydd window closed without a result. It may have closed
+                  // after the payment was submitted, so ask Prydd before
+                  // offering a second payment for the same bag.
+                  void settleClosedWindow();
+                }}
               />
             </div>
             {!canPay && (
