@@ -51,9 +51,9 @@ function PaymentFlowInner({
    * Consumer is, get the Spend the backend built out of their Account, sign it
    * with the Account's own signer, hand the bytes back.
    *
-   * A recognised Session skips the passkey prompt for the first step but not
-   * the second: recognition is not a signature, and the money does not move
-   * without one.
+   * A recognised Session skips the identity check on the backend, but the
+   * passkey is still presented on the tap: recognition is not a signature, and
+   * the money does not move without one.
    */
   const run = useCallback(() => {
     if (inFlight.current || quoteExpired(intent.expiresAt)) return;
@@ -64,9 +64,12 @@ function PaymentFlowInner({
     setFailed(false);
     setWrongPasskey(false);
     // No awaited fetch before the ceremony call, so Safari user activation holds.
-    const credential = intent.sessionRecognized
-      ? Promise.resolve(undefined)
-      : runCeremony().then((result) => result.providerToken);
+    // A recognised Session still runs it: the Session names the Consumer, but
+    // the signer only exists once the passkey has been presented, and asking
+    // for it later, after authorize returns, is outside the tap.
+    const credential = runCeremony().then((result) =>
+      intent.sessionRecognized ? undefined : result.providerToken,
+    );
 
     credential
       .then((providerToken) =>
