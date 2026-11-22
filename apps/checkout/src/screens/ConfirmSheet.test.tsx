@@ -106,4 +106,29 @@ describe('Payment approval controls', () => {
     expect(cancel).toHaveBeenCalledOnce();
     expect(buttonNamed('Confirm payment').disabled).toBe(true);
   });
+
+  it('shows recovery guidance from the last attempt, but not while confirming', () => {
+    const notice = <p role="alert">Choose another passkey</p>;
+    render(
+      <ConfirmSheet
+        intent={intent}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+        notice={notice}
+      />,
+    );
+    expect(container.textContent).toContain('Choose another passkey');
+    act(() => root.unmount());
+    container.remove();
+    render(
+      <ConfirmSheet
+        intent={intent}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+        notice={notice}
+        busy
+      />,
+    );
+    expect(container.textContent).not.toContain('Choose another passkey');
+  });
 });

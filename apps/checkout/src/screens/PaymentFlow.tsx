@@ -120,6 +120,13 @@ function PaymentFlowInner({
     waitForTerminal,
   ]);
 
+  const wrongPasskeyNotice = wrongPasskey ? (
+    <p role="alert" className="notice">
+      That passkey isn&rsquo;t linked to a Prydd account. Try again and choose
+      the one you use in the Prydd app.
+    </p>
+  ) : null;
+
   if (intent.sessionRecognized) {
     return (
       <ConfirmSheet
@@ -127,6 +134,7 @@ function PaymentFlowInner({
         onConfirm={run}
         onCancel={onCancel}
         busy={busy}
+        notice={wrongPasskeyNotice}
       />
     );
   }
@@ -134,12 +142,7 @@ function PaymentFlowInner({
   return (
     <PaymentSheet intent={intent}>
       {expired && !busy && <ExpiredNotice />}
-      {wrongPasskey && !busy && (
-        <p role="alert" className="notice">
-          That passkey isn&rsquo;t linked to a Prydd account. Try again and
-          choose the one you use in the Prydd app.
-        </p>
-      )}
+      {!busy && wrongPasskeyNotice}
       {failed ? (
         <>
           <p role="alert" className="notice">

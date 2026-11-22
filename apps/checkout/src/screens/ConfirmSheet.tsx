@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent } from 'react';
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import type { IntentView } from '../lib/api';
 import { PaymentSheet } from './PaymentSheet';
 import { quoteExpired, useQuoteExpired } from '../lib/useQuoteExpired';
@@ -9,6 +9,8 @@ interface ConfirmSheetProps {
   onConfirm: () => void;
   onCancel: () => void;
   busy?: boolean;
+  /** Recovery guidance from the last attempt, shown above the button. */
+  notice?: ReactNode;
 }
 
 const ARM_DELAY_MS = 500;
@@ -28,6 +30,7 @@ export function ConfirmSheet({
   onConfirm,
   onCancel,
   busy = false,
+  notice,
 }: ConfirmSheetProps) {
   const [delayPassed, setDelayPassed] = useState(false);
   const [interacted, setInteracted] = useState(false);
@@ -62,6 +65,7 @@ export function ConfirmSheet({
   return (
     <PaymentSheet intent={intent}>
       {expired && !busy && <ExpiredNotice />}
+      {!busy && notice}
       <PayButton
         label={
           busy ? 'Confirming' : expired ? 'Quote expired' : 'Confirm payment'
