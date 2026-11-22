@@ -14,7 +14,6 @@ import { formatMoney } from "@/utils/money";
 import { KEY_COLORS } from "@/utils/keyColors";
 import { GLASS, GLASS_COLORS, useOnPhoto } from "@/components/ui/glass";
 import { RampMark } from "@/components/ui/atoms/RampMark";
-import { ConversionArrow } from "@/components/ui/atoms/ConversionArrow";
 import {
   formatDollarsMinor,
   formatNaira,
@@ -144,9 +143,9 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
 }
 
 /**
- * A naira deposit or bank send: the main line reads like any other row, and a
- * ↳ line tucked beneath it shows what the money was converted to and at what
- * rate.
+ * A naira deposit or bank send. Reads like any other row: the naira leads on
+ * the right with the dollars it became beneath, and a small dollar coin on the
+ * bank's badge says the money was converted.
  */
 function RampItem({
   entry,
@@ -168,22 +167,30 @@ function RampItem({
       : tone.up;
 
   return (
-    <HapticPressable className="py-3" onPress={onPress}>
-      <View className="flex-row items-center gap-3.5">
+    <HapticPressable
+      className="flex-row items-center gap-3.5 py-3"
+      onPress={onPress}
+    >
+      <View className="relative">
         <RampMark ramp={ramp} />
-        <View className="flex-1 flex-row items-center justify-between gap-3">
-          <View className="flex-1 flex-col">
-            <Typography weight="600" className={cn("mb-0.5", tone.ink)}>
-              {statusLabel(entry)}
-            </Typography>
-            <Typography
-              weight="500"
-              numberOfLines={1}
-              className={cn("text-sm", tone.muted)}
-            >
-              {rampCounterparty(ramp)}
-            </Typography>
-          </View>
+        <View className="absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white">
+          <TokenMark mint={entry.mint} label="$" size={16} />
+        </View>
+      </View>
+      <View className="flex-1 flex-row items-center justify-between gap-3">
+        <View className="flex-1 flex-col">
+          <Typography weight="600" className={cn("mb-0.5", tone.ink)}>
+            {statusLabel(entry)}
+          </Typography>
+          <Typography
+            weight="500"
+            numberOfLines={1}
+            className={cn("text-sm", tone.muted)}
+          >
+            {rampCounterparty(ramp)}
+          </Typography>
+        </View>
+        <View className="items-end gap-0.5">
           <Typography
             weight="600"
             className={cn(
@@ -195,21 +202,10 @@ function RampItem({
             {isSend ? "-" : "+"}
             {naira}
           </Typography>
+          <Typography weight="500" className={cn("text-xs", tone.muted)}>
+            {dollars}
+          </Typography>
         </View>
-      </View>
-      {/* Starts at the badge's centre (20pt in) and lands the dollars just past
-          the title column. */}
-      <View className="mt-0.5 flex-row items-center pl-[19px]">
-        <ConversionArrow color={tone.ink ? "#FFFFFF8F" : "#00000040"} />
-        <Typography
-          weight="600"
-          className={cn(
-            "ml-1.5 text-[13px]",
-            tone.ink ? tone.muted : "text-black/[0.35]"
-          )}
-        >
-          {dollars}
-        </Typography>
       </View>
     </HapticPressable>
   );

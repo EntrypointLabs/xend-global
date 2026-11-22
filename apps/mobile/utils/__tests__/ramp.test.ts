@@ -45,9 +45,9 @@ describe("ramp formatting", () => {
     expect(shortBankName("Bank")).toBe("Bank");
   });
 
-  it("names the person and bank of a send", () => {
-    expect(rampCounterparty(send)).toBe("Ada Okafor · Kuda");
-    expect(rampCounterparty({ ...send, bankName: null })).toBe("Ada Okafor");
+  it("names the person of a send, leaving the bank to its logo", () => {
+    expect(rampCounterparty(send)).toBe("Ada Okafor");
+    expect(rampCounterparty({ ...send, counterpartyName: null })).toBe("Kuda");
     expect(rampCounterparty({ ...send, direction: "receive" })).toBe(
       "Bank transfer"
     );

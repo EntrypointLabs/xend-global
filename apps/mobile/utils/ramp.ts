@@ -50,11 +50,12 @@ export function shortBankName(name: string): string {
   return short || name;
 }
 
-/** Who the row was with: the person and bank for a send, the bank leg for a deposit. */
+/**
+ * Who the row was with. A send names the person only: the bank's logo is
+ * already on the row, and its full name is on the receipt.
+ */
 export function rampCounterparty(ramp: RampDetails): string {
   if (ramp.direction === "receive") return "Bank transfer";
-  const bank = ramp.bankName ? shortBankName(ramp.bankName) : null;
-  const name = ramp.counterpartyName;
-  if (name && bank) return `${name} · ${bank}`;
-  return name ?? bank ?? "Bank account";
+  if (ramp.counterpartyName) return ramp.counterpartyName;
+  return ramp.bankName ? shortBankName(ramp.bankName) : "Bank account";
 }
