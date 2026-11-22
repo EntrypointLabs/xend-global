@@ -11,6 +11,7 @@ import { WebhookController } from './webhook.controller';
 import { EventsModule } from '../events/events.module';
 import { PaymentActivityService } from './payment-activity.service';
 import { SettingsActivityModule } from './settings-activity.signal';
+import { RampActivityModule } from '../fiat/ramp-activity';
 
 /**
  * RPC tailer: webhook receiver + reconciler for confirmed transfers.
@@ -30,6 +31,8 @@ import { SettingsActivityModule } from './settings-activity.signal';
     TokensModule,
     // The webhook tells the Settings watcher which accounts a delivery touched.
     SettingsActivityModule,
+    // A naira deposit's arrival notice names the naira.
+    RampActivityModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [WebhookController],

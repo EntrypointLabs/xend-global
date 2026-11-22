@@ -13,6 +13,12 @@ import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { formatMoney } from "@/utils/money";
 import { KEY_COLORS } from "@/utils/keyColors";
 import { GLASS, GLASS_COLORS, useOnPhoto } from "@/components/ui/glass";
+import { RampMark } from "@/components/ui/atoms/RampMark";
+import {
+  formatDollarsMinor,
+  rampAmounts,
+  rampCounterparty,
+} from "@/utils/ramp";
 
 export type ActivityItemProps = ActivityEntry & {
   onPress?: () => void;
@@ -52,6 +58,10 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
     return <AwaitingPaymentItem entry={entry} onPress={onPress} />;
   }
 
+  if (entry.ramp) {
+    return <RampItem entry={entry} onPress={onPress} />;
+  }
+
   const isSend = entry.direction === "send";
   const isPayment = entry.kind === "payment";
   const isInactive = entry.status === "pending" || entry.status === "failed";
@@ -64,7 +74,10 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
     entry.tokenSymbol,
     entry.tokenName
   );
-  const usd = entry.usdValue ?? null;
+  // Dollars are what a Consumer holds, so a USDC row says dollars once rather
+  // than a token amount with its dollar value underneath.
+  const isDollars = symbol === "USDC";
+  const usd = isDollars ? null : (entry.usdValue ?? null);
   const sign = isSend ? "-" : "+";
   // A Payment renders as a debit titled with the merchant's display name —
   // never an address, no chain vocabulary. Payments arrive as SEND, so the
@@ -111,8 +124,9 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
             )}
           >
             {sign}
-            {amount}
-            {symbol ? ` ${symbol}` : ""}
+            {isDollars
+              ? formatDollarsMinor(entry.amountRaw, entry.decimals)
+              : `${amount}${symbol ? ` ${symbol}` : ""}`}
           </Typography>
           {usd !== null && (
             // What it was worth when it happened, not what the same tokens
@@ -123,6 +137,77 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
             </Typography>
           )}
         </View>
+      </View>
+    </HapticPressable>
+  );
+}
+
+/**
+ * A naira deposit or bank send: the main line reads like any other row, and a
+ * ↳ line tucked beneath it shows what the money was converted to and at what
+ * rate.
+ */
+function RampItem({
+  entry,
+  onPress,
+}: {
+  entry: ActivityEntry;
+  onPress?: () => void;
+}) {
+  const tone = useRowTone();
+  const ramp = entry.ramp!;
+  const isSend = entry.direction === "send";
+  const isInactive = entry.status === "pending" || entry.status === "failed";
+  const { headline, conversion } = rampAmounts(
+    ramp,
+    entry.amountRaw,
+    entry.decimals
+  );
+  const valueColorClass = isInactive
+    ? tone.muted
+    : isSend
+      ? tone.down
+      : tone.up;
+
+  return (
+    <HapticPressable className="py-3" onPress={onPress}>
+      <View className="flex-row items-center gap-3.5">
+        <RampMark ramp={ramp} />
+        <View className="flex-1 flex-row items-center justify-between gap-3">
+          <View className="flex-1 flex-col">
+            <Typography weight="600" className={cn("mb-0.5", tone.ink)}>
+              {statusLabel(entry)}
+            </Typography>
+            <Typography
+              weight="500"
+              numberOfLines={1}
+              className={cn("text-sm", tone.muted)}
+            >
+              {rampCounterparty(ramp)}
+            </Typography>
+          </View>
+          <Typography
+            weight="600"
+            className={cn(
+              "text-sm tracking-[0.5px]",
+              valueColorClass,
+              entry.status === "failed" && "line-through"
+            )}
+          >
+            {isSend ? "-" : "+"}
+            {headline}
+          </Typography>
+        </View>
+      </View>
+      <View className="mt-1.5 flex-row items-center gap-1.5 pl-4">
+        <Ionicons
+          name="return-down-forward"
+          size={14}
+          color={tone.ink ? "#FFFFFF8F" : "#0000004D"}
+        />
+        <Typography weight="500" className={cn("text-xs", tone.muted)}>
+          {conversion}
+        </Typography>
       </View>
     </HapticPressable>
   );

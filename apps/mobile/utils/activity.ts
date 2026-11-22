@@ -4,6 +4,11 @@ import type {
   TransferRow,
 } from "@/utils/apiClient";
 import { describeToken, formatTokenAmount } from "@/utils/tokens";
+import {
+  formatDollarsMinor,
+  formatNaira,
+  type RampDetails,
+} from "@/utils/ramp";
 
 /**
  * Canonical, presentation-ready shape for a single transfer as the Activity
@@ -69,6 +74,8 @@ export interface ActivityEntry {
    */
   usdValue?: string | null;
   memo: string | null;
+  /** The naira order behind this transfer, when it was a deposit or bank send. */
+  ramp?: RampDetails | null;
   createdAt: string;
   confirmedAt: string | null;
 }
@@ -134,6 +141,7 @@ export function mapTransferRowToActivityEntry(
     counterparty,
     signature: row.signature,
     memo: row.memo,
+    ramp: row.ramp ?? null,
     createdAt: row.createdAt,
     confirmedAt: row.confirmedAt,
   };
@@ -279,8 +287,13 @@ export function awaitingPaymentActivityEntry(
  * dollars are a rendering of it, and the activity row already carries them.
  */
 export function arrivalLabel(row: TransferRow): string {
-  const { symbol } = describeToken(row.mint, row.tokenSymbol, row.tokenName);
   const decimals = row.decimals ?? DEFAULT_DECIMALS;
+  // A naira deposit arrives as the naira the Consumer paid in.
+  if (row.ramp)
+    return `Received ${formatNaira(row.ramp.fiatAmountMinor, row.ramp.fiatDecimals)}`;
+  const { symbol } = describeToken(row.mint, row.tokenSymbol, row.tokenName);
+  if (symbol === "USDC")
+    return `Received ${formatDollarsMinor(row.amountRaw, decimals)}`;
   const amount = formatTokenAmount(
     Number(row.amountRaw) / 10 ** decimals,
     decimals

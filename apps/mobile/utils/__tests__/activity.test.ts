@@ -439,7 +439,7 @@ describe("balance selectors", () => {
         arrivalLabel(
           row({ mint: USDC_MINT, amountRaw: "10000000", decimals: 6 })
         )
-      ).toBe("Received 10 USDC");
+      ).toBe("Received $10.00");
     });
 
     it("omits a ticker it does not have", () => {

@@ -111,6 +111,27 @@ export const TransferRowSchema = z.object({
   tokenName: z.string().nullable(),
   tokenSymbol: z.string().nullable(),
   tokenIconUrl: z.string().nullable(),
+  /**
+   * Set when this transfer is one leg of a naira deposit or bank send, so the
+   * feed can show the naira, the bank and the person instead of a deposit
+   * address. Money stays in integer minor units.
+   */
+  ramp: z
+    .object({
+      orderId: z.string(),
+      direction: z.enum(['receive', 'send']),
+      fiatCurrency: z.literal('NGN'),
+      fiatAmountMinor: z.string(),
+      fiatDecimals: z.number().int(),
+      rate: z.string().nullable(),
+      feeMinor: z.string().nullable(),
+      counterpartyName: z.string().nullable(),
+      bankName: z.string().nullable(),
+      bankCode: z.string().nullable(),
+      logoKey: z.string().nullable(),
+      accountLast4: z.string().nullable(),
+    })
+    .nullable(),
   createdAt: z.string().datetime(),
   confirmedAt: z.string().datetime().nullable(),
 });

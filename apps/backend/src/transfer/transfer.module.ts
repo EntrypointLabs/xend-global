@@ -8,6 +8,7 @@ import { AccountEventsModule } from '../activity/account-events.module';
 import { ActivityModule } from '../activity/activity.module';
 import { TurnkeyModule } from '../turnkey/turnkey.module';
 import { PreparedModule } from '../prepared/prepared.module';
+import { RampActivityModule } from '../fiat/ramp-activity';
 
 /**
  * prepare/submit/list endpoints at /transfers/*. DbModule is @Global so
@@ -26,6 +27,8 @@ import { PreparedModule } from '../prepared/prepared.module';
     ActivityModule,
     TurnkeyModule,
     PreparedModule,
+    // Names the naira order behind a deposit or bank send.
+    RampActivityModule,
   ],
   controllers: [TransferController],
   providers: [TransferService],
