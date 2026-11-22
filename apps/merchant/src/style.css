@@ -1836,6 +1836,102 @@ td.right {
 .profile-card [role="alert"] {
   color: var(--danger);
 }
+.merchant-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--fill);
+  color: var(--ink-2);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.06);
+}
+.merchant-avatar[data-kind="logo"] {
+  background: var(--card);
+}
+.merchant-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+@media (max-width: 520px) {
+  .brand-logo {
+    align-items: flex-start;
+    gap: 14px;
+  }
+}
+.brand-logo-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.brand-logo-copy strong {
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.brand-logo-copy small {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+.brand-logo-copy .actions {
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.brand-category {
+  max-width: 320px;
+}
+.shopper-preview {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 14px;
+  border-radius: var(--r-card);
+  background: var(--panel);
+  max-width: 420px;
+}
+.shopper-preview-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+.activity-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-ctl);
+  background: var(--card);
+}
+.activity-row-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.activity-row-text strong {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.activity-row-text span {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.activity-row-amount {
+  font-weight: 500;
+}
+.brand-status {
+  font-size: 13.5px;
+  color: var(--positive);
+}
 
 /* Signed-out entry */
 .merchant-entry {

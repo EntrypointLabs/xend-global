@@ -10,6 +10,18 @@ export function reviewState(): ReviewState {
 }
 
 const now = Date.now();
+
+const SAMPLE_LOGO = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#e8552d"/><path d="M18 44 32 18l14 26h-7l-7-13-7 13z" fill="#fff"/></svg>',
+)}`;
+
+// Brand edits made in review mode, kept for the page's lifetime so the Account
+// page reflects an upload, removal or category change.
+const brand: {
+  logoUrl?: string | null;
+  logoSource?: "upload" | "site" | null;
+  category?: string;
+} = {};
 const iso = (hoursAgo: number) =>
   new Date(now - hoursAgo * 3_600_000).toISOString();
 
@@ -70,6 +82,10 @@ function dashboard(empty: boolean) {
       kybSubmittedAt: empty ? null : iso(400),
       kybReviewNote: null,
       receivingWallet: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      logoUrl: empty ? "/review-missing-logo.png" : SAMPLE_LOGO,
+      logoSource: empty ? ("site" as const) : ("upload" as const),
+      category: empty ? "food_drink" : "shopping",
+      ...brand,
     },
     destination: empty
       ? null
@@ -118,8 +134,28 @@ function dashboard(empty: boolean) {
   };
 }
 
-function route(path: string, empty: boolean): unknown {
-  if (path === "me") return dashboard(empty);
+function route(
+  path: string,
+  empty: boolean,
+  method: string,
+  body: unknown,
+): unknown {
+  if (path === "branding" && method === "PUT")
+    Object.assign(brand, { category: (body as { category: string }).category });
+  if (path === "logo" && method === "PUT") {
+    const logo = body as { contentType: string; dataBase64: string };
+    Object.assign(brand, {
+      logoUrl: `data:${logo.contentType};base64,${logo.dataBase64}`,
+      logoSource: "upload",
+    });
+  }
+  if (path === "logo" && method === "DELETE")
+    Object.assign(brand, {
+      logoUrl: "/review-missing-logo.png",
+      logoSource: null,
+    });
+  if (path === "me" || path === "branding" || path === "logo")
+    return dashboard(empty);
   if (path.startsWith("payments/"))
     return {
       ...payments[0],
@@ -235,9 +271,15 @@ export function installReviewFixtures() {
         }),
         { status: 503 },
       );
-    return new Response(JSON.stringify(route(path, state === "empty")), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    const method = init?.method ?? "GET";
+    const body: unknown =
+      typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+    return new Response(
+      JSON.stringify(route(path, state === "empty", method, body)),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   };
 }
