@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { StorageService, userScopedKey } from "@/utils/storage";
 import { AUTH_STORAGE_KEYS } from "@/utils/auth";
 import { useUserId } from "@/hooks/useUserId";
+import { apiClient } from "@/utils/apiClient";
 
 const DEFAULT_NAME = "Account";
 
@@ -30,11 +31,18 @@ export function useWalletName() {
   const mutation = useMutation({
     mutationFn: async (name: string) => {
       if (!storageKey) return name;
+      const previous = query.data ?? DEFAULT_NAME;
       await StorageService.setItem(storageKey, name);
+      // Best-effort: the rename has happened on the device either way, and a
+      // missing Activity row is not worth failing the save over.
+      if (name !== previous) {
+        await apiClient.recordAccountRename(name, previous).catch(() => {});
+      }
       return name;
     },
     onSuccess: (name) => {
       queryClient.setQueryData(queryKey, name);
+      queryClient.invalidateQueries({ queryKey: ["transfers", userId] });
     },
   });
 
