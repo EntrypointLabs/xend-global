@@ -23,6 +23,7 @@ interface EditWalletModalProps {
   address: string;
   onSave: (name: string) => void;
   placeholder?: string;
+  maxLength?: number;
 }
 
 const truncate = (address: string) => {
@@ -38,6 +39,7 @@ export function EditWalletModal({
   address,
   onSave,
   placeholder = "Wallet name",
+  maxLength,
 }: EditWalletModalProps) {
   const [name, setName] = useState(initialName);
   const inputRef = useRef<TextInput>(null);
@@ -104,6 +106,7 @@ export function EditWalletModal({
                   placeholderTextColor="#00000040"
                   className="text-center text-2xl font-bold text-black"
                   blurOnSubmit={false}
+                  maxLength={maxLength}
                   returnKeyType="done"
                   onSubmitEditing={handleSave}
                 />

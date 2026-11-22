@@ -104,6 +104,7 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'DELETE /wallet/me',
   // Writes with nothing urgent about them, so they wait for the passkey.
   'POST /feedback',
+  'POST /account/name',
   // Where notices go and whether they are wanted.
   'POST /notifications/devices',
   'DELETE /notifications/devices',

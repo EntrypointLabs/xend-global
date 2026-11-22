@@ -14,7 +14,9 @@ import { AccountEventsService } from '../activity/account-events.service';
 
 export const RenameAccountSchema = z.object({
   name: z.string().trim().min(1).max(40),
-  previous: z.string().trim().max(40).nullable(),
+  // Names saved before the app capped them at 40 can still be the one being
+  // replaced, so the old name only has a sanity bound.
+  previous: z.string().trim().max(200).nullable(),
 });
 export type RenameAccountDto = z.infer<typeof RenameAccountSchema>;
 

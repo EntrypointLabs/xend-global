@@ -6,6 +6,9 @@ import { apiClient } from "@/utils/apiClient";
 
 const DEFAULT_NAME = "Account";
 
+/** Matches what the backend accepts for the rename Activity event. */
+export const ACCOUNT_NAME_MAX_LENGTH = 40;
+
 // Scoped to the signed-in user so each account keeps its own wallet name.
 function walletNameKey(userId: string) {
   return userScopedKey(AUTH_STORAGE_KEYS.WALLET_NAME, userId);
@@ -30,19 +33,23 @@ export function useWalletName() {
 
   const mutation = useMutation({
     mutationFn: async (name: string) => {
-      if (!storageKey) return name;
+      if (!storageKey) return { name, previous: null };
       const previous = query.data ?? DEFAULT_NAME;
       await StorageService.setItem(storageKey, name);
-      // Best-effort: the rename has happened on the device either way, and a
-      // missing Activity row is not worth failing the save over.
-      if (name !== previous) {
-        await apiClient.recordAccountRename(name, previous).catch(() => {});
-      }
-      return name;
+      return { name, previous };
     },
-    onSuccess: (name) => {
+    onSuccess: ({ name, previous }) => {
+      // The rename is done the moment it is stored; the screen must not wait
+      // on the network to show it.
       queryClient.setQueryData(queryKey, name);
-      queryClient.invalidateQueries({ queryKey: ["transfers", userId] });
+      if (previous === null || name === previous) return;
+      // Best-effort: a missing Activity row is not worth failing the save over.
+      apiClient
+        .recordAccountRename(name, previous)
+        .then(() =>
+          queryClient.invalidateQueries({ queryKey: ["transfers", userId] })
+        )
+        .catch(() => {});
     },
   });
 

@@ -29,6 +29,13 @@ describe('AccountNameController', () => {
     expect(recordWalletRenamed).not.toHaveBeenCalled();
   });
 
+  it('accepts renaming away from a long name saved before the cap', () => {
+    expect(
+      RenameAccountSchema.safeParse({ name: 'Gift', previous: 'x'.repeat(60) })
+        .success,
+    ).toBe(true);
+  });
+
   it('refuses an empty or overlong name', () => {
     expect(
       RenameAccountSchema.safeParse({ name: '   ', previous: null }).success,
