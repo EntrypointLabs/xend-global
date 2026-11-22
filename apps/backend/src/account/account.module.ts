@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AccountEventsModule } from '../activity/account-events.module';
+import { AccountNameController } from './account-name.controller';
 import { SettingsActivityModule } from '../activity/settings-activity.signal';
 import { AttestationModule } from '../attestation/attestation.module';
 import { DbModule } from '../db/db.module';
@@ -42,7 +43,7 @@ import { AccountService } from './account.service';
     SpendModule,
     PreparedModule,
   ],
-  controllers: [AccountController],
+  controllers: [AccountController, AccountNameController],
   providers: [
     AccountService,
     SpendingLimitService,
