@@ -13,9 +13,9 @@ export interface CeremonyResult {
 }
 
 /*
- * @privy-io/expo names the relying party per call; the web SDK does not, so
- * Privy would answer with this page's own host. `pinPasskeyRelyingParty` adds
- * prydd.co to that request so the checkout finds the passkey made in the app.
+ * Privy's web SDK takes the passkey relying party from the page's host and
+ * ignores any it is sent, unlike @privy-io/expo. Passkeys made in the app
+ * belong to prydd.co, which is why the checkout is served at prydd.co/pay.
  */
 /*
  * The wire carries transactions as base64 and the Privy Solana SDK takes and

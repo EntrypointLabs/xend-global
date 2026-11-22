@@ -30,8 +30,6 @@ import { PryddPayButton } from "@prydd/checkout-react";
 export function Checkout() {
   return (
     <PryddPayButton
-      checkoutOrigin="https://pay.prydd.co"
-      apiBase="https://api.prydd.co"
       createIntent={async () => {
         // Call YOUR server, which creates the intent. Money never travels
         // through the browser.
@@ -47,19 +45,16 @@ export function Checkout() {
 ```
 
 Tapping the button draws the checkout sheet on your page with the merchant
-name and amount, read from `apiBase`; tapping Pay swaps the sheet's body for
-Prydd's hosted checkout in a cross-origin frame, so the passkey ceremony runs on
-Prydd's own origin with no second window. If that frame cannot run, the popup
-takes over behind the same sheet automatically, keeping the same nonce and
-reference.
+name and amount; tapping Pay opens Prydd's hosted checkout at
+`https://prydd.co/pay` in a small window, where the shopper confirms with the
+passkey they already use in the Prydd app.
 
 **Register every origin you mount the button on** with Prydd, on your
-Merchant's allowed origins list. Prydd only lets a registered origin frame the
-checkout, and only a registered origin receives the result.
+Merchant's allowed origins list. Only a registered origin receives the result.
 
 Changing callback props (like `onResult`) does not remount the button, so an
 in-flight payment is never interrupted by a re-render. `presentation`
-(`"iframe"` default, or `"modal"` / `"popup"` / `"redirect"`), `apiBase` and
-`theme` (`"auto"`, `"light"`, `"dark"`) are mount-time options and do remount
-it. Without an `apiBase` the sheet has no summary to show, so `"iframe"` and
-`"modal"` degrade to `"popup"`.
+(`"modal"` default, or `"popup"` / `"redirect"` / `"iframe"`), `checkoutUrl`
+(default `https://prydd.co/pay`), `apiBase` (default `https://api.prydd.co`)
+and `theme` (`"auto"`, `"light"`, `"dark"`) are mount-time options and do
+remount it.

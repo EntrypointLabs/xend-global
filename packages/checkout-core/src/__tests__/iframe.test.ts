@@ -139,14 +139,15 @@ afterEach(() => {
 });
 
 describe("mountPryddButton inline ceremony", () => {
-  it("is the default presentation, and opens straight into a frame instead of a window", async () => {
+  it("opens straight into a frame instead of a window", async () => {
     const openSpy = vi.spyOn(window, "open");
     stubSummary();
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
+      presentation: "iframe",
       createIntent: () => Promise.resolve({ reference: "pi_inline" }),
       onResult: () => {},
     });
@@ -172,8 +173,9 @@ describe("mountPryddButton inline ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
+      presentation: "iframe",
       createIntent: () => Promise.resolve({ reference: "pi_allow" }),
       onResult: () => {},
     });
@@ -197,8 +199,9 @@ describe("mountPryddButton inline ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
+      presentation: "iframe",
       createIntent: () => Promise.resolve({ reference: "pi_frame_msg" }),
       onResult,
     });
@@ -224,8 +227,9 @@ describe("mountPryddButton inline ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
+      presentation: "iframe",
       createIntent: () => Promise.resolve({ reference: "pi_frame_timeout" }),
       onResult: () => {},
       onUnresolved,
@@ -255,8 +259,9 @@ describe("mountPryddButton inline ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
+      presentation: "iframe",
       createIntent: () => Promise.resolve({ reference: "pi_forged" }),
       onResult,
     });
@@ -279,8 +284,9 @@ describe("mountPryddButton inline ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
+      presentation: "iframe",
       createIntent: () => Promise.resolve({ reference: "pi_ready" }),
       onResult,
       onUnresolved,
@@ -310,8 +316,9 @@ describe("mountPryddButton inline ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
+      presentation: "iframe",
       createIntent: () => Promise.resolve({ reference: "pi_bad_ready" }),
       onResult: () => {},
     });
@@ -337,8 +344,9 @@ describe("mountPryddButton inline ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
+      presentation: "iframe",
       createIntent: () => Promise.resolve({ reference: "pi_ready_result" }),
       onResult,
     });
@@ -370,8 +378,9 @@ describe("mountPryddButton inline ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
+      presentation: "iframe",
       createIntent: () => Promise.resolve({ reference: "pi_refused_fast" }),
       onResult: () => {},
     });
@@ -397,8 +406,9 @@ describe("mountPryddButton inline ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
+      presentation: "iframe",
       createIntent: () => Promise.resolve({ reference: "pi_refused" }),
       onResult,
     });
@@ -438,8 +448,9 @@ describe("mountPryddButton inline ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
+      presentation: "iframe",
       createIntent: () => Promise.resolve({ reference: "pi_frame_blocked" }),
       onResult: () => {},
       onUnresolved,
@@ -473,8 +484,9 @@ describe("mountPryddButton inline ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
+      presentation: "iframe",
       createIntent: () => Promise.resolve({ reference: "pi_webview" }),
       onResult: () => {},
     });
@@ -493,8 +505,9 @@ describe("mountPryddButton inline ceremony", () => {
 
     handle = mountPryddButton({
       mount: container(),
-      checkoutOrigin: ORIGIN,
+      checkoutUrl: ORIGIN,
       apiBase: API,
+      presentation: "iframe",
       createIntent: () => Promise.resolve({ reference: "pi_frame_cancel" }),
       onResult,
     });

@@ -263,7 +263,7 @@ describe('CheckoutStatusSchema', () => {
 
 describe('constants', () => {
   it('pins the canonical checkout origin and version', () => {
-    expect(CHECKOUT_ORIGIN).toBe('https://pay.prydd.co');
+    expect(CHECKOUT_ORIGIN).toBe('https://prydd.co');
     expect(CHECKOUT_PROTOCOL_VERSION).toBe(1);
   });
 });

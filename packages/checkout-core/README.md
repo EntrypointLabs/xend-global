@@ -23,8 +23,6 @@ Script tag (the minified IIFE exposes `window.PryddCheckout`):
 <div id="pay"></div>
 <script>
   PryddCheckout.mountPryddButton({
-    checkoutOrigin: "https://pay.prydd.co",
-    apiBase: "https://api.prydd.co",
     mount: document.getElementById("pay"),
     createIntent: async () => {
       // Call YOUR server, which creates the intent. Money never travels
@@ -51,60 +49,45 @@ import { mountPryddButton } from "@prydd/checkout-core";
 
 ## How the sheet works
 
-Tapping the button draws a sheet on your page and opens Prydd's hosted
-checkout inside it, in a cross-origin frame. That frame shows your store name
-and the amount from Prydd's own record, and its single "Pay with passkey" tap
-starts Face ID or fingerprint on Prydd's origin, so a payment is one tap plus
-the passkey and no second window ever appears. The embedded sheet follows the
-light or dark theme of the sheet around it. The result comes back over the same
-exact-origin postMessage channel, with the same nonce and reference
-correlation, as the popup flow.
+Tapping the button draws a sheet on your page with your store name and the
+amount, read from the Prydd API. Tapping Pay opens Prydd's hosted checkout at
+`https://prydd.co/pay` in a small window, where the shopper confirms with the
+passkey they already use in the Prydd app (Face ID, Touch ID or their phone).
+The result comes back to your page over an exact-origin postMessage channel,
+correlated by nonce and intent reference, and the sheet shows the outcome.
+
+The checkout lives on prydd.co because passkeys made in the Prydd app belong
+to prydd.co, and browsers only offer a passkey to pages on the domain it was
+made for.
 
 Payments above the shopper's daily one-signature limit are approved on their
-phone: the sheet waits for that approval and finishes on its own.
-
-The checkout announces itself as soon as it loads, and that handshake is what
-tells the SDK the inline ceremony is live. If it never arrives, the popup takes
-over behind the same sheet, automatically and with the same nonce and
-reference. That happens when your origin is not registered with Prydd, because
-the checkout then refuses to be framed by it; when the frame errors; when the
-shopper is in an in-app browser; and as a backstop, when nothing has been heard
-within three seconds. The only visible difference is that a window appears.
-
-The sheet never authenticates, never signs, and never reads a balance. It is
-the interface; Prydd's own origin is the ceremony.
+phone: the checkout window waits for that approval and finishes on its own.
 
 ## What you have to do
 
 **Register every origin you mount the button on** with Prydd, on your
-Merchant's allowed origins list. Prydd serves the checkout with a
-`frame-ancestors` allowlist built from that list, so an unregistered origin
-gets the popup fallback instead of the inline ceremony, and the checkout will
-not post a result to it either.
+Merchant's allowed origins list. The checkout only posts its result to a
+registered origin.
 
 ## Options
 
-- `presentation`: `"iframe"` (default) draws the sheet and runs the ceremony
-  inline, falling back to a window if it cannot. `"modal"` draws the same
-  sheet but always uses the window. `"popup"` opens the hosted checkout
-  straight from the button with no sheet. `"redirect"` navigates the whole
-  page. Webviews, Opera Mini and blocked popups fall back to redirect on their
-  own, and any value the SDK does not recognise falls back to `"popup"`.
-- `apiBase`: origin of the Prydd API, e.g. `"https://api.prydd.co"`. The
-  sheet reads the intent summary from it; without one, `"iframe"` and
-  `"modal"` degrade to `"popup"`. Every origin you mount the button on must be
-  allowed to read that endpoint cross-origin.
+- `presentation`: `"modal"` (default) draws the sheet and opens the checkout
+  in a Prydd window. `"popup"` opens that window straight from the button with
+  no sheet. `"redirect"` navigates the whole page. `"iframe"` runs the
+  checkout inside the sheet, but Prydd's wallet provider will not load under
+  another site's page, so it only suits pages Prydd controls. Webviews, Opera
+  Mini and blocked popups fall back to redirect on their own, and any value
+  the SDK does not recognise falls back to `"popup"`.
+- `checkoutUrl`: where the hosted checkout lives. Defaults to
+  `"https://prydd.co/pay"`; override it only for local development.
+- `apiBase`: origin of the Prydd API. Defaults to `"https://api.prydd.co"`.
 - `theme`: `"auto"` (default) follows the viewer's colour scheme; `"light"`
   and `"dark"` pin the material.
-
-The checkout posts its result back to the origin of the page that opened it,
-so every origin the button is mounted on must be on your Merchant's allowed
-origins list.
 
 ## Security posture
 
 - **Exact-origin only.** Results are accepted solely from a strict-equality
-  match on `checkoutOrigin`. Substring or prefix look-alikes and a `null`
+  match on the origin of `checkoutUrl`. Substring or prefix look-alikes and a `null`
   origin are rejected.
 - **Reference and nonce matched.** Each open generates a fresh cryptographic
   nonce; a result must carry both the intent reference and that nonce.
