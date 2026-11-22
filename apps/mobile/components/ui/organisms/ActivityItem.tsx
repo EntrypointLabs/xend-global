@@ -11,8 +11,7 @@ import { describeToken } from "@/utils/tokens";
 import { formatUsdFromString } from "@/utils/balances";
 import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { formatMoney } from "@/utils/money";
-import { KEY_COLORS } from "@/utils/keyColors";
-import { GLASS, GLASS_COLORS, useOnPhoto } from "@/components/ui/glass";
+import { GLASS, useOnPhoto } from "@/components/ui/glass";
 import { RampMark } from "@/components/ui/atoms/RampMark";
 import {
   formatDollarsMinor,
@@ -277,14 +276,17 @@ function AwaitingPaymentItem({
   );
 }
 
-const keyIcon = require("@/assets/icons/keys.png");
+const EVENT_ILLUSTRATIONS = {
+  added: require("@/assets/illustrations/recovery-key-added.webp"),
+  removed: require("@/assets/illustrations/recovery-key-removed.webp"),
+  renamed: require("@/assets/illustrations/wallet-renamed.webp"),
+};
 
 /**
- * A key or pencil on a soft disc in its own colour, badged with what happened.
+ * The 3D object for an account event, standing on its own with no disc.
  *
- * The key is the same purple key Settings uses for Keys & Recovery, so the row
- * reads as the place it came from. Added and removed are told apart by a solid
- * green or red badge rather than by the glyph.
+ * What happened is part of the object itself: the charm on the key ring
+ * carries the plus or the cross, so there is no separate badge to place.
  */
 export function AccountEventMark({
   kind,
@@ -293,48 +295,20 @@ export function AccountEventMark({
   kind: ActivityEntry["securityKind"];
   size?: number;
 }) {
-  const renamed = kind === "wallet_renamed";
-  const removed = kind === "recovery_key_removed";
-  const tint = renamed ? KEY_COLORS.passkey : KEY_COLORS.device;
-  const badgeSize = size * 0.42;
-  const onPhoto = useOnPhoto();
+  const source =
+    kind === "wallet_renamed"
+      ? EVENT_ILLUSTRATIONS.renamed
+      : kind === "recovery_key_removed"
+        ? EVENT_ILLUSTRATIONS.removed
+        : EVENT_ILLUSTRATIONS.added;
 
   return (
-    <View
-      className="items-center justify-center rounded-full"
-      // DYNAMIC-COLOR: a light wash of the event's own colour; on the photo
-      // that wash goes muddy, so it takes the glass chip instead.
-      style={{
-        width: size,
-        height: size,
-        backgroundColor: onPhoto ? GLASS_COLORS.chip : `${tint}1F`,
-      }}
-    >
-      {renamed ? (
-        <Ionicons name="pencil" size={size * 0.45} color={tint} />
-      ) : (
-        <Image
-          source={keyIcon}
-          style={{ width: size * 0.5, height: size * 0.5 }}
-          resizeMode="contain"
-        />
-      )}
-      {!renamed && (
-        <View
-          className={cn(
-            "absolute -bottom-0.5 -right-0.5 items-center justify-center rounded-full border-2 border-white",
-            removed ? "bg-destructive" : "bg-success"
-          )}
-          style={{ width: badgeSize, height: badgeSize }}
-        >
-          <Ionicons
-            name={removed ? "close" : "add"}
-            size={badgeSize * 0.7}
-            color="#FFFFFF"
-          />
-        </View>
-      )}
-    </View>
+    <Image
+      source={source}
+      style={{ width: size, height: size }}
+      resizeMode="contain"
+      accessibilityIgnoresInvertColors
+    />
   );
 }
 

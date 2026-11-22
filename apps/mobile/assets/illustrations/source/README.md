@@ -27,3 +27,18 @@ match `jar.webp`, which set the style.
 | `convert`  | Convert price       | A thick gold coin standing on its edge, tilted, with two chunky curved arrows looping around it.                                   |
 | `atm`      | Find an ATM         | A chunky, rounded cash machine dispensing a short stack of banknotes; blank glowing screen.                                        |
 | `error`    | Error state         | A chunky exclamation mark in two separate pieces, a tall tapered bar and a round dot, tilted slightly.                             |
+
+## Activity marks
+
+Smaller objects that stand in for an icon on Activity rows (40pt) and their
+detail sheet (64pt). Same chunky 3D form language as the set above, but each in
+a single colour with smooth glossy shading, no paint texture and no mixed
+palette, so they read at icon size. Saved at 256px. Activity shows them bare,
+with no disc behind them, and the event is part of the object rather than a
+corner badge.
+
+| File                   | Used on                | Subject                                                                                                                                       |
+| ---------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `recovery-key-added`   | Added Recovery Key     | Three chunky keys of slightly different shapes on one thick ring, with a round charm on the ring carrying an embossed plus. Violet `#7C5CFF`. |
+| `recovery-key-removed` | Removed Recovery Key   | The same render with the plus swapped for an embossed cross, then desaturated to neutral grey so a removed key reads as gone.                 |
+| `wallet-renamed`       | Renamed / Named Wallet | A chunky bifold wallet with a blank luggage-style name tag on a loop of cord. Blue `#0080FF`, the tag a lighter tint.                         |
