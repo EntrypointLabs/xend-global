@@ -82,6 +82,8 @@ export interface ProviderFiatOrderStatus {
   status: FiatStatus;
   /** On-chain signature of the USDC leg, when the provider reports one. */
   signature?: string;
+  /** On-chain signature of the USDC sent back, for a returned order. */
+  refundSignature?: string;
 }
 /**
  * `debit` fixes what leaves the Consumer; `credit` fixes what the recipient

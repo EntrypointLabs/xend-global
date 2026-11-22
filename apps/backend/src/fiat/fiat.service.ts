@@ -32,6 +32,8 @@ const TERMINAL: ReadonlySet<FiatStatus> = new Set([
 // PAJ deletes an unpaid deposit order after 72 hours; nothing can land later.
 const PROVIDER_WATCH_MS = 72 * 60 * 60 * 1000;
 const PROVIDER_POLL_MS = 10_000;
+// A bank send's deposit can be refunded after Paycrest's 72h order window.
+const SEND_WATCH_MS = 14 * 24 * 60 * 60 * 1000;
 
 function hash(value: unknown) {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -191,9 +193,17 @@ export class FiatService {
    * never fatal: a failed read leaves the stored state as it was.
    */
   private async pollProvider(userId: string, order: FiatOrder) {
-    if (order.simulation || TERMINAL.has(order.status)) return order;
-    if (Date.parse(order.createdAt) + PROVIDER_WATCH_MS <= Date.now())
+    // A returned send stays watched until the refund transfer is known, so
+    // Activity can show that arrival as the refund it is.
+    const awaitingRefund =
+      order.status === 'returned' &&
+      order.route.direction === 'send' &&
+      !order.refundSignature;
+    if (order.simulation || (TERMINAL.has(order.status) && !awaitingRefund))
       return order;
+    const watch =
+      order.route.direction === 'send' ? SEND_WATCH_MS : PROVIDER_WATCH_MS;
+    if (Date.parse(order.createdAt) + watch <= Date.now()) return order;
     const last = this.lastPolled.get(order.id) ?? 0;
     if (Date.now() - last < PROVIDER_POLL_MS) return order;
     this.lastPolled.set(order.id, Date.now());
@@ -226,15 +236,29 @@ export class FiatService {
       .getOrder(row.providerReference!);
     if (!reported) return current;
     const next = providerFiatStatus(current.status, reported.status);
-    if (next === current.status) return current;
+    const newRefund =
+      !!reported.refundSignature &&
+      reported.refundSignature !== current.refundSignature;
+    if (next === current.status && !newRefund) return current;
     return this.store.event(
       row.userId,
       current.id,
-      `provider:${reported.status}`,
-      hash(reported.status),
+      newRefund
+        ? `provider:${reported.status}:${reported.refundSignature}`
+        : `provider:${reported.status}`,
+      hash(
+        newRefund
+          ? `${reported.status}:${reported.refundSignature}`
+          : reported.status,
+      ),
       (order) => {
         const status = providerFiatStatus(order.status, reported.status);
-        return status === order.status
+        const refund =
+          reported.refundSignature &&
+          reported.refundSignature !== order.refundSignature
+            ? { refundSignature: reported.refundSignature }
+            : null;
+        return status === order.status && !refund
           ? order
           : {
               ...order,
@@ -242,6 +266,7 @@ export class FiatService {
               ...(reported.signature
                 ? { settlementSignature: reported.signature }
                 : {}),
+              ...(refund ?? {}),
               updatedAt: new Date().toISOString(),
             };
       },

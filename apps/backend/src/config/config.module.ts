@@ -141,6 +141,11 @@ export const USDC_MINT_BY_CLUSTER = {
         MAIL_FROM: Joi.string().default('Prydd <security@prydd.co>'),
         // Where a copy of each support request is mailed. Blank mails nothing:
         // the request is still stored and still shows in the console.
+        OPS_ALERT_EMAIL: Joi.string()
+          .email({ tlds: { allow: false } })
+          .allow('')
+          .default(''),
+        FEE_PAYER_MIN_SOL: Joi.number().positive().optional(),
         SUPPORT_INBOX_EMAIL: Joi.string()
           .email({ tlds: { allow: false } })
           .allow('')

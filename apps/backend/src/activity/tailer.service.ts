@@ -211,9 +211,11 @@ export class TailerService {
       await this.notifications
         .notifyArrival({
           smartAccountId,
-          amount: ramp
-            ? describeRampArrival(ramp, evt)
-            : describeAmount(evt, symbol),
+          // A refund brings back dollars; no naira moved, so none is named.
+          amount:
+            ramp && !ramp.refund
+              ? describeRampArrival(ramp, evt)
+              : describeAmount(evt, symbol),
         })
         .catch((err) => this.logger.warn('tailer.notify_failed', err));
     }
