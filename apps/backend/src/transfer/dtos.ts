@@ -146,6 +146,7 @@ export const TransferRowSchema = z.object({
       bankCode: z.string().nullable(),
       logoKey: z.string().nullable(),
       accountLast4: z.string().nullable(),
+      refund: z.literal(true).optional(),
     })
     .nullable(),
   createdAt: z.string().datetime(),

@@ -132,8 +132,9 @@ export function RampTransactionDetail({
   onCopy: (text: string) => Promise<void>;
 }) {
   const ramp = item.ramp!;
+  const isRefund = ramp.refund === true;
   const isSend = ramp.direction === "send";
-  const outcome = rampOutcome(ramp, item.status);
+  const outcome = isRefund ? "refunded" : rampOutcome(ramp, item.status);
   const status = outcome ? OUTCOME_META[outcome] : transferStatus;
   const naira = formatNaira(ramp.fiatAmountMinor, ramp.fiatDecimals);
   const dollars = formatDollarsMinor(item.amountRaw, item.decimals);
@@ -161,10 +162,10 @@ export function RampTransactionDetail({
           <RampMark ramp={ramp} size={56} />
           <View className="flex-1 items-end">
             <Typography weight="700" className="text-3xl">
-              {naira}
+              {isRefund ? `+${dollars}` : naira}
             </Typography>
             <Typography weight="500" className="mt-0.5 text-sm text-black/40">
-              {dollars} · {date}
+              {isRefund ? date : `${dollars} · ${date}`}
             </Typography>
           </View>
         </View>
@@ -178,7 +179,7 @@ export function RampTransactionDetail({
           </Row>
         </Group>
 
-        <Group title={isSend ? "Sent to" : "From"}>
+        <Group title={isRefund ? "Bank send to" : isSend ? "Sent to" : "From"}>
           {isSend ? (
             <>
               <Row label="Name">
@@ -197,24 +198,35 @@ export function RampTransactionDetail({
           )}
         </Group>
 
-        <Group title="Conversion">
-          <Row label={isSend ? "They get" : "You paid"}>
-            <Value>{naira}</Value>
-          </Row>
-          <Row label={isSend ? "From your Account" : "Into your Account"}>
-            <Value>{dollars}</Value>
-          </Row>
-          {ramp.rate && (
-            <Row label="Rate">
-              <Value>{formatRate(ramp.rate)} = $1</Value>
+        {isRefund ? (
+          <Group title="Refund">
+            <Row label="They were to get">
+              <Value>{naira}</Value>
             </Row>
-          )}
-          {ramp.feeMinor && (
-            <Row label="Partner fee">
-              <Value>{formatDollarsMinor(ramp.feeMinor, 6)}</Value>
+            <Row label="Back in your Account">
+              <Value>{dollars}</Value>
             </Row>
-          )}
-        </Group>
+          </Group>
+        ) : (
+          <Group title="Conversion">
+            <Row label={isSend ? "They get" : "You paid"}>
+              <Value>{naira}</Value>
+            </Row>
+            <Row label={isSend ? "From your Account" : "Into your Account"}>
+              <Value>{dollars}</Value>
+            </Row>
+            {ramp.rate && (
+              <Row label="Rate">
+                <Value>{formatRate(ramp.rate)} = $1</Value>
+              </Row>
+            )}
+            {ramp.feeMinor && (
+              <Row label="Partner fee">
+                <Value>{formatDollarsMinor(ramp.feeMinor, 6)}</Value>
+              </Row>
+            )}
+          </Group>
+        )}
 
         <View className="mt-3 w-full px-1 pb-3">
           <Row label="Onchain transaction">

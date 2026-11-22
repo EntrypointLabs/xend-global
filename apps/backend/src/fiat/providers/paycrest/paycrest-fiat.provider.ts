@@ -204,7 +204,15 @@ export class PaycrestFiatProvider implements FiatProvider {
   async getOrder(reference: string): Promise<ProviderFiatOrderStatus | null> {
     const order = await this.call(() => this.paycrest.getOrder(reference));
     if (!order) return null;
-    const status = paycrestStatus(order.status);
+    const refund = order.transactionLogs?.find(
+      (log) => log.status === 'order_refunded',
+    );
+    // A deposit that lands after expiry is sent back while the order still
+    // reads expired; the returned amount and the refund log are what say so.
+    const returned =
+      !!refund ||
+      (order.amountReturned ? Number(order.amountReturned) > 0 : false);
+    const status = returned ? 'returned' : paycrestStatus(order.status);
     if (!status) {
       this.logger.warn(`paycrest.order unknown status=${order.status}`);
       return null;
@@ -213,6 +221,7 @@ export class PaycrestFiatProvider implements FiatProvider {
       reference,
       status,
       ...(order.txHash ? { signature: order.txHash } : {}),
+      ...(refund?.tx_hash ? { refundSignature: refund.tx_hash } : {}),
     };
   }
 

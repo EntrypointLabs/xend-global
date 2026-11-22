@@ -206,6 +206,7 @@ export function statusLabel(entry: ActivityEntry): string {
     if (entry.status === "failed") return "Failed";
     return "Paid";
   }
+  if (entry.ramp?.refund) return "Refund";
   if (entry.status === "pending") return "Sending…";
   if (entry.status === "failed") return "Failed";
   return entry.direction === "send" ? "Sent" : "Received";
@@ -296,6 +297,8 @@ export function awaitingPaymentActivityEntry(
  */
 export function arrivalLabel(row: TransferRow): string {
   const decimals = row.decimals ?? DEFAULT_DECIMALS;
+  if (row.ramp?.refund)
+    return `Refunded ${formatDollarsMinor(row.amountRaw, decimals)}`;
   // A naira deposit arrives as the naira the Consumer paid in.
   if (row.ramp)
     return `Received ${formatNaira(row.ramp.fiatAmountMinor, row.ramp.fiatDecimals)}`;

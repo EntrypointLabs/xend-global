@@ -631,6 +631,8 @@ export const TransferRowSchema = z.object({
       bankCode: z.string().nullable(),
       logoKey: z.string().nullable(),
       accountLast4: z.string().nullable(),
+      // The arrival that brought a returned bank send's dollars back.
+      refund: z.literal(true).optional(),
     })
     .nullish(),
   createdAt: z.string().datetime(),
