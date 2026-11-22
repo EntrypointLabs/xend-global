@@ -58,18 +58,3 @@ export function rampCounterparty(ramp: RampDetails): string {
   if (name && bank) return `${name} · ${bank}`;
   return name ?? bank ?? "Bank account";
 }
-
-/**
- * The row's headline and the ↳ line beneath it. Naira leads because it is the
- * sum the Consumer paid in or the recipient got; dollars are what it became.
- */
-export function rampAmounts(
-  ramp: RampDetails,
-  amountRaw: string,
-  decimals: number
-): { headline: string; conversion: string } {
-  const naira = formatNaira(ramp.fiatAmountMinor, ramp.fiatDecimals);
-  const dollars = formatDollarsMinor(amountRaw, decimals);
-  const rate = ramp.rate ? ` at ${formatRate(ramp.rate)}/$` : "";
-  return { headline: naira, conversion: `${dollars}${rate}` };
-}

@@ -9,12 +9,7 @@ import { RampMark } from "@/components/ui/atoms/RampMark";
 import { cn } from "@/utils/cn";
 import { truncateAddress } from "@/utils/helper";
 import { activityDetailTimestamp, type ActivityEntry } from "@/utils/activity";
-import {
-  formatDollarsMinor,
-  formatNaira,
-  formatRate,
-  rampAmounts,
-} from "@/utils/ramp";
+import { formatDollarsMinor, formatNaira, formatRate } from "@/utils/ramp";
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -25,10 +20,63 @@ export interface StatusMeta {
   textClass: string;
 }
 
+const MUTED = "rgba(0,0,0,0.3)";
+
+function Row({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View className="flex-row items-center justify-between py-2.5">
+      <Typography weight="600" className="text-black/50">
+        {label}
+      </Typography>
+      <View className="ml-6 shrink flex-row items-center justify-end">
+        {children}
+      </View>
+    </View>
+  );
+}
+
+function Value({ children }: { children: React.ReactNode }) {
+  return (
+    <Typography weight="600" numberOfLines={1} className="shrink text-right">
+      {children}
+    </Typography>
+  );
+}
+
+/** One titled block of rows, the way Monzo gathers a receipt into sections. */
+function Group({
+  title,
+  children,
+}: {
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View className="mt-4 w-full">
+      {title && (
+        <Typography
+          weight="600"
+          className="mb-1.5 px-1 text-xs uppercase tracking-[0.6px] text-black/50"
+        >
+          {title}
+        </Typography>
+      )}
+      <View className="rounded-2xl bg-black/[0.03] px-4 py-1">{children}</View>
+    </View>
+  );
+}
+
 /**
  * The receipt for a naira deposit or bank send. Leads with the money the
- * Consumer recognises, then the conversion and the bank or person, and leaves
- * out network fees, which mean nothing on a bank transfer.
+ * Consumer recognises, says the rate in a sentence, then groups who it was
+ * with apart from how it was converted. Network fees are left out: they mean
+ * nothing on a bank transfer.
  */
 export function RampTransactionDetail({
   visible,
@@ -45,19 +93,15 @@ export function RampTransactionDetail({
 }) {
   const ramp = item.ramp!;
   const isSend = ramp.direction === "send";
-  const muted = "rgba(0,0,0,0.3)";
-  const { headline, conversion } = rampAmounts(
-    ramp,
-    item.amountRaw,
-    item.decimals
-  );
-  const date = format(
-    new Date(activityDetailTimestamp(item)),
-    "MMM d, yyyy 'at' h:mma"
-  );
-  const rowClass = "flex-row justify-between items-center py-2";
   const naira = formatNaira(ramp.fiatAmountMinor, ramp.fiatDecimals);
   const dollars = formatDollarsMinor(item.amountRaw, item.decimals);
+  const date = format(new Date(activityDetailTimestamp(item)), "MMM d, h:mma");
+  const bank = [
+    ramp.bankName,
+    ramp.accountLast4 ? `•••• ${ramp.accountLast4}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <ActionModal visible={visible} onClose={onClose}>
@@ -66,117 +110,72 @@ export function RampTransactionDetail({
           onPress={onClose}
           className="absolute -right-4 -top-4 p-4"
         >
-          <FontAwesome6 name="xmark" size={20} color={muted} />
+          <FontAwesome6 name="xmark" size={20} color={MUTED} />
         </HapticPressable>
 
-        <View className="relative mb-3">
-          <RampMark ramp={ramp} size={64} />
-          <View className="absolute right-0 top-0 overflow-hidden rounded-full bg-white">
-            <Ionicons name={status.icon} size={16} color={status.color} />
+        {/* Two lines, side by side: the amount is what the eye should land on.
+            No status badge on the logo; the Status row below already says it. */}
+        <View className="mt-8 w-full flex-row items-center gap-4">
+          <RampMark ramp={ramp} size={56} />
+          <View className="flex-1 items-end">
+            <Typography weight="700" className="text-3xl">
+              {naira}
+            </Typography>
+            <Typography weight="500" className="mt-0.5 text-sm text-black/40">
+              {dollars} · {date}
+            </Typography>
           </View>
         </View>
 
-        <Typography weight="600" className="mb-1 text-sm text-black/30">
-          {isSend ? "Sent to a bank" : "Added from your bank"}
-        </Typography>
-
-        <Typography weight="700" className="mb-1 text-3xl">
-          {headline}
-        </Typography>
-
-        <View className="mb-1 flex-row items-center gap-1.5">
-          <Ionicons name="return-down-forward" size={14} color={muted} />
-          <Typography weight="600" className="text-base text-black/30">
-            {conversion}
-          </Typography>
-        </View>
-
-        <Typography weight="600" className="mb-4 text-sm text-black/30">
-          {date}
-        </Typography>
-
-        <View className="w-full pb-3">
-          <View className={rowClass}>
-            <Typography weight="600">Status</Typography>
-            <View className="flex-row items-center">
-              <Typography className={cn("mr-1", status.textClass)}>
-                {status.label}
-              </Typography>
-              <Ionicons name={status.icon} size={14} color={status.color} />
-            </View>
-          </View>
-
-          <View className={rowClass}>
-            <Typography weight="600" className="text-black/30">
-              {isSend ? "To" : "From"}
+        <Group>
+          <Row label="Status">
+            <Typography className={cn("mr-1", status.textClass)}>
+              {status.label}
             </Typography>
-            <Typography weight="600" numberOfLines={1} className="ml-6 shrink">
-              {isSend
-                ? (ramp.counterpartyName ?? "Bank account")
-                : "Your bank transfer"}
-            </Typography>
-          </View>
+            <Ionicons name={status.icon} size={14} color={status.color} />
+          </Row>
+        </Group>
 
-          {isSend && (ramp.bankName || ramp.accountLast4) && (
-            <View className={rowClass}>
-              <Typography weight="600" className="text-black/30">
-                Bank
-              </Typography>
-              <Typography
-                weight="600"
-                numberOfLines={1}
-                className="ml-6 shrink"
-              >
-                {[
-                  ramp.bankName,
-                  ramp.accountLast4 ? `•••• ${ramp.accountLast4}` : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </Typography>
-            </View>
+        <Group title={isSend ? "Sent to" : "From"}>
+          {isSend ? (
+            <>
+              <Row label="Name">
+                <Value>{ramp.counterpartyName ?? "Bank account"}</Value>
+              </Row>
+              {bank !== "" && (
+                <Row label="Bank">
+                  <Value>{bank}</Value>
+                </Row>
+              )}
+            </>
+          ) : (
+            <Row label="Source">
+              <Value>Your bank transfer</Value>
+            </Row>
           )}
+        </Group>
 
-          <View className={rowClass}>
-            <Typography weight="600" className="text-black/30">
-              {isSend ? "They get" : "You paid"}
-            </Typography>
-            <Typography weight="600">{naira}</Typography>
-          </View>
-
-          <View className={rowClass}>
-            <Typography weight="600" className="text-black/30">
-              {isSend ? "From your Account" : "Into your Account"}
-            </Typography>
-            <Typography weight="600">{dollars}</Typography>
-          </View>
-
+        <Group title="Conversion">
+          <Row label={isSend ? "They get" : "You paid"}>
+            <Value>{naira}</Value>
+          </Row>
+          <Row label={isSend ? "From your Account" : "Into your Account"}>
+            <Value>{dollars}</Value>
+          </Row>
           {ramp.rate && (
-            <View className={rowClass}>
-              <Typography weight="600" className="text-black/30">
-                Rate
-              </Typography>
-              <Typography weight="600">
-                {formatRate(ramp.rate)} per $1
-              </Typography>
-            </View>
+            <Row label="Rate">
+              <Value>{formatRate(ramp.rate)} = $1</Value>
+            </Row>
           )}
-
           {ramp.feeMinor && (
-            <View className={rowClass}>
-              <Typography weight="600" className="text-black/30">
-                Partner fee
-              </Typography>
-              <Typography weight="600">
-                {formatDollarsMinor(ramp.feeMinor, 6)}
-              </Typography>
-            </View>
+            <Row label="Partner fee">
+              <Value>{formatDollarsMinor(ramp.feeMinor, 6)}</Value>
+            </Row>
           )}
+        </Group>
 
-          <View className={rowClass}>
-            <Typography weight="600" className="text-black/30">
-              Onchain transaction
-            </Typography>
+        <View className="mt-3 w-full px-1 pb-3">
+          <Row label="Onchain transaction">
             {item.signature ? (
               <TouchableOpacity
                 className="flex-row items-center"
@@ -185,14 +184,14 @@ export function RampTransactionDetail({
                 <Typography weight="600" className="mr-1">
                   {truncateAddress(item.signature)}
                 </Typography>
-                <Ionicons name="copy-outline" size={14} color={muted} />
+                <Ionicons name="copy-outline" size={14} color={MUTED} />
               </TouchableOpacity>
             ) : (
               <Typography weight="600" className="text-black/30">
                 Pending
               </Typography>
             )}
-          </View>
+          </Row>
         </View>
       </View>
     </ActionModal>

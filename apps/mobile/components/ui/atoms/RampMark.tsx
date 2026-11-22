@@ -1,7 +1,7 @@
 import React from "react";
 import { View } from "react-native";
 import { Image } from "expo-image";
-import { Ionicons } from "@expo/vector-icons";
+import { FontAwesome6 } from "@expo/vector-icons";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { BANK_LOGOS } from "@/utils/bankLogos";
 import { shortBankName, type RampDetails } from "@/utils/ramp";
@@ -52,7 +52,11 @@ export function RampMark({
           {initials(ramp.bankName)}
         </Typography>
       ) : (
-        <Ionicons name="business" size={size * 0.45} color="#0E0F0C" />
+        <FontAwesome6
+          name="building-columns"
+          size={size * 0.38}
+          color="#0E0F0C"
+        />
       )}
     </View>
   );

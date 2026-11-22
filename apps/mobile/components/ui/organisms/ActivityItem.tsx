@@ -14,9 +14,10 @@ import { formatMoney } from "@/utils/money";
 import { KEY_COLORS } from "@/utils/keyColors";
 import { GLASS, GLASS_COLORS, useOnPhoto } from "@/components/ui/glass";
 import { RampMark } from "@/components/ui/atoms/RampMark";
+import { ConversionArrow } from "@/components/ui/atoms/ConversionArrow";
 import {
   formatDollarsMinor,
-  rampAmounts,
+  formatNaira,
   rampCounterparty,
 } from "@/utils/ramp";
 
@@ -158,11 +159,8 @@ function RampItem({
   const ramp = entry.ramp!;
   const isSend = entry.direction === "send";
   const isInactive = entry.status === "pending" || entry.status === "failed";
-  const { headline, conversion } = rampAmounts(
-    ramp,
-    entry.amountRaw,
-    entry.decimals
-  );
+  const naira = formatNaira(ramp.fiatAmountMinor, ramp.fiatDecimals);
+  const dollars = formatDollarsMinor(entry.amountRaw, entry.decimals);
   const valueColorClass = isInactive
     ? tone.muted
     : isSend
@@ -195,18 +193,22 @@ function RampItem({
             )}
           >
             {isSend ? "-" : "+"}
-            {headline}
+            {naira}
           </Typography>
         </View>
       </View>
-      <View className="mt-1.5 flex-row items-center gap-1.5 pl-4">
-        <Ionicons
-          name="return-down-forward"
-          size={14}
-          color={tone.ink ? "#FFFFFF8F" : "#0000004D"}
-        />
-        <Typography weight="500" className={cn("text-xs", tone.muted)}>
-          {conversion}
+      {/* Starts at the badge's centre (20pt in) and lands the dollars just past
+          the title column. */}
+      <View className="mt-0.5 flex-row items-center pl-[19px]">
+        <ConversionArrow color={tone.ink ? "#FFFFFF8F" : "#00000040"} />
+        <Typography
+          weight="600"
+          className={cn(
+            "ml-1.5 text-[13px]",
+            tone.ink ? tone.muted : "text-black/50"
+          )}
+        >
+          {dollars}
         </Typography>
       </View>
     </HapticPressable>
