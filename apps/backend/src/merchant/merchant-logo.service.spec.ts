@@ -1,6 +1,10 @@
 import type { ConfigService } from '@nestjs/config';
 import type { DbService } from '../db/db.service';
-import { iconLinksIn, MerchantLogoService } from './merchant-logo.service';
+import {
+  iconLinksIn,
+  MerchantLogoService,
+  readCapped,
+} from './merchant-logo.service';
 
 const PNG = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00,
@@ -77,5 +81,39 @@ describe('iconLinksIn', () => {
       'https://shop.prydd.co/apple.png',
       'https://shop.prydd.co/icon-32.png',
     ]);
+  });
+});
+
+describe('readCapped', () => {
+  function streamOf(chunks: number[], onCancel: () => void): Response {
+    let i = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (i < chunks.length) controller.enqueue(new Uint8Array(chunks[i++]));
+        else controller.close();
+      },
+      cancel: onCancel,
+    });
+    return new Response(body);
+  }
+
+  it('abandons a body with no length the moment it passes the limit', async () => {
+    const cancel = jest.fn();
+    const res = streamOf([600, 600, 600, 600], cancel);
+    await expect(readCapped(res, 1000)).resolves.toBeNull();
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it('reads a body within the limit whole', async () => {
+    const res = streamOf([300, 300], jest.fn());
+    const data = await readCapped(res, 1000);
+    expect(data?.length).toBe(600);
+  });
+
+  it('refuses a declared length over the limit without reading', async () => {
+    const res = new Response('x'.repeat(10), {
+      headers: { 'content-length': '5000' },
+    });
+    await expect(readCapped(res, 1000)).resolves.toBeNull();
   });
 });

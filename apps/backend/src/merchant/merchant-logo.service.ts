@@ -26,6 +26,38 @@ const DRAWABLE_TYPES = new Set<string>([
 /** How long a found (or not found) site icon is trusted before looking again. */
 const SITE_ICON_TTL_MS = 24 * 60 * 60 * 1000;
 const SITE_FETCH_TIMEOUT_MS = 3_000;
+/** A home page or icon larger than this is not read at all. */
+const MAX_SITE_BYTES = MAX_LOGO_BYTES * 4;
+
+/**
+ * Reads a body chunk by chunk and abandons it the moment it passes `limit`, so
+ * a store that streams without a length cannot make the server buffer it all.
+ */
+export async function readCapped(
+  res: Response,
+  limit: number,
+): Promise<Buffer | null> {
+  const declared = Number(res.headers.get('content-length') ?? '0');
+  if (declared > limit) {
+    await res.body?.cancel();
+    return null;
+  }
+  if (!res.body) return Buffer.alloc(0);
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
 
 export interface Logo {
   contentType: string;
@@ -85,6 +117,8 @@ export function iconLinksIn(html: string, base: string): string[] {
 @Injectable()
 export class MerchantLogoService {
   private readonly logger = new Logger(MerchantLogoService.name);
+  /** One site lookup per Merchant at a time, however many requests arrive. */
+  private readonly lookups = new Map<string, Promise<Logo | null>>();
 
   constructor(
     private readonly db: DbService,
@@ -178,7 +212,14 @@ export class MerchantLogoService {
       .limit(1);
     if (!merchant) return null;
 
-    const found = await this.findSiteIcon(merchant.allowedOrigins ?? []);
+    let lookup = this.lookups.get(merchantId);
+    if (!lookup) {
+      lookup = this.findSiteIcon(merchant.allowedOrigins ?? []).finally(() =>
+        this.lookups.delete(merchantId),
+      );
+      this.lookups.set(merchantId, lookup);
+    }
+    const found = await lookup;
     const values = {
       merchantId,
       source: 'site' as const,
@@ -230,10 +271,8 @@ export class MerchantLogoService {
         headers: { accept: 'text/html,image/*;q=0.9' },
       });
       if (res.status !== 200) return null;
-      const declared = Number(res.headers.get('content-length') ?? '0');
-      if (declared > MAX_LOGO_BYTES * 4) return null;
-      const data = Buffer.from(await res.arrayBuffer());
-      if (data.length > MAX_LOGO_BYTES * 4) return null;
+      const data = await readCapped(res, MAX_SITE_BYTES);
+      if (!data) return null;
       return { contentType: res.headers.get('content-type') ?? '', data };
     } catch (err) {
       this.logger.debug(
