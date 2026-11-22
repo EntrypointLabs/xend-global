@@ -37,6 +37,7 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query";
 import { PrivyProvider } from "@privy-io/expo";
+import { installPasskeyLabels } from "@/utils/passkeyLabel";
 
 import * as SplashScreen from "expo-splash-screen";
 import {
@@ -69,6 +70,9 @@ import {
   useNotificationRouting,
   usePushRegistration,
 } from "@/hooks/usePushRegistration";
+
+// Before PrivyProvider mounts: the Privy client keeps the fetch it finds then.
+installPasskeyLabels(globalThis);
 
 // Runs before any provider mounts, so the first Privy call is already covered.
 installPrivyRequestLog();
