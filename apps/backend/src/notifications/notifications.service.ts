@@ -197,10 +197,19 @@ export class NotificationsService {
   /**
    * A Payment the Consumer made has settled. Follows the same preference as an
    * arrival: it is news about money that moved, not something they must act on.
+   * Worded like a card spend: the merchant as the title, then what was paid and
+   * what is left.
    */
   async notifyPaymentMade(
     userId: string,
-    payment: { merchantName: string; amount: string },
+    payment: {
+      merchantName: string;
+      category: string | null;
+      amount: string;
+      /** Balance after the Payment, already formatted; omitted when unread. */
+      balance?: string | null;
+      lowBalance?: boolean;
+    },
   ): Promise<void> {
     try {
       const [user] = await this.db.client
@@ -212,8 +221,7 @@ export class NotificationsService {
       await this.notifyUser(
         userId,
         {
-          title: `Paid ${payment.merchantName}`,
-          body: `You paid ${payment.amount} to ${payment.merchantName}.`,
+          ...paymentMadeNotice(payment),
           data: { kind: NOTICE_KIND.arrival },
         },
         'payment_made',
@@ -264,4 +272,40 @@ export class NotificationsService {
       this.logger.warn('push.notify_failed', err);
     }
   }
+}
+
+const CATEGORY_EMOJI: Record<string, string> = {
+  shopping: '🛍️',
+  food_drink: '🍽️',
+  groceries: '🛒',
+  transport: '🚌',
+  travel: '✈️',
+  entertainment: '🎬',
+  health: '💊',
+  services: '🛠️',
+  bills: '🧾',
+};
+
+/** The glyph a card-spend notice leads with, so a glance says what kind of place it was. */
+export function categoryEmoji(category: string | null): string {
+  return (category && CATEGORY_EMOJI[category]) || '💳';
+}
+
+/** Worded like a card spend: the merchant as the title, then what was paid and what is left. */
+export function paymentMadeNotice(payment: {
+  merchantName: string;
+  category: string | null;
+  amount: string;
+  balance?: string | null;
+  lowBalance?: boolean;
+}): { title: string; body: string } {
+  const lines = [
+    `${categoryEmoji(payment.category)} Paid ${payment.amount} at ${payment.merchantName}`,
+  ];
+  if (payment.balance) {
+    lines.push(
+      `${payment.lowBalance ? '⚠️ ' : ''}USD Balance: ${payment.balance}`,
+    );
+  }
+  return { title: payment.merchantName, body: lines.join('\n') };
 }

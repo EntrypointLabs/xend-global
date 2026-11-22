@@ -363,7 +363,13 @@ describe('SettlementConfirmationService', () => {
       expect(notifyPaymentMade).toHaveBeenCalledTimes(1);
       expect(notifyPaymentMade.mock.calls[0]).toEqual([
         'u_1',
-        { merchantName: 'a merchant', amount: '$8' },
+        {
+          merchantName: 'a merchant',
+          category: null,
+          amount: '$8',
+          balance: null,
+          lowBalance: false,
+        },
       ]);
     });
 
