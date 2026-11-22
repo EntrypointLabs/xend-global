@@ -133,6 +133,8 @@ export type CheckoutErrorCode =
   | 'PAYMENT_PROCESSING'
   /** Above the band one signature carries; only the Prydd app can finish it. */
   | 'APPROVAL_REQUIRED'
+  /** The passkey belongs to an identity with no Prydd Account. */
+  | 'UNKNOWN_CONSUMER'
   | 'UNKNOWN';
 
 export class CheckoutApiError extends Error {
@@ -152,6 +154,7 @@ function toErrorCode(raw: unknown): CheckoutErrorCode {
     case 'INTENT_EXPIRED':
     case 'PAYMENT_PROCESSING':
     case 'APPROVAL_REQUIRED':
+    case 'UNKNOWN_CONSUMER':
       return raw;
     default:
       return 'UNKNOWN';

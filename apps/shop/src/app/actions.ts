@@ -75,7 +75,7 @@ export async function checkOrder(orderId: string): Promise<Order | null> {
     console.error("order check failed", orderId, err);
     return null;
   } finally {
-    after(() => reconcileOpenOrders(5).catch(() => undefined));
+    after(() => reconcileOpenOrders(3).catch(() => undefined));
   }
 }
 

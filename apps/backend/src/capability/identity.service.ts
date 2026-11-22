@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { passkeyCredentials, smartAccounts, users } from '../db/schema';
 import { WALLET_PROVIDER } from '../wallet/wallet-provider.interface';
+import { PrivyUserShapeError } from '../wallet/privy.errors';
 import type {
   WalletProvider,
   WalletProviderUser,
@@ -78,7 +79,17 @@ export class IdentityService {
     idToken: string,
     options: ResolveOptions = {},
   ): Promise<ConsumerProfile> {
-    const providerUser = await this.walletProvider.verifyIdToken(idToken);
+    const providerUser = await this.walletProvider
+      .verifyIdToken(idToken)
+      .catch((err: unknown) => {
+        // A real identity that never finished sign-up (no embedded wallet) is
+        // a person with no Account here, not a server fault. A browser that
+        // offers several passkeys makes picking one of these easy.
+        if (err instanceof PrivyUserShapeError) {
+          throw new UnknownConsumerError(err.message);
+        }
+        throw err;
+      });
     const [account] = await this.db.client
       .select()
       .from(smartAccounts)

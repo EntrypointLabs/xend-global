@@ -11,6 +11,7 @@ import {
   users,
 } from '../db/schema';
 import { IdentityService } from './identity.service';
+import { PrivyUserShapeError } from '../wallet/privy.errors';
 
 /** NODE_ENV stub; defaults to a non-development value (production path). */
 function makeConfig(nodeEnv: string = 'test'): ConfigService {
@@ -165,6 +166,21 @@ describe('IdentityService.resolveByProviderToken', () => {
     } as unknown as WalletProvider;
     const db = makeFakeDb({ smartAccounts: [] });
     const service = new IdentityService(db, wallet, makeConfig());
+    await expect(service.resolveByProviderToken('token')).rejects.toMatchObject(
+      { code: 'UNKNOWN_CONSUMER' },
+    );
+  });
+
+  it('rejects an identity with no embedded wallet as UNKNOWN_CONSUMER, not a server error', async () => {
+    const wallet = {
+      verifyIdToken: jest
+        .fn()
+        .mockRejectedValue(
+          new PrivyUserShapeError('Privy user x has no Solana wallet linked'),
+        ),
+      getUser: jest.fn(),
+    } as unknown as WalletProvider;
+    const service = new IdentityService(makeFakeDb({}), wallet, makeConfig());
     await expect(service.resolveByProviderToken('token')).rejects.toMatchObject(
       { code: 'UNKNOWN_CONSUMER' },
     );

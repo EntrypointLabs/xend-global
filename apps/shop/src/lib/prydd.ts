@@ -58,7 +58,14 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     signal: AbortSignal.timeout(10_000),
   });
   const text = await res.text();
-  const body = text ? JSON.parse(text) : null;
+  let body: { code?: string; message?: string } | null = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    // A rate limiter or proxy can answer in plain text; the status still counts.
+    if (res.ok)
+      throw new PryddApiError(502, "BAD_RESPONSE", "Unreadable API response");
+  }
   if (!res.ok) {
     throw new PryddApiError(
       res.status,
