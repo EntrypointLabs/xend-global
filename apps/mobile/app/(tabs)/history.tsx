@@ -38,7 +38,7 @@ export default function HistoryScreen() {
     refetch,
   } = useTransfersInfinite();
 
-  const { data: awaiting } = useAwaitingPayments();
+  const { data: awaiting, refetch: refetchAwaiting } = useAwaitingPayments();
 
   const [selectedItem, setSelectedItem] = useState<ActivityEntry | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -99,11 +99,13 @@ export default function HistoryScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refetch();
+      // Everything the feed shows, so a pull also catches a Payment that
+      // started or finished waiting on this phone.
+      await Promise.all([refetch(), refetchAwaiting()]);
     } finally {
       setRefreshing(false);
     }
-  }, [refetch]);
+  }, [refetch, refetchAwaiting]);
 
   return (
     <PhotoScreen scene="sky" warm blurred>
