@@ -31,7 +31,7 @@ function Row({
 }) {
   return (
     <View className="flex-row items-center justify-between py-2.5">
-      <Typography weight="600" className="text-black/30">
+      <Typography weight="600" className="text-black/[0.35]">
         {label}
       </Typography>
       <View className="ml-6 shrink flex-row items-center justify-end">
@@ -62,7 +62,7 @@ function Group({
       {title && (
         <Typography
           weight="600"
-          className="mb-1.5 px-1 text-xs uppercase tracking-[0.6px] text-black/30"
+          className="mb-1.5 px-1 text-xs uppercase tracking-[0.6px] text-black/[0.35]"
         >
           {title}
         </Typography>
