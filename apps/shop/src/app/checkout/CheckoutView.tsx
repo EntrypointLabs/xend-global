@@ -290,7 +290,24 @@ export function CheckoutView({ apiBase }: { apiBase: string }) {
                     );
                   }
                 }}
-                onUnresolved={() => goToOrder("pending")}
+                onUnresolved={(u) => {
+                  // The SDK is sending this whole page to Prydd to finish the
+                  // payment. Navigating here as well would cancel that.
+                  if (u.reason === "redirected" || u.reason === "popup_blocked")
+                    return;
+                  // A payment that may really be in flight gets the order page,
+                  // which keeps checking until it settles.
+                  if (u.reason === "confirmation_timeout") {
+                    goToOrder("pending");
+                    return;
+                  }
+                  // The Prydd window closed without finishing, most often a
+                  // shopper backing out or short of balance. The bag keeps
+                  // watching that order in case it did go through.
+                  setNotice(
+                    "The payment wasn't finished. Tap Pay with Prydd to try again.",
+                  );
+                }}
               />
             </div>
             {!canPay && (
