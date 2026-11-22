@@ -279,7 +279,7 @@ function AwaitingPaymentItem({
 const EVENT_ILLUSTRATIONS = {
   added: require("@/assets/illustrations/recovery-key-added.webp"),
   removed: require("@/assets/illustrations/recovery-key-removed.webp"),
-  renamed: require("@/assets/illustrations/wallet-renamed.webp"),
+  renamed: require("@/assets/illustrations/account-renamed.webp"),
 };
 
 /**

@@ -670,8 +670,8 @@ describe("mapAccountEventToActivityEntry", () => {
       "SELF"
     );
 
-    expect(statusLabel(named)).toBe("Named Wallet");
-    expect(statusLabel(renamed)).toBe("Renamed Wallet");
+    expect(statusLabel(named)).toBe("Named Account");
+    expect(statusLabel(renamed)).toBe("Renamed Account");
   });
 
   it("dates the entry when it happened", () => {

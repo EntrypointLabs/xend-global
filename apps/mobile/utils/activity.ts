@@ -320,7 +320,7 @@ function describeEvent(event: AccountEventRow): {
       return { label: "Removed Recovery Key", subject };
     case "wallet_renamed":
       return {
-        label: event.previousSubject ? "Renamed Wallet" : "Named Wallet",
+        label: event.previousSubject ? "Renamed Account" : "Named Account",
         subject,
       };
   }
