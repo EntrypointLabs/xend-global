@@ -9,6 +9,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { labelNextPasskey } from "@/utils/passkeyLabel";
 
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
@@ -271,6 +272,7 @@ function AddEmailScreen() {
 
   const createPasskey = async () => {
     if (!signupToken) return;
+    labelNextPasskey(claimed);
     if (await signUp(signupToken)) setSettingUpAccount(true);
   };
 

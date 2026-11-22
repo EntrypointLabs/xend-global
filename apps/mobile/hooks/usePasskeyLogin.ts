@@ -6,6 +6,7 @@ import {
 } from "@privy-io/expo/passkey";
 import { useIdentityToken, usePrivy } from "@privy-io/expo";
 import * as Sentry from "@sentry/react-native";
+import { labelNextPasskey } from "@/utils/passkeyLabel";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { authenticateWithRetry } from "@/utils/passkeyCeremony";
@@ -33,7 +34,7 @@ const RELYING_PARTY = "https://prydd.co";
  * though passkey sign-in itself is working.
  */
 export function usePasskeyLogin() {
-  const { completePasskeySession } = useAuth();
+  const { completePasskeySession, email } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   /** A ref, because the caller reads it right after an await resolves. */
@@ -169,6 +170,7 @@ export function usePasskeyLogin() {
     setBusy(true);
     try {
       if (privyUser) await privyLogout();
+      labelNextPasskey(email);
       const created = (await signupWithPasskey({ relyingParty: RELYING_PARTY }))
         .user;
       if (!created) {

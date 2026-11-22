@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { usePrivy } from "@privy-io/expo";
 import { useLinkWithPasskey } from "@privy-io/expo/passkey";
+import { useAuth } from "@/contexts/AuthContext";
+import { labelNextPasskey } from "@/utils/passkeyLabel";
 
 import { hasLinkedPasskey } from "@/utils/auth";
 import { apiClient } from "@/utils/apiClient";
@@ -77,6 +79,7 @@ const RELYING_PARTY = "https://prydd.co";
  */
 export function usePasskey() {
   const { user } = usePrivy();
+  const { email } = useAuth();
   const [error, setError] = useState<string | null>(null);
 
   const hasPasskey = hasLinkedPasskey(user);
@@ -96,6 +99,7 @@ export function usePasskey() {
   const registerPasskey = async (): Promise<boolean> => {
     setError(null);
     try {
+      labelNextPasskey(email);
       const updated = await linkWithPasskey({ relyingParty: RELYING_PARTY });
       mirrorEnrolledPasskeys(updated ?? null);
       return hasLinkedPasskey(updated);
