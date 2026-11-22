@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, TouchableOpacity, ActivityIndicator } from "react-native";
+import {
+  View,
+  TouchableOpacity,
+  ActivityIndicator,
+  Keyboard,
+  Pressable,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { Keypad } from "@/components/ui/molecules";
@@ -15,11 +21,10 @@ import { useAccount } from "@/hooks/useAccount";
 import { describeSecondCheck, SECOND_CHECK_NOTE } from "@/utils/spendingLimit";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { displayMoney } from "@/utils/display-money";
+import { displayMoney, usdcAsDollars } from "@/utils/display-money";
 import { apiClient } from "@/utils/apiClient";
 import {
   fiatAmountMinor,
-  minorToPlain,
   nairaAllowanceLeft,
   type FiatOrder,
 } from "@/utils/fiat";
@@ -149,9 +154,9 @@ function BankAmountStep({
   const short = priced ? BigInt(priced.debit.amountMinor) > usdcMinor : false;
   const ready = kobo >= MIN_PAYOUT_KOBO && !short;
   const naira = displayMoney("NGN", (minor ?? "0").toString());
-  const usdcLabel = `${usdc.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`;
-  // Home's headline also counts investments and Earn; only USDC cash can be
-  // paid out to a bank, so say why the two numbers differ.
+  const cashLabel = usdcAsDollars(usdcMinor, "down");
+  // Home's headline also counts investments and Earn; only cash can be paid
+  // out to a bank, so say why the two numbers differ.
   const elsewhere =
     portfolio.cashUsd + portfolio.investmentsUsd + earnBalance - usdc >= 0.01;
 
@@ -176,6 +181,8 @@ function BankAmountStep({
   };
 
   const handleContinue = async () => {
+    Keyboard.dismiss();
+    setWritingNote(false);
     if (busy || !ready || !minor) return;
     if (overLimit) {
       openVerify();
@@ -222,7 +229,7 @@ function BankAmountStep({
     );
   }
 
-  // One line under the amount: the USDC it costs, or what is wrong with it.
+  // One line under the amount: what it costs before the fee, or what is wrong.
   const helper: { text: string; tone: "muted" | "error" } = failure
     ? { text: failure, tone: "error" }
     : tooSmall
@@ -230,8 +237,8 @@ function BankAmountStep({
       : short
         ? {
             text: elsewhere
-              ? `More than your ${usdcLabel}. Only USDC cash can go to a bank.`
-              : `More than your ${usdcLabel}.`,
+              ? `More than your ${cashLabel} in cash. Earn and investments can't go to a bank.`
+              : `More than your ${cashLabel}.`,
             tone: "error",
           }
         : overLimit && left !== null
@@ -242,14 +249,19 @@ function BankAmountStep({
           : kobo >= MIN_PAYOUT_KOBO
             ? {
                 text: priced
-                  ? `≈ ${displayMoney("USDC", priced.debit.amountMinor)} from your Account`
+                  ? `About ${usdcAsDollars(priced.debit.amountMinor, "nearest")} plus a small fee`
                   : "Checking the rate…",
                 tone: "muted",
               }
             : { text: "", tone: "muted" };
 
   return (
-    <View className="flex-1" style={{ backgroundColor: BANK_SHEET_BG }}>
+    <Pressable
+      accessible={false}
+      onPress={Keyboard.dismiss}
+      className="flex-1"
+      style={{ backgroundColor: BANK_SHEET_BG }}
+    >
       <BankSheetTop leave="back" onPress={onBack} disabled={busy} />
       <View className="flex-row items-center justify-center gap-3 px-5">
         <BankLogo name={recipient.bankName} logoKey={recipient.logoKey} />
@@ -334,8 +346,8 @@ function BankAmountStep({
           className="text-[13px] tabular-nums text-black/55"
         >
           {left !== null
-            ? `${displayMoney("NGN", left.toString())} left today · ${usdcLabel}`
-            : `${usdcLabel} available`}
+            ? `${displayMoney("NGN", left.toString())} left today · ${cashLabel}`
+            : `${cashLabel} available`}
         </Typography>
       </View>
 
@@ -352,7 +364,7 @@ function BankAmountStep({
           onPress={() => void handleContinue()}
         />
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -381,17 +393,15 @@ function displayStep(text: string, scale: "lg" | "md") {
       : "text-[44px] leading-[52px]";
 }
 
-/** Every on-chain digit that will move, but never fewer than two places. */
-function exactUsdc(amountMinor: string): string {
-  const plain = minorToPlain(amountMinor, 6);
-  const [whole, fraction = ""] = plain.split(".");
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${grouped}.${fraction.padEnd(2, "0")} USDC`;
+function feeLabel(feeMinor: bigint): string {
+  if (feeMinor === 0n) return "No fee";
+  return feeMinor < 5_000n ? "Under $0.01" : usdcAsDollars(feeMinor, "nearest");
 }
 
 /**
- * The last look before money moves: who gets what, and the exact USDC that
- * leaves the Account, fee included, as the payout partner priced it.
+ * The last look before money moves: what the recipient gets, what leaves the
+ * Account (fee included, as the payout partner priced it) and what the fee is.
+ * The exact micro-dollar deposit is sent as is; only its display is rounded.
  */
 function BankReview({
   order,
@@ -418,6 +428,8 @@ function BankReview({
   const feeMinor = depositMinor > quotedMinor ? depositMinor - quotedMinor : 0n;
   const naira = displayMoney("NGN", order.quote.credit.amountMinor);
   const short = depositMinor > balanceMinor;
+  const dollars = usdcAsDollars(depositMinor, "nearest");
+  const firstName = recipient.accountName.split(" ")[0];
   // Kobo per whole USDC, so it prints as naira with displayMoney.
   const rateKobo =
     quotedMinor > 0n
@@ -473,17 +485,12 @@ function BankReview({
 
         <Typography
           accessibilityRole="header"
+          accessibilityLabel={`${firstName} gets ${naira}`}
           numberOfLines={1}
           className={cn("mt-8 text-[#0E0F0C]", displayStep(naira, "lg"))}
           style={DISPLAY}
         >
           {naira}
-        </Typography>
-        <Typography
-          weight="500"
-          className="mt-1 text-[14px] tabular-nums text-black/55"
-        >
-          {`${exactUsdc(deposit.amountMinor)} from your Account`}
         </Typography>
 
         {note ? (
@@ -504,18 +511,22 @@ function BankReview({
             </Typography>
           </View>
         ) : null}
+
+        <View className="mt-10 w-full gap-3.5 rounded-3xl bg-black/[0.03] px-5 py-5">
+          <ReviewRow label="From your Account" value={dollars} strong />
+          <ReviewRow label="Fee, included" value={feeLabel(feeMinor)} />
+          <ReviewRow
+            label="Rate"
+            value={`$1 = ${displayMoney("NGN", rateKobo.toString())}`}
+          />
+          <ReviewRow label="Arrives" value="Usually within minutes" />
+        </View>
       </View>
 
-      <Typography
-        weight="500"
-        className="px-6 pb-1 text-center text-[13px] leading-[19px] text-black/55"
-      >
-        {`${feeMinor > 0n ? `Includes ${exactUsdc(feeMinor.toString())} partner fee` : "No partner fee"} · ${displayMoney("NGN", rateKobo.toString())} per USDC · Usually arrives within minutes`}
-      </Typography>
       <BankSheetFooter>
         {failure || short ? (
           <Footnote tone="error" className="pb-3 text-center">
-            {failure ?? "You don't have enough USDC for this transfer."}
+            {failure ?? "You don't have enough in your Account for this."}
           </Footnote>
         ) : null}
         <PillButton
@@ -525,6 +536,31 @@ function BankReview({
           onPress={() => void confirm()}
         />
       </BankSheetFooter>
+    </View>
+  );
+}
+
+function ReviewRow({
+  label,
+  value,
+  strong = false,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+}) {
+  return (
+    <View className="flex-row items-center justify-between gap-4">
+      <Typography weight="500" className="text-[15px] text-black/55">
+        {label}
+      </Typography>
+      <Typography
+        weight={strong ? "700" : "600"}
+        numberOfLines={1}
+        className="shrink text-right text-[15px] tabular-nums text-[#0E0F0C]"
+      >
+        {value}
+      </Typography>
     </View>
   );
 }

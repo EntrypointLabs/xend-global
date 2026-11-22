@@ -19,7 +19,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useNow } from "@/hooks/useNow";
 import { apiClient } from "@/utils/apiClient";
-import { displayMoney } from "@/utils/display-money";
+import { displayMoney, usdcAsDollars } from "@/utils/display-money";
 import {
   fiatErrorCode,
   fiatErrorMessage,
@@ -143,7 +143,7 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
   const overLimit = !verified && left !== null && BigInt(amount * 100) > left;
   const estimate =
     quote.data && amount === debounced
-      ? displayMoney("USDC", quote.data.credit.amountMinor)
+      ? usdcAsDollars(quote.data.credit.amountMinor, "down")
       : null;
 
   const start = async () => {
@@ -301,7 +301,7 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
           label="You get"
           value={
             amount < MIN_NAIRA
-              ? "0.00 USDC"
+              ? "$0.00"
               : estimate
                 ? `≈ ${estimate}`
                 : "Checking the rate…"
@@ -477,7 +477,7 @@ function PayStage({
           weight="500"
           className="mt-1 text-center text-[14px] text-black/60"
         >
-          {`You get ≈ ${displayMoney("USDC", order.quote.credit.amountMinor)}`}
+          {`You get ≈ ${usdcAsDollars(order.quote.credit.amountMinor, "down")}`}
         </Typography>
       </View>
 
@@ -617,7 +617,7 @@ function WatchStage({
           style={DISPLAY}
         >
           {done
-            ? displayMoney("USDC", order.quote.credit.amountMinor)
+            ? usdcAsDollars(order.quote.credit.amountMinor, "down")
             : displayMoney(
                 "NGN",
                 (order.instructions.transferAmount ?? order.quote.debit)

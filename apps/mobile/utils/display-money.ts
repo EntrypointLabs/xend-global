@@ -21,6 +21,21 @@ export function displayMoney(
   return `${whole}.${(cents % 100n).toString().padStart(2, "0")} USDC`;
 }
 
+/**
+ * USDC micro-units as dollars at two places ("$3.51"). "down" never overstates
+ * money a person will have; "nearest" is for a cost, rounded half up.
+ */
+export function usdcAsDollars(
+  amountMinor: string | bigint,
+  rounding: "down" | "nearest"
+): string {
+  const micro = BigInt(amountMinor);
+  const cents =
+    rounding === "down" ? micro / 10_000n : (micro + 5_000n) / 10_000n;
+  const whole = (cents / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `$${whole}.${(cents % 100n).toString().padStart(2, "0")}`;
+}
+
 function rescale(minor: string, from: number, to: number): string {
   const v = BigInt(minor);
   if (from === to) return v.toString();
