@@ -2,7 +2,12 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { db } from "./db";
 import { productById, seedRows, skuFor } from "./catalog";
-import { createIntent, getIntent, type PaymentIntent } from "./prydd";
+import {
+  createIntent,
+  getIntent,
+  PryddApiError,
+  type PaymentIntent,
+} from "./prydd";
 
 export type OrderStatus =
   | "awaiting_payment"
@@ -46,6 +51,10 @@ export class CheckoutError extends Error {}
 
 const MAX_QTY = 5;
 const OPEN_ORDER_WINDOW_MINUTES = 90;
+/** However many tabs or sweeps ask, one order costs at most one API read per window. */
+const MIN_CHECK_SECONDS = 4;
+/** How long an order waits after the API says it is reading too often. */
+const RATE_LIMITED_BACKOFF_SECONDS = 30;
 
 type Row = {
   id: string;
@@ -246,8 +255,30 @@ export async function reconcileOrder(orderId: string): Promise<Order | null> {
   if (!row) return null;
   if (row.status !== "awaiting_payment" || !row.intent_id) return toOrder(row);
 
-  const intent = await getIntent(row.intent_id);
-  await sql`UPDATE orders SET payment_status = ${intent.status}, last_checked_at = now() WHERE id = ${orderId}`;
+  // Claim the check in the row itself, so concurrent pollers cannot both read
+  // the API for the same order.
+  const [claimed] = await sql<Row[]>`
+    UPDATE orders SET last_checked_at = now()
+    WHERE id = ${orderId}
+      AND (last_checked_at IS NULL
+           OR last_checked_at < now() - make_interval(secs => ${MIN_CHECK_SECONDS}))
+    RETURNING *`;
+  if (!claimed) return toOrder(row);
+
+  let intent: PaymentIntent;
+  try {
+    intent = await getIntent(row.intent_id);
+  } catch (err) {
+    if (err instanceof PryddApiError && err.status === 429) {
+      await sql`
+        UPDATE orders
+        SET last_checked_at = now() + make_interval(secs => ${RATE_LIMITED_BACKOFF_SECONDS})
+        WHERE id = ${orderId}`;
+      return toOrder(row);
+    }
+    throw err;
+  }
+  await sql`UPDATE orders SET payment_status = ${intent.status} WHERE id = ${orderId}`;
 
   if (intent.status === "succeeded") return fulfil(row, intent);
   const lapsed =
@@ -315,7 +346,7 @@ export async function reconcileOpenOrders(
     SELECT id FROM orders
     WHERE status = 'awaiting_payment' AND intent_id IS NOT NULL
       AND created_at > now() - make_interval(mins => ${OPEN_ORDER_WINDOW_MINUTES})
-      AND (last_checked_at IS NULL OR last_checked_at < now() - interval '20 seconds')
+      AND (last_checked_at IS NULL OR last_checked_at < now() - interval '60 seconds')
     ORDER BY created_at DESC LIMIT ${limit}`;
   let paid = 0;
   for (const { id } of rows) {
