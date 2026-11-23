@@ -100,23 +100,64 @@ export class SwapAccessService {
 
   async status(userId: string): Promise<SwapAccessStatus> {
     const account = await this.requireAccount(userId);
-    if (await this.isOn(account)) return { state: 'ready' };
-
     const index = account.pendingSwapAccessChangeIndex;
+    if (await this.isOn(account)) {
+      // The app walks a change only while this says `pending`. One that
+      // landed just before the app closed would otherwise stay recorded as in
+      // flight for good, and block every other change to the Account.
+      if (index) await this.reconcile(userId);
+      return { state: 'ready' };
+    }
     if (!index) return { state: 'off' };
 
     const proposal = await this.chain.readProposal(
       account.settingsAddress,
       BigInt(index),
     );
+    if (!proposal) {
+      await this.releaseIfAbandoned(userId, index);
+      return { state: 'off' };
+    }
     // Settled without turning Swap on: rejected, or overtaken. `next` clears
     // it; until then it is simply off.
-    if (proposal?.settled) return { state: 'off' };
-    const executableAt = proposal && this.executableAt(account, proposal);
-    return {
-      state: 'pending',
-      ...(executableAt ? { executableAt: executableAt.toISOString() } : {}),
-    };
+    if (proposal.settled) return { state: 'off' };
+    // Nothing is counting down until both keys have approved, so the
+    // Consumer still has something to confirm and `start` takes it up again.
+    const executableAt = this.executableAt(account, proposal);
+    if (!executableAt) return { state: 'off' };
+    return { state: 'pending', executableAt: executableAt.toISOString() };
+  }
+
+  private async reconcile(userId: string): Promise<void> {
+    try {
+      await this.next(userId);
+    } catch (err) {
+      this.logger.warn(
+        `swap_access.reconcile_failed userId=${userId} reason=${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Forgets a change that was staged here and never reached the chain: the
+   * Consumer dismissed the confirmation, or signing failed. While its
+   * transaction could still be signed and sent it is left alone.
+   */
+  private async releaseIfAbandoned(
+    userId: string,
+    changeIndex: string,
+  ): Promise<void> {
+    await this.store.withUserLock(userId, async () => {
+      const account = await this.requireAccount(userId);
+      if (account.pendingSwapAccessChangeIndex !== changeIndex) return;
+      if (await this.prepared.get<string>(preparedKey(userId))) return;
+      const proposal = await this.chain.readProposal(
+        account.settingsAddress,
+        BigInt(changeIndex),
+      );
+      if (proposal) return;
+      await this.settle(userId, account, changeIndex, false);
+    });
   }
 
   /** Stages the change and returns the one transaction that carries it. */
@@ -127,9 +168,20 @@ export class SwapAccessService {
   }
 
   private async stage(userId: string): Promise<SwapAccessPlan> {
-    const account = await this.requireAccount(userId);
+    let account = await this.requireAccount(userId);
     if (await this.isOn(account)) {
       throw new SwapAccessError('Swap is already on for this Account');
+    }
+    if (account.pendingSwapAccessChangeIndex) {
+      // A change the Consumer began and did not finish confirming is taken
+      // up where it stopped, not refused: otherwise a dismissed prompt would
+      // leave Swap unable to be turned on at all.
+      const open = await this.next(userId);
+      if (open.step === 'stage' || open.step === 'approve') return open;
+      if (!open.done) {
+        throw new SwapAccessError('Swap is already being turned on');
+      }
+      account = await this.requireAccount(userId);
     }
     await this.assertNothingElseInFlight(userId, account);
 
@@ -285,14 +337,6 @@ export class SwapAccessService {
       throw new SwapAccessError(
         'another change to this Account is already in flight',
       );
-    }
-    if (account.pendingSwapAccessChangeIndex) {
-      // Reconciled rather than refused outright: the common case is a change
-      // the chain has already settled and nothing has cleared yet.
-      const open = await this.next(userId);
-      if (!open.done) {
-        throw new SwapAccessError('Swap is already being turned on');
-      }
     }
   }
 

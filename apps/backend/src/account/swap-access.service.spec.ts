@@ -170,6 +170,59 @@ describe('SwapAccessService', () => {
     });
   });
 
+  describe('status after an interruption', () => {
+    it('clears a change that landed while the app was closed', async () => {
+      const { service, state, recorded } = setUp({
+        allowed: ABOVE_LIMIT_PROGRAM_ALLOWLIST,
+        row: { pendingSwapAccessChangeIndex: '8' },
+        proposalAt: proposal({ settled: true, status: 'Executed' }),
+      });
+      await expect(service.status(USER)).resolves.toEqual({ state: 'ready' });
+      expect(state.account.pendingSwapAccessChangeIndex).toBeNull();
+      expect(recorded).toEqual(['executed']);
+    });
+
+    it('is off, and can be started again, when nothing was confirmed', async () => {
+      const { service, state } = setUp();
+      const first = await service.start(USER);
+      await expect(service.status(USER)).resolves.toEqual({ state: 'off' });
+      // The transaction could still be signed, so the change is kept.
+      expect(state.account.pendingSwapAccessChangeIndex).toBe('8');
+
+      const again = await service.start(USER);
+      expect(again).toMatchObject({
+        step: 'stage',
+        changeIndex: first.changeIndex,
+        needsApprovalSignature: true,
+      });
+    });
+
+    it('forgets an unconfirmed change once it can no longer be sent', async () => {
+      const { service, state, recorded } = setUp({
+        row: { pendingSwapAccessChangeIndex: '8' },
+      });
+      await expect(service.status(USER)).resolves.toEqual({ state: 'off' });
+      expect(state.account.pendingSwapAccessChangeIndex).toBeNull();
+      expect(recorded).toEqual(['rejected']);
+    });
+
+    it('asks for the missing approval again instead of waiting on it', async () => {
+      const { service } = setUp({
+        row: { pendingSwapAccessChangeIndex: '8' },
+        proposalAt: proposal({
+          approved: [PRIMARY.publicKey.toBase58()],
+          status: 'Active',
+          statusTimestamp: null,
+        }),
+      });
+      await expect(service.status(USER)).resolves.toEqual({ state: 'off' });
+      await expect(service.start(USER)).resolves.toMatchObject({
+        step: 'approve',
+        needsApprovalSignature: true,
+      });
+    });
+  });
+
   describe('start', () => {
     it('carries the whole change in one transaction both keys sign', async () => {
       const { service, state, recorded } = setUp();
