@@ -80,6 +80,9 @@ function SwapScreen() {
   const receiveRowY = useSharedValue(0);
   const reduceMotion = useReducedMotion();
 
+  // Each animated view below carries its animated style and nothing else.
+  // A class name on the same view is resolved into that style prop too, and
+  // the two together overflow the stack when the animation is inspected.
   const upperPillStyle = useAnimatedStyle(() => ({
     transform: [
       { translateY: travelled.value * (receiveRowY.value - payRowY.value) },
@@ -199,13 +202,15 @@ function SwapScreen() {
           >
             {amount}
           </Typography>
-          <Animated.View className="max-w-[55%]" style={upperPillStyle}>
-            <TokenPill
-              token={sideToken(upperSide)}
-              label={sideLabel(upperSide)}
-              onPress={() => choose(upperSide)}
-            />
-          </Animated.View>
+          <View className="max-w-[55%]">
+            <Animated.View style={upperPillStyle}>
+              <TokenPill
+                token={sideToken(upperSide)}
+                label={sideLabel(upperSide)}
+                onPress={() => choose(upperSide)}
+              />
+            </Animated.View>
+          </View>
         </View>
         <View className="mt-1 flex-row items-center justify-end gap-1">
           <Typography variant="body" weight="600">
@@ -257,13 +262,15 @@ function SwapScreen() {
           >
             {receiveDisplay}
           </Typography>
-          <Animated.View className="max-w-[55%]" style={lowerPillStyle}>
-            <TokenPill
-              token={sideToken(lowerSide)}
-              label={sideLabel(lowerSide)}
-              onPress={() => choose(lowerSide)}
-            />
-          </Animated.View>
+          <View className="max-w-[55%]">
+            <Animated.View style={lowerPillStyle}>
+              <TokenPill
+                token={sideToken(lowerSide)}
+                label={sideLabel(lowerSide)}
+                onPress={() => choose(lowerSide)}
+              />
+            </Animated.View>
+          </View>
         </View>
 
         <View className="mt-1 h-5 justify-center">
