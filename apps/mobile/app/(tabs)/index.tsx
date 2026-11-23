@@ -246,6 +246,7 @@ function HomeScreenContent() {
               ) : (
                 <View className="flex-row flex-wrap items-baseline gap-x-2">
                   <Amount
+                    rolling
                     hidden={hidden}
                     weight="700"
                     className={cn("leading-[120%] tracking-[-1.1px]", S.ink)}
@@ -400,7 +401,7 @@ function Amount({
   ...props
 }: React.ComponentProps<typeof BalanceView> & { hidden: boolean }) {
   if (hidden) {
-    const { amount: _amount, ...text } = props;
+    const { amount: _amount, rolling: _rolling, ...text } = props;
     return (
       <Typography {...text} accessibilityLabel="Hidden">
         ••••

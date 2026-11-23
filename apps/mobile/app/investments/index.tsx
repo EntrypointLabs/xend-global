@@ -103,7 +103,7 @@ export default function InvestmentsScreen() {
         <Typography variant="body" className="text-foreground/40">
           Balance
         </Typography>
-        <BalanceView variant="h3" weight="700" amount={total} />
+        <BalanceView rolling variant="h3" weight="700" amount={total} />
       </View>
 
       {isEmpty ? (

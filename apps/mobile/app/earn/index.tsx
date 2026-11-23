@@ -60,7 +60,12 @@ export default function EarnScreen() {
             APY {apyDisplay}
           </Typography>
         </View>
-        <BalanceView variant="h3" weight="700" amount={balanceDisplay} />
+        <BalanceView
+          rolling
+          variant="h3"
+          weight="700"
+          amount={balanceDisplay}
+        />
       </View>
 
       <View className="mt-6 flex-row gap-3">
