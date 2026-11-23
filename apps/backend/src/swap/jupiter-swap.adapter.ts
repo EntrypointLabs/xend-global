@@ -46,6 +46,7 @@ export class JupiterSwapAdapter implements SwapProvider {
     amountInRaw: string;
     slippageBps: number;
     directOnly?: boolean;
+    excludeVenues?: string[];
   }): Promise<SwapPrice> {
     const query = new URLSearchParams({
       inputMint: params.inputMint,
@@ -57,6 +58,9 @@ export class JupiterSwapAdapter implements SwapProvider {
       maxAccounts: String(MAX_ROUTE_ACCOUNTS),
     });
     if (params.directOnly) query.set('onlyDirectRoutes', 'true');
+    if (params.excludeVenues?.length) {
+      query.set('excludeDexes', params.excludeVenues.join(','));
+    }
     const quote = await this.request<JupiterQuote>(`/quote?${query}`);
     if (!quote.inAmount || !quote.outAmount) {
       throw new NoSwapRouteError('No route for this pair');
@@ -68,6 +72,9 @@ export class JupiterSwapAdapter implements SwapProvider {
       amountOutRaw: quote.outAmount,
       slippageBps: quote.slippageBps ?? params.slippageBps,
       venue: quote.routePlan?.[0]?.swapInfo?.label ?? null,
+      venues: (quote.routePlan ?? [])
+        .map((hop) => hop.swapInfo?.label)
+        .filter((label): label is string => !!label),
       providerQuote: quote,
     };
   }

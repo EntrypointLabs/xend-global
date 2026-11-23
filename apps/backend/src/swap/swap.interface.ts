@@ -32,6 +32,8 @@ export interface SwapPrice {
   slippageBps: number;
   /** Where the trade is routed, for display. */
   venue: string | null;
+  /** Every venue the route passes through, as the provider names them. */
+  venues: string[];
   /** The provider's own quote, passed back to it untouched. */
   providerQuote: unknown;
 }
@@ -60,6 +62,8 @@ export interface SwapProvider {
     slippageBps: number;
     /** One venue, no intermediate hops: a smaller route at a worse price. */
     directOnly?: boolean;
+    /** Venues to route around, as `SwapPrice.venues` names them. */
+    excludeVenues?: string[];
   }): Promise<SwapPrice>;
   route(price: SwapPrice, vault: PublicKey): Promise<SwapRoute>;
 }

@@ -16,7 +16,9 @@ import {
   describeTransaction,
   JUPITER_PROGRAM_ID,
   minimumAmountOut,
+  ROUTE_TERMS_UNREADABLE,
   TOKEN_PROGRAM_ID,
+  VENUE_TAKES_VAULT_SIGNATURE,
   WRAPPED_SOL_MINT,
   type AccountAddresses,
 } from '@prydd/smart-account';
@@ -71,6 +73,18 @@ const QUOTE_LIFETIME_SECONDS = 30;
  */
 const QUOTE_RETENTION_SECONDS = 120;
 
+/**
+ * How many times a price is asked for again after a refused route. Each one
+ * is a round trip the Consumer waits through while the keypad shows nothing.
+ */
+const MAX_QUOTE_ATTEMPTS = 5;
+
+/** Refusals that are about the venues on a route, so other venues may pass. */
+const VENUE_REFUSALS = new Set([
+  VENUE_TAKES_VAULT_SIGNATURE,
+  ROUTE_TERMS_UNREADABLE,
+]);
+
 interface StoredRoute {
   programId: string;
   data: string;
@@ -119,7 +133,9 @@ export class SwapService {
    * be too large to send inside a Spend, or shaped in a way the signing
    * device refuses, and a Consumer shown that price would confirm it and be
    * turned away. So the route is built and checked before the price is
-   * quoted, and a single-venue route is tried when the first one fails.
+   * quoted. A route through a venue that wants the vault's signature is asked
+   * for again without that venue, and one too large to send is asked for
+   * again as a single venue.
    */
   async quote(
     userId: string,
@@ -132,9 +148,11 @@ export class SwapService {
     const account = await this.accountOf(userId);
 
     let refusal = 'No route for this pair';
-    for (const directOnly of [false, true]) {
+    const avoid = new Set<string>();
+    let directOnly = false;
+    for (let attempt = 0; attempt < MAX_QUOTE_ATTEMPTS; attempt++) {
       let price: SwapPrice;
-      let route: SwapRoute;
+      let route: SwapRoute | undefined;
       try {
         price = await this.provider.quote({
           inputMint: request.inputMint,
@@ -142,20 +160,36 @@ export class SwapService {
           amountInRaw: request.amountRaw,
           slippageBps: SLIPPAGE_BPS,
           directOnly,
+          excludeVenues: [...avoid],
         });
-        // An exact-in quote for another amount is another trade.
-        if (price.amountInRaw !== request.amountRaw) continue;
+      } catch (err) {
+        if (!(err instanceof NoSwapRouteError)) throw err;
+        refusal = err.message;
+        if (directOnly) break;
+        directOnly = true;
+        continue;
+      }
+      // An exact-in quote for another amount is another trade.
+      if (price.amountInRaw !== request.amountRaw) break;
+      try {
         route = await this.provider.route(price, account.addresses.vault);
         refusal = (await this.unsendable(account, price, route)) ?? '';
       } catch (err) {
         if (!(err instanceof NoSwapRouteError)) throw err;
         refusal = err.message;
-        continue;
       }
-      if (refusal) {
+      if (refusal || !route) {
         this.logger.warn(
-          `swap.route_refused direct=${directOnly} venue=${price.venue ?? 'unknown'} reason=${refusal}`,
+          `swap.route_refused direct=${directOnly} venues=${price.venues.join('>') || 'unknown'} reason=${refusal}`,
         );
+        const unseen = price.venues.filter((venue) => !avoid.has(venue));
+        if (VENUE_REFUSALS.has(refusal) && unseen.length > 0) {
+          unseen.forEach((venue) => avoid.add(venue));
+        } else if (!directOnly) {
+          directOnly = true;
+        } else {
+          break;
+        }
         continue;
       }
 

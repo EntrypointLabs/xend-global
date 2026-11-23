@@ -97,13 +97,13 @@ function setUp({
   env = {},
   allowed = [...ABOVE_LIMIT_PROGRAM_ALLOWLIST],
   existing = [] as PublicKey[],
-  unsignable = 'none' as 'none' | 'multi-hop' | 'every',
+  unsignable = 'none' as 'none' | 'multi-hop' | 'every' | 'whirlpool',
 }: {
   env?: Record<string, unknown>;
   allowed?: PublicKey[];
   existing?: PublicKey[];
   /** Which routes name the vault among a venue's accounts. */
-  unsignable?: 'none' | 'multi-hop' | 'every';
+  unsignable?: 'none' | 'multi-hop' | 'every' | 'whirlpool';
 } = {}) {
   const values: Record<string, unknown> = {
     SOLANA_CLUSTER: 'mainnet',
@@ -138,16 +138,23 @@ function setUp({
 
   const provider: SwapProvider = {
     name: 'fake',
-    quote: (params) =>
-      Promise.resolve<SwapPrice>({
+    quote: (params) => {
+      const venue = params.directOnly
+        ? 'Direct'
+        : params.excludeVenues?.includes('Whirlpool')
+          ? 'Raydium'
+          : 'Whirlpool';
+      return Promise.resolve<SwapPrice>({
         inputMint: params.inputMint,
         outputMint: params.outputMint,
         amountInRaw: params.amountInRaw,
         amountOutRaw: '1440000000',
         slippageBps: params.slippageBps,
-        venue: params.directOnly ? 'Direct' : 'Whirlpool',
+        venue,
+        venues: [venue],
         providerQuote: { directOnly: params.directOnly === true },
-      }),
+      });
+    },
     route: (price) =>
       Promise.resolve({
         instruction: jupiterRoute(
@@ -156,6 +163,7 @@ function setUp({
           BigInt(price.amountInRaw),
           BigInt(price.amountOutRaw),
           unsignable === 'every' ||
+            (unsignable === 'whirlpool' && price.venue === 'Whirlpool') ||
             (unsignable === 'multi-hop' &&
               !(price.providerQuote as { directOnly: boolean }).directOnly)
             ? [addresses.vault]
@@ -271,6 +279,13 @@ describe('SwapService', () => {
     const { service } = setUp({ unsignable: 'multi-hop' });
     await expect(service.quote('consumer', usdcToSol)).resolves.toMatchObject({
       venue: 'Direct',
+    });
+  });
+
+  it("routes around a venue that wants the vault's signature", async () => {
+    const { service } = setUp({ unsignable: 'whirlpool' });
+    await expect(service.quote('consumer', usdcToSol)).resolves.toMatchObject({
+      venue: 'Raydium',
     });
   });
 
