@@ -204,56 +204,85 @@ function HomeScreenContent() {
             </View>
 
             <View>
-              <Typography weight="500" className={cn("text-sm", S.caption)}>
-                Total Balance
-              </Typography>
               {isBalanceError ? (
-                <HapticPressable
-                  className="flex-row items-center gap-1.5 self-start py-2"
-                  onPress={() => refetchBalances()}
-                >
-                  <Typography
-                    weight="700"
-                    className="leading-[120%] tracking-[-1.1px]"
-                    style={{ fontSize: size(40) }}
-                  >
-                    ——
+                <>
+                  <Typography weight="500" className={cn("text-sm", S.caption)}>
+                    Total Balance
                   </Typography>
-                  <View
-                    className={cn(
-                      "flex-row items-center gap-1 rounded-full px-2.5 py-1",
-                      colorful ? "bg-black/5" : "bg-foreground/5"
-                    )}
+                  <HapticPressable
+                    className="flex-row items-center gap-1.5 self-start py-2"
+                    onPress={() => refetchBalances()}
                   >
-                    <Ionicons
-                      name="refresh"
-                      size={14}
-                      color={
-                        !colorful && palette.dark ? palette.fg(0.4) : "#999"
-                      }
-                    />
                     <Typography
-                      weight="500"
+                      weight="700"
+                      className="leading-[120%] tracking-[-1.1px]"
+                      style={{ fontSize: size(40) }}
+                    >
+                      ——
+                    </Typography>
+                    <View
                       className={cn(
-                        "text-sm",
-                        colorful ? "text-black/40" : "text-foreground/40"
+                        "flex-row items-center gap-1 rounded-full px-2.5 py-1",
+                        colorful ? "bg-black/5" : "bg-foreground/5"
                       )}
                     >
-                      Couldn&apos;t load balance. Tap to retry
+                      <Ionicons
+                        name="refresh"
+                        size={14}
+                        color={
+                          !colorful && palette.dark ? palette.fg(0.4) : "#999"
+                        }
+                      />
+                      <Typography
+                        weight="500"
+                        className={cn(
+                          "text-sm",
+                          colorful ? "text-black/40" : "text-foreground/40"
+                        )}
+                      >
+                        Couldn&apos;t load balance. Tap to retry
+                      </Typography>
+                    </View>
+                  </HapticPressable>
+                </>
+              ) : (
+                // The total is the way into its parts: Cash, Investments and
+                // Earn each have a page, and Home has no other route to them.
+                <HapticPressable
+                  accessibilityRole="link"
+                  accessibilityLabel={
+                    hidden
+                      ? "Total balance, hidden"
+                      : `Total balance, $${totalDisplay}`
+                  }
+                  accessibilityHint="Shows what it is made of"
+                  onPress={() => router.push("/balance")}
+                  className="self-start"
+                >
+                  <View className="flex-row items-center gap-1">
+                    <Typography
+                      weight="500"
+                      className={cn("text-sm", S.caption)}
+                    >
+                      Total Balance
                     </Typography>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={13}
+                      color={S.colors.caption}
+                    />
+                  </View>
+                  <View className="flex-row flex-wrap items-baseline gap-x-2">
+                    <Amount
+                      hidden={hidden}
+                      weight="700"
+                      className={cn("leading-[120%] tracking-[-1.1px]", S.ink)}
+                      style={{ fontSize: size(40) }}
+                      amount={totalDisplay}
+                    />
+                    {dayChange !== null && <DayChange amount={dayChange} />}
                   </View>
                 </HapticPressable>
-              ) : (
-                <View className="flex-row flex-wrap items-baseline gap-x-2">
-                  <Amount
-                    hidden={hidden}
-                    weight="700"
-                    className={cn("leading-[120%] tracking-[-1.1px]", S.ink)}
-                    style={{ fontSize: size(40) }}
-                    amount={totalDisplay}
-                  />
-                  {dayChange !== null && <DayChange amount={dayChange} />}
-                </View>
               )}
             </View>
 
@@ -317,6 +346,7 @@ function HomeScreenContent() {
                 <CountryAccountWidget
                   card={countryCard}
                   onAction={(action) => router.push(CARD_ACTION_ROUTES[action])}
+                  onPress={() => router.push("/cash")}
                   {...localLabels(
                     countryCard,
                     rates,
