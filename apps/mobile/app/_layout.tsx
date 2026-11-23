@@ -147,20 +147,6 @@ const SLIDE_OVER = {
   fullScreenGestureEnabled: true,
 } as const;
 
-// The pages Total Balance opens into. They dissolve in over its blur and swipe
-// back like any other page on the stack.
-const BALANCE_PART_ROUTES = [
-  "cash/index",
-  "investments/index",
-  "earn/index",
-] as const;
-
-const FADE_OVER = {
-  animation: "fade",
-  gestureEnabled: true,
-  fullScreenGestureEnabled: true,
-} as const;
-
 function AuthLayout() {
   const segments = useSegments();
   const { isAuthenticated, needsContactEmail } = useAuth();
@@ -196,9 +182,6 @@ function AuthLayout() {
               >
                 {FULL_SCREEN_ROUTES.map((name) => (
                   <Stack.Screen key={name} name={name} options={SLIDE_OVER} />
-                ))}
-                {BALANCE_PART_ROUTES.map((name) => (
-                  <Stack.Screen key={name} name={name} options={FADE_OVER} />
                 ))}
                 {/* Drawn over Home, which stays on screen blurred behind it;
                 the screen animates itself open from the total. */}

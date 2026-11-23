@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef } from "react";
 import { View, ScrollView, TouchableOpacity, Image } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
-import { useRouter } from "expo-router";
+import { usePaneNavigation } from "@/contexts/OverlayPaneContext";
 import { ScreenLayout } from "@/components/ui/layout";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
@@ -23,7 +23,7 @@ import { useSendGate } from "@/hooks/useSendGate";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 
 export default function CashScreen() {
-  const router = useRouter();
+  const pane = usePaneNavigation();
   const { hideAllModals } = useModalFlow();
   const { showToast } = useToast();
   const {
@@ -237,7 +237,7 @@ export default function CashScreen() {
             accessibilityRole="button"
             accessibilityLabel="Go back"
             className="h-14 w-14 items-center justify-center rounded-full"
-            onPress={() => router.back()}
+            onPress={pane.back}
           >
             <Ionicons
               name="chevron-back"

@@ -1,5 +1,12 @@
-import React, { useCallback, useEffect } from "react";
-import { Image, ScrollView, StyleSheet, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  BackHandler,
+  Image,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
@@ -20,6 +27,9 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { useSurface } from "@/components/ui/glass";
+import { OverlayPaneContext } from "@/contexts/OverlayPaneContext";
+import CashScreen from "@/app/cash";
+import InvestmentsScreen from "@/app/investments";
 import { useBalances } from "@/hooks/useBalances";
 import { earnHeadlineApy, useEarnPosition } from "@/hooks/useEarn";
 import { useFeature } from "@/hooks/useFeature";
@@ -37,11 +47,16 @@ const ORIGIN = { x: 20, y: 120 };
 const CLOSED_SCALE = 0.72;
 const OPEN_SPRING = { damping: 19, stiffness: 210, mass: 0.9 };
 const CLOSE_MS = 180;
-const LEAVE_MS = 140;
-const LEAVE_GROWTH = 0.05;
+const SLIDE_MS = 340;
+const CLOSE_BUTTON = 44;
 const HOLDINGS_SHOWN = 3;
 
-type Destination = "/cash" | "/investments" | "/earn";
+/** The screens a card slides in, shown here as panes on the same blur. */
+const PANES = {
+  cash: CashScreen,
+  investments: InvestmentsScreen,
+} as const;
+type PaneKey = keyof typeof PANES;
 
 /**
  * What the total balance is made of, laid over a blurred Home: Cash and
@@ -61,8 +76,11 @@ export default function BalanceScreen() {
       : "Hold assets alongside your dollars";
   const { balance: earnBalance } = useEarnPosition();
   const { holdings } = useInvestments();
+  const { width } = useWindowDimensions();
   const progress = useSharedValue(0);
-  const leaving = useSharedValue(0);
+  // 0 with the cards on screen, 1 with a pane slid in over them.
+  const slide = useSharedValue(0);
+  const [pane, setPane] = useState<PaneKey | null>(null);
 
   useEffect(() => {
     progress.value = reduceMotion
@@ -71,51 +89,83 @@ export default function BalanceScreen() {
   }, [progress, reduceMotion]);
 
   const goBack = useCallback(() => router.back(), [router]);
-  const close = useCallback(() => {
-    progress.value = withTiming(
+  const goToEarn = useCallback(() => router.replace("/earn"), [router]);
+  const closeThen = useCallback(
+    (leave: () => void) => {
+      const timing = { duration: CLOSE_MS, easing: Easing.out(Easing.quad) };
+      // An open pane is not on the fading layer, so it leaves the way it
+      // came while the rest fades.
+      slide.value = withTiming(0, timing);
+      progress.value = withTiming(0, timing, (finished) => {
+        if (finished) runOnJS(leave)();
+      });
+    },
+    [progress, slide]
+  );
+  const close = useCallback(() => closeThen(goBack), [closeThen, goBack]);
+  // Earn is a place to do things, not a balance to glance at, so it gets its
+  // own page: the overlay closes and Earn takes its place on the stack.
+  const openEarn = useCallback(
+    () => closeThen(goToEarn),
+    [closeThen, goToEarn]
+  );
+
+  const open = useCallback(
+    (key: PaneKey) => {
+      setPane(key);
+      slide.value = withTiming(1, {
+        duration: SLIDE_MS,
+        easing: Easing.out(Easing.cubic),
+      });
+    },
+    [slide]
+  );
+  const backToCards = useCallback(() => {
+    const unmount = () => setPane(null);
+    slide.value = withTiming(
       0,
-      { duration: CLOSE_MS, easing: Easing.out(Easing.quad) },
+      { duration: SLIDE_MS, easing: Easing.out(Easing.cubic) },
       (finished) => {
-        if (finished) runOnJS(goBack)();
+        if (finished) runOnJS(unmount)();
       }
     );
-  }, [goBack, progress]);
+  }, [slide]);
+  const paneContext = useMemo(() => ({ back: backToCards }), [backToCards]);
 
-  // A page pushed from a modal is presented as a sheet over it. Replacing the
-  // overlay instead puts the page on the stack proper, so it fills the screen
-  // and Back returns to Home. The cards lift away first and the page fades in
-  // over the blur that is already there.
-  const open = useCallback(
-    (route: Destination) => {
-      const go = () => router.replace(route);
-      leaving.value = withTiming(
-        1,
-        { duration: LEAVE_MS, easing: Easing.in(Easing.quad) },
-        (finished) => {
-          if (finished) runOnJS(go)();
-        }
-      );
-    },
-    [leaving, router]
-  );
+  useEffect(() => {
+    if (!pane) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      backToCards();
+      return true;
+    });
+    return () => sub.remove();
+  }, [pane, backToCards]);
 
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 0.6], [0, 1], "clamp"),
   }));
   const contentStyle = useAnimatedStyle(() => ({
-    opacity:
-      interpolate(progress.value, [0, 0.5], [0, 1], "clamp") *
-      (1 - leaving.value),
+    opacity: interpolate(progress.value, [0, 0.5], [0, 1], "clamp"),
     transform: reduceMotion
       ? []
-      : [
-          {
-            scale:
-              interpolate(progress.value, [0, 1], [CLOSED_SCALE, 1]) *
-              (1 + LEAVE_GROWTH * leaving.value),
-          },
-        ],
+      : [{ scale: interpolate(progress.value, [0, 1], [CLOSED_SCALE, 1]) }],
   }));
+  // The cards leave to the left as the pane arrives from the right, each
+  // fading at its far end so neither is cut off hard at the screen edge.
+  // With reduced motion they cross-fade in place.
+  const cardsStyle = useAnimatedStyle(() => ({
+    opacity: 1 - slide.value,
+    transform: reduceMotion ? [] : [{ translateX: -width * slide.value }],
+  }));
+  // Moved, never faded: the pane's footer is liquid glass, which turns dark
+  // grey on a layer whose opacity is animated. Only the reduced-motion
+  // cross-fade, where nothing moves, touches its opacity.
+  const paneStyle = useAnimatedStyle(() =>
+    reduceMotion
+      ? { opacity: slide.value }
+      : { transform: [{ translateX: width * (1 - slide.value) }] }
+  );
+  const Pane = pane ? PANES[pane] : null;
 
   // A failed read leaves the portfolio at zero, which must not be shown as an
   // empty account.
@@ -140,150 +190,169 @@ export default function BalanceScreen() {
           contentStyle,
         ]}
       >
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerClassName="px-5"
-          contentContainerStyle={{
-            paddingTop: insets.top + 8,
-            paddingBottom: insets.bottom + 24,
-          }}
+        <Animated.View
+          pointerEvents={pane ? "none" : "auto"}
+          style={[StyleSheet.absoluteFill, cardsStyle]}
         >
-          <GlassButton
-            radius={999}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-            onPress={close}
-            className="size-11 items-center justify-center rounded-full"
-            fallbackClassName="border border-foreground/[0.08] bg-card"
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerClassName="px-5"
+            contentContainerStyle={{
+              paddingTop: insets.top + 8 + CLOSE_BUTTON,
+              paddingBottom: insets.bottom + 24,
+            }}
           >
-            <Ionicons
-              name="close"
-              size={22}
-              color={palette.dark ? palette.foreground : "#0A0A0A"}
-            />
-          </GlassButton>
+            <SectionTitle>Your money</SectionTitle>
+            <Card
+              accessibilityLabel={`Cash, ${fromWallet(portfolio.cashUsd)}`}
+              onPress={() => open("cash")}
+            >
+              <CardCaption>Cash</CardCaption>
+              <Row
+                mark={
+                  <Image
+                    source={require("@/assets/icons/usdc.png")}
+                    className="size-10"
+                    resizeMode="contain"
+                  />
+                }
+                title="US dollars"
+                subtitle="Ready to spend or send"
+                trailing={<Amount link>{fromWallet(portfolio.cashUsd)}</Amount>}
+              />
+            </Card>
 
-          <SectionTitle>Your money</SectionTitle>
-          <Card
-            accessibilityLabel={`Cash, ${fromWallet(portfolio.cashUsd)}`}
-            onPress={() => open("/cash")}
-          >
-            <CardCaption>Cash</CardCaption>
-            <Row
-              mark={
-                <Image
-                  source={require("@/assets/icons/usdc.png")}
-                  className="size-10"
-                  resizeMode="contain"
-                />
-              }
-              title="US dollars"
-              subtitle="Ready to spend or send"
-              trailing={<Amount link>{fromWallet(portfolio.cashUsd)}</Amount>}
-            />
-          </Card>
-
-          {swapEnabled &&
-            (shownHoldings.length > 0 ? (
-              <Card
-                accessibilityLabel={`Investments, ${fromWallet(portfolio.investmentsUsd)}`}
-                onPress={() => open("/investments")}
-              >
-                <View className="flex-row items-center justify-between">
-                  <CardCaption>Investments</CardCaption>
-                  <View className="flex-row items-center gap-1.5">
-                    <CardCaption>
-                      {fromWallet(portfolio.investmentsUsd)}
-                    </CardCaption>
-                    <Ionicons
-                      name="chevron-forward"
-                      size={14}
-                      color={palette.fg(0.4)}
-                    />
+            {swapEnabled &&
+              (shownHoldings.length > 0 ? (
+                <Card
+                  accessibilityLabel={`Investments, ${fromWallet(portfolio.investmentsUsd)}`}
+                  onPress={() => open("investments")}
+                >
+                  <View className="flex-row items-center justify-between">
+                    <CardCaption>Investments</CardCaption>
+                    <View className="flex-row items-center gap-1.5">
+                      <CardCaption>
+                        {fromWallet(portfolio.investmentsUsd)}
+                      </CardCaption>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={14}
+                        color={palette.fg(0.4)}
+                      />
+                    </View>
                   </View>
-                </View>
-                {shownHoldings.map((holding) => (
+                  {shownHoldings.map((holding) => (
+                    <Row
+                      key={holding.mint}
+                      mark={
+                        <TokenMark
+                          mint={holding.mint}
+                          label={holding.name}
+                          iconUrl={holding.iconUrl}
+                          size={40}
+                        />
+                      }
+                      title={holding.name}
+                      trailing={
+                        <Amount>
+                          {holding.usdValue == null
+                            ? "Unpriced"
+                            : `$${formatMoney(holding.usdValue)}`}
+                        </Amount>
+                      }
+                    />
+                  ))}
+                  {moreHoldings > 0 && (
+                    <CardCaption>{`and ${moreHoldings} more`}</CardCaption>
+                  )}
+                </Card>
+              ) : (
+                // No holdings is only "nothing held" once the read has answered.
+                // While it is pending or has failed, what the Consumer holds is
+                // unknown, and saying so beats offering them an empty account.
+                <Card
+                  accessibilityLabel={`Investments, ${investmentsNote.toLowerCase()}`}
+                  onPress={
+                    isError ? () => refetch() : () => open("investments")
+                  }
+                >
                   <Row
-                    key={holding.mint}
                     mark={
-                      <TokenMark
-                        mint={holding.mint}
-                        label={holding.name}
-                        iconUrl={holding.iconUrl}
-                        size={40}
+                      <Image
+                        source={require("@/assets/icons/investment.png")}
+                        className="size-10 rounded-xl"
                       />
                     }
-                    title={holding.name}
+                    title="Investments"
+                    subtitle={investmentsNote}
                     trailing={
-                      <Amount>
-                        {holding.usdValue == null
-                          ? "Unpriced"
-                          : `$${formatMoney(holding.usdValue)}`}
-                      </Amount>
+                      isError || isLoading ? (
+                        <Amount>—</Amount>
+                      ) : (
+                        <Pill>Discover</Pill>
+                      )
                     }
                   />
-                ))}
-                {moreHoldings > 0 && (
-                  <CardCaption>{`and ${moreHoldings} more`}</CardCaption>
-                )}
-              </Card>
-            ) : (
-              // No holdings is only "nothing held" once the read has answered.
-              // While it is pending or has failed, what the Consumer holds is
-              // unknown, and saying so beats offering them an empty account.
-              <Card
-                accessibilityLabel={`Investments, ${investmentsNote.toLowerCase()}`}
-                onPress={isError ? () => refetch() : () => open("/investments")}
-              >
-                <Row
-                  mark={
-                    <Image
-                      source={require("@/assets/icons/investment.png")}
-                      className="size-10 rounded-xl"
-                    />
-                  }
-                  title="Investments"
-                  subtitle={investmentsNote}
-                  trailing={
-                    isError || isLoading ? (
-                      <Amount>—</Amount>
-                    ) : (
-                      <Pill>Discover</Pill>
-                    )
-                  }
-                />
-              </Card>
-            ))}
+                </Card>
+              ))}
 
-          <SectionTitle>Grow</SectionTitle>
-          <Card
-            accessibilityLabel={
-              earnBalance > 0
-                ? `Earn, $${formatMoney(earnBalance)}`
-                : `Earn, ${earnHeadlineApy()} a year`
-            }
-            onPress={() => open("/earn")}
-          >
-            <Row
-              mark={
-                <Image
-                  source={require("@/assets/icons/earn.png")}
-                  className="size-10 rounded-xl"
-                />
+            <SectionTitle>Grow</SectionTitle>
+            <Card
+              accessibilityLabel={
+                earnBalance > 0
+                  ? `Earn, $${formatMoney(earnBalance)}`
+                  : `Earn, ${earnHeadlineApy()} a year`
               }
-              title="Earn"
-              subtitle={`${earnHeadlineApy()} a year on your dollars`}
-              trailing={
-                earnBalance > 0 ? (
-                  <Amount link>{`$${formatMoney(earnBalance)}`}</Amount>
-                ) : (
-                  <Pill>Discover</Pill>
-                )
-              }
-            />
-          </Card>
-        </ScrollView>
+              onPress={openEarn}
+            >
+              <Row
+                mark={
+                  <Image
+                    source={require("@/assets/icons/earn.png")}
+                    className="size-10 rounded-xl"
+                  />
+                }
+                title="Earn"
+                subtitle={`${earnHeadlineApy()} a year on your dollars`}
+                trailing={
+                  earnBalance > 0 ? (
+                    <Amount link>{`$${formatMoney(earnBalance)}`}</Amount>
+                  ) : (
+                    <Pill>Discover</Pill>
+                  )
+                }
+              />
+            </Card>
+          </ScrollView>
+        </Animated.View>
       </Animated.View>
+
+      {Pane && (
+        <Animated.View style={[StyleSheet.absoluteFill, paneStyle]}>
+          <OverlayPaneContext.Provider value={paneContext}>
+            <Pane />
+          </OverlayPaneContext.Provider>
+        </Animated.View>
+      )}
+
+      {/* On no animated layer at all: it holds still while the others
+          move, and its glass is never faded. */}
+      <View className="absolute left-5" style={{ top: insets.top + 8 }}>
+        <GlassButton
+          radius={999}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          onPress={close}
+          className="size-11 items-center justify-center rounded-full"
+          fallbackClassName="border border-foreground/[0.08] bg-card"
+        >
+          <Ionicons
+            name="close"
+            size={22}
+            color={palette.dark ? palette.foreground : "#0A0A0A"}
+          />
+        </GlassButton>
+      </View>
     </View>
   );
 }
