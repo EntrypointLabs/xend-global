@@ -1,68 +1,329 @@
-import React from "react";
-import { View } from "react-native";
+import React, { useCallback, useEffect } from "react";
+import { Image, ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, {
+  Easing,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import BalanceView from "@/components/BalanceView";
+import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { GlassButton } from "@/components/ui/atoms/Glass";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
-import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
+import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { Typography } from "@/components/ui/atoms/Typography";
-import { ScreenLayout } from "@/components/ui/layout";
-import { BalanceBuckets } from "@/components/ui/organisms/home/BalanceBuckets";
-import { useBalanceBuckets } from "@/hooks/useBalanceBuckets";
+import { useSurface } from "@/components/ui/glass";
 import { useBalances } from "@/hooks/useBalances";
-import { useEarnPosition } from "@/hooks/useEarn";
+import { earnHeadlineApy, useEarnPosition } from "@/hooks/useEarn";
+import { useFeature } from "@/hooks/useFeature";
+import { useInvestments } from "@/hooks/useInvestments";
 import { usePalette } from "@/hooks/usePalette";
 import { formatMoney } from "@/utils/balances";
+import { cn } from "@/utils/cn";
 
-/** What the total balance is made of, and the way into each part. */
+/**
+ * Where Home's total sits, in points from the screen's top left. The page
+ * grows out of this point so it reads as the total opening up, not as a new
+ * screen arriving.
+ */
+const ORIGIN = { x: 20, y: 120 };
+const CLOSED_SCALE = 0.72;
+const OPEN_SPRING = { damping: 19, stiffness: 210, mass: 0.9 };
+const CLOSE_MS = 180;
+const HOLDINGS_SHOWN = 3;
+
+/**
+ * What the total balance is made of, laid over a blurred Home: Cash and
+ * Investments as what the Consumer has, Earn as what it could be doing.
+ */
 export default function BalanceScreen() {
   const router = useRouter();
-  const { portfolio, isError, refetch } = useBalances();
-  const { balance: earnBalance } = useEarnPosition();
-  const buckets = useBalanceBuckets();
+  const insets = useSafeAreaInsets();
   const palette = usePalette();
-  const total = portfolio.cashUsd + portfolio.investmentsUsd + earnBalance;
+  const reduceMotion = useReducedMotion();
+  const swapEnabled = useFeature("swap");
+  const { portfolio, isError } = useBalances();
+  const { balance: earnBalance } = useEarnPosition();
+  const { holdings } = useInvestments();
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = reduceMotion
+      ? withTiming(1, { duration: CLOSE_MS })
+      : withSpring(1, OPEN_SPRING);
+  }, [progress, reduceMotion]);
+
+  const goBack = useCallback(() => router.back(), [router]);
+  const close = useCallback(() => {
+    progress.value = withTiming(
+      0,
+      { duration: CLOSE_MS, easing: Easing.out(Easing.quad) },
+      (finished) => {
+        if (finished) runOnJS(goBack)();
+      }
+    );
+  }, [goBack, progress]);
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.6], [0, 1], "clamp"),
+  }));
+  const contentStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.5], [0, 1], "clamp"),
+    transform: reduceMotion
+      ? []
+      : [{ scale: interpolate(progress.value, [0, 1], [CLOSED_SCALE, 1]) }],
+  }));
+
+  // A failed read leaves the portfolio at zero, which must not be shown as an
+  // empty account.
+  const fromWallet = (usd: number) => (isError ? "—" : `$${formatMoney(usd)}`);
+  const shownHoldings = holdings.slice(0, HOLDINGS_SHOWN);
+  const moreHoldings = holdings.length - shownHoldings.length;
 
   return (
-    <ScreenLayout>
-      <TabHeaderText className="pb-6">Total Balance</TabHeaderText>
+    <View className="flex-1">
+      <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
+        <FrostBlurView style={StyleSheet.absoluteFill}>
+          <View className="flex-1 bg-background/60" />
+        </FrostBlurView>
+      </Animated.View>
 
-      {isError ? (
-        <HapticPressable
-          className="flex-row items-center gap-1.5 self-start"
-          onPress={() => refetch()}
+      {/* Reanimated's style cannot share a view with NativeWind's className,
+      so the two animated layers are placed by style alone. */}
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          { transformOrigin: [ORIGIN.x, insets.top + ORIGIN.y, 0] },
+          contentStyle,
+        ]}
+      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerClassName="px-5"
+          contentContainerStyle={{
+            paddingTop: insets.top + 12,
+            paddingBottom: insets.bottom + 24,
+          }}
         >
-          <Typography weight="700" variant="h2">
-            ——
+          <GlassButton
+            radius={999}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            hitSlop={8}
+            onPress={close}
+            className="h-9 w-9 items-center justify-center rounded-full"
+          >
+            <Ionicons name="close" size={20} color={palette.foreground} />
+          </GlassButton>
+
+          <SectionTitle>Your money</SectionTitle>
+          <Card
+            accessibilityLabel={`Cash, ${fromWallet(portfolio.cashUsd)}`}
+            onPress={() => router.push("/cash")}
+          >
+            <CardCaption>Cash</CardCaption>
+            <Row
+              mark={
+                <Image
+                  source={require("@/assets/icons/usdc.png")}
+                  className="size-10"
+                  resizeMode="contain"
+                />
+              }
+              title="US dollars"
+              subtitle="Ready to spend or send"
+              trailing={<Amount>{fromWallet(portfolio.cashUsd)}</Amount>}
+            />
+          </Card>
+
+          {swapEnabled &&
+            (shownHoldings.length > 0 ? (
+              <Card
+                accessibilityLabel={`Investments, ${fromWallet(portfolio.investmentsUsd)}`}
+                onPress={() => router.push("/investments")}
+              >
+                <View className="flex-row items-center justify-between">
+                  <CardCaption>Investments</CardCaption>
+                  <CardCaption>
+                    {fromWallet(portfolio.investmentsUsd)}
+                  </CardCaption>
+                </View>
+                {shownHoldings.map((holding) => (
+                  <Row
+                    key={holding.mint}
+                    mark={
+                      <TokenMark
+                        mint={holding.mint}
+                        label={holding.name}
+                        iconUrl={holding.iconUrl}
+                        size={40}
+                      />
+                    }
+                    title={holding.name}
+                    trailing={
+                      <Amount>
+                        {holding.usdValue == null
+                          ? "Unpriced"
+                          : `$${formatMoney(holding.usdValue)}`}
+                      </Amount>
+                    }
+                  />
+                ))}
+                {moreHoldings > 0 && (
+                  <CardCaption>{`and ${moreHoldings} more`}</CardCaption>
+                )}
+              </Card>
+            ) : (
+              <Card
+                accessibilityLabel="Investments, nothing held yet"
+                onPress={() => router.push("/investments")}
+              >
+                <Row
+                  mark={
+                    <Image
+                      source={require("@/assets/icons/investment.png")}
+                      className="size-10 rounded-xl"
+                    />
+                  }
+                  title="Investments"
+                  subtitle="Hold assets alongside your dollars"
+                  trailing={<Pill>Discover</Pill>}
+                />
+              </Card>
+            ))}
+
+          <SectionTitle>Grow</SectionTitle>
+          <Card
+            accessibilityLabel={
+              earnBalance > 0
+                ? `Earn, $${formatMoney(earnBalance)}`
+                : `Earn, ${earnHeadlineApy()} a year`
+            }
+            onPress={() => router.push("/earn")}
+          >
+            <Row
+              mark={
+                <Image
+                  source={require("@/assets/icons/earn.png")}
+                  className="size-10 rounded-xl"
+                />
+              }
+              title="Earn"
+              subtitle={`${earnHeadlineApy()} a year on your dollars`}
+              trailing={
+                earnBalance > 0 ? (
+                  <Amount>{`$${formatMoney(earnBalance)}`}</Amount>
+                ) : (
+                  <Pill>Discover</Pill>
+                )
+              }
+            />
+          </Card>
+        </ScrollView>
+      </Animated.View>
+    </View>
+  );
+}
+
+function SectionTitle({ children }: { children: string }) {
+  const S = useSurface();
+  return (
+    <Typography weight="600" className={cn("pb-3 pt-7 text-lg", S.ink)}>
+      {children}
+    </Typography>
+  );
+}
+
+function Card({
+  children,
+  onPress,
+  accessibilityLabel,
+}: {
+  children: React.ReactNode;
+  onPress: () => void;
+  accessibilityLabel: string;
+}) {
+  const S = useSurface();
+  return (
+    <HapticPressable
+      accessibilityRole="link"
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      className={cn("mb-2.5 gap-3.5 p-4", S.card)}
+      // PLATFORM-SHADOW
+      style={S.raised}
+    >
+      {children}
+    </HapticPressable>
+  );
+}
+
+function CardCaption({ children }: { children: string }) {
+  const S = useSurface();
+  return (
+    <Typography weight="500" className={cn("text-sm", S.caption)}>
+      {children}
+    </Typography>
+  );
+}
+
+function Row({
+  mark,
+  title,
+  subtitle,
+  trailing,
+}: {
+  mark: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  trailing: React.ReactNode;
+}) {
+  const S = useSurface();
+  return (
+    <View className="flex-row items-center gap-3">
+      {mark}
+      <View className="flex-1">
+        <Typography
+          weight="600"
+          className={cn("text-base", S.ink)}
+          numberOfLines={1}
+        >
+          {title}
+        </Typography>
+        {subtitle && (
+          <Typography className={cn("text-sm", S.caption)} numberOfLines={2}>
+            {subtitle}
           </Typography>
-          <View className="flex-row items-center gap-1 rounded-full bg-foreground/5 px-2.5 py-1">
-            <Ionicons name="refresh" size={14} color={palette.fg(0.4)} />
-            <Typography weight="500" className="text-sm text-foreground/40">
-              Couldn&apos;t load. Tap to retry
-            </Typography>
-          </View>
-        </HapticPressable>
-      ) : (
-        <BalanceView weight="700" variant="h2" amount={formatMoney(total)} />
-      )}
-
-      <View className="mt-8">
-        <BalanceBuckets buckets={buckets} />
+        )}
       </View>
+      {trailing}
+    </View>
+  );
+}
 
-      <View className="absolute bottom-2 left-5">
-        <GlassButton
-          radius={999}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          onPress={() => router.back()}
-          className="h-14 w-14 items-center justify-center rounded-full"
-        >
-          <Ionicons name="chevron-back" size={22} color={palette.foreground} />
-        </GlassButton>
-      </View>
-    </ScreenLayout>
+function Amount({ children }: { children: string }) {
+  const S = useSurface();
+  return (
+    <Typography weight="600" className={cn("text-base", S.ink)}>
+      {children}
+    </Typography>
+  );
+}
+
+function Pill({ children }: { children: string }) {
+  const S = useSurface();
+  return (
+    <View className={cn("rounded-full px-3.5 py-2", S.quietPill)}>
+      <Typography weight="600" className={cn("text-sm", S.ink)}>
+        {children}
+      </Typography>
+    </View>
   );
 }
