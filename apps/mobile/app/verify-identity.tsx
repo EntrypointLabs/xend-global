@@ -110,7 +110,7 @@ export default function VerifyIdentityScreen() {
       <Result
         art="verify"
         title="You're verified"
-        body="Your naira limit is lifted: no more ₦50,000 daily cap on deposits or bank sends."
+        body="Your naira limits are raised, so you can add and send well over ₦50,000 a day."
         action={{ title: "Done", onPress: close }}
       />
     );

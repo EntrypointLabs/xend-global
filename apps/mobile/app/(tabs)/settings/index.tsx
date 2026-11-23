@@ -119,6 +119,11 @@ export default function SettingsScreen() {
           onPress: () => setNotificationsOpen(true),
         },
         {
+          label: "Naira limits",
+          icon: <Ionicons name="cash" size={24} color={palette.success} />,
+          onPress: () => router.push("/naira-limits" as never),
+        },
+        {
           label: "Address book",
           icon: require("@/assets/icons/address-book.png"),
           onPress: () => router.push("/settings/address-book" as never),
