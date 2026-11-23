@@ -4,6 +4,7 @@ import {
   heldSwapTokens,
   matchesTokenSearch,
   shortTokenAddress,
+  tokenSearchKey,
 } from "@/utils/swapTokens";
 import { WRAPPED_SOL_MINT } from "@/utils/tokens";
 
@@ -84,5 +85,16 @@ describe("shortTokenAddress", () => {
     expect(
       shortTokenAddress("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB")
     ).toBe("Es9v…wNYB");
+  });
+});
+
+describe("tokenSearchKey", () => {
+  it("treats a name the same however it is capitalised", () => {
+    expect(tokenSearchKey(" Bonk ")).toBe("bonk");
+  });
+
+  it("leaves an address exactly as it was pasted", () => {
+    const mint = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+    expect(tokenSearchKey(` ${mint} `)).toBe(mint);
   });
 });

@@ -3,6 +3,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "@/utils/apiClient";
 import type { SwapTokenCategory, SwapTokenListing } from "@/utils/swap";
+import { tokenSearchKey } from "@/utils/swapTokens";
 import { describeToken } from "@/utils/tokens";
 
 const DEBOUNCE_MS = 250;
@@ -25,7 +26,7 @@ export function useSwapTokens(
   // A search looks everywhere, so the shelf does not change its answer.
   const shelf = settled ? null : category;
   const query = useQuery({
-    queryKey: ["swapTokens", settled.toLowerCase(), shelf ?? "everyday"],
+    queryKey: ["swapTokens", tokenSearchKey(settled), shelf ?? "everyday"],
     queryFn: async ({ signal }): Promise<SwapTokenListing[]> => {
       const tokens = await apiClient.swapTokens(settled, shelf, signal);
       // The index's "Wrapped SOL" is Solana everywhere else in the app.

@@ -43,6 +43,18 @@ export function shortTokenAddress(mint: string): string {
   return mint.length <= 9 ? mint : `${mint.slice(0, 4)}…${mint.slice(-4)}`;
 }
 
+const MINT_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/**
+ * A search as it is asked and remembered. Names and tickers are matched
+ * without regard to case, so they are folded; an address is not, because two
+ * addresses that differ only in case are different tokens.
+ */
+export function tokenSearchKey(search: string): string {
+  const trimmed = search.trim();
+  return MINT_ADDRESS.test(trimmed) ? trimmed : trimmed.toLowerCase();
+}
+
 /** Whether a token's name, ticker or mint address answers a search. */
 export function matchesTokenSearch(token: SwapToken, search: string): boolean {
   const wanted = search.trim().toLowerCase();
@@ -50,6 +62,6 @@ export function matchesTokenSearch(token: SwapToken, search: string): boolean {
   return (
     token.name.toLowerCase().includes(wanted) ||
     token.symbol.toLowerCase().includes(wanted) ||
-    token.mint.toLowerCase() === wanted
+    token.mint === search.trim()
   );
 }

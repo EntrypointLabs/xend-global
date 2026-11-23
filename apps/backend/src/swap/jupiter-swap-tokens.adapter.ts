@@ -55,7 +55,7 @@ export class JupiterSwapTokensAdapter implements SwapTokenDirectory {
   }
 
   async search(query: string): Promise<SwapToken[]> {
-    const key = query.trim().toLowerCase();
+    const key = searchKey(query);
     if (!key) return this.popular();
     const cached = this.searches.get(key);
     if (cached && Date.now() - cached.cachedAt < SEARCH_TTL_MS) {
@@ -116,6 +116,18 @@ export class JupiterSwapTokensAdapter implements SwapTokenDirectory {
     }
     return tokens;
   }
+}
+
+const MINT_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/**
+ * A search as it is sent and cached. A name is folded so that "Bonk" and
+ * "bonk" are one search. An address is left alone: its case is part of it,
+ * and a folded one names a different token or none.
+ */
+function searchKey(query: string): string {
+  const trimmed = query.trim();
+  return MINT_ADDRESS.test(trimmed) ? trimmed : trimmed.toLowerCase();
 }
 
 function trustOf(token: JupiterToken): SwapTokenTrust {

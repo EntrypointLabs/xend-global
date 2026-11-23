@@ -129,6 +129,14 @@ describe('JupiterSwapTokensAdapter', () => {
     expect(fetched.filter((url) => url.includes('/search'))).toHaveLength(1);
   });
 
+  it('searches for an address exactly as it was pasted', async () => {
+    const mint = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
+    await new JupiterSwapTokensAdapter().search(` ${mint} `);
+    expect(fetched.find((url) => url.includes('/search'))).toContain(
+      `query=${mint}`,
+    );
+  });
+
   it('keeps the last ranking when the source stops answering', async () => {
     const adapter = new JupiterSwapTokensAdapter();
     const first = await adapter.popular();
