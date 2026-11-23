@@ -20,6 +20,7 @@ module.exports = {
         "primary-foreground": "hsl(var(--primary-foreground) / <alpha-value>)",
         success: "hsl(var(--success) / <alpha-value>)",
         destructive: "hsl(var(--destructive) / <alpha-value>)",
+        warning: "hsl(var(--warning) / <alpha-value>)",
         info: "hsl(var(--info) / <alpha-value>)",
         border: "hsl(var(--border) / <alpha-value>)",
         card: "hsl(var(--card) / <alpha-value>)",

@@ -38,6 +38,11 @@ export function heldSwapTokens(
     });
 }
 
+/** A mint address cut to its two ends, which is how one is told from another. */
+export function shortTokenAddress(mint: string): string {
+  return mint.length <= 9 ? mint : `${mint.slice(0, 4)}…${mint.slice(-4)}`;
+}
+
 /** Whether a token's name, ticker or mint address answers a search. */
 export function matchesTokenSearch(token: SwapToken, search: string): boolean {
   const wanted = search.trim().toLowerCase();

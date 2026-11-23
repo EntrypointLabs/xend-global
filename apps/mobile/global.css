@@ -23,6 +23,7 @@
   --border: 0 0% 80%;
   --success: 135 59% 49%;
   --destructive: 4 100% 59%;
+  --warning: 42 100% 47%;
   --info: 211 100% 50%;
 }
 
@@ -48,5 +49,6 @@
   --border: 0 0% 20%;
   --success: 135 65% 60%;
   --destructive: 4 100% 68%;
+  --warning: 42 100% 62%;
   --info: 211 100% 62%;
 }

@@ -22,6 +22,8 @@ export interface Palette {
   border: string;
   success: string;
   destructive: string;
+  /** Take care, as opposed to `destructive`'s something is wrong. */
+  warning: string;
   info: string;
 }
 
@@ -41,6 +43,7 @@ export const PALETTE: Record<ColorMode, Palette> = {
     border: "#CCCCCC",
     success: "#33C758",
     destructive: "#FF3C2E",
+    warning: "#F0A800",
     info: "#007BFF",
   },
   dark: {
@@ -58,6 +61,7 @@ export const PALETTE: Record<ColorMode, Palette> = {
     border: "#333333",
     success: "#57DB78",
     destructive: "#FF675C",
+    warning: "#FFC53D",
     info: "#3D9BFF",
   },
 };

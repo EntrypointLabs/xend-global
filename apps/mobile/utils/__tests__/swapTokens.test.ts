@@ -1,6 +1,10 @@
 import type { TokenBalance } from "@/utils/apiClient";
 import { formatTokenPrice } from "@/utils/swap";
-import { heldSwapTokens, matchesTokenSearch } from "@/utils/swapTokens";
+import {
+  heldSwapTokens,
+  matchesTokenSearch,
+  shortTokenAddress,
+} from "@/utils/swapTokens";
 import { WRAPPED_SOL_MINT } from "@/utils/tokens";
 
 const balance = (over: Partial<TokenBalance>): TokenBalance => ({
@@ -72,5 +76,13 @@ describe("formatTokenPrice", () => {
   it("keeps the figures that matter for a price under a dollar", () => {
     expect(formatTokenPrice(0.9997041)).toBe("$0.9997");
     expect(formatTokenPrice(0.0000213449)).toBe("$0.00002134");
+  });
+});
+
+describe("shortTokenAddress", () => {
+  it("keeps the two ends of an address", () => {
+    expect(
+      shortTokenAddress("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB")
+    ).toBe("Es9v…wNYB");
   });
 });

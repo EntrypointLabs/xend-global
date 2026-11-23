@@ -32,6 +32,7 @@ import {
 import {
   heldSwapTokens,
   matchesTokenSearch,
+  shortTokenAddress,
   type HeldSwapToken,
 } from "@/utils/swapTokens";
 import { pickSwapToken, useSwapPair, type SwapSide } from "@/utils/swapPair";
@@ -331,6 +332,12 @@ function TokenRow({
   const { token, balance, usdPrice, trust } = row;
   const detail = balance ? `${balance} ${token.symbol}` : token.symbol;
   const price = usdPrice === null ? null : formatTokenPrice(usdPrice);
+  // A token nothing vouches for can share its name, ticker and logo with the
+  // real one. Its address is the one thing it cannot copy.
+  const address =
+    trust === "unverified" || trust === "caution"
+      ? shortTokenAddress(token.mint)
+      : null;
 
   return (
     <HapticPressable
@@ -343,6 +350,7 @@ function TokenRow({
         trust ? TRUST_LABEL[trust] : null,
         detail,
         price,
+        address ? `address ${address}` : null,
       ]
         .filter(Boolean)
         .join(", ")}
@@ -373,7 +381,7 @@ function TokenRow({
               color={palette.fg(0.55)}
             />
           ) : trust === "caution" ? (
-            <Ionicons name="warning" size={16} color={palette.destructive} />
+            <Ionicons name="warning" size={16} color={palette.warning} />
           ) : null}
         </View>
         <Typography
@@ -384,11 +392,18 @@ function TokenRow({
           {detail}
         </Typography>
       </View>
-      {price ? (
-        <Typography weight="600" className="text-[16px] text-foreground">
-          {price}
-        </Typography>
-      ) : null}
+      <View className="items-end">
+        {price ? (
+          <Typography weight="600" className="text-[16px] text-foreground">
+            {price}
+          </Typography>
+        ) : null}
+        {address ? (
+          <Typography weight="500" className="text-[14px] text-foreground/40">
+            {address}
+          </Typography>
+        ) : null}
+      </View>
     </HapticPressable>
   );
 }
