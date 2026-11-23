@@ -264,6 +264,20 @@ describe("checkSwapAccess", () => {
     ).toBe("it changes more than the spending rule Swap needs");
   });
 
+  it("refuses the same rewrite aimed at the Spending Limit", () => {
+    const aimedElsewhere = staged({ aboveLimitSeed: 1n });
+    expect(checkSwapAccess(aimedElsewhere, account)).toBe(
+      "it rewrites a different spending rule"
+    );
+    expect(
+      checkSwapAccess(
+        compile(approvals()),
+        account,
+        stagedChange(aimedElsewhere)
+      )
+    ).toBe("it rewrites a different spending rule");
+  });
+
   it("refuses an approval of a change it could not read", () => {
     expect(checkSwapAccess(compile(approvals()), account)).toBe(
       "the change it approves could not be read"

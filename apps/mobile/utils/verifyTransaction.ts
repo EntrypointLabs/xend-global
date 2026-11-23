@@ -1,5 +1,6 @@
 import {
   ABOVE_LIMIT_PROGRAM_ALLOWLIST,
+  derivePolicyAddress,
   describeTransaction,
   type SettingsChangeAction,
   type StagedSettingsChange,
@@ -256,7 +257,7 @@ export function checkSwapAccess(
     if (!staged || !staged.proposal.equals(description.proposal)) {
       return "the change it approves could not be read";
     }
-    return swapRewriteMismatch(staged.actions, keys);
+    return swapRewriteMismatch(staged.actions, keys, description.settings);
   }
   if (description.kind !== "settings") {
     return description.kind === "unknown"
@@ -273,7 +274,7 @@ export function checkSwapAccess(
   ) {
     return "it carries a vote that is not this account's";
   }
-  return swapRewriteMismatch(description.actions, keys);
+  return swapRewriteMismatch(description.actions, keys, description.settings);
 }
 
 /**
@@ -294,14 +295,28 @@ export function proposalVotedOn(
   }
 }
 
+/**
+ * Where every Account keeps the rule for Spends above its limit. Fixed when
+ * the Account is created, so it is derived here and not taken from anyone.
+ */
+const ABOVE_LIMIT_POLICY_SEED = 2n;
+
 /** Why `actions` are not the one rewrite Swap needs, or null when they are. */
 function swapRewriteMismatch(
   actions: readonly SettingsChangeAction[],
-  keys: readonly string[]
+  keys: readonly string[],
+  settings: PublicKey
 ): string | null {
   const [action, ...others] = actions;
   if (!action || others.length > 0 || action.kind !== "policy-update") {
     return "it changes more than the spending rule Swap needs";
+  }
+  // An update replaces the whole policy it names. The same terms written
+  // over the Spending Limit would pass every check below and leave the
+  // Account unable to make an ordinary payment.
+  const aboveLimit = derivePolicyAddress(settings, ABOVE_LIMIT_POLICY_SEED);
+  if (!action.policy.equals(aboveLimit)) {
+    return "it rewrites a different spending rule";
   }
   const { terms } = action;
   if (terms.kind !== "program-interaction" || !terms.programOnly) {
