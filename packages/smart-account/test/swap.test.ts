@@ -375,9 +375,27 @@ describe("refusing a swap that is not the one a signer would be shown", () => {
     expect(await refused([good(), close, refund])).toMatch(/not a rent refund/);
   });
 
+  it("refuses a rent refund when the fee payer opens no wrapped SOL account", () => {
+    const described = describeTransaction(
+      compile([
+        swap({
+          route: route(USDC, WRAPPED_SOL_MINT, 100n, 90n),
+          unwrapOutput: true,
+          refundRentTo: feePayer,
+        }),
+      ]),
+      context,
+    );
+    expect(described).toMatchObject({
+      kind: "unknown",
+      reason: "the swap refunds rent the fee payer did not put up",
+    });
+  });
+
   it("refuses a rent refund to anyone but the fee payer", () => {
     const described = describeTransaction(
       compile([
+        openAta(vault, WRAPPED_SOL_MINT),
         swap({
           route: route(USDC, WRAPPED_SOL_MINT, 100n, 90n),
           unwrapOutput: true,

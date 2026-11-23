@@ -319,6 +319,8 @@ type Decoded =
   | { kind: "transfer"; transfer: TransferDescription }
   | {
       kind: "open-token-account";
+      /** Who pays the rent if the account does not exist yet. */
+      payer: PublicKey;
       ata: PublicKey;
       owner: PublicKey;
       mint: PublicKey;
@@ -838,14 +840,14 @@ function decodeAssociatedToken(accounts: PublicKey[], data: Buffer): Decoded {
     data.length === 0 ||
     (data.length === 1 && (data[0] === 0 || data[0] === 1));
   if (!create) return unknown("Associated Token instruction other than create");
-  const [, ata, owner, mint, , tokenProgram] = accounts;
-  if (!ata || !owner || !mint || !tokenProgram) {
+  const [payer, ata, owner, mint, , tokenProgram] = accounts;
+  if (!payer || !ata || !owner || !mint || !tokenProgram) {
     return unknown("malformed associated token account creation");
   }
   if (!ata.equals(associatedTokenAddress(owner, mint, tokenProgram))) {
     return unknown("associated token account does not derive from its owner");
   }
-  return { kind: "open-token-account", ata, owner, mint };
+  return { kind: "open-token-account", payer, ata, owner, mint };
 }
 
 function assemble(
@@ -954,8 +956,24 @@ function assembleSwap(
       return unknown("opens a token account the swap does not use");
     }
   }
-  if (decoded.rentRefundTo && !decoded.rentRefundTo.equals(feePayer)) {
-    return unknown("the swap refunds rent to someone other than the fee payer");
+  if (decoded.rentRefundTo) {
+    if (!decoded.rentRefundTo.equals(feePayer)) {
+      return unknown(
+        "the swap refunds rent to someone other than the fee payer",
+      );
+    }
+    // A refund is only owed for rent the fee payer puts up here. Without the
+    // opening instruction the wrapped SOL account was already the vault's,
+    // rent included, and the refund would be the vault's own money leaving.
+    // Whether the account already exists cannot be read from a message, so
+    // whoever signs still has to check that against the chain.
+    const fronted = opens.some(
+      (open) =>
+        open.mint.equals(WRAPPED_SOL_MINT) && open.payer.equals(feePayer),
+    );
+    if (!fronted) {
+      return unknown("the swap refunds rent the fee payer did not put up");
+    }
   }
   return swap;
 }

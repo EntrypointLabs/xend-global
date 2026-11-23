@@ -9,7 +9,13 @@ import { fromByteArray, toByteArray } from "base64-js";
 import {
   type AddressLookupTableAccount,
   VersionedTransaction,
+  PublicKey,
 } from "@solana/web3.js";
+import {
+  associatedTokenAddress,
+  TOKEN_PROGRAM_ID,
+  WRAPPED_SOL_MINT,
+} from "@prydd/smart-account";
 
 import { useAccount } from "@/hooks/useAccount";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
@@ -81,6 +87,10 @@ export function useExecuteSwap() {
         const unsigned = VersionedTransaction.deserialize(
           toByteArray(prepared.unsignedTxBase64)
         );
+        const [lookupTables, wrappedSolAccountExists] = await Promise.all([
+          loadLookupTables(unsigned),
+          hasWrappedSolAccount(account.address),
+        ]);
         const mismatch = checkSwap(
           prepared.unsignedTxBase64,
           {
@@ -91,8 +101,9 @@ export function useExecuteSwap() {
             amountInRaw: quote.amountInRaw,
             quotedAmountOutRaw: quote.outAmountRaw,
             slippageBps: quote.slippageBps,
+            wrappedSolAccountExists,
           },
-          await loadLookupTables(unsigned)
+          lookupTables
         );
         if (mismatch) {
           Sentry.captureException(new Error(`swap mismatch: ${mismatch}`), {
@@ -208,6 +219,20 @@ async function waitForOutcome(
     await new Promise((resolve) => setTimeout(resolve, OUTCOME_POLL_MS));
   }
   return "unknown";
+}
+
+/**
+ * Whether the vault already has a wrapped SOL account, read from this phone's
+ * own RPC. If it does, its rent is the Account's, and a swap that paid that
+ * rent to the fee payer would be taking it.
+ */
+async function hasWrappedSolAccount(vault: string): Promise<boolean> {
+  const account = associatedTokenAddress(
+    new PublicKey(vault),
+    WRAPPED_SOL_MINT,
+    TOKEN_PROGRAM_ID
+  );
+  return (await getSolanaConnection().getAccountInfo(account)) !== null;
 }
 
 /**

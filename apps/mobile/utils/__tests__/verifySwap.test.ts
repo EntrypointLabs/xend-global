@@ -7,6 +7,7 @@ import {
 } from "@solana/web3.js";
 import {
   ABOVE_LIMIT_PROGRAM_ALLOWLIST,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
   associatedTokenAddress,
   buildApproveSettingsChange,
   buildExecuteSettingsChange,
@@ -19,6 +20,7 @@ import {
   derivePolicyAddress,
   describeTransaction,
   JUPITER_PROGRAM_ID,
+  SYSTEM_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   WRAPPED_SOL_MINT,
   type StagedSettingsChange,
@@ -117,12 +119,55 @@ const quoted: ExpectedSwap = {
   amountInRaw: "100000000",
   quotedAmountOutRaw: "1440000000",
   slippageBps: 50,
+  wrappedSolAccountExists: false,
 };
 
 const asQuoted = () =>
   route(USDC, WRAPPED_SOL_MINT, 100_000_000n, 1_440_000_000n);
 
 describe("checkSwap", () => {
+  const withRefund = () =>
+    compile([
+      new TransactionInstruction({
+        programId: ASSOCIATED_TOKEN_PROGRAM_ID,
+        keys: [
+          { pubkey: feePayer, isSigner: true, isWritable: true },
+          {
+            pubkey: associatedTokenAddress(
+              addresses.vault,
+              WRAPPED_SOL_MINT,
+              TOKEN_PROGRAM_ID
+            ),
+            isSigner: false,
+            isWritable: true,
+          },
+          { pubkey: addresses.vault, isSigner: false, isWritable: false },
+          { pubkey: WRAPPED_SOL_MINT, isSigner: false, isWritable: false },
+          { pubkey: SYSTEM_PROGRAM_ID, isSigner: false, isWritable: false },
+          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        ],
+        data: Buffer.from([1]),
+      }),
+      buildSwap({
+        addresses,
+        policy,
+        signers: [primary, approval],
+        route: asQuoted(),
+        unwrapOutput: true,
+        refundRentTo: feePayer,
+      }),
+    ]);
+
+  it("accepts a rent refund for a wrapped SOL account the fee payer opens", () => {
+    expect(checkSwap(withRefund(), quoted, [])).toBeNull();
+  });
+
+  it("refuses a rent refund when the wrapped SOL account was already there", () => {
+    expect(
+      checkSwap(withRefund(), { ...quoted, wrappedSolAccountExists: true }, [])
+    ).toBe("it takes back rent this account already paid");
+  });
+
   it("accepts the swap that was priced on screen", () => {
     expect(checkSwap(swap(asQuoted()), quoted, [])).toBeNull();
   });

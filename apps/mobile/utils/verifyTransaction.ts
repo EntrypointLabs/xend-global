@@ -139,6 +139,12 @@ export interface ExpectedSwap {
   /** The price on screen, and how far short of it the swap may settle. */
   quotedAmountOutRaw: string;
   slippageBps: number;
+  /**
+   * Whether the vault already has a wrapped SOL account, as this phone read
+   * it from the chain. A swap may hand the fee payer back the rent for that
+   * account only when the fee payer is the one opening it.
+   */
+  wrappedSolAccountExists: boolean;
 }
 
 /**
@@ -204,6 +210,9 @@ export function checkSwap(
   }
   if (description.slippageBps !== expected.slippageBps) {
     return "it allows a different shortfall";
+  }
+  if (description.refundsRent && expected.wrappedSolAccountExists) {
+    return "it takes back rent this account already paid";
   }
   return null;
 }
