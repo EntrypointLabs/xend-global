@@ -222,6 +222,16 @@ export async function* streamConfirmedTransfersViaConnection(
   }
 }
 
+/**
+ * Parsed instruction types that move value. The last is how the newer token
+ * program moves a token that charges a fee on transfer.
+ */
+const TRANSFER_TYPES = new Set([
+  'transfer',
+  'transferChecked',
+  'transferCheckedWithFee',
+]);
+
 /** Parsed instruction types that open a token account and name its owner. */
 const TOKEN_ACCOUNT_OPENINGS = new Set([
   'initializeAccount',
@@ -408,9 +418,7 @@ export function extractTokenTransfers(
         }
       | undefined;
     if (!parsed) continue;
-    if (parsed.type !== 'transfer' && parsed.type !== 'transferChecked') {
-      continue;
-    }
+    if (!TRANSFER_TYPES.has(parsed.type)) continue;
 
     // Native SOL, which moves through the System Program rather than as a
     // token. Without this the Consumer's SOL is visible in their balance but
@@ -446,7 +454,12 @@ export function extractTokenTransfers(
       continue;
     }
 
-    if (ix.programId.toBase58() !== TOKEN_PROGRAM_ID.toBase58()) continue;
+    if (
+      !ix.programId.equals(TOKEN_PROGRAM_ID) &&
+      !ix.programId.equals(TOKEN_2022_PROGRAM_ID)
+    ) {
+      continue;
+    }
 
     const sourceAcct = parsed.info.source;
     const destAcct = parsed.info.destination;

@@ -9,6 +9,7 @@ import {
   extractTokenTransfers,
   sendRawTransactionViaConnection,
   SYSTEM_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   WRAPPED_SOL_MINT,
 } from './web3-connection';
@@ -35,6 +36,7 @@ describe('sendRawTransactionViaConnection', () => {
 describe('extractTokenTransfers', () => {
   const address = () => Keypair.generate().publicKey.toBase58();
   const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+  const USDG = '2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH';
   const ATA_PROGRAM = new PublicKey(
     'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
   );
@@ -137,6 +139,40 @@ describe('extractTokenTransfers', () => {
       [WRAPPED_SOL_MINT, venue, vault, 72_000_000n],
     ]);
     expect(events[1].decimals).toBe(9);
+  });
+
+  it('sees both sides of a swap into a token on the newer token program', () => {
+    const events = extractTokenTransfers(
+      transaction([
+        parsed(TOKEN_PROGRAM_ID, 'transfer', {
+          source: vaultUsdc,
+          destination: venueUsdc,
+          authority: vault,
+          amount: '5000000',
+        }),
+        parsed(TOKEN_2022_PROGRAM_ID, 'transferChecked', {
+          source: venueWrappedSol,
+          destination: vaultWrappedSol,
+          authority: venue,
+          mint: USDG,
+          tokenAmount: { amount: '4999000', decimals: 6 },
+        }),
+        parsed(ATA_PROGRAM, 'createIdempotent', {
+          account: vaultWrappedSol,
+          wallet: vault,
+          mint: USDG,
+          source: feePayer,
+        }),
+      ]),
+      vault,
+    );
+
+    expect(
+      events.map((e) => [e.mint, e.fromAddress, e.toAddress, e.amountRaw]),
+    ).toEqual([
+      [USDC, vault, venue, 5_000_000n],
+      [USDG, venue, vault, 4_999_000n],
+    ]);
   });
 
   it('still records SOL the owner sends to whoever fronted no rent', () => {
