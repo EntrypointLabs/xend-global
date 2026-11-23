@@ -99,6 +99,11 @@ describe('extractTokenTransfers', () => {
           mint: WRAPPED_SOL_MINT,
           source: feePayer,
         }),
+        parsed(SYSTEM_PROGRAM_ID, 'createAccount', {
+          source: feePayer,
+          newAccount: vaultWrappedSol,
+          lamports: RENT,
+        }),
         parsed(TOKEN_PROGRAM_ID, 'transfer', {
           source: vaultUsdc,
           destination: venueUsdc,
@@ -130,9 +135,24 @@ describe('extractTokenTransfers', () => {
     ).toEqual([
       [USDC, vault, venue, 5_000_000n],
       [WRAPPED_SOL_MINT, venue, vault, 72_000_000n],
-      [WRAPPED_SOL_MINT, vault, feePayer, BigInt(RENT)],
     ]);
     expect(events[1].decimals).toBe(9);
+  });
+
+  it('still records SOL the owner sends to whoever fronted no rent', () => {
+    const events = extractTokenTransfers(
+      transaction([
+        parsed(SYSTEM_PROGRAM_ID, 'transfer', {
+          source: vault,
+          destination: feePayer,
+          lamports: RENT,
+        }),
+      ]),
+      vault,
+    );
+    expect(
+      events.map((e) => [e.fromAddress, e.toAddress, e.amountRaw]),
+    ).toEqual([[vault, feePayer, BigInt(RENT)]]);
   });
 
   it('counts SOL paid into a swap once, not again as it is wrapped', () => {

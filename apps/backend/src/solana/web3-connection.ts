@@ -231,6 +231,75 @@ const TOKEN_ACCOUNT_OPENINGS = new Set([
   'createIdempotent',
 ]);
 
+interface FundingInstruction {
+  type?: string;
+  info?: {
+    account?: string;
+    destination?: string;
+    newAccount?: string;
+    source?: string;
+    owner?: string;
+    lamports?: number;
+  };
+}
+
+/**
+ * Rent that others paid into token accounts which this transaction then
+ * closed into `owner`, by who paid it.
+ */
+function rentFrontedForClosedAccounts(
+  instructions: (ParsedInstruction | PartiallyDecodedInstruction)[],
+  accountOwners: Map<string, { owner: string }>,
+  owner: string,
+): Map<string, number[]> {
+  const parsed = instructions.flatMap((ix) =>
+    'parsed' in ix ? [ix.parsed as FundingInstruction | undefined] : [],
+  );
+  const closedIntoOwner = new Set(
+    parsed.flatMap((p) =>
+      p?.type === 'closeAccount' &&
+      p.info?.account &&
+      p.info.destination === owner
+        ? [p.info.account]
+        : [],
+    ),
+  );
+
+  const fronted = new Map<string, number[]>();
+  for (const p of parsed) {
+    const funded =
+      p?.type === 'createAccount' ? p.info?.newAccount : p?.info?.destination;
+    const payer = p?.info?.source;
+    const lamports = p?.info?.lamports;
+    if (
+      (p?.type !== 'createAccount' && p?.type !== 'transfer') ||
+      !funded ||
+      !payer ||
+      lamports === undefined ||
+      payer === owner ||
+      !closedIntoOwner.has(funded) ||
+      accountOwners.get(funded)?.owner !== owner
+    ) {
+      continue;
+    }
+    fronted.set(payer, [...(fronted.get(payer) ?? []), lamports]);
+  }
+  return fronted;
+}
+
+/** Uses up one matching amount, so a second refund of it is still recorded. */
+function takeFronted(
+  fronted: Map<string, number[]>,
+  payer: string,
+  lamports: number,
+): boolean {
+  const amounts = fronted.get(payer);
+  const at = amounts?.indexOf(lamports) ?? -1;
+  if (!amounts || at < 0) return false;
+  amounts.splice(at, 1);
+  return true;
+}
+
 /**
  * Pull SPL token transfer events from a parsed transaction. Inspects
  * top-level + inner instructions for `spl-token`'s `transferChecked`
@@ -315,6 +384,12 @@ export function extractTokenTransfers(
     });
   }
 
+  const frontedRent = rentFrontedForClosedAccounts(
+    allInstructions,
+    accountOwners,
+    owner,
+  );
+
   for (const ix of allInstructions) {
     if (!('parsed' in ix)) continue;
     const parsed = ix.parsed as
@@ -352,6 +427,11 @@ export function extractTokenTransfers(
       // them. Whatever then spends it is a token transfer and is counted
       // there, once.
       if (accountOwners.get(to)?.owner === owner) continue;
+      // Rent someone else put up for a token account that was closed into
+      // the owner, handed back. The rent arriving is not a transfer and is
+      // never recorded, so recording its return would show a loss that did
+      // not happen.
+      if (from === owner && takeFronted(frontedRent, to, lamports)) continue;
       events.push({
         signature,
         legIndex: legs.next(WRAPPED_SOL_MINT, from, to, BigInt(lamports)),
