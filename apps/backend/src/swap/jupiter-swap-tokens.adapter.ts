@@ -48,12 +48,10 @@ export class JupiterSwapTokensAdapter implements SwapTokenDirectory {
 
   async popular(category?: SwapTokenCategory): Promise<SwapToken[]> {
     const ranked = await this.ranked();
-    const shelf = category
-      ? ranked.filter((token) => token.category === category)
-      : ranked.filter(
-          (token) => token.category === 'crypto' || token.category === 'stable',
-        );
-    return shelf.slice(0, LIST_LENGTH);
+    const shelf = category ?? 'crypto';
+    return ranked
+      .filter((token) => token.category === shelf)
+      .slice(0, LIST_LENGTH);
   }
 
   async search(query: string): Promise<SwapToken[]> {
@@ -154,7 +152,6 @@ function markCopies(found: SwapToken[], ranked: SwapToken[]): SwapToken[] {
 function categoryOf(token: JupiterToken): SwapTokenCategory {
   const tags = token.tags ?? [];
   if (STOCK_TAGS.some((tag) => tags.includes(tag))) return 'stocks';
-  if (tags.includes('stable')) return 'stable';
   if (tags.includes('meme')) return 'meme';
   if (token.launchpad && !tags.includes('defi')) return 'meme';
   return 'crypto';

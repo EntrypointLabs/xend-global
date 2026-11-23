@@ -105,7 +105,12 @@ describe('JupiterSwapTokensAdapter', () => {
   it('shelves each token by what the source calls it', async () => {
     const adapter = new JupiterSwapTokensAdapter();
     expect(symbols(await adapter.popular('stocks'))).toEqual(['NVDAx']);
-    expect(symbols(await adapter.popular('stable'))).toEqual(['USDC']);
+    // A stablecoin is crypto like any other; it has no shelf of its own.
+    expect(symbols(await adapter.popular('crypto'))).toEqual([
+      'SOL',
+      'USDC',
+      'PUMP',
+    ]);
     expect(symbols(await adapter.popular('meme'))).toEqual(['BONK', 'FRESH']);
     // One ranking serves every shelf.
     expect(fetched).toHaveLength(1);
