@@ -69,6 +69,38 @@ export function isSwapQuoteExpired(quote: SwapQuote, nowMs: number): boolean {
   return quote.expiresAt - EXPIRY_BUFFER_SECONDS <= Math.floor(nowMs / 1000);
 }
 
+/**
+ * A typed amount as the integer the chain counts in. Done on the digits, not
+ * through a float: a nine-decimal balance does not survive being multiplied
+ * as a number, and "all of it" has to mean exactly all of it. Digits past the
+ * token's precision are dropped, since no such fraction of it exists.
+ */
+export function toRawAmount(amount: string, decimals: number): string {
+  const [whole = "", fraction = ""] = amount.split(".");
+  if (!/^\d*$/.test(whole) || !/^\d*$/.test(fraction)) return "0";
+  const digits = whole + fraction.slice(0, decimals).padEnd(decimals, "0");
+  return digits.replace(/^0+(?=\d)/, "") || "0";
+}
+
+/**
+ * A raw amount cut to a few decimal places for a label. Cut, never rounded:
+ * a balance of 3.99999 shown as 4 would promise more than is held.
+ */
+export function formatRawAmountShort(
+  raw: string,
+  decimals: number,
+  places = 4
+): string {
+  const [whole, fraction = ""] = formatRawAmount(raw, decimals).split(".");
+  const kept = fraction.slice(0, places).replace(/0+$/, "");
+  return kept ? `${whole}.${kept}` : whole;
+}
+
+/** A raw amount as it would be typed on the keypad: no grouping commas. */
+export function toAmountInput(raw: string, decimals: number): string {
+  return formatRawAmount(raw, decimals).replace(/,/g, "");
+}
+
 /** Raw integer string to display units, without going through a float. */
 export function formatRawAmount(raw: string, decimals: number): string {
   const negative = raw.startsWith("-");

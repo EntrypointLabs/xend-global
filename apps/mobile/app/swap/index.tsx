@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -23,7 +24,13 @@ import { useSwapAccess } from "@/hooks/useSwapAccess";
 import { useSwapQuote } from "@/hooks/useSwapQuote";
 import { useExecuteSwap } from "@/hooks/useExecuteSwap";
 import { useToast } from "@/contexts/ToastContext";
-import { formatRawAmount, type SwapToken } from "@/utils/swap";
+import {
+  formatRawAmount,
+  formatRawAmountShort,
+  toAmountInput,
+  toRawAmount,
+  type SwapToken,
+} from "@/utils/swap";
 import { flipSwapPair, useSwapPair, type SwapSide } from "@/utils/swapPair";
 import { cn } from "@/utils/cn";
 
@@ -75,6 +82,7 @@ function SwapScreen() {
   // asset it is carrying for the whole trip. Swapping the contents of two
   // pills that stay put would be the same instant change with a delay.
   const [switched, setSwitched] = useState(false);
+  const [rowWidth, setRowWidth] = useState(0);
   const travelled = useSharedValue(0);
   const payRowY = useSharedValue(0);
   const receiveRowY = useSharedValue(0);
@@ -120,19 +128,27 @@ function SwapScreen() {
   const sideLabel = (side: SwapSide) =>
     side === "pay" ? "Choose what you pay with" : "Choose what you receive";
 
-  const payBalance = useMemo(() => {
-    const held = tokens.find((t) => t.mint === payToken.mint);
-    if (!held) return 0;
-    return Number(held.amountRaw) / 10 ** held.decimals;
-  }, [tokens, payToken]);
+  const heldRaw = useMemo(
+    () => tokens.find((t) => t.mint === payToken.mint)?.amountRaw ?? "0",
+    [tokens, payToken.mint]
+  );
+  // The label is a short reminder of what is held. Tapping MAX fills the
+  // exact balance, to the last decimal place, whatever the label shows.
+  const payBalance = formatRawAmountShort(heldRaw, payToken.decimals);
 
-  const withinBalance = Number(amount) > 0 && Number(amount) <= payBalance;
+  const amountRaw = useMemo(
+    () => toRawAmount(amount, payToken.decimals),
+    [amount, payToken.decimals]
+  );
+  // Compared as whole numbers of the smallest unit, so the full balance is
+  // within the balance and one unit more is not.
+  const withinBalance =
+    amountRaw !== "0" && BigInt(amountRaw) <= BigInt(heldRaw);
 
-  const amountRaw = useMemo(() => {
-    const parsed = Number(amount);
-    if (!Number.isFinite(parsed) || parsed <= 0) return "0";
-    return BigInt(Math.round(parsed * 10 ** payToken.decimals)).toString();
-  }, [amount, payToken.decimals]);
+  const payEverything = () => {
+    if (heldRaw === "0") return;
+    setAmount(toAmountInput(heldRaw, payToken.decimals));
+  };
 
   const { quote, isLoading, error } = useSwapQuote({
     inputMint: payToken.mint,
@@ -188,20 +204,14 @@ function SwapScreen() {
           className="z-10 flex-row items-center justify-between"
           onLayout={(event) => {
             payRowY.value = event.nativeEvent.layout.y;
+            setRowWidth(event.nativeEvent.layout.width);
           }}
         >
-          <Typography
-            weight="500"
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.5}
-            className={cn(
-              "mr-3 flex-1 text-[44px] tracking-[-1.2px]",
-              amount === "0" ? "text-foreground/25" : "text-foreground"
-            )}
-          >
-            {amount}
-          </Typography>
+          <Amount
+            value={amount}
+            dimmed={amount === "0"}
+            fadeFrom={rowWidth / 2}
+          />
           <View className="max-w-[55%]">
             <Animated.View style={upperPillStyle}>
               <TokenPill
@@ -212,14 +222,21 @@ function SwapScreen() {
             </Animated.View>
           </View>
         </View>
-        <View className="mt-1 flex-row items-center justify-end gap-1">
+        <HapticPressable
+          accessibilityRole="button"
+          accessibilityLabel={`Pay with all of it, ${payBalance} ${payToken.symbol}`}
+          feedback="selection"
+          onPress={payEverything}
+          hitSlop={10}
+          className="mt-1 flex-row items-center gap-1 self-end"
+        >
           <Typography variant="body" weight="600">
             MAX
           </Typography>
           <Typography variant="body" className="text-foreground/30">
-            {payBalance.toLocaleString("en-US", { maximumFractionDigits: 4 })}
+            {payBalance}
           </Typography>
-        </View>
+        </HapticPressable>
 
         <View className="my-5 flex-row items-center gap-3">
           <View className="h-px flex-1 bg-foreground/10" />
@@ -250,18 +267,11 @@ function SwapScreen() {
             receiveRowY.value = event.nativeEvent.layout.y;
           }}
         >
-          <Typography
-            weight="500"
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.5}
-            className={cn(
-              "mr-3 flex-1 text-[44px] tracking-[-1.2px]",
-              quote ? "text-foreground" : "text-foreground/25"
-            )}
-          >
-            {receiveDisplay}
-          </Typography>
+          <Amount
+            value={receiveDisplay}
+            dimmed={!quote}
+            fadeFrom={rowWidth / 2}
+          />
           <View className="max-w-[55%]">
             <Animated.View style={lowerPillStyle}>
               <TokenPill
@@ -344,6 +354,70 @@ function SwapScreen() {
         </GlassButton>
       </View>
     </ScreenLayout>
+  );
+}
+
+/**
+ * An amount on one side of the swap.
+ *
+ * It keeps its size however long it gets. A long one thins out gradually:
+ * solid up to the middle of the row, where the switch control sits, and from
+ * there fading steadily into the background until nothing is left by the
+ * time it would reach the token pill. A short fade would read as the number
+ * being cut off; a long one reads as it trailing away.
+ */
+function Amount({
+  value,
+  dimmed,
+  fadeFrom,
+}: {
+  value: string;
+  dimmed: boolean;
+  /** Where the fade begins, in points from the left of the row. */
+  fadeFrom: number;
+}) {
+  const palette = usePalette();
+
+  return (
+    <View className="mr-3 flex-1 overflow-hidden">
+      <Typography
+        weight="500"
+        numberOfLines={1}
+        ellipsizeMode="clip"
+        className={cn(
+          "text-[44px] tracking-[-1.2px]",
+          dimmed ? "text-foreground/25" : "text-foreground"
+        )}
+      >
+        {value}
+      </Typography>
+      {fadeFrom > 0 ? (
+        <View
+          pointerEvents="none"
+          className="absolute bottom-0 right-0 top-0"
+          // MEASURED-LAYOUT: the fade starts at the middle of the row.
+          style={{ left: fadeFrom }}
+        >
+          <Svg width="100%" height="100%">
+            <Defs>
+              <LinearGradient id="amount-fade" x1="0" y1="0" x2="1" y2="0">
+                <Stop
+                  offset="0"
+                  stopColor={palette.background}
+                  stopOpacity="0"
+                />
+                <Stop
+                  offset="0.9"
+                  stopColor={palette.background}
+                  stopOpacity="1"
+                />
+              </LinearGradient>
+            </Defs>
+            <Rect width="100%" height="100%" fill="url(#amount-fade)" />
+          </Svg>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
