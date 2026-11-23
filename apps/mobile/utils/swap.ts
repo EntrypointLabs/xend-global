@@ -10,6 +10,37 @@ export interface SwapToken {
   iconUrl: string | null;
 }
 
+export const SWAP_TOKEN_CATEGORIES = [
+  "crypto",
+  "stable",
+  "stocks",
+  "meme",
+] as const;
+export type SwapTokenCategory = (typeof SWAP_TOKEN_CATEGORIES)[number];
+
+/** An asset as the picker lists it. */
+export interface SwapTokenListing extends SwapToken {
+  category: SwapTokenCategory;
+  /** USD per whole token, or null when nothing prices it. */
+  usdPrice: number | null;
+}
+
+/**
+ * A token's price as a Consumer reads it. A price under a dollar keeps four
+ * significant figures, because two decimals would show most tokens as $0.00.
+ */
+export function formatTokenPrice(usdPrice: number): string {
+  if (usdPrice >= 1) {
+    return `$${usdPrice.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+  return `$${Number(usdPrice.toPrecision(4)).toLocaleString("en-US", {
+    maximumFractionDigits: 10,
+  })}`;
+}
+
 /** Seconds of headroom before `expiresAt`, so a price cannot lapse mid-confirmation. */
 const EXPIRY_BUFFER_SECONDS = 8;
 

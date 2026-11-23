@@ -1,3 +1,4 @@
+import type { SwapTokenCategory, SwapTokenListing } from "@/utils/swap";
 import type {
   AccountResponse,
   ProvisioningStep,
@@ -597,49 +598,113 @@ export function seedProvisioningStep(): ProvisioningStep {
 
 const ICONS = "https://static.datapi.jup.ag/token-icons";
 
-/** A few of the assets Swap offers, enough to show the picker populated. */
-export function seedSwapTokens(query: string) {
+/** A few of the assets Swap offers, enough to show every shelf populated. */
+export function seedSwapTokens(
+  query: string,
+  category: SwapTokenCategory | null
+): SwapTokenListing[] {
   const wanted = query.trim().toLowerCase();
-  return [
-    {
-      mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
-      symbol: "USDT",
-      name: "USDT",
-      decimals: 6,
-      iconUrl: `${ICONS}/36574a5ee2cd469e059d070180985e59fbd57c82a54ea95763fab39973174100.webp`,
-    },
-    {
-      mint: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
-      symbol: "JUP",
-      name: "Jupiter",
-      decimals: 6,
-      iconUrl: `${ICONS}/12254fdd34fa9a0ad62075bd3872df61e28584f9519fe00c744b71b514d4c3d7.webp`,
-    },
-    {
-      mint: "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh",
-      symbol: "WBTC",
-      name: "Wrapped BTC (Portal)",
-      decimals: 8,
-      iconUrl: `${ICONS}/010fb6db6c343cd0f90214ab1770278012d0c58a091d1f64715343817dbfb27e.webp`,
-    },
-    {
-      mint: "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
-      symbol: "RAY",
-      name: "Raydium",
-      decimals: 6,
-      iconUrl: `${ICONS}/e3a3487516776ef5cd3166a0861525d053845b5aa0cf27442a56ca65e673b265.webp`,
-    },
-    {
-      mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-      symbol: "Bonk",
-      name: "Bonk",
-      decimals: 5,
-      iconUrl: `${ICONS}/7461f749f396872bdba0559323970190e22056d87f08792ce597c00f3c23a6d0.webp`,
-    },
-  ].filter(
-    (token) =>
-      !wanted ||
-      token.name.toLowerCase().includes(wanted) ||
-      token.symbol.toLowerCase().includes(wanted)
+  const token = (
+    mint: string,
+    symbol: string,
+    name: string,
+    decimals: number,
+    icon: string,
+    shelf: SwapTokenCategory,
+    usdPrice: number
+  ): SwapTokenListing => ({
+    mint,
+    symbol,
+    name,
+    decimals,
+    iconUrl: `${ICONS}/${icon}.webp`,
+    category: shelf,
+    usdPrice,
+  });
+  const all = [
+    token(
+      "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      "USDT",
+      "USDT",
+      6,
+      "36574a5ee2cd469e059d070180985e59fbd57c82a54ea95763fab39973174100",
+      "stable",
+      1
+    ),
+    token(
+      "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH",
+      "USDG",
+      "Global Dollar",
+      6,
+      "234d4d10c9356ac40b3f8a4dac8cb363beec75ba2f9c8a18157742494193b4d7",
+      "stable",
+      0.9997
+    ),
+    token(
+      "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh",
+      "WBTC",
+      "Wrapped BTC (Portal)",
+      8,
+      "010fb6db6c343cd0f90214ab1770278012d0c58a091d1f64715343817dbfb27e",
+      "crypto",
+      86282.66
+    ),
+    token(
+      "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+      "RAY",
+      "Raydium",
+      6,
+      "e3a3487516776ef5cd3166a0861525d053845b5aa0cf27442a56ca65e673b265",
+      "crypto",
+      1.84
+    ),
+    token(
+      "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
+      "NVDAx",
+      "NVIDIA xStock",
+      8,
+      "5550a81a36c9cce2af5d8b738bcf665c7b4da250a4652dd025107a5d6f0b9458",
+      "stocks",
+      165
+    ),
+    token(
+      "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "SPYx",
+      "SP500 xStock",
+      8,
+      "4d04cfdd8396f0c9274d49f135a458b7d4726cc098e3fc69bb3b4124eb24a2f2",
+      "stocks",
+      719.87
+    ),
+    token(
+      "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      "Bonk",
+      "Bonk",
+      5,
+      "7461f749f396872bdba0559323970190e22056d87f08792ce597c00f3c23a6d0",
+      "meme",
+      0.00002134
+    ),
+    token(
+      "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN",
+      "TRUMP",
+      "OFFICIAL TRUMP",
+      6,
+      "e142362a7cf11f8765782343c1de0087c7c046c5a0b0a3ad2c301719858ff769",
+      "meme",
+      0.9213
+    ),
+  ];
+  if (wanted) {
+    return all.filter(
+      (listed) =>
+        listed.name.toLowerCase().includes(wanted) ||
+        listed.symbol.toLowerCase().includes(wanted)
+    );
+  }
+  return all.filter((listed) =>
+    category
+      ? listed.category === category
+      : listed.category === "crypto" || listed.category === "stable"
   );
 }

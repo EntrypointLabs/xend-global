@@ -4,6 +4,8 @@ import { describeToken } from "@/utils/tokens";
 
 export interface HeldSwapToken extends SwapToken {
   amountRaw: string;
+  /** USD per whole token, or null when nothing prices it. */
+  usdPrice: number | null;
 }
 
 /**
@@ -31,6 +33,7 @@ export function heldSwapTokens(
         decimals: balance.decimals,
         iconUrl: balance.iconUrl ?? null,
         amountRaw: balance.amountRaw,
+        usdPrice: balance.usdPrice ?? null,
       };
     });
 }

@@ -1,4 +1,5 @@
 import type { TokenBalance } from "@/utils/apiClient";
+import { formatTokenPrice } from "@/utils/swap";
 import { heldSwapTokens, matchesTokenSearch } from "@/utils/swapTokens";
 import { WRAPPED_SOL_MINT } from "@/utils/tokens";
 
@@ -59,5 +60,17 @@ describe("matchesTokenSearch", () => {
   it("finds a token by its whole mint address only", () => {
     expect(matchesTokenSearch(token, token.mint)).toBe(true);
     expect(matchesTokenSearch(token, token.mint.slice(0, 6))).toBe(false);
+  });
+});
+
+describe("formatTokenPrice", () => {
+  it("shows dollars and cents for a price of a dollar or more", () => {
+    expect(formatTokenPrice(86282.657)).toBe("$86,282.66");
+    expect(formatTokenPrice(1)).toBe("$1.00");
+  });
+
+  it("keeps the figures that matter for a price under a dollar", () => {
+    expect(formatTokenPrice(0.9997041)).toBe("$0.9997");
+    expect(formatTokenPrice(0.0000213449)).toBe("$0.00002134");
   });
 });

@@ -62,6 +62,7 @@ import {
   seedTransfers,
   seedWallet,
 } from "@/utils/devSeed";
+import { SWAP_TOKEN_CATEGORIES, type SwapTokenCategory } from "@/utils/swap";
 import { demoFiat } from "@/utils/devSeedFiat";
 import { demoApproval } from "@/utils/devSeedApproval";
 import {
@@ -530,6 +531,8 @@ const SwapTokensResponseSchema = z.object({
       name: z.string(),
       decimals: z.number().int().nonnegative(),
       iconUrl: z.string().nullable(),
+      category: z.enum(SWAP_TOKEN_CATEGORIES),
+      usdPrice: z.number().nullable(),
     })
   ),
 });
@@ -1991,15 +1994,25 @@ class BackendClient {
   }
 
   /**
-   * GET /swaps/tokens: the verified assets Swap offers, the popular ones when
-   * `query` is empty.
+   * GET /swaps/tokens: the verified assets Swap offers. Those matching
+   * `query`, or else the popular ones in `category`, or else the everyday
+   * list.
    */
-  async swapTokens(query: string, signal?: AbortSignal) {
-    if (SEED_DEMO) return seedSwapTokens(query);
-    const path = query
-      ? `/swaps/tokens?q=${encodeURIComponent(query)}`
-      : "/swaps/tokens";
-    const raw = await this.request<unknown>(path, { auth: true, signal });
+  async swapTokens(
+    query: string,
+    category: SwapTokenCategory | null,
+    signal?: AbortSignal
+  ) {
+    if (SEED_DEMO) return seedSwapTokens(query, category);
+    const params = query
+      ? `?q=${encodeURIComponent(query)}`
+      : category
+        ? `?category=${category}`
+        : "";
+    const raw = await this.request<unknown>(`/swaps/tokens${params}`, {
+      auth: true,
+      signal,
+    });
     return SwapTokensResponseSchema.parse(raw).tokens;
   }
 
