@@ -23,10 +23,11 @@ import { cn } from "@/utils/cn";
 
 const DISPLAY = { fontFamily: "Montserrat_900Black" } as const;
 
-// To Settings, not back. This screen is reachable from the home banner, and
-// `back` from there returns to the home tab and strands the settings stack on
-// a sub-screen.
-const toSettings = () => router.navigate("/settings" as never);
+// `navigate` to Settings would stack a second Settings on top and slide it in
+// as a new page. A deep link has nothing to go back to, so that case lands on
+// Settings without the push animation.
+const toSettings = () =>
+  router.canGoBack() ? router.back() : router.replace("/settings" as never);
 
 /**
  * The Consumer's Spending Limit and what is left of it today.
