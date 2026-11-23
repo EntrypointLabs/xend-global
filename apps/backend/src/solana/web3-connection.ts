@@ -222,6 +222,15 @@ export async function* streamConfirmedTransfersViaConnection(
   }
 }
 
+/** Parsed instruction types that open a token account and name its owner. */
+const TOKEN_ACCOUNT_OPENINGS = new Set([
+  'initializeAccount',
+  'initializeAccount2',
+  'initializeAccount3',
+  'create',
+  'createIdempotent',
+]);
+
 /**
  * Pull SPL token transfer events from a parsed transaction. Inspects
  * top-level + inner instructions for `spl-token`'s `transferChecked`
@@ -233,7 +242,7 @@ export async function* streamConfirmedTransfersViaConnection(
  * info for plain `transfer`. If neither is available (rare), the event
  * is skipped.
  */
-function extractTokenTransfers(
+export function extractTokenTransfers(
   tx: ParsedTransactionWithMeta,
   owner: WalletAddress,
 ): ConfirmedTransferEvent[] {
@@ -278,6 +287,34 @@ function extractTokenTransfers(
     }
   }
 
+  // A token account opened and closed inside this transaction is in neither
+  // balance snapshot, so its owner is read from the instruction that opened
+  // it. A swap into SOL is paid through exactly such an account.
+  for (const ix of allInstructions) {
+    if (!('parsed' in ix)) continue;
+    const opened = ix.parsed as
+      | {
+          type?: string;
+          info?: {
+            account?: string;
+            mint?: string;
+            owner?: string;
+            wallet?: string;
+          };
+        }
+      | undefined;
+    if (!opened?.type || !TOKEN_ACCOUNT_OPENINGS.has(opened.type)) continue;
+    const account = opened.info?.account;
+    const holder = opened.info?.owner ?? opened.info?.wallet;
+    const mint = opened.info?.mint;
+    if (!account || !holder || !mint || accountOwners.has(account)) continue;
+    accountOwners.set(account, {
+      owner: holder,
+      mint,
+      decimals: mint === WRAPPED_SOL_MINT ? LAMPORT_DECIMALS : null,
+    });
+  }
+
   for (const ix of allInstructions) {
     if (!('parsed' in ix)) continue;
     const parsed = ix.parsed as
@@ -311,6 +348,10 @@ function extractTokenTransfers(
       const lamports = parsed.info.lamports;
       if (!from || !to || lamports === undefined) continue;
       if (from !== owner && to !== owner) continue;
+      // SOL moved into the owner's own wrapped SOL account has not left
+      // them. Whatever then spends it is a token transfer and is counted
+      // there, once.
+      if (accountOwners.get(to)?.owner === owner) continue;
       events.push({
         signature,
         legIndex: legs.next(WRAPPED_SOL_MINT, from, to, BigInt(lamports)),
