@@ -139,6 +139,7 @@ const FULL_SCREEN_ROUTES = [
   "find-atm",
   "add-naira",
   "verify-identity",
+  "naira-limits",
 ] as const;
 
 const SLIDE_OVER = {

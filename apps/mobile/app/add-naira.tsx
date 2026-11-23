@@ -309,7 +309,7 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
           }
         />
         {verified ? (
-          <Row label="Limit" value="Verified, no daily cap" />
+          <Row label="Limit" value="Raised" />
         ) : (
           <HapticPressable
             accessibilityRole="button"
