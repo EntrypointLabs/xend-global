@@ -629,7 +629,7 @@ export function seedSwapTokens(
       "USDT",
       6,
       "36574a5ee2cd469e059d070180985e59fbd57c82a54ea95763fab39973174100",
-      "stable",
+      "crypto",
       1
     ),
     token(
@@ -638,7 +638,7 @@ export function seedSwapTokens(
       "Global Dollar",
       6,
       "234d4d10c9356ac40b3f8a4dac8cb363beec75ba2f9c8a18157742494193b4d7",
-      "stable",
+      "crypto",
       0.9997
     ),
     token(
@@ -732,8 +732,6 @@ export function seedSwapTokens(
     );
   }
   return all.filter((listed) =>
-    category
-      ? listed.category === category
-      : listed.category === "crypto" || listed.category === "stable"
+    category ? listed.category === category : listed.category === "crypto"
   );
 }

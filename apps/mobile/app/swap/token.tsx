@@ -7,7 +7,7 @@ import {
   View,
 } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { GlassButton } from "@/components/ui/atoms/Glass";
@@ -50,7 +50,6 @@ interface Row {
 const SHELVES: { category: SwapTokenCategory | null; label: string }[] = [
   { category: null, label: "All" },
   { category: "crypto", label: "Crypto" },
-  { category: "stable", label: "Stablecoins" },
   { category: "stocks", label: "Stocks" },
   { category: "meme", label: "Memes" },
 ];
@@ -264,32 +263,37 @@ function SwapTokenPicker({ side }: { side: SwapSide }) {
       </View>
 
       <View
-        className="absolute left-5 right-5 h-[52px] flex-row items-center gap-2 rounded-full border border-foreground/10 bg-background px-4 shadow-sm"
+        // Opaque behind the field, which is itself see-through, so the rows
+        // scrolling underneath do not show through what is being typed.
+        className="absolute left-5 right-5 rounded-3xl bg-background"
         style={{ bottom: 8 + keyboard }}
       >
-        <Ionicons name="search" size={18} color={palette.fg(0.7)} />
-        <TextInput
-          className="flex-1 py-0 font-inter-medium text-[16px] tracking-normal text-foreground"
-          placeholder={receiving ? "Search" : "Search your tokens"}
-          placeholderTextColor={palette.fg(0.45)}
-          keyboardAppearance={palette.dark ? "dark" : "light"}
-          value={search}
-          onChangeText={setSearch}
-          autoCorrect={false}
-          autoCapitalize="none"
-          returnKeyType="search"
-          accessibilityLabel="Search tokens"
-        />
-        {search ? (
-          <HapticPressable
-            onPress={() => setSearch("")}
-            accessibilityRole="button"
-            accessibilityLabel="Clear search"
-            hitSlop={8}
-          >
-            <Ionicons name="close-circle" size={18} color={palette.fg(0.25)} />
-          </HapticPressable>
-        ) : null}
+        <View className="flex-row items-center gap-4 rounded-3xl bg-foreground/[0.03] px-5 py-4">
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder={receiving ? "Search tokens" : "Search your tokens"}
+            placeholderTextColor={palette.fg(0.25)}
+            keyboardAppearance={palette.dark ? "dark" : "light"}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            accessibilityLabel="Search tokens"
+            className="flex-1 text-[15px] text-foreground"
+          />
+          {search ? (
+            <HapticPressable
+              onPress={() => setSearch("")}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
+              hitSlop={8}
+            >
+              <Typography weight="600" className="text-[15px] text-foreground">
+                Clear
+              </Typography>
+            </HapticPressable>
+          ) : null}
+        </View>
       </View>
 
       <View className="absolute left-5 top-[16px]">
@@ -363,10 +367,10 @@ function TokenRow({
             {token.name}
           </Typography>
           {trust === "verified" ? (
-            <Ionicons
-              name="checkmark-circle"
-              size={16}
-              color={palette.foreground}
+            <MaterialCommunityIcons
+              name="check-decagram"
+              size={17}
+              color={palette.fg(0.55)}
             />
           ) : trust === "caution" ? (
             <Ionicons name="warning" size={16} color={palette.destructive} />

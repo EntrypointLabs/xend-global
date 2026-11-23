@@ -10,12 +10,7 @@ export interface SwapToken {
   iconUrl: string | null;
 }
 
-export const SWAP_TOKEN_CATEGORIES = [
-  "crypto",
-  "stable",
-  "stocks",
-  "meme",
-] as const;
+export const SWAP_TOKEN_CATEGORIES = ["crypto", "stocks", "meme"] as const;
 export type SwapTokenCategory = (typeof SWAP_TOKEN_CATEGORIES)[number];
 
 /**
