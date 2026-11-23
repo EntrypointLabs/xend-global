@@ -7,7 +7,11 @@ import {
   View,
 } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import {
+  FontAwesome6,
+  Ionicons,
+  MaterialCommunityIcons,
+} from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { GlassButton } from "@/components/ui/atoms/Glass";
@@ -381,7 +385,11 @@ function TokenRow({
               color={palette.fg(0.55)}
             />
           ) : trust === "caution" ? (
-            <Ionicons name="warning" size={16} color={palette.warning} />
+            <FontAwesome6
+              name="triangle-exclamation"
+              size={14}
+              color={palette.warning}
+            />
           ) : null}
         </View>
         <Typography
