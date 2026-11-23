@@ -221,10 +221,10 @@ export function StatusCarousel({ empty, nudges, style }: StatusCarouselProps) {
                 index === current
                   ? onPhoto
                     ? "bg-white/80"
-                    : "bg-black/45"
+                    : "bg-foreground/45"
                   : onPhoto
                     ? "bg-white/30"
-                    : "bg-black/10"
+                    : "bg-foreground/10"
               )}
             />
           ))}

@@ -71,9 +71,9 @@ export function BankLogo({
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       className={cn(
-        "items-center justify-center overflow-hidden rounded-full border border-black/[0.06]",
+        "items-center justify-center overflow-hidden rounded-full border border-foreground/[0.06]",
         lg ? "size-12" : sm ? "size-8" : "size-10",
-        source ? "bg-white" : "bg-black/[0.05]"
+        source ? "bg-white" : "bg-foreground/[0.05]"
       )}
     >
       {source ? (
@@ -89,7 +89,7 @@ export function BankLogo({
         <Typography
           weight="700"
           className={cn(
-            "text-[#0E0F0C]",
+            "text-ink",
             lg ? "text-[16px]" : sm ? "text-[11px]" : "text-[13px]"
           )}
         >

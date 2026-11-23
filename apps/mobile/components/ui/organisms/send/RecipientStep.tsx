@@ -31,6 +31,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useContacts } from "@/hooks/useContacts";
 import { useRecentRecipients } from "@/hooks/useRecentRecipients";
+import { usePalette } from "@/hooks/usePalette";
 import { RecipientRow } from "./RecipientParts";
 import { withSystemPrompt } from "@/utils/systemPrompt";
 
@@ -48,6 +49,7 @@ export default memo(function RecipientStep({
   recipient,
   setRecipient,
 }: RecipientStepProps) {
+  const palette = usePalette();
   const inputRef = useRef<TextInput | null>(null);
   const debouncedRecipient = useDebounce(recipient, 400);
   const { contacts } = useContacts();
@@ -130,7 +132,7 @@ export default memo(function RecipientStep({
             <FontAwesome5
               name="spinner"
               size={14}
-              color="blue"
+              color={palette.dark ? palette.info : "blue"}
               className="animate-spin"
             />
           ),
@@ -145,7 +147,7 @@ export default memo(function RecipientStep({
             <MaterialCommunityIcons
               name="alert-decagram"
               size={14}
-              color="red"
+              color={palette.dark ? palette.destructive : "red"}
             />
           ),
         };
@@ -158,7 +160,7 @@ export default memo(function RecipientStep({
             <MaterialCommunityIcons
               name="check-decagram"
               size={14}
-              color="green"
+              color={palette.dark ? palette.success : "green"}
             />
           ),
         };
@@ -174,7 +176,7 @@ export default memo(function RecipientStep({
           <MaterialCommunityIcons
             name="clock-time-nine"
             size={14}
-            color="lightgrey"
+            color={palette.dark ? palette.fg(0.3) : "lightgrey"}
           />
         ),
       };
@@ -188,6 +190,7 @@ export default memo(function RecipientStep({
     resolvedAddress,
     isSns,
     sendsTo,
+    palette,
   ]);
 
   const isContinueDisabled = useMemo(() => {
@@ -197,7 +200,7 @@ export default memo(function RecipientStep({
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View className="flex-1 bg-[#F0F0F0]">
+      <View className="flex-1 bg-[#F0F0F0] dark:bg-card">
         <View className="mb-8 flex-row items-center justify-between px-4">
           <View className="h-10 w-10" />
           <TabHeaderText className="pb-0 text-center font-semibold">
@@ -207,19 +210,24 @@ export default memo(function RecipientStep({
             onPress={onScanPress}
             className="h-10 w-10 items-center justify-center"
           >
-            <Ionicons name="scan-outline" size={24} color="black" />
+            <Ionicons
+              name="scan-outline"
+              size={24}
+              color={palette.foreground}
+            />
           </TouchableOpacity>
         </View>
 
-        <View className="mx-4 mb-8 rounded-[24px] border border-white bg-[#F9F9F9] p-4">
+        <View className="mx-4 mb-8 rounded-[24px] border border-white bg-[#F9F9F9] p-4 dark:border-foreground/10 dark:bg-muted">
           <TouchableOpacity
             className="relative bg-transparent"
             onPress={() => inputRef.current?.focus()}
           >
             <BottomSheetTextInput
-              className="-ml-1 mb-1.5 w-[235px] py-0 text-base font-medium text-black/90"
+              className="-ml-1 mb-1.5 w-[235px] py-0 text-base font-medium text-foreground/90"
               placeholder="Address or .sol handle"
-              placeholderTextColor="#0000004D"
+              placeholderTextColor={palette.fg(0.3)}
+              keyboardAppearance={palette.dark ? "dark" : "light"}
               value={recipient}
               onChangeText={setRecipient}
               autoCapitalize="none"
@@ -239,7 +247,7 @@ export default memo(function RecipientStep({
               <Typography
                 weight="600"
                 className={cn(
-                  "text-xs text-black/30",
+                  "text-xs text-foreground/30",
                   !isValid && "text-red-500"
                 )}
               >
@@ -252,7 +260,11 @@ export default memo(function RecipientStep({
                 className="absolute -right-5 -top-5 z-10 p-5 transition-all duration-200 ease-in-out"
                 onPress={() => setRecipient("")}
               >
-                <Ionicons name="close-circle" size={20} color="lightgrey" />
+                <Ionicons
+                  name="close-circle"
+                  size={20}
+                  color={palette.dark ? palette.fg(0.3) : "lightgrey"}
+                />
               </HapticPressable>
             )}
           </TouchableOpacity>
@@ -261,22 +273,22 @@ export default memo(function RecipientStep({
             <HapticPressable
               className={cn(
                 "rounded-full px-6 py-[8px]",
-                !isContinueDisabled ? "bg-black" : "bg-black/30"
+                !isContinueDisabled ? "bg-primary" : "bg-primary/30"
               )}
               onPress={handleContinue}
               disabled={isContinueDisabled}
             >
-              <Typography weight="600" className="text-white">
+              <Typography weight="600" className="text-primary-foreground">
                 Continue
               </Typography>
             </HapticPressable>
 
             <HapticPressable
-              className="flex-row items-center gap-1 rounded-full bg-black/10 px-6 py-[8px]"
+              className="flex-row items-center gap-1 rounded-full bg-foreground/10 px-6 py-[8px]"
               onPress={handlePaste}
             >
-              <Ionicons name="document" size={16} color="black" />
-              <Typography weight="600" className="text-black">
+              <Ionicons name="document" size={16} color={palette.foreground} />
+              <Typography weight="600" className="text-foreground">
                 Paste
               </Typography>
             </HapticPressable>
@@ -291,7 +303,10 @@ export default memo(function RecipientStep({
         >
           {contacts.length > 0 && (
             <>
-              <Typography weight="600" className="mb-4 ml-5 text-lg">
+              <Typography
+                weight="600"
+                className="mb-4 ml-5 text-lg text-foreground"
+              >
                 Address book
               </Typography>
               {contacts.map((contact) => (
@@ -313,7 +328,7 @@ export default memo(function RecipientStep({
               <Typography
                 weight="600"
                 className={cn(
-                  "mb-4 ml-5 text-lg",
+                  "mb-4 ml-5 text-lg text-foreground",
                   contacts.length > 0 && "mt-4"
                 )}
               >

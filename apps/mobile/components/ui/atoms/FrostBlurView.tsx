@@ -1,6 +1,7 @@
 import React, { forwardRef } from "react";
 import { BlurView, BlurViewProps } from "expo-blur";
 import { useBlurTarget } from "@/contexts/BlurTargetContext";
+import { usePalette } from "@/hooks/usePalette";
 
 /**
  * Shared blur intensity for the app's frosted overlays (modals, menus, sheet
@@ -14,7 +15,7 @@ type FrostBlurViewProps = Omit<
 >;
 
 /**
- * BlurView preset for every frosted overlay: light frost with a real blur on
+ * BlurView preset for every frosted overlay: the frost of the current mode, blurred on
  * both platforms (iOS blurs natively; Android blurs the app via the shared
  * blurTarget). Callers only pass `style` + children — intensity/tint are
  * overridable but default to the shared frost.
@@ -22,13 +23,14 @@ type FrostBlurViewProps = Omit<
 export const FrostBlurView = forwardRef<
   React.ComponentRef<typeof BlurView>,
   FrostBlurViewProps
->(({ intensity = MODAL_BLUR_INTENSITY, tint = "light", ...props }, ref) => {
+>(({ intensity = MODAL_BLUR_INTENSITY, tint, ...props }, ref) => {
   const blurTargetRef = useBlurTarget();
+  const palette = usePalette();
   return (
     <BlurView
       ref={ref}
       intensity={intensity}
-      tint={tint}
+      tint={tint ?? (palette.dark ? "dark" : "light")}
       blurMethod="dimezisBlurView"
       blurTarget={blurTargetRef ?? undefined}
       {...props}

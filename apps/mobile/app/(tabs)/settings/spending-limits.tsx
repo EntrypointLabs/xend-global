@@ -25,6 +25,7 @@ import {
   MISMATCH_MESSAGE,
   TransactionMismatchError,
 } from "@/utils/verifyTransaction";
+import { usePalette } from "@/hooks/usePalette";
 
 /**
  * The Consumer's Spending Limit, and the two things they can do to it.
@@ -35,6 +36,7 @@ import {
  * A limit a single tap could raise would not be a limit.
  */
 export default function SpendingLimitsScreen() {
+  const palette = usePalette();
   const [infoOpen, setInfoOpen] = useState(false);
   const { data: account, isLoading, refetch } = useAccount();
   const { data: pendingChange, isLoading: readingPending } =
@@ -124,17 +126,17 @@ export default function SpendingLimitsScreen() {
             <Ionicons
               name="information-circle-outline"
               size={22}
-              color="#00000066"
+              color={palette.fg(0.4)}
             />
           </HapticPressable>
         </View>
 
-        <Typography weight="700" className="mt-4 text-[20px] text-black">
+        <Typography weight="700" className="mt-4 text-[20px] text-foreground">
           Spending Limit
         </Typography>
         <Typography
           weight="500"
-          className="mt-2 text-[13px] leading-5 text-black/40"
+          className="mt-2 text-[13px] leading-5 text-foreground/40"
         >
           The most you can Spend on one confirmation.{"\n"}
           Anything above it asks you to confirm twice.
@@ -147,38 +149,41 @@ export default function SpendingLimitsScreen() {
         >
           {isLoading ? (
             <View className="items-center py-10">
-              <ActivityIndicator size="small" color="#00000040" />
+              <ActivityIndicator size="small" color={palette.fg(0.25)} />
             </View>
           ) : !account ? (
             <Card>
-              <Typography weight="700" className="text-base text-black">
+              <Typography weight="700" className="text-base text-foreground">
                 Could not load your limit
               </Typography>
               <Typography
                 weight="500"
-                className="mt-1 text-[13px] leading-5 text-black/40"
+                className="mt-1 text-[13px] leading-5 text-foreground/40"
               >
                 Check your connection and try again.
               </Typography>
               <HapticPressable
                 onPress={() => void refetch()}
-                className="mt-4 h-11 items-center justify-center self-start rounded-full bg-black px-6"
+                className="mt-4 h-11 items-center justify-center self-start rounded-full bg-primary px-6"
                 accessibilityRole="button"
                 accessibilityLabel="Try loading your Spending Limit again"
               >
-                <Typography weight="600" className="text-[13px] text-white">
+                <Typography
+                  weight="600"
+                  className="text-[13px] text-primary-foreground"
+                >
                   Try again
                 </Typography>
               </HapticPressable>
             </Card>
           ) : limit === undefined ? (
             <Card>
-              <Typography weight="700" className="text-base text-black">
+              <Typography weight="700" className="text-base text-foreground">
                 Your limit is not showing
               </Typography>
               <Typography
                 weight="500"
-                className="mt-1 text-[13px] leading-5 text-black/40"
+                className="mt-1 text-[13px] leading-5 text-foreground/40"
               >
                 Prydd cannot read it right now, so nothing here can be changed.
                 Your Account is unaffected. Try again in a moment.
@@ -186,12 +191,12 @@ export default function SpendingLimitsScreen() {
             </Card>
           ) : limit === null ? (
             <Card>
-              <Typography weight="700" className="text-base text-black">
+              <Typography weight="700" className="text-base text-foreground">
                 No Spending Limit
               </Typography>
               <Typography
                 weight="500"
-                className="mt-1 text-[13px] leading-5 text-black/40"
+                className="mt-1 text-[13px] leading-5 text-foreground/40"
               >
                 Every Spend from this Account needs a second confirmation on
                 this phone, however small. Set a limit and Spends under it take
@@ -200,19 +205,22 @@ export default function SpendingLimitsScreen() {
             </Card>
           ) : (
             <Card>
-              <Typography weight="500" className="text-[13px] text-black/40">
+              <Typography
+                weight="500"
+                className="text-[13px] text-foreground/40"
+              >
                 Your limit now
               </Typography>
               <Typography
                 weight="700"
-                className="mt-1 text-[32px] tabular-nums leading-[38px] text-black"
+                className="mt-1 text-[32px] tabular-nums leading-[38px] text-foreground"
               >
                 {formatUsdcRaw(limit.maxPerPeriod)}{" "}
                 {LIMIT_PERIOD_WORDS[limit.period]}
               </Typography>
               <Typography
                 weight="500"
-                className="mt-2 text-[15px] tabular-nums text-black/40"
+                className="mt-2 text-[15px] tabular-nums text-foreground/40"
               >
                 {formatUsdcRaw(limit.remainingInPeriod)}{" "}
                 {LIMIT_PERIOD_REMAINING[limit.period]}
@@ -222,7 +230,10 @@ export default function SpendingLimitsScreen() {
 
           {limit !== undefined && (
             <>
-              <Typography weight="600" className="mt-8 text-[15px] text-black">
+              <Typography
+                weight="600"
+                className="mt-8 text-[15px] text-foreground"
+              >
                 {limit ? "Set a new limit" : "Set a limit"}
               </Typography>
               <View className="mt-3">
@@ -250,7 +261,7 @@ export default function SpendingLimitsScreen() {
               ) : null}
               <Typography
                 weight="400"
-                className="mt-3 text-[12px] leading-[18px] text-black/40"
+                className="mt-3 text-[12px] leading-[18px] text-foreground/40"
               >
                 {limit
                   ? "Both keys on this phone approve the new limit, and it takes effect one day later. Until then the limit you have now still applies."
@@ -258,13 +269,16 @@ export default function SpendingLimitsScreen() {
               </Typography>
 
               {limit && (
-                <View className="mt-8 rounded-3xl border border-black/[0.07] p-5">
-                  <Typography weight="600" className="text-[15px] text-black">
+                <View className="mt-8 rounded-3xl border border-foreground/[0.07] p-5">
+                  <Typography
+                    weight="600"
+                    className="text-[15px] text-foreground"
+                  >
                     {removing ? "Remove the limit?" : "Remove the limit"}
                   </Typography>
                   <Typography
                     weight="500"
-                    className="mt-1 text-[13px] leading-5 text-black/40"
+                    className="mt-1 text-[13px] leading-5 text-foreground/40"
                   >
                     {removing
                       ? "Every Spend, however small, will then need a second confirmation on this phone. Both keys approve this too, and it takes effect one day later."
@@ -278,7 +292,7 @@ export default function SpendingLimitsScreen() {
           {blocked && (
             <Typography
               weight="500"
-              className="mt-6 text-[13px] leading-5 text-black/40"
+              className="mt-6 text-[13px] leading-5 text-foreground/40"
             >
               {blocked}
             </Typography>
@@ -292,8 +306,11 @@ export default function SpendingLimitsScreen() {
 
           {change.isPending && (
             <View className="mt-8 items-center">
-              <ActivityIndicator color="#000" />
-              <Typography weight="500" className="mt-3 text-sm text-black/40">
+              <ActivityIndicator color={palette.foreground} />
+              <Typography
+                weight="500"
+                className="mt-3 text-sm text-foreground/40"
+              >
                 Approving on this phone
               </Typography>
             </View>
@@ -355,7 +372,7 @@ export default function SpendingLimitsScreen() {
           accessibilityRole="button"
           accessibilityLabel="Back to settings"
         >
-          <Ionicons name="chevron-back" size={24} color="#000000" />
+          <Ionicons name="chevron-back" size={24} color={palette.foreground} />
         </HapticPressable>
       </View>
 
@@ -363,20 +380,21 @@ export default function SpendingLimitsScreen() {
         visible={infoOpen}
         onClose={() => setInfoOpen(false)}
         iconName="time-outline"
-        iconBackground="#000000"
+        iconBackground={palette.primary}
+        iconColor={palette.primaryForeground}
         title="Spending Limit"
         description={
           <>
             <Typography
               weight="400"
-              className="text-center text-base leading-6 text-black/50"
+              className="text-center text-base leading-6 text-foreground/50"
             >
               Your Account is held by two keys. Up to the limit, this phone can
               Spend on one of them, so an everyday payment is one tap.
             </Typography>
             <Typography
               weight="400"
-              className="text-center text-base leading-6 text-black/50"
+              className="text-center text-base leading-6 text-foreground/50"
             >
               Above it, both keys are asked. Raising, lowering or removing the
               limit is a change to your Account, so it waits one day and can be
@@ -392,7 +410,7 @@ export default function SpendingLimitsScreen() {
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
-    <View className="rounded-3xl border border-black/[0.07] bg-black/[0.02] p-5">
+    <View className="rounded-3xl border border-foreground/[0.07] bg-foreground/[0.02] p-5">
       {children}
     </View>
   );
@@ -407,19 +425,24 @@ function Staged({
   waitingUntil: string | null;
   onDone: () => void;
 }) {
+  const palette = usePalette();
   const lands = waitingUntil ? `on ${when(waitingUntil)}` : "in one day";
   return (
     <ScreenLayout>
       <View className="flex-1 items-center justify-center px-3">
-        <View className="size-16 items-center justify-center rounded-3xl bg-black">
-          <Ionicons name="time-outline" size={30} color="#FFFFFF" />
+        <View className="size-16 items-center justify-center rounded-3xl bg-primary">
+          <Ionicons
+            name="time-outline"
+            size={30}
+            color={palette.primaryForeground}
+          />
         </View>
-        <Typography weight="700" className="mt-6 text-3xl text-black">
+        <Typography weight="700" className="mt-6 text-3xl text-foreground">
           Change on its way
         </Typography>
         <Typography
           weight="500"
-          className="mt-3 text-center text-base leading-6 text-black/40"
+          className="mt-3 text-center text-base leading-6 text-foreground/40"
         >
           {removed
             ? `Your Spending Limit comes off ${lands}. After that every Spend needs a second confirmation on this phone.`
@@ -427,18 +450,21 @@ function Staged({
         </Typography>
         <Typography
           weight="400"
-          className="mt-6 text-center text-sm leading-5 text-black/40"
+          className="mt-6 text-center text-sm leading-5 text-foreground/40"
         >
           Until then nothing changes, and this phone can cancel the change if it
           was not you.
         </Typography>
         <HapticPressable
           onPress={onDone}
-          className="mt-10 h-14 w-full items-center justify-center rounded-full bg-black"
+          className="mt-10 h-14 w-full items-center justify-center rounded-full bg-primary"
           accessibilityRole="button"
           accessibilityLabel="Done"
         >
-          <Typography weight="700" className="text-[15px] text-white">
+          <Typography
+            weight="700"
+            className="text-[15px] text-primary-foreground"
+          >
             Done
           </Typography>
         </HapticPressable>

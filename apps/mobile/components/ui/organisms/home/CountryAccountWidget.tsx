@@ -13,6 +13,7 @@ import Svg, {
 } from "react-native-svg";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { usePalette } from "@/hooks/usePalette";
 import type { CountryCard } from "@/utils/countryCards";
 
 /**
@@ -22,7 +23,6 @@ import type { CountryCard } from "@/utils/countryCards";
  */
 const REF_WIDTH = 436;
 const REF_HEIGHT = 367;
-const INK = "#0E0F0C";
 const PAPER = "#FAFBF8";
 
 const CARD_RADIUS = 20;
@@ -107,6 +107,7 @@ export function CountryAccountWidget({
   rateLabel,
   onAction,
 }: CountryAccountWidgetProps) {
+  const palette = usePalette();
   const [width, setWidth] = useState(0);
   const s = width / REF_WIDTH;
   const onLayout = (e: LayoutChangeEvent) =>
@@ -139,7 +140,7 @@ export function CountryAccountWidget({
             contentFit="cover"
             transition={0}
           />
-          <BottomHaze />
+          <BottomHaze color={palette.card} />
 
           {/* Read as one element, but only over the area above the dock:
           stretched over the whole card it overlapped the dock's buttons, and
@@ -254,7 +255,7 @@ export function CountryAccountWidget({
           </View>
 
           <View
-            className="absolute flex-row bg-white"
+            className="absolute flex-row bg-card"
             style={{
               left: DOCK.inset * s,
               right: DOCK.inset * s,
@@ -275,14 +276,14 @@ export function CountryAccountWidget({
                 className="flex-1 items-center"
               >
                 <View
-                  className="items-center justify-center rounded-full border border-black/10"
+                  className="items-center justify-center rounded-full border border-foreground/10"
                   style={{
                     marginTop: ACTION.ringTop * s,
                     width: ACTION.ring * s,
                     height: ACTION.ring * s,
                   }}
                 >
-                  <Icon size={ACTION.icon * s} />
+                  <Icon size={ACTION.icon * s} color={palette.ink} />
                 </View>
                 <Text
                   className="absolute left-0 right-0 text-center font-inter-semibold"
@@ -291,7 +292,7 @@ export function CountryAccountWidget({
                       (ACTION.labelTop -
                         (ASCENDER - CAP_HEIGHT) * ACTION.label) *
                       s,
-                    color: INK,
+                    color: palette.ink,
                     fontSize: ACTION.label * s,
                     includeFontPadding: false,
                   }}
@@ -311,7 +312,7 @@ export function CountryAccountWidget({
 }
 
 /** The photo lifts toward white behind the dock, as Wise's does. */
-function BottomHaze() {
+function BottomHaze({ color }: { color: string }) {
   return (
     <Svg
       width="100%"
@@ -322,10 +323,10 @@ function BottomHaze() {
     >
       <Defs>
         <LinearGradient id="haze" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0.55" stopColor="#FFFFFF" stopOpacity={0} />
-          <Stop offset="0.66" stopColor="#FFFFFF" stopOpacity={0.27} />
-          <Stop offset="0.89" stopColor="#FFFFFF" stopOpacity={0.7} />
-          <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0.78} />
+          <Stop offset="0.55" stopColor={color} stopOpacity={0} />
+          <Stop offset="0.66" stopColor={color} stopOpacity={0.27} />
+          <Stop offset="0.89" stopColor={color} stopOpacity={0.7} />
+          <Stop offset="1" stopColor={color} stopOpacity={0.78} />
         </LinearGradient>
       </Defs>
       <Rect width={REF_WIDTH} height={REF_HEIGHT} fill="url(#haze)" />
@@ -335,33 +336,38 @@ function BottomHaze() {
 
 const STROKE = 2.3;
 
-function PinIcon({ size }: { size: number }) {
+interface IconProps {
+  size: number;
+  color: string;
+}
+
+function PinIcon({ size, color }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
         d="M12 20.4l-4.05-5.97a6.3 6.3 0 1 1 8.1 0z"
-        stroke={INK}
+        stroke={color}
         strokeWidth={STROKE}
         strokeLinejoin="round"
       />
-      <Circle cx={12} cy={9.6} r={2.5} stroke={INK} strokeWidth={STROKE} />
+      <Circle cx={12} cy={9.6} r={2.5} stroke={color} strokeWidth={STROKE} />
     </Svg>
   );
 }
 
-function TagIcon({ size }: { size: number }) {
+function TagIcon({ size, color }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
         d="M6 3.3h5.6l6.4 6.4-5.9 5.9-6.4-6.4V4.6a1.3 1.3 0 0 1 .3-1.3z"
-        stroke={INK}
+        stroke={color}
         strokeWidth={STROKE}
         strokeLinejoin="round"
       />
-      <Circle cx={8.9} cy={6.5} r={1.25} fill={INK} />
+      <Circle cx={8.9} cy={6.5} r={1.25} fill={color} />
       <Path
         d="M3.6 13.4l8.2 8 8.6-8.5"
-        stroke={INK}
+        stroke={color}
         strokeWidth={STROKE}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -371,22 +377,22 @@ function TagIcon({ size }: { size: number }) {
 }
 
 /** A banknote cut in two, the halves offset, with the swap arrows between. */
-function SplitIcon({ size }: { size: number }) {
+function SplitIcon({ size, color }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
         fillRule="evenodd"
         d="M3.8 4.4h7.4v3H5.2v7.2h3.5v3H3.8a1.6 1.6 0 0 1-1.6-1.6V6a1.6 1.6 0 0 1 1.6-1.6z"
-        fill={INK}
+        fill={color}
       />
       <Path
         fillRule="evenodd"
         d="M20.2 19.6h-7.4v-3h6v-7.2h-3.5v-3h4.9a1.6 1.6 0 0 1 1.6 1.6V18a1.6 1.6 0 0 1-1.6 1.6z"
-        fill={INK}
+        fill={color}
       />
       <Path
         d="M15 9.6a3.4 3.4 0 0 0-5.9 1.9M9 14.4a3.4 3.4 0 0 0 5.9-1.9"
-        stroke={INK}
+        stroke={color}
         strokeWidth={2.5}
         strokeLinecap="round"
       />
@@ -394,12 +400,12 @@ function SplitIcon({ size }: { size: number }) {
   );
 }
 
-function MoreIcon({ size }: { size: number }) {
+function MoreIcon({ size, color }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
-      <Circle cx={5.3} cy={12} r={1.9} fill={INK} />
-      <Circle cx={12} cy={12} r={1.9} fill={INK} />
-      <Circle cx={18.7} cy={12} r={1.9} fill={INK} />
+      <Circle cx={5.3} cy={12} r={1.9} fill={color} />
+      <Circle cx={12} cy={12} r={1.9} fill={color} />
+      <Circle cx={18.7} cy={12} r={1.9} fill={color} />
     </Svg>
   );
 }

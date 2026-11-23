@@ -18,7 +18,7 @@ const BalanceView = ({ amount, ...props }: BalanceViewProps) => {
         {...props}
         className={cn(
           props.className,
-          onPhoto ? "text-white/[0.56]" : "text-black/30"
+          onPhoto ? "text-white/[0.56]" : "text-foreground/30"
         )}
       >
         {decimalPart || "00"}

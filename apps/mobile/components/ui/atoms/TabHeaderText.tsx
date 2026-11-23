@@ -11,7 +11,7 @@ const TabHeaderText = ({ children, className, ...props }: TextProps) => {
       weight="600"
       className={cn(
         "pb-8 text-lg",
-        onPhoto ? "text-white" : "text-black",
+        onPhoto ? "text-white" : "text-foreground",
         className
       )}
       {...props}

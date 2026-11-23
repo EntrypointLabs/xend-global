@@ -15,10 +15,11 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { isPhotoRoute } from "@/components/ui/glass";
 import {
   AppearanceProvider,
+  loadAppearance,
   useColorfulTheme,
 } from "@/contexts/AppearanceContext";
-import { useTheme } from "@/hooks/useTheme";
-import { cn } from "@/utils/cn";
+import { usePalette } from "@/hooks/usePalette";
+import * as SystemUI from "expo-system-ui";
 import { ModalFlowProvider } from "@/contexts/ModalFlowContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import {
@@ -156,6 +157,7 @@ function AuthLayout() {
   const onPhoto =
     isPhotoRoute(segments as string[], useColorfulTheme()) ||
     (segments as string[])[2] === "theme-preview";
+  const { background } = usePalette();
 
   // The screens are held apart from this component's own renders on purpose.
   // `useSegments()` above changes on every navigation, and without this the
@@ -170,7 +172,14 @@ function AuthLayout() {
             <BlurTargetHost>
               {/* Every route switches in place as before; the full-screen
               feature pages slide over Home and swipe back to it. */}
-              <Stack screenOptions={{ headerShown: false, animation: "none" }}>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  animation: "none",
+                  // What shows behind a screen while it slides in.
+                  contentStyle: { backgroundColor: background },
+                }}
+              >
                 {FULL_SCREEN_ROUTES.map((name) => (
                   <Stack.Screen key={name} name={name} options={SLIDE_OVER} />
                 ))}
@@ -183,7 +192,7 @@ function AuthLayout() {
         </ModalFlowProvider>
       </ScreenThemeProvider>
     ),
-    [colorScheme, onPhoto]
+    [colorScheme, onPhoto, background]
   );
 
   if (isAuthenticated === null) {
@@ -213,8 +222,6 @@ function AuthLayout() {
     return <Redirect href="/(tabs)" withAnchor />;
   }
 
-  // Theming is driven by NativeWind (ThemedRoot's `dark` class) and
-  // ScreenThemeProvider; the navigator inherits light/dark from the OS.
   return screens;
 }
 
@@ -299,7 +306,12 @@ function RootLayout() {
     return () => clearTimeout(timer);
   }, []);
 
-  const ready = loaded || !!error || fontTimeout;
+  const [appearanceLoaded, setAppearanceLoaded] = useState(false);
+  useEffect(() => {
+    loadAppearance().finally(() => setAppearanceLoaded(true));
+  }, []);
+
+  const ready = (loaded || !!error || fontTimeout) && appearanceLoaded;
 
   useEffect(() => {
     if (ready) {
@@ -404,10 +416,15 @@ function PrivyAppShell({ children }: { children: React.ReactNode }) {
 }
 
 function ThemedRoot({ children }: { children: React.ReactNode }) {
-  const { theme } = useTheme();
-  return (
-    <View className={cn("flex-1", theme === "dark" && "dark")}>{children}</View>
-  );
+  const { background } = usePalette();
+
+  // The window behind the React tree: seen under the keyboard, during a
+  // rotation and at the edges of a native transition.
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(background).catch(() => {});
+  }, [background]);
+
+  return <View className="flex-1">{children}</View>;
 }
 
 export default SENTRY_ENABLED ? Sentry.wrap(RootLayout) : RootLayout;

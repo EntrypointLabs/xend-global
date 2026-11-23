@@ -1,6 +1,8 @@
 import React from "react";
 import { TextInput, View } from "react-native";
 
+import { usePalette } from "@/hooks/usePalette";
+
 /** Long enough for a real account of a problem, short enough to stay a message. */
 export const MESSAGE_MAX_LENGTH = 4000;
 
@@ -29,23 +31,25 @@ export function MessageField({
   accessibilityLabel,
   editable = true,
 }: MessageFieldProps) {
+  const palette = usePalette();
   return (
     // Gives up height before anything else does: with the keyboard up the
     // send button below has to stay on screen, and the box is the one thing
     // that can be smaller and still do its job.
-    <View className="h-[168px] min-h-[96px] shrink rounded-3xl bg-black/[0.03] px-5 py-4">
+    <View className="h-[168px] min-h-[96px] shrink rounded-3xl bg-foreground/[0.03] px-5 py-4">
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="#00000040"
+        placeholderTextColor={palette.fg(0.25)}
+        keyboardAppearance={palette.dark ? "dark" : "light"}
         accessibilityLabel={accessibilityLabel}
         multiline
         autoFocus
         maxLength={MESSAGE_MAX_LENGTH}
         textAlignVertical="top"
         editable={editable}
-        className="flex-1 text-[15px] leading-[22px] text-black"
+        className="flex-1 text-[15px] leading-[22px] text-foreground"
       />
     </View>
   );

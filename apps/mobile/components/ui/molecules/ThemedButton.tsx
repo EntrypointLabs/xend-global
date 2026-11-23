@@ -22,16 +22,16 @@ interface ThemedButtonProps {
  */
 const variantBg: Record<NonNullable<ThemedButtonProps["variant"]>, string> = {
   primary: "bg-white border-white",
-  secondary: "bg-black border-black",
+  secondary: "bg-primary border-primary",
   outline: "bg-white/20 border border-white/20",
-  quiet: "bg-black/5 border-black/5",
+  quiet: "bg-foreground/5 border-foreground/5",
 };
 
 const variantText: Record<NonNullable<ThemedButtonProps["variant"]>, string> = {
   primary: "text-black",
-  secondary: "text-white",
+  secondary: "text-primary-foreground",
   outline: "text-white",
-  quiet: "text-black",
+  quiet: "text-foreground",
 };
 
 export function ThemedButton({

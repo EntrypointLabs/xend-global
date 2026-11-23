@@ -99,8 +99,8 @@ export function BalanceChart({
                     ? "bg-white/[0.12]"
                     : "bg-white/[0.18]"
                   : loading
-                    ? "bg-black/[0.06]"
-                    : "bg-black/10"
+                    ? "bg-foreground/[0.06]"
+                    : "bg-foreground/10"
               )}
               style={{
                 height: height === null ? "100%" : `${height * 100}%`,
@@ -132,7 +132,7 @@ export function BalanceChart({
                 active
                   ? onPhoto
                     ? "bg-white/[0.12]"
-                    : "bg-black/5"
+                    : "bg-foreground/5"
                   : "bg-transparent"
               )}
             >
@@ -147,10 +147,10 @@ export function BalanceChart({
                         ? "text-white"
                         : "text-white/[0.56]"
                     : loading
-                      ? "text-black/15"
+                      ? "text-foreground/15"
                       : active
-                        ? ""
-                        : "text-black/30"
+                        ? "text-foreground"
+                        : "text-foreground/30"
                 )}
               >
                 {option}

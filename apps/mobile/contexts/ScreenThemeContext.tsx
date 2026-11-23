@@ -2,6 +2,12 @@ import React, { createContext, useContext, useState, ReactNode } from "react";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import * as Sentry from "@sentry/react-native";
 
+interface ScreenThemeOverrides {
+  backgroundColor?: string;
+  textColor?: string;
+  primaryColor?: string;
+}
+
 interface ScreenThemeContextType {
   backgroundColor: string;
   textColor: string;
@@ -30,36 +36,28 @@ export function ScreenThemeProvider({
     primaryColor?: string;
   };
 }) {
-  // Get default colors from the global theme
   const defaultBackground = useThemeColor({}, "background");
   const defaultText = useThemeColor({}, "text");
   const defaultPrimary = useThemeColor({}, "primary");
 
-  const [backgroundColor, setBackgroundColor] = useState(
-    initialTheme?.backgroundColor ?? defaultBackground
+  // Only what a screen overrode is held. Anything left unset is read from the
+  // global theme on each render, so it follows a switch between light and dark.
+  const [overrides, setOverrides] = useState<ScreenThemeOverrides>(
+    initialTheme ?? {}
   );
-  const [textColor, setTextColor] = useState(
-    initialTheme?.textColor ?? defaultText
-  );
-  const [primaryColor, setPrimaryColor] = useState(
-    initialTheme?.primaryColor ?? defaultPrimary
-  );
+  const backgroundColor = overrides.backgroundColor ?? defaultBackground;
+  const textColor = overrides.textColor ?? defaultText;
+  const primaryColor = overrides.primaryColor ?? defaultPrimary;
 
-  const setScreenTheme = (theme: {
-    backgroundColor?: string;
-    textColor?: string;
-    primaryColor?: string;
-  }) => {
-    if (theme.backgroundColor) setBackgroundColor(theme.backgroundColor);
-    if (theme.textColor) setTextColor(theme.textColor);
-    if (theme.primaryColor) setPrimaryColor(theme.primaryColor);
+  const setScreenTheme = (theme: ScreenThemeOverrides) => {
+    setOverrides((current) => ({
+      backgroundColor: theme.backgroundColor || current.backgroundColor,
+      textColor: theme.textColor || current.textColor,
+      primaryColor: theme.primaryColor || current.primaryColor,
+    }));
   };
 
-  const resetScreenTheme = () => {
-    setBackgroundColor(defaultBackground);
-    setTextColor(defaultText);
-    setPrimaryColor(defaultPrimary);
-  };
+  const resetScreenTheme = () => setOverrides({});
 
   return (
     <ScreenThemeContext.Provider

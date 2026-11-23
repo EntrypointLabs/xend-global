@@ -22,9 +22,11 @@ import { useToast } from "@/contexts/ToastContext";
 import { apiClient, apiErrorCode } from "@/utils/apiClient";
 import { cn } from "@/utils/cn";
 import { isSupportTopic, SUPPORT_TOPIC_COPY } from "@/utils/support";
+import { usePalette } from "@/hooks/usePalette";
 
 /** Contact support, second step: the message itself. */
 export default function SupportMessageScreen() {
+  const palette = usePalette();
   const params = useLocalSearchParams<{ topic?: string }>();
   const topic = isSupportTopic(params.topic) ? params.topic : "other";
   const { email } = useAuth();
@@ -71,26 +73,30 @@ export default function SupportMessageScreen() {
       >
         <HapticPressable
           onPress={() => router.back()}
-          className="size-10 items-center justify-center rounded-full bg-black/[0.08]"
+          className="size-10 items-center justify-center rounded-full bg-foreground/[0.08]"
           accessibilityRole="button"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="chevron-back" size={20} color="#00000066" />
+          <Ionicons name="chevron-back" size={20} color={palette.fg(0.4)} />
         </HapticPressable>
 
         <Typography
           weight="700"
           accessibilityRole="header"
-          className="mt-6 text-3xl text-black"
+          className="mt-6 text-3xl text-foreground"
         >
           Send us a message
         </Typography>
 
         <View className="mt-3 flex-row items-center gap-2">
-          <Ionicons name="chatbubble-ellipses-outline" size={18} color="#000" />
-          <Typography weight="500" className="text-[15px] text-black/40">
+          <Ionicons
+            name="chatbubble-ellipses-outline"
+            size={18}
+            color={palette.foreground}
+          />
+          <Typography weight="500" className="text-[15px] text-foreground/40">
             This is about:{" "}
-            <Typography weight="600" className="text-[15px] text-black">
+            <Typography weight="600" className="text-[15px] text-foreground">
               {SUPPORT_TOPIC_COPY[topic].label}
             </Typography>
           </Typography>
@@ -113,14 +119,14 @@ export default function SupportMessageScreen() {
           <Ionicons
             name="information-circle-outline"
             size={18}
-            color={error ? "#F90101" : "#00000040"}
+            color={error ? palette.destructive : palette.fg(0.25)}
           />
           <Typography
             weight={error ? "500" : "400"}
             accessibilityLiveRegion="polite"
             className={cn(
               "flex-1 text-sm leading-5",
-              error ? "text-destructive" : "text-black/40"
+              error ? "text-destructive" : "text-foreground/40"
             )}
           >
             {error ??
@@ -139,13 +145,16 @@ export default function SupportMessageScreen() {
           disabled={!canSend}
           className={cn(
             "mb-2 h-14 items-center justify-center rounded-full",
-            canSend ? "bg-black" : "bg-black/50"
+            canSend ? "bg-primary" : "bg-primary/50"
           )}
         >
           {busy ? (
-            <ActivityIndicator color="#FFF" />
+            <ActivityIndicator color={palette.primaryForeground} />
           ) : (
-            <Typography weight="700" className="text-[15px] text-white">
+            <Typography
+              weight="700"
+              className="text-[15px] text-primary-foreground"
+            >
               Send message
             </Typography>
           )}

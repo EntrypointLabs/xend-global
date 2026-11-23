@@ -1,11 +1,11 @@
 import { Stack, router } from "expo-router";
 import { View, TouchableOpacity } from "react-native";
-import { useThemeColor } from "@/hooks/useThemeColor";
+import { usePalette } from "@/hooks/usePalette";
 import { ThemedText, AppIcon } from "@/components/ui/atoms";
 import { Ionicons } from "@expo/vector-icons";
 
 export default function SendLayout() {
-  const textColor = useThemeColor({}, "text");
+  const palette = usePalette();
 
   const getHeaderTitle = (title: string) => {
     return (
@@ -21,7 +21,7 @@ export default function SendLayout() {
   const renderBackButton = () => {
     return (
       <TouchableOpacity onPress={() => router.back()}>
-        <Ionicons name="chevron-back" size={24} color={textColor} />
+        <Ionicons name="chevron-back" size={24} color={palette.foreground} />
       </TouchableOpacity>
     );
   };
@@ -32,7 +32,8 @@ export default function SendLayout() {
         headerShown: true,
         headerShadowVisible: false,
         headerBackTitle: "Back",
-        headerTintColor: textColor,
+        headerTintColor: palette.foreground,
+        headerStyle: { backgroundColor: palette.background },
         headerBackVisible: false,
         headerLeft: () => renderBackButton(),
       }}
