@@ -8,7 +8,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { ActionModal } from "@/components/ui/organisms/ActionModal";
 import {
-  THEME_LABELS,
+  // THEME_LABELS,
   useAppearance,
   type AppIconChoice,
 } from "@/contexts/AppearanceContext";
@@ -33,7 +33,7 @@ const ICONS: {
 ];
 
 export default function AppearanceScreen() {
-  const { theme, icon, setIcon } = useAppearance();
+  const { icon, setIcon } = useAppearance();
   const { showToast } = useToast();
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
 
@@ -77,12 +77,14 @@ export default function AppearanceScreen() {
           value={iconLabel}
           onPress={() => setIconPickerOpen(true)}
         />
+        {/* Theme selection is switched off for now.
         <Row
           icon={<Ionicons name="bulb-outline" size={22} color="#000" />}
           label="Theme"
           value={THEME_LABELS[theme]}
           onPress={() => router.push("/settings/theme-preview" as never)}
         />
+        */}
       </View>
 
       <ActionModal
