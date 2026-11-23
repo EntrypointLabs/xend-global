@@ -108,7 +108,12 @@ export function Typography({
 
   return (
     <Text
-      className={cn(variantMap[variant], "leading-[140%]", className)}
+      className={cn(
+        "text-foreground",
+        variantMap[variant],
+        "leading-[140%]",
+        className
+      )}
       style={[{ fontFamily }, style]}
       {...props}
     >

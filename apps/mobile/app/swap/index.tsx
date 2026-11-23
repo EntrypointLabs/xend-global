@@ -8,6 +8,7 @@ import { GlassButton } from "@/components/ui/atoms/Glass";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
 import { useFeature } from "@/hooks/useFeature";
+import { usePalette } from "@/hooks/usePalette";
 import { useBalances } from "@/hooks/useBalances";
 import { useSwapQuote } from "@/hooks/useSwapQuote";
 import { useExecuteSwap } from "@/hooks/useExecuteSwap";
@@ -49,6 +50,7 @@ export default function SwapRoute() {
  */
 function SwapScreen() {
   const router = useRouter();
+  const palette = usePalette();
   const { showToast } = useToast();
   const { tokens } = useBalances();
   const address = useWalletAddress();
@@ -137,7 +139,7 @@ function SwapScreen() {
             weight="500"
             className={cn(
               "text-[44px] tracking-[-1.2px]",
-              amount === "0" ? "text-black/25" : "text-black"
+              amount === "0" ? "text-foreground/25" : "text-foreground"
             )}
           >
             {amount}
@@ -148,22 +150,26 @@ function SwapScreen() {
           <Typography variant="body" weight="600">
             MAX
           </Typography>
-          <Typography variant="body" className="text-black/30">
+          <Typography variant="body" className="text-foreground/30">
             {payBalance.toLocaleString("en-US", { maximumFractionDigits: 4 })}
           </Typography>
         </View>
 
         <View className="my-5 flex-row items-center gap-3">
-          <View className="h-px flex-1 bg-black/10" />
+          <View className="h-px flex-1 bg-foreground/10" />
           <HapticPressable
             accessibilityRole="button"
             accessibilityLabel="Swap direction"
             feedback="selection"
             onPress={flip}
           >
-            <Ionicons name="swap-vertical" size={22} color="#000" />
+            <Ionicons
+              name="swap-vertical"
+              size={22}
+              color={palette.foreground}
+            />
           </HapticPressable>
-          <View className="h-px flex-1 bg-black/10" />
+          <View className="h-px flex-1 bg-foreground/10" />
         </View>
 
         <Typography variant="body" weight="600" className="mb-2">
@@ -174,7 +180,7 @@ function SwapScreen() {
             weight="500"
             className={cn(
               "text-[44px] tracking-[-1.2px]",
-              quote ? "text-black" : "text-black/25"
+              quote ? "text-foreground" : "text-foreground/25"
             )}
           >
             {receiveDisplay}
@@ -188,11 +194,11 @@ function SwapScreen() {
               {error}
             </Typography>
           ) : isLoading ? (
-            <Typography variant="body" className="text-black/30">
+            <Typography variant="body" className="text-foreground/30">
               Finding the best price…
             </Typography>
           ) : quote ? (
-            <Typography variant="body" className="text-black/30">
+            <Typography variant="body" className="text-foreground/30">
               At least{" "}
               {formatRawAmount(quote.minOutAmountRaw, receiveToken.decimals)}{" "}
               {receiveToken.symbol}
@@ -228,10 +234,14 @@ function SwapScreen() {
         onPress={confirm}
         className={cn(
           "mb-2 mt-4 items-center rounded-full py-5",
-          canReview && !isExecuting ? "bg-black" : "bg-black/40"
+          canReview && !isExecuting ? "bg-primary" : "bg-primary/40"
         )}
       >
-        <Typography variant="title2" weight="600" className="text-white">
+        <Typography
+          variant="title2"
+          weight="600"
+          className="text-primary-foreground"
+        >
           {isExecuting ? "Confirming…" : "Swap"}
         </Typography>
       </HapticPressable>
@@ -245,7 +255,7 @@ function SwapScreen() {
           className="size-11 items-center justify-center rounded-full"
           fallbackClassName=""
         >
-          <Ionicons name="chevron-back" size={22} color="#000" />
+          <Ionicons name="chevron-back" size={22} color={palette.foreground} />
         </GlassButton>
       </View>
     </ScreenLayout>
@@ -254,19 +264,24 @@ function SwapScreen() {
 
 function TokenPill({ token }: { token: SwapToken }) {
   const icon = localIconForMint(token.mint);
+  const palette = usePalette();
 
   return (
-    <View className="flex-row items-center gap-2 rounded-full bg-black/[0.04] py-2 pl-2 pr-3">
+    <View className="flex-row items-center gap-2 rounded-full bg-foreground/[0.04] py-2 pl-2 pr-3">
       <View
         className={cn(
           "h-7 w-7 items-center justify-center overflow-hidden rounded-full",
-          !icon && "bg-black"
+          !icon && "bg-primary"
         )}
       >
         {icon ? (
           <Image source={icon} className="h-7 w-7" resizeMode="contain" />
         ) : (
-          <Typography variant="caption" weight="700" className="text-white">
+          <Typography
+            variant="caption"
+            weight="700"
+            className="text-primary-foreground"
+          >
             {token.symbol.slice(0, 1)}
           </Typography>
         )}
@@ -274,7 +289,7 @@ function TokenPill({ token }: { token: SwapToken }) {
       <Typography variant="title2" weight="600">
         {token.symbol}
       </Typography>
-      <Ionicons name="chevron-forward" size={16} color="rgba(0,0,0,0.3)" />
+      <Ionicons name="chevron-forward" size={16} color={palette.fg(0.3)} />
     </View>
   );
 }

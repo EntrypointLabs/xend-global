@@ -8,6 +8,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import LoadingScreen from "@/components/ui/layout/LoadingScreen";
 import { useAppLock } from "@/contexts/AppLockContext";
+import { usePalette } from "@/hooks/usePalette";
 
 /**
  * Full-screen biometric gate. Prompts Face ID / fingerprint over a pitch-black
@@ -18,6 +19,7 @@ function LockScreen() {
   const { authenticate, isAuthenticating, promptReady } = useAppLock();
   const [showLocked, setShowLocked] = useState(false);
   const attempted = useRef(false);
+  const palette = usePalette();
 
   const attempt = async () => {
     setShowLocked(false);
@@ -39,19 +41,29 @@ function LockScreen() {
   }
 
   return (
-    <SafeAreaView edges={["top", "bottom"]} className="flex-1 bg-white px-6">
-      <StatusBar style="dark" />
+    <SafeAreaView
+      edges={["top", "bottom"]}
+      className="flex-1 bg-background px-6"
+    >
+      <StatusBar style="auto" />
       <View className="flex-1 items-center justify-center">
-        <MaterialIcons name="lock" size={56} color="#C4C4C4" />
-        <Typography weight="500" className="mt-3 text-lg text-[#9E9E9E]">
+        <MaterialIcons
+          name="lock"
+          size={56}
+          color={palette.dark ? palette.fg(0.3) : "#C4C4C4"}
+        />
+        <Typography
+          weight="500"
+          className="mt-3 text-lg text-[#9E9E9E] dark:text-foreground/40"
+        >
           Locked
         </Typography>
       </View>
       <HapticPressable
         onPress={attempt}
-        className="mb-2 items-center justify-center rounded-full bg-black py-4"
+        className="mb-2 items-center justify-center rounded-full bg-primary py-4"
       >
-        <Typography weight="600" className="text-base text-white">
+        <Typography weight="600" className="text-base text-primary-foreground">
           Unlock
         </Typography>
       </HapticPressable>

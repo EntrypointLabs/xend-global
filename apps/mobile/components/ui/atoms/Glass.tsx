@@ -68,7 +68,7 @@ export function Sheen() {
 }
 
 /** The solid look a control keeps where liquid glass is not available. */
-const SOLID = "bg-white shadow-sm";
+const SOLID = "bg-card shadow-sm";
 
 function Pane({
   radius,

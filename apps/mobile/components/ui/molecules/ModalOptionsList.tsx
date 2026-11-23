@@ -7,6 +7,7 @@ import {
 } from "react-native";
 import { ThemedText } from "@/components/ui/atoms";
 import { CircleButton } from "./CircleButton";
+import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 
 export interface ActionOption {
@@ -23,7 +24,8 @@ interface ModalOptionsListProps {
 }
 
 export function ModalOptionsList({ options }: ModalOptionsListProps) {
-  const arrowBackground = "#D5D5D5";
+  const palette = usePalette();
+  const arrowBackground = palette.dark ? palette.fg(0.15) : "#D5D5D5";
 
   return (
     <View>
@@ -63,6 +65,7 @@ export function ModalOptionsList({ options }: ModalOptionsListProps) {
               onPress={option.onPress}
               size={24}
               backgroundColor={arrowBackground}
+              iconColor={palette.dark ? palette.foreground : undefined}
               disabled={option.disabled}
             />
           </View>

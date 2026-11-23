@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { Toggle } from "@/components/ui/atoms/Toggle";
 import { Typography } from "@/components/ui/atoms/Typography";
+import { usePalette } from "@/hooks/usePalette";
 import { ActionModal } from "../ActionModal";
 
 interface NotificationsModalProps {
@@ -20,6 +21,7 @@ export function NotificationsModal({
   onToggle,
 }: NotificationsModalProps) {
   const [enabled, setEnabled] = useState(initialEnabled);
+  const palette = usePalette();
 
   // The Consumer's stored answer arrives from the server after this mounts, so
   // the toggle has to catch up to it. Local state stays because the flip
@@ -37,21 +39,25 @@ export function NotificationsModal({
     <ActionModal visible={visible} onClose={onClose}>
       <View className="mb-5 items-center">
         <View className="mb-5">
-          <Ionicons name="notifications-outline" size={30} color="#000" />
+          <Ionicons
+            name="notifications-outline"
+            size={30}
+            color={palette.foreground}
+          />
         </View>
-        <Typography weight="600" className="mb-1 text-base">
+        <Typography weight="600" className="mb-1 text-base text-foreground">
           Notifications
         </Typography>
         <Typography
           weight="500"
-          className="max-w-[240px] text-center text-sm text-black/40"
+          className="max-w-[240px] text-center text-sm text-foreground/40"
         >
           Get notified about receiving assets, product updates and more
         </Typography>
       </View>
 
-      <View className="mb-6 flex-row items-center rounded-2xl bg-black/[0.03] p-4">
-        <View className="mr-3 h-9 w-9 items-center justify-center rounded-xl bg-black">
+      <View className="mb-6 flex-row items-center rounded-2xl bg-foreground/[0.03] p-4">
+        <View className="mr-3 h-9 w-9 items-center justify-center rounded-xl bg-primary">
           <Image
             source={require("@/assets/icons/wallet.png")}
             className="size-5"
@@ -59,20 +65,20 @@ export function NotificationsModal({
           />
         </View>
         <View className="flex-1">
-          <Typography weight="600" className="text-sm text-black">
+          <Typography weight="600" className="text-sm text-foreground">
             Received 100.00 USDC
           </Typography>
-          <Typography weight="500" className="text-xs text-black/40">
+          <Typography weight="500" className="text-xs text-foreground/40">
             From es6J...9QaP
           </Typography>
         </View>
-        <Typography weight="500" className="text-xs text-black/40">
+        <Typography weight="500" className="text-xs text-foreground/40">
           now
         </Typography>
       </View>
 
       <View className="flex-row items-center justify-between">
-        <Typography weight="600" className="text-base text-black">
+        <Typography weight="600" className="text-base text-foreground">
           Allow notifications
         </Typography>
         <Toggle value={enabled} onValueChange={handleChange} />

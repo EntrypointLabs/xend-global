@@ -61,12 +61,12 @@ export function SendModal({
           className="mb-5 h-8 w-8"
           resizeMode="contain"
         />
-        <Typography weight="600" className="mb-1 text-base">
+        <Typography weight="600" className="mb-1 text-base text-foreground">
           Send
         </Typography>
         <Typography
           weight="500"
-          className="max-w-[192px] text-center text-sm text-black/40"
+          className="max-w-[192px] text-center text-sm text-foreground/40"
         >
           Choose where the money goes
         </Typography>

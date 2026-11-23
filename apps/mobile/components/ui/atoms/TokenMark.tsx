@@ -29,7 +29,7 @@ export function TokenMark({ mint, label, iconUrl, size = 48 }: TokenMarkProps) {
 
   return (
     <View
-      className="items-center justify-center overflow-hidden rounded-full bg-black/5"
+      className="items-center justify-center overflow-hidden rounded-full bg-foreground/5"
       style={{ width: size, height: size }}
     >
       {local ? (

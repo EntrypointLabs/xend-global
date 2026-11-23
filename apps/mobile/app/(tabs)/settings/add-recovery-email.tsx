@@ -18,6 +18,7 @@ import {
 } from "@/hooks/useRecoveryKeys";
 import { Email } from "@/types/Auth";
 import { apiErrorStatus } from "@/utils/apiClient";
+import { usePalette } from "@/hooks/usePalette";
 
 /**
  * Takes the address that will become a recovery key, and sends a code to it.
@@ -31,6 +32,7 @@ import { apiErrorStatus } from "@/utils/apiClient";
  * that follows carries out.
  */
 export default function AddRecoveryEmailScreen() {
+  const palette = usePalette();
   const { intent, current } = useLocalSearchParams<{
     intent?: "change";
     current?: string;
@@ -79,29 +81,29 @@ export default function AddRecoveryEmailScreen() {
       >
         <HapticPressable
           onPress={() => router.back()}
-          className="size-10 items-center justify-center rounded-full bg-black/[0.08]"
+          className="size-10 items-center justify-center rounded-full bg-foreground/[0.08]"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="chevron-back" size={20} color="#00000066" />
+          <Ionicons name="chevron-back" size={20} color={palette.fg(0.4)} />
         </HapticPressable>
 
         <Typography
           weight="700"
-          className="mt-10 text-5xl leading-[44px] text-black"
+          className="mt-10 text-5xl leading-[44px] text-foreground"
         >
           {changing ? "New email" : "Email"}
         </Typography>
 
         <Typography
           weight="600"
-          className="mt-5 text-[15px] leading-6 text-black"
+          className="mt-5 text-[15px] leading-6 text-foreground"
         >
           {changing
             ? "Enter the address that will replace\nthe one on your account"
             : "Enter an address you can still reach\nif you lose this phone"}
         </Typography>
 
-        <View className="mt-7 rounded-3xl bg-black/[0.03] px-5 py-4">
+        <View className="mt-7 rounded-3xl bg-foreground/[0.03] px-5 py-4">
           <TextInput
             value={value}
             onChangeText={(text) => {
@@ -109,7 +111,8 @@ export default function AddRecoveryEmailScreen() {
               setError(null);
             }}
             placeholder="you@example.com"
-            placeholderTextColor="#00000040"
+            placeholderTextColor={palette.fg(0.25)}
+            keyboardAppearance={palette.dark ? "dark" : "light"}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
@@ -117,7 +120,7 @@ export default function AddRecoveryEmailScreen() {
             autoFocus
             onSubmitEditing={send}
             returnKeyType="go"
-            className="text-[15px] text-black"
+            className="text-[15px] text-foreground"
           />
         </View>
 
@@ -125,12 +128,12 @@ export default function AddRecoveryEmailScreen() {
           <Ionicons
             name="information-circle-outline"
             size={18}
-            color={error ? "#F90101" : "#00000040"}
+            color={error ? palette.destructive : palette.fg(0.25)}
           />
           <Typography
             weight={error ? "500" : "400"}
             className={`flex-1 text-sm leading-5 ${
-              error ? "text-destructive" : "text-black/40"
+              error ? "text-destructive" : "text-foreground/40"
             }`}
           >
             {error ??
@@ -146,13 +149,16 @@ export default function AddRecoveryEmailScreen() {
           onPress={send}
           disabled={!parsed.success || busy}
           className={`h-14 items-center justify-center rounded-full ${
-            parsed.success && !busy ? "bg-black" : "bg-black/50"
+            parsed.success && !busy ? "bg-primary" : "bg-primary/50"
           }`}
         >
           {busy ? (
-            <ActivityIndicator color="#FFF" />
+            <ActivityIndicator color={palette.primaryForeground} />
           ) : (
-            <Typography weight="700" className="text-[15px] text-white">
+            <Typography
+              weight="700"
+              className="text-[15px] text-primary-foreground"
+            >
               Next
             </Typography>
           )}

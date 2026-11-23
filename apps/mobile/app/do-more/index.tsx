@@ -10,6 +10,7 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { GlassButton } from "@/components/ui/atoms/Glass";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { useFeature } from "@/hooks/useFeature";
+import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 import {
   DO_MORE_ITEMS,
@@ -25,6 +26,7 @@ import {
 export default function DoMoreScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const palette = usePalette();
   const swapEnabled = useFeature("swap");
   const scrollRef = useRef<ScrollView>(null);
   const offsets = useRef<Partial<Record<DoMoreSection, number>>>({});
@@ -54,8 +56,11 @@ export default function DoMoreScreen() {
     router.canGoBack() ? router.back() : router.replace("/(tabs)");
 
   return (
-    <View className="flex-1 bg-white" style={{ paddingTop: insets.top + 8 }}>
-      <StatusBar style="dark" />
+    <View
+      className="flex-1 bg-background"
+      style={{ paddingTop: insets.top + 8 }}
+    >
+      <StatusBar style="auto" />
       <View className="px-5">
         <GlassButton
           radius={999}
@@ -63,14 +68,18 @@ export default function DoMoreScreen() {
           accessibilityLabel="Close"
           onPress={goBack}
           className="size-11 items-center justify-center rounded-full"
-          fallbackClassName="border border-black/[0.08] bg-white"
+          fallbackClassName="border border-foreground/[0.08] bg-card"
         >
-          <Ionicons name="close" size={22} color="#0A0A0A" />
+          <Ionicons
+            name="close"
+            size={22}
+            color={palette.dark ? palette.foreground : "#0A0A0A"}
+          />
         </GlassButton>
         <Typography
           accessibilityRole="header"
           weight="700"
-          className="mt-7 text-[34px] leading-[40px] tracking-[-0.8px] text-[#0E0F0C]"
+          className="mt-7 text-[34px] leading-[40px] tracking-[-0.8px] text-ink"
         >
           Do more with Prydd
         </Typography>
@@ -90,14 +99,14 @@ export default function DoMoreScreen() {
             onPress={() => jump(section)}
             className={cn(
               "rounded-full px-4 py-2.5",
-              section === current ? "bg-black/[0.06]" : "bg-transparent"
+              section === current ? "bg-foreground/[0.06]" : "bg-transparent"
             )}
           >
             <Typography
               weight="600"
               className={cn(
                 "text-[15px]",
-                section === current ? "text-[#0E0F0C]" : "text-black/45"
+                section === current ? "text-ink" : "text-foreground/45"
               )}
             >
               {section}
@@ -120,7 +129,7 @@ export default function DoMoreScreen() {
               offsets.current[section] = event.nativeEvent.layout.y;
             }}
           >
-            <Typography weight="500" className="text-[16px] text-black/55">
+            <Typography weight="500" className="text-[16px] text-foreground/55">
               {section}
             </Typography>
             <View className="mt-3">
@@ -138,6 +147,7 @@ export default function DoMoreScreen() {
 }
 
 function Row({ item, onPress }: { item: DoMoreItem; onPress: () => void }) {
+  const palette = usePalette();
   return (
     <HapticPressable
       accessibilityRole="button"
@@ -159,18 +169,18 @@ function Row({ item, onPress }: { item: DoMoreItem; onPress: () => void }) {
       <View className="flex-1">
         <Typography
           weight="600"
-          className="text-[15px] leading-[20px] text-[#0E0F0C]"
+          className="text-[15px] leading-[20px] text-ink"
         >
           {item.title}
         </Typography>
         <Typography
           weight="500"
-          className="mt-0.5 text-[13px] leading-[18px] text-black/50"
+          className="mt-0.5 text-[13px] leading-[18px] text-foreground/50"
         >
           {item.description}
         </Typography>
       </View>
-      <Ionicons name="chevron-forward" size={18} color="#00000059" />
+      <Ionicons name="chevron-forward" size={18} color={palette.fg(0.35)} />
     </HapticPressable>
   );
 }

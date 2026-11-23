@@ -4,7 +4,7 @@ import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { useCountdown } from "@/hooks/useCountdown";
-import { useThemeColor } from "@/hooks/useThemeColor";
+import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 
 interface PendingChangeModalProps {
@@ -40,7 +40,7 @@ interface PendingChangeModalProps {
  * is built to look like a statement of fact: a small typographic status label,
  * the deadline written out, and no colour doing the shouting.
  *
- * Rejecting is the primary action and carries the app's ordinary black pill
+ * Rejecting is the primary action and carries the app's ordinary primary pill
  * rather than the destructive token, because refusing is the safe move, not the
  * dangerous one. A rejected change can be proposed again; an executed one
  * cannot be taken back. Colouring the safe action like a hazard would push a
@@ -55,7 +55,8 @@ export function PendingChangeModal({
   onReject,
   onDismiss,
 }: PendingChangeModalProps) {
-  const backgroundColor = useThemeColor({}, "background");
+  const palette = usePalette();
+  const backgroundColor = palette.card;
   const remaining = useCountdown(executableAt);
 
   return (
@@ -65,7 +66,10 @@ export function PendingChangeModal({
       animationType="fade"
       statusBarTranslucent
     >
-      <FrostBlurView style={[StyleSheet.absoluteFill, styles.overlay]}>
+      <FrostBlurView
+        tint={palette.dark ? "dark" : "light"}
+        style={[StyleSheet.absoluteFill, styles.overlay]}
+      >
         <View style={[styles.card, { backgroundColor }]}>
           <View className="mb-5 self-start rounded-full border border-destructive/30 px-3 py-1">
             <Typography
@@ -76,7 +80,10 @@ export function PendingChangeModal({
             </Typography>
           </View>
 
-          <Typography weight="600" className="mb-2 text-xl leading-7">
+          <Typography
+            weight="600"
+            className="mb-2 text-xl leading-7 text-foreground"
+          >
             {startedHere
               ? "A change you started is pending"
               : "Someone is changing your account"}
@@ -84,7 +91,7 @@ export function PendingChangeModal({
 
           <Typography
             weight="400"
-            className="mb-6 text-sm leading-5 opacity-70"
+            className="mb-6 text-sm leading-5 text-foreground opacity-70"
           >
             {startedHere
               ? "This changes who can access your Prydd account. It takes effect after the delay below, and you can call it off at any point until then."
@@ -96,11 +103,11 @@ export function PendingChangeModal({
           <View className="mb-6 rounded-2xl border border-border px-4 py-3.5">
             <Typography
               weight="500"
-              className="mb-1 text-[11px] tracking-[0.8px] opacity-60"
+              className="mb-1 text-[11px] tracking-[0.8px] text-foreground opacity-60"
             >
               {remaining === null ? "STATUS" : "GOES THROUGH IN"}
             </Typography>
-            <Typography weight="600" className="text-base">
+            <Typography weight="600" className="text-base text-foreground">
               {remaining === null ? "Waiting for a second approval" : remaining}
             </Typography>
           </View>
@@ -120,14 +127,17 @@ export function PendingChangeModal({
             accessibilityRole="button"
             accessibilityLabel="Reject this change"
             className={cn(
-              "w-full items-center justify-center rounded-full bg-black py-4",
+              "w-full items-center justify-center rounded-full bg-primary py-4",
               rejecting && "opacity-50"
             )}
           >
             {rejecting ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={palette.primaryForeground} />
             ) : (
-              <Typography weight="600" className="text-base text-white">
+              <Typography
+                weight="600"
+                className="text-base text-primary-foreground"
+              >
                 Reject this change
               </Typography>
             )}
@@ -149,7 +159,10 @@ export function PendingChangeModal({
             accessibilityLabel="I recognise this"
             className="mt-3 items-center justify-center py-3"
           >
-            <Typography weight="500" className="text-sm opacity-60">
+            <Typography
+              weight="500"
+              className="text-sm text-foreground opacity-60"
+            >
               I recognise this
             </Typography>
           </HapticPressable>
