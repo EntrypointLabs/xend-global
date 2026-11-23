@@ -3,6 +3,7 @@ import { Modal, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "../atoms/HapticPressable";
 import { Typography } from "../atoms/Typography";
+import { usePalette } from "@/hooks/usePalette";
 
 export interface PopoverAnchor {
   x: number;
@@ -29,6 +30,7 @@ export function ContactActionsPopover({
   onEdit,
   onDelete,
 }: ContactActionsPopoverProps) {
+  const palette = usePalette();
   if (!anchor) return null;
 
   const top = anchor.y + anchor.height + MENU_OFFSET_Y;
@@ -45,6 +47,7 @@ export function ContactActionsPopover({
     >
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <View
+        className="bg-card"
         style={[styles.menu, { top, left, width: MENU_WIDTH }]}
         pointerEvents="box-none"
       >
@@ -55,12 +58,16 @@ export function ContactActionsPopover({
             setTimeout(onEdit, 10);
           }}
         >
-          <Ionicons name="pencil-outline" size={18} color="#000" />
-          <Typography weight="500" className="text-base text-black">
+          <Ionicons
+            name="pencil-outline"
+            size={18}
+            color={palette.foreground}
+          />
+          <Typography weight="500" className="text-base text-foreground">
             Edit
           </Typography>
         </HapticPressable>
-        <View className="mx-3 h-px bg-black/5" />
+        <View className="mx-3 h-px bg-foreground/5" />
         <HapticPressable
           className="flex-row items-center gap-3 px-4 py-3"
           onPress={() => {
@@ -68,12 +75,12 @@ export function ContactActionsPopover({
             setTimeout(onDelete, 10);
           }}
         >
-          <Ionicons name="trash-outline" size={18} color="#F90101" />
-          <Typography
-            weight="500"
-            className="text-base"
-            style={{ color: "#F90101" }}
-          >
+          <Ionicons
+            name="trash-outline"
+            size={18}
+            color={palette.destructive}
+          />
+          <Typography weight="500" className="text-base text-destructive">
             Delete
           </Typography>
         </HapticPressable>
@@ -85,7 +92,6 @@ export function ContactActionsPopover({
 const styles = StyleSheet.create({
   menu: {
     position: "absolute",
-    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     paddingVertical: 4,
     shadowColor: "#000",

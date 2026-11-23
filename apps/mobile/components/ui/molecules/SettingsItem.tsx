@@ -4,6 +4,7 @@ import { Typography } from "../atoms/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "../atoms/HapticPressable";
 import { GLASS_COLORS, useOnPhoto } from "@/components/ui/glass";
+import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 
 interface SettingsItemProps {
@@ -12,7 +13,10 @@ interface SettingsItemProps {
   onPress?: () => void;
   showChevron?: boolean;
   color?: string;
-  /** Tint a black glyph white on the photo. Coloured glyphs keep their colour. */
+  /**
+   * Marks a black glyph, which is tinted wherever black would not show: on
+   * the photo and on the dark canvas. Coloured glyphs keep their colour.
+   */
   tintOnPhoto?: boolean;
 }
 
@@ -25,6 +29,12 @@ export function SettingsItem({
   tintOnPhoto = false,
 }: SettingsItemProps) {
   const onPhoto = useOnPhoto();
+  const palette = usePalette();
+  const glyphTint = onPhoto
+    ? "#FFFFFF"
+    : palette.dark
+      ? palette.foreground
+      : undefined;
 
   return (
     <HapticPressable
@@ -39,7 +49,7 @@ export function SettingsItem({
             source={icon as ImageSourcePropType}
             className="size-6"
             resizeMode="contain"
-            tintColor={onPhoto && tintOnPhoto ? "#FFFFFF" : undefined}
+            tintColor={tintOnPhoto ? glyphTint : undefined}
           />
         )}
       </View>
@@ -47,7 +57,7 @@ export function SettingsItem({
       <View className="flex-1">
         <Typography
           weight="500"
-          className={cn("text-lg", onPhoto ? "text-white" : "text-black")}
+          className={cn("text-lg", onPhoto ? "text-white" : "text-foreground")}
           // Only when set: an undefined `color` in the style still overrides
           // the class colour and turns the label black on the photo.
           style={color ? { color } : undefined}
@@ -66,7 +76,7 @@ export function SettingsItem({
           <Ionicons
             name="chevron-forward"
             size={20}
-            className="!text-black/40"
+            className="!text-foreground/40"
           />
         ))}
     </HapticPressable>

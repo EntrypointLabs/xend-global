@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { ThemedScreen } from "@/components/ui/layout";
-import { useThemeColor } from "@/hooks/useThemeColor";
+import { usePalette } from "@/hooks/usePalette";
 import {
   Keypad,
   ThemedButton,
@@ -47,7 +47,7 @@ export default function AmountScreen() {
     postal_code: "",
     country: "",
   });
-  const textColor = useThemeColor({}, "text");
+  const palette = usePalette();
 
   const steps = [
     {
@@ -176,7 +176,7 @@ export default function AmountScreen() {
   const renderAmount = () => {
     return (
       // DYNAMIC-COLOR
-      <ThemedText type="highlight" style={{ color: textColor }}>
+      <ThemedText type="highlight" style={{ color: palette.foreground }}>
         {formatAmount({ amount })}
       </ThemedText>
     );
@@ -189,7 +189,7 @@ export default function AmountScreen() {
           title={currentLabel}
           variant="outline"
           // DYNAMIC-COLOR
-          textStyle={{ color: textColor }}
+          textStyle={{ color: palette.foreground }}
           onPress={() => {
             handleExistingContinue();
           }}
@@ -333,7 +333,7 @@ export default function AmountScreen() {
           </ThemedText>
           <ThemedTextInput
             placeholder="Enter a label for this account"
-            placeholderTextColor={textColor + "40"}
+            placeholderTextColor={palette.fg(0.25)}
             value={accountLabel}
             onChangeText={setAccountLabel}
           />
@@ -352,7 +352,7 @@ export default function AmountScreen() {
         <ThemedButton
           variant="outline"
           // DYNAMIC-COLOR
-          textStyle={{ color: textColor }}
+          textStyle={{ color: palette.foreground }}
           title="Add new account"
           onPress={() => {
             setStep(3);
@@ -381,7 +381,11 @@ export default function AmountScreen() {
               <Chip className="px-2 py-1">
                 <View className="flex-row">
                   <ThemedText type="tiny">ACH </ThemedText>
-                  <IconSymbol name="chevron.down" size={12} color={textColor} />
+                  <IconSymbol
+                    name="chevron.down"
+                    size={12}
+                    color={palette.foreground}
+                  />
                 </View>
               </Chip>
             )}

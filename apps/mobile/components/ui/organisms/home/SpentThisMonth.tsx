@@ -7,6 +7,7 @@ import { formatMoney } from "@/utils/balances";
 import type { MonthlySpend } from "@/utils/spentThisMonth";
 import { useOnPhoto, useSurface } from "@/components/ui/glass";
 import { cn } from "@/utils/cn";
+import { usePalette } from "@/hooks/usePalette";
 import { HomeSection } from "./HomeSection";
 
 const PLOT_HEIGHT = 56;
@@ -37,11 +38,12 @@ export function SpendLine({
 }) {
   const [width, setWidth] = useState(0);
   const onPhoto = useOnPhoto();
+  const palette = usePalette();
   const onLayout = (event: LayoutChangeEvent) =>
     setWidth(event.nativeEvent.layout.width);
   const flat = Math.max(...values) === 0;
-  const ink = onPhoto ? "#FFFFFF" : "#000000";
-  const faint = onPhoto ? "#FFFFFF1F" : "#0000001A";
+  const ink = onPhoto ? "#FFFFFF" : palette.foreground;
+  const faint = onPhoto ? "#FFFFFF1F" : palette.fg(0.1);
 
   return (
     <View onLayout={onLayout} style={{ height }}>

@@ -6,7 +6,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { WebView } from "react-native-webview";
-import { useThemeColor } from "@/hooks/useThemeColor";
+import { usePalette } from "@/hooks/usePalette";
 import { IconSymbol } from "@/components/ui/atoms";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -25,7 +25,7 @@ export function InAppBrowser({
   onNavigationStateChange,
 }: InAppBrowserProps) {
   const [isLoading, setIsLoading] = useState(true);
-  const textColor = useThemeColor({}, "text");
+  const textColor = usePalette().foreground;
   const insets = useSafeAreaInsets();
 
   if (!visible) return null;
@@ -33,7 +33,7 @@ export function InAppBrowser({
   return (
     <View className="absolute inset-0 z-[1000] bg-black/50">
       <View
-        className="flex-row items-center justify-end bg-white px-6"
+        className="flex-row items-center justify-end bg-background px-6"
         // MEASURED-LAYOUT (top inset so the close button clears the Android
         // status bar under edge-to-edge)
         style={{ paddingTop: insets.top, height: 60 + insets.top }}
@@ -44,7 +44,7 @@ export function InAppBrowser({
       </View>
       {isLoading && (
         <View
-          className="z-[1] items-center justify-center bg-white/90"
+          className="z-[1] items-center justify-center bg-background/90"
           // MEASURED-LAYOUT (absoluteFill)
           style={StyleSheet.absoluteFill}
         >

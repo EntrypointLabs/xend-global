@@ -12,6 +12,7 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 
 export interface ActionPillItem {
@@ -80,6 +81,7 @@ export function ActionPill({
 }: ActionPillProps) {
   const glass = variant === "glass";
   const liquid = wantsLiquid && LIQUID_AVAILABLE;
+  const palette = usePalette();
 
   if (onExpand) {
     return (
@@ -102,7 +104,7 @@ export function ActionPill({
           ? undefined
           : glass
             ? "overflow-hidden border border-white/[0.18]"
-            : "overflow-hidden border border-black/5 bg-white"
+            : "overflow-hidden border border-foreground/5 bg-card"
       )}
       // PLATFORM-SHADOW
       style={[
@@ -119,7 +121,7 @@ export function ActionPill({
       {liquid ? (
         <GlassView
           glassEffectStyle="regular"
-          colorScheme={glass ? "dark" : "light"}
+          colorScheme={glass || palette.dark ? "dark" : "light"}
           isInteractive
           style={[StyleSheet.absoluteFill, { borderRadius: 999 }]}
         />
@@ -196,6 +198,7 @@ function FoldingPill({
   containerStyle?: StyleProp<ViewStyle>;
 }) {
   const reduceMotion = useReducedMotion();
+  const palette = usePalette();
   const progress = useSharedValue(collapsed ? 1 : 0);
   const active = Math.max(
     0,
@@ -227,7 +230,7 @@ function FoldingPill({
         !liquid &&
           (glass
             ? "border border-white/[0.18]"
-            : "border border-black/5 bg-white")
+            : "border border-foreground/5 bg-card")
       )}
       // PLATFORM-SHADOW
       style={[
@@ -240,7 +243,7 @@ function FoldingPill({
       {liquid ? (
         <GlassView
           glassEffectStyle="regular"
-          colorScheme={glass ? "dark" : "light"}
+          colorScheme={glass || palette.dark ? "dark" : "light"}
           isInteractive
           style={[StyleSheet.absoluteFill, { borderRadius: FOLDED / 2 }]}
         />

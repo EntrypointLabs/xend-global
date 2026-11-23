@@ -1,6 +1,8 @@
 import React from "react";
 import Svg, { Path } from "react-native-svg";
 
+import { usePalette } from "@/hooks/usePalette";
+
 const Settings = ({
   isActive,
   className,
@@ -13,14 +15,17 @@ const Settings = ({
   /** `light` draws the gear in white, for the glass tab bar on the photo. */
   tone?: "dark" | "light";
 }) => {
+  const palette = usePalette();
   const fill =
     tone === "light"
       ? isActive
         ? "#FFFFFF"
         : "rgba(255,255,255,0.45)"
       : isActive
-        ? "#000000"
-        : "#B1B1B1";
+        ? palette.foreground
+        : palette.dark
+          ? palette.fg(0.3)
+          : "#B1B1B1";
   return (
     <Svg
       width={size}

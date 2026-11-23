@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
+import { usePalette } from "@/hooks/usePalette";
 import { ActionModal } from "../ActionModal";
 
 export type ExplainedKey = "passkey" | "device" | "recovery";
@@ -103,14 +104,19 @@ export function KeyExplainerModal({
   subject,
 }: KeyExplainerModalProps) {
   const explainer = EXPLAINERS[subject];
+  const palette = usePalette();
 
   return (
     <ActionModal visible={visible} onClose={onClose}>
       <View className="mb-6 items-center">
-        <View className="mb-5 size-12 items-center justify-center rounded-2xl bg-black">
-          <Ionicons name={explainer.icon} size={24} color="#FFFFFF" />
+        <View className="mb-5 size-12 items-center justify-center rounded-2xl bg-primary">
+          <Ionicons
+            name={explainer.icon}
+            size={24}
+            color={palette.primaryForeground}
+          />
         </View>
-        <Typography weight="600" className="text-base">
+        <Typography weight="600" className="text-base text-foreground">
           {explainer.title}
         </Typography>
       </View>
@@ -119,15 +125,19 @@ export function KeyExplainerModal({
         {explainer.points.map((point) => (
           <View key={point.heading} className="flex-row gap-3">
             <View className="mt-0.5 size-5 items-center justify-center">
-              <Ionicons name={point.icon} size={16} color="#000000" />
+              <Ionicons
+                name={point.icon}
+                size={16}
+                color={palette.foreground}
+              />
             </View>
             <View className="flex-1">
-              <Typography weight="600" className="text-base text-black">
+              <Typography weight="600" className="text-base text-foreground">
                 {point.heading}
               </Typography>
               <Typography
                 weight="400"
-                className="mt-1 text-base leading-6 text-black/50"
+                className="mt-1 text-base leading-6 text-foreground/50"
               >
                 {point.body}
               </Typography>
@@ -138,10 +148,10 @@ export function KeyExplainerModal({
 
       <HapticPressable
         onPress={onClose}
-        className="mt-6 h-14 items-center justify-center rounded-full bg-black/5"
+        className="mt-6 h-14 items-center justify-center rounded-full bg-foreground/5"
         accessibilityRole="button"
       >
-        <Typography weight="600" className="text-base text-black">
+        <Typography weight="600" className="text-base text-foreground">
           Got it
         </Typography>
       </HapticPressable>

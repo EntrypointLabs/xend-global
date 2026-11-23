@@ -9,6 +9,7 @@ import { MerchantAvatar } from "@/components/ui/atoms/MerchantAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { useSessions, useRevokeSession } from "@/hooks/useSessions";
 import type { SessionSummary } from "@/utils/apiClient";
+import { usePalette } from "@/hooks/usePalette";
 
 const MONTHS = [
   "Jan",
@@ -32,6 +33,7 @@ function formatLastUsed(iso: string): string {
 }
 
 export default function ConnectedMerchantsScreen() {
+  const palette = usePalette();
   const { data, isLoading, isError, refetch } = useSessions();
   const { mutate: revoke } = useRevokeSession();
 
@@ -71,12 +73,12 @@ export default function ConnectedMerchantsScreen() {
           />
         </View>
 
-        <Typography weight="700" className="mt-3 text-3xl text-black">
+        <Typography weight="700" className="mt-3 text-3xl text-foreground">
           Connected Merchants
         </Typography>
         <Typography
           weight="500"
-          className="mt-2 text-base leading-6 text-black/40"
+          className="mt-2 text-base leading-6 text-foreground/40"
         >
           These merchants can take one-tap{"\n"}payments until you revoke them.
         </Typography>
@@ -87,24 +89,34 @@ export default function ConnectedMerchantsScreen() {
           </View>
         ) : isError ? (
           <View className="flex-1 items-center justify-center">
-            <Typography weight="500" className="mb-3 text-base text-black/40">
+            <Typography
+              weight="500"
+              className="mb-3 text-base text-foreground/40"
+            >
               Couldn&apos;t load connected merchants.
             </Typography>
             <HapticPressable onPress={() => refetch()} className="p-2">
-              <Typography weight="600" className="text-base text-black">
+              <Typography weight="600" className="text-base text-foreground">
                 Retry
               </Typography>
             </HapticPressable>
           </View>
         ) : sessions.length === 0 ? (
           <View className="flex-1 items-center justify-center">
-            <View className="mb-4 h-14 w-24 items-center justify-center rounded-full border-2 border-dashed border-black/15 bg-black/[0.03]">
-              <Ionicons name="storefront-outline" size={22} color="#00000033" />
+            <View className="mb-4 h-14 w-24 items-center justify-center rounded-full border-2 border-dashed border-foreground/15 bg-foreground/[0.03]">
+              <Ionicons
+                name="storefront-outline"
+                size={22}
+                color={palette.fg(0.2)}
+              />
             </View>
-            <Typography weight="700" className="text-lg text-black">
+            <Typography weight="700" className="text-lg text-foreground">
               No connected merchants yet
             </Typography>
-            <Typography weight="500" className="mt-1 text-base text-black/40">
+            <Typography
+              weight="500"
+              className="mt-1 text-base text-foreground/40"
+            >
               Merchants you pay appear here.
             </Typography>
           </View>
@@ -120,12 +132,15 @@ export default function ConnectedMerchantsScreen() {
                   category={session.merchantCategory}
                 />
                 <View className="flex-1 px-3.5">
-                  <Typography weight="600" className="text-base text-black">
+                  <Typography
+                    weight="600"
+                    className="text-base text-foreground"
+                  >
                     {session.merchantDisplayName}
                   </Typography>
                   <Typography
                     weight="500"
-                    className="mt-0.5 text-sm text-black/40"
+                    className="mt-0.5 text-sm text-foreground/40"
                   >
                     Last used {formatLastUsed(session.lastUsedAt)}
                   </Typography>
@@ -153,9 +168,13 @@ export default function ConnectedMerchantsScreen() {
             accessibilityLabel="Go back"
             onPress={() => router.back()}
             className="h-14 w-14 items-center justify-center rounded-full"
-            fallbackClassName="bg-white shadow-md shadow-black/10"
+            fallbackClassName="bg-card shadow-md shadow-black/10"
           >
-            <Ionicons name="chevron-back" size={22} color="#000" />
+            <Ionicons
+              name="chevron-back"
+              size={22}
+              color={palette.foreground}
+            />
           </GlassButton>
         </View>
       </View>

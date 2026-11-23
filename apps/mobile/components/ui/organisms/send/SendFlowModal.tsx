@@ -12,6 +12,7 @@ import {
   BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
+import { usePalette } from "@/hooks/usePalette";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -22,7 +23,6 @@ import BankRecipientStep from "./BankRecipientStep";
 import AmountStep from "./AmountStep";
 import { QRScannerModal } from "./QRScannerModal";
 import type { BankRecipient, SendMode } from "./bankAccount";
-import { BANK_SHEET_BG } from "./BankSheetParts";
 
 export interface SendFlowModalRef {
   present: () => void;
@@ -43,7 +43,9 @@ const springConfig = {};
 export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
   ({ mode = "crypto", onClose }, ref) => {
     const snapPoints = useMemo(() => ["94%"], []);
-    const background = mode === "bank" ? BANK_SHEET_BG : "#F0F0F0";
+    const palette = usePalette();
+    const background =
+      mode === "bank" || palette.dark ? palette.card : "#F0F0F0";
     const scannerRef = useRef<BottomSheetModal>(null);
 
     const [, setStep] = useState<Step>("Recipient");

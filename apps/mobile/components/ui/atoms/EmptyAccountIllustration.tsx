@@ -11,7 +11,18 @@ import Svg, {
   Stop,
 } from "react-native-svg";
 
+import { usePalette } from "@/hooks/usePalette";
+
 const ASPECT = 160 / 240;
+
+/**
+ * The dark card, which would sink into the ink canvas at its light-mode
+ * values, so it is drawn a few steps lighter there.
+ */
+export const cardInk = (dark: boolean) =>
+  dark
+    ? { from: "#5A5B56", to: "#2C2D29", edge: "#4B4C47" }
+    : { from: "#404040", to: "#0A0A0A", edge: "#3A3A3A" };
 
 /**
  * What an Account that holds nothing shows where its assets will be listed: a
@@ -21,6 +32,7 @@ const ASPECT = 160 / 240;
  * screen readers. Source artwork: assets/images/empty-account.svg.
  */
 export function EmptyAccountIllustration({ width = 210 }: { width?: number }) {
+  const card = cardInk(usePalette().dark);
   return (
     <Svg
       width={width}
@@ -35,8 +47,8 @@ export function EmptyAccountIllustration({ width = 210 }: { width?: number }) {
           <Stop offset="1" stopColor="#000000" stopOpacity="0" />
         </RadialGradient>
         <LinearGradient id="card" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor="#404040" />
-          <Stop offset="1" stopColor="#0A0A0A" />
+          <Stop offset="0" stopColor={card.from} />
+          <Stop offset="1" stopColor={card.to} />
         </LinearGradient>
         <LinearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
           <Stop offset="0" stopColor="#FFFFFF" />
@@ -66,7 +78,7 @@ export function EmptyAccountIllustration({ width = 210 }: { width?: number }) {
           height="76"
           rx="11"
           transform="matrix(0.87,-0.3,0.5,0.52,116,98)"
-          fill="#3A3A3A"
+          fill={card.edge}
         />
         <Rect
           x="-60"

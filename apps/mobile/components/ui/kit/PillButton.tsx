@@ -2,10 +2,11 @@ import React from "react";
 import { ActivityIndicator } from "react-native";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
+import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 
 /**
- * The light-canvas call to action. `solid` is the one black button a screen
+ * The page call to action. `solid` is the one filled button a screen
  * gets; `quiet` is everything else. `size="sm"` is the inline `h-11` action
  * used inside cards (retry, check status).
  */
@@ -30,6 +31,7 @@ export function PillButton({
 }) {
   const solid = tone === "solid";
   const inactive = disabled || loading;
+  const palette = usePalette();
   return (
     <HapticPressable
       onPress={onPress}
@@ -40,19 +42,22 @@ export function PillButton({
       className={cn(
         "flex-row items-center justify-center gap-2 rounded-full",
         size === "md" ? "h-14 px-6" : "h-11 self-start px-5",
-        solid ? "bg-black" : "bg-black/5",
+        solid ? "bg-primary" : "bg-foreground/5",
         disabled && !loading && "opacity-30",
         className
       )}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={solid ? "white" : "black"} />
+        <ActivityIndicator
+          size="small"
+          color={solid ? palette.primaryForeground : palette.foreground}
+        />
       ) : null}
       <Typography
         weight="600"
         className={cn(
           size === "md" ? "text-[15px]" : "text-[13px]",
-          solid ? "text-white" : "text-black"
+          solid ? "text-primary-foreground" : "text-foreground"
         )}
       >
         {title}

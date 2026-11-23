@@ -14,6 +14,8 @@ module.exports = {
       colors: {
         background: "hsl(var(--background) / <alpha-value>)",
         foreground: "hsl(var(--foreground) / <alpha-value>)",
+        ink: "hsl(var(--ink) / <alpha-value>)",
+        muted: "hsl(var(--muted) / <alpha-value>)",
         primary: "hsl(var(--primary) / <alpha-value>)",
         "primary-foreground": "hsl(var(--primary-foreground) / <alpha-value>)",
         success: "hsl(var(--success) / <alpha-value>)",

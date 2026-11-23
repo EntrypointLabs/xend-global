@@ -14,6 +14,7 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { Ionicons } from "@expo/vector-icons";
 import { useToast } from "@/contexts/ToastContext";
+import { usePalette } from "@/hooks/usePalette";
 
 interface QRCodeModalProps {
   walletAddress: string;
@@ -23,6 +24,7 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
   ({ walletAddress }, ref) => {
     const snapPoints = useMemo(() => ["94%"], []);
     const { showToast } = useToast();
+    const palette = usePalette();
 
     const renderBackdrop = useCallback(
       (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
@@ -34,7 +36,11 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast(
         "Copied address",
-        <Ionicons name="checkmark-circle" size={16} color="black" />
+        <Ionicons
+          name="checkmark-circle"
+          size={16}
+          color={palette.foreground}
+        />
       );
     };
 
@@ -46,18 +52,23 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
         backdropComponent={renderBackdrop}
         enablePanDownToClose
         handleIndicatorStyle={{ display: "none" }}
-        backgroundStyle={{ backgroundColor: "#F0F0F0" }}
+        backgroundStyle={{
+          backgroundColor: palette.dark ? palette.background : "#F0F0F0",
+        }}
         containerStyle={{ zIndex: 1 }}
       >
-        <BottomSheetView className="h-full flex-1 bg-[#F0F0F0]">
+        <BottomSheetView className="h-full flex-1 bg-[#F0F0F0] dark:bg-background">
           <View className="mb-5 items-center px-4">
             <TabHeaderText className="text-center">Receive</TabHeaderText>
-            <Typography weight="500" className="mt-1 text-sm text-black/30">
+            <Typography
+              weight="500"
+              className="mt-1 text-sm text-foreground/30"
+            >
               Only send Solana assets to this address
             </Typography>
           </View>
 
-          <View className="z-[0] mx-auto mt-12 h-10 w-[70%] rounded-full bg-black/5" />
+          <View className="z-[0] mx-auto mt-12 h-10 w-[70%] rounded-full bg-foreground/5" />
           <HapticPressable
             onPress={handleCopyAddress}
             className="mx-10 -mt-8 items-center rounded-[28px] border border-black/5 bg-white p-8"
@@ -77,10 +88,13 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
 
           <View className="mx-6 mb-8">
             <HapticPressable
-              className="items-center rounded-full bg-black py-4"
+              className="items-center rounded-full bg-primary py-4"
               onPress={handleCopyAddress}
             >
-              <Typography weight="700" className="text-base text-white">
+              <Typography
+                weight="700"
+                className="text-base text-primary-foreground"
+              >
                 Copy address
               </Typography>
             </HapticPressable>

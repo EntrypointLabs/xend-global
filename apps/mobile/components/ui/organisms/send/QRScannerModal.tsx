@@ -16,6 +16,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Ionicons } from "@expo/vector-icons";
 import { isPublicKey } from "@/utils/solana";
+import { usePalette } from "@/hooks/usePalette";
 import { withSystemPrompt } from "@/utils/systemPrompt";
 
 interface QRScannerModalProps {
@@ -24,6 +25,7 @@ interface QRScannerModalProps {
 
 export const QRScannerModal = forwardRef<BottomSheetModal, QRScannerModalProps>(
   ({ onScan }, ref) => {
+    const palette = usePalette();
     const snapPoints = useMemo(() => ["94%"], []);
     const [permission, requestPermission] = useCameraPermissions();
     const hasScanned = useRef(false);
@@ -72,10 +74,13 @@ export const QRScannerModal = forwardRef<BottomSheetModal, QRScannerModalProps>(
           backgroundColor: "rgba(255,255,255,0.4)",
           width: "9%",
         }}
+        backgroundStyle={
+          palette.dark ? { backgroundColor: palette.card } : undefined
+        }
         stackBehavior="push"
         containerStyle={{ zIndex: 2 }}
       >
-        <BottomSheetView className="h-full flex-1 bg-[#F0F0F0]">
+        <BottomSheetView className="h-full flex-1 bg-[#F0F0F0] dark:bg-card">
           <RenderContent
             permission={permission}
             requestPermission={requestPermission}
@@ -100,6 +105,7 @@ const RenderContent = ({
   requestPermission,
   handleBarCodeScanned,
 }: RenderContentProps) => {
+  const palette = usePalette();
   if (!permission) {
     return null;
   }
@@ -107,18 +113,24 @@ const RenderContent = ({
   if (!permission.granted) {
     return (
       <View className="flex-1 items-center justify-center px-8">
-        <Ionicons name="camera-outline" size={48} color="#00000066" />
-        <Typography weight="600" className="mb-2 mt-4 text-center text-lg">
+        <Ionicons name="camera-outline" size={48} color={palette.fg(0.4)} />
+        <Typography
+          weight="600"
+          className="mb-2 mt-4 text-center text-lg text-foreground"
+        >
           Camera Access Required
         </Typography>
-        <Typography weight="500" className="mb-6 text-center text-black/40">
+        <Typography
+          weight="500"
+          className="mb-6 text-center text-foreground/40"
+        >
           We need camera access to scan QR codes
         </Typography>
         <HapticPressable
-          className="rounded-full bg-black px-6 py-3"
+          className="rounded-full bg-primary px-6 py-3"
           onPress={() => withSystemPrompt(requestPermission)}
         >
-          <Typography weight="600" className="text-white">
+          <Typography weight="600" className="text-primary-foreground">
             Grant Access
           </Typography>
         </HapticPressable>

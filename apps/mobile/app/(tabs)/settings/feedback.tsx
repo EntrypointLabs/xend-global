@@ -20,8 +20,10 @@ import {
 import { useToast } from "@/contexts/ToastContext";
 import { apiClient, apiErrorCode } from "@/utils/apiClient";
 import { cn } from "@/utils/cn";
+import { usePalette } from "@/hooks/usePalette";
 
 export default function FeedbackScreen() {
+  const palette = usePalette();
   const { showToast } = useToast();
   const insets = useSafeAreaInsets();
   const [message, setMessage] = useState("");
@@ -63,24 +65,24 @@ export default function FeedbackScreen() {
       >
         <HapticPressable
           onPress={() => router.back()}
-          className="size-10 items-center justify-center rounded-full bg-black/[0.08]"
+          className="size-10 items-center justify-center rounded-full bg-foreground/[0.08]"
           accessibilityRole="button"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="chevron-back" size={20} color="#00000066" />
+          <Ionicons name="chevron-back" size={20} color={palette.fg(0.4)} />
         </HapticPressable>
 
         <Typography
           weight="700"
           accessibilityRole="header"
-          className="mt-6 text-3xl text-black"
+          className="mt-6 text-3xl text-foreground"
         >
           Share your feedback
         </Typography>
 
         <Typography
           weight="500"
-          className="mt-3 text-[15px] leading-6 text-black/40"
+          className="mt-3 text-[15px] leading-6 text-foreground/40"
         >
           Tell us what to change, fix or keep
         </Typography>
@@ -102,7 +104,7 @@ export default function FeedbackScreen() {
           <Ionicons
             name="information-circle-outline"
             size={18}
-            color={error ? "#F90101" : "#00000040"}
+            color={error ? palette.destructive : palette.fg(0.25)}
           />
           {error ? (
             <Typography
@@ -113,13 +115,13 @@ export default function FeedbackScreen() {
               {error}
             </Typography>
           ) : (
-            <Typography className="flex-1 text-sm leading-5 text-black/40">
+            <Typography className="flex-1 text-sm leading-5 text-foreground/40">
               We read everything but cannot answer here. Need a reply?{" "}
               <Typography
                 weight="600"
                 accessibilityRole="link"
                 onPress={() => router.replace("/settings/support" as never)}
-                className="text-sm text-black underline"
+                className="text-sm text-foreground underline"
               >
                 Contact support
               </Typography>
@@ -136,13 +138,16 @@ export default function FeedbackScreen() {
           disabled={!canSend}
           className={cn(
             "mb-2 h-14 items-center justify-center rounded-full",
-            canSend ? "bg-black" : "bg-black/50"
+            canSend ? "bg-primary" : "bg-primary/50"
           )}
         >
           {busy ? (
-            <ActivityIndicator color="#FFF" />
+            <ActivityIndicator color={palette.primaryForeground} />
           ) : (
-            <Typography weight="700" className="text-[15px] text-white">
+            <Typography
+              weight="700"
+              className="text-[15px] text-primary-foreground"
+            >
               Send feedback
             </Typography>
           )}

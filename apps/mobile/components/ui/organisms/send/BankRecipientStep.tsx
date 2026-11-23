@@ -17,6 +17,7 @@ import { useUnifiedFiat } from "@/hooks/useUnifiedFiat";
 import { apiClient, apiErrorMessage, apiErrorStatus } from "@/utils/apiClient";
 import { BankAccountNotFoundError, type Bank } from "@/utils/bank-directory";
 import { cn } from "@/utils/cn";
+import { usePalette } from "@/hooks/usePalette";
 import {
   ACCOUNT_NUMBER_LENGTH,
   type BankRecipient,
@@ -27,12 +28,7 @@ import {
 } from "./bankAccount";
 import { BankLogo } from "./BankLogo";
 import { BankSearchSheet } from "./BankSearchSheet";
-import {
-  BANK_SHEET_BG,
-  BankSheetFooter,
-  BankSheetTop,
-  DISPLAY,
-} from "./BankSheetParts";
+import { BankSheetFooter, BankSheetTop, DISPLAY } from "./BankSheetParts";
 import { withSystemPrompt } from "@/utils/systemPrompt";
 
 interface BankRecipientStepProps {
@@ -74,7 +70,7 @@ function resolveFailure(error: unknown, bankName: string): string {
 function DashedRule() {
   return (
     <View className="my-4 h-px overflow-hidden">
-      <View className="h-[3px] border border-dashed border-black/20" />
+      <View className="h-[3px] border border-dashed border-foreground/20" />
     </View>
   );
 }
@@ -100,6 +96,7 @@ export default function BankRecipientStep({
   recipient,
   setRecipient,
 }: BankRecipientStepProps) {
+  const palette = usePalette();
   const inputRef = useRef<TextInput | null>(null);
   const searchRef = useRef<BottomSheetModal>(null);
   const [localNumber, setLocalNumber] = useState(recipient ?? "");
@@ -220,24 +217,24 @@ export default function BankRecipientStep({
   const found = check.state === "found" ? check.recipient : null;
 
   return (
-    <View className="flex-1" style={{ backgroundColor: BANK_SHEET_BG }}>
+    <View className="flex-1 bg-card">
       <BankSheetTop leave="close" onPress={onClose} />
       <BottomSheetScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerClassName="px-5 pb-10"
       >
-        <View className="h-[104px] justify-center overflow-hidden rounded-[24px] bg-[#F2F2F0] px-5">
+        <View className="h-[104px] justify-center overflow-hidden rounded-[24px] bg-muted px-5">
           <Typography
             accessibilityRole="header"
-            className="max-w-[210px] text-[24px] uppercase leading-[26px] tracking-[-0.6px] text-[#0E0F0C]"
+            className="max-w-[210px] text-[24px] uppercase leading-[26px] tracking-[-0.6px] text-ink"
             style={DISPLAY}
           >
             Send to a bank
           </Typography>
           <Typography
             weight="500"
-            className="mt-1.5 max-w-[200px] text-[13px] leading-[18px] text-black/55"
+            className="mt-1.5 max-w-[200px] text-[13px] leading-[18px] text-foreground/55"
           >
             Naira to any Nigerian account.
           </Typography>
@@ -246,16 +243,17 @@ export default function BankRecipientStep({
           </View>
         </View>
 
-        <View className="mt-5 rounded-[24px] border border-black/[0.08] bg-white px-5 py-4">
-          <Typography weight="500" className="text-[13px] text-black/55">
+        <View className="mt-5 rounded-[24px] border border-foreground/[0.08] bg-card px-5 py-4">
+          <Typography weight="500" className="text-[13px] text-foreground/55">
             Account number
           </Typography>
           <View className="mt-1 flex-row items-center">
             <BottomSheetTextInput
               ref={inputRef}
-              className="flex-1 py-1 font-inter-medium text-[22px] tabular-nums tracking-[1.5px] text-[#0E0F0C]"
+              className="flex-1 py-1 font-inter-medium text-[22px] tabular-nums tracking-[1.5px] text-ink"
               placeholder="0000000000"
-              placeholderTextColor="#00000040"
+              placeholderTextColor={palette.fg(0.25)}
+              keyboardAppearance={palette.dark ? "dark" : "light"}
               value={accountNumber}
               onChangeText={(text) =>
                 changeNumber(
@@ -277,7 +275,11 @@ export default function BankRecipientStep({
                   inputRef.current?.focus();
                 }}
               >
-                <Ionicons name="close-circle" size={20} color="#00000040" />
+                <Ionicons
+                  name="close-circle"
+                  size={20}
+                  color={palette.fg(0.25)}
+                />
               </HapticPressable>
             ) : (
               <PillButton
@@ -293,7 +295,10 @@ export default function BankRecipientStep({
           {isComplete ? (
             <>
               <DashedRule />
-              <Typography weight="500" className="text-[13px] text-black/55">
+              <Typography
+                weight="500"
+                className="text-[13px] text-foreground/55"
+              >
                 Bank
               </Typography>
               {bank ? (
@@ -307,7 +312,7 @@ export default function BankRecipientStep({
                   <Typography
                     weight="600"
                     numberOfLines={1}
-                    className="flex-1 text-[16px] text-[#0E0F0C]"
+                    className="flex-1 text-[16px] text-ink"
                   >
                     {bank.name}
                   </Typography>
@@ -317,10 +322,10 @@ export default function BankRecipientStep({
                 </HapticPressable>
               ) : candidatesQuery.isLoading ? (
                 <View className="mt-3 h-10 flex-row items-center gap-2">
-                  <ActivityIndicator size="small" color="#00000059" />
+                  <ActivityIndicator size="small" color={palette.fg(0.35)} />
                   <Typography
                     weight="500"
-                    className="text-[14px] text-black/55"
+                    className="text-[14px] text-foreground/55"
                   >
                     Finding the bank…
                   </Typography>
@@ -333,17 +338,14 @@ export default function BankRecipientStep({
                       accessibilityRole="button"
                       accessibilityLabel={suggested.name}
                       onPress={() => void lookUp(accountNumber, suggested)}
-                      className="h-11 flex-row items-center gap-2 rounded-full bg-black/[0.04] pl-1.5 pr-4"
+                      className="h-11 flex-row items-center gap-2 rounded-full bg-foreground/[0.04] pl-1.5 pr-4"
                     >
                       <BankLogo
                         name={suggested.name}
                         logoKey={suggested.logoKey}
                         size="sm"
                       />
-                      <Typography
-                        weight="600"
-                        className="text-[14px] text-[#0E0F0C]"
-                      >
+                      <Typography weight="600" className="text-[14px] text-ink">
                         {shortBankName(suggested.name)}
                       </Typography>
                     </HapticPressable>
@@ -354,15 +356,12 @@ export default function BankRecipientStep({
                     className={cn(
                       "h-11 flex-row items-center gap-2 rounded-full px-4",
                       suggestions.length
-                        ? "bg-black/[0.04]"
-                        : "flex-1 bg-black/[0.04]"
+                        ? "bg-foreground/[0.04]"
+                        : "flex-1 bg-foreground/[0.04]"
                     )}
                   >
-                    <Ionicons name="search" size={16} color="#0E0F0C" />
-                    <Typography
-                      weight="600"
-                      className="text-[14px] text-[#0E0F0C]"
-                    >
+                    <Ionicons name="search" size={16} color={palette.ink} />
+                    <Typography weight="600" className="text-[14px] text-ink">
                       {suggestions.length ? "Other bank" : "Choose bank"}
                     </Typography>
                   </HapticPressable>
@@ -374,15 +373,18 @@ export default function BankRecipientStep({
           {bank ? (
             <>
               <DashedRule />
-              <Typography weight="500" className="text-[13px] text-black/55">
+              <Typography
+                weight="500"
+                className="text-[13px] text-foreground/55"
+              >
                 Account name
               </Typography>
               {check.state === "checking" ? (
                 <View className="mt-2 h-7 flex-row items-center gap-2">
-                  <ActivityIndicator size="small" color="#00000059" />
+                  <ActivityIndicator size="small" color={palette.fg(0.35)} />
                   <Typography
                     weight="500"
-                    className="text-[14px] text-black/55"
+                    className="text-[14px] text-foreground/55"
                   >
                     {`Checking with ${shortBankName(bank.name)}…`}
                   </Typography>
@@ -392,11 +394,15 @@ export default function BankRecipientStep({
                   <Typography
                     weight="700"
                     numberOfLines={1}
-                    className="shrink text-[18px] leading-[26px] text-[#0E0F0C]"
+                    className="shrink text-[18px] leading-[26px] text-ink"
                   >
                     {found.accountName}
                   </Typography>
-                  <Ionicons name="checkmark-circle" size={18} color="#16A34A" />
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={18}
+                    color={palette.dark ? palette.success : "#16A34A"}
+                  />
                 </View>
               ) : check.state === "failed" ? (
                 <Typography
@@ -412,10 +418,7 @@ export default function BankRecipientStep({
 
         {recentAccounts.length > 0 ? (
           <View className="mt-8">
-            <Typography
-              weight="600"
-              className="mb-2 text-[15px] text-[#0E0F0C]"
-            >
+            <Typography weight="600" className="mb-2 text-[15px] text-ink">
               Recent accounts
             </Typography>
             {recentAccounts.map((account) => {
@@ -439,13 +442,13 @@ export default function BankRecipientStep({
                     <Typography
                       weight="600"
                       numberOfLines={1}
-                      className="text-[15px] text-[#0E0F0C]"
+                      className="text-[15px] text-ink"
                     >
                       {known?.name ?? grouped}
                     </Typography>
                     <Typography
                       weight="500"
-                      className="text-[13px] tabular-nums text-black/55"
+                      className="text-[13px] tabular-nums text-foreground/55"
                     >
                       {known ? grouped : sendCount}
                     </Typography>
@@ -453,7 +456,7 @@ export default function BankRecipientStep({
                   <Ionicons
                     name="chevron-forward"
                     size={16}
-                    color="#00000066"
+                    color={palette.fg(0.4)}
                   />
                 </HapticPressable>
               );

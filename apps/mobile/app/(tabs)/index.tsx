@@ -10,6 +10,7 @@ import { SendModal } from "@/components/ui/organisms/modals/SendModal";
 import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { useFeature } from "@/hooks/useFeature";
+import { usePalette } from "@/hooks/usePalette";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { BalanceChart } from "@/components/ui/organisms/BalanceChart";
 import { useBalanceDelta, useBalanceHistory } from "@/hooks/useBalanceHistory";
@@ -42,7 +43,7 @@ import { cn } from "@/utils/cn";
 import {
   OnPhotoProvider,
   PhotoBackdrop,
-  surfaceFor,
+  useSurfaceFor,
   useOnPhoto,
   useSurface,
 } from "@/components/ui/glass";
@@ -86,7 +87,8 @@ const CARD_ACTION_ROUTES = {
 function HomeScreenContent() {
   const colorful = useColorfulTheme();
   // This component creates the photo context, so it reads the theme directly.
-  const S = surfaceFor(colorful);
+  const S = useSurfaceFor(colorful);
+  const palette = usePalette();
   const router = useRouter();
   const swapEnabled = useFeature("swap");
   const { size } = useResponsiveLayout();
@@ -218,11 +220,25 @@ function HomeScreenContent() {
                     >
                       ——
                     </Typography>
-                    <View className="flex-row items-center gap-1 rounded-full bg-black/5 px-2.5 py-1">
-                      <Ionicons name="refresh" size={14} color="#999" />
+                    <View
+                      className={cn(
+                        "flex-row items-center gap-1 rounded-full px-2.5 py-1",
+                        colorful ? "bg-black/5" : "bg-foreground/5"
+                      )}
+                    >
+                      <Ionicons
+                        name="refresh"
+                        size={14}
+                        color={
+                          !colorful && palette.dark ? palette.fg(0.4) : "#999"
+                        }
+                      />
                       <Typography
                         weight="500"
-                        className="text-sm text-black/40"
+                        className={cn(
+                          "text-sm",
+                          colorful ? "text-black/40" : "text-foreground/40"
+                        )}
                       >
                         Couldn&apos;t load balance. Tap to retry
                       </Typography>
@@ -439,6 +455,7 @@ function ActionButton({
 }) {
   const S = useSurface();
   const onPhoto = useOnPhoto();
+  const palette = usePalette();
   return (
     <GlassButton
       radius={999}
@@ -446,7 +463,15 @@ function ActionButton({
       onPress={onPress}
       // Add money keeps its weight as tinted glass, the fill it had before;
       // Send and Swap are clear glass.
-      tintColor={primary ? (onPhoto ? "#FFFFFF" : "#0A0A0A") : undefined}
+      tintColor={
+        primary
+          ? onPhoto
+            ? "#FFFFFF"
+            : palette.dark
+              ? palette.primary
+              : "#0A0A0A"
+          : undefined
+      }
       className="flex-1 items-center rounded-full py-3"
       fallbackClassName={primary ? S.primaryButton : S.secondaryButton}
       // PLATFORM-SHADOW

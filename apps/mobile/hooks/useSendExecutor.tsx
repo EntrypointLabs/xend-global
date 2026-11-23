@@ -61,7 +61,7 @@ const NOT_READY = "Your Account is not ready yet. Try again in a moment.";
 function toastSending() {
   showToast(
     "Sending",
-    <ActivityIndicator size="small" className="text-black" />,
+    <ActivityIndicator size="small" className="text-foreground" />,
     { id: SEND_TOAST_ID, durationMs: SENDING_TOAST_MS }
   );
 }

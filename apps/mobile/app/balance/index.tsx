@@ -13,6 +13,7 @@ import { BalanceBuckets } from "@/components/ui/organisms/home/BalanceBuckets";
 import { useBalanceBuckets } from "@/hooks/useBalanceBuckets";
 import { useBalances } from "@/hooks/useBalances";
 import { useEarnPosition } from "@/hooks/useEarn";
+import { usePalette } from "@/hooks/usePalette";
 import { formatMoney } from "@/utils/balances";
 
 /** What the total balance is made of, and the way into each part. */
@@ -21,6 +22,7 @@ export default function BalanceScreen() {
   const { portfolio, isError, refetch } = useBalances();
   const { balance: earnBalance } = useEarnPosition();
   const buckets = useBalanceBuckets();
+  const palette = usePalette();
   const total = portfolio.cashUsd + portfolio.investmentsUsd + earnBalance;
 
   return (
@@ -35,9 +37,9 @@ export default function BalanceScreen() {
           <Typography weight="700" variant="h2">
             ——
           </Typography>
-          <View className="flex-row items-center gap-1 rounded-full bg-black/5 px-2.5 py-1">
-            <Ionicons name="refresh" size={14} color="#999" />
-            <Typography weight="500" className="text-sm text-black/40">
+          <View className="flex-row items-center gap-1 rounded-full bg-foreground/5 px-2.5 py-1">
+            <Ionicons name="refresh" size={14} color={palette.fg(0.4)} />
+            <Typography weight="500" className="text-sm text-foreground/40">
               Couldn&apos;t load. Tap to retry
             </Typography>
           </View>
@@ -58,7 +60,7 @@ export default function BalanceScreen() {
           onPress={() => router.back()}
           className="h-14 w-14 items-center justify-center rounded-full"
         >
-          <Ionicons name="chevron-back" size={22} color="#000" />
+          <Ionicons name="chevron-back" size={22} color={palette.foreground} />
         </GlassButton>
       </View>
     </ScreenLayout>

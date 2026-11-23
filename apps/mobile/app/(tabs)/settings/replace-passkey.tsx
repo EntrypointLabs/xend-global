@@ -11,6 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { useReplacePasskey } from "@/hooks/useReplacePasskey";
 import { apiClient, apiErrorCode, apiErrorStatus } from "@/utils/apiClient";
+import { usePalette } from "@/hooks/usePalette";
 
 type Stage = "explain" | "code" | "working" | "waiting";
 
@@ -25,6 +26,7 @@ type Stage = "explain" | "code" | "working" | "waiting";
  * runs out.
  */
 export default function ReplacePasskeyScreen() {
+  const palette = usePalette();
   const { email } = useAuth();
   const passkey = usePasskeyLogin();
   const replacement = useReplacePasskey();
@@ -89,15 +91,19 @@ export default function ReplacePasskeyScreen() {
     return (
       <ScreenLayout>
         <View className="flex-1 items-center justify-center px-3">
-          <View className="size-16 items-center justify-center rounded-3xl bg-black">
-            <Ionicons name="time-outline" size={30} color="#FFFFFF" />
+          <View className="size-16 items-center justify-center rounded-3xl bg-primary">
+            <Ionicons
+              name="time-outline"
+              size={30}
+              color={palette.primaryForeground}
+            />
           </View>
-          <Typography weight="700" className="mt-6 text-3xl text-black">
+          <Typography weight="700" className="mt-6 text-3xl text-foreground">
             Replacing your passkey
           </Typography>
           <Typography
             weight="500"
-            className="mt-3 text-center text-base leading-6 text-black/40"
+            className="mt-3 text-center text-base leading-6 text-foreground/40"
           >
             {activeAt
               ? `It takes over on ${when(activeAt)}. After that, sign in with the passkey you just created.`
@@ -105,16 +111,19 @@ export default function ReplacePasskeyScreen() {
           </Typography>
           <Typography
             weight="400"
-            className="mt-6 text-center text-sm leading-5 text-black/40"
+            className="mt-6 text-center text-sm leading-5 text-foreground/40"
           >
             Until then nothing changes, and this phone can cancel it if it was
             not you.
           </Typography>
           <HapticPressable
             onPress={() => router.dismissAll()}
-            className="mt-10 h-14 w-full items-center justify-center rounded-full bg-black"
+            className="mt-10 h-14 w-full items-center justify-center rounded-full bg-primary"
           >
-            <Typography weight="700" className="text-[15px] text-white">
+            <Typography
+              weight="700"
+              className="text-[15px] text-primary-foreground"
+            >
               Done
             </Typography>
           </HapticPressable>
@@ -131,30 +140,33 @@ export default function ReplacePasskeyScreen() {
             stage === "code" ? setStage("explain") : router.back()
           }
           disabled={stage === "working"}
-          className="size-10 items-center justify-center rounded-full bg-black/[0.08]"
+          className="size-10 items-center justify-center rounded-full bg-foreground/[0.08]"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="chevron-back" size={20} color="#00000066" />
+          <Ionicons name="chevron-back" size={20} color={palette.fg(0.4)} />
         </HapticPressable>
 
         <Typography
           weight="700"
-          className="mt-10 text-5xl leading-[44px] text-black"
+          className="mt-10 text-5xl leading-[44px] text-foreground"
         >
           {stage === "code" ? "Confirm email" : "Replace\nyour passkey"}
         </Typography>
 
         {stage === "code" ? (
           <>
-            <Typography weight="500" className="mt-8 text-lg text-black/40">
+            <Typography
+              weight="500"
+              className="mt-8 text-lg text-foreground/40"
+            >
               The code has been sent to
             </Typography>
-            <Typography weight="600" className="mt-3 text-2xl text-black">
+            <Typography weight="600" className="mt-3 text-2xl text-foreground">
               {email}
             </Typography>
             <Typography
               weight="500"
-              className="mt-8 text-lg leading-7 text-black/40"
+              className="mt-8 text-lg leading-7 text-foreground/40"
             >
               Please check your inbox and{"\n"}paste the code from the email
               below
@@ -172,13 +184,13 @@ export default function ReplacePasskeyScreen() {
           <>
             <Typography
               weight="500"
-              className="mt-6 text-lg leading-7 text-black"
+              className="mt-6 text-lg leading-7 text-foreground"
             >
               If the passkey that signs you in is gone, this phone can put a new
               one on your account.
             </Typography>
 
-            <View className="mt-8 gap-5 rounded-3xl bg-black/[0.03] p-5">
+            <View className="mt-8 gap-5 rounded-3xl bg-foreground/[0.03] p-5">
               <Step
                 icon="mail-outline"
                 title="We email you a code"
@@ -200,8 +212,11 @@ export default function ReplacePasskeyScreen() {
 
         {stage === "working" && (
           <View className="mt-8 items-center">
-            <ActivityIndicator color="#000" />
-            <Typography weight="500" className="mt-3 text-sm text-black/40">
+            <ActivityIndicator color={palette.foreground} />
+            <Typography
+              weight="500"
+              className="mt-3 text-sm text-foreground/40"
+            >
               Approving on this phone
             </Typography>
           </View>
@@ -218,9 +233,12 @@ export default function ReplacePasskeyScreen() {
         {stage === "explain" && (
           <HapticPressable
             onPress={sendCode}
-            className="mb-4 h-14 w-full items-center justify-center rounded-full bg-black"
+            className="mb-4 h-14 w-full items-center justify-center rounded-full bg-primary"
           >
-            <Typography weight="700" className="text-[15px] text-white">
+            <Typography
+              weight="700"
+              className="text-[15px] text-primary-foreground"
+            >
               Send me a code
             </Typography>
           </HapticPressable>
@@ -239,18 +257,19 @@ function Step({
   title: string;
   body: string;
 }) {
+  const palette = usePalette();
   return (
     <View className="flex-row gap-4">
-      <View className="size-10 items-center justify-center rounded-2xl bg-black/[0.06]">
-        <Ionicons name={icon} size={18} color="#000000" />
+      <View className="size-10 items-center justify-center rounded-2xl bg-foreground/[0.06]">
+        <Ionicons name={icon} size={18} color={palette.foreground} />
       </View>
       <View className="flex-1">
-        <Typography weight="600" className="text-base text-black">
+        <Typography weight="600" className="text-base text-foreground">
           {title}
         </Typography>
         <Typography
           weight="500"
-          className="mt-0.5 text-sm leading-5 text-black/40"
+          className="mt-0.5 text-sm leading-5 text-foreground/40"
         >
           {body}
         </Typography>

@@ -19,10 +19,10 @@ export function ScreenLayout({
 }: ScreenLayoutProps) {
   return (
     <SafeAreaView
-      // bg-white default so the safe-area insets (and, under edge-to-edge, the
+      // Painted here too so the safe-area insets (and, under edge-to-edge, the
       // status/nav bar areas behind them) match the screen instead of showing
-      // the gray window background. A caller-provided lightColor still overrides.
-      className="flex-1 bg-white"
+      // the window background. A caller-provided lightColor still overrides.
+      className="flex-1 bg-background"
       // DYNAMIC-COLOR (caller-provided light theme bg)
       style={lightColor ? { backgroundColor: lightColor } : undefined}
     >
