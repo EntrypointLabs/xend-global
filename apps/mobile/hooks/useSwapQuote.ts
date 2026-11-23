@@ -57,7 +57,19 @@ export function useSwapQuote({
     retry: 1,
   });
 
-  const quote = query.data ?? null;
+  // A price belongs to the amount and pair it was asked for. While a newly
+  // typed amount is still settling, or a new price is on its way, the one
+  // held is for a swap no longer on screen, and confirming it would swap the
+  // old amount under the new figure.
+  const current =
+    query.data &&
+    amountRaw === debouncedAmount &&
+    query.data.amountInRaw === amountRaw &&
+    query.data.inputMint === inputMint &&
+    query.data.outputMint === outputMint;
+  const quote = current ? query.data : null;
+  const settling =
+    enabled && amountRaw !== debouncedAmount && amountRaw !== "0";
   // Ticked from an effect rather than read during render: calling Date.now()
   // while rendering makes the result depend on when React happens to re-run.
   const now = useTicker(!!quote);
@@ -67,8 +79,11 @@ export function useSwapQuote({
     quote: stale ? null : quote,
     // A refresh behind a price still on screen is not loading: saying so
     // would blank a good number every few seconds.
-    isLoading: active && (stale || (query.isFetching && !quote)),
-    error: active && query.error ? describeQuoteError(query.error) : null,
+    isLoading: settling || (active && (stale || (query.isFetching && !quote))),
+    error:
+      active && !settling && query.error
+        ? describeQuoteError(query.error)
+        : null,
   };
 }
 
