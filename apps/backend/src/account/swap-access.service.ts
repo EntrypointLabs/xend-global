@@ -118,9 +118,13 @@ export class SwapAccessService {
       await this.releaseIfAbandoned(userId, index);
       return { state: 'off' };
     }
-    // Settled without turning Swap on: rejected, or overtaken. `next` clears
-    // it; until then it is simply off.
-    if (proposal.settled) return { state: 'off' };
+    // Settled without turning Swap on: rejected, or overtaken. Cleared here
+    // because nothing else will be: the app only walks a change that is
+    // pending, and a rejection is made from another screen.
+    if (proposal.settled) {
+      await this.reconcile(userId);
+      return { state: 'off' };
+    }
     // Nothing is counting down until both keys have approved, so the
     // Consumer still has something to confirm and `start` takes it up again.
     const executableAt = this.executableAt(account, proposal);

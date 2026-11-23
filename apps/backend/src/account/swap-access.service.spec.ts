@@ -182,6 +182,16 @@ describe('SwapAccessService', () => {
       expect(recorded).toEqual(['executed']);
     });
 
+    it('clears a change the Consumer rejected from another screen', async () => {
+      const { service, state, recorded } = setUp({
+        row: { pendingSwapAccessChangeIndex: '8' },
+        proposalAt: proposal({ settled: true, status: 'Rejected' }),
+      });
+      await expect(service.status(USER)).resolves.toEqual({ state: 'off' });
+      expect(state.account.pendingSwapAccessChangeIndex).toBeNull();
+      expect(recorded).toEqual(['rejected']);
+    });
+
     it('is off, and can be started again, when nothing was confirmed', async () => {
       const { service, state } = setUp();
       const first = await service.start(USER);
