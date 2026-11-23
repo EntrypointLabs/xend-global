@@ -17,9 +17,11 @@ import {
   buildUpdateAboveLimitAllowlist,
   deriveAccountAddresses,
   derivePolicyAddress,
+  describeTransaction,
   JUPITER_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   WRAPPED_SOL_MINT,
+  type StagedSettingsChange,
 } from "@prydd/smart-account";
 
 import {
@@ -214,6 +216,21 @@ describe("checkSwapAccess", () => {
       ...approvals(),
     ]);
 
+  /** A change as this phone would read it back off the chain. */
+  const stagedChange = (proposed = staged()): StagedSettingsChange => {
+    const change = describeTransaction(proposed, { addresses });
+    const vote = describeTransaction(compile(approvals()), { addresses });
+    if (change.kind !== "settings" || vote.kind !== "vote") {
+      throw new Error("the fixture is not a settings change");
+    }
+    return {
+      settings: change.settings,
+      proposal: vote.proposal,
+      transactionIndex: change.transactionIndex,
+      actions: change.actions,
+    };
+  };
+
   it("accepts the one rewrite Swap needs, approved by both keys", () => {
     expect(checkSwapAccess(staged(), account)).toBeNull();
   });
@@ -228,7 +245,36 @@ describe("checkSwapAccess", () => {
         policies: [policy],
       }),
     ]);
-    expect(checkSwapAccess(execute, account)).toBeNull();
+    expect(checkSwapAccess(execute, account, stagedChange())).toBeNull();
+  });
+
+  it("refuses an approval of some other change waiting on the Account", () => {
+    const rotationWaiting = stagedChange(
+      compile(
+        buildRotateApprovalSigner({
+          ...common,
+          primary,
+          oldApproval: approval,
+          newApproval: key(),
+        }).propose
+      )
+    );
+    expect(
+      checkSwapAccess(compile(approvals()), account, rotationWaiting)
+    ).toBe("it changes more than the spending rule Swap needs");
+  });
+
+  it("refuses an approval of a change it could not read", () => {
+    expect(checkSwapAccess(compile(approvals()), account)).toBe(
+      "the change it approves could not be read"
+    );
+  });
+
+  it("refuses a change read for a different proposal than the one voted on", () => {
+    const other = { ...stagedChange(), proposal: key() };
+    expect(checkSwapAccess(compile(approvals()), account, other)).toBe(
+      "the change it approves could not be read"
+    );
   });
 
   it("refuses a rule that admits a program this app does not know", () => {

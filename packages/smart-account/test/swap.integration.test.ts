@@ -20,6 +20,7 @@ import {
   TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
+  type Connection,
 } from "@solana/web3.js";
 import { accounts } from "@sqds/smart-account";
 import { LiteSVM } from "litesvm";
@@ -37,7 +38,9 @@ import {
   buildUpdateAboveLimitAllowlist,
   decodeAllowedPrograms,
   derivePolicyAddress,
+  deriveProposalAddress,
   describeTransaction,
+  fetchStagedSettingsChange,
   JUPITER_PROGRAM_ID,
   minimumAmountOut,
   SETTINGS_TIME_LOCK_SECONDS,
@@ -549,6 +552,51 @@ describe.skipIf(!HAVE_FIXTURES)(
       clock.unixTimestamp += BigInt(SETTINGS_TIME_LOCK_SECONDS + 1);
       h.svm.setClock(clock);
     }
+
+    it("can be read back off the chain as the change an approval stands for", async () => {
+      const h = setUp(USDC_TO_SOL, BEFORE_JUPITER);
+      expect(failed(stageUpdate(h))).toBe(false);
+
+      const connection = {
+        getAccountInfo: (address: PublicKey) => {
+          const account = h.svm.getAccount(address);
+          return Promise.resolve(
+            account && {
+              ...account,
+              data: Buffer.from(account.data),
+              owner: new PublicKey(account.owner),
+            },
+          );
+        },
+      } as unknown as Connection;
+      const proposal = deriveProposalAddress(h.addresses.settings, 2n);
+
+      const staged = await fetchStagedSettingsChange(
+        connection,
+        h.addresses.settings,
+        proposal,
+      );
+      expect(staged?.transactionIndex).toBe(2n);
+      expect(staged?.actions).toHaveLength(1);
+      const [action] = staged?.actions ?? [];
+      expect(action?.kind).toBe("policy-update");
+      if (action?.kind !== "policy-update") return;
+      expect(action.terms).toMatchObject({
+        kind: "program-interaction",
+        threshold: 2,
+        timeLock: 0,
+      });
+
+      // A proposal address that does not belong to this Account reads as
+      // nothing, whatever account happens to sit there.
+      await expect(
+        fetchStagedSettingsChange(
+          connection,
+          h.addresses.settings,
+          h.abovePolicy,
+        ),
+      ).resolves.toBeNull();
+    });
 
     it("cannot swap, because its policy has no constraint for Jupiter", () => {
       const h = setUp(USDC_TO_SOL, BEFORE_JUPITER);

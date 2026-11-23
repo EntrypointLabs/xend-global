@@ -2,6 +2,7 @@ import {
   ABOVE_LIMIT_PROGRAM_ALLOWLIST,
   describeTransaction,
   type SettingsChangeAction,
+  type StagedSettingsChange,
   type TransactionDescription,
 } from "@prydd/smart-account";
 import { type AddressLookupTableAccount, PublicKey } from "@solana/web3.js";
@@ -225,7 +226,8 @@ export interface ExpectedSwapAccess {
  */
 export function checkSwapAccess(
   base64: string,
-  expected: ExpectedSwapAccess
+  expected: ExpectedSwapAccess,
+  staged: StagedSettingsChange | null = null
 ): string | null {
   let description: TransactionDescription;
   try {
@@ -235,16 +237,26 @@ export function checkSwapAccess(
   }
 
   const keys = [expected.primary, expected.approval];
-  // The steps after staging carry an approval or the execute and no actions.
+  // The steps after staging carry an approval or the execute and no actions,
+  // so what they act on is not in the message. It is held to the same rewrite
+  // as read from the chain: any other change waiting on this Account could
+  // otherwise be passed off as the next step of turning Swap on.
   if (description.kind === "vote") {
     if (description.vault.toBase58() !== expected.vault) {
       return "it approves a change on another account";
     }
-    return description.votes.every(
-      (vote) => vote.kind !== "reject" && keys.includes(vote.signer.toBase58())
-    )
-      ? null
-      : "it carries a vote that is not this account's";
+    if (
+      !description.votes.every(
+        (vote) =>
+          vote.kind !== "reject" && keys.includes(vote.signer.toBase58())
+      )
+    ) {
+      return "it carries a vote that is not this account's";
+    }
+    if (!staged || !staged.proposal.equals(description.proposal)) {
+      return "the change it approves could not be read";
+    }
+    return swapRewriteMismatch(staged.actions, keys);
   }
   if (description.kind !== "settings") {
     return description.kind === "unknown"
@@ -261,8 +273,33 @@ export function checkSwapAccess(
   ) {
     return "it carries a vote that is not this account's";
   }
+  return swapRewriteMismatch(description.actions, keys);
+}
 
-  const [action, ...others] = description.actions;
+/**
+ * The proposal a transaction votes on or executes without saying what it
+ * does, or null when the transaction carries its own actions.
+ */
+export function proposalVotedOn(
+  base64: string,
+  vault: string
+): { settings: PublicKey; proposal: PublicKey } | null {
+  try {
+    const description = describe(base64, vault);
+    return description.kind === "vote"
+      ? { settings: description.settings, proposal: description.proposal }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Why `actions` are not the one rewrite Swap needs, or null when they are. */
+function swapRewriteMismatch(
+  actions: readonly SettingsChangeAction[],
+  keys: readonly string[]
+): string | null {
+  const [action, ...others] = actions;
   if (!action || others.length > 0 || action.kind !== "policy-update") {
     return "it changes more than the spending rule Swap needs";
   }

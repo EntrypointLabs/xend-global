@@ -1,5 +1,6 @@
 import { useEmbeddedSolanaWallet } from "@privy-io/expo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchStagedSettingsChange } from "@prydd/smart-account";
 import { VersionedTransaction } from "@solana/web3.js";
 import { fromByteArray, toByteArray } from "base64-js";
 import { Buffer } from "buffer";
@@ -15,8 +16,10 @@ import {
   type AccountResponse,
   type SwapAccessStep,
 } from "@/utils/apiClient";
+import { getSolanaConnection } from "@/utils/chainReads";
 import {
   checkSwapAccess,
+  proposalVotedOn,
   TransactionMismatchError,
 } from "@/utils/verifyTransaction";
 
@@ -83,11 +86,26 @@ async function runSwapAccess(
       throw new Error(`Turning Swap on stalled at ${plan.step}`);
     }
 
-    const mismatch = checkSwapAccess(plan.unsignedTxBase64, {
-      vault: account.address,
-      primary: account.signers.primary,
-      approval: account.signers.approval,
-    });
+    // An approval or the execute does not say what it acts on, so the
+    // change is read from this phone's own RPC: the backend is the party
+    // being checked and cannot also be the one describing it.
+    const voted = proposalVotedOn(plan.unsignedTxBase64, account.address);
+    const staged = voted
+      ? await fetchStagedSettingsChange(
+          getSolanaConnection(),
+          voted.settings,
+          voted.proposal
+        )
+      : null;
+    const mismatch = checkSwapAccess(
+      plan.unsignedTxBase64,
+      {
+        vault: account.address,
+        primary: account.signers.primary,
+        approval: account.signers.approval,
+      },
+      staged
+    );
     if (mismatch) throw new TransactionMismatchError(mismatch);
 
     let tx = VersionedTransaction.deserialize(

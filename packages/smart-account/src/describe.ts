@@ -4,8 +4,11 @@ import {
   MessageV0,
   PublicKey,
   VersionedTransaction,
+  type AccountInfo,
+  type Connection,
 } from "@solana/web3.js";
 import {
+  accounts as squadsAccounts,
   generated,
   getPolicyPda,
   getProposalPda,
@@ -1101,6 +1104,68 @@ function assertOwned(
     return unknown("Settings account does not belong to this Account");
   }
   return null;
+}
+
+/** A settings change as the chain holds it while it waits to be executed. */
+export interface StagedSettingsChange {
+  settings: PublicKey;
+  proposal: PublicKey;
+  transactionIndex: bigint;
+  actions: SettingsChangeAction[];
+}
+
+/**
+ * Reads the change a proposal stands for, or null when there is none to read.
+ *
+ * An approval or an execute names a proposal and nothing about what it does,
+ * so a signer shown only that instruction is approving blind. This is what
+ * lets it look. Both accounts are found by address derivation from the
+ * Account's own settings, so what comes back is what the program will act on
+ * and not something another party could put in its place.
+ */
+export async function fetchStagedSettingsChange(
+  connection: Connection,
+  settings: PublicKey,
+  proposal: PublicKey,
+): Promise<StagedSettingsChange | null> {
+  const proposalInfo = await connection.getAccountInfo(proposal);
+  if (!isSquadsAccount(proposalInfo, squadsAccounts.proposalDiscriminator)) {
+    return null;
+  }
+  const [held] = squadsAccounts.Proposal.fromAccountInfo(proposalInfo);
+  const transactionIndex = toBigInt(held.transactionIndex);
+  const derived = getProposalPda({
+    settingsPda: settings,
+    transactionIndex,
+  })[0];
+  if (!derived.equals(proposal)) return null;
+
+  const [transaction] = getTransactionPda({
+    settingsPda: settings,
+    transactionIndex,
+  });
+  const info = await connection.getAccountInfo(transaction);
+  if (!isSquadsAccount(info, squadsAccounts.settingsTransactionDiscriminator)) {
+    return null;
+  }
+  const [change] = squadsAccounts.SettingsTransaction.fromAccountInfo(info);
+  return {
+    settings,
+    proposal,
+    transactionIndex,
+    actions: change.actions.map((action) => describeAction(action, settings)),
+  };
+}
+
+function isSquadsAccount(
+  info: AccountInfo<Buffer> | null,
+  discriminator: readonly number[],
+): info is AccountInfo<Buffer> {
+  return (
+    info !== null &&
+    info.owner.equals(PROGRAM_ID) &&
+    discriminator.every((byte, i) => info.data[i] === byte)
+  );
 }
 
 function describeAction(
