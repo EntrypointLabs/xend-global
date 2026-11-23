@@ -34,9 +34,11 @@ export function toUsdcRaw(amount: string): bigint | null {
  * as a bug; warning of a possibility that does not arrive does not.
  */
 export const SECOND_CHECK_NOTE: Record<SecondCheckReason, string> = {
-  "above-daily-limit": "Above your daily limit. You will confirm this twice.",
-  "above-remaining": "Close to your daily limit. You may confirm this twice.",
-  "no-limit": "You will confirm this twice.",
+  "above-daily-limit":
+    "Above your Quick pay amount. You will confirm it is you twice.",
+  "above-remaining":
+    "Close to your Quick pay amount for today. You may confirm it is you twice.",
+  "no-limit": "Quick pay is off. You will confirm it is you twice.",
 };
 
 /** Why this send will be confirmed twice instead of once. */
@@ -124,15 +126,24 @@ export const MAX_LIMIT_RAW = 2n ** 64n - 1n;
  * An integer at USDC's decimals as money: "100000000" reads "$100".
  *
  * Cents only when there are any. The limits a Consumer sets are round numbers,
- * and "$100.00 a day" reads like a figure somebody calculated for them.
+ * and "$100.00 a day" reads like a figure somebody calculated for them. When
+ * there are cents there are always two: "$742.50", not "$742.5".
+ *
+ * Grouped by hand because Hermes ignores the locale on a BigInt and prints
+ * "$1000".
  */
 export function formatUsdcRaw(raw: string): string {
   const unit = 10n ** BigInt(USDC_DECIMALS);
   const value = BigInt(raw);
-  const whole = (value / unit).toLocaleString("en-US");
+  const whole = groupThousands((value / unit).toString());
   const fraction = (value % unit)
     .toString()
     .padStart(USDC_DECIMALS, "0")
     .replace(/0+$/, "");
-  return fraction ? `$${whole}.${fraction}` : `$${whole}`;
+  return fraction ? `$${whole}.${fraction.padEnd(2, "0")}` : `$${whole}`;
+}
+
+/** "1234567" reads "1,234,567". */
+export function groupThousands(digits: string): string {
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }

@@ -55,7 +55,7 @@ const EXPLAINERS: Record<
       {
         icon: "flash-outline",
         heading: "Active Key",
-        body: "Approves payments above your spending limit.",
+        body: "Approves payments above your Quick pay amount.",
       },
       {
         icon: "hardware-chip-outline",

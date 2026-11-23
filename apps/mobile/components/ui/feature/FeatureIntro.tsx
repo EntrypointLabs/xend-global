@@ -41,7 +41,7 @@ export function ComingSoonButton() {
  * label the Consumer came to read, such as a time: it is set darker than the
  * placeholder, which only has to be recognised.
  */
-function WaitingPill({
+export function WaitingPill({
   label,
   informative = false,
 }: {

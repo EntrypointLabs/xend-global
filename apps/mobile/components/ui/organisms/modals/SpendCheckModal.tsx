@@ -291,8 +291,8 @@ function stepsFor(
     ? [
         {
           key: "reason",
-          title: "Above your daily limit",
-          body: "Your Account approves larger amounts as well as you.",
+          title: "Above your Quick pay amount",
+          body: "Bigger payments need one more check that it is you.",
         },
         ...checks,
       ]

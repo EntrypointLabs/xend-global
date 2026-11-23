@@ -88,7 +88,7 @@ export default function SettingsScreen() {
           onPress: () => router.push("/settings/keys-and-recovery" as never),
         },
         {
-          label: "Spending Limits",
+          label: "Quick pay",
           icon: require("@/assets/icons/spending-limt.png"),
           onPress: () => router.push("/settings/spending-limits" as never),
         },
