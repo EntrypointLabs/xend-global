@@ -27,13 +27,13 @@ export function LimitHero() {
         className="text-[34px] uppercase leading-[34px] tracking-[-1px] text-ink"
         style={DISPLAY}
       >
-        Spending{"\n"}limit
+        Quick pay
       </Typography>
       <Typography
         weight="500"
         className="mt-2 max-w-[200px] text-[14px] leading-[20px] text-foreground/55"
       >
-        Spend up to it with one confirmation. Above it, you confirm twice.
+        Pay up to this amount with one check. Bigger payments ask again.
       </Typography>
       <View className="absolute -bottom-3 -right-3">
         <Illustration name="limit" size={140} />
@@ -53,19 +53,19 @@ export function OnItsWay({
   waitingUntil,
   onDone,
 }: {
-  /** The new limit as the Consumer reads it, such as "$2,500 a day". */
+  /** The new amount as the Consumer reads it, such as "$2,500 a day". */
   amount: string | null;
   removed: boolean;
   waitingUntil: string | null;
   onDone: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const lands = waitingUntil ? when(waitingUntil) : "in one day";
+  const lands = waitingUntil ? `on ${when(waitingUntil)}` : "in 24 hours";
   const headline = removed
-    ? `Your limit comes off ${lands}.`
+    ? `Quick pay switches off ${lands}.`
     : amount
-      ? `Your new limit of ${amount} starts ${lands}.`
-      : `Your new limit starts ${lands}.`;
+      ? `Quick pay changes to ${amount} ${lands}.`
+      : `Your new Quick pay amount starts ${lands}.`;
   return (
     <View
       className="flex-1 bg-background px-5"
@@ -91,8 +91,8 @@ export function OnItsWay({
             weight="500"
             className="mt-3 max-w-[300px] text-center text-[15px] leading-[21px] text-foreground/60"
           >
-            {headline} Until then nothing changes, and this phone can cancel it
-            if it was not you.
+            {headline} Nothing changes until then, and if it was not you, you
+            can stop it from this phone.
           </Typography>
         </Rise>
       </View>
@@ -151,7 +151,7 @@ export function useWaitingChange(): {
       reading,
       waiting: {
         title: "A change is on its way",
-        body: "You can set a new limit once it lands.",
+        body: "You can change your amount again once it starts.",
         footer: "Waiting on a change",
       },
     };
@@ -160,8 +160,8 @@ export function useWaitingChange(): {
     return {
       reading,
       waiting: {
-        title: "Something is changing on your Account",
-        body: "Review that first, then come back.",
+        title: "Something on your Account is changing",
+        body: "Check that first, then come back.",
         footer: "Waiting on another change",
       },
     };
@@ -171,13 +171,13 @@ export function useWaitingChange(): {
     waiting: pending.executableAt
       ? {
           title: "A change is on its way",
-          body: "You started it on this phone. You can set a new limit once it lands.",
-          footer: `Lands ${when(pending.executableAt)}`,
+          body: "You made it on this phone. You can change your amount again once it starts.",
+          footer: `Starts ${when(pending.executableAt)}`,
         }
       : {
           title: "A change is on its way",
-          body: "You started it on this phone. It is waiting out its one day delay.",
-          footer: "Lands in one day",
+          body: "You made it on this phone. It starts within 24 hours.",
+          footer: "Starts within 24 hours",
         },
   };
 }

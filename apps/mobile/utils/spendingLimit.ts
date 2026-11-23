@@ -34,9 +34,11 @@ export function toUsdcRaw(amount: string): bigint | null {
  * as a bug; warning of a possibility that does not arrive does not.
  */
 export const SECOND_CHECK_NOTE: Record<SecondCheckReason, string> = {
-  "above-daily-limit": "Above your daily limit. You will confirm this twice.",
-  "above-remaining": "Close to your daily limit. You may confirm this twice.",
-  "no-limit": "You will confirm this twice.",
+  "above-daily-limit":
+    "Above your Quick pay amount. You will confirm it is you twice.",
+  "above-remaining":
+    "Close to your Quick pay amount for today. You may confirm it is you twice.",
+  "no-limit": "Quick pay is off. You will confirm it is you twice.",
 };
 
 /** Why this send will be confirmed twice instead of once. */

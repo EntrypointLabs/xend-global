@@ -45,7 +45,7 @@ export default function SpendingLimitsScreen() {
   if (!isLoading && !account) {
     return (
       <ErrorState
-        message="We could not load your limit. Check your connection and try again."
+        message="We could not load Quick pay. Check your connection and try again."
         onRetry={() => void refetch()}
         onClose={toSettings}
       />
@@ -63,7 +63,7 @@ export default function SpendingLimitsScreen() {
     <WaitingPill label={waiting.footer} informative />
   ) : (
     <PillButton
-      title={limit ? "Change limit" : "Set a limit"}
+      title={limit ? "Change amount" : "Turn on Quick pay"}
       onPress={() => router.push("/settings/spending-limits/change" as never)}
     />
   );
@@ -79,14 +79,14 @@ export default function SpendingLimitsScreen() {
       ) : limit === undefined ? (
         <View className="mt-7">
           <Typography weight="600" className="text-[17px] text-ink">
-            Your limit is not showing
+            Your Quick pay amount is not showing
           </Typography>
           <Typography
             weight="500"
             className="mt-1 text-[14px] leading-[20px] text-foreground/55"
           >
-            Prydd cannot read it right now, so nothing here can be changed. Your
-            Account is unaffected. Try again in a moment.
+            Prydd cannot read it right now, so it cannot be changed. Your money
+            is safe. Try again in a moment.
           </Typography>
         </View>
       ) : limit === null ? (
@@ -95,14 +95,14 @@ export default function SpendingLimitsScreen() {
             className="text-[44px] leading-[52px] tracking-[-1px] text-foreground/45"
             style={DISPLAY}
           >
-            No limit
+            Off
           </Typography>
           <Typography
             weight="500"
             className="mt-2 text-[14px] leading-[20px] text-foreground/55"
           >
-            Every Spend needs a second confirmation on this phone, however
-            small. Set a limit and Spends under it take one.
+            Every payment asks you to confirm it is you twice. Turn on Quick pay
+            and payments up to your amount need just one check.
           </Typography>
         </View>
       ) : (

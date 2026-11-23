@@ -145,7 +145,7 @@ export function AccountSetupModal({
 const STAGE_COPY: Record<AccountSetupStage, { title: string; body: string }> = {
   idle: {
     title: "Secure your Account",
-    body: "One quick step sets up your spending limit and approvals. You will be asked for your fingerprint once.",
+    body: "One quick step sets up Quick pay, so everyday payments need just one check. You will be asked for your fingerprint once.",
   },
   creating: {
     title: "Creating your Account",
@@ -153,7 +153,7 @@ const STAGE_COPY: Record<AccountSetupStage, { title: string; body: string }> = {
   },
   securing: {
     title: "Securing your Account",
-    body: "Setting your daily limit and approvals, so everyday payments go through with a single tap.",
+    body: "Setting up Quick pay, so everyday payments go through with a single check.",
   },
 };
 

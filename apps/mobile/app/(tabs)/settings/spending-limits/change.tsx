@@ -27,14 +27,14 @@ const DISPLAY = { fontFamily: "Montserrat_900Black" } as const;
 const PRESETS = [100, 250, 500, 1_000, 2_500, 5_000];
 
 const HEADLINE: Record<SpendingLimit["period"], string> = {
-  OneTime: "New limit",
-  Daily: "New daily limit",
-  Weekly: "New weekly limit",
-  Monthly: "New monthly limit",
+  OneTime: "New amount",
+  Daily: "New daily amount",
+  Weekly: "New weekly amount",
+  Monthly: "New monthly amount",
 };
 
 /**
- * Setting a new limit, a first one, or none. Taking the limit off is one of
+ * Setting a new Quick pay amount, a first one, or none. Turning it off is one of
  * the choices rather than a button of its own, because it is the rarest thing
  * done here and it makes the Account stricter, not looser.
  */
@@ -119,10 +119,10 @@ export default function ChangeSpendingLimitScreen() {
           <PillButton
             title={
               change.isPending
-                ? "Approving on this phone"
+                ? "Confirming it is you"
                 : noLimit
-                  ? "Remove limit"
-                  : "Save limit"
+                  ? "Turn off Quick pay"
+                  : "Save amount"
             }
             disabled={!canSave}
             loading={change.isPending}
@@ -136,13 +136,13 @@ export default function ChangeSpendingLimitScreen() {
         className="text-[30px] uppercase leading-[32px] tracking-[-1px] text-ink"
         style={DISPLAY}
       >
-        {limit === null ? "Set a limit" : HEADLINE[period]}
+        {limit === null ? "Turn on Quick pay" : HEADLINE[period]}
       </Typography>
 
       <Typography weight="500" className="mt-7 text-[14px] text-foreground/60">
         {limit
           ? `Now ${formatUsdcRaw(limit.maxPerPeriod)} ${per}`
-          : "No limit now"}
+          : "Quick pay is off now"}
       </Typography>
       <HapticPressable
         feedback="none"
@@ -158,7 +158,7 @@ export default function ChangeSpendingLimitScreen() {
             className="h-[72px] text-[52px] leading-[72px] tracking-[-1px] text-ink"
             style={DISPLAY}
           >
-            No limit
+            Off
           </Typography>
         ) : (
           <>
@@ -194,7 +194,7 @@ export default function ChangeSpendingLimitScreen() {
                 editable={!change.isPending && !waiting}
                 keyboardType="decimal-pad"
                 inputMode="decimal"
-                accessibilityLabel={`New Spending Limit, ${per}`}
+                accessibilityLabel={`New Quick pay amount, ${per}`}
                 className={cn("h-[72px] py-0 text-ink", size.input)}
                 style={DISPLAY}
               />
@@ -238,7 +238,7 @@ export default function ChangeSpendingLimitScreen() {
         {limit ? (
           <HapticPressable
             accessibilityRole="button"
-            accessibilityLabel="No limit"
+            accessibilityLabel="Turn off Quick pay"
             accessibilityState={{ selected: noLimit }}
             disabled={change.isPending || !!waiting}
             onPress={() => {
@@ -259,7 +259,7 @@ export default function ChangeSpendingLimitScreen() {
                 noLimit ? "text-primary-foreground" : "text-ink"
               )}
             >
-              No limit
+              Turn off
             </Typography>
           </HapticPressable>
         ) : null}
@@ -274,10 +274,10 @@ export default function ChangeSpendingLimitScreen() {
         {waiting
           ? `${waiting.title}. ${waiting.body}`
           : noLimit
-            ? "Every Spend, however small, will then need a second confirmation on this phone. Both keys approve this, and it takes effect one day later."
+            ? "Every payment will ask you to confirm it is you twice. You will confirm it is you now, then Quick pay switches off in 24 hours."
             : limit
-              ? `Both keys on this phone approve it, and it starts one day later. Until then, ${formatUsdcRaw(limit.maxPerPeriod)} ${per} still applies.`
-              : "Both keys on this phone approve it, and it starts one day later. Until then every Spend still needs two confirmations."}
+              ? `You will confirm it is you, then the new amount starts in 24 hours. The wait gives you time to stop it if it was not you. Until then, ${formatUsdcRaw(limit.maxPerPeriod)} ${per} still applies.`
+              : "You will confirm it is you, then Quick pay starts in 24 hours. The wait gives you time to stop it if it was not you."}
       </Footnote>
     </FeatureScreen>
   );
@@ -319,9 +319,9 @@ function amountIssue(amount: string, current: string | null): string | null {
   const raw = toUsdcRaw(amount);
   if (raw === null) return "Enter an amount, like 50 or 12.50.";
   if (raw === 0n) return "Enter an amount above zero.";
-  if (raw > MAX_LIMIT_RAW) return "That is larger than a limit can be.";
+  if (raw > MAX_LIMIT_RAW) return "That is more than Quick pay allows.";
   if (current !== null && raw.toString() === current) {
-    return "That is the limit you have now.";
+    return "That is the amount you have now.";
   }
   return null;
 }
