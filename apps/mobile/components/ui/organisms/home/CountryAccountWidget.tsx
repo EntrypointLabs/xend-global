@@ -99,6 +99,8 @@ interface CountryAccountWidgetProps {
   balanceLabel: string;
   rateLabel: string;
   onAction?: (action: CountryWidgetAction) => void;
+  /** Tapping the card above its dock, where the spendable balance is shown. */
+  onPress?: () => void;
 }
 
 export function CountryAccountWidget({
@@ -106,6 +108,7 @@ export function CountryAccountWidget({
   balanceLabel,
   rateLabel,
   onAction,
+  onPress,
 }: CountryAccountWidgetProps) {
   const [width, setWidth] = useState(0);
   const s = width / REF_WIDTH;
@@ -144,9 +147,15 @@ export function CountryAccountWidget({
           {/* Read as one element, but only over the area above the dock:
           stretched over the whole card it overlapped the dock's buttons, and
           VoiceOver's touch exploration could land on the card instead. */}
-          <View
+          <HapticPressable
             accessible
+            accessibilityRole={onPress ? "link" : undefined}
             accessibilityLabel={`${card.name}, ${balanceLabel} available to spend, ${rateLabel}`}
+            disabled={!onPress}
+            onPress={onPress}
+            // The photo behind stays put, so shrinking only the text over it
+            // would read as a glitch.
+            scaleOnPress={false}
             style={{
               position: "absolute",
               top: 0,
@@ -251,7 +260,7 @@ export function CountryAccountWidget({
               <Text className="font-inter-semibold">{balanceLabel}</Text>
               {" available to spend"}
             </Text>
-          </View>
+          </HapticPressable>
 
           <View
             className="absolute flex-row bg-white"
