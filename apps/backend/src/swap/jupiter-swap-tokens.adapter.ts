@@ -4,6 +4,7 @@ import type {
   SwapToken,
   SwapTokenCategory,
   SwapTokenDirectory,
+  SwapTokenTrust,
 } from './swap-tokens.interface';
 
 const TOKENS_API = 'https://lite-api.jup.ag/tokens/v2';
@@ -30,6 +31,7 @@ interface JupiterToken {
   usdPrice?: number;
   tags?: string[];
   launchpad?: string;
+  audit?: { isSus?: boolean };
 }
 
 interface Cached {
@@ -61,9 +63,11 @@ export class JupiterSwapTokensAdapter implements SwapTokenDirectory {
     if (cached && Date.now() - cached.cachedAt < SEARCH_TTL_MS) {
       return cached.tokens;
     }
-    const tokens = (
-      await this.fetchVerified(`/search?query=${encodeURIComponent(key)}`)
-    ).slice(0, LIST_LENGTH);
+    const [found, ranked] = await Promise.all([
+      this.fetchTokens(`/search?query=${encodeURIComponent(key)}`),
+      this.ranked(),
+    ]);
+    const tokens = markCopies(found, ranked).slice(0, LIST_LENGTH);
     if (this.searches.size >= SEARCH_CACHE_SIZE) this.searches.clear();
     this.searches.set(key, { tokens, cachedAt: Date.now() });
     return tokens;
@@ -75,9 +79,9 @@ export class JupiterSwapTokensAdapter implements SwapTokenDirectory {
       return cached.tokens;
     }
     try {
-      const tokens = await this.fetchVerified(
-        `/toporganicscore/24h?limit=${RANKING_LENGTH}`,
-      );
+      const tokens = (
+        await this.fetchTokens(`/toporganicscore/24h?limit=${RANKING_LENGTH}`)
+      ).filter((token) => token.trust === 'verified');
       this.ranking = { tokens, cachedAt: Date.now() };
       return tokens;
     } catch (err) {
@@ -87,7 +91,7 @@ export class JupiterSwapTokensAdapter implements SwapTokenDirectory {
     }
   }
 
-  private async fetchVerified(path: string): Promise<SwapToken[]> {
+  private async fetchTokens(path: string): Promise<SwapToken[]> {
     const response = await fetch(`${TOKENS_API}${path}`, {
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
@@ -95,12 +99,7 @@ export class JupiterSwapTokensAdapter implements SwapTokenDirectory {
     const listed = (await response.json()) as JupiterToken[];
     const tokens: SwapToken[] = [];
     for (const token of Array.isArray(listed) ? listed : []) {
-      if (
-        token.isVerified !== true ||
-        !token.id ||
-        !token.symbol ||
-        typeof token.decimals !== 'number'
-      ) {
+      if (!token.id || !token.symbol || typeof token.decimals !== 'number') {
         continue;
       }
       tokens.push({
@@ -110,6 +109,7 @@ export class JupiterSwapTokensAdapter implements SwapTokenDirectory {
         decimals: token.decimals,
         iconUrl: token.icon ?? null,
         category: categoryOf(token),
+        trust: trustOf(token),
         usdPrice:
           typeof token.usdPrice === 'number' && token.usdPrice > 0
             ? token.usdPrice
@@ -118,6 +118,29 @@ export class JupiterSwapTokensAdapter implements SwapTokenDirectory {
     }
     return tokens;
   }
+}
+
+function trustOf(token: JupiterToken): SwapTokenTrust {
+  if (token.isVerified === true) return 'verified';
+  return token.audit?.isSus === true ? 'caution' : 'unverified';
+}
+
+/**
+ * Marks an unverified token that carries a verified token's ticker. Checked
+ * against the ranking as well as the results, because a search for a copy's
+ * exact address returns the copy alone.
+ */
+function markCopies(found: SwapToken[], ranked: SwapToken[]): SwapToken[] {
+  const taken = new Set(
+    [...found, ...ranked]
+      .filter((token) => token.trust === 'verified')
+      .map((token) => token.symbol.toLowerCase()),
+  );
+  return found.map((token) =>
+    token.trust === 'unverified' && taken.has(token.symbol.toLowerCase())
+      ? { ...token, trust: 'caution' }
+      : token,
+  );
 }
 
 /**

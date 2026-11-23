@@ -17,6 +17,7 @@ const listed = [
   verified('BONK', { tags: ['meme', 'community'] }),
   verified('FRESH', { launchpad: 'pump.fun' }),
   verified('PUMP', { launchpad: 'pump.fun', tags: ['defi'] }),
+  { id: 'mint-NEW', symbol: 'NEW', name: 'New', decimals: 6 },
   { id: 'mint-nodecimals', symbol: 'DDD', isVerified: true },
 ];
 
@@ -36,15 +37,17 @@ describe('JupiterSwapTokensAdapter', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  it('offers only verified tokens it can describe in full', async () => {
+  it('finds every token it can describe in full, verified or not', async () => {
     const tokens = await new JupiterSwapTokensAdapter().search('anything');
     expect(symbols(tokens)).toEqual([
+      'SOL',
       'SOL',
       'USDC',
       'NVDAx',
       'BONK',
       'FRESH',
       'PUMP',
+      'NEW',
     ]);
     expect(tokens[0]).toEqual({
       mint: 'mint-SOL',
@@ -53,8 +56,45 @@ describe('JupiterSwapTokensAdapter', () => {
       decimals: 6,
       iconUrl: null,
       category: 'crypto',
+      trust: 'verified',
       usdPrice: 180,
     });
+  });
+
+  it("warns about an unverified token wearing a verified token's ticker", async () => {
+    const tokens = await new JupiterSwapTokensAdapter().search('anything');
+    const trust = (mint: string) => tokens.find((t) => t.mint === mint)?.trust;
+    expect(trust('mint-copy')).toBe('caution');
+    // Unverified, but passing itself off as nothing.
+    expect(trust('mint-NEW')).toBe('unverified');
+  });
+
+  it('warns about a token the source itself calls suspicious', async () => {
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            id: 'mint-x',
+            symbol: 'XXX',
+            decimals: 6,
+            audit: { isSus: true },
+          },
+        ]),
+        { status: 200 },
+      ),
+    );
+    const [token] = await new JupiterSwapTokensAdapter().search('xxx');
+    expect(token.trust).toBe('caution');
+  });
+
+  it('browses verified tokens only', async () => {
+    const adapter = new JupiterSwapTokensAdapter();
+    const listed = [
+      ...(await adapter.popular()),
+      ...(await adapter.popular('crypto')),
+      ...(await adapter.popular('meme')),
+    ];
+    expect(listed.every((token) => token.trust === 'verified')).toBe(true);
   });
 
   it('keeps stocks and meme tokens out of the everyday list', async () => {
@@ -81,7 +121,7 @@ describe('JupiterSwapTokensAdapter', () => {
     const adapter = new JupiterSwapTokensAdapter();
     await adapter.search('Bonk');
     await adapter.search('bonk ');
-    expect(fetched).toHaveLength(1);
+    expect(fetched.filter((url) => url.includes('/search'))).toHaveLength(1);
   });
 
   it('keeps the last ranking when the source stops answering', async () => {
