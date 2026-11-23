@@ -12,6 +12,7 @@ import { usePrivy } from "@privy-io/expo";
 
 import { AuthStorage } from "@/utils/storage/authStorage";
 import { hasLinkedPasskey } from "@/utils/auth";
+import { isSystemPromptOpen, withSystemPrompt } from "@/utils/systemPrompt";
 
 // Dev-only escape hatch for automated / e2e testing, where a fingerprint can't
 // be supplied. Safe to commit: gated behind `__DEV__`, so a release build can
@@ -119,11 +120,13 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
         return true;
       }
 
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: "Unlock Prydd",
-        cancelLabel: "Cancel",
-        disableDeviceFallback: false,
-      });
+      const result = await withSystemPrompt(() =>
+        LocalAuthentication.authenticateAsync({
+          promptMessage: "Unlock Prydd",
+          cancelLabel: "Cancel",
+          disableDeviceFallback: false,
+        })
+      );
       if (result.success) {
         setIsLocked(false);
         return true;
@@ -146,8 +149,13 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
 
       // Obscure immediately on any non-active state — this covers the OS
       // app-switcher snapshot the instant it's taken, before the grace-
-      // period decision below has even run.
-      setIsObscured(state !== "active");
+      // period decision below has even run. A system prompt the app raised
+      // itself also reports inactive, and is not the Consumer leaving: the
+      // screen stays as it was underneath it.
+      setIsObscured(
+        state === "background" ||
+          (state === "inactive" && !isSystemPromptOpen())
+      );
 
       if (authenticatingRef.current) return;
 

@@ -32,6 +32,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { useContacts } from "@/hooks/useContacts";
 import { useRecentRecipients } from "@/hooks/useRecentRecipients";
 import { RecipientRow } from "./RecipientParts";
+import { withSystemPrompt } from "@/utils/systemPrompt";
 
 interface RecipientStepProps {
   onClose: () => void;
@@ -81,7 +82,7 @@ export default memo(function RecipientStep({
   });
 
   const handlePaste = async () => {
-    const text = await Clipboard.getStringAsync();
+    const text = await withSystemPrompt(() => Clipboard.getStringAsync());
     if (!text) return;
     if (isPublicKey(text)) {
       setRecipient(text);
