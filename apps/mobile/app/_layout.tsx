@@ -183,6 +183,16 @@ function AuthLayout() {
                 {FULL_SCREEN_ROUTES.map((name) => (
                   <Stack.Screen key={name} name={name} options={SLIDE_OVER} />
                 ))}
+                {/* Drawn over Home, which stays on screen blurred behind it;
+                the screen animates itself open from the total. */}
+                <Stack.Screen
+                  name="balance/index"
+                  options={{
+                    presentation: "transparentModal",
+                    animation: "none",
+                    contentStyle: { backgroundColor: "transparent" },
+                  }}
+                />
               </Stack>
             </BlurTargetHost>
             <StatusBar

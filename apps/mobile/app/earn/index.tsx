@@ -1,7 +1,7 @@
 import React, { useRef } from "react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { Image, ScrollView, View } from "react-native";
-import { useRouter } from "expo-router";
+import { usePaneNavigation } from "@/contexts/OverlayPaneContext";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useFeature } from "@/hooks/useFeature";
@@ -26,7 +26,7 @@ import { EARN_PRODUCTS, useEarnPosition } from "@/hooks/useEarn";
  * the Consumer's own, so they stay honest as soon as deposits land.
  */
 export default function EarnScreen() {
-  const router = useRouter();
+  const pane = usePaneNavigation();
   const palette = usePalette();
   const depositsEnabled = useFeature("earnDeposits");
   const { showReceiveModal, isReceiveModalVisible, hideAllModals } =
@@ -148,7 +148,7 @@ export default function EarnScreen() {
           radius={999}
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          onPress={() => router.back()}
+          onPress={pane.back}
           className="h-14 w-14 items-center justify-center rounded-full"
         >
           <Ionicons name="chevron-back" size={22} color={palette.foreground} />

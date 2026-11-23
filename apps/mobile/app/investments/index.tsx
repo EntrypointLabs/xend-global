@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { Image, ScrollView, View } from "react-native";
-import { useRouter } from "expo-router";
+import { usePaneNavigation } from "@/contexts/OverlayPaneContext";
 import { Ionicons } from "@expo/vector-icons";
 
 import BalanceView from "@/components/BalanceView";
@@ -31,7 +31,7 @@ import { cn } from "@/utils/cn";
  * own rather than a product surface.
  */
 export default function InvestmentsScreen() {
-  const router = useRouter();
+  const pane = usePaneNavigation();
   const palette = usePalette();
   const swapEnabled = useFeature("swap");
   const { showReceiveModal, isReceiveModalVisible, hideAllModals } =
@@ -60,7 +60,7 @@ export default function InvestmentsScreen() {
                   </Typography>
                 </View>
               ),
-              onPress: () => router.push("/swap"),
+              onPress: () => pane.push("/swap"),
               accessibilityLabel: "Swap",
             },
           ]
@@ -82,7 +82,7 @@ export default function InvestmentsScreen() {
         accessibilityLabel: "Send",
       },
     ],
-    [router, gateSend, swapEnabled, palette]
+    [pane, gateSend, swapEnabled, palette]
   );
 
   const total = isError ? "0.00" : formatMoney(totalUsd);
@@ -125,7 +125,7 @@ export default function InvestmentsScreen() {
           radius={999}
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          onPress={() => router.back()}
+          onPress={pane.back}
           className="h-14 w-14 items-center justify-center rounded-full"
         >
           <Ionicons name="chevron-back" size={22} color={palette.foreground} />

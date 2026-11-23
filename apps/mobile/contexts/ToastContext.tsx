@@ -11,7 +11,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { cn } from "@/utils/cn";
 import {
-  setToastHandler,
+  addToastHandler,
   type ToastOptions,
   type ToastTone,
 } from "@/utils/toast";
@@ -116,8 +116,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
-    setToastHandler(showToast);
-    return () => setToastHandler(null);
+    return addToastHandler(showToast);
   }, [showToast]);
 
   return (
