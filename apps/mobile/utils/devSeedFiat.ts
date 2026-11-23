@@ -388,14 +388,14 @@ export const demoFiat = {
             },
           ],
       paymentStep: receive ? "manual_transfer" : "account_transfer",
-      verification: this.check(naira),
+      verification: this.check(naira, receive ? "receive" : "send"),
     };
     state.quotes.set(quote.id, quote);
     return quote;
   },
 
-  check(nairaMinor: bigint) {
-    const used = BigInt(this.usedMinor());
+  check(nairaMinor: bigint, direction: "receive" | "send") {
+    const used = BigInt(this.usedMinor(direction));
     return {
       limitMinor: DEMO_LIMIT_MINOR.toString(),
       usedMinor: used.toString(),
@@ -405,11 +405,12 @@ export const demoFiat = {
     };
   },
 
-  usedMinor() {
+  usedMinor(direction: "receive" | "send") {
     const since = Date.now() - 24 * 3_600_000;
     return state.orders
       .filter(
         (o) =>
+          o.route.direction === direction &&
           !["failed", "expired", "returned"].includes(o.status) &&
           Date.parse(o.createdAt) >= since
       )
@@ -431,7 +432,10 @@ export const demoFiat = {
     return {
       verified: state.verification === "verified",
       limitMinor: DEMO_LIMIT_MINOR.toString(),
-      usedMinor: this.usedMinor(),
+      used: {
+        receive: this.usedMinor("receive"),
+        send: this.usedMinor("send"),
+      },
       windowHours: 24,
     };
   },

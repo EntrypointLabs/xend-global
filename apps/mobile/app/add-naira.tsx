@@ -138,7 +138,7 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
     placeholderData: (previous) => previous,
   });
 
-  const left = limits.data ? nairaAllowanceLeft(limits.data) : null;
+  const left = limits.data ? nairaAllowanceLeft(limits.data, "receive") : null;
   const verified = limits.data?.verified === true;
   const overLimit = !verified && left !== null && BigInt(amount * 100) > left;
   const estimate =

@@ -11,7 +11,7 @@ import type {
   FiatSimulationRequestBody,
 } from './dtos';
 import type { FiatOrder, FiatQuote, StoredFiatOrder } from './fiat.types';
-import type { FiatStatus } from './fiat-provider.interface';
+import type { FiatDirection, FiatStatus } from './fiat-provider.interface';
 import { FiatError } from './fiat.errors';
 import { nextFiatStatus, providerFiatStatus } from './fiat-state';
 import { FiatVerificationService } from './verification/verification.service';
@@ -66,6 +66,7 @@ export class FiatService {
 
   private async limitCheck(
     userId: string,
+    direction: FiatDirection,
     quote: Pick<FiatQuote, 'debit' | 'credit'>,
     customerId: string | null,
   ): Promise<LimitCheck> {
@@ -73,7 +74,7 @@ export class FiatService {
     const recent = await this.store.since(userId, new Date(since));
     return checkUnverifiedLimit({
       amountMinor: nairaMinorOf(quote),
-      usedMinor: usedNairaMinor(recent, since),
+      usedMinor: usedNairaMinor(recent, since, direction),
       limitMinor: this.limitMinor(),
       verified: customerId !== null,
     });
@@ -83,18 +84,17 @@ export class FiatService {
   async limits(userId: string) {
     const customerId =
       (await this.verification?.verifiedCustomerId(userId)) ?? null;
-    const check = await this.limitCheck(
-      userId,
-      {
-        debit: { currency: 'NGN', amountMinor: '0', decimals: 2 },
-        credit: { currency: 'USDC', amountMinor: '0', decimals: 6 },
-      },
-      customerId,
-    );
+    const since = Date.now() - LIMIT_WINDOW_MS;
+    const recent = await this.store.since(userId, new Date(since));
+    const receive = usedNairaMinor(recent, since, 'receive');
+    const send = usedNairaMinor(recent, since, 'send');
     return {
       verified: customerId !== null,
-      limitMinor: check.limitMinor,
-      usedMinor: check.usedMinor,
+      limitMinor: this.limitMinor().toString(),
+      used: { receive: receive.toString(), send: send.toString() },
+      // Builds that predate the split read one figure for both screens. The
+      // larger one keeps them from offering an amount the order would refuse.
+      usedMinor: (receive > send ? receive : send).toString(),
       windowHours: LIMIT_WINDOW_MS / 3_600_000,
     };
   }
@@ -152,6 +152,7 @@ export class FiatService {
         ? undefined
         : await this.limitCheck(
             userId,
+            route.direction,
             quote,
             (await this.verification?.verifiedCustomerId(userId)) ?? null,
           );
@@ -351,7 +352,12 @@ export class FiatService {
       ? null
       : ((await this.verification?.verifiedCustomerId(userId)) ?? null);
     if (!simulation) {
-      const check = await this.limitCheck(userId, quote, customerId);
+      const check = await this.limitCheck(
+        userId,
+        route.direction,
+        quote,
+        customerId,
+      );
       if (check.verificationRequired)
         throw new FiatError(
           'VERIFICATION_REQUIRED',
