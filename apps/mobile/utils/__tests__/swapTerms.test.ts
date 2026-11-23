@@ -7,8 +7,8 @@ const quoted: SwapQuoteResponse = {
   inputMint: "sol",
   outputMint: "usdc",
   amountInRaw: "1000",
-  amountOutRaw: "70",
-  minAmountOutRaw: "69",
+  amountOutRaw: "7000",
+  minAmountOutRaw: "6965",
   slippageBps: 50,
   venue: "Whirlpool",
   expiresAt: 1_800_000_000,
@@ -19,8 +19,8 @@ describe("bindSwapQuote", () => {
     expect(bindSwapQuote(request, quoted)).toMatchObject({
       quoteId: "quote",
       amountInRaw: "1000",
-      outAmountRaw: "70",
-      minOutAmountRaw: "69",
+      outAmountRaw: "7000",
+      minOutAmountRaw: "6965",
     });
   });
 
@@ -33,5 +33,23 @@ describe("bindSwapQuote", () => {
   it("refuses a quote for another pair", () => {
     expect(bindSwapQuote(request, { ...quoted, inputMint: "jup" })).toBeNull();
     expect(bindSwapQuote(request, { ...quoted, outputMint: "jup" })).toBeNull();
+  });
+
+  it("works out the floor itself instead of showing the one it was sent", () => {
+    const bound = bindSwapQuote(request, {
+      ...quoted,
+      minAmountOutRaw: "6999",
+    });
+    expect(bound?.minOutAmountRaw).toBe("6965");
+  });
+
+  it("refuses a quote that may settle further short than this app allows", () => {
+    expect(
+      bindSwapQuote(request, { ...quoted, slippageBps: 9_999 })
+    ).toBeNull();
+  });
+
+  it("refuses a quote that pays out nothing", () => {
+    expect(bindSwapQuote(request, { ...quoted, amountOutRaw: "0" })).toBeNull();
   });
 });
