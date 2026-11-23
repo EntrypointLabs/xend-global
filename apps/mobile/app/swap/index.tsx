@@ -2,6 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { GlassButton } from "@/components/ui/atoms/Glass";
@@ -21,6 +28,12 @@ import { flipSwapPair, useSwapPair, type SwapSide } from "@/utils/swapPair";
 import { cn } from "@/utils/cn";
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"];
+
+/** Long enough to follow a pill across the divider, short enough not to wait on. */
+const SWITCH_MS = 320;
+
+/** How far, in points, one pill steps aside to let the other by. */
+const PASSING_ROOM = 56;
 
 /** The route survives the flag, so a deep link can still land here. */
 export default function SwapRoute() {
@@ -56,6 +69,53 @@ function SwapScreen() {
 
   // An amount belongs to the asset it was typed for: 5 SOL is not 5 USDC.
   useEffect(() => setAmount("0"), [payToken.mint]);
+
+  // Switching the pair is shown, not just done: each pill travels to the
+  // other row, so the eye can follow which asset went where. A pill keeps the
+  // asset it is carrying for the whole trip. Swapping the contents of two
+  // pills that stay put would be the same instant change with a delay.
+  const [switched, setSwitched] = useState(false);
+  const travelled = useSharedValue(0);
+  const payRowY = useSharedValue(0);
+  const receiveRowY = useSharedValue(0);
+  const reduceMotion = useReducedMotion();
+
+  const upperPillStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: travelled.value * (receiveRowY.value - payRowY.value) },
+      // Swings wide of the other pill on the way, so the two pass each other
+      // instead of sliding through one another.
+      { translateX: -Math.sin(Math.PI * travelled.value) * PASSING_ROOM },
+    ],
+  }));
+  const lowerPillStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: travelled.value * (payRowY.value - receiveRowY.value) },
+    ],
+  }));
+  const switchIconStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${travelled.value * 180}deg` }],
+  }));
+
+  const switchPair = () => {
+    const next = !switched;
+    setSwitched(next);
+    flipSwapPair();
+    travelled.value = reduceMotion
+      ? Number(next)
+      : withTiming(Number(next), {
+          duration: SWITCH_MS,
+          easing: Easing.bezier(0.65, 0, 0.35, 1),
+        });
+  };
+  // The pill laid out in the upper row sits in the lower one once switched,
+  // and so stands for the other side of the swap.
+  const upperSide: SwapSide = switched ? "receive" : "pay";
+  const lowerSide: SwapSide = switched ? "pay" : "receive";
+  const sideToken = (side: SwapSide) =>
+    side === "pay" ? payToken : receiveToken;
+  const sideLabel = (side: SwapSide) =>
+    side === "pay" ? "Choose what you pay with" : "Choose what you receive";
 
   const payBalance = useMemo(() => {
     const held = tokens.find((t) => t.mint === payToken.mint);
@@ -121,7 +181,12 @@ function SwapScreen() {
         <Typography variant="body" weight="600" className="mb-2">
           You pay
         </Typography>
-        <View className="flex-row items-center justify-between">
+        <View
+          className="z-10 flex-row items-center justify-between"
+          onLayout={(event) => {
+            payRowY.value = event.nativeEvent.layout.y;
+          }}
+        >
           <Typography
             weight="500"
             numberOfLines={1}
@@ -134,11 +199,13 @@ function SwapScreen() {
           >
             {amount}
           </Typography>
-          <TokenPill
-            token={payToken}
-            label="Choose what you pay with"
-            onPress={() => choose("pay")}
-          />
+          <Animated.View className="max-w-[55%]" style={upperPillStyle}>
+            <TokenPill
+              token={sideToken(upperSide)}
+              label={sideLabel(upperSide)}
+              onPress={() => choose(upperSide)}
+            />
+          </Animated.View>
         </View>
         <View className="mt-1 flex-row items-center justify-end gap-1">
           <Typography variant="body" weight="600">
@@ -155,13 +222,16 @@ function SwapScreen() {
             accessibilityRole="button"
             accessibilityLabel="Swap direction"
             feedback="selection"
-            onPress={flipSwapPair}
+            onPress={switchPair}
+            hitSlop={12}
           >
-            <Ionicons
-              name="swap-vertical"
-              size={22}
-              color={palette.foreground}
-            />
+            <Animated.View style={switchIconStyle}>
+              <Ionicons
+                name="swap-vertical"
+                size={22}
+                color={palette.foreground}
+              />
+            </Animated.View>
           </HapticPressable>
           <View className="h-px flex-1 bg-foreground/10" />
         </View>
@@ -169,7 +239,12 @@ function SwapScreen() {
         <Typography variant="body" weight="600" className="mb-2">
           You receive
         </Typography>
-        <View className="flex-row items-center justify-between">
+        <View
+          className="z-10 flex-row items-center justify-between"
+          onLayout={(event) => {
+            receiveRowY.value = event.nativeEvent.layout.y;
+          }}
+        >
           <Typography
             weight="500"
             numberOfLines={1}
@@ -182,11 +257,13 @@ function SwapScreen() {
           >
             {receiveDisplay}
           </Typography>
-          <TokenPill
-            token={receiveToken}
-            label="Choose what you receive"
-            onPress={() => choose("receive")}
-          />
+          <Animated.View className="max-w-[55%]" style={lowerPillStyle}>
+            <TokenPill
+              token={sideToken(lowerSide)}
+              label={sideLabel(lowerSide)}
+              onPress={() => choose(lowerSide)}
+            />
+          </Animated.View>
         </View>
 
         <View className="mt-1 h-5 justify-center">
@@ -280,7 +357,7 @@ function TokenPill({
       accessibilityLabel={`${label}, ${token.symbol}`}
       feedback="selection"
       onPress={onPress}
-      className="max-w-[55%] flex-row items-center gap-2 rounded-full bg-foreground/[0.04] py-2 pl-2 pr-3"
+      className="flex-row items-center gap-2 rounded-full bg-foreground/[0.04] py-2 pl-2 pr-3"
     >
       <TokenMark
         mint={token.mint}
