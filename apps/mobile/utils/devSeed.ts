@@ -594,3 +594,52 @@ export function seedAccount(): AccountResponse {
 export function seedProvisioningStep(): ProvisioningStep {
   return { done: true, needsApprovalSignature: false };
 }
+
+const ICONS = "https://static.datapi.jup.ag/token-icons";
+
+/** A few of the assets Swap offers, enough to show the picker populated. */
+export function seedSwapTokens(query: string) {
+  const wanted = query.trim().toLowerCase();
+  return [
+    {
+      mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      symbol: "USDT",
+      name: "USDT",
+      decimals: 6,
+      iconUrl: `${ICONS}/36574a5ee2cd469e059d070180985e59fbd57c82a54ea95763fab39973174100.webp`,
+    },
+    {
+      mint: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+      symbol: "JUP",
+      name: "Jupiter",
+      decimals: 6,
+      iconUrl: `${ICONS}/12254fdd34fa9a0ad62075bd3872df61e28584f9519fe00c744b71b514d4c3d7.webp`,
+    },
+    {
+      mint: "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh",
+      symbol: "WBTC",
+      name: "Wrapped BTC (Portal)",
+      decimals: 8,
+      iconUrl: `${ICONS}/010fb6db6c343cd0f90214ab1770278012d0c58a091d1f64715343817dbfb27e.webp`,
+    },
+    {
+      mint: "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+      symbol: "RAY",
+      name: "Raydium",
+      decimals: 6,
+      iconUrl: `${ICONS}/e3a3487516776ef5cd3166a0861525d053845b5aa0cf27442a56ca65e673b265.webp`,
+    },
+    {
+      mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      symbol: "Bonk",
+      name: "Bonk",
+      decimals: 5,
+      iconUrl: `${ICONS}/7461f749f396872bdba0559323970190e22056d87f08792ce597c00f3c23a6d0.webp`,
+    },
+  ].filter(
+    (token) =>
+      !wanted ||
+      token.name.toLowerCase().includes(wanted) ||
+      token.symbol.toLowerCase().includes(wanted)
+  );
+}

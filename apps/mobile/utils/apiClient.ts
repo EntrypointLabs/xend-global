@@ -51,6 +51,7 @@ import {
 } from "@/utils/displayRates";
 import {
   SEED_DEMO,
+  seedSwapTokens,
   seedAccount,
   seedProvisioningStep,
   seedRecoveryKeys,
@@ -520,6 +521,18 @@ export const SwapAccessStepSchema = z.object({
   needsApprovalSignature: z.boolean().optional(),
 });
 export type SwapAccessStep = z.infer<typeof SwapAccessStepSchema>;
+
+const SwapTokensResponseSchema = z.object({
+  tokens: z.array(
+    z.object({
+      mint: z.string(),
+      symbol: z.string(),
+      name: z.string(),
+      decimals: z.number().int().nonnegative(),
+      iconUrl: z.string().nullable(),
+    })
+  ),
+});
 
 /** Mirrors `SwapQuoteResponse` in apps/backend/src/swap/dtos.ts. */
 export const SwapQuoteResponseSchema = z.object({
@@ -1975,6 +1988,19 @@ class BackendClient {
       body: JSON.stringify({ signedTxBase64 }),
       auth: true,
     });
+  }
+
+  /**
+   * GET /swaps/tokens: the verified assets Swap offers, the popular ones when
+   * `query` is empty.
+   */
+  async swapTokens(query: string, signal?: AbortSignal) {
+    if (SEED_DEMO) return seedSwapTokens(query);
+    const path = query
+      ? `/swaps/tokens?q=${encodeURIComponent(query)}`
+      : "/swaps/tokens";
+    const raw = await this.request<unknown>(path, { auth: true, signal });
+    return SwapTokensResponseSchema.parse(raw).tokens;
   }
 
   /**

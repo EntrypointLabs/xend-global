@@ -1,6 +1,15 @@
 /** Native SOL is named by its wrapped mint, the way a balance read names it. */
 export const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
 
+/** An asset on one side of a swap. */
+export interface SwapToken {
+  mint: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  iconUrl: string | null;
+}
+
 /** Seconds of headroom before `expiresAt`, so a price cannot lapse mid-confirmation. */
 const EXPIRY_BUFFER_SECONDS = 8;
 
