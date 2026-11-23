@@ -86,8 +86,16 @@ export function AppearanceProvider({
     [appearance, save]
   );
 
+  // Theme selection is switched off for now, so every device shows the
+  // monochrome app whatever it had picked before. To bring it back, drop the
+  // `theme` override here and restore the Theme row in settings/appearance.
   const value = useMemo(
-    () => ({ ...appearance, setTheme, setIcon }),
+    () => ({
+      ...appearance,
+      theme: "monochrome" as AppTheme,
+      setTheme,
+      setIcon,
+    }),
     [appearance, setTheme, setIcon]
   );
 

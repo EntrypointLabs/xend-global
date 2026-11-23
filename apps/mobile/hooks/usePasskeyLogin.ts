@@ -16,6 +16,7 @@ import {
   PasskeyWrongAccountError,
   type PasskeySignInOutcome,
 } from "@/utils/passkeyOutcome";
+import { withSystemPrompt } from "@/utils/systemPrompt";
 
 /** Must match the relying party the credential was registered against. */
 const RELYING_PARTY = "https://prydd.co";
@@ -126,6 +127,9 @@ export function usePasskeyLogin() {
       if (outcome === "failed") {
         setError(describe(err));
         console.error("[passkey] sign-in failed", err);
+        Sentry.captureException(err, {
+          tags: { passkey: signupToken ? "signup" : "signin" },
+        });
       } else {
         // Deliberately not an error. An empty keychain and a dismissed sheet
         // are both things the flow expects and answers, and logging them at
@@ -140,7 +144,10 @@ export function usePasskeyLogin() {
 
   const signIn = (expectUserId?: string) =>
     run(
-      () => loginWithPasskey({ relyingParty: RELYING_PARTY }),
+      () =>
+        withSystemPrompt(() =>
+          loginWithPasskey({ relyingParty: RELYING_PARTY })
+        ),
       "That passkey did not sign you in.",
       { expectUserId, retryEmptyResponse: true }
     );
@@ -154,7 +161,11 @@ export function usePasskeyLogin() {
   const signUp = async (signupToken: string) =>
     (await run(
       async () =>
-        (await signupWithPasskey({ relyingParty: RELYING_PARTY })).user,
+        (
+          await withSystemPrompt(() =>
+            signupWithPasskey({ relyingParty: RELYING_PARTY })
+          )
+        ).user,
       "The passkey was not created.",
       { signupToken }
     )) === "signed-in";
@@ -171,8 +182,11 @@ export function usePasskeyLogin() {
     try {
       if (privyUser) await privyLogout();
       labelNextPasskey(email);
-      const created = (await signupWithPasskey({ relyingParty: RELYING_PARTY }))
-        .user;
+      const created = (
+        await withSystemPrompt(() =>
+          signupWithPasskey({ relyingParty: RELYING_PARTY })
+        )
+      ).user;
       if (!created) {
         setError("The passkey was not created.");
         return null;
@@ -188,6 +202,7 @@ export function usePasskeyLogin() {
       if (outcome === "failed") {
         setError(describe(err));
         console.error("[passkey] replacement failed", err);
+        Sentry.captureException(err, { tags: { passkey: "replacement" } });
       } else if (__DEV__) {
         console.warn(`[passkey] replacement ended as ${outcome}`);
       }
@@ -221,7 +236,15 @@ function describe(err: unknown): string {
   if (err instanceof SyntaxError) {
     return "Prydd could not read the response from our sign-in provider.";
   }
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  return "Passkey sign-in failed.";
+  const message =
+    err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  // The phone refused the request before any passkey existed. Its own text
+  // names a Swift file and line, which tells a Consumer nothing.
+  if (NATIVE_PASSKEY_FAILURE.test(message)) {
+    return "Your phone could not finish the passkey just now. Give it a moment and try again.";
+  }
+  return message || "Passkey sign-in failed.";
 }
+
+const NATIVE_PASSKEY_FAILURE =
+  /PasskeyRequestFailedException|PasskeyAuthorizationFailedException|NotConfiguredException|UnknownException|\.swift:\d+/;

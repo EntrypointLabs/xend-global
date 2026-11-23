@@ -12,6 +12,7 @@ import { usePrivy } from "@privy-io/expo";
 
 import { AuthStorage } from "@/utils/storage/authStorage";
 import { hasLinkedPasskey } from "@/utils/auth";
+import { isSystemPromptOpen, withSystemPrompt } from "@/utils/systemPrompt";
 
 // Dev-only escape hatch for automated / e2e testing, where a fingerprint can't
 // be supplied. Safe to commit: gated behind `__DEV__`, so a release build can
@@ -32,6 +33,8 @@ if (APP_LOCK_DISABLED) {
 // or a quick app switch doesn't force a fresh Face ID prompt every time.
 // Common banking-app grace period; tune here if product wants a different one.
 const BACKGROUND_GRACE_PERIOD_MS = 5 * 60 * 1000;
+
+const PROMPT_RECHECK_MS = 200;
 
 interface AppLockContextType {
   /** True while the authenticated app should stay hidden behind the lock. */
@@ -119,11 +122,13 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
         return true;
       }
 
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: "Unlock Prydd",
-        cancelLabel: "Cancel",
-        disableDeviceFallback: false,
-      });
+      const result = await withSystemPrompt(() =>
+        LocalAuthentication.authenticateAsync({
+          promptMessage: "Unlock Prydd",
+          cancelLabel: "Cancel",
+          disableDeviceFallback: false,
+        })
+      );
       if (result.success) {
         setIsLocked(false);
         return true;
@@ -141,13 +146,33 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
 
   const backgroundedAtRef = useRef<number | null>(null);
   useEffect(() => {
+    let recheck: ReturnType<typeof setInterval> | undefined;
     const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
       if (!enabled) return;
 
       // Obscure immediately on any non-active state — this covers the OS
       // app-switcher snapshot the instant it's taken, before the grace-
-      // period decision below has even run.
-      setIsObscured(state !== "active");
+      // period decision below has even run. A system prompt the app raised
+      // itself also reports inactive, and is not the Consumer leaving: the
+      // screen stays as it was underneath it.
+      clearInterval(recheck);
+      const heldBack = state === "inactive" && isSystemPromptOpen();
+      setIsObscured(state !== "active" && !heldBack);
+
+      // The prompt can go away while the app stays inactive, for example when
+      // the Consumer pulls down Notification Center right after answering it.
+      // No further change event arrives for that, so keep looking until the
+      // app is active again or the cover is up.
+      if (heldBack) {
+        recheck = setInterval(() => {
+          if (AppState.currentState === "active") {
+            clearInterval(recheck);
+          } else if (!isSystemPromptOpen()) {
+            clearInterval(recheck);
+            setIsObscured(true);
+          }
+        }, PROMPT_RECHECK_MS);
+      }
 
       if (authenticatingRef.current) return;
 
@@ -170,7 +195,10 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
         }
       }
     });
-    return () => sub.remove();
+    return () => {
+      clearInterval(recheck);
+      sub.remove();
+    };
   }, [enabled]);
 
   return (

@@ -33,6 +33,7 @@ import {
   BankSheetTop,
   DISPLAY,
 } from "./BankSheetParts";
+import { withSystemPrompt } from "@/utils/systemPrompt";
 
 interface BankRecipientStepProps {
   onNext: (recipient: BankRecipient) => void;
@@ -194,7 +195,7 @@ export default function BankRecipientStep({
   };
 
   const handlePaste = async () => {
-    const text = await Clipboard.getStringAsync();
+    const text = await withSystemPrompt(() => Clipboard.getStringAsync());
     const pasted = text ? extractAccountNumber(text) : null;
     if (pasted) changeNumber(pasted);
   };
