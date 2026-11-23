@@ -188,6 +188,35 @@ export function decodeSpendingLimit(
   };
 }
 
+/**
+ * The programs a program-interaction policy admits, in constraint order.
+ *
+ * What says whether an Account can do something that needs a program added to
+ * the allowlist after it was provisioned: the policy keeps the list it was
+ * created with until a settings change rewrites it.
+ */
+export function decodeAllowedPrograms(
+  policy: PublicKey,
+  info: AccountInfo<Buffer>,
+): PublicKey[] {
+  let state: accounts.Policy;
+  try {
+    [state] = accounts.Policy.fromAccountInfo(info);
+  } catch (cause) {
+    throw new AccountStateError(
+      `Could not decode the policy at ${policy.toBase58()}: ${describe(cause)}`,
+    );
+  }
+  if (state.policyState.__kind !== "ProgramInteraction") {
+    throw new AccountStateError(
+      `Policy ${policy.toBase58()} holds a ${state.policyState.__kind} policy, not a program allowlist`,
+    );
+  }
+  return state.policyState.fields[0].instructionsConstraints.map(
+    (constraint) => constraint.programId,
+  );
+}
+
 /** The SDK's u64s are BN at runtime whatever the declaration says. */
 function toBigInt(value: unknown): bigint {
   return BigInt((value as { toString(): string }).toString());

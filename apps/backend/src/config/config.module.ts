@@ -476,6 +476,12 @@ export const USDC_MINT_BY_CLUSTER = {
           .truthy('1')
           .falsy('0', '')
           .default(false),
+        // Where swaps are priced and routed. The key is optional: Jupiter's
+        // keyless tier answers without one, at a lower rate limit.
+        JUPITER_SWAP_API_URL: Joi.string()
+          .uri()
+          .default('https://lite-api.jup.ag/swap/v1'),
+        JUPITER_API_KEY: Joi.string().optional().allow(''),
         EARN_DEPOSITS_KILLSWITCH: Joi.boolean()
           .truthy('1')
           .falsy('0', '')

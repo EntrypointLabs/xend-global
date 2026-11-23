@@ -379,7 +379,8 @@ export class SpendingLimitChangeService {
   ): Promise<void> {
     if (
       account.pendingApprovalChangeIndex ||
-      account.pendingPrimaryChangeIndex
+      account.pendingPrimaryChangeIndex ||
+      account.pendingSwapAccessChangeIndex
     ) {
       throw new SpendingLimitChangeError(
         'another change to this Account is already in flight',

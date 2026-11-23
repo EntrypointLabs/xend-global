@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createId } from '@paralleldrive/cuid2';
-import { eq, and, lt, or, desc, sql } from 'drizzle-orm';
+import { eq, and, inArray, lt, or, desc, sql } from 'drizzle-orm';
 import {
   PublicKey,
   TransactionInstruction,
@@ -36,6 +36,7 @@ import {
   payments,
   merchants,
   merchantLogos,
+  swaps,
 } from '../db/schema';
 import { merchantLogoUrl } from '../merchant/merchant-logo.url';
 import { PREPARED_TX_STORE } from '../prepared/prepared-tx.interface';
@@ -618,6 +619,22 @@ export class TransferService {
   }
 
   /**
+   * Which of these signatures were swaps this backend broadcast. The rows
+   * themselves come from the chain indexer, which cannot tell a swap's two
+   * sides from a payment out and a payment in.
+   */
+  private async swapSignaturesAmong(
+    signatures: string[],
+  ): Promise<Set<string>> {
+    if (signatures.length === 0) return new Set();
+    const rows = await this.db.client
+      .select({ signature: swaps.signature })
+      .from(swaps)
+      .where(inArray(swaps.signature, signatures));
+    return new Set(rows.map((row) => row.signature));
+  }
+
+  /**
    * Refuses to broadcast a Spend nobody proved they were present for.
    *
    * Which proof depends on the route, and the route is read from the intent
@@ -782,6 +799,9 @@ export class TransferService {
     // after the Consumer has sold the token. Cheap: the provider caches, and
     // a page rarely spans more than a handful of mints.
     const metadata = await this.tokenMetadataFor(page.map((r) => r.mint));
+    const swapped = await this.swapSignaturesAmong(
+      page.flatMap((r) => (r.signature ? [r.signature] : [])),
+    );
     const ramps = await this.ramps.forUser(userId, page);
 
     const nextCursor = hasMore
@@ -820,6 +840,7 @@ export class TransferService {
           // Defensive default: the column is notNull default 'transfer'.
           kind: r.kind ?? 'transfer',
           merchantName: r.merchantName ?? null,
+          ...(r.signature && swapped.has(r.signature) ? { swap: true } : {}),
           merchantCategory: r.merchantCategory ?? null,
           merchantLogoUrl: r.merchantId
             ? merchantLogoUrl(

@@ -8,6 +8,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
+import { generated } from "@sqds/smart-account";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -20,6 +21,7 @@ import {
   buildRejectSettingsChange,
   buildRemoveRecoverySigner,
   buildRotateApprovalSigner,
+  buildUpdateAboveLimitAllowlist,
   buildRotatePrimarySigner,
   buildRotateRecoverySigner,
   buildSpend,
@@ -1003,5 +1005,53 @@ describe("describeTransaction: plain transfers", () => {
     if (described.kind !== "transfer") throw new Error("not a transfer");
     expect(described.destination?.equals(addresses.vault)).toBe(true);
     expect((described.mint as PublicKey).equals(USDC)).toBe(true);
+  });
+});
+
+describe("describing whether a policy lapses", () => {
+  const proposeUpdate = () =>
+    buildUpdateAboveLimitAllowlist({
+      addresses,
+      primary,
+      approval,
+      aboveLimitSeed: 2n,
+      proposer: primary,
+      rentPayer: feePayer,
+      transactionIndex: 7n,
+    }).propose;
+
+  const termsOf = (instructions: TransactionInstruction[]) => {
+    const described = describeTransaction(compile(instructions), context);
+    if (described.kind !== "settings") throw new Error("not a settings change");
+    const [update] = described.actions;
+    if (update?.kind !== "policy-update") throw new Error("not an update");
+    return update.terms;
+  };
+
+  it("reads the update this package builds as never lapsing", () => {
+    expect(termsOf(proposeUpdate()).expires).toBe(false);
+  });
+
+  it("reads an update given an end date as lapsing", () => {
+    const tag = Buffer.from(
+      generated.createSettingsTransactionInstructionDiscriminator,
+    );
+    const expiring = proposeUpdate().map((instruction) => {
+      if (!instruction.data.subarray(0, 8).equals(tag)) return instruction;
+      const [decoded] = generated.createSettingsTransactionStruct.deserialize(
+        instruction.data,
+      );
+      const [action] = decoded.args.actions;
+      if (action?.__kind !== "PolicyUpdate") throw new Error("not an update");
+      action.expirationArgs = { __kind: "Timestamp", fields: [1_900_000_000] };
+      const [data] =
+        generated.createSettingsTransactionStruct.serialize(decoded);
+      return new TransactionInstruction({
+        programId: instruction.programId,
+        keys: instruction.keys,
+        data,
+      });
+    });
+    expect(termsOf(expiring).expires).toBe(true);
   });
 });

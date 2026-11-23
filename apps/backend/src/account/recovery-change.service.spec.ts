@@ -79,6 +79,7 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
       }),
     readSpendingLimit: () =>
       Promise.reject(new Error('readSpendingLimit is not exercised here')),
+    readAllowedPrograms: () => Promise.resolve([]),
     policyExists: () => Promise.resolve(true),
     readProposal: () =>
       Promise.resolve(

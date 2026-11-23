@@ -51,6 +51,7 @@ import {
 } from "@/utils/displayRates";
 import {
   SEED_DEMO,
+  seedSwapTokens,
   seedAccount,
   seedProvisioningStep,
   seedRecoveryKeys,
@@ -61,6 +62,7 @@ import {
   seedTransfers,
   seedWallet,
 } from "@/utils/devSeed";
+import { SWAP_TOKEN_CATEGORIES, type SwapTokenCategory } from "@/utils/swap";
 import { demoFiat } from "@/utils/devSeedFiat";
 import { demoApproval } from "@/utils/devSeedApproval";
 import {
@@ -501,6 +503,65 @@ export type PrepareTransferResponse = z.infer<
 >;
 
 /**
+ * Whether this Account can swap. `off` is an Account set up before Swap, which
+ * needs a one-time change to its spending rules; `pending` is that change
+ * waiting out its security delay.
+ */
+export const SwapAccessStatusSchema = z.object({
+  state: z.enum(["ready", "off", "pending"]),
+  executableAt: z.string().optional(),
+});
+export type SwapAccessStatus = z.infer<typeof SwapAccessStatusSchema>;
+
+export const SwapAccessStepSchema = z.object({
+  done: z.boolean(),
+  step: z.enum(["stage", "approve", "waiting", "execute"]).optional(),
+  unsignedTxBase64: z.string().optional(),
+  changeIndex: z.string().optional(),
+  executableAt: z.string().optional(),
+  needsApprovalSignature: z.boolean().optional(),
+});
+export type SwapAccessStep = z.infer<typeof SwapAccessStepSchema>;
+
+const SwapTokensResponseSchema = z.object({
+  tokens: z.array(
+    z.object({
+      mint: z.string(),
+      symbol: z.string(),
+      name: z.string(),
+      decimals: z.number().int().nonnegative(),
+      iconUrl: z.string().nullable(),
+      category: z.enum(SWAP_TOKEN_CATEGORIES),
+      trust: z.enum(["verified", "unverified", "caution"]),
+      usdPrice: z.number().nullable(),
+    })
+  ),
+});
+
+/** Mirrors `SwapQuoteResponse` in apps/backend/src/swap/dtos.ts. */
+export const SwapQuoteResponseSchema = z.object({
+  quoteId: z.string(),
+  inputMint: z.string(),
+  outputMint: z.string(),
+  amountInRaw: z.string(),
+  amountOutRaw: z.string(),
+  minAmountOutRaw: z.string(),
+  slippageBps: z.number().int().nonnegative(),
+  venue: z.string().nullable(),
+  expiresAt: z.number(),
+});
+export type SwapQuoteResponse = z.infer<typeof SwapQuoteResponseSchema>;
+
+export const PrepareSwapResponseSchema = z.object({
+  unsignedTxBase64: z.string(),
+  vaultAddress: z.string(),
+  primarySigner: z.string(),
+});
+export type PrepareSwapResponse = z.infer<typeof PrepareSwapResponseSchema>;
+
+export const SubmitSwapResponseSchema = z.object({ signature: z.string() });
+
+/**
  * A Payment waiting on this phone.
  *
  * Checkout can only reach the primary signer, so a Payment above the band that
@@ -581,6 +642,8 @@ export const TransferRowSchema = z.object({
   // is the presentation literal (never uppercased).
   kind: z.enum(["transfer", "payment"]),
   merchantName: z.string().nullable(),
+  /** One side of the Consumer's own swap, so the other party is a venue. */
+  swap: z.boolean().optional(),
   /** Set only on Payments. May 404, so it is a candidate, not a promise. */
   merchantLogoUrl: z.string().nullish(),
   merchantCategory: MerchantCategorySchema,
@@ -1892,6 +1955,103 @@ class BackendClient {
       auth: true,
     });
     return SubmitTransferResponseSchema.parse(raw);
+  }
+
+  /** GET /account/swap-access: whether this Account can swap yet. */
+  async getSwapAccess(): Promise<SwapAccessStatus> {
+    if (SEED_DEMO) return { state: "ready" };
+    const raw = await this.request<unknown>("/account/swap-access", {
+      method: "GET",
+      auth: true,
+    });
+    return SwapAccessStatusSchema.parse(raw);
+  }
+
+  /** POST /account/swap-access/start: stages the change that turns Swap on. */
+  async startSwapAccess(): Promise<SwapAccessStep> {
+    const raw = await this.request<unknown>("/account/swap-access/start", {
+      method: "POST",
+      auth: true,
+    });
+    return SwapAccessStepSchema.parse(raw);
+  }
+
+  /** POST /account/swap-access/next: the next step, or done. */
+  async nextSwapAccessStep(): Promise<SwapAccessStep> {
+    const raw = await this.request<unknown>("/account/swap-access/next", {
+      method: "POST",
+      auth: true,
+    });
+    return SwapAccessStepSchema.parse(raw);
+  }
+
+  /** POST /account/swap-access/submit: lands a signed step. */
+  async submitSwapAccessStep(signedTxBase64: string): Promise<void> {
+    await this.request<unknown>("/account/swap-access/submit", {
+      method: "POST",
+      body: JSON.stringify({ signedTxBase64 }),
+      auth: true,
+    });
+  }
+
+  /**
+   * GET /swaps/tokens: the verified assets Swap offers. Those matching
+   * `query`, or else the popular ones in `category`, or else the everyday
+   * list.
+   */
+  async swapTokens(
+    query: string,
+    category: SwapTokenCategory | null,
+    signal?: AbortSignal
+  ) {
+    if (SEED_DEMO) return seedSwapTokens(query, category);
+    const params = query
+      ? `?q=${encodeURIComponent(query)}`
+      : category
+        ? `?category=${category}`
+        : "";
+    const raw = await this.request<unknown>(`/swaps/tokens${params}`, {
+      auth: true,
+      signal,
+    });
+    return SwapTokensResponseSchema.parse(raw).tokens;
+  }
+
+  /**
+   * POST /swaps/quote: prices swapping one of the Account's assets for
+   * another. Native SOL is named by its wrapped mint.
+   */
+  async swapQuote(
+    body: { inputMint: string; outputMint: string; amountRaw: string },
+    signal?: AbortSignal
+  ): Promise<SwapQuoteResponse> {
+    const raw = await this.request<unknown>("/swaps/quote", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+      signal,
+    });
+    return SwapQuoteResponseSchema.parse(raw);
+  }
+
+  /** POST /swaps/prepare: the unsigned swap for a quote still on offer. */
+  async prepareSwap(quoteId: string): Promise<PrepareSwapResponse> {
+    const raw = await this.request<unknown>("/swaps/prepare", {
+      method: "POST",
+      body: JSON.stringify({ quoteId }),
+      auth: true,
+    });
+    return PrepareSwapResponseSchema.parse(raw);
+  }
+
+  /** POST /swaps/submit: lands a swap both of the Account's keys signed. */
+  async submitSwap(signedTxBase64: string): Promise<{ signature: string }> {
+    const raw = await this.request<unknown>("/swaps/submit", {
+      method: "POST",
+      body: JSON.stringify({ signedTxBase64 }),
+      auth: true,
+    });
+    return SubmitSwapResponseSchema.parse(raw);
   }
 
   /** GET /payments/pending — Payments a Merchant is waiting on, that only

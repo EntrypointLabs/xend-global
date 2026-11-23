@@ -9,6 +9,7 @@ import {
   VersionedTransaction,
 } from '@solana/web3.js';
 import {
+  decodeAllowedPrograms,
   decodeProposal,
   derivePolicyAddress,
   deriveProposalAddress,
@@ -99,6 +100,24 @@ export class Web3ProvisioningChain implements ProvisioningChain, OnModuleInit {
     );
     try {
       return (await this.rpc.getAccountInfo(policy)) !== null;
+    } catch (cause) {
+      throw new AccountCreationError(
+        `Could not read policy ${policySeed}: ${describe(cause)}`,
+      );
+    }
+  }
+
+  async readAllowedPrograms(
+    settingsAddress: string,
+    policySeed: bigint,
+  ): Promise<PublicKey[]> {
+    const policy = derivePolicyAddress(
+      new PublicKey(settingsAddress),
+      policySeed,
+    );
+    try {
+      const info = await this.rpc.getAccountInfo(policy);
+      return info ? decodeAllowedPrograms(policy, info) : [];
     } catch (cause) {
       throw new AccountCreationError(
         `Could not read policy ${policySeed}: ${describe(cause)}`,

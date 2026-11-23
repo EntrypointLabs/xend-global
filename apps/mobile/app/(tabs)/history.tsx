@@ -23,6 +23,7 @@ import {
   awaitingPaymentActivityEntry,
   groupIntoSections,
   mapAccountEventToActivityEntry,
+  isSwapRentRefund,
   mapTransferRowToActivityEntry,
   type ActivityEntry,
 } from "@/utils/activity";
@@ -48,15 +49,15 @@ export default function HistoryScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const transferRows = (
-    data?.pages.flatMap((page) => page.transfers) ?? []
-  ).map((row) =>
-    mapTransferRowToActivityEntry(row, {
-      selfAddress: address ?? "",
-      decimalsByMint,
-      iconsByMint,
-    })
-  );
+  const transferRows = (data?.pages.flatMap((page) => page.transfers) ?? [])
+    .filter((row) => !isSwapRentRefund(row))
+    .map((row) =>
+      mapTransferRowToActivityEntry(row, {
+        selfAddress: address ?? "",
+        decimalsByMint,
+        iconsByMint,
+      })
+    );
 
   // Merged for display only. The events deliberately do not live in
   // `page.transfers`, because the balance chart walks that array and would

@@ -151,13 +151,14 @@ describe("above-limit program allowlist", () => {
     transactionIndex: 1n,
   };
 
-  it("defaults to the system, token and compute programs", () => {
+  it("defaults to the system, token, compute and Jupiter programs", () => {
     expect(ABOVE_LIMIT_PROGRAM_ALLOWLIST.map((p) => p.toBase58())).toEqual([
       "11111111111111111111111111111111",
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
       "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
       "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
       "ComputeBudget111111111111111111111111111111",
+      "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
     ]);
     expect(buildCreateAboveLimitPolicy(base).propose).toHaveLength(2);
   });

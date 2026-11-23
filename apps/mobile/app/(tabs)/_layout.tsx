@@ -7,6 +7,7 @@ import { PrimaryRotationRunner } from "@/components/PrimaryRotationRunner";
 import { PendingChangeNotice } from "@/components/PendingChangeNotice";
 import { RecoveryChangeRunner } from "@/components/RecoveryChangeRunner";
 import { SpendingLimitChangeRunner } from "@/components/SpendingLimitChangeRunner";
+import { SwapAccessRunner } from "@/components/SwapAccessRunner";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { CustomTabBar } from "@/components/ui/organisms";
 
@@ -51,6 +52,7 @@ export default function TabLayout() {
       <PendingChangeNotice />
       <RecoveryChangeRunner />
       <SpendingLimitChangeRunner />
+      <SwapAccessRunner />
     </ProtectedRoute>
   );
 }

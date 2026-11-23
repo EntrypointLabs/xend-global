@@ -137,6 +137,7 @@ function fakeChain(state: ChainState = {}) {
         ? Promise.reject(new Error('no policy account'))
         : Promise.resolve(state.spendingLimit ?? limit());
     },
+    readAllowedPrograms: () => Promise.resolve([]),
     policyExists: (_settings, seed) =>
       Promise.resolve(
         seed === ABOVE_LIMIT_POLICY_SEED

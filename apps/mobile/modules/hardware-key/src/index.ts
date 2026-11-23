@@ -114,6 +114,14 @@ export const SIGN_PROMPT = {
     title: "Confirm this send",
     reason: "Check it is you before Prydd sends this money",
   },
+  swapAccess: {
+    title: "Turn on Swap",
+    reason: "Confirm it is you turning on Swap for your account",
+  },
+  swap: {
+    title: "Confirm this swap",
+    reason: "Check it is you before Prydd swaps this money",
+  },
   // Worded as stopping rather than approving. This is the one prompt a
   // Consumer may reach while being attacked, and "approve" is the last word
   // they should read on the way to refusing something.

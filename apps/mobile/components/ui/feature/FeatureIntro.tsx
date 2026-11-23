@@ -23,26 +23,53 @@ export interface FeatureIntroProps {
   headline: string;
   benefits: FeatureBenefit[];
   /** Absent while the feature is not built: the footer reads Coming soon. */
-  cta?: { title: string; onPress: () => void };
+  cta?: { title: string; onPress: () => void; loading?: boolean };
+  /**
+   * What the page is waiting on, in place of an action: the footer keeps the
+   * button's shape and says when, without offering anything to press.
+   */
+  waiting?: string;
 }
 
 /** What every feature that is not open yet ends on, so it reads as planned. */
 export function ComingSoonButton() {
+  return <WaitingPill label="Coming soon" />;
+}
+
+/**
+ * The footer's button shape with nothing to press. `informative` is for a
+ * label the Consumer came to read, such as a time: it is set darker than the
+ * placeholder, which only has to be recognised.
+ */
+function WaitingPill({
+  label,
+  informative = false,
+}: {
+  label: string;
+  informative?: boolean;
+}) {
   const palette = usePalette();
   return (
     <View
       accessible
       accessibilityRole="text"
-      accessibilityLabel="Coming soon"
+      accessibilityLabel={label}
       className="h-14 flex-row items-center justify-center gap-2 rounded-full bg-foreground/[0.05]"
     >
       <Ionicons
         name="time-outline"
         size={18}
-        color={palette.dark ? palette.fg(0.45) : "#0A0A0A73"}
+        color={palette.fg(informative ? 0.7 : 0.45)}
       />
-      <Typography weight="600" className="text-[15px] text-foreground/45">
-        Coming soon
+      <Typography
+        weight="600"
+        className={
+          informative
+            ? "text-[15px] text-foreground/70"
+            : "text-[15px] text-foreground/45"
+        }
+      >
+        {label}
       </Typography>
     </View>
   );
@@ -58,6 +85,7 @@ export function FeatureIntro({
   headline,
   benefits,
   cta,
+  waiting,
 }: FeatureIntroProps) {
   const { width } = useWindowDimensions();
   const palette = usePalette();
@@ -66,8 +94,14 @@ export function FeatureIntro({
   return (
     <FeatureScreen
       footer={
-        cta ? (
-          <PillButton title={cta.title} onPress={cta.onPress} />
+        waiting ? (
+          <WaitingPill label={waiting} informative />
+        ) : cta ? (
+          <PillButton
+            title={cta.title}
+            onPress={cta.onPress}
+            loading={cta.loading}
+          />
         ) : (
           <ComingSoonButton />
         )

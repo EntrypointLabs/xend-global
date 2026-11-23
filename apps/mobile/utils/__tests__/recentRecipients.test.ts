@@ -21,6 +21,16 @@ describe("recentRecipientsFrom", () => {
     expect(recentRecipientsFrom([], NONE, 5)).toEqual([]);
   });
 
+  it("leaves out the venue a swap paid", () => {
+    const rows = [
+      { ...send("venue", "2026-08-29T10:00:00.000Z"), swap: true },
+      send("alice", "2026-08-20T10:00:00.000Z"),
+    ];
+    expect(recentRecipientsFrom(rows, NONE, 5).map((r) => r.address)).toEqual([
+      "alice",
+    ]);
+  });
+
   it("counts repeat sends to one address as one entry", () => {
     const rows = [
       send("alice", "2026-08-29T10:00:00.000Z"),

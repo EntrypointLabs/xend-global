@@ -8,6 +8,7 @@ import {
   mapAccountEventToActivityEntry,
   ActivityEntry,
   groupIntoSections,
+  isSwapRentRefund,
   mapTransferRowToActivityEntry,
   statusLabel,
 } from "@/utils/activity";
@@ -749,5 +750,44 @@ describe("awaitingPaymentActivityEntry", () => {
       "awaiting:pi_1",
       "event:1",
     ]);
+  });
+});
+
+describe("a swap in the feed", () => {
+  const SOL = "So11111111111111111111111111111111111111112";
+  const ctx = { selfAddress: SELF, decimalsByMint: {} };
+
+  it("reads as a swap on both sides rather than a send and a receive", () => {
+    const paid = mapTransferRowToActivityEntry(makeRow({ swap: true }), ctx);
+    const received = mapTransferRowToActivityEntry(
+      makeRow({ swap: true, direction: "RECEIVE", mint: SOL }),
+      ctx
+    );
+    expect(statusLabel(paid)).toBe("Swapped");
+    expect(statusLabel(received)).toBe("Swapped");
+    expect(
+      statusLabel(
+        mapTransferRowToActivityEntry(
+          makeRow({ swap: true, status: "PENDING" }),
+          ctx
+        )
+      )
+    ).toBe("Swapping…");
+  });
+
+  it("leaves an ordinary send worded as a send", () => {
+    expect(statusLabel(mapTransferRowToActivityEntry(makeRow(), ctx))).toBe(
+      "Sent"
+    );
+  });
+
+  it("hides the rent a swap repays, and nothing else of that size", () => {
+    const refund = makeRow({ swap: true, mint: SOL, amountRaw: "2039280" });
+    expect(isSwapRentRefund(refund)).toBe(true);
+    expect(isSwapRentRefund({ ...refund, swap: undefined })).toBe(false);
+    expect(isSwapRentRefund({ ...refund, direction: "RECEIVE" })).toBe(false);
+    expect(isSwapRentRefund({ ...refund, amountRaw: "1000000000" })).toBe(
+      false
+    );
   });
 });
