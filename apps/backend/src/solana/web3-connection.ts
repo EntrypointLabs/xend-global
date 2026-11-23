@@ -411,6 +411,8 @@ export function extractTokenTransfers(
             authority?: string;
             mint?: string;
             tokenAmount?: { amount: string };
+            /** What a fee-charging token keeps back from the recipient. */
+            feeAmount?: { amount: string };
             amount?: string;
             /** System Program transfers carry lamports, not a token amount. */
             lamports?: number;
@@ -474,15 +476,23 @@ export function extractTokenTransfers(
 
     const mint = parsed.info.mint ?? sourceMeta?.mint ?? destMeta?.mint;
     if (!mint) continue;
-    const amountStr =
-      parsed.info.tokenAmount?.amount ?? parsed.info.amount ?? '0';
+    const sent = BigInt(
+      parsed.info.tokenAmount?.amount ?? parsed.info.amount ?? '0',
+    );
+    // A fee-charging token leaves the sender in full and reaches the
+    // recipient short of the fee, which is withheld in their account and is
+    // not theirs to spend. So what the owner sent is the whole amount, and
+    // what the owner received is the amount less the fee.
+    const withheld = BigInt(parsed.info.feeAmount?.amount ?? '0');
+    const amountRaw =
+      toOwner === owner && withheld <= sent ? sent - withheld : sent;
 
     events.push({
       signature,
-      legIndex: legs.next(mint, fromOwner, toOwner, BigInt(amountStr)),
+      legIndex: legs.next(mint, fromOwner, toOwner, amountRaw),
       slot,
       mint,
-      amountRaw: BigInt(amountStr),
+      amountRaw,
       decimals: sourceMeta?.decimals ?? destMeta?.decimals ?? null,
       fromAddress: fromOwner,
       toAddress: toOwner,

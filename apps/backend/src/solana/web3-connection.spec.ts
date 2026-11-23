@@ -175,6 +175,30 @@ describe('extractTokenTransfers', () => {
     ]);
   });
 
+  it('records a fee-charging token whole when sent and net when received', () => {
+    const withFee = (source: string, destination: string, authority: string) =>
+      parsed(TOKEN_2022_PROGRAM_ID, 'transferCheckedWithFee', {
+        source,
+        destination,
+        authority,
+        mint: USDC,
+        tokenAmount: { amount: '100000000', decimals: 6 },
+        feeAmount: { amount: '1000000', decimals: 6 },
+      });
+
+    const received = extractTokenTransfers(
+      transaction([withFee(venueUsdc, vaultUsdc, venue)]),
+      vault,
+    );
+    expect(received.map((e) => e.amountRaw)).toEqual([99_000_000n]);
+
+    const sent = extractTokenTransfers(
+      transaction([withFee(vaultUsdc, venueUsdc, vault)]),
+      vault,
+    );
+    expect(sent.map((e) => e.amountRaw)).toEqual([100_000_000n]);
+  });
+
   it('still records SOL the owner sends to whoever fronted no rent', () => {
     const events = extractTokenTransfers(
       transaction([
