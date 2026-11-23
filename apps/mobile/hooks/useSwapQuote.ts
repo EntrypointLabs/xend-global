@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "@/utils/apiClient";
 import { isSwapQuoteExpired, type SwapQuote } from "@/utils/swap";
+import { bindSwapQuote } from "@/utils/swapTerms";
 
 /** Long enough that a keypad tap does not fire a request per digit. */
 const DEBOUNCE_MS = 350;
@@ -41,21 +42,13 @@ export function useSwapQuote({
     queryKey: ["swapQuote", inputMint, outputMint, debouncedAmount],
     enabled: active,
     queryFn: async ({ signal }): Promise<SwapQuote> => {
-      const quoted = await apiClient.swapQuote(
-        { inputMint, outputMint, amountRaw: debouncedAmount },
-        signal
+      const request = { inputMint, outputMint, amountRaw: debouncedAmount };
+      const quote = bindSwapQuote(
+        request,
+        await apiClient.swapQuote(request, signal)
       );
-      return {
-        quoteId: quoted.quoteId,
-        inputMint: quoted.inputMint,
-        outputMint: quoted.outputMint,
-        amountInRaw: quoted.amountInRaw,
-        outAmountRaw: quoted.amountOutRaw,
-        minOutAmountRaw: quoted.minAmountOutRaw,
-        slippageBps: quoted.slippageBps,
-        venue: quoted.venue,
-        expiresAt: quoted.expiresAt,
-      };
+      if (!quote) throw new Error("The quote was not for the swap asked for");
+      return quote;
     },
     refetchInterval: REFETCH_MS,
     // A price is worth nothing once it is old; showing the previous pair's
