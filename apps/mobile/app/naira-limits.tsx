@@ -2,7 +2,7 @@ import React from "react";
 import { ActivityIndicator, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Typography } from "@/components/ui/atoms/Typography";
 import { PillButton, Footnote } from "@/components/ui/kit";
@@ -30,13 +30,21 @@ type Stage = "unverified" | "code_sent" | "in_review" | "verified";
  */
 export default function NairaLimitsScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const limits = useQuery({
     queryKey: ["fiat", "limits"],
     queryFn: () => apiClient.fiatLimits(),
   });
   const status = useQuery({
     queryKey: ["fiat", "verification"],
-    queryFn: () => apiClient.verification(),
+    queryFn: async () => {
+      const next = await apiClient.verification();
+      // Reading the status can settle a pending review with the partner, which
+      // the limits read made at the same moment would not have seen yet.
+      if (next.status === "verified")
+        void queryClient.invalidateQueries({ queryKey: ["fiat", "limits"] });
+      return next;
+    },
   });
   const close = () =>
     router.canGoBack() ? router.back() : router.replace("/(tabs)");
@@ -53,7 +61,7 @@ export default function NairaLimitsScreen() {
 
   const stage: Stage | null = !limits.data
     ? null
-    : limits.data.verified
+    : limits.data.verified || status.data?.status === "verified"
       ? "verified"
       : status.data?.status === "in_review"
         ? "in_review"
