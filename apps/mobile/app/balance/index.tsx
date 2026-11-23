@@ -29,6 +29,7 @@ import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { useSurface } from "@/components/ui/glass";
 import { OverlayPaneContext } from "@/contexts/OverlayPaneContext";
+import { ToastProvider } from "@/contexts/ToastContext";
 import CashScreen from "@/app/cash";
 import InvestmentsScreen from "@/app/investments";
 import { useBalances } from "@/hooks/useBalances";
@@ -175,193 +176,195 @@ export default function BalanceScreen() {
   const moreHoldings = holdings.length - shownHoldings.length;
 
   return (
-    // This screen is a native modal, so a sheet opened from one of its panes
-    // has to be hosted here: the app-wide host sits under the modal, where
-    // the sheet would open out of sight and out of reach.
-    <BottomSheetModalProvider>
-      <View className="flex-1">
-        <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
-          <FrostBlurView style={StyleSheet.absoluteFill}>
-            <View className="flex-1 bg-background/60" />
-          </FrostBlurView>
-        </Animated.View>
+    // This screen is a native modal, so a sheet or toast raised from one of
+    // its panes has to be hosted here: the app-wide hosts sit under the modal,
+    // where they would show out of sight and out of reach.
+    <ToastProvider>
+      <BottomSheetModalProvider>
+        <View className="flex-1">
+          <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
+            <FrostBlurView style={StyleSheet.absoluteFill}>
+              <View className="flex-1 bg-background/60" />
+            </FrostBlurView>
+          </Animated.View>
 
-        {/* Reanimated's style cannot share a view with NativeWind's className,
+          {/* Reanimated's style cannot share a view with NativeWind's className,
       so the two animated layers are placed by style alone. */}
-        <Animated.View
-          style={[
-            StyleSheet.absoluteFill,
-            { transformOrigin: [ORIGIN.x, insets.top + ORIGIN.y, 0] },
-            contentStyle,
-          ]}
-        >
           <Animated.View
-            pointerEvents={pane ? "none" : "auto"}
-            style={[StyleSheet.absoluteFill, cardsStyle]}
+            style={[
+              StyleSheet.absoluteFill,
+              { transformOrigin: [ORIGIN.x, insets.top + ORIGIN.y, 0] },
+              contentStyle,
+            ]}
           >
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerClassName="px-5"
-              contentContainerStyle={{
-                paddingTop: insets.top + 8 + CLOSE_BUTTON,
-                paddingBottom: insets.bottom + 24,
-              }}
+            <Animated.View
+              pointerEvents={pane ? "none" : "auto"}
+              style={[StyleSheet.absoluteFill, cardsStyle]}
             >
-              <SectionTitle>Your money</SectionTitle>
-              <Card
-                accessibilityLabel={`Cash, ${fromWallet(portfolio.cashUsd)}`}
-                onPress={() => open("cash")}
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerClassName="px-5"
+                contentContainerStyle={{
+                  paddingTop: insets.top + 8 + CLOSE_BUTTON,
+                  paddingBottom: insets.bottom + 24,
+                }}
               >
-                <CardCaption>Cash</CardCaption>
-                <Row
-                  mark={
-                    <Image
-                      source={require("@/assets/icons/usdc.png")}
-                      className="size-10"
-                      resizeMode="contain"
-                    />
-                  }
-                  title="US dollars"
-                  subtitle="Ready to spend or send"
-                  trailing={
-                    <Amount link>{fromWallet(portfolio.cashUsd)}</Amount>
-                  }
-                />
-              </Card>
+                <SectionTitle>Your money</SectionTitle>
+                <Card
+                  accessibilityLabel={`Cash, ${fromWallet(portfolio.cashUsd)}`}
+                  onPress={() => open("cash")}
+                >
+                  <CardCaption>Cash</CardCaption>
+                  <Row
+                    mark={
+                      <Image
+                        source={require("@/assets/icons/usdc.png")}
+                        className="size-10"
+                        resizeMode="contain"
+                      />
+                    }
+                    title="US dollars"
+                    subtitle="Ready to spend or send"
+                    trailing={
+                      <Amount link>{fromWallet(portfolio.cashUsd)}</Amount>
+                    }
+                  />
+                </Card>
 
-              {swapEnabled &&
-                (shownHoldings.length > 0 ? (
-                  <Card
-                    accessibilityLabel={`Investments, ${fromWallet(portfolio.investmentsUsd)}`}
-                    onPress={() => open("investments")}
-                  >
-                    <View className="flex-row items-center justify-between">
-                      <CardCaption>Investments</CardCaption>
-                      <View className="flex-row items-center gap-1.5">
-                        <CardCaption>
-                          {fromWallet(portfolio.investmentsUsd)}
-                        </CardCaption>
-                        <Ionicons
-                          name="chevron-forward"
-                          size={14}
-                          color={palette.fg(0.4)}
-                        />
+                {swapEnabled &&
+                  (shownHoldings.length > 0 ? (
+                    <Card
+                      accessibilityLabel={`Investments, ${fromWallet(portfolio.investmentsUsd)}`}
+                      onPress={() => open("investments")}
+                    >
+                      <View className="flex-row items-center justify-between">
+                        <CardCaption>Investments</CardCaption>
+                        <View className="flex-row items-center gap-1.5">
+                          <CardCaption>
+                            {fromWallet(portfolio.investmentsUsd)}
+                          </CardCaption>
+                          <Ionicons
+                            name="chevron-forward"
+                            size={14}
+                            color={palette.fg(0.4)}
+                          />
+                        </View>
                       </View>
-                    </View>
-                    {shownHoldings.map((holding) => (
+                      {shownHoldings.map((holding) => (
+                        <Row
+                          key={holding.mint}
+                          mark={
+                            <TokenMark
+                              mint={holding.mint}
+                              label={holding.name}
+                              iconUrl={holding.iconUrl}
+                              size={40}
+                            />
+                          }
+                          title={holding.name}
+                          trailing={
+                            <Amount>
+                              {holding.usdValue == null
+                                ? "Unpriced"
+                                : `$${formatMoney(holding.usdValue)}`}
+                            </Amount>
+                          }
+                        />
+                      ))}
+                      {moreHoldings > 0 && (
+                        <CardCaption>{`and ${moreHoldings} more`}</CardCaption>
+                      )}
+                    </Card>
+                  ) : (
+                    // No holdings is only "nothing held" once the read has answered.
+                    // While it is pending or has failed, what the Consumer holds is
+                    // unknown, and saying so beats offering them an empty account.
+                    <Card
+                      accessibilityLabel={`Investments, ${investmentsNote.toLowerCase()}`}
+                      onPress={
+                        isError ? () => refetch() : () => open("investments")
+                      }
+                    >
                       <Row
-                        key={holding.mint}
                         mark={
-                          <TokenMark
-                            mint={holding.mint}
-                            label={holding.name}
-                            iconUrl={holding.iconUrl}
-                            size={40}
+                          <Image
+                            source={require("@/assets/icons/investment.png")}
+                            className="size-10 rounded-xl"
                           />
                         }
-                        title={holding.name}
+                        title="Investments"
+                        subtitle={investmentsNote}
                         trailing={
-                          <Amount>
-                            {holding.usdValue == null
-                              ? "Unpriced"
-                              : `$${formatMoney(holding.usdValue)}`}
-                          </Amount>
+                          isError || isLoading ? (
+                            <Amount>—</Amount>
+                          ) : (
+                            <Pill>Discover</Pill>
+                          )
                         }
                       />
-                    ))}
-                    {moreHoldings > 0 && (
-                      <CardCaption>{`and ${moreHoldings} more`}</CardCaption>
-                    )}
-                  </Card>
-                ) : (
-                  // No holdings is only "nothing held" once the read has answered.
-                  // While it is pending or has failed, what the Consumer holds is
-                  // unknown, and saying so beats offering them an empty account.
-                  <Card
-                    accessibilityLabel={`Investments, ${investmentsNote.toLowerCase()}`}
-                    onPress={
-                      isError ? () => refetch() : () => open("investments")
+                    </Card>
+                  ))}
+
+                <SectionTitle>Grow</SectionTitle>
+                <Card
+                  accessibilityLabel={
+                    earnBalance > 0
+                      ? `Earn, $${formatMoney(earnBalance)}`
+                      : `Earn, ${earnHeadlineApy()} a year`
+                  }
+                  onPress={openEarn}
+                >
+                  <Row
+                    mark={
+                      <Image
+                        source={require("@/assets/icons/earn.png")}
+                        className="size-10 rounded-xl"
+                      />
                     }
-                  >
-                    <Row
-                      mark={
-                        <Image
-                          source={require("@/assets/icons/investment.png")}
-                          className="size-10 rounded-xl"
-                        />
-                      }
-                      title="Investments"
-                      subtitle={investmentsNote}
-                      trailing={
-                        isError || isLoading ? (
-                          <Amount>—</Amount>
-                        ) : (
-                          <Pill>Discover</Pill>
-                        )
-                      }
-                    />
-                  </Card>
-                ))}
-
-              <SectionTitle>Grow</SectionTitle>
-              <Card
-                accessibilityLabel={
-                  earnBalance > 0
-                    ? `Earn, $${formatMoney(earnBalance)}`
-                    : `Earn, ${earnHeadlineApy()} a year`
-                }
-                onPress={openEarn}
-              >
-                <Row
-                  mark={
-                    <Image
-                      source={require("@/assets/icons/earn.png")}
-                      className="size-10 rounded-xl"
-                    />
-                  }
-                  title="Earn"
-                  subtitle={`${earnHeadlineApy()} a year on your dollars`}
-                  trailing={
-                    earnBalance > 0 ? (
-                      <Amount link>{`$${formatMoney(earnBalance)}`}</Amount>
-                    ) : (
-                      <Pill>Discover</Pill>
-                    )
-                  }
-                />
-              </Card>
-            </ScrollView>
+                    title="Earn"
+                    subtitle={`${earnHeadlineApy()} a year on your dollars`}
+                    trailing={
+                      earnBalance > 0 ? (
+                        <Amount link>{`$${formatMoney(earnBalance)}`}</Amount>
+                      ) : (
+                        <Pill>Discover</Pill>
+                      )
+                    }
+                  />
+                </Card>
+              </ScrollView>
+            </Animated.View>
           </Animated.View>
-        </Animated.View>
 
-        {Pane && (
-          <Animated.View style={[StyleSheet.absoluteFill, paneStyle]}>
-            <OverlayPaneContext.Provider value={paneContext}>
-              <Pane />
-            </OverlayPaneContext.Provider>
-          </Animated.View>
-        )}
+          {Pane && (
+            <Animated.View style={[StyleSheet.absoluteFill, paneStyle]}>
+              <OverlayPaneContext.Provider value={paneContext}>
+                <Pane />
+              </OverlayPaneContext.Provider>
+            </Animated.View>
+          )}
 
-        {/* On no animated layer at all: it holds still while the others
+          {/* On no animated layer at all: it holds still while the others
           move, and its glass is never faded. */}
-        <View className="absolute left-5" style={{ top: insets.top + 8 }}>
-          <GlassButton
-            radius={999}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-            onPress={close}
-            className="size-11 items-center justify-center rounded-full"
-            fallbackClassName="border border-foreground/[0.08] bg-card"
-          >
-            <Ionicons
-              name="close"
-              size={22}
-              color={palette.dark ? palette.foreground : "#0A0A0A"}
-            />
-          </GlassButton>
+          <View className="absolute left-5" style={{ top: insets.top + 8 }}>
+            <GlassButton
+              radius={999}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              onPress={close}
+              className="size-11 items-center justify-center rounded-full"
+              fallbackClassName="border border-foreground/[0.08] bg-card"
+            >
+              <Ionicons
+                name="close"
+                size={22}
+                color={palette.dark ? palette.foreground : "#0A0A0A"}
+              />
+            </GlassButton>
+          </View>
         </View>
-      </View>
-    </BottomSheetModalProvider>
+      </BottomSheetModalProvider>
+    </ToastProvider>
   );
 }
 

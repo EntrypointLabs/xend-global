@@ -60,6 +60,9 @@ export default function CashScreen() {
       showToast("Your Account address is not available yet");
       return;
     }
+    // The chooser's visibility is held here, not in the modal flow context
+    // the chooser clears, so it has to be closed here or it stays over the QR.
+    setIsReceiveModalVisible(false);
     qrCodeModalRef.current?.present();
   };
 
