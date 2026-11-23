@@ -390,6 +390,40 @@ describe.skipIf(!HAVE_FIXTURES)(
       );
     });
 
+    it("swaps every last lamport, leaving the vault with no SOL at all", () => {
+      const h = setUp(SOL_TO_USDC);
+      const usdc = new PublicKey(h.snapshot.outputMint);
+      const amountIn = BigInt(h.snapshot.amountIn);
+      h.svm.airdrop(h.addresses.vault, amountIn);
+
+      const result = h.svm.sendTransaction(
+        transaction(
+          h,
+          [
+            openTokenAccount(h, WRAPPED_SOL_MINT),
+            openTokenAccount(h, usdc),
+            buildSwap({
+              addresses: h.addresses,
+              policy: h.abovePolicy,
+              signers: [h.primary.publicKey, h.approval.publicKey],
+              route: h.route,
+              wrapInput: true,
+              refundRentTo: h.feePayer.publicKey,
+            }),
+          ],
+          [h.primary, h.approval],
+        ),
+      );
+      expect(failed(result), logsOf(result)).toBe(false);
+      expect(lamports(h, h.addresses.vault)).toBe(0n);
+      expect(tokenBalance(h, usdc)).toBeGreaterThanOrEqual(
+        minimumAmountOut(
+          BigInt(h.snapshot.quotedAmountOut),
+          h.snapshot.slippageBps,
+        ),
+      );
+    });
+
     it("turns the vault's SOL into USDC", () => {
       const h = setUp(SOL_TO_USDC);
       const usdc = new PublicKey(h.snapshot.outputMint);
