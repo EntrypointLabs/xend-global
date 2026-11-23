@@ -64,6 +64,7 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   // Spending, at any amount.
   'POST /transfers/prepare',
   'POST /transfers/submit',
+  'GET /swaps/tokens',
   'POST /swaps/quote',
   'POST /swaps/prepare',
   'POST /swaps/submit',

@@ -1,9 +1,12 @@
 import {
   Body,
   Controller,
+  Get,
   HttpException,
   HttpStatus,
+  Inject,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -28,13 +31,15 @@ import {
   SwapUnavailableError,
 } from './swap.errors';
 import { SwapService } from './swap.service';
+import { SWAP_TOKEN_DIRECTORY } from './swap-tokens.interface';
+import type { SwapTokenDirectory } from './swap-tokens.interface';
 
 interface AuthenticatedRequest extends Request {
   user: { userId: string };
 }
 
 /**
- * /swaps/quote, /swaps/prepare and /swaps/submit.
+ * /swaps/tokens, /swaps/quote, /swaps/prepare and /swaps/submit.
  *
  *   NoSwapRouteError        -> 422 NO_ROUTE
  *   SwapQuoteExpiredError   -> 410 QUOTE_EXPIRED
@@ -45,7 +50,24 @@ interface AuthenticatedRequest extends Request {
 @Controller('swaps')
 @UseGuards(ConsumerAuthGuard)
 export class SwapController {
-  constructor(private readonly swaps: SwapService) {}
+  constructor(
+    private readonly swaps: SwapService,
+    @Inject(SWAP_TOKEN_DIRECTORY) private readonly tokens: SwapTokenDirectory,
+  ) {}
+
+  /** The assets offered in Swap: the popular ones, or those matching `q`. */
+  @Get('tokens')
+  async listTokens(@Query('q') q?: string) {
+    const query = typeof q === 'string' ? q.slice(0, 64) : '';
+    try {
+      return { tokens: await this.tokens.search(query) };
+    } catch {
+      throw new HttpException(
+        { code: 'SWAP_UNAVAILABLE', message: 'Token search is unavailable' },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+  }
 
   @Post('quote')
   async quote(
