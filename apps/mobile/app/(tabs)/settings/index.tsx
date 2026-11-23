@@ -23,7 +23,7 @@ import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { EditWalletModal } from "@/components/ui/organisms/modals/EditWalletModal";
 import { NotificationsModal } from "@/components/ui/organisms/modals/NotificationsModal";
 import { DeleteAccountModal } from "@/components/ui/organisms/modals/DeleteAccountModal";
-import { useWalletName } from "@/hooks/useWalletName";
+import { ACCOUNT_NAME_MAX_LENGTH, useWalletName } from "@/hooks/useWalletName";
 import { useCollapseOnScroll } from "@/hooks/useTabBarCollapse";
 import { useBalances } from "@/hooks/useBalances";
 import { useRouter } from "expo-router";
@@ -299,6 +299,7 @@ export default function SettingsScreen() {
         initialName={walletName}
         address={accountAddress ?? ""}
         onSave={setWalletName}
+        maxLength={ACCOUNT_NAME_MAX_LENGTH}
       />
       <DeleteAccountModal
         visible={showDeleteAccount}

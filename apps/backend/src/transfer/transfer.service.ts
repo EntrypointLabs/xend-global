@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createId } from '@paralleldrive/cuid2';
 import { eq, and, inArray, lt, or, desc, sql } from 'drizzle-orm';
@@ -21,12 +27,18 @@ import { SpendService } from '../account/spend.service';
 import { DbService } from '../db/db.service';
 import { RampActivityService } from '../fiat/ramp-activity';
 import {
+  FeePayerWatchService,
+  isFeePayerShortfall,
+} from '../settlement/fee-payer-watch';
+import {
   smartAccounts,
   transfers,
   payments,
   merchants,
+  merchantLogos,
   swaps,
 } from '../db/schema';
+import { merchantLogoUrl } from '../merchant/merchant-logo.url';
 import { PREPARED_TX_STORE } from '../prepared/prepared-tx.interface';
 import type { PreparedTxStore } from '../prepared/prepared-tx.interface';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
@@ -145,6 +157,7 @@ export class TransferService {
     @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
     private readonly reconciler: ReconcilerService,
     private readonly ramps: RampActivityService,
+    @Optional() private readonly feePayer?: FeePayerWatchService,
   ) {
     // Pull the stablecoin mint allowlist from env so devnet vs mainnet
     // mints can swap without code changes.
@@ -529,6 +542,12 @@ export class TransferService {
         `transfer.submit.rpc_failed intent_id=${req.intentId} vault_spend=${intent.vaultSpend}`,
         err instanceof Error ? (err.stack ?? err.message) : String(err),
       );
+      if (isFeePayerShortfall(err)) {
+        this.logger.error(
+          `transfer.submit.fee_payer_short intent_id=${req.intentId}`,
+        );
+        void this.feePayer?.onShortfall();
+      }
       throw new RpcUnavailableError(
         'sendRawTransaction failed; no transfer row written',
         err,
@@ -753,6 +772,9 @@ export class TransferService {
         signature: transfers.signature,
         kind: transfers.kind,
         merchantName: merchants.displayName,
+        merchantId: merchants.id,
+        merchantCategory: merchants.category,
+        merchantLogoUpdatedAt: merchantLogos.updatedAt,
         usdValue: transfers.usdValue,
         decimals: transfers.decimals,
         createdAt: transfers.createdAt,
@@ -761,6 +783,7 @@ export class TransferService {
       .from(transfers)
       .leftJoin(payments, eq(transfers.paymentId, payments.id))
       .leftJoin(merchants, eq(payments.merchantId, merchants.id))
+      .leftJoin(merchantLogos, eq(merchantLogos.merchantId, merchants.id))
       .where(
         cursorWhere
           ? and(eq(transfers.smartAccountId, account.id), cursorWhere)
@@ -818,6 +841,14 @@ export class TransferService {
           kind: r.kind ?? 'transfer',
           merchantName: r.merchantName ?? null,
           ...(r.signature && swapped.has(r.signature) ? { swap: true } : {}),
+          merchantCategory: r.merchantCategory ?? null,
+          merchantLogoUrl: r.merchantId
+            ? merchantLogoUrl(
+                this.config.get<string>('PUBLIC_API_URL'),
+                r.merchantId,
+                r.merchantLogoUpdatedAt,
+              )
+            : null,
           usdValue: r.usdValue ?? null,
           decimals: r.decimals ?? null,
           tokenName: metadata.get(r.mint)?.name ?? null,

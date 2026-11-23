@@ -10,6 +10,7 @@ import { cn } from "@/utils/cn";
 import { describeToken } from "@/utils/tokens";
 import { formatUsdFromString } from "@/utils/balances";
 import { TokenMark } from "@/components/ui/atoms/TokenMark";
+import { MerchantAvatar } from "@/components/ui/atoms/MerchantAvatar";
 import { formatMoney } from "@/utils/money";
 import { GLASS, useOnPhoto } from "@/components/ui/glass";
 import { RampMark } from "@/components/ui/atoms/RampMark";
@@ -17,6 +18,7 @@ import {
   formatDollarsMinor,
   formatNaira,
   rampCounterparty,
+  rampOutcome,
 } from "@/utils/ramp";
 
 export type ActivityItemProps = ActivityEntry & {
@@ -102,12 +104,19 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
       className="flex-row items-center gap-3.5 py-3"
       onPress={onPress}
     >
-      <TokenMark
-        mint={entry.mint}
-        label={name}
-        iconUrl={entry.iconUrl}
-        size={40}
-      />
+      {isPayment ? (
+        <MerchantAvatar
+          logoUrl={entry.merchantLogoUrl}
+          category={entry.merchantCategory}
+        />
+      ) : (
+        <TokenMark
+          mint={entry.mint}
+          label={name}
+          iconUrl={entry.iconUrl}
+          size={40}
+        />
+      )}
       <View className="flex-1 flex-row items-center justify-between">
         <View className="flex-col">
           <Typography weight="600" className={cn("mb-0.5", tone.ink)}>
@@ -159,8 +168,12 @@ function RampItem({
 }) {
   const tone = useRowTone();
   const ramp = entry.ramp!;
+  if (ramp.refund) return <RefundItem entry={entry} onPress={onPress} />;
   const isSend = entry.direction === "send";
-  const isInactive = entry.status === "pending" || entry.status === "failed";
+  // The dollars came back, so the naira never left: say so on the send itself.
+  const returned = rampOutcome(ramp, entry.status) === "refunded";
+  const isInactive =
+    entry.status === "pending" || entry.status === "failed" || returned;
   const naira = formatNaira(ramp.fiatAmountMinor, ramp.fiatDecimals);
   const dollars = formatDollarsMinor(entry.amountRaw, entry.decimals);
   const valueColorClass = isInactive
@@ -195,7 +208,7 @@ function RampItem({
       <View className="flex-1 flex-row items-center justify-between gap-3">
         <View className="flex-1 flex-col">
           <Typography weight="600" className={cn("mb-0.5", tone.ink)}>
-            {statusLabel(entry)}
+            {returned ? "Returned" : statusLabel(entry)}
           </Typography>
           <View className="flex-row">
             <Typography
@@ -216,7 +229,7 @@ function RampItem({
             className={cn(
               "text-sm tracking-[0.5px]",
               valueColorClass,
-              entry.status === "failed" && "line-through"
+              (entry.status === "failed" || returned) && "line-through"
             )}
           >
             {isSend ? "-" : "+"}
@@ -224,6 +237,61 @@ function RampItem({
           </Typography>
           <Typography weight="500" className={cn("text-xs", tone.muted)}>
             {dollars}
+          </Typography>
+        </View>
+      </View>
+    </HapticPressable>
+  );
+}
+
+/**
+ * Dollars a bank send gave back after the payout did not happen. The dollars
+ * lead, with the naira the send was for beneath.
+ */
+function RefundItem({
+  entry,
+  onPress,
+}: {
+  entry: ActivityEntry;
+  onPress?: () => void;
+}) {
+  const tone = useRowTone();
+  const ramp = entry.ramp!;
+  return (
+    <HapticPressable
+      className="flex-row items-center gap-3.5 py-3"
+      onPress={onPress}
+    >
+      <View className="h-[40px] w-[40px]">
+        <View className="absolute left-0 top-0">
+          <RampMark ramp={ramp} size={26} />
+        </View>
+        <View className="absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white">
+          <TokenMark mint={entry.mint} label="$" size={26} />
+        </View>
+      </View>
+      <View className="flex-1 flex-row items-center justify-between gap-3">
+        <View className="flex-1 flex-col">
+          <Typography weight="600" className={cn("mb-0.5", tone.ink)}>
+            {statusLabel(entry)}
+          </Typography>
+          <Typography
+            weight="500"
+            numberOfLines={1}
+            className={cn("text-sm", tone.muted)}
+          >
+            {rampCounterparty(ramp)}
+          </Typography>
+        </View>
+        <View className="items-end gap-0.5">
+          <Typography
+            weight="600"
+            className={cn("text-sm tracking-[0.5px]", tone.up)}
+          >
+            +{formatDollarsMinor(entry.amountRaw, entry.decimals)}
+          </Typography>
+          <Typography weight="500" className={cn("text-xs", tone.muted)}>
+            {formatNaira(ramp.fiatAmountMinor, ramp.fiatDecimals)}
           </Typography>
         </View>
       </View>

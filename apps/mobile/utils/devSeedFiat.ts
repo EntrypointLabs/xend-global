@@ -388,14 +388,14 @@ export const demoFiat = {
             },
           ],
       paymentStep: receive ? "manual_transfer" : "account_transfer",
-      verification: this.check(naira),
+      verification: this.check(naira, receive ? "receive" : "send"),
     };
     state.quotes.set(quote.id, quote);
     return quote;
   },
 
-  check(nairaMinor: bigint) {
-    const used = BigInt(this.usedMinor());
+  check(nairaMinor: bigint, direction: "receive" | "send") {
+    const used = BigInt(this.usedMinor(direction));
     return {
       limitMinor: DEMO_LIMIT_MINOR.toString(),
       usedMinor: used.toString(),
@@ -405,11 +405,12 @@ export const demoFiat = {
     };
   },
 
-  usedMinor() {
+  usedMinor(direction: "receive" | "send") {
     const since = Date.now() - 24 * 3_600_000;
     return state.orders
       .filter(
         (o) =>
+          o.route.direction === direction &&
           !["failed", "expired", "returned"].includes(o.status) &&
           Date.parse(o.createdAt) >= since
       )
@@ -431,7 +432,10 @@ export const demoFiat = {
     return {
       verified: state.verification === "verified",
       limitMinor: DEMO_LIMIT_MINOR.toString(),
-      usedMinor: this.usedMinor(),
+      used: {
+        receive: this.usedMinor("receive"),
+        send: this.usedMinor("send"),
+      },
       windowHours: 24,
     };
   },
@@ -715,6 +719,22 @@ export const demoRampActivity = {
     logoKey: "kuda",
     accountLast4: "6789",
   },
+  // A send made before orders kept the bank: name only, no logo.
+  legacySend: {
+    orderId: "demo-send-0",
+    direction: "send",
+    orderStatus: "completed",
+    fiatCurrency: "NGN",
+    fiatAmountMinor: "200000",
+    fiatDecimals: 2,
+    rate: "1430.00",
+    feeMinor: null,
+    counterpartyName: "Chidi Nwosu",
+    bankName: null,
+    bankCode: null,
+    logoKey: null,
+    accountLast4: null,
+  },
   gtbSend: {
     orderId: "demo-send-2",
     direction: "send",
@@ -729,5 +749,20 @@ export const demoRampActivity = {
     bankCode: "GTBINGLA",
     logoKey: "gtbank",
     accountLast4: "5678",
+  },
+  moniepointSend: {
+    orderId: "demo-send-3",
+    direction: "send",
+    orderStatus: "returned",
+    fiatCurrency: "NGN",
+    fiatAmountMinor: "170000",
+    fiatDecimals: 2,
+    rate: "1431.63",
+    feeMinor: "22768",
+    counterpartyName: "Krispy Kreme Yaba",
+    bankName: "Moniepoint MFB",
+    bankCode: "MONINGPC",
+    logoKey: "moniepoint",
+    accountLast4: "7098",
   },
 } as const;

@@ -16,6 +16,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Ionicons } from "@expo/vector-icons";
 import { isPublicKey } from "@/utils/solana";
+import { withSystemPrompt } from "@/utils/systemPrompt";
 
 interface QRScannerModalProps {
   onScan: (address: string) => void;
@@ -115,7 +116,7 @@ const RenderContent = ({
         </Typography>
         <HapticPressable
           className="rounded-full bg-black px-6 py-3"
-          onPress={requestPermission}
+          onPress={() => withSystemPrompt(requestPermission)}
         >
           <Typography weight="600" className="text-white">
             Grant Access

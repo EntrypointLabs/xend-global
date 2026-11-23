@@ -21,6 +21,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { QRScannerModal } from "@/components/ui/organisms/send/QRScannerModal";
 import { cn } from "@/utils/cn";
 import { isPublicKey } from "@/utils/solana";
+import { withSystemPrompt } from "@/utils/systemPrompt";
 
 const ERROR_COLOR = "#F90101";
 
@@ -74,7 +75,7 @@ export const AddContactSheet = forwardRef<
   };
 
   const handlePaste = async () => {
-    const text = await Clipboard.getStringAsync();
+    const text = await withSystemPrompt(() => Clipboard.getStringAsync());
     if (text) setAddress(text.trim());
   };
 

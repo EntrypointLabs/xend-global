@@ -42,7 +42,9 @@ export async function POST(req: Request) {
   if (order) {
     try {
       // The signed event says which intent moved; the order still settles off the intent read back with the secret key.
-      await reconcileOrder(order.id);
+      // Forced past the polling throttle; a rate-limited read throws, so the
+      // event is released below and Prydd retries it.
+      await reconcileOrder(order.id, { force: true });
     } catch (err) {
       await sql`DELETE FROM webhook_events WHERE id = ${event.id}`;
       throw err;

@@ -14,15 +14,25 @@ export const AWAITING_PAYMENTS_KEY = ["payments", "awaiting"] as const;
  * with Prydd" and was told to open the app is standing at a till, so this is
  * checked often rather than cached for comfort.
  */
-export function useAwaitingPayments() {
+/**
+ * Whether this Consumer may ask for Payments waiting on them. A Payment is
+ * finished with the passkey, which an entry session lacks, and the endpoint is
+ * closed to it. Shared so a manual refetch honours the same gate the query does.
+ */
+export function useCanSeeAwaitingPayments(): boolean {
   const { sessionTier } = useAuth();
   const { data: account } = useAccount();
+  return !!account && sessionTier === "full";
+}
+
+export function useAwaitingPayments() {
+  const { data: account } = useAccount();
+  const enabled = useCanSeeAwaitingPayments();
 
   return useQuery({
     queryKey: [...AWAITING_PAYMENTS_KEY, account?.address ?? null],
     queryFn: () => apiClient.listAwaitingPayments(),
-    // A Payment is finished with the passkey, which an entry session lacks.
-    enabled: !!account && sessionTier === "full",
+    enabled,
     staleTime: 15 * 1000,
     refetchOnWindowFocus: true,
   });

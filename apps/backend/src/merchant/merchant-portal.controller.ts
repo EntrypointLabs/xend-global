@@ -1,10 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
+  HttpException,
+  HttpStatus,
   Param,
   Post,
+  Put,
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
@@ -14,10 +18,16 @@ import { z } from 'zod';
 import { DbService } from '../db/db.service';
 import {
   apiKeys,
+  MERCHANT_CATEGORIES,
   merchants,
   paymentIntents,
   settlementAccounts,
 } from '../db/schema';
+import {
+  LogoTooLargeError,
+  LogoTypeUnsupportedError,
+  MerchantLogoService,
+} from './merchant-logo.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { KeyIssuanceService } from './key-issuance.service';
 import { MerchantAuditService } from './merchant-audit.service';
@@ -58,6 +68,13 @@ const Registration = z.object({
     }, 'Use an HTTPS origin, or localhost for development'),
   acceptUsdcTerms: z.literal(true),
 });
+const Branding = z.object({ category: z.enum(MERCHANT_CATEGORIES) });
+const LogoUpload = z.object({
+  contentType: z.string(),
+  // Base64 of at most 256 KB; the service checks the decoded size and bytes.
+  dataBase64: z.string().max(360_000),
+});
+
 const KeyRequest = z.object({
   mode: z.enum(['test', 'live', 'devnet']),
   name: z.string().trim().max(60).optional(),
@@ -73,7 +90,81 @@ export class MerchantPortalController {
     private readonly provisioning: SettlementProvisioningService,
     private readonly config: ConfigService,
     private readonly audit: MerchantAuditService,
+    private readonly logos: MerchantLogoService,
   ) {}
+
+  /** What shoppers see in the Prydd app next to this Merchant's Payments. */
+  @Put('branding')
+  async updateBranding(
+    @Headers('authorization') authorization: string | undefined,
+    @Body(new ZodValidationPipe(Branding)) body: z.infer<typeof Branding>,
+  ) {
+    const merchant = await this.owner.owned(authorization);
+    const [row] = await this.db.client
+      .update(merchants)
+      .set({ category: body.category, updatedAt: new Date() })
+      .where(eq(merchants.id, merchant.id))
+      .returning();
+    await this.audit.record({
+      merchantId: merchant.id,
+      actor: merchant.ownerProviderId ?? 'unknown',
+      action: 'branding.category',
+      target: merchant.id,
+      metadata: { category: body.category },
+    });
+    return this.dashboard({ ...row, signInEmail: merchant.signInEmail });
+  }
+
+  @Put('logo')
+  async uploadLogo(
+    @Headers('authorization') authorization: string | undefined,
+    @Body(new ZodValidationPipe(LogoUpload)) body: z.infer<typeof LogoUpload>,
+  ) {
+    const merchant = await this.owner.owned(authorization);
+    try {
+      await this.logos.upload(
+        merchant.id,
+        body.contentType,
+        Buffer.from(body.dataBase64, 'base64'),
+      );
+    } catch (err) {
+      if (err instanceof LogoTooLargeError) {
+        throw new HttpException(
+          { code: err.code, message: err.message },
+          HttpStatus.PAYLOAD_TOO_LARGE,
+        );
+      }
+      if (err instanceof LogoTypeUnsupportedError) {
+        throw new HttpException(
+          { code: err.code, message: err.message },
+          HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+        );
+      }
+      throw err;
+    }
+    await this.audit.record({
+      merchantId: merchant.id,
+      actor: merchant.ownerProviderId ?? 'unknown',
+      action: 'branding.logo_uploaded',
+      target: merchant.id,
+      metadata: { contentType: body.contentType },
+    });
+    return this.dashboard(merchant);
+  }
+
+  @Delete('logo')
+  async removeLogo(@Headers('authorization') authorization?: string) {
+    const merchant = await this.owner.owned(authorization);
+    await this.logos.remove(merchant.id);
+    await this.audit.record({
+      merchantId: merchant.id,
+      actor: merchant.ownerProviderId ?? 'unknown',
+      action: 'branding.logo_removed',
+      target: merchant.id,
+      metadata: {},
+    });
+    return this.dashboard(merchant);
+  }
 
   @Post('profile')
   async updateProfile(
@@ -283,8 +374,15 @@ export class MerchantPortalController {
       )
       .orderBy(desc(paymentIntents.createdAt))
       .limit(20);
+    const logo = await this.logos.describe(merchant.id);
     return {
-      merchant: toMerchantView(merchant),
+      merchant: {
+        ...toMerchantView(merchant),
+        category: merchant.category,
+        logoUrl: this.logos.logoUrl(merchant.id, logo.updatedAt),
+        // Only an upload can be removed; a site icon is the store's own.
+        logoSource: logo.source,
+      },
       destination: destination
         ? {
             address: destination.address,

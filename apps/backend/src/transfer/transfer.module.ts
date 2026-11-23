@@ -9,6 +9,7 @@ import { ActivityModule } from '../activity/activity.module';
 import { TurnkeyModule } from '../turnkey/turnkey.module';
 import { PreparedModule } from '../prepared/prepared.module';
 import { RampActivityModule } from '../fiat/ramp-activity';
+import { FeePayerWatchModule } from '../settlement/fee-payer-watch';
 
 /**
  * prepare/submit/list endpoints at /transfers/*. DbModule is @Global so
@@ -29,6 +30,7 @@ import { RampActivityModule } from '../fiat/ramp-activity';
     PreparedModule,
     // Names the naira order behind a deposit or bank send.
     RampActivityModule,
+    FeePayerWatchModule,
   ],
   controllers: [TransferController],
   providers: [TransferService],

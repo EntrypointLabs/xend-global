@@ -28,6 +28,16 @@ const OrderSchema = z.object({
   rate: Decimal.optional(),
   txHash: z.string().optional().nullable(),
   paymentReference: z.string().optional().nullable(),
+  amountReturned: Decimal.optional().nullable(),
+  transactionLogs: z
+    .array(
+      z.object({
+        status: z.string(),
+        tx_hash: z.string().optional().nullable(),
+      }),
+    )
+    .optional()
+    .nullable(),
 });
 
 const CreatedOrderSchema = Envelope(

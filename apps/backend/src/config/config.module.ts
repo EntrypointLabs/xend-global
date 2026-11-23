@@ -27,6 +27,8 @@ export const USDC_MINT_BY_CLUSTER = {
         FIAT_DEPOSIT_WINDOW_MINUTES: Joi.number().min(5).max(4320).default(30),
         // Public origin PAJ posts per-order updates to, e.g. https://api.prydd.co
         FIAT_WEBHOOK_BASE_URL: Joi.string().uri().allow('').optional(),
+        // Where the app reaches public images such as Merchant logos.
+        PUBLIC_API_URL: Joi.string().uri().default('https://api.prydd.co'),
         FIAT_PSEUDONYM_SECRET: Joi.string().allow('').optional(),
         // Keys the per-order token in PAJ callback URLs. Falls back to JWT_SECRET.
         FIAT_WEBHOOK_TOKEN_SECRET: Joi.string().allow('').optional(),
@@ -139,6 +141,11 @@ export const USDC_MINT_BY_CLUSTER = {
         MAIL_FROM: Joi.string().default('Prydd <security@prydd.co>'),
         // Where a copy of each support request is mailed. Blank mails nothing:
         // the request is still stored and still shows in the console.
+        OPS_ALERT_EMAIL: Joi.string()
+          .email({ tlds: { allow: false } })
+          .allow('')
+          .default(''),
+        FEE_PAYER_MIN_SOL: Joi.number().positive().optional(),
         SUPPORT_INBOX_EMAIL: Joi.string()
           .email({ tlds: { allow: false } })
           .allow('')

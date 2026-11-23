@@ -145,7 +145,7 @@ function BankAmountStep({
 
   const verified = limits.data?.verified === true;
   const left =
-    limits.data && !verified ? nairaAllowanceLeft(limits.data) : null;
+    limits.data && !verified ? nairaAllowanceLeft(limits.data, "send") : null;
   const tooSmall = kobo > 0n && kobo < MIN_PAYOUT_KOBO;
   const overLimit = left !== null && kobo > left;
   const usdcMinor = BigInt(Math.floor(usdc * 1_000_000));

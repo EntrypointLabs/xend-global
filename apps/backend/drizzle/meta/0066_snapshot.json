@@ -1,5 +1,5 @@
 {
-  "id": "61fcc27e-6c05-4d3a-95a8-2122906f401e",
+  "id": "039b7f11-4c9f-4f40-9a25-83ce46a5c401",
   "prevId": "9a3d8467-2669-41f2-9e54-db4521af6765",
   "version": "7",
   "dialect": "postgresql",
@@ -1911,6 +1911,60 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.merchant_logos": {
+      "name": "merchant_logos",
+      "schema": "",
+      "columns": {
+        "merchant_id": {
+          "name": "merchant_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "data": {
+          "name": "data",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "merchant_logos_merchant_id_merchants_id_fk": {
+          "name": "merchant_logos_merchant_id_merchants_id_fk",
+          "tableFrom": "merchant_logos",
+          "tableTo": "merchants",
+          "columnsFrom": ["merchant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.merchants": {
       "name": "merchants",
       "schema": "",
@@ -1972,6 +2026,14 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'active'"
+        },
+        "category": {
+          "name": "category",
+          "type": "merchant_category",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'other'"
         },
         "intent_ttl_minutes": {
           "name": "intent_ttl_minutes",
@@ -4005,12 +4067,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "pending_swap_access_change_index": {
-          "name": "pending_swap_access_change_index",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -4190,84 +4246,6 @@
           "value": "\"support_requests\".\"status\" IN ('open', 'closed')"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.swaps": {
-      "name": "swaps",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "signature": {
-          "name": "signature",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "input_mint": {
-          "name": "input_mint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "output_mint": {
-          "name": "output_mint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "amount_in_raw": {
-          "name": "amount_in_raw",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "amount_out_raw": {
-          "name": "amount_out_raw",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "swaps_user_id_users_id_fk": {
-          "name": "swaps_user_id_users_id_fk",
-          "tableFrom": "swaps",
-          "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "swaps_signature_unique": {
-          "name": "swaps_signature_unique",
-          "nullsNotDistinct": false,
-          "columns": ["signature"]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.tailer_state": {
@@ -4988,6 +4966,22 @@
       "name": "kyb_status",
       "schema": "public",
       "values": ["pending", "verified", "rejected"]
+    },
+    "public.merchant_category": {
+      "name": "merchant_category",
+      "schema": "public",
+      "values": [
+        "shopping",
+        "food_drink",
+        "groceries",
+        "transport",
+        "travel",
+        "entertainment",
+        "health",
+        "services",
+        "bills",
+        "other"
+      ]
     },
     "public.merchant_status": {
       "name": "merchant_status",

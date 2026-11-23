@@ -5,6 +5,7 @@ import { PRIVY_APP_ID } from '../lib/config';
 import { solanaRpcs } from '../lib/solana';
 import {
   authorize,
+  CheckoutApiError,
   settle,
   settleUntilTerminal,
   type IntentView,
@@ -30,9 +31,10 @@ function PaymentFlowInner({
   onCancel,
   waitForTerminal = false,
 }: PaymentFlowProps) {
-  const { runCeremony, signSpend } = usePasskeyCeremony();
+  const { runCeremony, signSpend, forgetIdentity } = usePasskeyCeremony();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [wrongPasskey, setWrongPasskey] = useState(false);
   const inFlight = useRef(false);
   const abort = useRef<AbortController | null>(null);
   const expired = useQuoteExpired(intent.expiresAt);
@@ -49,9 +51,9 @@ function PaymentFlowInner({
    * Consumer is, get the Spend the backend built out of their Account, sign it
    * with the Account's own signer, hand the bytes back.
    *
-   * A recognised Session skips the passkey prompt for the first step but not
-   * the second: recognition is not a signature, and the money does not move
-   * without one.
+   * A recognised Session only shortens the sheet; the passkey is presented on
+   * every tap, because recognition is not a signature and the money does not
+   * move without one.
    */
   const run = useCallback(() => {
     if (inFlight.current || quoteExpired(intent.expiresAt)) return;
@@ -60,10 +62,12 @@ function PaymentFlowInner({
     abort.current = controller;
     setBusy(true);
     setFailed(false);
+    setWrongPasskey(false);
     // No awaited fetch before the ceremony call, so Safari user activation holds.
-    const credential = intent.sessionRecognized
-      ? Promise.resolve(undefined)
-      : runCeremony().then((result) => result.providerToken);
+    // A recognised Session runs it too, and sends the identity it proves: the
+    // backend then authorizes whoever owns the passkey just chosen, not the
+    // Session's Consumer, so a different or unfinished identity is caught.
+    const credential = runCeremony().then((result) => result.providerToken);
 
     credential
       .then((providerToken) =>
@@ -86,8 +90,18 @@ function PaymentFlowInner({
             : await settle(input, controller.signal),
         );
       })
-      .catch((err: unknown) => {
+      .catch(async (err: unknown) => {
         if (controller.signal.aborted) return;
+        if (
+          err instanceof CheckoutApiError &&
+          err.code === 'UNKNOWN_CONSUMER'
+        ) {
+          // Nothing was charged and the intent is still payable: let the
+          // shopper pick another passkey here instead of ending the checkout.
+          await forgetIdentity().catch(() => undefined);
+          setWrongPasskey(true);
+          return;
+        }
         setFailed(true);
         onError(err);
       })
@@ -96,7 +110,22 @@ function PaymentFlowInner({
         inFlight.current = false;
         setBusy(false);
       });
-  }, [intent, runCeremony, signSpend, onTerminal, onError, waitForTerminal]);
+  }, [
+    intent,
+    runCeremony,
+    signSpend,
+    forgetIdentity,
+    onTerminal,
+    onError,
+    waitForTerminal,
+  ]);
+
+  const wrongPasskeyNotice = wrongPasskey ? (
+    <p role="alert" className="notice">
+      That passkey isn&rsquo;t linked to a Prydd account. Try again and choose
+      the one you use in the Prydd app.
+    </p>
+  ) : null;
 
   if (intent.sessionRecognized) {
     return (
@@ -105,6 +134,7 @@ function PaymentFlowInner({
         onConfirm={run}
         onCancel={onCancel}
         busy={busy}
+        notice={wrongPasskeyNotice}
       />
     );
   }
@@ -112,6 +142,7 @@ function PaymentFlowInner({
   return (
     <PaymentSheet intent={intent}>
       {expired && !busy && <ExpiredNotice />}
+      {!busy && wrongPasskeyNotice}
       {failed ? (
         <>
           <p role="alert" className="notice">

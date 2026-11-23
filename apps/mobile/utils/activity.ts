@@ -4,6 +4,7 @@ import type {
   TransferRow,
 } from "@/utils/apiClient";
 import { WRAPPED_SOL_MINT } from "@/utils/swap";
+import type { MerchantCategory } from "@/utils/merchantCategory";
 import { describeToken, formatTokenAmount } from "@/utils/tokens";
 import {
   formatDollarsMinor,
@@ -50,6 +51,9 @@ export interface ActivityEntry {
    */
   securityKind?: AccountEventRow["kind"];
   merchantName: string | null;
+  /** Set only on `payment` entries. */
+  merchantLogoUrl?: string | null;
+  merchantCategory?: MerchantCategory | null;
   /**
    * Set only on `awaiting` entries: the Merchant's own currency and the figure
    * they quoted.
@@ -135,6 +139,10 @@ export function mapTransferRowToActivityEntry(
     kind: row.kind === "payment" ? "payment" : "transfer",
     isSwap: row.swap === true,
     merchantName: row.merchantName,
+    merchantLogoUrl:
+      row.kind === "payment" ? (row.merchantLogoUrl ?? null) : null,
+    merchantCategory:
+      row.kind === "payment" ? (row.merchantCategory ?? null) : null,
     mint: row.mint,
     amountRaw: row.amountRaw,
     // The row's own decimals first. The holdings lookup only knows mints the
@@ -211,6 +219,7 @@ export function statusLabel(entry: ActivityEntry): string {
     if (entry.status === "failed") return "Failed";
     return "Swapped";
   }
+  if (entry.ramp?.refund) return "Refund";
   if (entry.status === "pending") return "Sending…";
   if (entry.status === "failed") return "Failed";
   return entry.direction === "send" ? "Sent" : "Received";
@@ -319,6 +328,8 @@ export function awaitingPaymentActivityEntry(
  */
 export function arrivalLabel(row: TransferRow): string {
   const decimals = row.decimals ?? DEFAULT_DECIMALS;
+  if (row.ramp?.refund)
+    return `Refunded ${formatDollarsMinor(row.amountRaw, decimals)}`;
   // A naira deposit arrives as the naira the Consumer paid in.
   if (row.ramp)
     return `Received ${formatNaira(row.ramp.fiatAmountMinor, row.ramp.fiatDecimals)}`;

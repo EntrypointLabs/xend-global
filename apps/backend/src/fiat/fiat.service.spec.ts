@@ -460,6 +460,16 @@ describe('FiatService real ramp orders', () => {
     expect(ramp.createOrder).toHaveBeenCalledTimes(1);
   });
 
+  it('reports the add and send allowances apart', async () => {
+    const added = await quote(50_000);
+    await create(added.id, 'key-000004');
+    expect(await service.limits('ada')).toMatchObject({
+      verified: false,
+      limitMinor: '5000000',
+      used: { receive: '5000000', send: '0' },
+    });
+  });
+
   it('sends the verified customer id and lifts the limit', async () => {
     customer = 'cus_1';
     const big = await quote(400_000);

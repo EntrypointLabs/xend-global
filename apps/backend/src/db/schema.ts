@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
   check,
+  customType,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
@@ -255,6 +256,29 @@ export const merchantStatusEnum = pgEnum('merchant_status', [
   'active',
   'suspended',
 ]);
+
+/** What a Merchant sells, so the app can show a category icon when it has no logo. */
+export const MERCHANT_CATEGORIES = [
+  'shopping',
+  'food_drink',
+  'groceries',
+  'transport',
+  'travel',
+  'entertainment',
+  'health',
+  'services',
+  'bills',
+  'other',
+] as const;
+export type MerchantCategory = (typeof MERCHANT_CATEGORIES)[number];
+export const merchantCategoryEnum = pgEnum(
+  'merchant_category',
+  MERCHANT_CATEGORIES,
+);
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => 'bytea',
+});
 
 export const apiKeyModeEnum = pgEnum('api_key_mode', ['test', 'live']);
 
@@ -1015,6 +1039,7 @@ export const merchants = pgTable('merchants', {
   name: text('name').notNull(),
   displayName: text('display_name').notNull(),
   status: merchantStatusEnum('status').notNull().default('active'),
+  category: merchantCategoryEnum('category').notNull().default('other'),
   intentTtlMinutes: integer('intent_ttl_minutes'),
   allowedOrigins: text('allowed_origins').array(),
   // KYB gates LIVE-mode key issuance only; test keys are never gated. Stamped
@@ -1039,6 +1064,22 @@ export const merchants = pgTable('merchants', {
   flatFeeBps: integer('flat_fee_bps').notNull().default(0),
   fxSpreadBps: integer('fx_spread_bps').notNull().default(0),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/**
+ * A Merchant's logo, kept here rather than in object storage because logos are
+ * small, few and read through one cached endpoint. An `upload` row is what the
+ * owner chose; a `site` row is the icon found on their store, re-fetched once
+ * it is stale, and a `site` row with no data remembers that none was found.
+ */
+export const merchantLogos = pgTable('merchant_logos', {
+  merchantId: text('merchant_id')
+    .primaryKey()
+    .references(() => merchants.id, { onDelete: 'cascade' }),
+  source: text('source').$type<'upload' | 'site'>().notNull(),
+  contentType: text('content_type'),
+  data: bytea('data'),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 

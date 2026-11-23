@@ -12,6 +12,7 @@ type IntentRow = typeof paymentIntents.$inferSelect;
 
 function merchantRow(over: Partial<MerchantRow> = {}): MerchantRow {
   return {
+    category: 'other',
     businessProfile: {},
     profileVersion: 0,
     ownerProviderId: null,

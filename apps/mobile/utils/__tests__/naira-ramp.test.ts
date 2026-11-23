@@ -15,10 +15,20 @@ describe("naira ramp helpers", () => {
 
   it("never reports a negative allowance", () => {
     const limits = { verified: false, windowHours: 24, limitMinor: "5000000" };
-    expect(nairaAllowanceLeft({ ...limits, usedMinor: "1200000" })).toBe(
-      3_800_000n
-    );
-    expect(nairaAllowanceLeft({ ...limits, usedMinor: "9000000" })).toBe(0n);
+    const used = { receive: "1200000", send: "9000000" };
+    expect(nairaAllowanceLeft({ ...limits, used }, "receive")).toBe(3_800_000n);
+    expect(nairaAllowanceLeft({ ...limits, used }, "send")).toBe(0n);
+  });
+
+  it("leaves the send allowance whole after a full day of adding", () => {
+    const limits = {
+      verified: false,
+      windowHours: 24,
+      limitMinor: "5000000",
+      used: { receive: "5000000", send: "0" },
+    };
+    expect(nairaAllowanceLeft(limits, "receive")).toBe(0n);
+    expect(nairaAllowanceLeft(limits, "send")).toBe(5_000_000n);
   });
 
   it("reads typed refusals and only trusts messages that came with a code", () => {

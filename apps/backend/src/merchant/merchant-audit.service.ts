@@ -13,7 +13,10 @@ export type MerchantAuditAction =
   | 'webhook.create'
   | 'webhook.rotate_secret'
   | 'webhook.delete'
-  | 'kyb.submit';
+  | 'kyb.submit'
+  | 'branding.category'
+  | 'branding.logo_uploaded'
+  | 'branding.logo_removed';
 
 export interface MerchantAuditEntry {
   id: string;

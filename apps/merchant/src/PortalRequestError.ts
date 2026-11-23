@@ -1,8 +1,11 @@
 /** Preserve server validation details without treating arbitrary payloads as fields. */
 export class PortalRequestError extends Error {
   readonly fieldErrors: Record<string, string> = {};
+  /** The backend's machine-readable error code, when it sent one. */
+  readonly code: string | null;
+  readonly status: number | null;
 
-  constructor(payload: unknown) {
+  constructor(payload: unknown, status: number | null = null) {
     const data =
       payload && typeof payload === "object"
         ? (payload as Record<string, unknown>)
@@ -12,6 +15,8 @@ export class PortalRequestError extends Error {
         ? data.message
         : "We could not complete that request.",
     );
+    this.status = status;
+    this.code = typeof data.code === "string" ? data.code : null;
     if (!Array.isArray(data.details)) return;
     for (const detail of data.details) {
       if (!detail || typeof detail !== "object") continue;

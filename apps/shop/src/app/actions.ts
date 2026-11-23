@@ -75,7 +75,22 @@ export async function checkOrder(orderId: string): Promise<Order | null> {
     console.error("order check failed", orderId, err);
     return null;
   } finally {
-    after(() => reconcileOpenOrders(5).catch(() => undefined));
+    after(() => reconcileOpenOrders(3).catch(() => undefined));
+  }
+}
+
+/**
+ * A fresh read past the polling throttle, for the one moment a stale answer
+ * could cost money: deciding whether a shopper may start another payment.
+ */
+export async function checkOrderNow(orderId: string): Promise<Order | null> {
+  try {
+    return await reconcileOrder(orderId, { force: true });
+  } catch (err) {
+    console.error("order check failed", orderId, err);
+    return null;
+  } finally {
+    after(() => reconcileOpenOrders(3).catch(() => undefined));
   }
 }
 

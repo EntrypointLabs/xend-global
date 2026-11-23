@@ -301,4 +301,34 @@ describe('Paycrest bank payouts', () => {
     expect(paycrestStatus('expired')).toBe('expired');
     expect(paycrestStatus('compliance_hold')).toBeNull();
   });
+
+  it('reads an expired order with money sent back as returned, with the refund transfer', async () => {
+    client.getOrder.mockResolvedValue({
+      id: 'pc-1',
+      status: 'expired',
+      amountReturned: '1.187458',
+      transactionLogs: [
+        { status: 'order_initiated', tx_hash: '' },
+        { status: 'order_refunded', tx_hash: 'RefundSig111' },
+      ],
+    });
+    await expect(provider.getOrder('pc-1')).resolves.toEqual({
+      reference: 'pc-1',
+      status: 'returned',
+      refundSignature: 'RefundSig111',
+    });
+  });
+
+  it('keeps an expired order with nothing returned as expired', async () => {
+    client.getOrder.mockResolvedValue({
+      id: 'pc-2',
+      status: 'expired',
+      amountReturned: '0',
+      transactionLogs: [{ status: 'order_initiated', tx_hash: '' }],
+    });
+    await expect(provider.getOrder('pc-2')).resolves.toEqual({
+      reference: 'pc-2',
+      status: 'expired',
+    });
+  });
 });

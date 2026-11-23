@@ -26,6 +26,9 @@ import { MerchantPortalNairaController } from './merchant-portal-naira.controlle
  * API-key guard, the internal ops guard, the Stripe-semantics idempotency
  * layer, the KYB-gated key-issuance service, and the ops refund surface.
  */
+import { MerchantLogoService } from './merchant-logo.service';
+import { MerchantLogoController } from './merchant-logo.controller';
+
 @Module({
   imports: [PaymentModule, FxModule, SettlementModule, WebhookModule],
   providers: [
@@ -37,6 +40,7 @@ import { MerchantPortalNairaController } from './merchant-portal-naira.controlle
     IdempotencyService,
     KeyIssuanceService,
     RefundService,
+    MerchantLogoService,
   ],
   controllers: [
     MerchantController,
@@ -47,7 +51,8 @@ import { MerchantPortalNairaController } from './merchant-portal-naira.controlle
     MerchantPortalPaymentsController,
     MerchantPortalAuditController,
     MerchantPortalNairaController,
+    MerchantLogoController,
   ],
-  exports: [KeyIssuanceService, IdempotencyService],
+  exports: [KeyIssuanceService, IdempotencyService, MerchantLogoService],
 })
 export class MerchantModule {}

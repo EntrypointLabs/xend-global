@@ -66,6 +66,31 @@ function transfer(overrides: Partial<RampTransferRef>): RampTransferRef {
 }
 
 describe('matchRampOrders', () => {
+  it('marks the arrival that refunded a bank send, and still names the send', () => {
+    const sent = transfer({
+      id: 'out',
+      direction: 'SEND',
+      toAddress: 'DepositAddr1111',
+      amountRaw: '3512817',
+    });
+    const back = transfer({
+      id: 'back',
+      signature: 'RefundSig111',
+      amountRaw: '3489354',
+    });
+    const matched = run(
+      [sent, back],
+      [bankSend({ status: 'returned', refundSignature: 'RefundSig111' })],
+    );
+    expect(matched.get('out')).toMatchObject({ direction: 'send' });
+    expect(matched.get('out')?.refund).toBeUndefined();
+    expect(matched.get('back')).toMatchObject({
+      direction: 'send',
+      refund: true,
+      counterpartyName: 'Ada Okafor',
+    });
+  });
+
   it('names a bank send by its deposit address, with the bank and person', () => {
     const t = transfer({
       direction: 'SEND',

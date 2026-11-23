@@ -32,6 +32,7 @@ import {
   VerificationSchema,
 } from "@/utils/fiat";
 import { z } from "zod";
+import { MERCHANT_CATEGORIES } from "@/utils/merchantCategory";
 
 import * as Sentry from "@sentry/react-native";
 
@@ -602,6 +603,13 @@ export type SubmitTransferResponse = z.infer<
   typeof SubmitTransferResponseSchema
 >;
 
+// A category this build does not know yet reads as none, so one new value on
+// the backend cannot fail the parse of a whole Activity page.
+const MerchantCategorySchema = z
+  .enum(MERCHANT_CATEGORIES)
+  .nullish()
+  .catch(null);
+
 export const TransferRowSchema = z.object({
   id: z.string(),
   direction: z.enum(["SEND", "RECEIVE"]),
@@ -619,6 +627,9 @@ export const TransferRowSchema = z.object({
   merchantName: z.string().nullable(),
   /** One side of the Consumer's own swap, so the other party is a venue. */
   swap: z.boolean().optional(),
+  /** Set only on Payments. May 404, so it is a candidate, not a promise. */
+  merchantLogoUrl: z.string().nullish(),
+  merchantCategory: MerchantCategorySchema,
   /**
    * What the transfer was worth in USD when it happened, as a decimal string.
    * Frozen server-side at index time, never re-priced on read.
@@ -666,6 +677,8 @@ export const TransferRowSchema = z.object({
       bankCode: z.string().nullable(),
       logoKey: z.string().nullable(),
       accountLast4: z.string().nullable(),
+      // The arrival that brought a returned bank send's dollars back.
+      refund: z.literal(true).optional(),
     })
     .nullish(),
   createdAt: z.string().datetime(),
@@ -716,6 +729,8 @@ export type TransferListResponse = z.infer<typeof TransferListResponseSchema>;
 export const SessionSummarySchema = z.object({
   id: z.string(),
   merchantDisplayName: z.string(),
+  merchantLogoUrl: z.string().nullish(),
+  merchantCategory: MerchantCategorySchema,
   createdAt: z.string().datetime(),
   lastUsedAt: z.string().datetime(),
   expiresAt: z.string().datetime(),
@@ -812,6 +827,18 @@ class BackendClient {
         body: JSON.stringify({ quoteId, idempotencyKey }),
       })
     );
+  }
+  /**
+   * Tells the backend the Account was renamed, so it appears in Activity. The
+   * name itself stays on the device.
+   */
+  async recordAccountRename(name: string, previous: string | null) {
+    if (SEED_DEMO) return;
+    await this.request<void>("/account/name", {
+      auth: true,
+      method: "POST",
+      body: JSON.stringify({ name, previous }),
+    });
   }
   async observedBalances() {
     if (SEED_DEMO) return demoFiat.observedBalances();

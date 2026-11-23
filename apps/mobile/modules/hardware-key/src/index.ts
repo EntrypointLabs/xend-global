@@ -2,6 +2,7 @@ import { requireNativeModule } from "expo-modules-core";
 import { Platform } from "react-native";
 
 import { accountScope } from "./accountScope";
+import { withSystemPrompt } from "@/utils/systemPrompt";
 
 /**
  * The approval signer's key (S2 in ADR 0025): a P-256 keypair generated inside
@@ -81,8 +82,12 @@ export function devicePlatform(): DevicePlatform {
 export const hardwareKey = {
   enrol: async (nonce: string) => native.enrol(nonce, await accountScope()),
   getPublicKey: async () => native.getPublicKey(await accountScope()),
-  sign: async (payloadHex: string, title: string, reason: string) =>
-    native.sign(payloadHex, title, reason, await accountScope()),
+  sign: async (payloadHex: string, title: string, reason: string) => {
+    const scope = await accountScope();
+    return withSystemPrompt(() =>
+      native.sign(payloadHex, title, reason, scope)
+    );
+  },
   reset: async () => native.reset(await accountScope()),
 };
 

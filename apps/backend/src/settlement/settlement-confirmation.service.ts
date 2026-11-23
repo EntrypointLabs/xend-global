@@ -4,6 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { and, eq, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import {
+  merchants,
   paymentAttempts,
   paymentIntents,
   payments,
@@ -22,6 +23,17 @@ import { SettlementProvisioningService } from './settlement-provisioning.service
 import { SettlementRouter } from './settlement-router';
 import type { SettlementCompletion } from './settlement-provider.interface';
 import { payWithPryddEnabled } from '../config/pay-with-prydd';
+import { NotificationsService } from '../notifications/notifications.service';
+import { formatDisplayMoney } from '../fx/currency';
+import { findVaultAddress } from '../capability/vault-address';
+
+/** Under $10 the notice flags the balance, as a card app warns before a decline. */
+const LOW_BALANCE_RAW = 10_000_000n;
+
+/** USDC's six-decimal raw amount as whole cents, rounded down. */
+function toCents(raw: bigint): string {
+  return (raw / 10_000n).toString();
+}
 
 type FailureReason = string | { code: string; [key: string]: unknown };
 type IntentRow = typeof paymentIntents.$inferSelect;
@@ -68,6 +80,7 @@ export class SettlementConfirmationService implements OnModuleInit {
     private readonly provisioning: SettlementProvisioningService,
     private readonly router: SettlementRouter,
     @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit(): void {
@@ -170,7 +183,7 @@ export class SettlementConfirmationService implements OnModuleInit {
     // (d) write the payments row idempotently and correlate the Consumer's
     // Activity transfer row (the USDC settled on-chain, so it is a Payment
     // regardless of any downstream payout).
-    await this.db.client
+    const inserted = await this.db.client
       .insert(payments)
       .values({
         intentId,
@@ -182,7 +195,13 @@ export class SettlementConfirmationService implements OnModuleInit {
         txSignature: signature,
         settledAt: new Date(),
       })
-      .onConflictDoNothing({ target: payments.intentId });
+      .onConflictDoNothing({ target: payments.intentId })
+      .returning({ id: payments.id });
+    // Only the call that wrote the row tells the Consumer, so the sweep that
+    // re-runs this for a lost process never sends a second notice.
+    if (inserted.length > 0) {
+      void this.notifyPaid(consumerId, intent);
+    }
     const [payment] = await this.db.client
       .select({ id: payments.id })
       .from(payments)
@@ -337,6 +356,55 @@ export class SettlementConfirmationService implements OnModuleInit {
           : undefined,
       providerTxRef: signature,
     });
+  }
+
+  /** Never throws: it runs detached, and the Payment has already settled. */
+  private async notifyPaid(
+    consumerId: string,
+    intent: {
+      merchantId: string;
+      displayCurrency: string;
+      displayAmountMinor: string;
+    },
+  ): Promise<void> {
+    try {
+      const [merchant] = await this.db.client
+        .select({ name: merchants.displayName, category: merchants.category })
+        .from(merchants)
+        .where(eq(merchants.id, intent.merchantId))
+        .limit(1);
+      const balance = await this.usdcBalanceAfter(consumerId);
+      await this.notifications.notifyPaymentMade(consumerId, {
+        merchantName: merchant?.name ?? 'a merchant',
+        category: merchant?.category ?? null,
+        amount: formatDisplayMoney(
+          intent.displayCurrency,
+          intent.displayAmountMinor,
+        ),
+        balance:
+          balance === null ? null : formatDisplayMoney('USD', toCents(balance)),
+        lowBalance: balance !== null && balance < LOW_BALANCE_RAW,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `settlement.notify_paid_failed consumer_id=${consumerId} reason=${(err as Error).message}`,
+      );
+    }
+  }
+
+  /** The vault's USDC after the Payment, or null when it cannot be read. */
+  private async usdcBalanceAfter(consumerId: string): Promise<bigint | null> {
+    try {
+      const vault = await findVaultAddress(this.db, consumerId);
+      const mint = this.config.get<string>('EXPO_PUBLIC_USDC_MINT_ADDRESS');
+      if (!vault || !mint) return null;
+      const balances = await this.solana.getTokenBalances(vault);
+      return balances
+        .filter((b) => b.mint === mint)
+        .reduce((sum, b) => sum + b.amountRaw, 0n);
+    } catch {
+      return null;
+    }
   }
 
   /** Idempotent failure finalize (rowCount-guarded, publishes payment.failed). */

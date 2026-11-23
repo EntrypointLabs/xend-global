@@ -13,7 +13,7 @@ import {
 } from "@/lib/catalog";
 import type { Order } from "@/lib/orders";
 
-const POLL_MS = 2500;
+const POLL_MS = 4000;
 const POLL_FOR_MS = 20 * 60_000;
 
 const COPY: Record<

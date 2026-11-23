@@ -41,6 +41,7 @@ import { PaymentsPanel, formatWhen } from "./PaymentsPanel";
 import { PaymentDetail } from "./PaymentDetail";
 import { AuditPanel } from "./AuditPanel";
 import { ReceivingAccount, type Destination } from "./ReceivingAccount";
+import { BrandSection, type BrandMerchant } from "./BrandSection";
 
 type ApiKey = {
   id: string;
@@ -58,14 +59,15 @@ type ApiKey = {
 type Dashboard = {
   cluster: string;
   devnetExecutionEnabled: boolean;
-  merchant: ProfileMerchant & {
-    id: string;
-    displayName: string;
-    kybStatus: string;
-    kybSubmittedAt: string | null;
-    kybReviewNote: string | null;
-    receivingWallet: string;
-  };
+  merchant: ProfileMerchant &
+    BrandMerchant & {
+      id: string;
+      displayName: string;
+      kybStatus: string;
+      kybSubmittedAt: string | null;
+      kybReviewNote: string | null;
+      receivingWallet: string;
+    };
   destination: Destination | null;
   nairaSettlementAvailable?: boolean;
   keys: ApiKey[];
@@ -527,6 +529,20 @@ function MerchantWorkspace() {
                     )}
                   </div>
                 </section>
+                <BrandSection
+                  merchant={data.merchant}
+                  onCategory={async (category) =>
+                    setData(
+                      await client.put<Dashboard>("branding", { category }),
+                    )
+                  }
+                  onUpload={async (logo) =>
+                    setData(await client.put<Dashboard>("logo", logo))
+                  }
+                  onRemove={async () =>
+                    setData(await client.delete<Dashboard>("logo"))
+                  }
+                />
                 <BusinessProfileForm
                   ref={profileRef}
                   key={data.merchant.id}

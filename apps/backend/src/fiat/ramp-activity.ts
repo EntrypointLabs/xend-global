@@ -30,6 +30,8 @@ export interface RampDetails {
   bankCode: string | null;
   logoKey: string | null;
   accountLast4: string | null;
+  /** Set on the arrival that brought a returned bank send's USDC back. */
+  refund?: true;
 }
 
 export interface RampTransferRef {
@@ -146,7 +148,10 @@ export function matchRampOrders(
 
   const bySignature = new Map<string, FiatOrder>();
   const byDeposit = new Map<string, FiatOrder>();
+  const byRefund = new Map<string, FiatOrder>();
   for (const order of live) {
+    if (order.route.direction === 'send' && order.refundSignature)
+      byRefund.set(order.refundSignature, order);
     if (order.route.direction === 'receive' && order.settlementSignature)
       bySignature.set(order.settlementSignature, order);
     if (order.route.direction === 'send' && order.instructions.depositAddress)
@@ -164,6 +169,15 @@ export function matchRampOrders(
   transfers = transfers.filter((t) => t.mint === usdcMint);
 
   for (const transfer of transfers) {
+    const refunded =
+      transfer.direction === 'RECEIVE' && transfer.signature
+        ? byRefund.get(transfer.signature)
+        : undefined;
+    if (refunded) {
+      const details = rampDetails(refunded);
+      if (details) matched.set(transfer.id, { ...details, refund: true });
+      continue;
+    }
     const order =
       transfer.direction === 'SEND'
         ? byDeposit.get(transfer.toAddress)
@@ -241,6 +255,7 @@ export class RampActivityService {
     if (signatures.length > 0)
       exact.push(
         inArray(sql`${fiatOrders.payload}->>'settlementSignature'`, signatures),
+        inArray(sql`${fiatOrders.payload}->>'refundSignature'`, signatures),
       );
     if (addresses.length > 0)
       exact.push(
