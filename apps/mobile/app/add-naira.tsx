@@ -19,6 +19,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useNow } from "@/hooks/useNow";
 import { usePalette } from "@/hooks/usePalette";
+import { Pop, Rise } from "@/components/ui/motion";
 import { apiClient } from "@/utils/apiClient";
 import { displayMoney, usdcAsDollars } from "@/utils/display-money";
 import {
@@ -735,22 +736,28 @@ function Outcome({
       }
     >
       <View className="flex-1 items-center justify-center pb-16">
-        <View className="size-16 items-center justify-center rounded-full bg-foreground/[0.05]">
-          <Ionicons name={icon} size={30} color={palette.ink} />
-        </View>
-        <Typography
-          accessibilityRole="header"
-          weight="700"
-          className="mt-6 text-center text-[26px] leading-[32px] tracking-[-0.5px] text-ink"
-        >
-          {title}
-        </Typography>
-        <Typography
-          weight="500"
-          className="mt-2 max-w-[310px] text-center text-[14px] leading-[20px] text-foreground/55"
-        >
-          {body}
-        </Typography>
+        <Pop haptic="warning">
+          <View className="size-16 items-center justify-center rounded-full bg-foreground/[0.05]">
+            <Ionicons name={icon} size={30} color={palette.ink} />
+          </View>
+        </Pop>
+        <Rise index={2}>
+          <Typography
+            accessibilityRole="header"
+            weight="700"
+            className="mt-6 text-center text-[26px] leading-[32px] tracking-[-0.5px] text-ink"
+          >
+            {title}
+          </Typography>
+        </Rise>
+        <Rise index={3}>
+          <Typography
+            weight="500"
+            className="mt-2 max-w-[310px] text-center text-[14px] leading-[20px] text-foreground/55"
+          >
+            {body}
+          </Typography>
+        </Rise>
       </View>
     </FeatureScreen>
   );

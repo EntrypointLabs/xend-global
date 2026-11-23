@@ -22,6 +22,7 @@ import type { AwaitingPayment } from "@/utils/apiClient";
 import { formatMoney } from "@/utils/money";
 import { cn } from "@/utils/cn";
 import { usePalette } from "@/hooks/usePalette";
+import { Pop, Rise } from "@/components/ui/motion";
 
 const DISPLAY = { fontFamily: "Montserrat_900Black" } as const;
 /** Under a minute, the countdown is the most important thing on the screen. */
@@ -86,48 +87,45 @@ function Outcome({
   onDone: () => void;
 }) {
   const palette = usePalette();
-  const reduceMotion = useReducedMotion();
-  const mark = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
-  useEffect(() => {
-    if (reduceMotion) return;
-    Animated.spring(mark, {
-      toValue: 1,
-      speed: 14,
-      bounciness: 9,
-      useNativeDriver: true,
-    }).start();
-  }, [mark, reduceMotion]);
 
   return (
     <View className="flex-1 px-6">
       <View className="flex-1 items-center justify-center">
-        <Animated.View
-          className={cn(
-            "size-24 items-center justify-center rounded-full",
-            tone === "success" ? "bg-success" : "bg-foreground/[0.06]"
-          )}
-          style={{ opacity: mark, transform: [{ scale: mark }] }}
-        >
-          <Ionicons
-            name={tone === "success" ? "checkmark" : "close"}
-            size={48}
-            color={tone === "success" ? palette.primaryForeground : palette.ink}
-          />
-        </Animated.View>
-        <Typography
-          accessibilityRole="header"
-          accessibilityLiveRegion="polite"
-          className="mt-8 text-center text-[34px] uppercase leading-[34px] tracking-[-1px] text-ink"
-          style={DISPLAY}
-        >
-          {title}
-        </Typography>
-        <Typography
-          weight="500"
-          className="mt-3 max-w-[300px] text-center text-[15px] leading-[21px] text-foreground/60"
-        >
-          {message}
-        </Typography>
+        {/* The haptic for the outcome is fired where the phase changes. */}
+        <Pop>
+          <View
+            className={cn(
+              "size-24 items-center justify-center rounded-full",
+              tone === "success" ? "bg-success" : "bg-foreground/[0.06]"
+            )}
+          >
+            <Ionicons
+              name={tone === "success" ? "checkmark" : "close"}
+              size={48}
+              color={
+                tone === "success" ? palette.primaryForeground : palette.ink
+              }
+            />
+          </View>
+        </Pop>
+        <Rise index={2}>
+          <Typography
+            accessibilityRole="header"
+            accessibilityLiveRegion="polite"
+            className="mt-8 text-center text-[34px] uppercase leading-[34px] tracking-[-1px] text-ink"
+            style={DISPLAY}
+          >
+            {title}
+          </Typography>
+        </Rise>
+        <Rise index={3}>
+          <Typography
+            weight="500"
+            className="mt-3 max-w-[300px] text-center text-[15px] leading-[21px] text-foreground/60"
+          >
+            {message}
+          </Typography>
+        </Rise>
       </View>
       <HapticPressable
         onPress={onDone}

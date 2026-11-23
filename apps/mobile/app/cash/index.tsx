@@ -151,7 +151,12 @@ export default function CashScreen() {
                 </View>
               </HapticPressable>
             ) : (
-              <BalanceView weight="700" variant="h2" amount={totalDisplay} />
+              <BalanceView
+                rolling
+                weight="700"
+                variant="h2"
+                amount={totalDisplay}
+              />
             )}
           </View>
 
