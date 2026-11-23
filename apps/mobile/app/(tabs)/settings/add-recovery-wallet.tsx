@@ -11,6 +11,7 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { QRScannerModal } from "@/components/ui/organisms/send/QRScannerModal";
 import { isSignerAddress } from "@/utils/solana";
 import { usePalette } from "@/hooks/usePalette";
+import { withSystemPrompt } from "@/utils/systemPrompt";
 
 /**
  * Takes the wallet address, and refuses a malformed one here.
@@ -30,7 +31,7 @@ export default function AddRecoveryWalletScreen() {
   const malformed = trimmed.length > 0 && !valid;
 
   const paste = async () => {
-    const text = await Clipboard.getStringAsync();
+    const text = await withSystemPrompt(() => Clipboard.getStringAsync());
     if (text) setAddress(text.trim());
   };
 

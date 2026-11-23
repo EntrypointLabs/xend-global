@@ -22,6 +22,7 @@ import { QRScannerModal } from "@/components/ui/organisms/send/QRScannerModal";
 import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 import { isPublicKey } from "@/utils/solana";
+import { withSystemPrompt } from "@/utils/systemPrompt";
 
 export interface AddContactSheetRef {
   present: () => void;
@@ -74,7 +75,7 @@ export const AddContactSheet = forwardRef<
   };
 
   const handlePaste = async () => {
-    const text = await Clipboard.getStringAsync();
+    const text = await withSystemPrompt(() => Clipboard.getStringAsync());
     if (text) setAddress(text.trim());
   };
 

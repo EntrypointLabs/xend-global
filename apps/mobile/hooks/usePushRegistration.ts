@@ -15,6 +15,7 @@ import { requestPendingChangeReview } from "@/hooks/usePendingChangeAcknowledgem
 import { requestApproval } from "@/utils/approvalRequests";
 import { SEED_DEMO } from "@/utils/devSeed";
 import { demoApproval } from "@/utils/devSeedApproval";
+import { withSystemPrompt } from "@/utils/systemPrompt";
 
 /**
  * What a notice is about, and where tapping it lands. Mirrors the server's
@@ -218,7 +219,8 @@ export function usePushRegistration() {
       const existing = await Notifications.getPermissionsAsync();
       const granted =
         existing.granted ||
-        (await Notifications.requestPermissionsAsync()).granted;
+        (await withSystemPrompt(() => Notifications.requestPermissionsAsync()))
+          .granted;
       if (!granted || cancelled) return;
 
       const token = await getPushToken();

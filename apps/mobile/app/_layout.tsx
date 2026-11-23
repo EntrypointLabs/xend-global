@@ -31,6 +31,7 @@ import Constants from "expo-constants";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { FullWindowOverlay } from "react-native-screens";
+import { BlurView } from "expo-blur";
 import { PaymentApprovalHost } from "@/components/payment-approval/PaymentApprovalHost";
 import {
   focusManager,
@@ -229,6 +230,26 @@ function AuthLayout() {
 // the root, and a native modal that is open will still show above it.
 const CoverHost = Platform.OS === "ios" ? FullWindowOverlay : React.Fragment;
 
+// Strong enough that a Balance cannot be read through it.
+const OBSCURED_BLUR_INTENSITY = 85;
+
+/**
+ * What the app switcher and the notification shade show in place of the
+ * screen: the same screen, blurred, so it reads as the app set aside rather
+ * than as a fault. Android cannot blur what is behind a plain view, and only
+ * covers once the app is already in the background, so it keeps the splash.
+ */
+function ObscuredCover() {
+  if (Platform.OS !== "ios") return <LoadingScreen />;
+  return (
+    <BlurView
+      intensity={OBSCURED_BLUR_INTENSITY}
+      tint="light"
+      className="flex-1"
+    />
+  );
+}
+
 /**
  * App lock: once signed in and out of the auth stack, the biometric unlock
  * overlays the app rather than replacing it. Whatever screen or sheet was open
@@ -249,7 +270,7 @@ function AppCover() {
   return (
     <CoverHost>
       <View className="absolute inset-0">
-        {isLocked ? <LockScreen /> : <LoadingScreen />}
+        {isLocked ? <LockScreen /> : <ObscuredCover />}
       </View>
     </CoverHost>
   );

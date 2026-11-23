@@ -9,7 +9,7 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { ActionModal } from "@/components/ui/organisms/ActionModal";
 import {
   MODE_LABELS,
-  THEME_LABELS,
+  // THEME_LABELS,
   useAppearance,
   type AppIconChoice,
   type AppMode,
@@ -42,7 +42,7 @@ const MODES: { value: AppMode; glyph: keyof typeof Ionicons.glyphMap }[] = [
 ];
 
 export default function AppearanceScreen() {
-  const { theme, icon, mode, setIcon, setMode } = useAppearance();
+  const { icon, mode, setIcon, setMode } = useAppearance();
   const { showToast } = useToast();
   const palette = usePalette();
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
@@ -101,6 +101,7 @@ export default function AppearanceScreen() {
           value={MODE_LABELS[mode]}
           onPress={() => setModePickerOpen(true)}
         />
+        {/* Theme selection is switched off for now.
         <Row
           icon={
             <Ionicons
@@ -113,6 +114,7 @@ export default function AppearanceScreen() {
           value={THEME_LABELS[theme]}
           onPress={() => router.push("/settings/theme-preview" as never)}
         />
+        */}
       </View>
 
       <ActionModal

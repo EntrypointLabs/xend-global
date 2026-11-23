@@ -9,11 +9,13 @@ function order(
   status: FiatOrder['status'],
   createdAt = new Date().toISOString(),
   simulation = false,
+  direction: 'receive' | 'send' = 'receive',
 ): FiatOrder {
   return {
     status,
     createdAt,
     simulation,
+    route: { direction },
     quote: {
       debit: { currency: 'NGN', amountMinor: String(naira * 100), decimals: 2 },
       credit: { currency: 'USDC', amountMinor: '1', decimals: 6 },
@@ -39,6 +41,7 @@ describe('unverified naira allowance', () => {
     const used = usedNairaMinor(
       [order(30_000, 'completed'), order(10_000, 'awaiting_payment')],
       since,
+      'receive',
     );
     expect(used).toBe(4_000_000n);
     expect(
@@ -72,8 +75,27 @@ describe('unverified naira allowance', () => {
           order(20_000, 'completed', undefined, true),
         ],
         since,
+        'receive',
       ),
     ).toBe(0n);
+  });
+
+  it('keeps adding and sending apart, so a full day of one leaves the other untouched', () => {
+    const since = Date.now() - 24 * 3_600_000;
+    const orders = [
+      order(50_000, 'completed'),
+      order(20_000, 'processing', undefined, false, 'send'),
+    ];
+    expect(usedNairaMinor(orders, since, 'receive')).toBe(LIMIT);
+    expect(usedNairaMinor(orders, since, 'send')).toBe(2_000_000n);
+    expect(
+      checkUnverifiedLimit({
+        amountMinor: 3_000_000n,
+        usedMinor: usedNairaMinor(orders, since, 'send'),
+        limitMinor: LIMIT,
+        verified: false,
+      }).verificationRequired,
+    ).toBe(false);
   });
 
   it('never asks a verified Consumer', () => {
