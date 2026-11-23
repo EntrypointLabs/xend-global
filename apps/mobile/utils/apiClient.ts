@@ -532,6 +532,7 @@ const SwapTokensResponseSchema = z.object({
       decimals: z.number().int().nonnegative(),
       iconUrl: z.string().nullable(),
       category: z.enum(SWAP_TOKEN_CATEGORIES),
+      trust: z.enum(["verified", "unverified", "caution"]),
       usdPrice: z.number().nullable(),
     })
   ),

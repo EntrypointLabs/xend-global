@@ -18,9 +18,16 @@ export const SWAP_TOKEN_CATEGORIES = [
 ] as const;
 export type SwapTokenCategory = (typeof SWAP_TOKEN_CATEGORIES)[number];
 
+/**
+ * How far a token's identity can be relied on. `caution` is an unverified
+ * token wearing a verified one's ticker.
+ */
+export type SwapTokenTrust = "verified" | "unverified" | "caution";
+
 /** An asset as the picker lists it. */
 export interface SwapTokenListing extends SwapToken {
   category: SwapTokenCategory;
+  trust: SwapTokenTrust;
   /** USD per whole token, or null when nothing prices it. */
   usdPrice: number | null;
 }

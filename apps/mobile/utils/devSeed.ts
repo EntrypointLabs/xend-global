@@ -619,6 +619,7 @@ export function seedSwapTokens(
     decimals,
     iconUrl: `${ICONS}/${icon}.webp`,
     category: shelf,
+    trust: "verified",
     usdPrice,
   });
   const all = [
@@ -696,7 +697,35 @@ export function seedSwapTokens(
     ),
   ];
   if (wanted) {
-    return all.filter(
+    const copies: SwapTokenListing[] = [
+      {
+        ...token(
+          "Usdt1111111111111111111111111111111111111111",
+          "USDT",
+          "USDT",
+          6,
+          "none",
+          "crypto",
+          0.0004
+        ),
+        iconUrl: null,
+        trust: "caution",
+      },
+      {
+        ...token(
+          "Rayd1111111111111111111111111111111111111111",
+          "RAYDOG",
+          "Raydog",
+          6,
+          "none",
+          "meme",
+          0.00012
+        ),
+        iconUrl: null,
+        trust: "unverified",
+      },
+    ];
+    return [...all, ...copies].filter(
       (listed) =>
         listed.name.toLowerCase().includes(wanted) ||
         listed.symbol.toLowerCase().includes(wanted)
