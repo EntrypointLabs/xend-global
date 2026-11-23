@@ -176,6 +176,10 @@ export type SettingsChangeAction =
   | { kind: "policy-remove"; policy: PublicKey }
   | { kind: "other"; name: string };
 
+/**
+ * What a policy would hold. `expires` is true when the policy stops working
+ * at a set time: one that does takes every Spend made under it down with it.
+ */
 export type PolicyTerms =
   | {
       kind: "spending-limit";
@@ -187,6 +191,7 @@ export type PolicyTerms =
       signers: PublicKey[];
       threshold: number;
       timeLock: number;
+      expires: boolean;
     }
   | {
       kind: "program-interaction";
@@ -196,6 +201,7 @@ export type PolicyTerms =
       signers: PublicKey[];
       threshold: number;
       timeLock: number;
+      expires: boolean;
     }
   | {
       kind: "other";
@@ -203,6 +209,7 @@ export type PolicyTerms =
       signers: PublicKey[];
       threshold: number;
       timeLock: number;
+      expires: boolean;
     };
 
 export interface DescribeContext {
@@ -1221,6 +1228,7 @@ function describeTerms(
     signers: generated.SmartAccountSigner[];
     threshold: number;
     timeLock: number;
+    expirationArgs?: unknown;
   },
 ): PolicyTerms {
   const signers = policy.signers.map((s) => s.key);
@@ -1228,6 +1236,8 @@ function describeTerms(
     signers,
     threshold: policy.threshold,
     timeLock: policy.timeLock,
+    expires:
+      policy.expirationArgs !== null && policy.expirationArgs !== undefined,
   };
   if (payload.__kind === "SpendingLimit") {
     const [limit] = payload.fields;

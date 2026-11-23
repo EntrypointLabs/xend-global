@@ -278,6 +278,19 @@ describe("checkSwapAccess", () => {
     ).toBe("it rewrites a different spending rule");
   });
 
+  it("refuses a rewrite that would make the spending rule expire", () => {
+    const change = stagedChange();
+    const [update] = change.actions;
+    if (update?.kind !== "policy-update") throw new Error("not an update");
+    const lapsing = {
+      ...change,
+      actions: [{ ...update, terms: { ...update.terms, expires: true } }],
+    };
+    expect(checkSwapAccess(compile(approvals()), account, lapsing)).toBe(
+      "it makes the spending rule expire"
+    );
+  });
+
   it("refuses an approval of a change it could not read", () => {
     expect(checkSwapAccess(compile(approvals()), account)).toBe(
       "the change it approves could not be read"

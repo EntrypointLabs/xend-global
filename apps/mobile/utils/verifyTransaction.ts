@@ -322,6 +322,11 @@ function swapRewriteMismatch(
   if (terms.kind !== "program-interaction" || !terms.programOnly) {
     return "it rewrites a different kind of spending rule";
   }
+  // The rule this replaces never lapses. One that did would switch off
+  // every payment above the limit when its time came, not only Swap.
+  if (terms.expires) {
+    return "it makes the spending rule expire";
+  }
   const signers = terms.signers.map((signer) => signer.toBase58());
   if (
     signers.length !== 2 ||
