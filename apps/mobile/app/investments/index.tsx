@@ -13,6 +13,7 @@ import { ScreenLayout } from "@/components/ui/layout";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
 import { useFeature } from "@/hooks/useFeature";
+import { usePalette } from "@/hooks/usePalette";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useSendGate } from "@/hooks/useSendGate";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
@@ -31,6 +32,7 @@ import { cn } from "@/utils/cn";
  */
 export default function InvestmentsScreen() {
   const router = useRouter();
+  const palette = usePalette();
   const swapEnabled = useFeature("swap");
   const { showReceiveModal, isReceiveModalVisible, hideAllModals } =
     useModalFlow();
@@ -48,7 +50,11 @@ export default function InvestmentsScreen() {
             {
               icon: () => (
                 <View className="flex-row items-center gap-2">
-                  <Ionicons name="swap-horizontal" size={20} color="black" />
+                  <Ionicons
+                    name="swap-horizontal"
+                    size={20}
+                    color={palette.foreground}
+                  />
                   <Typography weight="700" className="text-lg">
                     Swap
                   </Typography>
@@ -62,7 +68,11 @@ export default function InvestmentsScreen() {
       {
         icon: () => (
           <View className="flex-row items-center gap-2">
-            <Ionicons name="paper-plane-outline" size={20} color="black" />
+            <Ionicons
+              name="paper-plane-outline"
+              size={20}
+              color={palette.foreground}
+            />
             <Typography weight="700" className="text-lg">
               Send
             </Typography>
@@ -72,7 +82,7 @@ export default function InvestmentsScreen() {
         accessibilityLabel: "Send",
       },
     ],
-    [router, gateSend, swapEnabled]
+    [router, gateSend, swapEnabled, palette]
   );
 
   const total = isError ? "0.00" : formatMoney(totalUsd);
@@ -90,7 +100,7 @@ export default function InvestmentsScreen() {
       </View>
 
       <View className="mt-6">
-        <Typography variant="body" className="text-black/40">
+        <Typography variant="body" className="text-foreground/40">
           Balance
         </Typography>
         <BalanceView variant="h3" weight="700" amount={total} />
@@ -118,7 +128,7 @@ export default function InvestmentsScreen() {
           onPress={() => router.back()}
           className="h-14 w-14 items-center justify-center rounded-full"
         >
-          <Ionicons name="chevron-back" size={22} color="#000" />
+          <Ionicons name="chevron-back" size={22} color={palette.foreground} />
         </GlassButton>
 
         {/* Only offered once there is something to act on. */}
@@ -152,21 +162,22 @@ export default function InvestmentsScreen() {
 
 function EmptyState({ onGetAssets }: { onGetAssets: () => void }) {
   const swapEnabled = useFeature("swap");
+  const palette = usePalette();
 
   return (
     <View className="flex-1 items-center justify-center gap-2">
-      <View className="mb-4 h-16 w-28 flex-row items-center gap-2 rounded-2xl border-2 border-dashed border-black/10 px-4">
-        <View className="h-7 w-7 rounded-full bg-black/5" />
+      <View className="mb-4 h-16 w-28 flex-row items-center gap-2 rounded-2xl border-2 border-dashed border-foreground/10 px-4">
+        <View className="h-7 w-7 rounded-full bg-foreground/5" />
         <View className="gap-1">
-          <View className="h-2 w-10 rounded-full bg-black/5" />
-          <View className="h-2 w-6 rounded-full bg-black/5" />
+          <View className="h-2 w-10 rounded-full bg-foreground/5" />
+          <View className="h-2 w-6 rounded-full bg-foreground/5" />
         </View>
       </View>
 
       <Typography variant="title2" weight="600">
         There is nothing here yet
       </Typography>
-      <Typography variant="body" className="text-black/40">
+      <Typography variant="body" className="text-foreground/40">
         {swapEnabled
           ? "Deposit or swap tokens"
           : "Assets you receive show up here"}
@@ -176,10 +187,18 @@ function EmptyState({ onGetAssets }: { onGetAssets: () => void }) {
         accessibilityRole="button"
         accessibilityLabel="Get assets"
         onPress={onGetAssets}
-        className="mt-5 flex-row items-center gap-2 rounded-full bg-black px-5 py-3"
+        className="mt-5 flex-row items-center gap-2 rounded-full bg-primary px-5 py-3"
       >
-        <Ionicons name="arrow-down-circle" size={18} color="#fff" />
-        <Typography variant="body" weight="600" className="text-white">
+        <Ionicons
+          name="arrow-down-circle"
+          size={18}
+          color={palette.primaryForeground}
+        />
+        <Typography
+          variant="body"
+          weight="600"
+          className="text-primary-foreground"
+        >
           Get Assets
         </Typography>
       </HapticPressable>
@@ -202,7 +221,7 @@ function HoldingRow({ holding }: { holding: InvestmentHolding }) {
           <Typography variant="body" weight="600">
             {holding.name}
           </Typography>
-          <Typography variant="body" className="text-black/30">
+          <Typography variant="body" className="text-foreground/30">
             {formatTokenAmount(holding.amount, holding.decimals)}
             {holding.symbol ? ` ${holding.symbol}` : ""}
           </Typography>
@@ -213,7 +232,11 @@ function HoldingRow({ holding }: { holding: InvestmentHolding }) {
         {holding.usdValue == null ? (
           // Nothing could price it. Saying so beats printing a "$0.00" the
           // Consumer would read as having lost it.
-          <Typography variant="body" weight="600" className="text-black/30">
+          <Typography
+            variant="body"
+            weight="600"
+            className="text-foreground/30"
+          >
             Unpriced
           </Typography>
         ) : (
@@ -228,7 +251,7 @@ function HoldingRow({ holding }: { holding: InvestmentHolding }) {
                 ? "text-success"
                 : change < 0
                   ? "text-destructive"
-                  : "text-black/30"
+                  : "text-foreground/30"
             )}
           >
             {change > 0 ? "+" : ""}

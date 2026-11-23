@@ -12,6 +12,7 @@ import {
   useVerifyRecoveryEmail,
 } from "@/hooks/useRecoveryKeys";
 import { apiErrorStatus } from "@/utils/apiClient";
+import { usePalette } from "@/hooks/usePalette";
 
 /**
  * The code step, between giving an address and reviewing the key it becomes.
@@ -25,6 +26,7 @@ import { apiErrorStatus } from "@/utils/apiClient";
  * moving the address, and the other way round.
  */
 export default function ConfirmRecoveryEmailScreen() {
+  const palette = usePalette();
   const { email, intent, current } = useLocalSearchParams<{
     email: string;
     intent?: "change";
@@ -68,29 +70,29 @@ export default function ConfirmRecoveryEmailScreen() {
         <HapticPressable
           onPress={() => router.back()}
           disabled={verify.isPending}
-          className="size-10 items-center justify-center rounded-full bg-black/[0.08]"
+          className="size-10 items-center justify-center rounded-full bg-foreground/[0.08]"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="chevron-back" size={20} color="#00000066" />
+          <Ionicons name="chevron-back" size={20} color={palette.fg(0.4)} />
         </HapticPressable>
 
         <Typography
           weight="700"
-          className="mt-10 text-5xl leading-[44px] text-black"
+          className="mt-10 text-5xl leading-[44px] text-foreground"
         >
           Confirm email
         </Typography>
 
-        <Typography weight="500" className="mt-8 text-lg text-black/40">
+        <Typography weight="500" className="mt-8 text-lg text-foreground/40">
           The code has been sent to
         </Typography>
-        <Typography weight="600" className="mt-3 text-2xl text-black">
+        <Typography weight="600" className="mt-3 text-2xl text-foreground">
           {email}
         </Typography>
 
         <Typography
           weight="500"
-          className="mt-8 text-lg leading-7 text-black/40"
+          className="mt-8 text-lg leading-7 text-foreground/40"
         >
           Please check your inbox and{"\n"}paste the code from the email below
         </Typography>
@@ -105,7 +107,7 @@ export default function ConfirmRecoveryEmailScreen() {
 
         {verify.isPending && (
           <View className="mt-2 items-center">
-            <ActivityIndicator color="#00000066" />
+            <ActivityIndicator color={palette.fg(0.4)} />
           </View>
         )}
 

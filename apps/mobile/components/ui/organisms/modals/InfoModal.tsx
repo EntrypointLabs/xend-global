@@ -43,7 +43,7 @@ export function InfoModal({
         >
           <Ionicons name={iconName} size={24} color={iconColor} />
         </View>
-        <Typography weight="600" className="text-base">
+        <Typography weight="600" className="text-base text-foreground">
           {title}
         </Typography>
       </View>
@@ -52,7 +52,7 @@ export function InfoModal({
         {typeof description === "string" ? (
           <Typography
             weight="400"
-            className="text-center text-base leading-6 text-black/50"
+            className="text-center text-base leading-6 text-foreground/50"
           >
             {description}
           </Typography>
@@ -63,9 +63,9 @@ export function InfoModal({
 
       <HapticPressable
         onPress={handleAction}
-        className="items-center justify-center rounded-full bg-black/5 py-4"
+        className="items-center justify-center rounded-full bg-foreground/5 py-4"
       >
-        <Typography weight="600" className="text-base text-black">
+        <Typography weight="600" className="text-base text-foreground">
           {actionLabel}
         </Typography>
       </HapticPressable>

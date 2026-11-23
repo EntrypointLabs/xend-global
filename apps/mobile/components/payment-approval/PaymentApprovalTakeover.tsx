@@ -21,8 +21,8 @@ import type {
 import type { AwaitingPayment } from "@/utils/apiClient";
 import { formatMoney } from "@/utils/money";
 import { cn } from "@/utils/cn";
+import { usePalette } from "@/hooks/usePalette";
 
-const INK = "#0E0F0C";
 const DISPLAY = { fontFamily: "Montserrat_900Black" } as const;
 /** Under a minute, the countdown is the most important thing on the screen. */
 const URGENT_MS = 60_000;
@@ -85,6 +85,7 @@ function Outcome({
   message: string;
   onDone: () => void;
 }) {
+  const palette = usePalette();
   const reduceMotion = useReducedMotion();
   const mark = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
   useEffect(() => {
@@ -103,27 +104,27 @@ function Outcome({
         <Animated.View
           className={cn(
             "size-24 items-center justify-center rounded-full",
-            tone === "success" ? "bg-success" : "bg-black/[0.06]"
+            tone === "success" ? "bg-success" : "bg-foreground/[0.06]"
           )}
           style={{ opacity: mark, transform: [{ scale: mark }] }}
         >
           <Ionicons
             name={tone === "success" ? "checkmark" : "close"}
             size={48}
-            color={tone === "success" ? "#fff" : INK}
+            color={tone === "success" ? palette.primaryForeground : palette.ink}
           />
         </Animated.View>
         <Typography
           accessibilityRole="header"
           accessibilityLiveRegion="polite"
-          className="mt-8 text-center text-[34px] uppercase leading-[34px] tracking-[-1px] text-[#0E0F0C]"
+          className="mt-8 text-center text-[34px] uppercase leading-[34px] tracking-[-1px] text-ink"
           style={DISPLAY}
         >
           {title}
         </Typography>
         <Typography
           weight="500"
-          className="mt-3 max-w-[300px] text-center text-[15px] leading-[21px] text-black/60"
+          className="mt-3 max-w-[300px] text-center text-[15px] leading-[21px] text-foreground/60"
         >
           {message}
         </Typography>
@@ -131,9 +132,9 @@ function Outcome({
       <HapticPressable
         onPress={onDone}
         accessibilityRole="button"
-        className="mb-2 h-16 w-full items-center justify-center rounded-full bg-black/[0.06]"
+        className="mb-2 h-16 w-full items-center justify-center rounded-full bg-foreground/[0.06]"
       >
-        <Typography weight="600" className="text-[16px] text-[#0E0F0C]">
+        <Typography weight="600" className="text-[16px] text-ink">
           Done
         </Typography>
       </HapticPressable>
@@ -152,7 +153,7 @@ function Detail({
 }) {
   return (
     <View className="flex-row items-center justify-between py-3.5">
-      <Typography weight="500" className="text-[14px] text-black/60">
+      <Typography weight="500" className="text-[14px] text-foreground/60">
         {label}
       </Typography>
       <View
@@ -161,10 +162,7 @@ function Detail({
           urgent && "-mr-2.5 bg-destructive/15 px-2.5 py-1"
         )}
       >
-        <Typography
-          weight="600"
-          className="text-[14px] tabular-nums text-[#0E0F0C]"
-        >
+        <Typography weight="600" className="text-[14px] tabular-nums text-ink">
           {value}
         </Typography>
       </View>
@@ -197,6 +195,7 @@ export function PaymentApprovalTakeover({
   /** Close after an answer. */
   onClose: () => void;
 }) {
+  const palette = usePalette();
   const reduceMotion = useReducedMotion();
   const entrance = useEntrance(reduceMotion);
   // From the provider, not a measuring SafeAreaView: inside the window overlay
@@ -248,7 +247,7 @@ export function PaymentApprovalTakeover({
 
   return (
     <View
-      className="absolute inset-0 bg-white"
+      className="absolute inset-0 bg-background"
       accessibilityViewIsModal
       importantForAccessibility="yes"
     >
@@ -273,9 +272,9 @@ export function PaymentApprovalTakeover({
         ) : (
           <Animated.View className="flex-1 px-6" style={entrance}>
             <View className="h-14 flex-row items-center justify-between">
-              <View className="flex-row items-center gap-2 rounded-full bg-black/[0.05] px-3 py-1.5">
+              <View className="flex-row items-center gap-2 rounded-full bg-foreground/[0.05] px-3 py-1.5">
                 <View className="size-2 rounded-full bg-success" />
-                <Typography weight="600" className="text-[13px] text-[#0E0F0C]">
+                <Typography weight="600" className="text-[13px] text-ink">
                   Waiting at checkout
                 </Typography>
               </View>
@@ -286,27 +285,24 @@ export function PaymentApprovalTakeover({
                 accessibilityLabel="Decide later"
                 hitSlop={8}
                 className={cn(
-                  "size-10 items-center justify-center rounded-full bg-black/[0.05]",
+                  "size-10 items-center justify-center rounded-full bg-foreground/[0.05]",
                   busy && "opacity-30"
                 )}
               >
-                <Ionicons name="close" size={20} color={INK} />
+                <Ionicons name="close" size={20} color={palette.ink} />
               </HapticPressable>
             </View>
 
             <View className="flex-1 justify-center">
-              <View className="size-16 items-center justify-center rounded-[20px] bg-[#0E0F0C]">
+              <View className="size-16 items-center justify-center rounded-[20px] bg-[#0E0F0C] dark:bg-primary">
                 <Typography
-                  className="text-[28px] uppercase leading-[30px] text-white"
+                  className="text-[28px] uppercase leading-[30px] text-primary-foreground"
                   style={DISPLAY}
                 >
                   {merchant.trim().charAt(0) || "P"}
                 </Typography>
               </View>
-              <Typography
-                weight="600"
-                className="mt-6 text-[17px] text-[#0E0F0C]"
-              >
+              <Typography weight="600" className="mt-6 text-[17px] text-ink">
                 {merchant} is asking for
               </Typography>
               <Typography
@@ -314,19 +310,19 @@ export function PaymentApprovalTakeover({
                 numberOfLines={1}
                 adjustsFontSizeToFit
                 minimumFontScale={0.6}
-                className="mt-1 text-[56px] leading-[60px] tracking-[-2px] text-[#0E0F0C]"
+                className="mt-1 text-[56px] leading-[60px] tracking-[-2px] text-ink"
                 style={DISPLAY}
               >
                 {amount}
               </Typography>
               <Typography
                 weight="500"
-                className="mt-1 text-[14px] tabular-nums text-black/60"
+                className="mt-1 text-[14px] tabular-nums text-foreground/60"
               >
                 {usdc} leaves your Account
               </Typography>
 
-              <View className="mt-8 border-t border-black/[0.07]">
+              <View className="mt-8 border-t border-foreground/[0.07]">
                 {payment.merchantReference ? (
                   <Detail label="For" value={payment.merchantReference} />
                 ) : null}
@@ -346,7 +342,7 @@ export function PaymentApprovalTakeover({
                   "mb-4 flex-row gap-3 rounded-2xl p-4",
                   phase.tone === "failed"
                     ? "bg-destructive/10"
-                    : "bg-black/[0.05]"
+                    : "bg-foreground/[0.05]"
                 )}
               >
                 <Ionicons
@@ -356,18 +352,15 @@ export function PaymentApprovalTakeover({
                       : "information-circle"
                   }
                   size={20}
-                  color={INK}
+                  color={palette.ink}
                 />
                 <View className="flex-1">
-                  <Typography
-                    weight="600"
-                    className="text-[15px] text-[#0E0F0C]"
-                  >
+                  <Typography weight="600" className="text-[15px] text-ink">
                     {phase.title}
                   </Typography>
                   <Typography
                     weight="500"
-                    className="mt-0.5 text-[13px] leading-[18px] text-black/70"
+                    className="mt-0.5 text-[13px] leading-[18px] text-foreground/70"
                   >
                     {phase.message}
                   </Typography>
@@ -379,10 +372,13 @@ export function PaymentApprovalTakeover({
               {busy ? (
                 <View
                   accessibilityLiveRegion="polite"
-                  className="h-16 w-full flex-row items-center justify-center gap-3 rounded-full bg-[#0E0F0C]"
+                  className="h-16 w-full flex-row items-center justify-center gap-3 rounded-full bg-[#0E0F0C] dark:bg-primary"
                 >
-                  <ActivityIndicator color="#fff" />
-                  <Typography weight="600" className="text-[16px] text-white">
+                  <ActivityIndicator color={palette.primaryForeground} />
+                  <Typography
+                    weight="600"
+                    className="text-[16px] text-primary-foreground"
+                  >
                     {phase.kind === "working"
                       ? STEP_LABEL[phase.step]
                       : "Declining"}
@@ -392,9 +388,12 @@ export function PaymentApprovalTakeover({
                 <HapticPressable
                   onPress={onClose}
                   accessibilityRole="button"
-                  className="h-16 w-full items-center justify-center rounded-full bg-[#0E0F0C]"
+                  className="h-16 w-full items-center justify-center rounded-full bg-[#0E0F0C] dark:bg-primary"
                 >
-                  <Typography weight="600" className="text-[16px] text-white">
+                  <Typography
+                    weight="600"
+                    className="text-[16px] text-primary-foreground"
+                  >
                     Close
                   </Typography>
                 </HapticPressable>
@@ -416,10 +415,7 @@ export function PaymentApprovalTakeover({
                   accessibilityLabel={`Decline ${amount} to ${merchant}`}
                   className="h-14 w-full items-center justify-center rounded-full"
                 >
-                  <Typography
-                    weight="600"
-                    className="text-[16px] text-[#0E0F0C]"
-                  >
+                  <Typography weight="600" className="text-[16px] text-ink">
                     Decline
                   </Typography>
                 </HapticPressable>

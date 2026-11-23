@@ -6,6 +6,7 @@ import { statusLabel } from "@/utils/activity";
 import { truncateAddress } from "@/utils/helper";
 import { formatAmount } from "@/utils/solana";
 import HapticPressable from "../atoms/HapticPressable";
+import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 import { describeToken } from "@/utils/tokens";
 import { formatUsdFromString } from "@/utils/balances";
@@ -25,21 +26,30 @@ export type ActivityItemProps = ActivityEntry & {
   onPress?: () => void;
 };
 
-/** Row text colours, white on the Home photo and black everywhere else. */
+/** Row colours, white on the Home photo and the mode's own everywhere else. */
 function useRowTone() {
   const onPhoto = useOnPhoto();
+  const palette = usePalette();
   return onPhoto
     ? {
         ink: "text-white",
         muted: "text-white/[0.56]",
         up: GLASS.up,
         down: GLASS.down,
+        cutout: "border-white",
+        hairline: "border-black/[0.08]",
+        glyph: "#00000059",
+        chevron: "#00000040",
       }
     : {
-        ink: "",
-        muted: "text-black/30",
+        ink: "text-foreground",
+        muted: "text-foreground/30",
         up: "text-success",
         down: "text-destructive",
+        cutout: "border-background",
+        hairline: "border-foreground/[0.08]",
+        glyph: palette.fg(0.35),
+        chevron: palette.fg(0.25),
       };
 }
 
@@ -197,7 +207,12 @@ function RampItem({
             <RampMark ramp={ramp} size={26} />
           )}
         </View>
-        <View className="absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white">
+        <View
+          className={cn(
+            "absolute -bottom-0.5 -right-0.5 rounded-full border-2",
+            tone.cutout
+          )}
+        >
           {isSend ? (
             <RampMark ramp={ramp} size={26} />
           ) : (
@@ -266,7 +281,12 @@ function RefundItem({
         <View className="absolute left-0 top-0">
           <RampMark ramp={ramp} size={26} />
         </View>
-        <View className="absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white">
+        <View
+          className={cn(
+            "absolute -bottom-0.5 -right-0.5 rounded-full border-2",
+            tone.cutout
+          )}
+        >
           <TokenMark mint={entry.mint} label="$" size={26} />
         </View>
       </View>
@@ -320,8 +340,13 @@ function AwaitingPaymentItem({
       className="flex-row items-center gap-3.5 py-3"
       onPress={onPress}
     >
-      <View className="size-10 items-center justify-center rounded-full border border-black/[0.08]">
-        <Ionicons name="storefront-outline" size={18} color="#00000059" />
+      <View
+        className={cn(
+          "size-10 items-center justify-center rounded-full border",
+          tone.hairline
+        )}
+      >
+        <Ionicons name="storefront-outline" size={18} color={tone.glyph} />
       </View>
       <View className="flex-1 flex-row items-center justify-between">
         <View className="flex-col">
@@ -341,7 +366,7 @@ function AwaitingPaymentItem({
               ? formatMoney(entry.displayCurrency, entry.displayAmountMinor)
               : ""}
           </Typography>
-          <Ionicons name="chevron-forward" size={14} color="#00000040" />
+          <Ionicons name="chevron-forward" size={14} color={tone.chevron} />
         </View>
       </View>
     </HapticPressable>

@@ -11,7 +11,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import {
   groupedRowClass,
   PhotoScreen,
-  surfaceFor,
+  useSurfaceFor,
 } from "@/components/ui/glass";
 import { useColorfulTheme } from "@/contexts/AppearanceContext";
 import { cn } from "@/utils/cn";
@@ -29,6 +29,7 @@ import { useBalances } from "@/hooks/useBalances";
 import { useRouter } from "expo-router";
 import { useToast } from "@/contexts/ToastContext";
 import { useNotificationPreference } from "@/hooks/usePushRegistration";
+import { usePalette } from "@/hooks/usePalette";
 
 const PRYDD_TWITTER_URL = "https://x.com/pryddfinance";
 const PRIVACY_POLICY_URL = "https://www.prydd.co/legal/privacy-policy";
@@ -53,7 +54,8 @@ export default function SettingsScreen() {
   // This screen sits above the photo context PhotoScreen creates, so it
   // reads the theme directly.
   const colorful = useColorfulTheme();
-  const S = surfaceFor(colorful);
+  const S = useSurfaceFor(colorful);
+  const palette = usePalette();
   const { logout, user } = useAuth();
   const { name: walletName, setName: setWalletName } = useWalletName();
   const [showEditWallet, setShowEditWallet] = useState(false);
@@ -70,8 +72,8 @@ export default function SettingsScreen() {
     await logout();
   };
 
-  // The photo's brighter red only on the photo; the stock red on white.
-  const deleteRed = colorful ? "#FF7A70" : "#F90101";
+  // The photo's brighter red only on the photo; the stock red off it.
+  const deleteRed = colorful ? "#FF7A70" : palette.destructive;
 
   const sections: { title: string; data: SettingsRow[] }[] = [
     {
@@ -157,8 +159,8 @@ export default function SettingsScreen() {
         },
         {
           label: "Delete Account",
-          // The photo's brighter destructive red; the stock #F90101 is too dark
-          // to read on the veil.
+          // The photo's brighter destructive red; the stock one is too dark to
+          // read on the veil.
           icon: (
             <Ionicons
               name="person-remove-outline"
@@ -188,7 +190,7 @@ export default function SettingsScreen() {
                   "flex-row items-center justify-between p-4",
                   colorful
                     ? "rounded-[16px] border border-white/[0.18] bg-black/60"
-                    : "rounded-3xl bg-black"
+                    : "rounded-3xl bg-black dark:bg-card"
                 )}
                 activeOpacity={0.9}
                 accessibilityRole="button"
@@ -251,7 +253,7 @@ export default function SettingsScreen() {
             <View className="mt-8 items-center">
               <Image
                 source={
-                  colorful
+                  colorful || palette.dark
                     ? require("@/assets/images/logo/prydd-mark-white-2048.png")
                     : require("@/assets/images/logo/prydd-mark-black-2048.png")
                 }

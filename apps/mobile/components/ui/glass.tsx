@@ -4,6 +4,8 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { BlurView } from "expo-blur";
 import { ScreenLayout } from "@/components/ui/layout/ScreenLayout";
 import { useColorfulTheme } from "@/contexts/AppearanceContext";
+import { PALETTE, withAlpha, type ColorMode } from "@/constants/palette";
+import { useTheme } from "@/hooks/useTheme";
 
 /** How hard a blurred backdrop is softened. Retune it here for every tab. */
 const PHOTO_BLUR = 40;
@@ -43,7 +45,7 @@ export const GLASS_COLORS = {
   chip: "rgba(255,255,255,0.12)",
 } as const;
 
-// Soft shadow that lifts a monochrome card off the white page. iOS reads the
+// Soft shadow that lifts a monochrome card off the light page. iOS reads the
 // shadow* props and Android only `elevation`, so these are style objects.
 const RAISED = {
   shadowColor: "#000",
@@ -104,46 +106,54 @@ const PHOTO_SURFACE: Surface = {
   colors: GLASS_COLORS,
 };
 
-const MONO_SURFACE: Surface = {
+// Written in tokens, so the one set of classes is the white app in light mode
+// and the ink app in dark. Only `colors` has to be picked per mode.
+const monoSurface = (mode: ColorMode): Surface => ({
   card: "rounded-2xl bg-card",
   raised: RAISED,
-  divider: "border-black/[0.06]",
-  chip: "bg-black/5",
-  ink: "text-black",
-  copy: "text-black/40",
-  caption: "text-black/40",
-  small: "text-black/30",
+  divider: "border-foreground/[0.06]",
+  chip: "bg-foreground/5",
+  ink: "text-foreground",
+  copy: "text-foreground/40",
+  caption: "text-foreground/40",
+  small: "text-foreground/30",
   up: "text-success",
   down: "text-destructive",
   upFill: "bg-success/10",
   downFill: "bg-destructive/10",
-  primaryButton: "bg-black",
-  primaryButtonText: "text-white",
+  primaryButton: "bg-primary",
+  primaryButtonText: "text-primary-foreground",
   primaryRaised: RAISED_DARK,
-  secondaryButton: "bg-white",
-  secondaryButtonText: "text-black",
-  quietPill: "bg-black/5",
+  secondaryButton: "bg-card",
+  secondaryButtonText: "text-foreground",
+  quietPill: "bg-foreground/5",
   tile: "px-4 py-4",
   tileAmount: "text-lg",
   colors: {
-    ink: "#000000",
-    caption: "#00000066",
-    small: "#0000004D",
-    chip: "rgba(0,0,0,0.05)",
+    ink: PALETTE[mode].foreground,
+    caption: withAlpha(PALETTE[mode].foreground, 0.4),
+    small: withAlpha(PALETTE[mode].foreground, 0.3),
+    chip: withAlpha(PALETTE[mode].foreground, 0.05),
   },
+});
+
+const MONO_SURFACE: Record<ColorMode, Surface> = {
+  light: monoSurface("light"),
+  dark: monoSurface("dark"),
 };
 
 /**
- * The surface for wherever the caller is: glass on the photo, the white app
+ * The surface for wherever the caller is: glass on the photo, the plain app
  * everywhere else, including a monochrome tab root.
  */
 export function useSurface(): Surface {
-  return surfaceFor(useOnPhoto());
+  return useSurfaceFor(useOnPhoto());
 }
 
 /** The surface for a screen that sets the photo context itself. */
-export function surfaceFor(onPhoto: boolean): Surface {
-  return onPhoto ? PHOTO_SURFACE : MONO_SURFACE;
+export function useSurfaceFor(onPhoto: boolean): Surface {
+  const { theme } = useTheme();
+  return onPhoto ? PHOTO_SURFACE : MONO_SURFACE[theme];
 }
 
 /**
@@ -259,7 +269,7 @@ export function PhotoBackdrop({
  * A tab root. In the colorful theme it sits on its photo, with the photo
  * context set for everything in it; each tab picks its own scene, the way
  * Revolut changes the backdrop per tab under the same glass. In the
- * monochrome theme it is a plain white ScreenLayout.
+ * monochrome theme it is a plain ScreenLayout.
  */
 export function PhotoScreen({
   scene,

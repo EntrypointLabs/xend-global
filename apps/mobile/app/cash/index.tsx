@@ -18,6 +18,7 @@ import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { useToast } from "@/contexts/ToastContext";
 import BalanceView from "@/components/BalanceView";
 import { useBalances } from "@/hooks/useBalances";
+import { usePalette } from "@/hooks/usePalette";
 import { useSendGate } from "@/hooks/useSendGate";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 
@@ -33,6 +34,8 @@ export default function CashScreen() {
   } = useBalances();
   const address = useWalletAddress();
   const gateSend = useSendGate();
+  const palette = usePalette();
+  const hint = palette.dark ? palette.fg(0.4) : "#999";
 
   // Modal State
   const [isSendModalVisible, setIsSendModalVisible] = useState(false);
@@ -65,8 +68,12 @@ export default function CashScreen() {
       {
         icon: () => (
           <View className="flex-row items-center gap-2">
-            <View className="h-6 w-6 items-center justify-center rounded-full bg-black">
-              <Ionicons name="arrow-down" size={14} color="white" />
+            <View className="h-6 w-6 items-center justify-center rounded-full bg-primary">
+              <Ionicons
+                name="arrow-down"
+                size={14}
+                color={palette.primaryForeground}
+              />
             </View>
             <Typography weight="700" className="text-lg">
               Receive
@@ -79,7 +86,11 @@ export default function CashScreen() {
       {
         icon: () => (
           <View className="flex-row items-center gap-2">
-            <Ionicons name="paper-plane-outline" size={20} color="black" />
+            <Ionicons
+              name="paper-plane-outline"
+              size={20}
+              color={palette.foreground}
+            />
             <Typography weight="700" className="text-lg">
               Send
             </Typography>
@@ -89,7 +100,7 @@ export default function CashScreen() {
         label: "Send",
       },
     ],
-    [gateSend]
+    [gateSend, palette]
   );
 
   return (
@@ -111,7 +122,10 @@ export default function CashScreen() {
         >
           {/* Balance */}
           <View className="mb-8">
-            <Typography weight="500" className="mb-1 text-base text-black/30">
+            <Typography
+              weight="500"
+              className="mb-1 text-base text-foreground/30"
+            >
               Balance
             </Typography>
 
@@ -123,9 +137,12 @@ export default function CashScreen() {
                 <Typography weight="700" variant="h2">
                   ——
                 </Typography>
-                <View className="flex-row items-center gap-1 rounded-full bg-black/5 px-2.5 py-1">
-                  <Ionicons name="refresh" size={14} color="#999" />
-                  <Typography weight="500" className="text-sm text-black/40">
+                <View className="flex-row items-center gap-1 rounded-full bg-foreground/5 px-2.5 py-1">
+                  <Ionicons name="refresh" size={14} color={hint} />
+                  <Typography
+                    weight="500"
+                    className="text-sm text-foreground/40"
+                  >
                     Couldn&apos;t load. Tap to retry
                   </Typography>
                 </View>
@@ -136,7 +153,7 @@ export default function CashScreen() {
           </View>
 
           {/* USDC Card */}
-          <View className="mb-8 rounded-[24px] border border-[#A3A3A3]/20 bg-white p-5">
+          <View className="mb-8 rounded-[24px] border border-[#A3A3A3]/20 bg-card p-5">
             <View className="mb-4 flex-row items-start justify-between">
               <Image
                 source={require("@/assets/icons/usdc.png")}
@@ -150,12 +167,12 @@ export default function CashScreen() {
                 <Typography weight="700" className="mb-1 text-lg">
                   USDC
                 </Typography>
-                <Typography weight="600" className="text-black/30">
+                <Typography weight="600" className="text-foreground/30">
                   {usdcLabel}
                 </Typography>
               </View>
               {isBalanceError ? (
-                <Typography weight="600" className="text-lg text-black/30">
+                <Typography weight="600" className="text-lg text-foreground/30">
                   —
                 </Typography>
               ) : (
@@ -167,7 +184,7 @@ export default function CashScreen() {
               )}
             </View>
 
-            <View className="my-2 h-px w-full border-t border-dashed border-gray-200 bg-gray-100" />
+            <View className="my-2 h-px w-full border-t border-dashed border-gray-200 bg-gray-100 dark:border-foreground/10 dark:bg-foreground/5" />
 
             <TouchableOpacity className="flex-row items-center justify-between pt-2">
               <View className="flex-row items-center">
@@ -183,10 +200,13 @@ export default function CashScreen() {
                 </Typography>
               </View>
               <View className="flex-row items-center">
-                <Typography weight="500" className="mr-1 text-sm text-black/30">
+                <Typography
+                  weight="500"
+                  className="mr-1 text-sm text-foreground/30"
+                >
                   Put your Cash to work
                 </Typography>
-                <Ionicons name="chevron-forward" size={12} color="#999" />
+                <Ionicons name="chevron-forward" size={12} color={hint} />
               </View>
             </TouchableOpacity>
           </View>
@@ -196,12 +216,12 @@ export default function CashScreen() {
               Other assets
             </Typography>
             <View className="flex-row items-center">
-              <View className="mr-2 size-10 rounded-full border-2 border-dashed border-black/40" />
+              <View className="mr-2 size-10 rounded-full border-2 border-dashed border-foreground/40" />
               <View>
-                <Typography weight="500" className="text-sm text-black/30">
+                <Typography weight="500" className="text-sm text-foreground/30">
                   You have no other
                 </Typography>
-                <Typography weight="500" className="text-sm text-black/30">
+                <Typography weight="500" className="text-sm text-foreground/30">
                   cash assets yet
                 </Typography>
               </View>
@@ -219,7 +239,11 @@ export default function CashScreen() {
             className="h-14 w-14 items-center justify-center rounded-full"
             onPress={() => router.back()}
           >
-            <Ionicons name="chevron-back" size={24} color="black" />
+            <Ionicons
+              name="chevron-back"
+              size={24}
+              color={palette.foreground}
+            />
           </GlassButton>
 
           {/* Action Pill */}

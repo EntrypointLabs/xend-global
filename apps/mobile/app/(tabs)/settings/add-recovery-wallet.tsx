@@ -10,6 +10,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { QRScannerModal } from "@/components/ui/organisms/send/QRScannerModal";
 import { isSignerAddress } from "@/utils/solana";
+import { usePalette } from "@/hooks/usePalette";
 import { withSystemPrompt } from "@/utils/systemPrompt";
 
 /**
@@ -21,6 +22,7 @@ import { withSystemPrompt } from "@/utils/systemPrompt";
  * wasted day.
  */
 export default function AddRecoveryWalletScreen() {
+  const palette = usePalette();
   const scannerRef = useRef<BottomSheetModal>(null);
   const [address, setAddress] = useState("");
 
@@ -41,39 +43,40 @@ export default function AddRecoveryWalletScreen() {
       >
         <HapticPressable
           onPress={() => router.back()}
-          className="size-10 items-center justify-center rounded-full bg-black/[0.08]"
+          className="size-10 items-center justify-center rounded-full bg-foreground/[0.08]"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="chevron-back" size={20} color="#00000066" />
+          <Ionicons name="chevron-back" size={20} color={palette.fg(0.4)} />
         </HapticPressable>
 
         <Typography
           weight="700"
-          className="mt-10 text-5xl leading-[44px] text-black"
+          className="mt-10 text-5xl leading-[44px] text-foreground"
         >
           Crypto Wallet
         </Typography>
 
         <Typography
           weight="600"
-          className="mt-5 text-[15px] leading-6 text-black"
+          className="mt-5 text-[15px] leading-6 text-foreground"
         >
           Enter a wallet address{"\n"}in the field below
         </Typography>
 
-        <View className="mt-7 flex-row items-center gap-6 rounded-3xl bg-black/[0.03] px-5 py-4">
+        <View className="mt-7 flex-row items-center gap-6 rounded-3xl bg-foreground/[0.03] px-5 py-4">
           <TextInput
             value={address}
             onChangeText={setAddress}
             placeholder="Enter public key"
-            placeholderTextColor="#00000040"
+            placeholderTextColor={palette.fg(0.25)}
+            keyboardAppearance={palette.dark ? "dark" : "light"}
             autoCapitalize="none"
             autoCorrect={false}
             autoFocus
-            className="flex-1 text-[15px] text-black"
+            className="flex-1 text-[15px] text-foreground"
           />
           <HapticPressable onPress={paste} accessibilityLabel="Paste address">
-            <Typography weight="600" className="text-[15px] text-black">
+            <Typography weight="600" className="text-[15px] text-foreground">
               Paste
             </Typography>
           </HapticPressable>
@@ -81,7 +84,11 @@ export default function AddRecoveryWalletScreen() {
             onPress={() => scannerRef.current?.present()}
             accessibilityLabel="Scan a QR code"
           >
-            <Ionicons name="scan-outline" size={18} color="#000000" />
+            <Ionicons
+              name="scan-outline"
+              size={18}
+              color={palette.foreground}
+            />
           </HapticPressable>
         </View>
 
@@ -90,7 +97,7 @@ export default function AddRecoveryWalletScreen() {
             <Ionicons
               name="information-circle-outline"
               size={18}
-              color="#F90101"
+              color={palette.destructive}
             />
             <Typography
               weight="500"
@@ -105,11 +112,11 @@ export default function AddRecoveryWalletScreen() {
             <Ionicons
               name="information-circle-outline"
               size={18}
-              color="#00000040"
+              color={palette.fg(0.25)}
             />
             <Typography
               weight="400"
-              className="flex-1 text-sm leading-5 text-black/40"
+              className="flex-1 text-sm leading-5 text-foreground/40"
             >
               Do not use an address from a centralised exchange. This must be a
               self-custody wallet you can sign with.
@@ -129,10 +136,13 @@ export default function AddRecoveryWalletScreen() {
           }
           disabled={!valid}
           className={`h-14 items-center justify-center rounded-full ${
-            valid ? "bg-black" : "bg-black/50"
+            valid ? "bg-primary" : "bg-primary/50"
           }`}
         >
-          <Typography weight="700" className="text-[15px] text-white">
+          <Typography
+            weight="700"
+            className="text-[15px] text-primary-foreground"
+          >
             Next
           </Typography>
         </HapticPressable>

@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useFeature } from "@/hooks/useFeature";
+import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 import BalanceView from "@/components/BalanceView";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
@@ -26,6 +27,7 @@ import { EARN_PRODUCTS, useEarnPosition } from "@/hooks/useEarn";
  */
 export default function EarnScreen() {
   const router = useRouter();
+  const palette = usePalette();
   const depositsEnabled = useFeature("earnDeposits");
   const { showReceiveModal, isReceiveModalVisible, hideAllModals } =
     useModalFlow();
@@ -48,13 +50,13 @@ export default function EarnScreen() {
 
       <View className="mt-6">
         <View className="flex-row items-center gap-2">
-          <Typography variant="body" className="text-black/40">
+          <Typography variant="body" className="text-foreground/40">
             Balance
           </Typography>
-          <Typography variant="body" className="text-black/20">
+          <Typography variant="body" className="text-foreground/20">
             •
           </Typography>
-          <Typography variant="body" className="text-black/40">
+          <Typography variant="body" className="text-foreground/40">
             APY {apyDisplay}
           </Typography>
         </View>
@@ -74,7 +76,7 @@ export default function EarnScreen() {
         <Typography variant="body" weight="600">
           Available products
         </Typography>
-        <Typography variant="caption" className="text-black/40">
+        <Typography variant="caption" className="text-foreground/40">
           Routed to Kamino
         </Typography>
       </View>
@@ -87,13 +89,13 @@ export default function EarnScreen() {
         {EARN_PRODUCTS.map((product) => (
           <View
             key={product.id}
-            className="rounded-2xl bg-black/[0.03] px-4 py-4"
+            className="rounded-2xl bg-foreground/[0.03] px-4 py-4"
           >
             <View className="flex-row items-center gap-3">
               <View
                 className={cn(
                   "h-11 w-11 items-center justify-center overflow-hidden rounded-2xl",
-                  !product.icon && "bg-black/80"
+                  !product.icon && "bg-primary/80"
                 )}
               >
                 {product.icon ? (
@@ -102,7 +104,7 @@ export default function EarnScreen() {
                   <Typography
                     variant="body"
                     weight="700"
-                    className="text-white"
+                    className="text-primary-foreground"
                   >
                     {product.provider.slice(0, 1)}
                   </Typography>
@@ -110,10 +112,10 @@ export default function EarnScreen() {
               </View>
               <View className="flex-1">
                 <View className="flex-row items-center gap-1">
-                  <Typography variant="body" className="text-black/40">
+                  <Typography variant="body" className="text-foreground/40">
                     {product.provider}
                   </Typography>
-                  <Typography variant="body" className="text-black/20">
+                  <Typography variant="body" className="text-foreground/20">
                     •
                   </Typography>
                   <Typography
@@ -129,7 +131,7 @@ export default function EarnScreen() {
                 </Typography>
               </View>
             </View>
-            <Typography variant="body" className="mt-3 text-black/40">
+            <Typography variant="body" className="mt-3 text-foreground/40">
               {product.description}
             </Typography>
           </View>
@@ -144,7 +146,7 @@ export default function EarnScreen() {
           onPress={() => router.back()}
           className="h-14 w-14 items-center justify-center rounded-full"
         >
-          <Ionicons name="chevron-back" size={22} color="#000" />
+          <Ionicons name="chevron-back" size={22} color={palette.foreground} />
         </GlassButton>
 
         <GlassSurface
@@ -163,7 +165,7 @@ export default function EarnScreen() {
               !depositsEnabled && "opacity-30"
             )}
           >
-            <Ionicons name="add" size={18} color="#000" />
+            <Ionicons name="add" size={18} color={palette.foreground} />
             <Typography variant="body" weight="600">
               Deposit
             </Typography>
@@ -178,7 +180,7 @@ export default function EarnScreen() {
             onPress={() => {}}
             className="flex-row items-center gap-2 opacity-30"
           >
-            <Ionicons name="arrow-up" size={18} color="#000" />
+            <Ionicons name="arrow-up" size={18} color={palette.foreground} />
             <Typography variant="body" weight="600">
               Withdraw
             </Typography>
@@ -205,10 +207,11 @@ function StatCard({
   label: string;
   amount: string;
 }) {
+  const palette = usePalette();
   return (
-    <View className="flex-1 gap-6 rounded-2xl bg-black/[0.03] px-4 py-4">
+    <View className="flex-1 gap-6 rounded-2xl bg-foreground/[0.03] px-4 py-4">
       <View className="flex-row items-center gap-2">
-        <Ionicons name={icon} size={15} color="rgba(0,0,0,0.75)" />
+        <Ionicons name={icon} size={15} color={palette.fg(0.75)} />
         <Typography variant="body" weight="600">
           {label}
         </Typography>

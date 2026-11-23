@@ -36,7 +36,7 @@ export function Toggle({
       <View
         className={cn(
           "h-7 w-16 justify-center rounded-full",
-          value ? "bg-[#3B82F6]" : "bg-black/10 px-0.5"
+          value ? "bg-[#3B82F6]" : "bg-foreground/10 px-0.5"
         )}
       >
         <Animated.View

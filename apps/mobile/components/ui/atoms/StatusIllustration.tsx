@@ -11,7 +11,11 @@ import Svg, {
   Stop,
 } from "react-native-svg";
 
-import { EmptyAccountIllustration } from "@/components/ui/atoms/EmptyAccountIllustration";
+import {
+  cardInk,
+  EmptyAccountIllustration,
+} from "@/components/ui/atoms/EmptyAccountIllustration";
+import { usePalette } from "@/hooks/usePalette";
 
 export type StatusScene =
   | "empty-account"
@@ -42,11 +46,13 @@ export function StatusIllustration({
   scene: StatusScene;
   width: number;
 }) {
+  const palette = usePalette();
   if (scene === "empty-account") {
     return <EmptyAccountIllustration width={width} />;
   }
   // Gradient ids are document-wide on some platforms, so each scene gets its own.
   const id = (name: string) => `${scene}-${name}`;
+  const card = cardInk(palette.dark);
   return (
     <Svg
       width={width}
@@ -61,8 +67,8 @@ export function StatusIllustration({
           <Stop offset="1" stopColor="#000000" stopOpacity="0" />
         </RadialGradient>
         <LinearGradient id={id("card")} x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor="#404040" />
-          <Stop offset="1" stopColor={INK} />
+          <Stop offset="0" stopColor={card.from} />
+          <Stop offset="1" stopColor={card.to} />
         </LinearGradient>
         <LinearGradient id={id("tile")} x1="0" y1="0" x2="1" y2="1">
           <Stop offset="0" stopColor="#FFFFFF" />
@@ -87,6 +93,7 @@ export function StatusIllustration({
 type Id = (name: string) => string;
 
 function Scene({ scene, id }: { scene: StatusScene; id: Id }) {
+  const card = cardInk(usePalette().dark);
   switch (scene) {
     case "earn":
       return (
@@ -283,7 +290,7 @@ function Scene({ scene, id }: { scene: StatusScene; id: Id }) {
               height="92"
               rx="12"
               transform={iso(120, 98)}
-              fill="#3A3A3A"
+              fill={card.edge}
             />
             <Rect
               x="-26"
@@ -406,6 +413,7 @@ function Tile({
 }
 
 function DarkCard({ x, y, id }: { x: number; y: number; id: Id }) {
+  const card = cardInk(usePalette().dark);
   return (
     <>
       <Rect
@@ -415,7 +423,7 @@ function DarkCard({ x, y, id }: { x: number; y: number; id: Id }) {
         height="76"
         rx="11"
         transform={iso(x, y + 4)}
-        fill="#3A3A3A"
+        fill={card.edge}
       />
       <Rect
         x="-60"

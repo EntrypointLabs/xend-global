@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { Typography } from "@/components/ui/atoms/Typography";
 import { PillButton } from "@/components/ui/kit";
+import { usePalette } from "@/hooks/usePalette";
 import {
   Illustration,
   type IllustrationName,
@@ -47,24 +48,25 @@ function WaitingPill({
   label: string;
   informative?: boolean;
 }) {
+  const palette = usePalette();
   return (
     <View
       accessible
       accessibilityRole="text"
       accessibilityLabel={label}
-      className="h-14 flex-row items-center justify-center gap-2 rounded-full bg-black/[0.05]"
+      className="h-14 flex-row items-center justify-center gap-2 rounded-full bg-foreground/[0.05]"
     >
       <Ionicons
         name="time-outline"
         size={18}
-        color={informative ? "#0A0A0AB3" : "#0A0A0A73"}
+        color={palette.fg(informative ? 0.7 : 0.45)}
       />
       <Typography
         weight="600"
         className={
           informative
-            ? "text-[15px] text-black/70"
-            : "text-[15px] text-black/45"
+            ? "text-[15px] text-foreground/70"
+            : "text-[15px] text-foreground/45"
         }
       >
         {label}
@@ -86,6 +88,7 @@ export function FeatureIntro({
   waiting,
 }: FeatureIntroProps) {
   const { width } = useWindowDimensions();
+  const palette = usePalette();
   const art = Math.min(width - 40, 360) * 0.72;
 
   return (
@@ -104,10 +107,10 @@ export function FeatureIntro({
         )
       }
     >
-      <View className="overflow-hidden rounded-[28px] bg-[#F2F2F0] px-6 pb-6 pt-7">
+      <View className="overflow-hidden rounded-[28px] bg-muted px-6 pb-6 pt-7">
         <Typography
           accessibilityRole="header"
-          className="text-[40px] uppercase leading-[38px] tracking-[-1.2px] text-[#0E0F0C]"
+          className="text-[40px] uppercase leading-[38px] tracking-[-1.2px] text-ink"
           style={{ fontFamily: "Montserrat_900Black" }}
         >
           {headline}
@@ -120,19 +123,19 @@ export function FeatureIntro({
       <View className="mt-7 gap-6">
         {benefits.map((benefit) => (
           <View key={benefit.title} className="flex-row gap-3.5">
-            <View className="size-10 items-center justify-center rounded-full border border-black/[0.1]">
-              <Ionicons name={benefit.icon} size={19} color="#0E0F0C" />
+            <View className="size-10 items-center justify-center rounded-full border border-foreground/[0.1]">
+              <Ionicons name={benefit.icon} size={19} color={palette.ink} />
             </View>
             <View className="flex-1">
               <Typography
                 weight="600"
-                className="text-[15px] leading-[20px] text-[#0E0F0C]"
+                className="text-[15px] leading-[20px] text-ink"
               >
                 {benefit.title}
               </Typography>
               <Typography
                 weight="500"
-                className="mt-0.5 text-[13px] leading-[18px] text-black/50"
+                className="mt-0.5 text-[13px] leading-[18px] text-foreground/50"
               >
                 {benefit.body}
               </Typography>

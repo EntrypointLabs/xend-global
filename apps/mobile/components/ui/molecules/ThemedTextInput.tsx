@@ -7,6 +7,7 @@ import {
   StyleProp,
 } from "react-native";
 import { useScreenTheme } from "@/contexts/ScreenThemeContext";
+import { usePalette } from "@/hooks/usePalette";
 import { CircleButton } from "./CircleButton";
 
 interface ThemedTextInputProps extends Omit<TextInputProps, "style"> {
@@ -48,12 +49,13 @@ export const ThemedTextInput = forwardRef<TextInput, ThemedTextInputProps>(
     ref
   ) => {
     const { textColor, backgroundColor } = useScreenTheme();
+    const palette = usePalette();
 
     const dark = isDarkCanvas(backgroundColor);
-    const buttonBackground = dark ? "#FFFFFF" : "#000000";
-    const iconColor = dark ? "#000000" : "#FFFFFF";
+    const buttonBackground = dark ? "#FFFFFF" : palette.primary;
+    const iconColor = dark ? "#000000" : palette.primaryForeground;
 
-    const errorColor = "#FF3B30";
+    const errorColor = palette.destructive;
     // Fill and border use different alphas so the pill does not read as a
     // double stroke against a dark canvas.
     const fieldFill = dark ? "rgba(255,255,255,0.08)" : textColor + "14";
@@ -89,7 +91,9 @@ export const ThemedTextInput = forwardRef<TextInput, ThemedTextInputProps>(
           placeholderTextColor={
             dark ? "rgba(255,255,255,0.35)" : textColor + "80"
           }
-          keyboardAppearance={keyboardAppearance ?? (dark ? "dark" : "light")}
+          keyboardAppearance={
+            keyboardAppearance ?? (dark || palette.dark ? "dark" : "light")
+          }
           selectionColor={
             selectionColor ??
             (dark ? "rgba(255,255,255,0.35)" : textColor + "40")

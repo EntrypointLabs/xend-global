@@ -131,13 +131,7 @@ export default function HistoryScreen() {
         isFetchingNextPage={isFetchingNextPage}
         onRefresh={onRefresh}
         refreshing={refreshing}
-        ListEmptyComponent={
-          isLoading ? (
-            <View className="items-center py-16">
-              <ActivityIndicator color="#FFFFFF" />
-            </View>
-          ) : undefined
-        }
+        ListEmptyComponent={isLoading ? <LoadingRow /> : undefined}
       />
 
       <TransactionDetailModal
@@ -146,6 +140,15 @@ export default function HistoryScreen() {
         item={selectedItem}
       />
     </PhotoScreen>
+  );
+}
+
+function LoadingRow() {
+  const S = useSurface();
+  return (
+    <View className="items-center py-16">
+      <ActivityIndicator color={S.colors.ink} />
+    </View>
   );
 }
 

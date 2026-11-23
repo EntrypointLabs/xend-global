@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { ScreenLayout } from "@/components/ui/layout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { usePalette } from "@/hooks/usePalette";
 
 /**
  * Picks which kind of recovery key to add.
@@ -21,7 +22,7 @@ export default function AddRecoveryKeyScreen() {
 
         <Typography
           weight="700"
-          className="mt-8 text-5xl leading-[44px] text-black"
+          className="mt-8 text-5xl leading-[44px] text-foreground"
         >
           Add{"\n"}Recovery Key
         </Typography>
@@ -57,13 +58,14 @@ export default function AddRecoveryKeyScreen() {
 }
 
 function BackButton() {
+  const palette = usePalette();
   return (
     <HapticPressable
       onPress={() => router.back()}
-      className="size-10 items-center justify-center rounded-full bg-black/[0.08]"
+      className="size-10 items-center justify-center rounded-full bg-foreground/[0.08]"
       accessibilityLabel="Go back"
     >
-      <Ionicons name="chevron-back" size={20} color="#00000066" />
+      <Ionicons name="chevron-back" size={20} color={palette.fg(0.4)} />
     </HapticPressable>
   );
 }
@@ -75,17 +77,22 @@ function Point({
   heading: string;
   children: React.ReactNode;
 }) {
+  const palette = usePalette();
   return (
     <View>
       <View className="flex-row items-center gap-2">
-        <Ionicons name="checkmark-circle-outline" size={17} color="#000000" />
-        <Typography weight="600" className="text-lg text-black">
+        <Ionicons
+          name="checkmark-circle-outline"
+          size={17}
+          color={palette.foreground}
+        />
+        <Typography weight="600" className="text-lg text-foreground">
           {heading}
         </Typography>
       </View>
       <Typography
         weight="400"
-        className="mt-1 max-w-[85%] text-[13px] leading-[18px] text-black/40"
+        className="mt-1 max-w-[85%] text-[13px] leading-[18px] text-foreground/40"
       >
         {children}
       </Typography>
@@ -104,33 +111,37 @@ function Option({
   onPress?: () => void;
   reason?: string;
 }) {
+  const palette = usePalette();
   const disabled = !onPress;
   return (
     <HapticPressable
       onPress={onPress}
       disabled={disabled}
-      className="flex-row items-center gap-4 rounded-3xl bg-black/[0.03] px-5 py-[18px]"
+      className="flex-row items-center gap-4 rounded-3xl bg-foreground/[0.03] px-5 py-[18px]"
     >
       <Ionicons
         name={icon}
         size={20}
-        color={disabled ? "#00000026" : "#00000066"}
+        color={disabled ? palette.fg(0.15) : palette.fg(0.4)}
       />
       <View className="flex-1 px-3">
         <Typography
           weight="700"
-          className={`text-xl ${disabled ? "text-black/30" : "text-black"}`}
+          className={`text-xl ${disabled ? "text-foreground/30" : "text-foreground"}`}
         >
           {label}
         </Typography>
         {reason && (
-          <Typography weight="500" className="mt-0.5 text-sm text-black/30">
+          <Typography
+            weight="500"
+            className="mt-0.5 text-sm text-foreground/30"
+          >
             {reason}
           </Typography>
         )}
       </View>
       {!disabled && (
-        <Ionicons name="chevron-forward" size={20} color="#00000040" />
+        <Ionicons name="chevron-forward" size={20} color={palette.fg(0.25)} />
       )}
     </HapticPressable>
   );
