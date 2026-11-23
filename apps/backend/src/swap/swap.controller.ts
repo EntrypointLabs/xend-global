@@ -31,7 +31,10 @@ import {
   SwapUnavailableError,
 } from './swap.errors';
 import { SwapService } from './swap.service';
-import { SWAP_TOKEN_DIRECTORY } from './swap-tokens.interface';
+import {
+  SWAP_TOKEN_CATEGORIES,
+  SWAP_TOKEN_DIRECTORY,
+} from './swap-tokens.interface';
 import type { SwapTokenDirectory } from './swap-tokens.interface';
 
 interface AuthenticatedRequest extends Request {
@@ -55,12 +58,23 @@ export class SwapController {
     @Inject(SWAP_TOKEN_DIRECTORY) private readonly tokens: SwapTokenDirectory,
   ) {}
 
-  /** The assets offered in Swap: the popular ones, or those matching `q`. */
+  /**
+   * The assets offered in Swap: those matching `q`, or else the popular ones
+   * in `category`, or else the everyday list.
+   */
   @Get('tokens')
-  async listTokens(@Query('q') q?: string) {
-    const query = typeof q === 'string' ? q.slice(0, 64) : '';
+  async listTokens(
+    @Query('q') q?: string,
+    @Query('category') category?: string,
+  ) {
+    const query = typeof q === 'string' ? q.trim().slice(0, 64) : '';
+    const shelf = SWAP_TOKEN_CATEGORIES.find((known) => known === category);
     try {
-      return { tokens: await this.tokens.search(query) };
+      return {
+        tokens: query
+          ? await this.tokens.search(query)
+          : await this.tokens.popular(shelf),
+      };
     } catch {
       throw new HttpException(
         { code: 'SWAP_UNAVAILABLE', message: 'Token search is unavailable' },

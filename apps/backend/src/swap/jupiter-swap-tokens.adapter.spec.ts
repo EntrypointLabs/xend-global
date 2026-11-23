@@ -1,20 +1,28 @@
 import { JupiterSwapTokensAdapter } from './jupiter-swap-tokens.adapter';
 
+const verified = (symbol: string, over: object = {}) => ({
+  id: `mint-${symbol}`,
+  symbol,
+  name: symbol,
+  decimals: 6,
+  isVerified: true,
+  ...over,
+});
+
 const listed = [
-  { id: 'mint-a', symbol: 'AAA', name: 'Alpha', decimals: 6, isVerified: true },
-  { id: 'mint-b', symbol: 'AAA', name: 'Alpha copy', decimals: 6 },
-  {
-    id: 'mint-c',
-    symbol: 'CCC',
-    decimals: 9,
-    isVerified: true,
-    icon: 'https://x/c.png',
-  },
-  { id: 'mint-d', symbol: 'DDD', isVerified: true },
+  verified('SOL', { usdPrice: 180, tags: ['major', 'verified'] }),
+  { id: 'mint-copy', symbol: 'SOL', name: 'SOL copy', decimals: 6 },
+  verified('USDC', { tags: ['stable'], icon: 'https://x/usdc.png' }),
+  verified('NVDAx', { tags: ['rwa', 'xstocks', 'stocks'] }),
+  verified('BONK', { tags: ['meme', 'community'] }),
+  verified('FRESH', { launchpad: 'pump.fun' }),
+  verified('PUMP', { launchpad: 'pump.fun', tags: ['defi'] }),
+  { id: 'mint-nodecimals', symbol: 'DDD', isVerified: true },
 ];
 
 describe('JupiterSwapTokensAdapter', () => {
   let fetched: string[];
+  const symbols = (tokens: { symbol: string }[]) => tokens.map((t) => t.symbol);
 
   beforeEach(() => {
     fetched = [];
@@ -29,28 +37,44 @@ describe('JupiterSwapTokensAdapter', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('offers only verified tokens it can describe in full', async () => {
-    const tokens = await new JupiterSwapTokensAdapter().search('aaa');
-    expect(tokens).toEqual([
-      {
-        mint: 'mint-a',
-        symbol: 'AAA',
-        name: 'Alpha',
-        decimals: 6,
-        iconUrl: null,
-      },
-      {
-        mint: 'mint-c',
-        symbol: 'CCC',
-        name: 'CCC',
-        decimals: 9,
-        iconUrl: 'https://x/c.png',
-      },
+    const tokens = await new JupiterSwapTokensAdapter().search('anything');
+    expect(symbols(tokens)).toEqual([
+      'SOL',
+      'USDC',
+      'NVDAx',
+      'BONK',
+      'FRESH',
+      'PUMP',
     ]);
+    expect(tokens[0]).toEqual({
+      mint: 'mint-SOL',
+      symbol: 'SOL',
+      name: 'SOL',
+      decimals: 6,
+      iconUrl: null,
+      category: 'crypto',
+      usdPrice: 180,
+    });
   });
 
-  it('answers an empty search with the popular list', async () => {
-    await new JupiterSwapTokensAdapter().search('  ');
+  it('keeps stocks and meme tokens out of the everyday list', async () => {
+    const tokens = await new JupiterSwapTokensAdapter().popular();
+    expect(symbols(tokens)).toEqual(['SOL', 'USDC', 'PUMP']);
+  });
+
+  it('shelves each token by what the source calls it', async () => {
+    const adapter = new JupiterSwapTokensAdapter();
+    expect(symbols(await adapter.popular('stocks'))).toEqual(['NVDAx']);
+    expect(symbols(await adapter.popular('stable'))).toEqual(['USDC']);
+    expect(symbols(await adapter.popular('meme'))).toEqual(['BONK', 'FRESH']);
+    // One ranking serves every shelf.
+    expect(fetched).toHaveLength(1);
+  });
+
+  it('answers an empty search with the everyday list', async () => {
+    const tokens = await new JupiterSwapTokensAdapter().search('  ');
     expect(fetched[0]).toContain('/toporganicscore/24h');
+    expect(symbols(tokens)).toEqual(['SOL', 'USDC', 'PUMP']);
   });
 
   it('does not ask again for a search it has just answered', async () => {
@@ -60,7 +84,7 @@ describe('JupiterSwapTokensAdapter', () => {
     expect(fetched).toHaveLength(1);
   });
 
-  it('keeps the last popular list when the source stops answering', async () => {
+  it('keeps the last ranking when the source stops answering', async () => {
     const adapter = new JupiterSwapTokensAdapter();
     const first = await adapter.popular();
     jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 10 * 60 * 1000);

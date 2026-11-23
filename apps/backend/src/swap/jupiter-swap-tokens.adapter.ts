@@ -1,15 +1,24 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import type { SwapToken, SwapTokenDirectory } from './swap-tokens.interface';
+import type {
+  SwapToken,
+  SwapTokenCategory,
+  SwapTokenDirectory,
+} from './swap-tokens.interface';
 
 const TOKENS_API = 'https://lite-api.jup.ag/tokens/v2';
 const REQUEST_TIMEOUT_MS = 4_000;
 const LIST_LENGTH = 30;
 
+/** The most the ranking gives in one call, split across the categories. */
+const RANKING_LENGTH = 100;
+
 /** Rankings move slowly; a search result for a ticker moves slower still. */
 const POPULAR_TTL_MS = 5 * 60 * 1000;
 const SEARCH_TTL_MS = 60 * 1000;
 const SEARCH_CACHE_SIZE = 500;
+
+const STOCK_TAGS = ['stocks', 'xstocks', 'equities', 'prestocks', 'pre-ipo'];
 
 interface JupiterToken {
   id?: string;
@@ -18,6 +27,9 @@ interface JupiterToken {
   icon?: string;
   decimals?: number;
   isVerified?: boolean;
+  usdPrice?: number;
+  tags?: string[];
+  launchpad?: string;
 }
 
 interface Cached {
@@ -29,26 +41,17 @@ interface Cached {
 @Injectable()
 export class JupiterSwapTokensAdapter implements SwapTokenDirectory {
   private readonly logger = new Logger(JupiterSwapTokensAdapter.name);
-  private popularCache: Cached | null = null;
+  private ranking: Cached | null = null;
   private readonly searches = new Map<string, Cached>();
 
-  async popular(): Promise<SwapToken[]> {
-    const cached = this.popularCache;
-    if (cached && Date.now() - cached.cachedAt < POPULAR_TTL_MS) {
-      return cached.tokens;
-    }
-    try {
-      // Asked for more than is shown, because the unverified ones are dropped.
-      const tokens = await this.fetchVerified(
-        `/toporganicscore/24h?limit=${LIST_LENGTH * 2}`,
-      );
-      this.popularCache = { tokens, cachedAt: Date.now() };
-      return tokens;
-    } catch (err) {
-      this.logger.warn('swap.tokens.popular_unavailable', err);
-      // An old ranking is still a list of real tokens.
-      return cached?.tokens ?? [];
-    }
+  async popular(category?: SwapTokenCategory): Promise<SwapToken[]> {
+    const ranked = await this.ranked();
+    const shelf = category
+      ? ranked.filter((token) => token.category === category)
+      : ranked.filter(
+          (token) => token.category === 'crypto' || token.category === 'stable',
+        );
+    return shelf.slice(0, LIST_LENGTH);
   }
 
   async search(query: string): Promise<SwapToken[]> {
@@ -58,12 +61,30 @@ export class JupiterSwapTokensAdapter implements SwapTokenDirectory {
     if (cached && Date.now() - cached.cachedAt < SEARCH_TTL_MS) {
       return cached.tokens;
     }
-    const tokens = await this.fetchVerified(
-      `/search?query=${encodeURIComponent(key)}`,
-    );
+    const tokens = (
+      await this.fetchVerified(`/search?query=${encodeURIComponent(key)}`)
+    ).slice(0, LIST_LENGTH);
     if (this.searches.size >= SEARCH_CACHE_SIZE) this.searches.clear();
     this.searches.set(key, { tokens, cachedAt: Date.now() });
     return tokens;
+  }
+
+  private async ranked(): Promise<SwapToken[]> {
+    const cached = this.ranking;
+    if (cached && Date.now() - cached.cachedAt < POPULAR_TTL_MS) {
+      return cached.tokens;
+    }
+    try {
+      const tokens = await this.fetchVerified(
+        `/toporganicscore/24h?limit=${RANKING_LENGTH}`,
+      );
+      this.ranking = { tokens, cachedAt: Date.now() };
+      return tokens;
+    } catch (err) {
+      this.logger.warn('swap.tokens.ranking_unavailable', err);
+      // An old ranking is still a list of real tokens.
+      return cached?.tokens ?? [];
+    }
   }
 
   private async fetchVerified(path: string): Promise<SwapToken[]> {
@@ -88,9 +109,30 @@ export class JupiterSwapTokensAdapter implements SwapTokenDirectory {
         name: token.name ?? token.symbol,
         decimals: token.decimals,
         iconUrl: token.icon ?? null,
+        category: categoryOf(token),
+        usdPrice:
+          typeof token.usdPrice === 'number' && token.usdPrice > 0
+            ? token.usdPrice
+            : null,
       });
-      if (tokens.length === LIST_LENGTH) break;
     }
     return tokens;
   }
+}
+
+/**
+ * Which shelf a token belongs on, from the source's own labels.
+ *
+ * A token minted on a launchpad and labelled nothing else is shelved with the
+ * meme tokens. Most of them are, and the cost of being wrong is a token
+ * listed one tap further away, where the other reading would put a day-old
+ * coin beside SOL in the everyday list.
+ */
+function categoryOf(token: JupiterToken): SwapTokenCategory {
+  const tags = token.tags ?? [];
+  if (STOCK_TAGS.some((tag) => tags.includes(tag))) return 'stocks';
+  if (tags.includes('stable')) return 'stable';
+  if (tags.includes('meme')) return 'meme';
+  if (token.launchpad && !tags.includes('defi')) return 'meme';
+  return 'crypto';
 }
