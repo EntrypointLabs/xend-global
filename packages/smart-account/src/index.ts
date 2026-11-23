@@ -84,7 +84,9 @@ export {
   JUPITER_ROUTE_ACCOUNTS,
   minimumAmountOut,
   readJupiterRouteTerms,
+  ROUTE_TERMS_UNREADABLE,
   TOKEN_ACCOUNT_RENT_LAMPORTS,
+  VENUE_TAKES_VAULT_SIGNATURE,
   type BuildSwapParams,
   type JupiterRouteTerms,
 } from "./swap.js";

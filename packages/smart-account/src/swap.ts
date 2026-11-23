@@ -6,6 +6,11 @@ import {
 import { instructions, utils } from "@sqds/smart-account";
 
 import {
+  JUPITER_SWAP_LAYOUTS,
+  type Layout,
+  type LayoutPart,
+} from "./jupiter-swap-layouts.js";
+import {
   ABOVE_LIMIT_PROGRAM_ALLOWLIST,
   JUPITER_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
@@ -45,7 +50,13 @@ export const JUPITER_ROUTE_ACCOUNTS = {
 } as const;
 
 /** `in_amount`, `quoted_out_amount`, `slippage_bps`, `platform_fee_bps`. */
-const JUPITER_ROUTE_TAIL_LENGTH = 19;
+const JUPITER_ROUTE_TERMS_LENGTH = 19;
+
+/** `percent`, `input_index`, `output_index`, after each venue's arguments. */
+const ROUTE_STEP_TRAILER_LENGTH = 3;
+
+/** More hops than any real route, and few enough to walk without thinking. */
+const MAX_ROUTE_STEPS = 32;
 
 export interface JupiterRouteTerms {
   amountIn: bigint;
@@ -57,25 +68,90 @@ export interface JupiterRouteTerms {
 /**
  * The amounts a `shared_accounts_route` commits to.
  *
- * Read from the end of the data. The route plan in the middle is a list of
- * venue-specific variants that changes whenever Jupiter adds a venue, while
- * the four fields after it are fixed width and say everything a signer needs:
- * what leaves, what was quoted, and how far short of the quote may settle.
+ * Read from where Jupiter's program reads them: after the route plan, which
+ * is walked venue by venue to find its end. Taking the last bytes instead
+ * would trust whoever built the instruction, because the program stops
+ * reading once its arguments are filled and ignores anything appended. So
+ * the data must also end exactly where the terms do, and a venue this build
+ * cannot measure is refused, not skipped.
  */
 export function readJupiterRouteTerms(data: Buffer): JupiterRouteTerms | null {
   if (
-    data.length < 8 + JUPITER_ROUTE_TAIL_LENGTH ||
+    data.length < 8 ||
     !data.subarray(0, 8).equals(JUPITER_SHARED_ACCOUNTS_ROUTE)
   ) {
     return null;
   }
-  const tail = data.subarray(data.length - JUPITER_ROUTE_TAIL_LENGTH);
+  // The discriminator, then `id`, then the route plan's length.
+  let offset = 9;
+  if (data.length < offset + 4) return null;
+  const steps = data.readUInt32LE(offset);
+  offset += 4;
+  if (steps === 0 || steps > MAX_ROUTE_STEPS) return null;
+
+  for (let step = 0; step < steps; step++) {
+    if (offset >= data.length) return null;
+    const layout = JUPITER_SWAP_LAYOUTS[data.readUInt8(offset)];
+    if (!layout) return null;
+    const end = skipLayout(data, offset + 1, layout);
+    if (end === null) return null;
+    offset = end + ROUTE_STEP_TRAILER_LENGTH;
+  }
+  if (offset + JUPITER_ROUTE_TERMS_LENGTH !== data.length) return null;
+
   return {
-    amountIn: tail.readBigUInt64LE(0),
-    quotedAmountOut: tail.readBigUInt64LE(8),
-    slippageBps: tail.readUInt16LE(16),
-    platformFeeBps: tail.readUInt8(18),
+    amountIn: data.readBigUInt64LE(offset),
+    quotedAmountOut: data.readBigUInt64LE(offset + 8),
+    slippageBps: data.readUInt16LE(offset + 16),
+    platformFeeBps: data.readUInt8(offset + 18),
   };
+}
+
+/** Where `layout` ends when it starts at `offset`, or null if it runs out. */
+function skipLayout(
+  data: Buffer,
+  offset: number,
+  layout: Layout,
+): number | null {
+  let at: number | null = offset;
+  for (const part of layout) {
+    at = skipPart(data, at, part);
+    if (at === null) return null;
+  }
+  return at;
+}
+
+function skipPart(
+  data: Buffer,
+  offset: number,
+  part: LayoutPart,
+): number | null {
+  if (typeof part === "number") {
+    return offset + part <= data.length ? offset + part : null;
+  }
+  const [kind, ...rest] = part;
+  if (kind === "o") {
+    if (offset >= data.length) return null;
+    const tag = data.readUInt8(offset);
+    if (tag === 0) return offset + 1;
+    return tag === 1 ? skipLayout(data, offset + 1, rest as Layout) : null;
+  }
+  if (kind === "v") {
+    if (offset + 4 > data.length) return null;
+    const count = data.readUInt32LE(offset);
+    let at: number | null = offset + 4;
+    // Each element takes at least no bytes, so the count is bounded by what
+    // is left to read rather than trusted.
+    if (count > data.length) return null;
+    for (let i = 0; i < count; i++) {
+      at = skipLayout(data, at, rest as Layout);
+      if (at === null) return null;
+    }
+    return at;
+  }
+  if (offset >= data.length) return null;
+  const variant = (rest as Layout[])[data.readUInt8(offset)];
+  return variant ? skipLayout(data, offset + 1, variant) : null;
 }
 
 /** The least a route may pay out, as Jupiter's program enforces it. */
@@ -217,6 +293,18 @@ export function buildSwap({
   });
 }
 
+/**
+ * Why a route that names the vault among a venue's accounts is refused. A
+ * signature cannot be given to one account position and withheld from
+ * another, so that venue would hold the vault's authority over everything it
+ * is passed, not only the amount being swapped.
+ */
+export const VENUE_TAKES_VAULT_SIGNATURE =
+  "the route hands the vault's signature to a venue";
+
+/** Why a route through a venue this build cannot measure is refused. */
+export const ROUTE_TERMS_UNREADABLE = "the route's terms could not be read";
+
 function assertVaultRoute(
   route: TransactionInstruction,
   vault: PublicKey,
@@ -226,7 +314,7 @@ function assertVaultRoute(
   }
   const terms = readJupiterRouteTerms(Buffer.from(route.data));
   if (!terms) {
-    throw new Error("the route is not a shared_accounts_route");
+    throw new Error(ROUTE_TERMS_UNREADABLE);
   }
   const authority = route.keys[JUPITER_ROUTE_ACCOUNTS.transferAuthority];
   if (
@@ -241,7 +329,7 @@ function assertVaultRoute(
       i !== JUPITER_ROUTE_ACCOUNTS.transferAuthority,
   );
   if (elsewhere) {
-    throw new Error("the route hands the vault's signature to a venue");
+    throw new Error(VENUE_TAKES_VAULT_SIGNATURE);
   }
   return terms;
 }

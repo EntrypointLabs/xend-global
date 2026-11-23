@@ -16,6 +16,7 @@ import {
   derivePolicyAddress,
   describeTransaction,
   JUPITER_PROGRAM_ID,
+  readJupiterRouteTerms,
   SYSTEM_PROGRAM_ID,
   TOKEN_ACCOUNT_RENT_LAMPORTS,
   TOKEN_PROGRAM_ID,
@@ -61,7 +62,7 @@ function route(
   tail.writeUInt8(overrides.platformFeeBps ?? 0, 18);
   const data = Buffer.concat([
     Buffer.from(overrides.discriminator ?? "c1209b3341d69c81", "hex"),
-    // id, then a one-step route plan whose contents the signer never reads.
+    // id, then a one-step route plan through a venue that takes no arguments.
     Buffer.from([3, 1, 0, 0, 0, 7, 100, 0, 1]),
     tail,
   ]);
@@ -462,5 +463,77 @@ describe("building a swap", () => {
         route: route(USDC, key(), 100n, 90n),
       }),
     ).toThrow(/two signers/);
+  });
+});
+
+describe("reading what a route commits to", () => {
+  const DISCRIMINATOR = Buffer.from("c1209b3341d69c81", "hex");
+  const terms = (amountIn: bigint, quotedOut: bigint, slippageBps: number) => {
+    const tail = Buffer.alloc(19);
+    tail.writeBigUInt64LE(amountIn, 0);
+    tail.writeBigUInt64LE(quotedOut, 8);
+    tail.writeUInt16LE(slippageBps, 16);
+    return tail;
+  };
+  const plan = (...steps: number[][]) =>
+    Buffer.from([3, steps.length, 0, 0, 0, ...steps.flat()]);
+  // Raydium takes no arguments. WhirlpoolSwapV2 takes a direction and an
+  // optional list of two-byte entries.
+  const RAYDIUM = [7, 100, 0, 1];
+  const WHIRLPOOL_V2 = 47;
+
+  it("reads the terms that follow a multi-venue plan", () => {
+    const data = Buffer.concat([
+      DISCRIMINATOR,
+      plan(
+        [WHIRLPOOL_V2, 1, 1, 2, 0, 0, 0, 6, 3, 0, 1, 100, 0, 1],
+        [WHIRLPOOL_V2, 0, 0, 100, 1, 2],
+        RAYDIUM,
+      ),
+      terms(1_000n, 2_000n, 50),
+    ]);
+    expect(readJupiterRouteTerms(data)).toEqual({
+      amountIn: 1_000n,
+      quotedAmountOut: 2_000n,
+      slippageBps: 50,
+      platformFeeBps: 0,
+    });
+  });
+
+  it("refuses terms appended after the ones the program will read", () => {
+    const data = Buffer.concat([
+      DISCRIMINATOR,
+      plan(RAYDIUM),
+      terms(1_000_000_000n, 1n, 9_999),
+      terms(100n, 2_000n, 50),
+    ]);
+    expect(readJupiterRouteTerms(data)).toBeNull();
+  });
+
+  it("refuses a venue it cannot measure", () => {
+    const data = Buffer.concat([
+      DISCRIMINATOR,
+      plan([250, 100, 0, 1]),
+      terms(1_000n, 2_000n, 50),
+    ]);
+    expect(readJupiterRouteTerms(data)).toBeNull();
+  });
+
+  it("refuses a plan that claims more steps than it holds", () => {
+    const data = Buffer.concat([
+      DISCRIMINATOR,
+      Buffer.from([3, 9, 0, 0, 0, ...RAYDIUM]),
+      terms(1_000n, 2_000n, 50),
+    ]);
+    expect(readJupiterRouteTerms(data)).toBeNull();
+  });
+
+  it("refuses a list that claims more entries than the data holds", () => {
+    const data = Buffer.concat([
+      DISCRIMINATOR,
+      plan([WHIRLPOOL_V2, 1, 1, 255, 255, 255, 255, 100, 0, 1]),
+      terms(1_000n, 2_000n, 50),
+    ]);
+    expect(readJupiterRouteTerms(data)).toBeNull();
   });
 });
