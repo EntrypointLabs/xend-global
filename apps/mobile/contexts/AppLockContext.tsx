@@ -34,6 +34,8 @@ if (APP_LOCK_DISABLED) {
 // Common banking-app grace period; tune here if product wants a different one.
 const BACKGROUND_GRACE_PERIOD_MS = 5 * 60 * 1000;
 
+const PROMPT_RECHECK_MS = 200;
+
 interface AppLockContextType {
   /** True while the authenticated app should stay hidden behind the lock. */
   isLocked: boolean;
@@ -144,6 +146,7 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
 
   const backgroundedAtRef = useRef<number | null>(null);
   useEffect(() => {
+    let recheck: ReturnType<typeof setInterval> | undefined;
     const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
       if (!enabled) return;
 
@@ -152,10 +155,24 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
       // period decision below has even run. A system prompt the app raised
       // itself also reports inactive, and is not the Consumer leaving: the
       // screen stays as it was underneath it.
-      setIsObscured(
-        state === "background" ||
-          (state === "inactive" && !isSystemPromptOpen())
-      );
+      clearInterval(recheck);
+      const heldBack = state === "inactive" && isSystemPromptOpen();
+      setIsObscured(state !== "active" && !heldBack);
+
+      // The prompt can go away while the app stays inactive, for example when
+      // the Consumer pulls down Notification Center right after answering it.
+      // No further change event arrives for that, so keep looking until the
+      // app is active again or the cover is up.
+      if (heldBack) {
+        recheck = setInterval(() => {
+          if (AppState.currentState === "active") {
+            clearInterval(recheck);
+          } else if (!isSystemPromptOpen()) {
+            clearInterval(recheck);
+            setIsObscured(true);
+          }
+        }, PROMPT_RECHECK_MS);
+      }
 
       if (authenticatingRef.current) return;
 
@@ -178,7 +195,10 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
         }
       }
     });
-    return () => sub.remove();
+    return () => {
+      clearInterval(recheck);
+      sub.remove();
+    };
   }, [enabled]);
 
   return (
