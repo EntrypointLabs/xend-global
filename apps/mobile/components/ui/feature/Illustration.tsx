@@ -24,6 +24,7 @@ const ART: Record<IllustrationName, ImageSourcePropType | null> = {
   deposit: require("@/assets/illustrations/convert.webp"),
   // Same stand-in until the identity render (a painted shield) is made.
   verify: require("@/assets/illustrations/convert.webp"),
+  limit: require("@/assets/illustrations/limit.webp"),
 };
 
 export type IllustrationName =
@@ -35,7 +36,8 @@ export type IllustrationName =
   | "atm"
   | "error"
   | "deposit"
-  | "verify";
+  | "verify"
+  | "limit";
 
 export function Illustration({
   name,

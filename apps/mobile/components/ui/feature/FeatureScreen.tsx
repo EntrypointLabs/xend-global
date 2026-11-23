@@ -22,6 +22,7 @@ export function FeatureScreen({
   footer,
   scroll = true,
   avoidKeyboard = false,
+  onBack,
   children,
 }: {
   leave?: FeatureLeave;
@@ -29,13 +30,16 @@ export function FeatureScreen({
   scroll?: boolean;
   /** Lifts the footer above the keyboard, for pages typed into. */
   avoidKeyboard?: boolean;
+  /** Replaces the default back, for a page that must not return to where it was opened from. */
+  onBack?: () => void;
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const palette = usePalette();
-  const goBack = () =>
-    router.canGoBack() ? router.back() : router.replace("/(tabs)");
+  const goBack =
+    onBack ??
+    (() => (router.canGoBack() ? router.back() : router.replace("/(tabs)")));
 
   const body = scroll ? (
     <ScrollView
