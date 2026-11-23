@@ -49,7 +49,12 @@ export default function BalanceScreen() {
   const palette = usePalette();
   const reduceMotion = useReducedMotion();
   const swapEnabled = useFeature("swap");
-  const { portfolio, isError } = useBalances();
+  const { portfolio, isError, isLoading, refetch } = useBalances();
+  const investmentsNote = isError
+    ? "Couldn't load. Tap to retry"
+    : isLoading
+      ? "Checking what you hold"
+      : "Hold assets alongside your dollars";
   const { balance: earnBalance } = useEarnPosition();
   const { holdings } = useInvestments();
   const progress = useSharedValue(0);
@@ -181,9 +186,14 @@ export default function BalanceScreen() {
                 )}
               </Card>
             ) : (
+              // No holdings is only "nothing held" once the read has answered.
+              // While it is pending or has failed, what the Consumer holds is
+              // unknown, and saying so beats offering them an empty account.
               <Card
-                accessibilityLabel="Investments, nothing held yet"
-                onPress={() => router.push("/investments")}
+                accessibilityLabel={`Investments, ${investmentsNote.toLowerCase()}`}
+                onPress={
+                  isError ? () => refetch() : () => router.push("/investments")
+                }
               >
                 <Row
                   mark={
@@ -193,8 +203,14 @@ export default function BalanceScreen() {
                     />
                   }
                   title="Investments"
-                  subtitle="Hold assets alongside your dollars"
-                  trailing={<Pill>Discover</Pill>}
+                  subtitle={investmentsNote}
+                  trailing={
+                    isError || isLoading ? (
+                      <Amount>—</Amount>
+                    ) : (
+                      <Pill>Discover</Pill>
+                    )
+                  }
                 />
               </Card>
             ))}
