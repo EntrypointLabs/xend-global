@@ -82,6 +82,19 @@ export default function HistoryScreen() {
     (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
   );
 
+  // An open receipt follows the row it was opened from, so a swap opened while
+  // pending turns into the settled swap in place once the feed reports it.
+  const shownItem = selectedItem
+    ? (rows.find(
+        (row) =>
+          row.id === selectedItem.id ||
+          (row.isSwap === true &&
+            selectedItem.isSwap === true &&
+            row.signature !== null &&
+            row.signature === selectedItem.signature)
+      ) ?? selectedItem)
+    : null;
+
   // Only a transfer can be in flight; an event is recorded after the fact.
   usePendingWatch(transferRows.some((row) => row.status === "pending"));
 
@@ -141,7 +154,7 @@ export default function HistoryScreen() {
       <TransactionDetailModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
-        item={selectedItem}
+        item={shownItem}
       />
     </PhotoScreen>
   );

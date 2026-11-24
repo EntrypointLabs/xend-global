@@ -1,5 +1,10 @@
 import React, { useCallback, useState } from "react";
-import { addPendingSwap, removePendingSwap } from "@/utils/pendingSwaps";
+import {
+  addPendingSwap,
+  removePendingSwap,
+  settlePendingSwap,
+} from "@/utils/pendingSwaps";
+import { receivedBySwap } from "@/utils/swapOutcome";
 import type { SwapPair } from "@/utils/swapPair";
 import { ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -165,13 +170,17 @@ export function useExecuteSwap() {
           },
           receive: {
             mint: pair.receive.mint,
+            decimals: pair.receive.decimals,
             name: pair.receive.name,
             symbol: pair.receive.symbol,
             iconUrl: pair.receive.iconUrl,
           },
           venues: quote.venues,
         });
-        followToOutcome(signature, queryClient);
+        followToOutcome(signature, queryClient, {
+          vault: account.address,
+          outputMint: quote.outputMint,
+        });
         return { status: "submitted", signature };
       } catch (error) {
         Sentry.captureException(error, { tags: { surface: "swap" } });
@@ -198,7 +207,11 @@ const OUTCOME_POLL_MS = 1_500;
  * Swapping until the chain says which it was, and says nothing further if the
  * chain has not answered by the time it would have gone away anyway.
  */
-function followToOutcome(signature: string, queryClient: QueryClient) {
+function followToOutcome(
+  signature: string,
+  queryClient: QueryClient,
+  swap: { vault: string; outputMint: string }
+) {
   showToast(
     "Swapping",
     <ActivityIndicator size="small" className="text-black" />,
@@ -213,11 +226,16 @@ function followToOutcome(signature: string, queryClient: QueryClient) {
     queryClient.invalidateQueries({ queryKey: ["balances"] });
     queryClient.invalidateQueries({ queryKey: ["transfers"] });
     if (outcome === "landed") {
+      // The same check that flips the toast settles the swap in Activity, so
+      // the two change together instead of Activity waiting on the indexer.
+      settlePendingSwap(signature);
       showToast(
         "Swapped",
         <Ionicons name="checkmark-circle" size={16} className="text-success" />,
         { id: SWAP_TOAST_ID, tone: "success" }
       );
+      const received = await readReceived(signature, swap);
+      if (received) settlePendingSwap(signature, received);
     } else if (outcome === "failed") {
       // Nothing changed hands, so there is nothing for Activity to show.
       removePendingSwap(signature);
@@ -228,6 +246,49 @@ function followToOutcome(signature: string, queryClient: QueryClient) {
       );
     }
   })();
+}
+
+/**
+ * What a confirmed swap put in the vault, read from the transaction itself.
+ * A transaction can be confirmed a moment before a node will hand it out, so
+ * it is asked for a few times.
+ */
+async function readReceived(
+  signature: string,
+  swap: { vault: string; outputMint: string }
+): Promise<string | null> {
+  const connection = getSolanaConnection();
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      const transaction = await connection.getTransaction(signature, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0,
+      });
+      const meta = transaction?.meta;
+      if (transaction && meta) {
+        const accountKeys = transaction.transaction.message
+          .getAccountKeys({ accountKeysFromLookups: meta.loadedAddresses })
+          .keySegments()
+          .flat()
+          .map((key) => key.toBase58());
+        return receivedBySwap(
+          {
+            accountKeys,
+            preBalances: meta.preBalances,
+            postBalances: meta.postBalances,
+            preTokenBalances: meta.preTokenBalances ?? [],
+            postTokenBalances: meta.postTokenBalances ?? [],
+          },
+          swap.vault,
+          swap.outputMint
+        );
+      }
+    } catch {
+      // Unread is not wrong: Activity's own row brings the amount later.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return null;
 }
 
 async function waitForOutcome(

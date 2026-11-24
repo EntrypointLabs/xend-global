@@ -114,6 +114,11 @@ export interface SwapSide {
 export interface SwapSummary {
   pay: SwapSide;
   receive: SwapSide;
+  /**
+   * The received amount is on its way rather than unrecorded: this phone sent
+   * the swap and has not read what came back yet.
+   */
+  receiving?: boolean;
   /** The venues the route ran through, in order, each named once. */
   venues: string[];
 }
@@ -272,8 +277,12 @@ export interface PendingSwap {
   signature: string;
   createdAt: string;
   pay: Omit<SwapSide, "decimals"> & { decimals: number };
-  receive: Omit<SwapSide, "amountRaw" | "decimals">;
+  receive: Omit<SwapSide, "amountRaw" | "decimals"> & { decimals: number };
   venues: string[];
+  /** The chain has confirmed it, as this phone saw for itself. */
+  settled?: boolean;
+  /** What reached the Account, read from the confirmed transaction. */
+  receivedRaw?: string;
 }
 
 /**
@@ -296,7 +305,7 @@ export function pendingSwapEntries(
     .map((swap) => ({
       id: `swap:${swap.signature}`,
       direction: "send",
-      status: "pending",
+      status: swap.settled ? "confirmed" : "pending",
       kind: "transfer",
       isSwap: true,
       merchantName: null,
@@ -311,11 +320,14 @@ export function pendingSwapEntries(
       signature: swap.signature,
       memo: null,
       createdAt: swap.createdAt,
-      confirmedAt: null,
+      confirmedAt: swap.settled ? swap.createdAt : null,
       swap: {
         pay: swap.pay,
-        receive: { ...swap.receive, amountRaw: "0", decimals: null },
+        receive: swap.receivedRaw
+          ? { ...swap.receive, amountRaw: swap.receivedRaw }
+          : { ...swap.receive, amountRaw: "0", decimals: null },
         venues: [...new Set(swap.venues)],
+        receiving: !swap.receivedRaw,
       },
     }));
 }
