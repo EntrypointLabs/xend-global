@@ -912,6 +912,7 @@ describe("a swap shown as one trade", () => {
 describe("a swap still on its way", () => {
   const SOL = "So11111111111111111111111111111111111111112";
   const sent = {
+    account: SELF,
     signature: "sig-sent",
     createdAt: "2026-07-02T10:00:00.000Z",
     pay: {
@@ -942,6 +943,10 @@ describe("a swap still on its way", () => {
     expect(
       pendingSwapEntries([sent], [makeRow({ signature: "other" })], SELF)
     ).toHaveLength(1);
+  });
+
+  it("is shown only to the Account that sent it", () => {
+    expect(pendingSwapEntries([sent], [], "someone-else")).toEqual([]);
   });
 
   it("says it is swapping where the route is not known", () => {

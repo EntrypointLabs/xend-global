@@ -27,6 +27,11 @@ export function removePendingSwap(signature: string): void {
   publish(pending.filter((swap) => swap.signature !== signature));
 }
 
+/** Forgets every pending swap, for when the Account on this phone changes. */
+export function clearPendingSwaps(): void {
+  if (pending.length > 0) publish([]);
+}
+
 function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => {

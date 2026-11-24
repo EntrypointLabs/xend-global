@@ -152,6 +152,7 @@ export function useExecuteSwap() {
 
         const { signature } = await apiClient.submitSwap(signedBase64);
         addPendingSwap({
+          account: account.address,
           signature,
           createdAt: new Date().toISOString(),
           pay: {

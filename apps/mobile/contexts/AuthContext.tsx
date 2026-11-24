@@ -31,6 +31,7 @@ import {
 } from "@/utils/passkeyOutcome";
 import { useEnsureSolanaWallet } from "@/hooks/useEnsureSolanaWallet";
 import { SEED_DEMO, SEED_TIER, SEED_USER } from "@/utils/devSeed";
+import { clearPendingSwaps } from "@/utils/pendingSwaps";
 import { forgetThisDevice } from "@/utils/pushDevice";
 import { showToast } from "@/utils/toast";
 
@@ -461,6 +462,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Drop all cached queries so the next user's session doesn't read the
       // previous user's balances/activity from cache.
       queryClient.clear();
+      clearPendingSwaps();
 
       setIsAuthenticated(false);
       setSessionTier(null);

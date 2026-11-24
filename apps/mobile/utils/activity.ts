@@ -267,6 +267,8 @@ export function mapTransferRowsToActivityEntries(
 
 /** A swap this phone sent that the chain has not yet reported. */
 export interface PendingSwap {
+  /** The Account that sent it; another signed in on this phone never sees it. */
+  account: string;
   signature: string;
   createdAt: string;
   pay: Omit<SwapSide, "decimals"> & { decimals: number };
@@ -288,7 +290,9 @@ export function pendingSwapEntries(
 ): ActivityEntry[] {
   const reported = new Set(rows.map((row) => row.signature));
   return pending
-    .filter((swap) => !reported.has(swap.signature))
+    .filter(
+      (swap) => swap.account === selfAddress && !reported.has(swap.signature)
+    )
     .map((swap) => ({
       id: `swap:${swap.signature}`,
       direction: "send",
