@@ -922,7 +922,7 @@ describe("a swap still on its way", () => {
       symbol: "USDC",
       name: "USD Coin",
     },
-    receive: { mint: SOL, symbol: "SOL", name: "Solana" },
+    receive: { mint: SOL, decimals: 9, symbol: "SOL", name: "Solana" },
     venues: ["AlphaQ", "SolFi V2", "AlphaQ"],
   };
 
@@ -943,6 +943,23 @@ describe("a swap still on its way", () => {
     expect(
       pendingSwapEntries([sent], [makeRow({ signature: "other" })], SELF)
     ).toHaveLength(1);
+  });
+
+  it("settles the moment this phone sees it land, amount to follow", () => {
+    const [entry] = pendingSwapEntries([{ ...sent, settled: true }], [], SELF);
+    expect(entry.status).toBe("confirmed");
+    expect(entry.swap?.receiving).toBe(true);
+    expect(swapAmountLabel(entry.swap!.receive)).toBeNull();
+  });
+
+  it("shows what came back once it is read", () => {
+    const [entry] = pendingSwapEntries(
+      [{ ...sent, settled: true, receivedRaw: "6342817" }],
+      [],
+      SELF
+    );
+    expect(entry.swap?.receiving).toBe(false);
+    expect(swapAmountLabel(entry.swap!.receive)).toBe("0.00634 SOL");
   });
 
   it("is shown only to the Account that sent it", () => {

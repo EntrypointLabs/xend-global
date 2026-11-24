@@ -376,9 +376,8 @@ function SwapItem({
               +{received}
             </Typography>
           ) : (
-            entry.status === "pending" && (
-              <AmountPlaceholder className={tone.placeholder} />
-            )
+            swap.receiving &&
+            !failed && <AmountPlaceholder className={tone.placeholder} />
           )}
           {paid && (
             <Typography
