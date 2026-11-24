@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { ScreenLayout } from "@/components/ui/layout";
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { GlassButton } from "@/components/ui/atoms/Glass";
 import type { PopoverAnchor } from "@/components/ui/molecules/ContactActionsPopover";
 import { KeyActionsPopover } from "@/components/ui/molecules/KeyActionsPopover";
 import {
@@ -206,7 +207,8 @@ export default function KeysAndRecoveryScreen() {
           )}
         </ScrollView>
 
-        <HapticPressable
+        <GlassButton
+          radius={999}
           // Back, so the page slides away the way it came. `navigate` stacked
           // a second Settings on top and slid it in as a new page. Opened from
           // the home banner, back returns to home, and the tab bar puts the
@@ -217,11 +219,13 @@ export default function KeysAndRecoveryScreen() {
               ? router.back()
               : router.replace("/settings" as never)
           }
-          className="mt-2 size-12 items-center justify-center"
-          accessibilityLabel="Back to settings"
+          className="mt-2 h-14 w-14 items-center justify-center rounded-full"
+          fallbackClassName="bg-card shadow-md shadow-black/10"
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
         >
-          <Ionicons name="chevron-back" size={24} color={palette.foreground} />
-        </HapticPressable>
+          <Ionicons name="chevron-back" size={22} color={palette.foreground} />
+        </GlassButton>
       </View>
 
       <KeyActionsPopover

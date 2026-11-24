@@ -17,7 +17,7 @@ import {
 import { useColorfulTheme } from "@/contexts/AppearanceContext";
 import { cn } from "@/utils/cn";
 import { SettingsItem } from "@/components/ui/molecules";
-import { Ionicons } from "@expo/vector-icons";
+import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import { Spacing } from "@/constants/Spacing";
 import { useAuth } from "@/contexts/AuthContext";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
@@ -44,12 +44,26 @@ const APP_VERSION =
   "1.0.0";
 const APP_BUILD = Application.nativeBuildVersion;
 
+const MARKS = {
+  editAccount: [
+    require("@/assets/icons/marks/edit-account-ink.webp"),
+    require("@/assets/icons/marks/edit-account-paper.webp"),
+  ],
+  logout: [
+    require("@/assets/icons/marks/logout-ink.webp"),
+    require("@/assets/icons/marks/logout-paper.webp"),
+  ],
+  deleteAccount: [
+    require("@/assets/icons/marks/delete-account-ink.webp"),
+    require("@/assets/icons/marks/delete-account-paper.webp"),
+  ],
+} as const;
+
 interface SettingsRow {
   label: string;
   icon: React.ComponentProps<typeof SettingsItem>["icon"];
   onPress: () => void;
   color?: string;
-  tintOnPhoto?: boolean;
 }
 
 export default function SettingsScreen() {
@@ -79,6 +93,8 @@ export default function SettingsScreen() {
   // The photo's brighter red only on the photo; the stock red off it.
   const deleteRed = colorful ? "#FF7A70" : palette.destructive;
 
+  const onDark = colorful || palette.dark;
+  const mark = (name: keyof typeof MARKS) => MARKS[name][onDark ? 1 : 0];
   const sections: { title: string; data: SettingsRow[] }[] = [
     {
       title: "Security",
@@ -93,12 +109,12 @@ export default function SettingsScreen() {
         },
         {
           label: "Quick pay",
-          icon: require("@/assets/icons/spending-limt.png"),
+          icon: require("@/assets/icons/quick-pay.png"),
           onPress: () => router.push("/settings/spending-limits" as never),
         },
         {
           label: "Connected Merchants",
-          icon: require("@/assets/icons/card.png"),
+          icon: require("@/assets/icons/merchants.png"),
           onPress: () => router.push("/settings/connected-merchants" as never),
         },
       ],
@@ -108,13 +124,12 @@ export default function SettingsScreen() {
       data: [
         {
           label: "Edit Account",
-          icon: require("@/assets/icons/edit-wallet.png"),
-          tintOnPhoto: true,
+          icon: mark("editAccount"),
           onPress: () => setShowEditWallet(true),
         },
         {
           label: "Appearance",
-          icon: <Ionicons name="color-palette" size={24} color="#FF8A1F" />,
+          icon: require("@/assets/icons/appearance.png"),
           onPress: () => router.push("/settings/appearance" as never),
         },
         {
@@ -124,7 +139,7 @@ export default function SettingsScreen() {
         },
         {
           label: "Naira limits",
-          icon: <Ionicons name="cash" size={24} color={palette.success} />,
+          icon: require("@/assets/icons/naira-limits.png"),
           onPress: () => router.push("/naira-limits" as never),
         },
         {
@@ -154,29 +169,25 @@ export default function SettingsScreen() {
         },
         {
           label: "Follow @pryddfinance",
-          icon: require("@/assets/icons/x.png"),
+          icon: (
+            <FontAwesome6 name="x-twitter" size={20} color={S.colors.ink} />
+          ),
           onPress: () => {
             Linking.openURL(PRYDD_TWITTER_URL);
           },
         },
         {
           label: "Logout",
-          icon: (
-            <Ionicons name="log-out-outline" size={22} color={S.colors.ink} />
-          ),
+          icon: mark("logout"),
           onPress: logout,
         },
         {
           label: "Delete Account",
           // The photo's brighter destructive red; the stock one is too dark to
           // read on the veil.
-          icon: (
-            <Ionicons
-              name="person-remove-outline"
-              size={22}
-              color={deleteRed}
-            />
-          ),
+          icon: colorful
+            ? require("@/assets/icons/marks/delete-account-photo.webp")
+            : mark("deleteAccount"),
           onPress: () => setShowDeleteAccount(true),
           color: deleteRed,
         },
@@ -236,7 +247,6 @@ export default function SettingsScreen() {
                 icon={item.icon}
                 onPress={item.onPress}
                 color={item.color}
-                tintOnPhoto={item.tintOnPhoto}
               />
             );
             if (!colorful) return row;
