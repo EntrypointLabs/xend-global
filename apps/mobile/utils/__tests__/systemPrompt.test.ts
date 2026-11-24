@@ -1,4 +1,9 @@
+import { privacyCover } from "@/modules/privacy-cover/src";
 import { isSystemPromptOpen, withSystemPrompt } from "../systemPrompt";
+
+jest.mock("@/modules/privacy-cover/src", () => ({
+  privacyCover: { beginPrompt: jest.fn(), endPrompt: jest.fn() },
+}));
 
 describe("system prompt tracking", () => {
   beforeEach(() => jest.useFakeTimers());
@@ -20,6 +25,19 @@ describe("system prompt tracking", () => {
 
     jest.setSystemTime(10_700);
     expect(isSystemPromptOpen()).toBe(false);
+  });
+
+  it("holds the native cover back for the prompt and a beat after it", async () => {
+    jest.mocked(privacyCover.beginPrompt).mockClear();
+    jest.mocked(privacyCover.endPrompt).mockClear();
+
+    await withSystemPrompt(async () => {
+      expect(privacyCover.beginPrompt).toHaveBeenCalledTimes(1);
+    });
+    expect(privacyCover.endPrompt).not.toHaveBeenCalled();
+
+    jest.advanceTimersByTime(600);
+    expect(privacyCover.endPrompt).toHaveBeenCalledTimes(1);
   });
 
   it("closes when the prompt throws", async () => {

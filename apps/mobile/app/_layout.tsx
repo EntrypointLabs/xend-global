@@ -9,7 +9,11 @@ import "@/global.css";
 import "@/utils/cssInteropSetup";
 import { installPrivyRequestLog } from "@/utils/privyRequestLog";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { AppLockProvider, useAppLock } from "@/contexts/AppLockContext";
+import {
+  AppLockProvider,
+  BACKGROUND_GRACE_PERIOD_MS,
+  useAppLock,
+} from "@/contexts/AppLockContext";
 import { ScreenThemeProvider } from "@/contexts/ScreenThemeContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { isPhotoRoute } from "@/components/ui/glass";
@@ -31,6 +35,7 @@ import Constants from "expo-constants";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { FullWindowOverlay } from "react-native-screens";
+import { privacyCover } from "@/modules/privacy-cover/src";
 import { BlurView } from "expo-blur";
 import { PaymentApprovalHost } from "@/components/payment-approval/PaymentApprovalHost";
 import {
@@ -273,9 +278,14 @@ function ObscuredCover() {
 function AppCover() {
   const segments = useSegments();
   const { isAuthenticated } = useAuth();
-  const { isLocked, isObscured } = useAppLock();
+  const { isLocked, isObscured, promptReady } = useAppLock();
+  const covering = !!isAuthenticated && segments[0] !== "(auth)";
 
-  if (!isAuthenticated || segments[0] === "(auth)") return null;
+  useEffect(() => {
+    privacyCover.configure(covering && promptReady, BACKGROUND_GRACE_PERIOD_MS);
+  }, [covering, promptReady]);
+
+  if (!covering) return null;
   if (!isLocked && !isObscured) return null;
 
   return (
