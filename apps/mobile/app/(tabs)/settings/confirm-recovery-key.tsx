@@ -108,8 +108,11 @@ export default function ConfirmRecoveryKeyScreen() {
           </View>
 
           <HapticPressable
+            // Back to the Keys & Recovery this flow started from, not a
+            // second copy stacked on top: from a copy, going back would walk
+            // into this finished flow again.
             onPress={() =>
-              router.navigate("/settings/keys-and-recovery" as never)
+              router.dismissTo("/settings/keys-and-recovery" as never)
             }
             className="h-14 items-center justify-center rounded-full bg-primary"
           >

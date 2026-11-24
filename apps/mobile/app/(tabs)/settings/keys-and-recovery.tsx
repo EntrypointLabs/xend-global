@@ -207,10 +207,16 @@ export default function KeysAndRecoveryScreen() {
         </ScrollView>
 
         <HapticPressable
-          // To Settings, not back. This screen is reachable from the home
-          // banner, and `back` from there returns to the home tab and strands
-          // the settings stack on a sub-screen.
-          onPress={() => router.navigate("/settings" as never)}
+          // Back, so the page slides away the way it came. `navigate` stacked
+          // a second Settings on top and slid it in as a new page. Opened from
+          // the home banner, back returns to home, and the tab bar puts the
+          // Settings tab on its list whenever it is tapped. A deep link has
+          // nothing to go back to, so that case lands on Settings.
+          onPress={() =>
+            router.canGoBack()
+              ? router.back()
+              : router.replace("/settings" as never)
+          }
           className="mt-2 size-12 items-center justify-center"
           accessibilityLabel="Back to settings"
         >
