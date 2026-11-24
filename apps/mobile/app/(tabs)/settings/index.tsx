@@ -27,6 +27,8 @@ import { DeleteAccountModal } from "@/components/ui/organisms/modals/DeleteAccou
 import { ACCOUNT_NAME_MAX_LENGTH, useWalletName } from "@/hooks/useWalletName";
 import { useCollapseOnScroll } from "@/hooks/useTabBarCollapse";
 import { useBalances } from "@/hooks/useBalances";
+import { useEarnPosition } from "@/hooks/useEarn";
+import { formatMoney, holdingsBeforeDelete } from "@/utils/balances";
 import { useRouter } from "expo-router";
 import { useToast } from "@/contexts/ToastContext";
 import { useNotificationPreference } from "@/hooks/usePushRegistration";
@@ -81,7 +83,9 @@ export default function SettingsScreen() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notifications = useNotificationPreference();
   const { showToast } = useToast();
-  const { total: balanceTotal, totalDisplay: balanceDisplay } = useBalances();
+  const { tokens } = useBalances();
+  const { balance: earnBalance } = useEarnPosition();
+  const held = holdingsBeforeDelete(tokens, earnBalance);
 
   const accountAddress = user?.smart_account_address || user?.address;
 
@@ -325,8 +329,8 @@ export default function SettingsScreen() {
       <DeleteAccountModal
         visible={showDeleteAccount}
         onClose={() => setShowDeleteAccount(false)}
-        balance={balanceTotal}
-        balanceDisplay={`$${balanceDisplay}`}
+        canDelete={!held.holdsAnything}
+        heldDisplay={held.usd > 0 ? `$${formatMoney(held.usd)}` : null}
         onDeleted={handleAccountDeleted}
       />
       <NotificationsModal

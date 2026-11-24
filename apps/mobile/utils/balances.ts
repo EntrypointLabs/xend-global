@@ -120,6 +120,27 @@ export function selectPortfolio(tokens: TokenBalance[] | undefined): Portfolio {
 }
 
 /**
+ * What stands between the Consumer and deleting their Account: everything
+ * they hold, priced the way the home screen prices it.
+ *
+ * Deletion is refused while anything at all is held, priced or not, because
+ * whatever is left behind is lost with the Account. So `holdsAnything` is
+ * decided by amounts, and `usd` is only what can be said about them.
+ */
+export function holdingsBeforeDelete(
+  tokens: TokenBalance[] | undefined,
+  earnUsd: number
+): { usd: number; holdsAnything: boolean } {
+  const { cashUsd, investmentsUsd } = selectPortfolio(tokens);
+  return {
+    usd: cashUsd + investmentsUsd + earnUsd,
+    holdsAnything:
+      earnUsd > 0 ||
+      (tokens ?? []).some((token) => BigInt(token.amountRaw) > 0n),
+  };
+}
+
+/**
  * Money the way every amount in the app is written: "1,234.50".
  *
  * No currency symbol, because `BalanceView` renders the `$` itself along with
