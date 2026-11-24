@@ -52,6 +52,8 @@ function store(row: SquadsAccountRow | null = ACCOUNT): SquadsAccountStore {
 interface ChainState {
   /** Provisioned by default, which is when a staged change is worth telling. */
   provisioned?: boolean;
+  /** The Consumer took their Spending Limit off, so its policy is gone. */
+  limitRemoved?: boolean;
   transactionIndex?: bigint;
   staleTransactionIndex?: bigint;
   /** The proposal at the newest index. Every older one has executed. */
@@ -82,7 +84,8 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
     policyExists: (_settings, seed) =>
       Promise.resolve(
         provisioned &&
-          [SPENDING_LIMIT_POLICY_SEED, ABOVE_LIMIT_POLICY_SEED].includes(seed),
+          (seed === ABOVE_LIMIT_POLICY_SEED ||
+            (seed === SPENDING_LIMIT_POLICY_SEED && !state.limitRemoved)),
       ),
     readProposal: (_settings, index) => {
       read.push(index.toString());
@@ -210,6 +213,21 @@ describe('AccountChangeService.pending', () => {
     // the foreground. Warning them about it teaches them to dismiss the notice
     // that matters later.
     await expect(service(chain).pending(USER)).resolves.toEqual([]);
+  });
+
+  it('still reports a change on an Account whose limit was removed', async () => {
+    const { chain } = fakeChain({
+      limitRemoved: true,
+      proposal: { status: 'Active' },
+    });
+
+    // Removing the limit is something a Consumer may do, not a sign that the
+    // Account is half set up. A change staged afterwards still has to be
+    // announced, and a key change waiting behind the removal still has to be
+    // found so the app can finish it.
+    const waiting = await service(chain).pending(USER);
+
+    expect(waiting.map((change) => change.transactionIndex)).toEqual(['7']);
   });
 
   it('says nothing about a change that is already settled', async () => {

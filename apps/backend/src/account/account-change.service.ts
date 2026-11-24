@@ -18,7 +18,6 @@ import { AccountCreationError } from './account.errors';
 import {
   ABOVE_LIMIT_POLICY_SEED,
   PROVISIONING_CHAIN,
-  spendingLimitSeed,
   SQUADS_ACCOUNT_STORE,
 } from './account.interface';
 import type {
@@ -374,20 +373,23 @@ export class AccountChangeService {
     return signature;
   }
 
+  /**
+   * Whether provisioning has finished, which is when a waiting change is
+   * worth telling the Consumer about.
+   *
+   * Provisioning raises the time lock last, after both policies exist, so the
+   * lock and the above-limit policy together say it is done. The Spending
+   * Limit policy is deliberately not asked about: a Consumer may remove their
+   * limit, and an Account without one still has changes to announce.
+   */
   private async isProvisioned(
     account: SquadsAccountRow,
     timeLockSeconds: number,
   ): Promise<boolean> {
     if (timeLockSeconds === 0) return false;
-    return (
-      (await this.chain.policyExists(
-        account.settingsAddress,
-        spendingLimitSeed(account),
-      )) &&
-      (await this.chain.policyExists(
-        account.settingsAddress,
-        ABOVE_LIMIT_POLICY_SEED,
-      ))
+    return this.chain.policyExists(
+      account.settingsAddress,
+      ABOVE_LIMIT_POLICY_SEED,
     );
   }
 }
