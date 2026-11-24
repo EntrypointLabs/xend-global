@@ -18,6 +18,8 @@ export interface SwapRecord {
   amountOutRaw: string;
   /** The venues the route ran through, in order. */
   venues: string[];
+  inputDecimals: number;
+  outputDecimals: number;
 }
 
 export interface SwapRecords {
@@ -80,6 +82,7 @@ export interface CompiledSwap {
 export interface SwapChain {
   readonly feePayer: string;
   tokenProgramFor(mint: PublicKey): Promise<PublicKey>;
+  decimalsFor(mint: PublicKey): Promise<number>;
   /** Whether each address holds an account, in the order asked. */
   exists(addresses: PublicKey[]): Promise<boolean[]>;
   /** The programs the Account's above-limit policy admits. */

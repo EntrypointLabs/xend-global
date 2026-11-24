@@ -262,6 +262,10 @@ export class SwapService {
     const shape = await this.shapeFor(account);
 
     const compiled = await this.compile(account, price, route, shape);
+    const [inputDecimals, outputDecimals] = await Promise.all([
+      this.chain.decimalsFor(new PublicKey(price.inputMint)),
+      this.chain.decimalsFor(new PublicKey(price.outputMint)),
+    ]);
 
     await this.prepared.set<PreparedSwap>(
       preparedKey(compiled.messageBase64),
@@ -272,6 +276,8 @@ export class SwapService {
         amountInRaw: price.amountInRaw,
         amountOutRaw: price.amountOutRaw,
         venues: price.venues,
+        inputDecimals,
+        outputDecimals,
       },
       PREPARED_TX_TTL_SECONDS,
     );

@@ -1,5 +1,5 @@
 {
-  "id": "03b45057-865f-498c-a5ab-5a582646fb29",
+  "id": "25c01287-ca2d-4ab9-8057-23b5e6e50407",
   "prevId": "d8cdcf2c-ccc9-4d65-9429-6c1f4a412bdd",
   "version": "7",
   "dialect": "postgresql",
@@ -4303,6 +4303,18 @@
         "venues": {
           "name": "venues",
           "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "input_decimals": {
+          "name": "input_decimals",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "output_decimals": {
+          "name": "output_decimals",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },

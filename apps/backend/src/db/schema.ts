@@ -823,6 +823,9 @@ export const swaps = pgTable('swaps', {
    * Null on swaps recorded before this was kept.
    */
   venues: text('venues').array(),
+  /** Each mint's decimals, so the trade can be shown without looking them up. */
+  inputDecimals: integer('input_decimals'),
+  outputDecimals: integer('output_decimals'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

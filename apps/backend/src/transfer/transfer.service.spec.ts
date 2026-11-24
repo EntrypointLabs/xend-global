@@ -125,9 +125,6 @@ function makeFakeDb(store: FakeStore): DbService {
     select: () => ({
       from: (tbl: unknown) => makeSelectChain(collectionFor(tbl)),
     }),
-    selectDistinct: () => ({
-      from: (tbl: unknown) => makeSelectChain(collectionFor(tbl)),
-    }),
     insert: (tbl: unknown) => {
       const collection = collectionFor(tbl);
       return {
@@ -1247,6 +1244,8 @@ describe('TransferService.list', () => {
             amountInRaw: '100000000',
             amountOutRaw: '1440000000',
             venues: ['AlphaQ', 'SolFi V2'],
+            inputDecimals: 6,
+            outputDecimals: 9,
           },
         ],
       },
@@ -1261,13 +1260,13 @@ describe('TransferService.list', () => {
     // shown whole even when its received side was never indexed.
     expect(out.transfers[0].swapDetails).toMatchObject({
       pay: { mint: usdcMint, amountRaw: '100000000' },
-      receive: { mint: WRAPPED_SOL, amountRaw: '1440000000', decimals: null },
+      receive: { mint: WRAPPED_SOL, amountRaw: '1440000000', decimals: 9 },
       venues: ['AlphaQ', 'SolFi V2'],
     });
     expect(out.transfers[1].swapDetails).toBeUndefined();
   });
 
-  it('sends no venues for a swap recorded before they were kept', async () => {
+  it('sends no venues or decimals for a swap recorded before they were kept', async () => {
     const account = makeAccount();
     const { service } = makeService({
       solana: makeSolana({}),
@@ -1299,6 +1298,8 @@ describe('TransferService.list', () => {
             amountInRaw: '100000000',
             amountOutRaw: '1440000000',
             venues: null,
+            inputDecimals: null,
+            outputDecimals: null,
           },
         ],
       },
@@ -1306,7 +1307,8 @@ describe('TransferService.list', () => {
 
     const out = await service.list('u_test');
     expect(out.transfers[0].swapDetails).toMatchObject({
-      pay: { decimals: 6 },
+      pay: { decimals: null },
+      receive: { decimals: null },
       venues: [],
     });
   });

@@ -75,6 +75,7 @@ const SwapSideSchema = z.object({
   mint: z.string(),
   /** As quoted. The row for this side, when there is one, has what moved. */
   amountRaw: z.string(),
+  /** Null on swaps recorded before decimals were kept. */
   decimals: z.number().int().nullable(),
   tokenName: z.string().nullable(),
   tokenSymbol: z.string().nullable(),

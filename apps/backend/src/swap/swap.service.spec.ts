@@ -180,6 +180,8 @@ function setUp({
   const chain: SwapChain = {
     feePayer: feePayer.publicKey.toBase58(),
     tokenProgramFor: () => Promise.resolve(TOKEN_PROGRAM_ID),
+    decimalsFor: (mint) =>
+      Promise.resolve(mint.equals(WRAPPED_SOL_MINT) ? 9 : 6),
     exists: (asked) =>
       Promise.resolve(asked.map((a) => existing.some((e) => e.equals(a)))),
     allowedPrograms: () => Promise.resolve(allowed),
@@ -543,6 +545,8 @@ describe('SwapService', () => {
           amountInRaw: '100000000',
           amountOutRaw: '1440000000',
           venues: ['Whirlpool'],
+          inputDecimals: 6,
+          outputDecimals: 9,
         },
       ]);
       // A second submit of the same bytes finds nothing prepared.

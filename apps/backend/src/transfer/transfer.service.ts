@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createId } from '@paralleldrive/cuid2';
-import { eq, and, inArray, isNotNull, lt, or, desc, sql } from 'drizzle-orm';
+import { eq, and, inArray, lt, or, desc, sql } from 'drizzle-orm';
 import {
   PublicKey,
   TransactionInstruction,
@@ -635,29 +635,6 @@ export class TransferService {
   }
 
   /**
-   * Decimals for mints, from any transfer of them ever indexed. A swap's
-   * received side is not always indexed as a transfer of its own, so the
-   * page being read cannot be relied on to carry it.
-   */
-  private async decimalsFor(mints: string[]): Promise<Map<string, number>> {
-    const distinct = [...new Set(mints)];
-    if (distinct.length === 0) return new Map();
-    const rows = await this.db.client
-      .selectDistinct({ mint: transfers.mint, decimals: transfers.decimals })
-      .from(transfers)
-      .where(
-        and(inArray(transfers.mint, distinct), isNotNull(transfers.decimals)),
-      );
-    return new Map(
-      rows.flatMap((row) =>
-        typeof row.decimals === 'number'
-          ? [[row.mint, row.decimals] as const]
-          : [],
-      ),
-    );
-  }
-
-  /**
    * Refuses to broadcast a Spend nobody proved they were present for.
    *
    * Which proof depends on the route, and the route is read from the intent
@@ -832,11 +809,14 @@ export class TransferService {
       ...page.map((r) => r.mint),
       ...swapMints,
     ]);
-    const swapDecimals = await this.decimalsFor(swapMints);
-    const swapSide = (mint: string, amountRaw: string) => ({
+    const swapSide = (
+      mint: string,
+      amountRaw: string,
+      decimals: number | null,
+    ) => ({
       mint,
       amountRaw,
-      decimals: swapDecimals.get(mint) ?? null,
+      decimals,
       tokenName: metadata.get(mint)?.name ?? null,
       tokenSymbol: metadata.get(mint)?.symbol ?? null,
       tokenIconUrl: metadata.get(mint)?.iconUrl ?? null,
@@ -847,8 +827,12 @@ export class TransferService {
       return {
         swap: true,
         swapDetails: {
-          pay: swapSide(swap.inputMint, swap.amountInRaw),
-          receive: swapSide(swap.outputMint, swap.amountOutRaw),
+          pay: swapSide(swap.inputMint, swap.amountInRaw, swap.inputDecimals),
+          receive: swapSide(
+            swap.outputMint,
+            swap.amountOutRaw,
+            swap.outputDecimals,
+          ),
           venues: swap.venues ?? [],
         },
       };
