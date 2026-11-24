@@ -381,16 +381,106 @@ describe('SwapService', () => {
     ).rejects.toBeInstanceOf(SwapQuoteExpiredError);
   });
 
-  it('says so when the Account was provisioned before Swap', async () => {
-    const { service } = setUp({
-      allowed: ABOVE_LIMIT_PROGRAM_ALLOWLIST.filter(
-        (program) => !program.equals(JUPITER_PROGRAM_ID),
-      ),
+  describe('an Account provisioned before Swap', () => {
+    const BEFORE_SWAP = ABOVE_LIMIT_PROGRAM_ALLOWLIST.filter(
+      (program) => !program.equals(JUPITER_PROGRAM_ID),
+    );
+
+    async function preparedSwap(request = usdcToSol) {
+      const context = setUp({ allowed: BEFORE_SWAP });
+      const quote = await context.service.quote('consumer', request);
+      const prepared = await context.service.prepare('consumer', quote.quoteId);
+      return { ...context, quote, prepared };
+    }
+
+    const programsCalled = (unsignedTxBase64: string) => {
+      const { message } = VersionedTransaction.deserialize(
+        Buffer.from(unsignedTxBase64, 'base64'),
+      );
+      return message.compiledInstructions.map((ix) =>
+        message.staticAccountKeys[ix.programIdIndex].toBase58(),
+      );
+    };
+
+    it('swaps without a settings change, on an allowance from the vault', async () => {
+      const { prepared, quote } = await preparedSwap();
+
+      // What the device will be shown is the swap that was quoted.
+      const described = describeTransaction(prepared.unsignedTxBase64, {
+        addresses,
+      });
+      expect(described).toMatchObject({
+        kind: 'swap',
+        outputMint: 'SOL',
+        amountIn: BigInt(quote.amountInRaw),
+        quotedAmountOut: BigInt(quote.amountOutRaw),
+        slippageBps: quote.slippageBps,
+      });
     });
+
+    it('calls the swap program beside the vault, not from inside it', async () => {
+      const { prepared } = await preparedSwap();
+
+      // The policy does not admit the swap program, so the vault cannot be
+      // the one calling it.
+      expect(programsCalled(prepared.unsignedTxBase64)).toContain(
+        JUPITER_PROGRAM_ID.toBase58(),
+      );
+    });
+
+    it('still asks for both of the Account’s signatures', async () => {
+      const { prepared } = await preparedSwap();
+      const { message } = VersionedTransaction.deserialize(
+        Buffer.from(prepared.unsignedTxBase64, 'base64'),
+      );
+      const required = message.staticAccountKeys
+        .slice(0, message.header.numRequiredSignatures)
+        .map(String);
+
+      expect(required).toEqual(
+        expect.arrayContaining([
+          primary.publicKey.toBase58(),
+          approval.publicKey.toBase58(),
+        ]),
+      );
+    });
+
+    it('swaps SOL the same way', async () => {
+      const { prepared } = await preparedSwap({
+        inputMint: WRAPPED_SOL_MINT.toBase58(),
+        outputMint: USDC.toBase58(),
+        amountRaw: '1000000000',
+      });
+
+      expect(
+        describeTransaction(prepared.unsignedTxBase64, { addresses }),
+      ).toMatchObject({ kind: 'swap', inputMint: 'SOL' });
+    });
+
+    it('refuses an Account whose policy was not written by provisioning', async () => {
+      const { service } = setUp({ allowed: [] });
+
+      await expect(service.quote('consumer', usdcToSol)).rejects.toBeInstanceOf(
+        AccountNeedsUpdateError,
+      );
+    });
+  });
+
+  it('keeps calling the swap program from the vault where the policy admits it', async () => {
+    const { service } = setUp();
     const quote = await service.quote('consumer', usdcToSol);
-    await expect(
-      service.prepare('consumer', quote.quoteId),
-    ).rejects.toBeInstanceOf(AccountNeedsUpdateError);
+    const { unsignedTxBase64 } = await service.prepare(
+      'consumer',
+      quote.quoteId,
+    );
+    const { message } = VersionedTransaction.deserialize(
+      Buffer.from(unsignedTxBase64, 'base64'),
+    );
+    const called = message.compiledInstructions.map((ix) =>
+      message.staticAccountKeys[ix.programIdIndex].toBase58(),
+    );
+
+    expect(called).not.toContain(JUPITER_PROGRAM_ID.toBase58());
   });
 
   describe('submit', () => {
