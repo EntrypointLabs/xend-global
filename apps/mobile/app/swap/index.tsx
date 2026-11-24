@@ -19,8 +19,6 @@ import { ScreenLayout } from "@/components/ui/layout";
 import { useFeature } from "@/hooks/useFeature";
 import { usePalette } from "@/hooks/usePalette";
 import { useBalances } from "@/hooks/useBalances";
-import { TurnOnSwap } from "@/components/swap/TurnOnSwap";
-import { useSwapAccess } from "@/hooks/useSwapAccess";
 import { useSwapQuote } from "@/hooks/useSwapQuote";
 import { useExecuteSwap } from "@/hooks/useExecuteSwap";
 import { useToast } from "@/contexts/ToastContext";
@@ -45,16 +43,10 @@ const PASSING_ROOM = 56;
 /** The route survives the flag, so a deep link can still land here. */
 export default function SwapRoute() {
   const enabled = useFeature("swap");
-  const access = useSwapAccess();
   if (!enabled) return <Redirect href="/" />;
-  // Held blank rather than guessed: showing the keypad to an Account that
-  // cannot swap yet, then replacing it, reads as the app changing its mind.
-  if (access.isPending) return <ScreenLayout>{null}</ScreenLayout>;
-  // An answer that could not be read is not a refusal. The swap itself still
-  // says so if the Account turns out not to be ready.
-  if (access.data && access.data.state !== "ready") {
-    return <TurnOnSwap access={access.data} />;
-  }
+  // Every Account can swap. One set up before Swap does it on an allowance
+  // from its vault, which the backend chooses and the signing check reads as
+  // the same swap, so there is nothing to turn on first.
   return <SwapScreen />;
 }
 

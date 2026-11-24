@@ -1967,15 +1967,6 @@ class BackendClient {
     return SwapAccessStatusSchema.parse(raw);
   }
 
-  /** POST /account/swap-access/start: stages the change that turns Swap on. */
-  async startSwapAccess(): Promise<SwapAccessStep> {
-    const raw = await this.request<unknown>("/account/swap-access/start", {
-      method: "POST",
-      auth: true,
-    });
-    return SwapAccessStepSchema.parse(raw);
-  }
-
   /** POST /account/swap-access/next: the next step, or done. */
   async nextSwapAccessStep(): Promise<SwapAccessStep> {
     const raw = await this.request<unknown>("/account/swap-access/next", {
