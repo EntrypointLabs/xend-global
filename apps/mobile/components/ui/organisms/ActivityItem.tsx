@@ -1,8 +1,13 @@
 import { Image, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Typography } from "../atoms/Typography";
-import type { ActivityEntry } from "@/utils/activity";
-import { statusLabel } from "@/utils/activity";
+import type { ActivityEntry, SwapSummary } from "@/utils/activity";
+import {
+  statusLabel,
+  swapAmountLabel,
+  swapPairLabel,
+  swapVenueLabel,
+} from "@/utils/activity";
 import { truncateAddress } from "@/utils/helper";
 import { formatAmount } from "@/utils/solana";
 import HapticPressable from "../atoms/HapticPressable";
@@ -71,6 +76,10 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
 
   if (entry.ramp) {
     return <RampItem entry={entry} onPress={onPress} />;
+  }
+
+  if (entry.swap) {
+    return <SwapItem entry={entry} swap={entry.swap} onPress={onPress} />;
   }
 
   const isSend = entry.direction === "send";
@@ -252,6 +261,111 @@ function RampItem({
           </Typography>
           <Typography weight="500" className={cn("text-xs", tone.muted)}>
             {dollars}
+          </Typography>
+        </View>
+      </View>
+    </HapticPressable>
+  );
+}
+
+/** Two token marks, paid on top and received below, as the bank rows draw. */
+export function SwapMarks({
+  swap,
+  size = 26,
+  cutout,
+}: {
+  swap: SwapSummary;
+  size?: number;
+  cutout: string;
+}) {
+  const box = Math.round(size * 1.54);
+  return (
+    <View style={{ width: box, height: box }}>
+      <View className="absolute left-0 top-0">
+        <TokenMark
+          mint={swap.pay.mint}
+          label={swap.pay.symbol ?? "?"}
+          iconUrl={swap.pay.iconUrl}
+          size={size}
+        />
+      </View>
+      <View
+        className={cn(
+          "absolute -bottom-0.5 -right-0.5 rounded-full border-2",
+          cutout
+        )}
+      >
+        <TokenMark
+          mint={swap.receive.mint}
+          label={swap.receive.symbol ?? "?"}
+          iconUrl={swap.receive.iconUrl}
+          size={size}
+        />
+      </View>
+    </View>
+  );
+}
+
+/**
+ * A swap as one trade: the pair it traded, where it was routed, and both
+ * amounts, received above paid.
+ */
+function SwapItem({
+  entry,
+  swap,
+  onPress,
+}: {
+  entry: ActivityEntry;
+  swap: SwapSummary;
+  onPress?: () => void;
+}) {
+  const tone = useRowTone();
+  const settled = entry.status === "confirmed";
+  const route = swapVenueLabel(swap);
+
+  return (
+    <HapticPressable
+      className="flex-row items-center gap-3.5 py-3"
+      onPress={onPress}
+    >
+      <SwapMarks swap={swap} cutout={tone.cutout} />
+      <View className="flex-1 flex-row items-center justify-between gap-3">
+        <View className="flex-1 flex-col">
+          <Typography
+            weight="600"
+            numberOfLines={1}
+            className={cn("mb-0.5", tone.ink)}
+          >
+            {swapPairLabel(swap)}
+          </Typography>
+          <Typography
+            weight="500"
+            numberOfLines={1}
+            className={cn("text-sm", tone.muted)}
+          >
+            {settled ? (route ?? statusLabel(entry)) : statusLabel(entry)}
+          </Typography>
+        </View>
+        <View className="items-end gap-0.5">
+          <Typography
+            weight="600"
+            className={cn(
+              "text-sm tracking-[0.5px]",
+              settled ? tone.up : tone.muted,
+              entry.status === "failed" && "line-through"
+            )}
+          >
+            +{swapAmountLabel(swap.receive)}
+          </Typography>
+          <Typography
+            weight="600"
+            className={cn(
+              "text-sm tracking-[0.5px]",
+              settled ? tone.down : tone.muted,
+              entry.status === "failed" && "line-through"
+            )}
+          >
+            -{swapAmountLabel(swap.pay)}
           </Typography>
         </View>
       </View>
