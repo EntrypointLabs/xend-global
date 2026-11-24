@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   FlatList,
   InputAccessoryView,
@@ -286,12 +286,20 @@ function CurrencyPicker({
 }) {
   const insets = useSafeAreaInsets();
   const palette = usePalette();
+  const [search, setSearch] = useState("");
+  const keyboard = useKeyboardHeight();
+  const shown = useMemo(
+    () =>
+      search ? codes.filter((code) => matchesCurrency(code, search)) : codes,
+    [codes, search]
+  );
   return (
     <Modal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={onClose}
+      onDismiss={() => setSearch("")}
     >
       <View className="flex-1 bg-card px-5 pt-6">
         <View className="flex-row items-center justify-between">
@@ -309,9 +317,18 @@ function CurrencyPicker({
         </View>
         <FlatList
           className="mt-4"
-          data={codes}
+          data={shown}
           keyExtractor={(code) => code}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          ListEmptyComponent={
+            <Typography
+              weight="500"
+              className="py-10 text-center text-[15px] text-foreground/55"
+            >
+              {`No currencies match "${search}"`}
+            </Typography>
+          }
           renderItem={({ item }) => (
             <HapticPressable
               accessibilityRole="button"
@@ -341,7 +358,75 @@ function CurrencyPicker({
             </HapticPressable>
           )}
         />
+        <View
+          className="pt-2"
+          style={{
+            paddingBottom:
+              keyboard > 0 ? keyboard + 8 : Math.max(insets.bottom, 12),
+          }}
+        >
+          <View className="h-12 flex-row items-center gap-2 rounded-full bg-foreground/[0.04] px-4">
+            <Ionicons name="search" size={16} color={palette.fg(0.45)} />
+            <TextInput
+              className="flex-1 py-0 font-inter-medium text-[15px] tracking-normal text-ink"
+              placeholder="Search currencies"
+              placeholderTextColor={palette.fg(0.55)}
+              keyboardAppearance={palette.dark ? "dark" : "light"}
+              value={search}
+              onChangeText={setSearch}
+              autoCorrect={false}
+              autoCapitalize="none"
+              returnKeyType="search"
+            />
+            {search ? (
+              <HapticPressable
+                onPress={() => setSearch("")}
+                accessibilityLabel="Clear search"
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={18}
+                  color={palette.fg(0.25)}
+                />
+              </HapticPressable>
+            ) : null}
+          </View>
+        </View>
       </View>
     </Modal>
   );
+}
+
+/** By name or code, every typed word anywhere in either. */
+function matchesCurrency(code: string, query: string): boolean {
+  const haystack = `${currencyName(code)} ${code}`.toLowerCase();
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((word) => haystack.includes(word));
+}
+
+/**
+ * How far the keyboard covers the bottom of the screen. A page sheet ends at
+ * the bottom edge, so the whole keyboard sits over it, which is more than a
+ * KeyboardAvoidingView inside the sheet works out.
+ */
+function useKeyboardHeight(): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      (event) => setHeight(event.endCoordinates.height)
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => setHeight(0)
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return height;
 }
