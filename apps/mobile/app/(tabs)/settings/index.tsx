@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Linking,
 } from "react-native";
+import * as Application from "expo-application";
 import Constants from "expo-constants";
 import { Typography } from "@/components/ui/atoms/Typography";
 import {
@@ -35,10 +36,13 @@ const PRYDD_TWITTER_URL = "https://x.com/pryddfinance";
 const PRIVACY_POLICY_URL = "https://www.prydd.co/legal/privacy-policy";
 const TERMS_URL = "https://www.prydd.co/legal/terms-of-service";
 
-const APP_VERSION = Constants.expoConfig?.version ?? "1.0.0";
-const APP_BUILD =
-  Constants.expoConfig?.ios?.buildNumber ??
-  Constants.expoConfig?.android?.versionCode?.toString();
+// Read from the installed binary. EAS assigns the build number at build time,
+// so it never appears in the app config.
+const APP_VERSION =
+  Application.nativeApplicationVersion ??
+  Constants.expoConfig?.version ??
+  "1.0.0";
+const APP_BUILD = Application.nativeBuildVersion;
 
 interface SettingsRow {
   label: string;

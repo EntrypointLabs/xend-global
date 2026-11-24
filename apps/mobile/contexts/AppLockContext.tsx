@@ -12,6 +12,7 @@ import { usePrivy } from "@privy-io/expo";
 
 import { AuthStorage } from "@/utils/storage/authStorage";
 import { hasLinkedPasskey } from "@/utils/auth";
+import { privacyCover } from "@/modules/privacy-cover/src";
 import { isSystemPromptOpen, withSystemPrompt } from "@/utils/systemPrompt";
 
 // Dev-only escape hatch for automated / e2e testing, where a fingerprint can't
@@ -32,7 +33,7 @@ if (APP_LOCK_DISABLED) {
 // enough that opening a link (e.g. the Privacy Policy / Terms & Conditions)
 // or a quick app switch doesn't force a fresh Face ID prompt every time.
 // Common banking-app grace period; tune here if product wants a different one.
-const BACKGROUND_GRACE_PERIOD_MS = 5 * 60 * 1000;
+export const BACKGROUND_GRACE_PERIOD_MS = 5 * 60 * 1000;
 
 const PROMPT_RECHECK_MS = 200;
 
@@ -150,20 +151,25 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
     const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
       if (!enabled) return;
 
+      // The native cover keeps a blur up over a return that is about to lock.
+      // It can go once the lock screen below has been drawn.
+      if (state === "active") afterPaint(privacyCover.reveal);
+
       // Obscure immediately on any non-active state — this covers the OS
       // app-switcher snapshot the instant it's taken, before the grace-
       // period decision below has even run. A system prompt the app raised
       // itself also reports inactive, and is not the Consumer leaving: the
-      // screen stays as it was underneath it.
+      // screen stays as it was underneath it. On iOS builds with the native
+      // cover, that cover does all of this without waiting on JS.
       clearInterval(recheck);
       const heldBack = state === "inactive" && isSystemPromptOpen();
-      setIsObscured(state !== "active" && !heldBack);
+      setIsObscured(!privacyCover.available && state !== "active" && !heldBack);
 
       // The prompt can go away while the app stays inactive, for example when
       // the Consumer pulls down Notification Center right after answering it.
       // No further change event arrives for that, so keep looking until the
       // app is active again or the cover is up.
-      if (heldBack) {
+      if (heldBack && !privacyCover.available) {
         recheck = setInterval(() => {
           if (AppState.currentState === "active") {
             clearInterval(recheck);
@@ -214,6 +220,10 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
       {children}
     </AppLockContext.Provider>
   );
+}
+
+function afterPaint(run: () => void) {
+  requestAnimationFrame(() => requestAnimationFrame(run));
 }
 
 export function useAppLock() {
