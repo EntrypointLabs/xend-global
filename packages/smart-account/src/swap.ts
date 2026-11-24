@@ -77,9 +77,12 @@ export interface JupiterRouteTerms {
  * cannot measure is refused, not skipped.
  */
 export function readJupiterRouteTerms(data: Buffer): JupiterRouteTerms | null {
+  // Compared byte by byte. On a phone, a slice of a Buffer comes back as a
+  // plain byte array with none of Buffer's methods, so `subarray().equals()`
+  // throws there while passing every test run on Node.
   if (
     data.length < 8 ||
-    !data.subarray(0, 8).equals(JUPITER_SHARED_ACCOUNTS_ROUTE)
+    !JUPITER_SHARED_ACCOUNTS_ROUTE.every((byte, i) => data[i] === byte)
   ) {
     return null;
   }

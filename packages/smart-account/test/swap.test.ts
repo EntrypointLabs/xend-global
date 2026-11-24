@@ -6,12 +6,13 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   associatedTokenAddress,
   buildSwap,
+  buildSwapOnAllowance,
   deriveAccountAddresses,
   derivePolicyAddress,
   describeTransaction,
@@ -553,5 +554,67 @@ describe("reading what a route commits to", () => {
       terms(1_000n, 2_000n, 50),
     ]);
     expect(readJupiterRouteTerms(data)).toBeNull();
+  });
+});
+
+describe("reading a swap where a slice of a Buffer is a plain byte array", () => {
+  // React Native's engine returns a bare Uint8Array from Buffer.subarray, with
+  // none of Buffer's own methods on it. Node returns a Buffer, which is why a
+  // call such as `data.subarray(0, 8).equals(...)` passes here and throws on
+  // the phone that has to check the swap before signing it.
+  const asOnAPhone = () =>
+    vi.spyOn(Buffer.prototype, "subarray").mockImplementation(function (
+      this: Buffer,
+      ...range: unknown[]
+    ) {
+      const [start = 0, end = this.length] = range as (number | undefined)[];
+      const from = Math.max(0, Math.min(start, this.length));
+      const to = Math.max(from, Math.min(end, this.length));
+      return new Uint8Array(
+        this.buffer,
+        this.byteOffset + from,
+        to - from,
+      ) as unknown as Buffer;
+    });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("still reads a swap the vault makes itself", () => {
+    const tx = compile([
+      openAta(vault, WRAPPED_SOL_MINT),
+      swap({
+        route: route(USDC, WRAPPED_SOL_MINT, 1_000_000n, 14_000_000n),
+        unwrapOutput: true,
+        refundRentTo: feePayer,
+      }),
+    ]);
+    asOnAPhone();
+    expect(describeTransaction(tx, context)).toMatchObject({
+      kind: "swap",
+      outputMint: "SOL",
+      amountIn: 1_000_000n,
+      quotedAmountOut: 14_000_000n,
+    });
+  });
+
+  it("still reads a swap made on an allowance", () => {
+    const tx = compile([
+      openAta(vault, WRAPPED_SOL_MINT),
+      ...buildSwapOnAllowance({
+        addresses,
+        policy,
+        signers,
+        delegate: primary,
+        route: route(USDC, WRAPPED_SOL_MINT, 1_000_000n, 14_000_000n),
+        unwrapOutput: true,
+        refundRentTo: feePayer,
+      }),
+    ]);
+    asOnAPhone();
+    expect(describeTransaction(tx, context)).toMatchObject({
+      kind: "swap",
+      outputMint: "SOL",
+      amountIn: 1_000_000n,
+    });
   });
 });

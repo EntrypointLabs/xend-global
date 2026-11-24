@@ -978,7 +978,9 @@ function parseInnerInstructions(
     instructions.push({
       programId,
       accounts: ixAccounts,
-      data: bytes.subarray(offset, offset + dataLength),
+      // Copied into a Buffer of its own: on a phone a bare slice is a plain
+      // byte array, and what reads this next uses Buffer's readers.
+      data: Buffer.from(bytes.subarray(offset, offset + dataLength)),
     });
     offset += dataLength;
   }
