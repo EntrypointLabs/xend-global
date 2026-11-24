@@ -13,22 +13,23 @@ import { ErrorCode, ErrorMessages } from "@/utils/errors";
 interface DeleteAccountModalProps {
   visible: boolean;
   onClose: () => void;
-  balance: number;
-  balanceDisplay: string;
+  /** Nothing is held: no tokens, no SOL, nothing in Earn. */
+  canDelete: boolean;
+  /** What is still held, in dollars, or null when none of it is priced. */
+  heldDisplay: string | null;
   onDeleted: () => void | Promise<void>;
 }
 
 export function DeleteAccountModal({
   visible,
   onClose,
-  balance,
-  balanceDisplay,
+  canDelete,
+  heldDisplay,
   onDeleted,
 }: DeleteAccountModalProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const { showToast } = useToast();
   const palette = usePalette();
-  const canDelete = balance === 0;
 
   const handleDelete = async () => {
     if (!canDelete || isDeleting) return;
@@ -57,10 +58,7 @@ export function DeleteAccountModal({
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <FrostBlurView
-        tint={palette.dark ? "dark" : "light"}
-        style={StyleSheet.absoluteFill}
-      >
+      <FrostBlurView style={StyleSheet.absoluteFill}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View
           className="flex-1 items-end justify-end pb-6"
@@ -114,8 +112,9 @@ export function DeleteAccountModal({
                   weight="500"
                   className="mt-3 text-sm leading-5 text-destructive"
                 >
-                  You still have a Balance of {balanceDisplay} — send or
-                  withdraw it first.
+                  {heldDisplay
+                    ? `You still have a Balance of ${heldDisplay}. Send or withdraw it first.`
+                    : "You still hold assets in this Account. Send or withdraw them first."}
                 </Typography>
               )}
 

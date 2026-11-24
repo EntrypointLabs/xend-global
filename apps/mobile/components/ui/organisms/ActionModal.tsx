@@ -136,10 +136,7 @@ export function ActionModal({
           activeOpacity={1}
           onPress={onClose}
         >
-          <FrostBlurView
-            tint={palette.dark ? "dark" : "light"}
-            style={[styles.overlay, StyleSheet.absoluteFill]}
-          >
+          <FrostBlurView style={[styles.overlay, StyleSheet.absoluteFill]}>
             <TouchableWithoutFeedback>
               <GestureDetector gesture={pan}>
                 {/* REANIMATED-EXCEPTION */}

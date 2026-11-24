@@ -111,10 +111,7 @@ export function PendingChangeModal({
       animationType="fade"
       statusBarTranslucent
     >
-      <FrostBlurView
-        tint={palette.dark ? "dark" : "light"}
-        style={[StyleSheet.absoluteFill, styles.overlay]}
-      >
+      <FrostBlurView style={[StyleSheet.absoluteFill, styles.overlay]}>
         <View style={[styles.card, { backgroundColor }]}>
           <View className="mb-5 self-start rounded-full border border-destructive/30 px-3 py-1">
             <Typography

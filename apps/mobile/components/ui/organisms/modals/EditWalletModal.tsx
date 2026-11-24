@@ -71,10 +71,7 @@ export function EditWalletModal({
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <FrostBlurView
-        tint={palette.dark ? "dark" : "light"}
-        style={StyleSheet.absoluteFill}
-      >
+      <FrostBlurView style={StyleSheet.absoluteFill}>
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={() => {

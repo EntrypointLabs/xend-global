@@ -183,7 +183,7 @@ export default function BalanceScreen() {
       <BottomSheetModalProvider>
         <View className="flex-1">
           <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
-            <FrostBlurView style={StyleSheet.absoluteFill}>
+            <FrostBlurView veil={false} style={StyleSheet.absoluteFill}>
               <View className="flex-1 bg-background/60" />
             </FrostBlurView>
           </Animated.View>
