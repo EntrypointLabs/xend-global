@@ -46,10 +46,7 @@ export function AccountSetupModal({
       animationType="fade"
       statusBarTranslucent
     >
-      <FrostBlurView
-        tint={palette.dark ? "dark" : "light"}
-        style={[StyleSheet.absoluteFill, styles.overlay]}
-      >
+      <FrostBlurView style={[StyleSheet.absoluteFill, styles.overlay]}>
         <View style={[styles.modalContainer, { backgroundColor }]}>
           <View className="items-center">
             <View className="mb-4">

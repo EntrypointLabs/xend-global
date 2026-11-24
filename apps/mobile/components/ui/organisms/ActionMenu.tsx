@@ -72,7 +72,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
     >
       <View className="flex-1 items-end justify-end">
         <FrostBlurView
-          tint={dark || palette.dark ? "dark" : "light"}
+          tint={dark || palette.dark ? "dark" : undefined}
           // MEASURED-LAYOUT (absoluteFill)
           style={StyleSheet.absoluteFill}
         >

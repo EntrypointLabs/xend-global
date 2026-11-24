@@ -36,7 +36,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { FullWindowOverlay } from "react-native-screens";
 import { privacyCover } from "@/modules/privacy-cover/src";
-import { BlurView } from "expo-blur";
+import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { PaymentApprovalHost } from "@/components/payment-approval/PaymentApprovalHost";
 import {
   focusManager,
@@ -258,11 +258,7 @@ const OBSCURED_BLUR_INTENSITY = 85;
 function ObscuredCover() {
   if (Platform.OS !== "ios") return <LoadingScreen />;
   return (
-    <BlurView
-      intensity={OBSCURED_BLUR_INTENSITY}
-      tint="light"
-      className="flex-1"
-    />
+    <FrostBlurView intensity={OBSCURED_BLUR_INTENSITY} className="flex-1" />
   );
 }
 
