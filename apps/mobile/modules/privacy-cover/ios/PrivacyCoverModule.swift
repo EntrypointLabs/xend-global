@@ -49,6 +49,15 @@ final class PrivacyCover {
   /// ID keeps the app inactive for its checkmark, about a second after the
   /// answer arrives, and that is not the Consumer leaving.
   private var awaitingActive = false
+  /// Whether iOS resigned the app while the current prompt was open. A prompt
+  /// can resolve before that notification is delivered, and the late resign
+  /// still belongs to the prompt.
+  private var promptResigned = false
+  private var promptGeneration = 0
+
+  /// How long an answered prompt that never resigned the app still claims a
+  /// late resign. Past this, a resign is the Consumer leaving.
+  private static let lateResignWindow: TimeInterval = 0.6
 
   // Main thread only.
   private var started = false
@@ -94,7 +103,9 @@ final class PrivacyCover {
   /// has not left: the screen stays as it was underneath it.
   func beginPrompt() {
     state.lock()
+    if openPrompts == 0 && !awaitingActive { promptResigned = false }
     openPrompts += 1
+    promptGeneration += 1
     state.unlock()
   }
 
@@ -106,10 +117,24 @@ final class PrivacyCover {
     openPrompts = max(0, openPrompts - 1)
     let lastPrompt = openPrompts == 0
     if lastPrompt { awaitingActive = true }
+    let resigned = promptResigned
+    let generation = promptGeneration
     state.unlock()
     guard lastPrompt else { return }
     DispatchQueue.main.async { [self] in
-      if isActive() { settlePrompt() }
+      guard isActive() else { return }
+      // Resigned and active again: the dialog has gone.
+      if resigned {
+        settlePrompt()
+        return
+      }
+      // Never resigned yet: leave room for a resign still on its way.
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.lateResignWindow) { [self] in
+        state.lock()
+        let unchanged = generation == promptGeneration && !promptResigned
+        state.unlock()
+        if unchanged, isActive() { settlePrompt() }
+      }
     }
   }
 
@@ -138,6 +163,9 @@ final class PrivacyCover {
     // Leaving again before the lock screen is drawn: the cover now stays for
     // the new trip out, not for the return that started the hold.
     cancelHold()
+    state.lock()
+    if openPrompts > 0 || awaitingActive { promptResigned = true }
+    state.unlock()
     let now = snapshot()
     guard now.enabled, !now.prompting else { return }
     show()
