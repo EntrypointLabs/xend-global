@@ -52,6 +52,13 @@ export function PendingChangeNotice() {
     (reviewRequested ? unanswered[0] : undefined);
   if (!change) return null;
 
+  // A review they asked for covers every change still unanswered, so it stays
+  // open until this is the last one. Closing it after the first would leave a
+  // second change of their own with no screen that offers to reject it.
+  const endReviewIfLast = () => {
+    if (unanswered.length <= 1) clearReview();
+  };
+
   return (
     <PendingChangeModal
       visible
@@ -64,9 +71,11 @@ export function PendingChangeNotice() {
           ? "We could not reject that change. Check your connection and try again."
           : null
       }
-      onReject={() => reject.mutate(change.transactionIndex)}
+      onReject={() =>
+        reject.mutate(change.transactionIndex, { onSuccess: endReviewIfLast })
+      }
       onDismiss={() => {
-        clearReview();
+        endReviewIfLast();
         acknowledge(
           change.transactionIndex,
           changes.map((waiting) => waiting.transactionIndex)
