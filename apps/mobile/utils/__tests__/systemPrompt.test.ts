@@ -27,16 +27,14 @@ describe("system prompt tracking", () => {
     expect(isSystemPromptOpen()).toBe(false);
   });
 
-  it("holds the native cover back for the prompt and a beat after it", async () => {
+  it("tells the native cover when a prompt starts and when it is answered", async () => {
     jest.mocked(privacyCover.beginPrompt).mockClear();
     jest.mocked(privacyCover.endPrompt).mockClear();
 
     await withSystemPrompt(async () => {
       expect(privacyCover.beginPrompt).toHaveBeenCalledTimes(1);
+      expect(privacyCover.endPrompt).not.toHaveBeenCalled();
     });
-    expect(privacyCover.endPrompt).not.toHaveBeenCalled();
-
-    jest.advanceTimersByTime(600);
     expect(privacyCover.endPrompt).toHaveBeenCalledTimes(1);
   });
 

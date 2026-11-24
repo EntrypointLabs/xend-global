@@ -24,7 +24,7 @@ export async function withSystemPrompt<T>(raise: () => Promise<T>): Promise<T> {
   } finally {
     open -= 1;
     settledAt = Date.now();
-    setTimeout(() => privacyCover.endPrompt(), SETTLE_MS);
+    privacyCover.endPrompt();
   }
 }
 

@@ -45,6 +45,10 @@ final class PrivacyCover {
   private var enabled = false
   private var lockAfter: TimeInterval = .infinity
   private var openPrompts = 0
+  /// A prompt has been answered but its dialog is still on its way out. Face
+  /// ID keeps the app inactive for its checkmark, about a second after the
+  /// answer arrives, and that is not the Consumer leaving.
+  private var awaitingActive = false
 
   // Main thread only.
   private var started = false
@@ -94,22 +98,25 @@ final class PrivacyCover {
     state.unlock()
   }
 
+  /// The prompt is answered. The cover stays off until the app is active
+  /// again, which is when the dialog has really gone; any resign after that is
+  /// the Consumer leaving and is covered as usual.
   func endPrompt() {
     state.lock()
     openPrompts = max(0, openPrompts - 1)
     let lastPrompt = openPrompts == 0
+    if lastPrompt { awaitingActive = true }
     state.unlock()
     guard lastPrompt else { return }
-    // A resign that came while the prompt was being answered was skipped, and
-    // Notification Center keeps the app inactive without another one. If the
-    // app is still not active once the prompt is done, the Consumer has left.
     DispatchQueue.main.async { [self] in
-      let now = snapshot()
-      guard now.enabled, !now.prompting,
-        UIApplication.shared.applicationState != .active
-      else { return }
-      show()
+      if isActive() { settlePrompt() }
     }
+  }
+
+  private func settlePrompt() {
+    state.lock()
+    if openPrompts == 0 { awaitingActive = false }
+    state.unlock()
   }
 
   /// JS has put the lock screen up, so the blur held over it can go.
@@ -124,7 +131,7 @@ final class PrivacyCover {
   private func snapshot() -> (enabled: Bool, lockAfter: TimeInterval, prompting: Bool) {
     state.lock()
     defer { state.unlock() }
-    return (enabled, lockAfter, openPrompts > 0)
+    return (enabled, lockAfter, openPrompts > 0 || awaitingActive)
   }
 
   @objc private func willResignActive() {
@@ -144,6 +151,7 @@ final class PrivacyCover {
   }
 
   @objc private func didBecomeActive() {
+    settlePrompt()
     let now = snapshot()
     let away = backgroundedAt.map { Date().timeIntervalSince($0) } ?? 0
     backgroundedAt = nil
