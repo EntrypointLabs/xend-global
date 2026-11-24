@@ -16,6 +16,19 @@ export class NoSwapRouteError extends Error {
   }
 }
 
+/**
+ * The route was priced, and by the time it was run the venue would no longer
+ * pay within the allowed shortfall. Nothing is wrong with the swap; the price
+ * it was quoted at is gone, and a new quote is the way forward.
+ */
+export class SwapPriceMovedError extends Error {
+  readonly code = 'PRICE_MOVED';
+  constructor(message: string) {
+    super(message);
+    this.name = 'SwapPriceMovedError';
+  }
+}
+
 export class SwapQuoteExpiredError extends Error {
   readonly code = 'QUOTE_EXPIRED';
   constructor(message: string) {

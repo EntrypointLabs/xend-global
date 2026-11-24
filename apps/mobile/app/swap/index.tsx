@@ -1,13 +1,16 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import Animated, {
   Easing,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withRepeat,
+  withSequence,
   withTiming,
 } from "react-native-reanimated";
 
@@ -16,6 +19,7 @@ import { GlassButton } from "@/components/ui/atoms/Glass";
 import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
+import { TokenPickerSheet } from "@/components/swap/TokenPickerSheet";
 import { useFeature } from "@/hooks/useFeature";
 import { usePalette } from "@/hooks/usePalette";
 import { useBalances } from "@/hooks/useBalances";
@@ -146,7 +150,9 @@ function SwapScreen() {
     inputMint: payToken.mint,
     outputMint: receiveToken.mint,
     amountRaw,
-    enabled: withinBalance,
+    // Priced whether or not it can be afforded: what a trade is worth is
+    // worth knowing before topping up to make it.
+    enabled: amountRaw !== "0",
   });
 
   const { execute, isExecuting } = useExecuteSwap();
@@ -166,7 +172,15 @@ function SwapScreen() {
   const receiveDisplay = quote
     ? formatRawAmount(quote.outAmountRaw, receiveToken.decimals)
     : "0";
+  const overBalance = amountRaw !== "0" && !withinBalance;
   const canReview = withinBalance && !!quote;
+  // The button is where the eye goes to act, so it is where the reason it
+  // cannot be pressed is written.
+  const action = isExecuting
+    ? "Confirming…"
+    : overBalance
+      ? `Not enough ${payToken.symbol}`
+      : "Swap";
 
   const press = (key: string) => {
     if (key === "⌫") {
@@ -177,8 +191,12 @@ function SwapScreen() {
     setAmount((a) => (a === "0" && key !== "." ? key : a + key));
   };
 
-  const choose = (side: SwapSide) =>
-    router.push({ pathname: "/swap/token", params: { side } });
+  const picker = useRef<BottomSheetModal>(null);
+  const [picking, setPicking] = useState<SwapSide>("pay");
+  const choose = (side: SwapSide) => {
+    setPicking(side);
+    picker.current?.present();
+  };
 
   return (
     <ScreenLayout>
@@ -203,6 +221,7 @@ function SwapScreen() {
             value={amount}
             dimmed={amount === "0"}
             fadeFrom={rowWidth / 2}
+            typing
           />
           <View className="max-w-[55%]">
             <Animated.View style={upperPillStyle}>
@@ -329,7 +348,7 @@ function SwapScreen() {
           weight="600"
           className="text-primary-foreground"
         >
-          {isExecuting ? "Confirming…" : "Swap"}
+          {action}
         </Typography>
       </HapticPressable>
 
@@ -345,6 +364,7 @@ function SwapScreen() {
           <Ionicons name="chevron-back" size={22} color={palette.foreground} />
         </GlassButton>
       </View>
+      <TokenPickerSheet ref={picker} side={picking} />
     </ScreenLayout>
   );
 }
@@ -362,27 +382,31 @@ function Amount({
   value,
   dimmed,
   fadeFrom,
+  typing = false,
 }: {
   value: string;
   dimmed: boolean;
+  /** The side the keypad writes to, marked with a caret. */
+  typing?: boolean;
   /** Where the fade begins, in points from the left of the row. */
   fadeFrom: number;
 }) {
   const palette = usePalette();
 
   return (
-    <View className="mr-3 flex-1 overflow-hidden">
+    <View className="mr-3 flex-1 flex-row items-center overflow-hidden">
       <Typography
         weight="500"
         numberOfLines={1}
         ellipsizeMode="clip"
         className={cn(
-          "text-[44px] tracking-[-1.2px]",
+          "shrink text-[44px] tracking-[-1.2px]",
           dimmed ? "text-foreground/25" : "text-foreground"
         )}
       >
         {value}
       </Typography>
+      {typing ? <Caret /> : null}
       {fadeFrom > 0 ? (
         <View
           pointerEvents="none"
@@ -410,6 +434,37 @@ function Amount({
         </View>
       ) : null}
     </View>
+  );
+}
+
+/**
+ * The blinking bar a text field shows where typing lands. The keypad here is
+ * the app's own and there is no field to focus, so nothing else says which of
+ * the two amounts it writes to.
+ */
+function Caret() {
+  const reduceMotion = useReducedMotion();
+  const shown = useSharedValue(1);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    shown.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 520 }),
+        withTiming(0, { duration: 120 }),
+        withTiming(0, { duration: 400 }),
+        withTiming(1, { duration: 120 })
+      ),
+      -1
+    );
+  }, [reduceMotion, shown]);
+
+  const blink = useAnimatedStyle(() => ({ opacity: shown.value }));
+
+  return (
+    <Animated.View style={blink}>
+      <View className="ml-1 h-10 w-[2px] rounded-full bg-foreground" />
+    </Animated.View>
   );
 }
 

@@ -27,6 +27,7 @@ import {
   AccountNeedsUpdateError,
   NoSwapRouteError,
   SwapMismatchError,
+  SwapPriceMovedError,
   SwapQuoteExpiredError,
   SwapUnavailableError,
 } from './swap.errors';
@@ -46,6 +47,7 @@ interface AuthenticatedRequest extends Request {
  *
  *   NoSwapRouteError        -> 422 NO_ROUTE
  *   SwapQuoteExpiredError   -> 410 QUOTE_EXPIRED
+ *   SwapPriceMovedError     -> 409 PRICE_MOVED
  *   AccountNeedsUpdateError -> 409 ACCOUNT_NEEDS_UPDATE
  *   SwapMismatchError       -> 400 SWAP_MISMATCH
  *   SwapUnavailableError    -> 503 SWAP_UNAVAILABLE
@@ -125,6 +127,7 @@ export class SwapController {
 const STATUS = new Map<string, HttpStatus>([
   ['NO_ROUTE', HttpStatus.UNPROCESSABLE_ENTITY],
   ['QUOTE_EXPIRED', HttpStatus.GONE],
+  ['PRICE_MOVED', HttpStatus.CONFLICT],
   ['ACCOUNT_NEEDS_UPDATE', HttpStatus.CONFLICT],
   ['SWAP_MISMATCH', HttpStatus.BAD_REQUEST],
   ['SWAP_UNAVAILABLE', HttpStatus.SERVICE_UNAVAILABLE],
@@ -134,6 +137,7 @@ function mapServiceError(err: unknown): never {
   if (
     err instanceof NoSwapRouteError ||
     err instanceof SwapQuoteExpiredError ||
+    err instanceof SwapPriceMovedError ||
     err instanceof AccountNeedsUpdateError ||
     err instanceof SwapMismatchError ||
     err instanceof SwapUnavailableError

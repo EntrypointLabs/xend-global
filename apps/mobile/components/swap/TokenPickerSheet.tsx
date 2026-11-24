@@ -1,28 +1,22 @@
-import React, { useMemo, useState } from "react";
+import React, { forwardRef, useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, ScrollView, View } from "react-native";
+import { FontAwesome6, MaterialCommunityIcons } from "@expo/vector-icons";
 import {
-  ActivityIndicator,
-  ScrollView,
-  SectionList,
-  TextInput,
-  View,
-} from "react-native";
-import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import {
-  FontAwesome6,
-  Ionicons,
-  MaterialCommunityIcons,
-} from "@expo/vector-icons";
+  BottomSheetFooter,
+  BottomSheetModal,
+  BottomSheetSectionList,
+  BottomSheetTextInput,
+  type BottomSheetBackdropProps,
+  type BottomSheetFooterProps,
+} from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { GlassButton } from "@/components/ui/atoms/Glass";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { PillButton } from "@/components/ui/kit/PillButton";
-import { ScreenLayout } from "@/components/ui/layout";
+import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
 import { useBalances } from "@/hooks/useBalances";
-import { useFeature } from "@/hooks/useFeature";
-import { useKeyboardHeight } from "@/hooks/useKeyboardHeight";
 import { usePalette } from "@/hooks/usePalette";
 import { useSwapTokens } from "@/hooks/useSwapTokens";
 import { cn } from "@/utils/cn";
@@ -59,11 +53,12 @@ const SHELVES: { category: SwapTokenCategory | null; label: string }[] = [
   { category: "meme", label: "Memes" },
 ];
 
-/** The search field's height and the gap beneath it, which the list clears. */
-const SEARCH_CLEARANCE = 72;
+/** The search field and the space around it, which the list has to clear. */
+const SEARCH_HEIGHT = 84;
 
 /**
- * Chooses the asset on one side of a swap.
+ * Chooses the asset on one side of a swap, in a sheet over the Swap screen
+ * that is pulled down to put away.
  *
  * Paying can only be done with something held, so that side lists holdings
  * and nothing else. Receiving adds the assets Swap offers, sorted onto
@@ -74,24 +69,19 @@ const SEARCH_CLEARANCE = 72;
  * can be relied on: a tick for a verified token, a warning for one wearing a
  * verified token's ticker, and nothing for the rest.
  */
-export default function SwapTokenRoute() {
-  const enabled = useFeature("swap");
-  const { side } = useLocalSearchParams<{ side?: string }>();
-  if (!enabled) return <Redirect href="/" />;
-  return <SwapTokenPicker side={side === "receive" ? "receive" : "pay"} />;
-}
-
-function SwapTokenPicker({ side }: { side: SwapSide }) {
-  const router = useRouter();
+export const TokenPickerSheet = forwardRef<
+  BottomSheetModal,
+  { side: SwapSide }
+>(({ side }, ref) => {
   const palette = usePalette();
+  const insets = useSafeAreaInsets();
   const pair = useSwapPair();
   const { tokens: balances } = useBalances();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<SwapTokenCategory | null>(null);
-  // The screen already stops short of the home indicator, so only the part
-  // of the keyboard above that is new.
-  const insets = useSafeAreaInsets();
-  const keyboard = Math.max(0, useKeyboardHeight() - insets.bottom);
+  // Nearly the whole screen: a list this long wants the room, and one height
+  // means the sheet is either open or gone, never stranded half way.
+  const snapPoints = useMemo(() => ["92%"], []);
 
   const receiving = side === "receive";
   const searching = search.trim().length > 0;
@@ -134,66 +124,111 @@ function SwapTokenPicker({ side }: { side: SwapSide }) {
     ].filter((section) => section.data.length > 0);
   }, [held, offered.tokens, search, searching, receiving, category]);
 
+  const close = () => {
+    if (ref && typeof ref !== "function") ref.current?.dismiss();
+  };
   const pick = (token: SwapToken) => {
     pickSwapToken(side, token);
-    router.back();
+    close();
   };
 
   const waiting = receiving && (offered.isLoading || offered.isStale);
   const empty = sections.every((section) => section.data.length === 0);
 
-  return (
-    <ScreenLayout className="px-0 pb-0">
-      <View className="flex-row items-center justify-center py-2">
-        <Typography variant="title1" weight="600">
-          {receiving ? "You receive" : "You pay"}
-        </Typography>
-      </View>
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
+    []
+  );
 
-      {receiving ? (
-        <View className="mt-4">
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerClassName="gap-2 px-5"
-          >
-            {SHELVES.map((shelf) => {
-              const selected = !searching && shelf.category === category;
-              return (
-                <HapticPressable
-                  key={shelf.label}
-                  onPress={() => setCategory(shelf.category)}
-                  disabled={searching}
-                  feedback="selection"
-                  accessibilityRole="button"
-                  accessibilityState={{ selected, disabled: searching }}
-                  accessibilityLabel={shelf.label}
-                  className={cn(
-                    "h-10 items-center justify-center rounded-full px-4",
-                    selected ? "bg-foreground" : "bg-foreground/[0.06]",
-                    searching && "opacity-40"
-                  )}
-                >
-                  <Typography
-                    weight="600"
+  // The sheet mounts whatever function it is handed as a component, so one
+  // that changed with each keystroke would be a new field each time and drop
+  // the keyboard. This one changes only between openings; the text being
+  // typed lives in the field.
+  const renderFooter = useCallback(
+    (props: BottomSheetFooterProps) => (
+      <SearchFooter
+        {...props}
+        placeholder={receiving ? "Search tokens" : "Search your tokens"}
+        bottomInset={Math.max(insets.bottom, 12)}
+        onSearch={setSearch}
+      />
+    ),
+    [insets.bottom, receiving]
+  );
+
+  return (
+    <BottomSheetModal
+      ref={ref}
+      snapPoints={snapPoints}
+      enableDynamicSizing={false}
+      enablePanDownToClose
+      backdropComponent={renderBackdrop}
+      footerComponent={renderFooter}
+      keyboardBehavior="extend"
+      keyboardBlurBehavior="restore"
+      onDismiss={() => {
+        setSearch("");
+        setCategory(null);
+      }}
+      backgroundStyle={{ backgroundColor: palette.card }}
+      handleIndicatorStyle={
+        palette.dark ? { backgroundColor: palette.fg(0.75) } : undefined
+      }
+    >
+      <View className="flex-1">
+        <View className="items-center pb-1 pt-1">
+          <Typography variant="title1" weight="600">
+            {receiving ? "You receive" : "You pay"}
+          </Typography>
+        </View>
+
+        {receiving ? (
+          // Its own band, with room beneath: the list starts clear of the
+          // chips and scrolls away under their edge, not into them.
+          <View className="pb-3 pt-4">
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerClassName="gap-2 px-5"
+            >
+              {SHELVES.map((shelf) => {
+                const selected = !searching && shelf.category === category;
+                return (
+                  <HapticPressable
+                    key={shelf.label}
+                    onPress={() => setCategory(shelf.category)}
+                    disabled={searching}
+                    feedback="selection"
+                    accessibilityRole="button"
+                    accessibilityState={{ selected, disabled: searching }}
+                    accessibilityLabel={shelf.label}
                     className={cn(
-                      "text-[15px]",
-                      selected ? "text-background" : "text-foreground"
+                      "h-10 items-center justify-center rounded-full px-4",
+                      selected ? "bg-foreground" : "bg-foreground/[0.06]",
+                      searching && "opacity-40"
                     )}
                   >
-                    {shelf.label}
-                  </Typography>
-                </HapticPressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-      ) : null}
+                    <Typography
+                      weight="600"
+                      className={cn(
+                        "text-[15px]",
+                        selected ? "text-background" : "text-foreground"
+                      )}
+                    >
+                      {shelf.label}
+                    </Typography>
+                  </HapticPressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        ) : (
+          <View className="h-3" />
+        )}
 
-      <View className="flex-1">
         {receiving && offered.failed && empty ? (
-          <View className="mx-5 mt-6">
+          <View className="mx-5 mt-4">
             <Typography weight="600" className="text-[16px] text-foreground">
               Could not load tokens
             </Typography>
@@ -212,12 +247,16 @@ function SwapTokenPicker({ side }: { side: SwapSide }) {
             />
           </View>
         ) : (
-          <SectionList
+          <BottomSheetSectionList
             sections={sections}
-            keyExtractor={(row) => row.token.mint}
-            renderSectionHeader={({ section }) =>
+            keyExtractor={(row: Row) => row.token.mint}
+            renderSectionHeader={({
+              section,
+            }: {
+              section: { title: string };
+            }) =>
               section.title ? (
-                <View className="bg-background px-5 pb-1 pt-4">
+                <View className="px-5 pb-1 pt-3">
                   <Typography
                     weight="500"
                     className="text-[13px] text-foreground/55"
@@ -225,11 +264,9 @@ function SwapTokenPicker({ side }: { side: SwapSide }) {
                     {section.title}
                   </Typography>
                 </View>
-              ) : (
-                <View className="h-2" />
-              )
+              ) : null
             }
-            renderItem={({ item }) => (
+            renderItem={({ item }: { item: Row }) => (
               <TokenRow
                 row={item}
                 selected={item.token.mint === pair[side].mint}
@@ -240,10 +277,8 @@ function SwapTokenPicker({ side }: { side: SwapSide }) {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
-            // The search field floats over the end of the list, wherever the
-            // keyboard has pushed it, so the last row has to scroll clear.
             contentContainerStyle={{
-              paddingBottom: SEARCH_CLEARANCE + keyboard,
+              paddingBottom: SEARCH_HEIGHT + Math.max(insets.bottom, 12),
             }}
             ListEmptyComponent={
               waiting ? (
@@ -266,29 +301,56 @@ function SwapTokenPicker({ side }: { side: SwapSide }) {
           />
         )}
       </View>
+    </BottomSheetModal>
+  );
+});
 
+TokenPickerSheet.displayName = "TokenPickerSheet";
+
+/**
+ * In the sheet's footer so that it rides above the keyboard with the sheet,
+ * and on a solid ground of its own so the rows end above it instead of
+ * showing through.
+ */
+function SearchFooter({
+  placeholder,
+  bottomInset,
+  onSearch,
+  ...footer
+}: BottomSheetFooterProps & {
+  placeholder: string;
+  bottomInset: number;
+  onSearch: (text: string) => void;
+}) {
+  const palette = usePalette();
+  const [text, setText] = useState("");
+  const change = (next: string) => {
+    setText(next);
+    onSearch(next);
+  };
+
+  return (
+    <BottomSheetFooter {...footer}>
       <View
-        // Opaque behind the field, which is itself see-through, so the rows
-        // scrolling underneath do not show through what is being typed.
-        className="absolute left-5 right-5 rounded-3xl bg-background"
-        style={{ bottom: 8 + keyboard }}
+        className="bg-card px-5 pt-3"
+        style={{ paddingBottom: bottomInset }}
       >
-        <View className="flex-row items-center gap-4 rounded-3xl bg-foreground/[0.03] px-5 py-4">
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder={receiving ? "Search tokens" : "Search your tokens"}
-            placeholderTextColor={palette.fg(0.25)}
+        <View className="flex-row items-center gap-4 rounded-3xl bg-foreground/[0.04] px-5 py-4">
+          <BottomSheetTextInput
+            value={text}
+            onChangeText={change}
+            placeholder={placeholder}
+            placeholderTextColor={palette.fg(0.3)}
             keyboardAppearance={palette.dark ? "dark" : "light"}
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
             accessibilityLabel="Search tokens"
-            className="flex-1 text-[15px] text-foreground"
+            className="flex-1 py-0 text-[15px] text-foreground"
           />
-          {search ? (
+          {text ? (
             <HapticPressable
-              onPress={() => setSearch("")}
+              onPress={() => change("")}
               accessibilityRole="button"
               accessibilityLabel="Clear search"
               hitSlop={8}
@@ -300,20 +362,7 @@ function SwapTokenPicker({ side }: { side: SwapSide }) {
           ) : null}
         </View>
       </View>
-
-      <View className="absolute left-5 top-[16px]">
-        <GlassButton
-          radius={999}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          onPress={() => router.back()}
-          className="size-11 items-center justify-center rounded-full"
-          fallbackClassName=""
-        >
-          <Ionicons name="chevron-back" size={22} color={palette.foreground} />
-        </GlassButton>
-      </View>
-    </ScreenLayout>
+    </BottomSheetFooter>
   );
 }
 

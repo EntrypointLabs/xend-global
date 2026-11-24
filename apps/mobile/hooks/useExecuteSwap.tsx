@@ -36,9 +36,13 @@ const PRICE_EXPIRED = "Price expired, try again";
 const NOT_READY = "Your Account is not ready yet. Try again in a moment.";
 const SOMETHING_WRONG = "Something went wrong. Nothing was swapped.";
 
+const PRICE_MOVED_MESSAGE =
+  "The price moved before the swap could start. Nothing was swapped. Check the new price and try again.";
+
 const PREPARE_ERRORS: Record<string, string> = {
   QUOTE_EXPIRED: PRICE_EXPIRED,
   NO_ROUTE: "This swap would not go through right now. Nothing was swapped.",
+  PRICE_MOVED: PRICE_MOVED_MESSAGE,
   SWAP_UNAVAILABLE: "Swap is unavailable right now",
   ACCOUNT_NEEDS_UPDATE: "Swap is not available on this Account yet",
 };
@@ -81,6 +85,11 @@ export function useExecuteSwap() {
           const code = (error as { data?: { code?: string } })?.data?.code;
           const message = code && PREPARE_ERRORS[code];
           if (!message) throw error;
+          // The price on screen is the one that just failed, so a fresh one
+          // is fetched now instead of at the next refresh.
+          if (code === "PRICE_MOVED" || code === "QUOTE_EXPIRED") {
+            void queryClient.invalidateQueries({ queryKey: ["swapQuote"] });
+          }
           return { status: "failed", message };
         }
 
