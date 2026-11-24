@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colorScheme } from "nativewind";
+import { systemColorScheme } from "react-native-css-interop/dist/runtime/native/appearance-observables";
 
 import { applyAppIcon } from "@/utils/appIcon";
 
@@ -62,6 +63,26 @@ function parse(raw: string | null): Appearance {
   }
 }
 
+/**
+ * Puts the app in `mode`, on the phone and in what the app draws from.
+ *
+ * `colorScheme.set` only tells the phone. The app draws from nativewind's own
+ * copy of the answer, which it refreshes when the phone reports a change, and
+ * it ignores that report unless the app is in the foreground. At a cold start
+ * the app is not there yet, and a Face ID prompt keeps it out, so somebody
+ * who chose Light on a dark phone got the dark app until the prompt was
+ * answered. The copy is set here as well, so the choice holds from the first
+ * frame.
+ *
+ * System is left to nativewind: the phone has not let go of the old mode by
+ * the time this returns, and its report of the change arrives while the app
+ * is in the foreground, because a setting was just tapped.
+ */
+function applyMode(mode: AppMode) {
+  colorScheme.set(mode);
+  if (mode !== "system") systemColorScheme.set(mode);
+}
+
 let stored: Promise<Appearance> | undefined;
 
 /**
@@ -74,7 +95,7 @@ export function loadAppearance(): Promise<Appearance> {
     .then(parse)
     .catch(() => DEFAULT_APPEARANCE)
     .then((appearance) => {
-      colorScheme.set(appearance.mode);
+      applyMode(appearance.mode);
       return appearance;
     });
   return stored;
@@ -121,7 +142,7 @@ export function AppearanceProvider({
 
   const setMode = useCallback(
     (mode: AppMode) => {
-      colorScheme.set(mode);
+      applyMode(mode);
       save({ ...appearance, mode });
     },
     [appearance, save]
