@@ -239,6 +239,7 @@ export class SwapService {
         ).toString(),
         slippageBps: price.slippageBps,
         venue: price.venue,
+        venues: price.venues,
         expiresAt,
       };
     }

@@ -30,6 +30,8 @@ export interface SwapQuoteResponse {
   minAmountOutRaw: string;
   slippageBps: number;
   venue: string | null;
+  /** Every venue the route passes through, in order. */
+  venues: string[];
   /** Unix seconds. */
   expiresAt: number;
 }
