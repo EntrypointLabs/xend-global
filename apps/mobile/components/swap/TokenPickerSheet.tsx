@@ -140,49 +140,20 @@ export const TokenPickerSheet = forwardRef<
     []
   );
 
-  // In the sheet's footer so that it rides above the keyboard with the sheet,
-  // and on a solid ground of its own so the rows end above it instead of
-  // showing through.
+  // The sheet mounts whatever function it is handed as a component, so one
+  // that changed with each keystroke would be a new field each time and drop
+  // the keyboard. This one changes only between openings; the text being
+  // typed lives in the field.
   const renderFooter = useCallback(
     (props: BottomSheetFooterProps) => (
-      <BottomSheetFooter {...props}>
-        <View
-          className="bg-card px-5 pt-3"
-          style={{ paddingBottom: Math.max(insets.bottom, 12) }}
-        >
-          <View className="flex-row items-center gap-4 rounded-3xl bg-foreground/[0.04] px-5 py-4">
-            <BottomSheetTextInput
-              value={search}
-              onChangeText={setSearch}
-              placeholder={receiving ? "Search tokens" : "Search your tokens"}
-              placeholderTextColor={palette.fg(0.3)}
-              keyboardAppearance={palette.dark ? "dark" : "light"}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-              accessibilityLabel="Search tokens"
-              className="flex-1 py-0 text-[15px] text-foreground"
-            />
-            {search ? (
-              <HapticPressable
-                onPress={() => setSearch("")}
-                accessibilityRole="button"
-                accessibilityLabel="Clear search"
-                hitSlop={8}
-              >
-                <Typography
-                  weight="600"
-                  className="text-[15px] text-foreground"
-                >
-                  Clear
-                </Typography>
-              </HapticPressable>
-            ) : null}
-          </View>
-        </View>
-      </BottomSheetFooter>
+      <SearchFooter
+        {...props}
+        placeholder={receiving ? "Search tokens" : "Search your tokens"}
+        bottomInset={Math.max(insets.bottom, 12)}
+        onSearch={setSearch}
+      />
     ),
-    [insets.bottom, palette, receiving, search]
+    [insets.bottom, receiving]
   );
 
   return (
@@ -335,6 +306,65 @@ export const TokenPickerSheet = forwardRef<
 });
 
 TokenPickerSheet.displayName = "TokenPickerSheet";
+
+/**
+ * In the sheet's footer so that it rides above the keyboard with the sheet,
+ * and on a solid ground of its own so the rows end above it instead of
+ * showing through.
+ */
+function SearchFooter({
+  placeholder,
+  bottomInset,
+  onSearch,
+  ...footer
+}: BottomSheetFooterProps & {
+  placeholder: string;
+  bottomInset: number;
+  onSearch: (text: string) => void;
+}) {
+  const palette = usePalette();
+  const [text, setText] = useState("");
+  const change = (next: string) => {
+    setText(next);
+    onSearch(next);
+  };
+
+  return (
+    <BottomSheetFooter {...footer}>
+      <View
+        className="bg-card px-5 pt-3"
+        style={{ paddingBottom: bottomInset }}
+      >
+        <View className="flex-row items-center gap-4 rounded-3xl bg-foreground/[0.04] px-5 py-4">
+          <BottomSheetTextInput
+            value={text}
+            onChangeText={change}
+            placeholder={placeholder}
+            placeholderTextColor={palette.fg(0.3)}
+            keyboardAppearance={palette.dark ? "dark" : "light"}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            accessibilityLabel="Search tokens"
+            className="flex-1 py-0 text-[15px] text-foreground"
+          />
+          {text ? (
+            <HapticPressable
+              onPress={() => change("")}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
+              hitSlop={8}
+            >
+              <Typography weight="600" className="text-[15px] text-foreground">
+                Clear
+              </Typography>
+            </HapticPressable>
+          ) : null}
+        </View>
+      </View>
+    </BottomSheetFooter>
+  );
+}
 
 const TRUST_LABEL: Record<SwapTokenTrust, string | null> = {
   verified: "verified",
