@@ -9,7 +9,6 @@ import {
 const ACKNOWLEDGED_KEY = ["pending-change", "acknowledged"] as const;
 const REVIEW_KEY = ["pending-change", "review-requested"] as const;
 const ACKNOWLEDGED_STORE = "pending-change:acknowledged";
-const KEEP = 8;
 
 async function readAcknowledged(): Promise<string[] | null> {
   const raw = await AsyncStorage.getItem(ACKNOWLEDGED_STORE);
@@ -58,17 +57,24 @@ export function usePendingChangeAcknowledgement() {
 
   // Null clears every answer, which is what puts the alarm back. An index is
   // added to the ones already answered: several changes can wait at once, and
-  // answering the second must not ring the first again.
+  // answering the second must not ring the first again. Answers are dropped
+  // once their change is no longer waiting rather than by count, so however
+  // many wait, none that was answered comes back.
   const write = useMutation({
-    mutationFn: async (index: string | null) => {
-      if (index === null) {
+    mutationFn: async (
+      answer: { index: string; stillWaiting: string[] } | null
+    ) => {
+      if (answer === null) {
         await AsyncStorage.removeItem(ACKNOWLEDGED_STORE);
         return null;
       }
       const next = [
-        index,
-        ...((await readAcknowledged()) ?? []).filter((i) => i !== index),
-      ].slice(0, KEEP);
+        answer.index,
+        ...((await readAcknowledged()) ?? []).filter(
+          (index) =>
+            index !== answer.index && answer.stillWaiting.includes(index)
+        ),
+      ];
       await AsyncStorage.setItem(ACKNOWLEDGED_STORE, JSON.stringify(next));
       return next;
     },
@@ -87,7 +93,9 @@ export function usePendingChangeAcknowledgement() {
     isAcknowledged: (index: string) => (acknowledged ?? []).includes(index),
     /** Still resolving the stored answer. Nothing should be shown yet. */
     isPending,
-    acknowledge: (index: string) => write.mutate(index),
+    /** `stillWaiting` is every change waiting now, so older answers can go. */
+    acknowledge: (index: string, stillWaiting: string[]) =>
+      write.mutate({ index, stillWaiting }),
     /** Puts the alarm back, so "review" has something to open. */
     reopen: () => write.mutate(null),
     /**

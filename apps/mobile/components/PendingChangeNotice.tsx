@@ -66,7 +66,10 @@ export function PendingChangeNotice() {
       onReject={() => reject.mutate(change.transactionIndex)}
       onDismiss={() => {
         clearReview();
-        acknowledge(change.transactionIndex);
+        acknowledge(
+          change.transactionIndex,
+          changes.map((waiting) => waiting.transactionIndex)
+        );
       }}
     />
   );
