@@ -3,6 +3,7 @@ import type {
   AwaitingPayment,
   TransferRow,
 } from "@/utils/apiClient";
+import { getUsdcMint } from "@/utils/cluster";
 import { formatRawAmount, WRAPPED_SOL_MINT } from "@/utils/swap";
 import type { MerchantCategory } from "@/utils/merchantCategory";
 import { describeToken, formatTokenAmount } from "@/utils/tokens";
@@ -99,7 +100,12 @@ export interface ActivityEntry {
 export interface SwapSide {
   mint: string;
   amountRaw: string;
-  decimals: number;
+  /**
+   * Null when nothing says how precise the mint is: a swap recorded before
+   * decimals were kept, whose side was never indexed and is not held. The
+   * amount is then left unshown rather than guessed.
+   */
+  decimals: number | null;
   name?: string | null;
   symbol?: string | null;
   iconUrl?: string | null;
@@ -184,7 +190,9 @@ export function mapTransferRowToActivityEntry(
   };
 }
 
-const SOL_DECIMALS = 9;
+/** Mints whose precision is fixed, for swaps that did not record theirs. */
+const KNOWN_DECIMALS: Record<string, number> = { [WRAPPED_SOL_MINT]: 9 };
+const USDC_DECIMALS = 6;
 
 /**
  * Transfer rows as Activity entries, with each swap as one entry.
@@ -230,7 +238,8 @@ export function mapTransferRowsToActivityEntries(
           quoted.decimals ??
           moved[0]?.decimals ??
           ctx.decimalsByMint[quoted.mint] ??
-          (quoted.mint === WRAPPED_SOL_MINT ? SOL_DECIMALS : DEFAULT_DECIMALS),
+          KNOWN_DECIMALS[quoted.mint] ??
+          (quoted.mint === getUsdcMint() ? USDC_DECIMALS : null),
         name: quoted.tokenName ?? moved[0]?.tokenName ?? null,
         symbol: quoted.tokenSymbol ?? moved[0]?.tokenSymbol ?? null,
         iconUrl:
@@ -279,7 +288,8 @@ export function swapVenueLabel(swap: SwapSummary): string | null {
  * three significant digits below one. USDC reads as dollars, as everywhere
  * else in Activity.
  */
-export function swapAmountLabel(side: SwapSide): string {
+export function swapAmountLabel(side: SwapSide): string | null {
+  if (side.decimals === null) return null;
   const { symbol } = describeToken(side.mint, side.symbol, side.name);
   if (symbol === "USDC")
     return formatDollarsMinor(side.amountRaw, side.decimals);

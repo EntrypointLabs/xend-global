@@ -322,6 +322,8 @@ function SwapItem({
   const tone = useRowTone();
   const settled = entry.status === "confirmed";
   const route = swapVenueLabel(swap);
+  const received = swapAmountLabel(swap.receive);
+  const paid = swapAmountLabel(swap.pay);
 
   return (
     <HapticPressable
@@ -347,26 +349,30 @@ function SwapItem({
           </Typography>
         </View>
         <View className="items-end gap-0.5">
-          <Typography
-            weight="600"
-            className={cn(
-              "text-sm tracking-[0.5px]",
-              settled ? tone.up : tone.muted,
-              entry.status === "failed" && "line-through"
-            )}
-          >
-            +{swapAmountLabel(swap.receive)}
-          </Typography>
-          <Typography
-            weight="600"
-            className={cn(
-              "text-sm tracking-[0.5px]",
-              settled ? tone.down : tone.muted,
-              entry.status === "failed" && "line-through"
-            )}
-          >
-            -{swapAmountLabel(swap.pay)}
-          </Typography>
+          {received && (
+            <Typography
+              weight="600"
+              className={cn(
+                "text-sm tracking-[0.5px]",
+                settled ? tone.up : tone.muted,
+                entry.status === "failed" && "line-through"
+              )}
+            >
+              +{received}
+            </Typography>
+          )}
+          {paid && (
+            <Typography
+              weight="600"
+              className={cn(
+                "text-sm tracking-[0.5px]",
+                settled ? tone.down : tone.muted,
+                entry.status === "failed" && "line-through"
+              )}
+            >
+              -{paid}
+            </Typography>
+          )}
         </View>
       </View>
     </HapticPressable>

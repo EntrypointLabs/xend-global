@@ -869,6 +869,36 @@ describe("a swap shown as one trade", () => {
     ).toBe("12.616 SOL");
   });
 
+  it("leaves out an amount whose precision was never recorded", () => {
+    const WBTC = "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh";
+    const [entry] = mapTransferRowsToActivityEntries(
+      [
+        leg({
+          swapDetails: {
+            ...details,
+            receive: side(WBTC, "100000", null),
+          },
+        }),
+      ],
+      ctx
+    );
+    expect(entry.swap?.receive.decimals).toBeNull();
+    expect(swapAmountLabel(entry.swap!.receive)).toBeNull();
+    expect(swapAmountLabel(entry.swap!.pay)).toBe("$1.00");
+  });
+
+  it("knows SOL's precision without being told", () => {
+    const [entry] = mapTransferRowsToActivityEntries(
+      [
+        leg({
+          swapDetails: { ...details, receive: side(SOL, "6342817", null) },
+        }),
+      ],
+      ctx
+    );
+    expect(swapAmountLabel(entry.swap!.receive)).toBe("0.00634 SOL");
+  });
+
   it("says nothing of the route when it was not kept", () => {
     const [entry] = mapTransferRowsToActivityEntries(
       [leg({ swapDetails: { ...details, venues: [] } })],

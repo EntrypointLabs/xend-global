@@ -431,9 +431,9 @@ function seedSwaps(
     mint,
     amountRaw,
     decimals,
-    tokenName: null,
-    tokenSymbol: null,
-    tokenIconUrl: null,
+    tokenName: null as string | null,
+    tokenSymbol: null as string | null,
+    tokenIconUrl: null as string | null,
   });
   const solSwap = {
     pay: side(usdc, "1000000", 6),

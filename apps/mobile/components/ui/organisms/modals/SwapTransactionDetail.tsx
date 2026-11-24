@@ -48,6 +48,9 @@ export function SwapTransactionDetail({
   const date = format(new Date(activityDetailTimestamp(item)), "MMM d, h:mma");
   const received = swapAmountLabel(swap.receive);
   const paid = swapAmountLabel(swap.pay);
+  // Led by what the Consumer got, unless its precision was never recorded.
+  const lead = received ? `+${received}` : paid ? `-${paid}` : null;
+  const beside = received && paid ? `for ${paid} · ${date}` : date;
 
   return (
     <ActionModal visible={visible} onClose={onClose}>
@@ -62,19 +65,21 @@ export function SwapTransactionDetail({
         <View className="mt-8 w-full flex-row items-center gap-4">
           <SwapMarks swap={swap} size={40} cutout="border-card" />
           <View className="flex-1 items-end">
-            <Typography
-              weight="700"
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              className="text-3xl text-foreground"
-            >
-              +{received}
-            </Typography>
+            {lead && (
+              <Typography
+                weight="700"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                className="text-3xl text-foreground"
+              >
+                {lead}
+              </Typography>
+            )}
             <Typography
               weight="500"
               className="mt-0.5 text-sm text-foreground/40"
             >
-              {`for ${paid} · ${date}`}
+              {beside}
             </Typography>
           </View>
         </View>
@@ -94,10 +99,10 @@ export function SwapTransactionDetail({
 
         <Group title="Swap">
           <Row label="You paid">
-            <Value>{paid}</Value>
+            <Value>{paid ?? "Not recorded"}</Value>
           </Row>
           <Row label="You received">
-            <Value>{received}</Value>
+            <Value>{received ?? "Not recorded"}</Value>
           </Row>
           {swap.venues.length > 0 && (
             <Row label="Route">
