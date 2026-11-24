@@ -10,7 +10,7 @@ import { Illustration } from "@/components/ui/feature/Illustration";
 import { Pop, Rise } from "@/components/ui/motion";
 import { usePalette } from "@/hooks/usePalette";
 import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
-import { usePendingAccountChange } from "@/hooks/usePendingAccountChange";
+import { usePendingAccountChanges } from "@/hooks/usePendingAccountChange";
 import { apiErrorCode, apiErrorMessage } from "@/utils/apiClient";
 import {
   MISMATCH_MESSAGE,
@@ -133,18 +133,27 @@ export interface WaitingChange {
 }
 
 /**
- * A change already waiting on this Account, or null when there is none.
+ * A waiting change that holds back a new limit, or null when none does.
  *
- * Which change it is only the device that staged it knows, so this says what
- * is true for any of them rather than claiming it is the limit.
+ * Turning Swap on does not: it and a limit change wait side by side. Another
+ * limit change does, and so does anything touching the Account's keys, or a
+ * change Prydd did not stage, because a new limit staged behind one of those
+ * would be cancelled when it lands.
  */
 export function useWaitingChange(): {
   waiting: WaitingChange | null;
   reading: boolean;
 } {
-  const { data: pending, isLoading } = usePendingAccountChange();
+  const { data: changes, isLoading } = usePendingAccountChanges();
   const { startedHere, isPending: readingStarted } = useInitiatedChanges();
   const reading = isLoading || readingStarted;
+  const blocking = (changes ?? []).filter(
+    (change) => change.kind !== "swap_access"
+  );
+  // The one nobody on this phone started is the one worth sending them to.
+  const pending =
+    blocking.find((change) => !startedHere(change.transactionIndex)) ??
+    blocking[0];
   if (!pending) return { waiting: null, reading };
   if (readingStarted) {
     return {

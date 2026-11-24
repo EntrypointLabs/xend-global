@@ -251,11 +251,25 @@ export const StagedChangeSchema = z.object({
    * Keys & Recovery screen with a way to cancel it.
    */
   selfInitiated: z.boolean(),
+  /**
+   * Which of Prydd's own flows staged it, or null when none did.
+   *
+   * Several changes can wait at once, so a screen that only cares about one
+   * kind reads this rather than treating any waiting change as its own. A
+   * string, not an enum: a kind this build has never heard of is still a
+   * change Prydd staged.
+   */
+  kind: z
+    .string()
+    .nullish()
+    .transform((kind) => kind ?? null),
 });
 export type StagedChange = z.infer<typeof StagedChangeSchema>;
 
 export const PendingChangeResponseSchema = z.object({
   change: StagedChangeSchema.nullable(),
+  /** Every change waiting, oldest first. Absent from a backend that knew of one. */
+  changes: z.array(StagedChangeSchema).optional(),
 });
 
 export const PreparedRejectionSchema = z.object({
@@ -1479,20 +1493,27 @@ class BackendClient {
     return ProvisioningSubmitSchema.parse(raw);
   }
 
-  /** GET /account/changes/pending — a settings change awaiting a decision. */
-  async getPendingAccountChange(): Promise<StagedChange | null> {
-    if (SEED_DEMO) return seedPendingChange();
+  /** GET /account/changes/pending — the settings changes awaiting a decision. */
+  async getPendingAccountChanges(): Promise<StagedChange[]> {
+    if (SEED_DEMO) {
+      const seeded = seedPendingChange();
+      return seeded ? [seeded] : [];
+    }
     const raw = await this.request<unknown>("/account/changes/pending", {
       method: "GET",
       auth: true,
     });
-    return PendingChangeResponseSchema.parse(raw).change;
+    const { change, changes } = PendingChangeResponseSchema.parse(raw);
+    return changes ?? (change ? [change] : []);
   }
 
   /** POST /account/changes/reject/prepare — the rejection to sign. */
-  async prepareChangeRejection(): Promise<PreparedRejection> {
+  async prepareChangeRejection(
+    transactionIndex: string
+  ): Promise<PreparedRejection> {
     const raw = await this.request<unknown>("/account/changes/reject/prepare", {
       method: "POST",
+      body: JSON.stringify({ transactionIndex }),
       auth: true,
     });
     return PreparedRejectionSchema.parse(raw);

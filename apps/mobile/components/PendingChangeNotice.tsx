@@ -1,6 +1,6 @@
 import { PendingChangeModal } from "@/components/ui/organisms/modals/PendingChangeModal";
 import {
-  usePendingAccountChange,
+  usePendingAccountChanges,
   useRejectAccountChange,
 } from "@/hooks/usePendingAccountChange";
 import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
@@ -22,21 +22,35 @@ import { usePendingChangeAcknowledgement } from "@/hooks/usePendingChangeAcknowl
  * Acknowledging is remembered across launches and keyed to that specific
  * change, so answering it once settles it. A different change later still
  * interrupts.
+ *
+ * Several changes can wait at once. They are shown one at a time, somebody
+ * else's before the Consumer's own, so each gets its own answer.
  */
 export function PendingChangeNotice() {
-  const { data: change } = usePendingAccountChange();
+  const { data: changes } = usePendingAccountChanges();
   const reject = useRejectAccountChange();
-  const { acknowledged, isPending, acknowledge, reviewRequested, clearReview } =
-    usePendingChangeAcknowledgement();
+  const {
+    isAcknowledged,
+    isPending,
+    acknowledge,
+    reviewRequested,
+    clearReview,
+  } = usePendingChangeAcknowledgement();
   const { startedHere, isPending: readingInitiated } = useInitiatedChanges();
 
   // Nothing is shown until the stored answer is known: flashing the alarm at
   // someone who already answered it is the failure this exists to avoid.
-  if (isPending || readingInitiated || !change) return null;
+  if (isPending || readingInitiated || !changes) return null;
+
+  const unanswered = changes.filter(
+    (candidate) => !isAcknowledged(candidate.transactionIndex)
+  );
   // Started on this phone, so the home screen carries it rather than a modal,
   // unless they tapped through from that banner and asked to see it.
-  if (startedHere(change.transactionIndex) && !reviewRequested) return null;
-  if (acknowledged === change.transactionIndex) return null;
+  const change =
+    unanswered.find((candidate) => !startedHere(candidate.transactionIndex)) ??
+    (reviewRequested ? unanswered[0] : undefined);
+  if (!change) return null;
 
   return (
     <PendingChangeModal
@@ -49,7 +63,7 @@ export function PendingChangeNotice() {
           ? "We could not reject that change. Check your connection and try again."
           : null
       }
-      onReject={() => reject.mutate()}
+      onReject={() => reject.mutate(change.transactionIndex)}
       onDismiss={() => {
         clearReview();
         acknowledge(change.transactionIndex);
