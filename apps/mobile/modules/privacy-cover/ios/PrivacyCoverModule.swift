@@ -45,6 +45,23 @@ final class PrivacyCover {
   private var enabled = false
   private var lockAfter: TimeInterval = .infinity
   private var openPrompts = 0
+  /// A prompt has been answered but its dialog is still on its way out. Face
+  /// ID keeps the app inactive for its checkmark, about a second after the
+  /// answer arrives, and that is not the Consumer leaving.
+  private var awaitingActive = false
+  /// Whether iOS resigned the app while the current prompt was open. A prompt
+  /// can resolve before that notification is delivered, and the late resign
+  /// still belongs to the prompt.
+  private var promptResigned = false
+  private var promptGeneration = 0
+
+  /// How long an answered prompt that never resigned the app still claims a
+  /// late resign. Past this, a resign is the Consumer leaving.
+  private static let lateResignWindow: TimeInterval = 0.6
+  /// The longest an answered prompt may hold the cover back. Face ID's
+  /// checkmark takes about a second; if the app is still inactive after this,
+  /// it is not the prompt keeping it so, and the cover goes up.
+  private static let promptExitLimit: TimeInterval = 2
 
   // Main thread only.
   private var started = false
@@ -90,26 +107,54 @@ final class PrivacyCover {
   /// has not left: the screen stays as it was underneath it.
   func beginPrompt() {
     state.lock()
+    if openPrompts == 0 && !awaitingActive { promptResigned = false }
     openPrompts += 1
+    promptGeneration += 1
     state.unlock()
   }
 
+  /// The prompt is answered. The cover stays off until the app is active
+  /// again, which is when the dialog has really gone; any resign after that is
+  /// the Consumer leaving and is covered as usual.
   func endPrompt() {
     state.lock()
     openPrompts = max(0, openPrompts - 1)
     let lastPrompt = openPrompts == 0
+    if lastPrompt { awaitingActive = true }
+    let resigned = promptResigned
+    let generation = promptGeneration
     state.unlock()
     guard lastPrompt else { return }
-    // A resign that came while the prompt was being answered was skipped, and
-    // Notification Center keeps the app inactive without another one. If the
-    // app is still not active once the prompt is done, the Consumer has left.
     DispatchQueue.main.async { [self] in
-      let now = snapshot()
-      guard now.enabled, !now.prompting,
-        UIApplication.shared.applicationState != .active
-      else { return }
-      show()
+      guard isActive() else { return }
+      // Resigned and active again: the dialog has gone.
+      if resigned {
+        settlePrompt()
+        return
+      }
+      // Never resigned yet: leave room for a resign still on its way.
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.lateResignWindow) { [self] in
+        state.lock()
+        let unchanged = generation == promptGeneration && !promptResigned
+        state.unlock()
+        if unchanged, isActive() { settlePrompt() }
+      }
     }
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.promptExitLimit) { [self] in
+      state.lock()
+      let stillWaiting =
+        generation == promptGeneration && openPrompts == 0 && awaitingActive
+      if stillWaiting { awaitingActive = false }
+      let on = enabled
+      state.unlock()
+      if stillWaiting, on, !isActive() { show() }
+    }
+  }
+
+  private func settlePrompt() {
+    state.lock()
+    if openPrompts == 0 { awaitingActive = false }
+    state.unlock()
   }
 
   /// JS has put the lock screen up, so the blur held over it can go.
@@ -124,13 +169,16 @@ final class PrivacyCover {
   private func snapshot() -> (enabled: Bool, lockAfter: TimeInterval, prompting: Bool) {
     state.lock()
     defer { state.unlock() }
-    return (enabled, lockAfter, openPrompts > 0)
+    return (enabled, lockAfter, openPrompts > 0 || awaitingActive)
   }
 
   @objc private func willResignActive() {
     // Leaving again before the lock screen is drawn: the cover now stays for
     // the new trip out, not for the return that started the hold.
     cancelHold()
+    state.lock()
+    if openPrompts > 0 || awaitingActive { promptResigned = true }
+    state.unlock()
     let now = snapshot()
     guard now.enabled, !now.prompting else { return }
     show()
@@ -144,6 +192,7 @@ final class PrivacyCover {
   }
 
   @objc private func didBecomeActive() {
+    settlePrompt()
     let now = snapshot()
     let away = backgroundedAt.map { Date().timeIntervalSince($0) } ?? 0
     backgroundedAt = nil
