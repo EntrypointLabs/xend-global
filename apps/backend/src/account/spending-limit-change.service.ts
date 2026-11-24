@@ -38,9 +38,15 @@ import {
 } from './account.interface';
 import type {
   ProvisioningChain,
+  SettingsState,
   SquadsAccountRow,
   SquadsAccountStore,
 } from './account.interface';
+import {
+  KEY_CHANGE_WAITING,
+  OVERLAP_MESSAGE,
+  overlapBlocker,
+} from './change-overlap';
 import { describeSpendingLimit } from './spending-limit.terms';
 
 /** The steps a Spending Limit change passes through on the device. */
@@ -169,9 +175,9 @@ export class SpendingLimitChangeService {
     request: SpendingLimitChangeRequest,
   ): Promise<SpendingLimitChangePlan> {
     const account = await this.requireAccount(userId);
-    await this.assertNothingElseInFlight(userId, account);
-
     const settings = await this.chain.readSettings(account.settingsAddress);
+    await this.assertRoomToStart(userId, account, settings);
+
     const changeIndex = settings.transactionIndex + 1n;
     const current = await this.currentLimit(account);
     if (request.remove && !current) {
@@ -369,28 +375,33 @@ export class SpendingLimitChangeService {
   }
 
   /**
-   * A change staged elsewhere holds the next index, so staging here would
-   * claim it again and whichever landed second would be settled as if it were
-   * the first.
+   * A Swap change may wait beside this one. A rotation or a recovery key
+   * change may not: landing either cancels whatever is staged behind it.
    */
-  private async assertNothingElseInFlight(
+  private async assertRoomToStart(
     userId: string,
     account: SquadsAccountRow,
+    settings: SettingsState,
   ): Promise<void> {
     if (
       account.pendingApprovalChangeIndex ||
-      account.pendingPrimaryChangeIndex ||
-      account.pendingSwapAccessChangeIndex
+      account.pendingPrimaryChangeIndex
     ) {
       throw new SpendingLimitChangeError(
         'another change to this Account is already in flight',
       );
     }
     if (await this.recovery.pendingChange(userId)) {
-      throw new SpendingLimitChangeError(
-        'another change to this Account is already in flight',
-      );
+      throw new SpendingLimitChangeError(KEY_CHANGE_WAITING);
     }
+    const blocker = await overlapBlocker(
+      this.chain,
+      account,
+      settings,
+      account.pendingSwapAccessChangeIndex,
+      'proposed',
+    );
+    if (blocker) throw new SpendingLimitChangeError(OVERLAP_MESSAGE[blocker]);
     if (account.pendingSpendingLimitChangeIndex) {
       // Reconciled rather than refused outright: the common case is a change
       // the chain has already settled and nothing has cleared yet.

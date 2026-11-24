@@ -203,6 +203,12 @@ export interface SettingsState {
   /** The last index the program assigned. The next change takes this plus one. */
   transactionIndex: bigint;
   /**
+   * Every change at or below this index is dead, whatever its proposal says:
+   * a signer change that lands cancels everything still waiting by moving
+   * this up, and leaves the proposals reading as open. Absent means zero.
+   */
+  staleTransactionIndex?: bigint;
+  /**
    * The last policy seed the program assigned, or null before it has assigned
    * any. A policy created on this Account has to take this plus one.
    */

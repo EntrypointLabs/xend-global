@@ -57,6 +57,8 @@ function store(row: SquadsAccountRow | null = ACCOUNT): SquadsAccountStore {
 interface ChainState {
   transactionIndex?: bigint;
   proposal?: Partial<ProposalState> | null;
+  /** Proposals for other changes waiting on the Account, by index. */
+  others?: Record<string, Partial<ProposalState> | null>;
   /** The on-chain signer set, which is what a settled change is read against. */
   signers?: string[];
 }
@@ -81,19 +83,24 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
       Promise.reject(new Error('readSpendingLimit is not exercised here')),
     readAllowedPrograms: () => Promise.resolve([]),
     policyExists: () => Promise.resolve(true),
-    readProposal: () =>
-      Promise.resolve(
-        state.proposal
+    readProposal: (_settings, index) => {
+      const found =
+        index.toString() in (state.others ?? {})
+          ? state.others?.[index.toString()]
+          : state.proposal;
+      return Promise.resolve(
+        found
           ? {
               approved: [],
               rejected: [],
               settled: false,
               status: 'Active',
               statusTimestamp: null,
-              ...state.proposal,
+              ...found,
             }
           : null,
-      ),
+      );
+    },
     compile: (params) => {
       compiled.push({ instructions: params.instructions });
       return Promise.resolve({
@@ -346,21 +353,105 @@ describe('RecoveryChangeService.start', () => {
     expect(keysOf(compiled[0])).toContain(AUTHORITY);
   });
 
-  it('refuses to stage over a Spending Limit change holding the index', async () => {
-    const { chain } = fakeChain();
-    const { recovery } = fakeRecovery();
-
-    const service = new RecoveryChangeService(
-      store({ ...ACCOUNT, pendingSpendingLimitChangeIndex: '8' }),
-      chain,
+  function withLimitChange(state: ChainState, recovery: RecoveryService) {
+    return new RecoveryChangeService(
+      store({ ...ACCOUNT, pendingSpendingLimitChangeIndex: '7' }),
+      fakeChain(state).chain,
       recovery,
       fakeEvents().events,
       new InMemoryPreparedTxStore(),
     );
+  }
+
+  it('stages behind a Spending Limit change whose time lock is running', async () => {
+    const service = withLimitChange(
+      { transactionIndex: 7n, others: { '7': { status: 'Approved' } } },
+      fakeRecovery().recovery,
+    );
+
+    const plan = await service.start(USER, 'signer-1');
+
+    expect(plan).toMatchObject({ step: 'propose', changeIndex: '8' });
+  });
+
+  it('refuses to stage behind a Spending Limit change nobody approved', async () => {
+    const service = withLimitChange(
+      { transactionIndex: 7n, others: { '7': { status: 'Active' } } },
+      fakeRecovery().recovery,
+    );
+
+    // This change lands after the other one, so one that never gets its
+    // approvals would hold a recovery key back for good.
+    await expect(service.start(USER, 'signer-1')).rejects.toThrow(
+      'not been approved',
+    );
+  });
+
+  it('refuses to stage while a Spending Limit change has no index yet', async () => {
+    const service = withLimitChange(
+      { transactionIndex: 6n, others: { '7': null } },
+      fakeRecovery().recovery,
+    );
 
     await expect(service.start(USER, 'signer-1')).rejects.toThrow(
-      'already in flight',
+      'still being set up',
     );
+  });
+
+  const ELAPSED: Partial<ProposalState> = {
+    approved: [PRIMARY, APPROVAL],
+    status: 'Approved',
+    statusTimestamp: BigInt(Math.floor(Date.now() / 1000) - DAY - 60),
+  };
+
+  it('holds its last step while a Spending Limit change is still waiting', async () => {
+    const limitLandsAt = Math.floor(Date.now() / 1000) + 3600;
+    const service = withLimitChange(
+      {
+        proposal: ELAPSED,
+        others: {
+          '7': {
+            status: 'Approved',
+            statusTimestamp: BigInt(limitLandsAt - DAY),
+          },
+        },
+      },
+      fakeRecovery({ changeIndex: 8n }).recovery,
+    );
+
+    const plan = await service.next(USER);
+
+    // Landing a signer change cancels everything else still waiting, so it
+    // goes last. Proven against the deployed program.
+    expect(plan.step).toBe('waiting');
+    expect(plan.executableAt).toBe(new Date(limitLandsAt * 1000).toISOString());
+    expect(plan.unsignedTxBase64).toBeUndefined();
+  });
+
+  it('asks again shortly when the other change only needs landing', async () => {
+    const service = withLimitChange(
+      { proposal: ELAPSED, others: { '7': ELAPSED } },
+      fakeRecovery({ changeIndex: 8n }).recovery,
+    );
+
+    const plan = await service.next(USER);
+
+    expect(plan.step).toBe('waiting');
+    expect(Date.parse(plan.executableAt as string)).toBeGreaterThan(Date.now());
+  });
+
+  it('takes its last step once the Spending Limit change has landed', async () => {
+    const service = withLimitChange(
+      {
+        proposal: ELAPSED,
+        others: { '7': { status: 'Executed', settled: true } },
+      },
+      fakeRecovery({ changeIndex: 8n }).recovery,
+    );
+
+    await expect(service.next(USER)).resolves.toMatchObject({
+      step: 'execute',
+    });
   });
 
   it('refuses to prepare for a Consumer with no Account', async () => {

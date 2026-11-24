@@ -30,9 +30,15 @@ import {
 import type {
   ProposalState,
   ProvisioningChain,
+  SettingsState,
   SquadsAccountRow,
   SquadsAccountStore,
 } from './account.interface';
+import {
+  KEY_CHANGE_WAITING,
+  OVERLAP_MESSAGE,
+  overlapBlocker,
+} from './change-overlap';
 
 export type SwapAccessStep =
   /** Propose and both approvals in one transaction: one confirmation. */
@@ -187,9 +193,9 @@ export class SwapAccessService {
       }
       account = await this.requireAccount(userId);
     }
-    await this.assertNothingElseInFlight(userId, account);
-
     const settings = await this.chain.readSettings(account.settingsAddress);
+    await this.assertRoomToStart(userId, account, settings);
+
     const changeIndex = (settings.transactionIndex + 1n).toString();
     const instructions = this.build(account, changeIndex, 'stage');
 
@@ -325,23 +331,34 @@ export class SwapAccessService {
   }
 
   /**
-   * Every settings change takes the next index, so a second one staged
-   * alongside would claim it again and one of the two could never settle.
+   * A Spending Limit change may wait beside this one. A rotation or a
+   * recovery key change may not: landing either cancels whatever is staged
+   * behind it.
    */
-  private async assertNothingElseInFlight(
+  private async assertRoomToStart(
     userId: string,
     account: SquadsAccountRow,
+    settings: SettingsState,
   ): Promise<void> {
     if (
       account.pendingApprovalChangeIndex ||
-      account.pendingPrimaryChangeIndex ||
-      account.pendingSpendingLimitChangeIndex ||
-      (await this.recovery.pendingChange(userId))
+      account.pendingPrimaryChangeIndex
     ) {
       throw new SwapAccessError(
         'another change to this Account is already in flight',
       );
     }
+    if (await this.recovery.pendingChange(userId)) {
+      throw new SwapAccessError(KEY_CHANGE_WAITING);
+    }
+    const blocker = await overlapBlocker(
+      this.chain,
+      account,
+      settings,
+      account.pendingSpendingLimitChangeIndex,
+      'proposed',
+    );
+    if (blocker) throw new SwapAccessError(OVERLAP_MESSAGE[blocker]);
   }
 
   private async prepare(

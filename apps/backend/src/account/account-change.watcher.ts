@@ -92,24 +92,24 @@ export class AccountChangeWatcher implements OnModuleInit {
   }
 
   private async check(account: SquadsAccountRow): Promise<void> {
-    const staged = await this.changes.pendingFor(account);
-    if (!staged) return;
-
-    // `selfInitiated` means the backend holds a recovery key row for this
-    // index, so the only thing this can name is a recovery key change. Any
-    // other change it finds is one nobody here staged, and the notice for
-    // that says so rather than guessing.
-    const written = await this.events.recordSettingsChangeStaged(
-      account.userId,
-      {
-        changeIndex: staged.transactionIndex,
-        change: staged.selfInitiated ? 'recovery_key' : undefined,
-      },
-    );
-    if (written) {
-      this.logger.warn(
-        `account_change.found_unannounced userId=${account.userId} index=${staged.transactionIndex}`,
+    // Every waiting change, not only the newest: one nobody here staged can
+    // sit behind a change the Consumer made afterwards.
+    for (const staged of await this.changes.pendingFor(account)) {
+      // A change the backend staged was announced as it was staged, and
+      // recording it again is a no-op. Any other is one nobody here staged,
+      // and the notice for that says so rather than guessing.
+      const written = await this.events.recordSettingsChangeStaged(
+        account.userId,
+        {
+          changeIndex: staged.transactionIndex,
+          change: staged.kind ?? undefined,
+        },
       );
+      if (written) {
+        this.logger.warn(
+          `account_change.found_unannounced userId=${account.userId} index=${staged.transactionIndex}`,
+        );
+      }
     }
   }
 }
