@@ -10,22 +10,22 @@ import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import { apiClient } from "@/utils/apiClient";
 import { Buffer } from "buffer";
 
-export const PENDING_CHANGE_KEY = ["account", "pending-change"] as const;
+export const PENDING_CHANGE_KEY = ["account", "pending-changes"] as const;
 
 /**
- * A settings change waiting on the Consumer's Account, if there is one.
+ * Every settings change waiting on the Consumer's Account, oldest first.
  *
  * Polled as well as pushed. The push notification is how they find out while
  * the app is closed, but a Consumer with notifications off, or a stale token,
  * would otherwise never see the one notice that has to arrive, so opening Prydd
  * asks as well.
  */
-export function usePendingAccountChange() {
+export function usePendingAccountChanges() {
   const { user } = useAuth();
 
   return useQuery({
     queryKey: PENDING_CHANGE_KEY,
-    queryFn: () => apiClient.getPendingAccountChange(),
+    queryFn: () => apiClient.getPendingAccountChanges(),
     enabled: !!user,
     staleTime: 60 * 1000,
     refetchOnWindowFocus: true,
@@ -34,7 +34,25 @@ export function usePendingAccountChange() {
 }
 
 /**
- * Rejects the staged change, signing with S2 and then S1.
+ * The one waiting change to put in front of the Consumer, if there is any.
+ *
+ * A change Prydd did not stage comes first, however many of their own are
+ * waiting beside it: it is the only one that might need refusing. Otherwise
+ * the oldest, which is the next to go through.
+ */
+export function usePendingAccountChange() {
+  const query = usePendingAccountChanges();
+  const changes = query.data;
+  return {
+    ...query,
+    data: changes
+      ? (changes.find((change) => change.kind === null) ?? changes[0] ?? null)
+      : changes,
+  };
+}
+
+/**
+ * Rejects one staged change, signing with S2 and then S1.
  *
  * Both, because one is not a refusal. The Account needs 2 of 3 to settle a
  * proposal either way, so a rejection carrying a single signature is recorded
@@ -51,13 +69,13 @@ export function useRejectAccountChange() {
   const { data: account } = useAccount();
 
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (transactionIndex: string) => {
       const wallet = embeddedSolana.wallets?.[0];
       if (!wallet) throw new Error("Wallet not ready");
       if (!account) throw new Error("Account not ready");
       const provider = await wallet.getProvider();
 
-      const prepared = await apiClient.prepareChangeRejection();
+      const prepared = await apiClient.prepareChangeRejection(transactionIndex);
 
       // S2 before S1, matching the order the backend compiled and the order
       // Turnkey's policy engine expects: unsigned in, signed out.

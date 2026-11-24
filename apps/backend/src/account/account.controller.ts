@@ -61,6 +61,7 @@ import {
   VerifyRecoveryEmailSchema,
   StartDeviceRotationSchema,
   SubmitRecoveryChangeSchema,
+  PrepareRejectionSchema,
   SubmitRejectionSchema,
   VerifyRecoveryCodeSchema,
   type AddRecoveryEmailDto,
@@ -72,6 +73,7 @@ import {
   type VerifyRecoveryEmailDto,
   type StartDeviceRotationDto,
   type SubmitRecoveryChangeDto,
+  type PrepareRejectionDto,
   type SubmitRejectionDto,
   type VerifyRecoveryCodeDto,
   StartPrimaryRotationSchema,
@@ -196,7 +198,8 @@ export class AccountController {
   }
 
   /**
-   * The settings change waiting on this Consumer's Account, or null.
+   * The settings changes waiting on this Consumer's Account, oldest first.
+   * `change` is the first of them, for app builds that expect only one.
    *
    * Polled by the app so the notice survives a push that never arrived: a
    * Consumer who has notifications off, or whose token went stale, still sees
@@ -205,7 +208,9 @@ export class AccountController {
   @Get('changes/pending')
   @AllowEntry()
   pendingChange(@Req() req: AuthenticatedRequest) {
-    return this.changes.pending(req.user.userId).then((change) => ({ change }));
+    return this.changes
+      .pending(req.user.userId)
+      .then((changes) => ({ change: changes[0] ?? null, changes }));
   }
 
   /**
@@ -216,9 +221,16 @@ export class AccountController {
    * the Consumer has to be walked through.
    */
   @Post('changes/reject/prepare')
-  async prepareRejection(@Req() req: AuthenticatedRequest) {
+  async prepareRejection(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(PrepareRejectionSchema))
+    body: PrepareRejectionDto,
+  ) {
     try {
-      return await this.changes.prepareRejection(req.user.userId);
+      return await this.changes.prepareRejection(
+        req.user.userId,
+        body.transactionIndex,
+      );
     } catch (err) {
       throw toHttp(err);
     }

@@ -558,6 +558,7 @@ export function seedPendingChange(): StagedChange | null {
     approvals: [],
     executableAt: new Date(Date.now() + 23.5 * 3600 * 1000).toISOString(),
     selfInitiated: state === "self",
+    kind: state === "self" ? "recovery_key" : null,
   };
 }
 

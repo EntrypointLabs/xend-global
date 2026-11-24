@@ -41,6 +41,7 @@ import {
   buildRotateRecoverySigner,
   buildSetTimeLock,
   buildSpend,
+  buildUpdateAboveLimitAllowlist,
   buildUpdateSpendingLimit,
   decodeSpendingLimit,
   derivePolicyAddress,
@@ -2701,5 +2702,203 @@ describe.skipIf(!HAVE_FIXTURES)("spending limit changes", () => {
     warpPastTheLock(h);
     expect(failed(execute(h, index, policies))).toBe(false);
     expect(liveLimit(h).maxPerUse).toBe(RAISED.maxPerUse);
+  });
+});
+
+/*
+ * Several settings changes waiting at once. The app lets a Consumer start a
+ * second change while the first is still inside its time lock, so these pin
+ * which pairs survive each other and which do not.
+ */
+describe.skipIf(!HAVE_FIXTURES)("overlapping settings changes", () => {
+  const RAISED = {
+    mint: SOL,
+    maxPerUse: BigInt(4 * LAMPORTS_PER_SOL),
+    maxPerPeriod: BigInt(9 * LAMPORTS_PER_SOL),
+    period: "Daily" as const,
+    destinations: [],
+  };
+  const ADDED_PROGRAM = Keypair.generate().publicKey;
+
+  function signerSet(h: Harness) {
+    return settingsOf(h).signers as {
+      key: PublicKey;
+      permissions: { mask: number };
+    }[];
+  }
+
+  function stage(
+    h: Harness,
+    propose: TransactionInstruction[],
+    transactionIndex: bigint,
+  ) {
+    expect(failed(send(h.svm, h.primary, propose, [h.primary]))).toBe(false);
+    for (const signer of [h.primary, h.approval]) {
+      const approve = buildApproveSettingsChange({
+        addresses: h.addresses,
+        transactionIndex,
+        signer: signer.publicKey,
+      });
+      expect(failed(send(h.svm, signer, [approve], [signer]))).toBe(false);
+    }
+  }
+
+  function wait(h: Harness, seconds: number) {
+    const clock = h.svm.getClock();
+    clock.unixTimestamp = clock.unixTimestamp + BigInt(seconds);
+    h.svm.setClock(clock);
+    h.svm.expireBlockhash();
+  }
+
+  function execute(
+    h: Harness,
+    transactionIndex: bigint,
+    policies: PublicKey[] = [],
+  ) {
+    h.svm.expireBlockhash();
+    return send(
+      h.svm,
+      h.primary,
+      [
+        buildExecuteSettingsChange({
+          addresses: h.addresses,
+          transactionIndex,
+          signer: h.primary.publicKey,
+          policies,
+        }),
+      ],
+      [h.primary],
+    );
+  }
+
+  function stageLimitRaise(h: Harness) {
+    const index = nextIndex(h);
+    const { propose, policies } = buildUpdateSpendingLimit({
+      addresses: h.addresses,
+      spendingLimitSeed: LIMIT_POLICY_SEED,
+      currentLimit: liveLimit(h),
+      terms: RAISED,
+      limitSigner: h.primary.publicKey,
+      signers: signerSet(h),
+      proposer: h.primary.publicKey,
+      transactionIndex: index,
+    });
+    stage(h, propose, index);
+    return { index, policies };
+  }
+
+  function stageAllowlistUpdate(h: Harness) {
+    const index = nextIndex(h);
+    const { propose, policies } = buildUpdateAboveLimitAllowlist({
+      addresses: h.addresses,
+      primary: h.primary.publicKey,
+      approval: h.approval.publicKey,
+      aboveLimitSeed: ABOVE_LIMIT_POLICY_SEED,
+      proposer: h.primary.publicKey,
+      transactionIndex: index,
+      allowedPrograms: [...ABOVE_LIMIT_PROGRAM_ALLOWLIST, ADDED_PROGRAM],
+    });
+    stage(h, propose, index);
+    return { index, policies };
+  }
+
+  function stageKeyAdd(h: Harness, added: PublicKey) {
+    const index = nextIndex(h);
+    stage(
+      h,
+      buildAddRecoverySigner({
+        addresses: h.addresses,
+        newSigner: added,
+        proposer: h.primary.publicKey,
+        rentPayer: h.primary.publicKey,
+        transactionIndex: index,
+      }),
+      index,
+    );
+    return { index };
+  }
+
+  const signerKeys = (h: Harness): string[] =>
+    signerSet(h).map((signer) => signer.key.toBase58());
+
+  it("lands a limit change and an allowlist change staged side by side", () => {
+    const h = provisioned();
+    const limit = stageLimitRaise(h);
+    const allowlist = stageAllowlistUpdate(h);
+    wait(h, SETTINGS_TIME_LOCK + 10);
+
+    expect(failed(execute(h, limit.index, limit.policies))).toBe(false);
+    expect(failed(execute(h, allowlist.index, allowlist.policies))).toBe(false);
+    expect(liveLimit(h).maxPerUse).toBe(RAISED.maxPerUse);
+  });
+
+  it("lands them in the opposite order too", () => {
+    const h = provisioned();
+    const limit = stageLimitRaise(h);
+    const allowlist = stageAllowlistUpdate(h);
+    wait(h, SETTINGS_TIME_LOCK + 10);
+
+    expect(failed(execute(h, allowlist.index, allowlist.policies))).toBe(false);
+    expect(failed(execute(h, limit.index, limit.policies))).toBe(false);
+    expect(liveLimit(h).maxPerUse).toBe(RAISED.maxPerUse);
+  });
+
+  it("runs each change on its own clock", () => {
+    const h = provisioned();
+    const limit = stageLimitRaise(h);
+    wait(h, SETTINGS_TIME_LOCK / 2);
+    const allowlist = stageAllowlistUpdate(h);
+    wait(h, SETTINGS_TIME_LOCK / 2 + 5);
+
+    expect(failed(execute(h, limit.index, limit.policies))).toBe(false);
+    expect(failed(execute(h, allowlist.index, allowlist.policies))).toBe(true);
+
+    wait(h, SETTINGS_TIME_LOCK / 2);
+    expect(failed(execute(h, allowlist.index, allowlist.policies))).toBe(false);
+  });
+
+  it("lands a key change after the policy changes staged before it", () => {
+    const h = provisioned();
+    const added = Keypair.generate().publicKey;
+    const limit = stageLimitRaise(h);
+    const key = stageKeyAdd(h, added);
+    wait(h, SETTINGS_TIME_LOCK + 10);
+
+    expect(failed(execute(h, limit.index, limit.policies))).toBe(false);
+    expect(failed(execute(h, key.index))).toBe(false);
+    expect(signerKeys(h)).toContain(added.toBase58());
+    expect(liveLimit(h).maxPerUse).toBe(RAISED.maxPerUse);
+  });
+
+  it("a key change that lands first cancels a change staged before it", () => {
+    const h = provisioned();
+    const limit = stageLimitRaise(h);
+    const key = stageKeyAdd(h, Keypair.generate().publicKey);
+    wait(h, SETTINGS_TIME_LOCK + 10);
+
+    expect(failed(execute(h, key.index))).toBe(false);
+    expect(failed(execute(h, limit.index, limit.policies))).toBe(true);
+    expect(liveLimit(h).maxPerUse).toBe(BigInt(2 * LAMPORTS_PER_SOL));
+  });
+
+  it("a key change that lands first cancels a change staged after it", () => {
+    const h = provisioned();
+    const key = stageKeyAdd(h, Keypair.generate().publicKey);
+    const limit = stageLimitRaise(h);
+    wait(h, SETTINGS_TIME_LOCK + 10);
+
+    expect(failed(execute(h, key.index))).toBe(false);
+    expect(failed(execute(h, limit.index, limit.policies))).toBe(true);
+  });
+
+  it("two key changes cannot both land", () => {
+    const h = provisioned();
+    const first = stageKeyAdd(h, Keypair.generate().publicKey);
+    const second = stageKeyAdd(h, Keypair.generate().publicKey);
+    wait(h, SETTINGS_TIME_LOCK + 10);
+
+    expect(failed(execute(h, first.index))).toBe(false);
+    expect(failed(execute(h, second.index))).toBe(true);
+    expect(signerKeys(h)).toHaveLength(4);
   });
 });

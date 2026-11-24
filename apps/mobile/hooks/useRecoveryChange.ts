@@ -12,7 +12,7 @@ import { Buffer } from "buffer";
 import { ACCOUNT_QUERY_KEY, useAccount } from "@/hooks/useAccount";
 import {
   PENDING_CHANGE_KEY,
-  usePendingAccountChange,
+  usePendingAccountChanges,
 } from "@/hooks/usePendingAccountChange";
 import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { RECOVERY_KEYS_QUERY_KEY } from "@/hooks/useRecoveryKeys";
@@ -178,12 +178,19 @@ export function useFinishRecoveryChange() {
   const queryClient = useQueryClient();
   const embeddedSolana = useEmbeddedSolanaWallet();
   const { data: account } = useAccount();
-  const { data: change } = usePendingAccountChange();
+  const { data: changes } = usePendingAccountChanges();
 
   const wallet = embeddedSolana.wallets?.[0];
+  const mine = changes?.some((change) => change.kind === "recovery_key");
+  // Every waiting change, not only this one: a key change lands after the
+  // changes staged before it, so one of those going through is what makes
+  // this worth asking about again.
+  const waiting = (changes ?? [])
+    .map((change) => change.transactionIndex)
+    .join(",");
 
   return useQuery({
-    queryKey: ["recovery-change", "finish", change?.transactionIndex ?? "none"],
+    queryKey: ["recovery-change", "finish", waiting || "none"],
     queryFn: async () => {
       const outcome = await runRecoveryChange(
         account as AccountResponse,
@@ -196,7 +203,7 @@ export function useFinishRecoveryChange() {
     // It reads the deadline off the chain, and a phone with a skewed clock
     // must not be the thing that decides a security delay is over. Asking
     // early is cheap: the walk gets `waiting` back and stops without signing.
-    enabled: !!account && !!wallet && change?.selfInitiated === true,
+    enabled: !!account && !!wallet && mine === true,
     // Retried when the app comes forward, which is the only moment the answer
     // can have changed, and never in a render loop.
     staleTime: 30_000,

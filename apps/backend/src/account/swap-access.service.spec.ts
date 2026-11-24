@@ -52,6 +52,7 @@ function setUp({
   proposalAt = null as ProposalState | null,
   transactionIndex = 7n,
   recoveryPending = false,
+  others = {} as Record<string, ProposalState | null>,
 } = {}) {
   const state = {
     allowed,
@@ -90,7 +91,10 @@ function setUp({
         signers: [],
       }),
     readAllowedPrograms: () => Promise.resolve([...state.allowed]),
-    readProposal: () => Promise.resolve(state.proposal),
+    readProposal: (_settings: string, index: bigint) =>
+      Promise.resolve(
+        index.toString() in others ? others[index.toString()] : state.proposal,
+      ),
     compile: ({ instructions }: { instructions: TransactionInstruction[] }) => {
       const message = new TransactionMessage({
         payerKey: AUTHORITY,
@@ -285,10 +289,33 @@ describe('SwapAccessService', () => {
     it.each([
       ['a device rotation', { pendingApprovalChangeIndex: '8' }],
       ['a passkey replacement', { pendingPrimaryChangeIndex: '8' }],
-      ['a Spending Limit change', { pendingSpendingLimitChangeIndex: '8' }],
     ])('refuses while %s holds the next index', async (_, row) => {
       const { service, recorded } = setUp({ row });
       await expect(service.start(USER)).rejects.toBeInstanceOf(SwapAccessError);
+      expect(recorded).toEqual([]);
+    });
+
+    it('starts beside a Spending Limit change that already holds its index', async () => {
+      const { service, state } = setUp({
+        row: { pendingSpendingLimitChangeIndex: '7' },
+        transactionIndex: 7n,
+        others: { '7': proposal() },
+      });
+
+      const plan = await service.start(USER);
+
+      // Each rewrites its own policy, so the two wait side by side.
+      expect(plan).toMatchObject({ step: 'stage', changeIndex: '8' });
+      expect(state.account.pendingSpendingLimitChangeIndex).toBe('7');
+    });
+
+    it('refuses while a Spending Limit change has not taken its index yet', async () => {
+      const { service, recorded } = setUp({
+        row: { pendingSpendingLimitChangeIndex: '8' },
+        others: { '8': null },
+      });
+
+      await expect(service.start(USER)).rejects.toThrow('still being set up');
       expect(recorded).toEqual([]);
     });
 

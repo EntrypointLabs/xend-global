@@ -10,6 +10,20 @@ const ACKNOWLEDGED_KEY = ["pending-change", "acknowledged"] as const;
 const REVIEW_KEY = ["pending-change", "review-requested"] as const;
 const ACKNOWLEDGED_STORE = "pending-change:acknowledged";
 
+async function readAcknowledged(): Promise<string[] | null> {
+  const raw = await AsyncStorage.getItem(ACKNOWLEDGED_STORE);
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed as string[];
+    // One index on its own is what this held before it held several, and a
+    // bare number parses as JSON.
+    return [String(parsed)];
+  } catch {
+    return [raw];
+  }
+}
+
 /**
  * The same request as `requestReview` below, from outside a component: a
  * tapped notification. Takes the client rather than being a hook so the
@@ -37,17 +51,34 @@ export function usePendingChangeAcknowledgement() {
 
   const { data: acknowledged, isPending } = useQuery({
     queryKey: ACKNOWLEDGED_KEY,
-    queryFn: () => AsyncStorage.getItem(ACKNOWLEDGED_STORE),
+    queryFn: async () => readAcknowledged(),
     staleTime: Infinity,
   });
 
+  // Null clears every answer, which is what puts the alarm back. An index is
+  // added to the ones already answered: several changes can wait at once, and
+  // answering the second must not ring the first again. Answers are dropped
+  // once their change is no longer waiting rather than by count, so however
+  // many wait, none that was answered comes back.
   const write = useMutation({
-    mutationFn: async (index: string | null) => {
-      if (index === null) await AsyncStorage.removeItem(ACKNOWLEDGED_STORE);
-      else await AsyncStorage.setItem(ACKNOWLEDGED_STORE, index);
-      return index;
+    mutationFn: async (
+      answer: { index: string; stillWaiting: string[] } | null
+    ) => {
+      if (answer === null) {
+        await AsyncStorage.removeItem(ACKNOWLEDGED_STORE);
+        return null;
+      }
+      const next = [
+        answer.index,
+        ...((await readAcknowledged()) ?? []).filter(
+          (index) =>
+            index !== answer.index && answer.stillWaiting.includes(index)
+        ),
+      ];
+      await AsyncStorage.setItem(ACKNOWLEDGED_STORE, JSON.stringify(next));
+      return next;
     },
-    onSuccess: (index) => queryClient.setQueryData(ACKNOWLEDGED_KEY, index),
+    onSuccess: (next) => queryClient.setQueryData(ACKNOWLEDGED_KEY, next),
   });
 
   const { data: reviewRequested } = useQuery({
@@ -59,10 +90,12 @@ export function usePendingChangeAcknowledgement() {
   });
 
   return {
-    acknowledged,
+    isAcknowledged: (index: string) => (acknowledged ?? []).includes(index),
     /** Still resolving the stored answer. Nothing should be shown yet. */
     isPending,
-    acknowledge: (index: string) => write.mutate(index),
+    /** `stillWaiting` is every change waiting now, so older answers can go. */
+    acknowledge: (index: string, stillWaiting: string[]) =>
+      write.mutate({ index, stillWaiting }),
     /** Puts the alarm back, so "review" has something to open. */
     reopen: () => write.mutate(null),
     /**

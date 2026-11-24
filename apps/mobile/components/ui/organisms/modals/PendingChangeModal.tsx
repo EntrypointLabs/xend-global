@@ -18,6 +18,15 @@ interface PendingChangeModalProps {
    * out would be the wrong half of this.
    */
   startedHere?: boolean;
+  /**
+   * Which of Prydd's flows staged the change, or null when none did.
+   *
+   * Several changes can wait at once and are shown one after another, so each
+   * has to say what it is before it offers to be rejected. Null is a change
+   * that reached the Account some other way, and gets the wording that does
+   * not pretend to know.
+   */
+  kind?: string | null;
   /** ISO-8601, or null while the change has not been approved yet. */
   executableAt: string | null;
   rejecting: boolean;
@@ -46,9 +55,45 @@ interface PendingChangeModalProps {
  * cannot be taken back. Colouring the safe action like a hazard would push a
  * confused Consumer toward the irreversible half.
  */
+/**
+ * The same line the push notification for each kind carries, so the notice a
+ * Consumer taps and the screen it opens name the change the same way.
+ */
+const TITLES: Record<string, string> = {
+  recovery_key: "Your recovery key change is on its way",
+  contact_email: "Your contact email is changing",
+  device: "A new phone is being added to your account",
+  passkey: "Your sign-in passkey is being replaced",
+  spending_limit: "Your spending limit is changing",
+  swap_access: "Swap is being turned on",
+};
+
+/** The kinds that leave the Account's keys alone. */
+const LEAVES_KEYS_ALONE = new Set(["spending_limit", "swap_access"]);
+
+function bodyFor(
+  kind: string | null,
+  startedHere: boolean,
+  approved: boolean
+): string {
+  // Everything else moves a key, and a change Prydd did not stage is treated
+  // as if it might.
+  const subject = LEAVES_KEYS_ALONE.has(kind ?? "")
+    ? null
+    : "who can access your Prydd account";
+  if (startedHere) {
+    return `${subject ? `This changes ${subject}. ` : ""}It takes effect after the delay below, and you can call it off at any point until then.`;
+  }
+  if (!approved) {
+    return `${subject ? `A change to ${subject} has been started. ` : ""}It needs one more approval, and then waits 24 hours before it takes effect. You can reject it at any point until then.`;
+  }
+  return `${subject ? `A change to ${subject} has been approved.` : "It has been approved."} If this was not you, reject it before the time below runs out.`;
+}
+
 export function PendingChangeModal({
   visible,
   startedHere = false,
+  kind = null,
   executableAt,
   rejecting,
   error,
@@ -84,20 +129,17 @@ export function PendingChangeModal({
             weight="600"
             className="mb-2 text-xl leading-7 text-foreground"
           >
-            {startedHere
-              ? "A change you started is pending"
-              : "Someone is changing your account"}
+            {(kind && TITLES[kind]) ??
+              (startedHere
+                ? "A change you started is pending"
+                : "Someone is changing your account")}
           </Typography>
 
           <Typography
             weight="400"
             className="mb-6 text-sm leading-5 text-foreground opacity-70"
           >
-            {startedHere
-              ? "This changes who can access your Prydd account. It takes effect after the delay below, and you can call it off at any point until then."
-              : remaining === null
-                ? "A change to who can access your Prydd account has been started. It needs one more approval, and then waits 24 hours before it takes effect. You can reject it at any point until then."
-                : "A change to who can access your Prydd account has been approved. If this was not you, reject it before the time below runs out."}
+            {bodyFor(kind, startedHere, remaining !== null)}
           </Typography>
 
           <View className="mb-6 rounded-2xl border border-border px-4 py-3.5">

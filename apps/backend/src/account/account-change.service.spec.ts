@@ -52,13 +52,20 @@ function store(row: SquadsAccountRow | null = ACCOUNT): SquadsAccountStore {
 interface ChainState {
   /** Provisioned by default, which is when a staged change is worth telling. */
   provisioned?: boolean;
+  /** The Consumer took their Spending Limit off, so its policy is gone. */
+  limitRemoved?: boolean;
   transactionIndex?: bigint;
+  staleTransactionIndex?: bigint;
+  /** The proposal at the newest index. Every older one has executed. */
   proposal?: Partial<ProposalState> | null;
+  /** Proposals at older indexes, by index. Null is one that does not exist. */
+  older?: Record<string, Partial<ProposalState> | null>;
 }
 
 function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
   const submitted: string[] = [];
   const compiled: unknown[][] = [];
+  const read: string[] = [];
   const provisioned = state.provisioned ?? true;
 
   const chain: ProvisioningChain = {
@@ -67,6 +74,7 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
       Promise.resolve({
         timeLockSeconds: provisioned ? SETTINGS_TIME_LOCK_SECONDS : 0,
         transactionIndex: state.transactionIndex ?? 7n,
+        staleTransactionIndex: state.staleTransactionIndex,
         policySeed: null,
         signers: [],
       }),
@@ -76,21 +84,30 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
     policyExists: (_settings, seed) =>
       Promise.resolve(
         provisioned &&
-          [SPENDING_LIMIT_POLICY_SEED, ABOVE_LIMIT_POLICY_SEED].includes(seed),
+          (seed === ABOVE_LIMIT_POLICY_SEED ||
+            (seed === SPENDING_LIMIT_POLICY_SEED && !state.limitRemoved)),
       ),
-    readProposal: () =>
-      Promise.resolve(
-        state.proposal
+    readProposal: (_settings, index) => {
+      read.push(index.toString());
+      const top = index === (state.transactionIndex ?? 7n);
+      const found = top
+        ? state.proposal
+        : index.toString() in (state.older ?? {})
+          ? state.older?.[index.toString()]
+          : { status: 'Executed', settled: true };
+      return Promise.resolve(
+        found
           ? {
               approved: [],
               rejected: [],
               settled: false,
               status: 'Active',
               statusTimestamp: null,
-              ...state.proposal,
+              ...found,
             }
           : null,
-      ),
+      );
+    },
     compile: (params) => {
       compiled.push(params.instructions);
       return Promise.resolve({
@@ -106,7 +123,7 @@ function fakeChain(state: ChainState = {}, messageBase64 = 'message') {
     },
   };
 
-  return { chain, submitted, compiled };
+  return { chain, submitted, compiled, read };
 }
 
 /** Only what AccountChangeService reaches on RecoveryService. */
@@ -175,7 +192,7 @@ describe('AccountChangeService.pending', () => {
       proposal: { status: 'Approved', statusTimestamp: approvedAt },
     });
 
-    const staged = await service(chain).pending(USER);
+    const [staged] = await service(chain).pending(USER);
 
     expect(staged?.transactionIndex).toBe('7');
     // The deadline for rejecting, which is the only thing the time lock buys.
@@ -195,7 +212,22 @@ describe('AccountChangeService.pending', () => {
     // Provisioning is a settings change the Consumer is making themselves, in
     // the foreground. Warning them about it teaches them to dismiss the notice
     // that matters later.
-    await expect(service(chain).pending(USER)).resolves.toBeNull();
+    await expect(service(chain).pending(USER)).resolves.toEqual([]);
+  });
+
+  it('still reports a change on an Account whose limit was removed', async () => {
+    const { chain } = fakeChain({
+      limitRemoved: true,
+      proposal: { status: 'Active' },
+    });
+
+    // Removing the limit is something a Consumer may do, not a sign that the
+    // Account is half set up. A change staged afterwards still has to be
+    // announced, and a key change waiting behind the removal still has to be
+    // found so the app can finish it.
+    const waiting = await service(chain).pending(USER);
+
+    expect(waiting.map((change) => change.transactionIndex)).toEqual(['7']);
   });
 
   it('says nothing about a change that is already settled', async () => {
@@ -203,13 +235,139 @@ describe('AccountChangeService.pending', () => {
       proposal: { status: 'Executed', settled: true },
     });
 
-    await expect(service(chain).pending(USER)).resolves.toBeNull();
+    await expect(service(chain).pending(USER)).resolves.toEqual([]);
   });
 
   it('says nothing when no change is in flight', async () => {
     const { chain } = fakeChain({ proposal: null });
 
-    await expect(service(chain).pending(USER)).resolves.toBeNull();
+    await expect(service(chain).pending(USER)).resolves.toEqual([]);
+  });
+});
+
+describe('AccountChangeService with several changes waiting', () => {
+  const ACTIVE = { status: 'Active' } as const;
+
+  it('reports every change still waiting, oldest first', async () => {
+    const { chain } = fakeChain({ proposal: ACTIVE, older: { '5': ACTIVE } });
+
+    const waiting = await service(chain).pending(USER);
+
+    // The newest is the one a Consumer just made. Stopping there would hide a
+    // change nobody here staged for its whole time lock.
+    expect(waiting.map((change) => change.transactionIndex)).toEqual([
+      '5',
+      '7',
+    ]);
+  });
+
+  it('names the changes the backend staged and leaves the rest unnamed', async () => {
+    const { chain } = fakeChain({
+      proposal: ACTIVE,
+      older: { '5': ACTIVE, '6': ACTIVE },
+    });
+    const row = {
+      ...ACCOUNT,
+      pendingSpendingLimitChangeIndex: '5',
+      pendingSwapAccessChangeIndex: '7',
+    };
+
+    const waiting = await service(chain, row).pending(USER);
+
+    expect(waiting.map((change) => change.kind)).toEqual([
+      'spending_limit',
+      null,
+      'swap_access',
+    ]);
+    expect(waiting.map((change) => change.selfInitiated)).toEqual([
+      true,
+      false,
+      true,
+    ]);
+  });
+
+  it('ignores a change a signer change has cancelled', async () => {
+    const { chain } = fakeChain({
+      staleTransactionIndex: 6n,
+      proposal: ACTIVE,
+      older: { '5': ACTIVE },
+    });
+
+    const waiting = await service(chain).pending(USER);
+
+    // The program leaves a cancelled proposal reading as open.
+    expect(waiting.map((change) => change.transactionIndex)).toEqual(['7']);
+  });
+
+  it('does not read settled changes again', async () => {
+    const { chain, read } = fakeChain({ proposal: ACTIVE });
+    const changes = service(chain);
+
+    await changes.pending(USER);
+    read.length = 0;
+    await changes.pending(USER);
+
+    expect(read).toEqual(['7']);
+  });
+
+  it('keeps reading an index whose proposal does not exist yet', async () => {
+    const { chain, read } = fakeChain({
+      proposal: ACTIVE,
+      older: { '4': null },
+    });
+    const changes = service(chain);
+
+    await changes.pending(USER);
+    read.length = 0;
+    await changes.pending(USER);
+
+    // A transaction can be given its proposal later, so a missing one is not
+    // a settled one.
+    expect(read).toEqual(['4', '5', '6', '7']);
+  });
+
+  it('refuses to guess which change to reject', async () => {
+    const { chain } = fakeChain({ proposal: ACTIVE, older: { '5': ACTIVE } });
+
+    await expect(service(chain).prepareRejection(USER)).rejects.toThrow(
+      'say which one',
+    );
+  });
+
+  it('rejects the change it is pointed at', async () => {
+    const tx = signable();
+    const { chain } = fakeChain(
+      { proposal: ACTIVE, older: { '5': ACTIVE } },
+      tx.messageBase64,
+    );
+    const { events, rejected } = fakeEvents();
+    const svc = service(chain, undefined, undefined, events);
+
+    await svc.prepareRejection(USER, '5');
+    await svc.submitRejection(USER, tx.base64);
+
+    expect(rejected).toEqual(['5:sig-reject']);
+  });
+
+  it('refuses to reject a change that is not waiting', async () => {
+    const { chain } = fakeChain({ proposal: ACTIVE });
+
+    await expect(service(chain).prepareRejection(USER, '3')).rejects.toThrow();
+  });
+
+  it('leaves a recovery key staged when another change is rejected', async () => {
+    const tx = signable();
+    const { chain } = fakeChain(
+      { proposal: ACTIVE, older: { '5': ACTIVE } },
+      tx.messageBase64,
+    );
+    const { recovery, abandoned } = fakeRecovery(7n);
+    const svc = service(chain, undefined, recovery);
+
+    await svc.prepareRejection(USER, '5');
+    await svc.submitRejection(USER, tx.base64);
+
+    expect(abandoned).toEqual([]);
   });
 });
 
@@ -218,7 +376,7 @@ describe('AccountChangeService self-initiated changes', () => {
     const { chain } = fakeChain({ proposal: { status: 'Active' } });
     const { recovery } = fakeRecovery(7n);
 
-    const staged = await service(chain, undefined, recovery).pending(USER);
+    const [staged] = await service(chain, undefined, recovery).pending(USER);
 
     // A staged recovery key row carrying this index only exists for a change
     // proposed through our own endpoint.
@@ -229,7 +387,7 @@ describe('AccountChangeService self-initiated changes', () => {
     const { chain } = fakeChain({ proposal: { status: 'Active' } });
     const { recovery } = fakeRecovery(null);
 
-    const staged = await service(chain, undefined, recovery).pending(USER);
+    const [staged] = await service(chain, undefined, recovery).pending(USER);
 
     // The case the whole announcement exists for: a change this backend has no
     // record of, which is what a stolen quorum looks like.
@@ -240,7 +398,7 @@ describe('AccountChangeService self-initiated changes', () => {
     const { chain } = fakeChain({ proposal: { status: 'Active' } });
     const { recovery } = fakeRecovery(99n);
 
-    const staged = await service(chain, undefined, recovery).pending(USER);
+    const [staged] = await service(chain, undefined, recovery).pending(USER);
 
     expect(staged?.selfInitiated).toBe(false);
   });
