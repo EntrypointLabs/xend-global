@@ -25,6 +25,13 @@ export interface SettingsState {
   timeLockSeconds: number;
   /** The index the next settings change will take. */
   transactionIndex: bigint;
+  /**
+   * Every change at or below this index is dead, whatever its proposal says.
+   * The program moves it up to `transactionIndex` when the signer set, the
+   * threshold or the time lock changes, which cancels everything still
+   * waiting without touching the proposals themselves.
+   */
+  staleTransactionIndex: bigint;
   signers: SettingsSigner[];
   /**
    * The last policy seed the program assigned, or null before it has assigned
@@ -87,6 +94,7 @@ export async function fetchSettings(
   return {
     timeLockSeconds: state.timeLock,
     transactionIndex: toBigInt(state.transactionIndex),
+    staleTransactionIndex: toBigInt(state.staleTransactionIndex),
     signers: state.signers.map(({ key, permissions }) => ({
       key,
       permissions: { mask: permissions.mask },
@@ -99,7 +107,9 @@ export async function fetchSettings(
 }
 
 /** The seed the next policy on this Account has to take. */
-export function nextPolicySeed(settings: SettingsState): bigint {
+export function nextPolicySeed(
+  settings: Pick<SettingsState, "policySeed">,
+): bigint {
   return (settings.policySeed ?? 0n) + 1n;
 }
 
