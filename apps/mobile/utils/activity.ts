@@ -265,6 +265,61 @@ export function mapTransferRowsToActivityEntries(
   return entries;
 }
 
+/** A swap this phone sent that the chain has not yet reported. */
+export interface PendingSwap {
+  /** The Account that sent it; another signed in on this phone never sees it. */
+  account: string;
+  signature: string;
+  createdAt: string;
+  pay: Omit<SwapSide, "decimals"> & { decimals: number };
+  receive: Omit<SwapSide, "amountRaw" | "decimals">;
+  venues: string[];
+}
+
+/**
+ * Pending swaps as Activity entries, leaving out any the feed already has.
+ *
+ * What was paid is known exactly, because the phone signed it. What came back
+ * is not known until the swap settles, so the received side carries no
+ * precision and the row draws a placeholder in place of its amount.
+ */
+export function pendingSwapEntries(
+  pending: PendingSwap[],
+  rows: TransferRow[],
+  selfAddress: string
+): ActivityEntry[] {
+  const reported = new Set(rows.map((row) => row.signature));
+  return pending
+    .filter(
+      (swap) => swap.account === selfAddress && !reported.has(swap.signature)
+    )
+    .map((swap) => ({
+      id: `swap:${swap.signature}`,
+      direction: "send",
+      status: "pending",
+      kind: "transfer",
+      isSwap: true,
+      merchantName: null,
+      mint: swap.pay.mint,
+      amountRaw: swap.pay.amountRaw,
+      decimals: swap.pay.decimals,
+      iconUrl: swap.pay.iconUrl ?? null,
+      tokenName: swap.pay.name ?? null,
+      tokenSymbol: swap.pay.symbol ?? null,
+      self: selfAddress,
+      counterparty: "",
+      signature: swap.signature,
+      memo: null,
+      createdAt: swap.createdAt,
+      confirmedAt: null,
+      swap: {
+        pay: swap.pay,
+        receive: { ...swap.receive, amountRaw: "0", decimals: null },
+        venues: [...new Set(swap.venues)],
+      },
+    }));
+}
+
 /** "USDC → SOL": what a swap traded, in the order the money moved. */
 export function swapPairLabel(swap: SwapSummary): string {
   const symbol = (side: SwapSide) =>

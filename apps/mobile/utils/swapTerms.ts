@@ -54,6 +54,7 @@ export function bindSwapQuote(
     minOutAmountRaw: floor.toString(),
     slippageBps: quoted.slippageBps,
     venue: quoted.venue,
+    venues: quoted.venues ?? [],
     expiresAt: quoted.expiresAt,
   };
 }

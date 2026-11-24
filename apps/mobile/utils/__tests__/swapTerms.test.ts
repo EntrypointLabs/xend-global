@@ -24,6 +24,14 @@ describe("bindSwapQuote", () => {
     });
   });
 
+  it("carries the route, and an empty one from a backend that sends none", () => {
+    expect(
+      bindSwapQuote(request, { ...quoted, venues: ["AlphaQ", "SolFi V2"] })
+        ?.venues
+    ).toEqual(["AlphaQ", "SolFi V2"]);
+    expect(bindSwapQuote(request, quoted)?.venues).toEqual([]);
+  });
+
   it("refuses a quote that pays more than was asked", () => {
     expect(
       bindSwapQuote(request, { ...quoted, amountInRaw: "10000" })

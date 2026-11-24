@@ -61,6 +61,8 @@ export interface SwapQuote {
   slippageBps: number;
   /** Where the trade is routed, for display. */
   venue: string | null;
+  /** Every venue the route passes through, in order. */
+  venues: string[];
   /** Unix seconds. */
   expiresAt: number;
 }

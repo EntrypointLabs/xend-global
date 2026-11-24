@@ -11,6 +11,7 @@ import {
   isSwapRentRefund,
   mapTransferRowToActivityEntry,
   mapTransferRowsToActivityEntries,
+  pendingSwapEntries,
   statusLabel,
   swapAmountLabel,
   swapPairLabel,
@@ -904,6 +905,52 @@ describe("a swap shown as one trade", () => {
       [leg({ swapDetails: { ...details, venues: [] } })],
       ctx
     );
+    expect(swapVenueLabel(entry.swap!)).toBeNull();
+  });
+});
+
+describe("a swap still on its way", () => {
+  const SOL = "So11111111111111111111111111111111111111112";
+  const sent = {
+    account: SELF,
+    signature: "sig-sent",
+    createdAt: "2026-07-02T10:00:00.000Z",
+    pay: {
+      mint: USDC_MINT,
+      amountRaw: "1000000",
+      decimals: 6,
+      symbol: "USDC",
+      name: "USD Coin",
+    },
+    receive: { mint: SOL, symbol: "SOL", name: "Solana" },
+    venues: ["AlphaQ", "SolFi V2", "AlphaQ"],
+  };
+
+  it("shows from the moment it is sent, paid amount exact and received unknown", () => {
+    const [entry] = pendingSwapEntries([sent], [], SELF);
+    expect(entry.status).toBe("pending");
+    expect(statusLabel(entry)).toBe("Swapping…");
+    expect(swapPairLabel(entry.swap!)).toBe("USDC → SOL");
+    expect(swapVenueLabel(entry.swap!)).toBe("via AlphaQ + 1 more");
+    expect(swapAmountLabel(entry.swap!.pay)).toBe("$1.00");
+    expect(swapAmountLabel(entry.swap!.receive)).toBeNull();
+  });
+
+  it("gives way once the feed reports the swap", () => {
+    expect(
+      pendingSwapEntries([sent], [makeRow({ signature: "sig-sent" })], SELF)
+    ).toEqual([]);
+    expect(
+      pendingSwapEntries([sent], [makeRow({ signature: "other" })], SELF)
+    ).toHaveLength(1);
+  });
+
+  it("is shown only to the Account that sent it", () => {
+    expect(pendingSwapEntries([sent], [], "someone-else")).toEqual([]);
+  });
+
+  it("says it is swapping where the route is not known", () => {
+    const [entry] = pendingSwapEntries([{ ...sent, venues: [] }], [], SELF);
     expect(swapVenueLabel(entry.swap!)).toBeNull();
   });
 });

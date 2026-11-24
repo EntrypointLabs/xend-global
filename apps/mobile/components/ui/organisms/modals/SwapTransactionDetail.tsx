@@ -48,6 +48,7 @@ export function SwapTransactionDetail({
   const date = format(new Date(activityDetailTimestamp(item)), "MMM d, h:mma");
   const received = swapAmountLabel(swap.receive);
   const paid = swapAmountLabel(swap.pay);
+  const unknown = item.status === "pending" ? "Swapping…" : "Not recorded";
   // Led by what the Consumer got, unless its precision was never recorded.
   const lead = received ? `+${received}` : paid ? `-${paid}` : null;
   const beside = received && paid ? `for ${paid} · ${date}` : date;
@@ -99,10 +100,10 @@ export function SwapTransactionDetail({
 
         <Group title="Swap">
           <Row label="You paid">
-            <Value>{paid ?? "Not recorded"}</Value>
+            <Value>{paid ?? unknown}</Value>
           </Row>
           <Row label="You received">
-            <Value>{received ?? "Not recorded"}</Value>
+            <Value>{received ?? unknown}</Value>
           </Row>
           {swap.venues.length > 0 && (
             <Row label="Route">

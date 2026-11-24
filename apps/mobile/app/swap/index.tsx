@@ -159,7 +159,10 @@ function SwapScreen() {
 
   const confirm = async () => {
     if (!quote) return;
-    const outcome = await execute(quote);
+    const outcome = await execute(quote, {
+      pay: payToken,
+      receive: receiveToken,
+    });
     if (outcome.status === "canceled") return;
     if (outcome.status === "failed") {
       showToast(outcome.message);

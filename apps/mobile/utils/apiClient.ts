@@ -562,6 +562,8 @@ export const SwapQuoteResponseSchema = z.object({
   minAmountOutRaw: z.string(),
   slippageBps: z.number().int().nonnegative(),
   venue: z.string().nullable(),
+  /** Absent from a backend older than this build. */
+  venues: z.array(z.string()).optional(),
   expiresAt: z.number(),
 });
 export type SwapQuoteResponse = z.infer<typeof SwapQuoteResponseSchema>;
