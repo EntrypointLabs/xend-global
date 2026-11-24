@@ -1,4 +1,5 @@
 import type { SwapTokenCategory, SwapTokenListing } from "@/utils/swap";
+import { WRAPPED_SOL_MINT } from "@/utils/swap";
 import type {
   AccountResponse,
   ProvisioningStep,
@@ -406,8 +407,100 @@ export function seedTransfers(): TransferListResponse {
           confirmedAt: hoursAgo(146),
         },
       ] satisfies TransferListResponse["transfers"]
-    ).map(withFrozenValue),
+    )
+      .map((row): TransferListResponse["transfers"][number] =>
+        withFrozenValue(row)
+      )
+      .concat(seedSwaps(mint, sig)),
   };
+}
+
+const USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+
+/**
+ * Two swaps, shaped as the chain reports them. The first has its paid side
+ * twice and its received side missing, as real swaps from an Account have
+ * arrived; the second has both sides.
+ */
+function seedSwaps(
+  usdc: string,
+  sig: (s: string) => string
+): TransferListResponse["transfers"] {
+  const venue = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+  const side = (mint: string, amountRaw: string, decimals: number) => ({
+    mint,
+    amountRaw,
+    decimals,
+    tokenName: null as string | null,
+    tokenSymbol: null as string | null,
+    tokenIconUrl: null as string | null,
+  });
+  const solSwap = {
+    pay: side(usdc, "1000000", 6),
+    receive: side(WRAPPED_SOL_MINT, "6342817", 9),
+    venues: ["AlphaQ", "SolFi V2", "HumidiFi", "AlphaQ"],
+  };
+  const usdtSwap = {
+    pay: {
+      ...side(USDT_MINT, "4995400", 6),
+      tokenName: "USDT",
+      tokenSymbol: "USDT",
+    },
+    receive: side(usdc, "4989400", 6),
+    venues: ["AlphaQ"],
+  };
+  const leg = (
+    id: string,
+    signature: string,
+    direction: "SEND" | "RECEIVE",
+    mint: string,
+    amountRaw: string,
+    decimals: number,
+    swapDetails: typeof solSwap,
+    at: number
+  ) => ({
+    id,
+    direction,
+    mint,
+    amountRaw,
+    decimals,
+    fromAddress: direction === "SEND" ? WALLET : venue,
+    toAddress: direction === "SEND" ? venue : WALLET,
+    status: "CONFIRMED" as const,
+    signature,
+    memo: null,
+    kind: "transfer" as const,
+    merchantName: null,
+    swap: true,
+    swapDetails,
+    usdValue: null,
+    createdAt: hoursAgo(at),
+    confirmedAt: hoursAgo(at),
+  });
+  return [
+    leg("t-swap-sol-a", sig("s1"), "SEND", usdc, "1000000", 6, solSwap, 0.1),
+    leg("t-swap-sol-b", sig("s1"), "SEND", usdc, "1000000", 6, solSwap, 0.1),
+    leg(
+      "t-swap-usdt-pay",
+      sig("s2"),
+      "SEND",
+      USDT_MINT,
+      "4995400",
+      6,
+      usdtSwap,
+      0.3
+    ),
+    leg(
+      "t-swap-usdt-get",
+      sig("s2"),
+      "RECEIVE",
+      usdc,
+      "4989400",
+      6,
+      usdtSwap,
+      0.3
+    ),
+  ];
 }
 
 export function seedSessions(): ListSessionsResponse {

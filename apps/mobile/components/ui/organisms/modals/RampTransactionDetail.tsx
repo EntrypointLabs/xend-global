@@ -69,7 +69,7 @@ const OUTCOME_META: Record<RampOutcome, StatusMeta> = {
   },
 };
 
-function Row({
+export function Row({
   label,
   children,
 }: {
@@ -88,7 +88,7 @@ function Row({
   );
 }
 
-function Value({ children }: { children: React.ReactNode }) {
+export function Value({ children }: { children: React.ReactNode }) {
   return (
     <Typography
       weight="600"
@@ -101,7 +101,7 @@ function Value({ children }: { children: React.ReactNode }) {
 }
 
 /** One titled block of rows, the way Monzo gathers a receipt into sections. */
-function Group({
+export function Group({
   title,
   children,
 }: {

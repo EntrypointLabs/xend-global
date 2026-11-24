@@ -28,6 +28,7 @@ import {
   type StatusMeta,
 } from "./RampTransactionDetail";
 import { formatDollarsMinor } from "@/utils/ramp";
+import { SwapTransactionDetail } from "./SwapTransactionDetail";
 
 interface TransactionDetailModalProps {
   visible: boolean;
@@ -94,6 +95,19 @@ export function TransactionDetailModal({
         visible={visible}
         onClose={onClose}
         item={item}
+        status={status}
+        onCopy={copyToClipboard}
+      />
+    );
+  }
+
+  if (item.swap) {
+    return (
+      <SwapTransactionDetail
+        visible={visible}
+        onClose={onClose}
+        item={item}
+        swap={item.swap}
         status={status}
         onCopy={copyToClipboard}
       />

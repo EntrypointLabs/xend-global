@@ -818,6 +818,14 @@ export const swaps = pgTable('swaps', {
   /** Integer strings at each mint's own decimals. The output is as quoted. */
   amountInRaw: text('amount_in_raw').notNull(),
   amountOutRaw: text('amount_out_raw').notNull(),
+  /**
+   * The venues the route ran through, in order, as the provider names them.
+   * Null on swaps recorded before this was kept.
+   */
+  venues: text('venues').array(),
+  /** Each mint's decimals, so the trade can be shown without looking them up. */
+  inputDecimals: integer('input_decimals'),
+  outputDecimals: integer('output_decimals'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

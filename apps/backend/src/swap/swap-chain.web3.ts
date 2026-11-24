@@ -32,13 +32,21 @@ const MAX_COMPUTE_UNITS = 1_400_000;
  */
 const COMPUTE_HEADROOM = 1.3;
 
+const MINT_DECIMALS = 44;
+
 /** Chain reads and transaction assembly for swaps, on web3.js per ADR 0020. */
 @Injectable()
 export class Web3SwapChain implements SwapChain, OnModuleInit {
   private readonly logger = new Logger(Web3SwapChain.name);
   private rpc!: Connection;
-  /** A mint's owner never changes, and every quote asks for two of them. */
-  private readonly tokenPrograms = new Map<string, PublicKey>();
+  /**
+   * A mint's owner and decimals never change, and every quote asks for two
+   * mints, so each is read from the chain once.
+   */
+  private readonly mints = new Map<
+    string,
+    { program: PublicKey; decimals: number }
+  >();
 
   get feePayer(): string {
     return this.authority.address;
@@ -58,14 +66,27 @@ export class Web3SwapChain implements SwapChain, OnModuleInit {
   }
 
   async tokenProgramFor(mint: PublicKey): Promise<PublicKey> {
-    const known = this.tokenPrograms.get(mint.toBase58());
+    return (await this.mint(mint)).program;
+  }
+
+  async decimalsFor(mint: PublicKey): Promise<number> {
+    return (await this.mint(mint)).decimals;
+  }
+
+  private async mint(
+    mint: PublicKey,
+  ): Promise<{ program: PublicKey; decimals: number }> {
+    const known = this.mints.get(mint.toBase58());
     if (known) return known;
     const info = await this.rpc.getAccountInfo(mint, 'confirmed');
     if (!info) {
       throw new NoSwapRouteError(`Mint ${mint.toBase58()} does not exist`);
     }
-    this.tokenPrograms.set(mint.toBase58(), info.owner);
-    return info.owner;
+    // The base mint layout is shared by Token and Token-2022, with decimals
+    // as the single byte after supply.
+    const read = { program: info.owner, decimals: info.data[MINT_DECIMALS] };
+    this.mints.set(mint.toBase58(), read);
+    return read;
   }
 
   async exists(addresses: PublicKey[]): Promise<boolean[]> {

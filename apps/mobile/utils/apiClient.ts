@@ -641,6 +641,15 @@ const MerchantCategorySchema = z
   .nullish()
   .catch(null);
 
+const SwapSideSchema = z.object({
+  mint: z.string(),
+  amountRaw: z.string(),
+  decimals: z.number().nullish(),
+  tokenName: z.string().nullish(),
+  tokenSymbol: z.string().nullish(),
+  tokenIconUrl: z.string().nullish(),
+});
+
 export const TransferRowSchema = z.object({
   id: z.string(),
   direction: z.enum(["SEND", "RECEIVE"]),
@@ -658,6 +667,18 @@ export const TransferRowSchema = z.object({
   merchantName: z.string().nullable(),
   /** One side of the Consumer's own swap, so the other party is a venue. */
   swap: z.boolean().optional(),
+  /**
+   * The whole swap, on each of its rows. Dropped rather than failing the feed
+   * if it ever arrives in a shape this build does not know.
+   */
+  swapDetails: z
+    .object({
+      pay: SwapSideSchema,
+      receive: SwapSideSchema,
+      venues: z.array(z.string()),
+    })
+    .optional()
+    .catch(undefined),
   /** Set only on Payments. May 404, so it is a candidate, not a promise. */
   merchantLogoUrl: z.string().nullish(),
   merchantCategory: MerchantCategorySchema,

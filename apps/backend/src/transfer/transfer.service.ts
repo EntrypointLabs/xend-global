@@ -623,15 +623,15 @@ export class TransferService {
    * themselves come from the chain indexer, which cannot tell a swap's two
    * sides from a payment out and a payment in.
    */
-  private async swapSignaturesAmong(
+  private async swapsAmong(
     signatures: string[],
-  ): Promise<Set<string>> {
-    if (signatures.length === 0) return new Set();
+  ): Promise<Map<string, typeof swaps.$inferSelect>> {
+    if (signatures.length === 0) return new Map();
     const rows = await this.db.client
-      .select({ signature: swaps.signature })
+      .select()
       .from(swaps)
       .where(inArray(swaps.signature, signatures));
-    return new Set(rows.map((row) => row.signature));
+    return new Map(rows.map((row) => [row.signature, row]));
   }
 
   /**
@@ -798,10 +798,45 @@ export class TransferService {
     // Named per page rather than per holding, so a row keeps its identity
     // after the Consumer has sold the token. Cheap: the provider caches, and
     // a page rarely spans more than a handful of mints.
-    const metadata = await this.tokenMetadataFor(page.map((r) => r.mint));
-    const swapped = await this.swapSignaturesAmong(
+    const swapped = await this.swapsAmong(
       page.flatMap((r) => (r.signature ? [r.signature] : [])),
     );
+    const swapMints = [...swapped.values()].flatMap((swap) => [
+      swap.inputMint,
+      swap.outputMint,
+    ]);
+    const metadata = await this.tokenMetadataFor([
+      ...page.map((r) => r.mint),
+      ...swapMints,
+    ]);
+    const swapSide = (
+      mint: string,
+      amountRaw: string,
+      decimals: number | null,
+    ) => ({
+      mint,
+      amountRaw,
+      decimals,
+      tokenName: metadata.get(mint)?.name ?? null,
+      tokenSymbol: metadata.get(mint)?.symbol ?? null,
+      tokenIconUrl: metadata.get(mint)?.iconUrl ?? null,
+    });
+    const swapDetailsFor = (signature: string | null) => {
+      const swap = signature ? swapped.get(signature) : undefined;
+      if (!swap) return {};
+      return {
+        swap: true,
+        swapDetails: {
+          pay: swapSide(swap.inputMint, swap.amountInRaw, swap.inputDecimals),
+          receive: swapSide(
+            swap.outputMint,
+            swap.amountOutRaw,
+            swap.outputDecimals,
+          ),
+          venues: swap.venues ?? [],
+        },
+      };
+    };
     const ramps = await this.ramps.forUser(userId, page);
 
     const nextCursor = hasMore
@@ -840,7 +875,7 @@ export class TransferService {
           // Defensive default: the column is notNull default 'transfer'.
           kind: r.kind ?? 'transfer',
           merchantName: r.merchantName ?? null,
-          ...(r.signature && swapped.has(r.signature) ? { swap: true } : {}),
+          ...swapDetailsFor(r.signature),
           merchantCategory: r.merchantCategory ?? null,
           merchantLogoUrl: r.merchantId
             ? merchantLogoUrl(
