@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from "react";
+import { usePendingSwaps } from "@/utils/pendingSwaps";
 import { ActivityIndicator, View } from "react-native";
 import { PhotoScreen, useSurface } from "@/components/ui/glass";
 import { Typography } from "@/components/ui/atoms/Typography";
@@ -24,6 +25,7 @@ import {
   groupIntoSections,
   mapAccountEventToActivityEntry,
   mapTransferRowsToActivityEntries,
+  pendingSwapEntries,
   type ActivityEntry,
 } from "@/utils/activity";
 import { requestApproval } from "@/utils/approvalRequests";
@@ -48,10 +50,18 @@ export default function HistoryScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const transferRows = mapTransferRowsToActivityEntries(
-    data?.pages.flatMap((page) => page.transfers) ?? [],
-    { selfAddress: address ?? "", decimalsByMint, iconsByMint }
-  );
+  const pendingSwaps = usePendingSwaps();
+  const rawTransfers = data?.pages.flatMap((page) => page.transfers) ?? [];
+  // A swap shows from the moment it is sent, not from when the chain reports
+  // it, and gives way to the reported row as soon as that arrives.
+  const transferRows = [
+    ...pendingSwapEntries(pendingSwaps, rawTransfers, address ?? ""),
+    ...mapTransferRowsToActivityEntries(rawTransfers, {
+      selfAddress: address ?? "",
+      decimalsByMint,
+      iconsByMint,
+    }),
+  ];
 
   // Merged for display only. The events deliberately do not live in
   // `page.transfers`, because the balance chart walks that array and would

@@ -1,5 +1,13 @@
+import { useEffect } from "react";
 import { Image, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 import { Typography } from "../atoms/Typography";
 import type { ActivityEntry, SwapSummary } from "@/utils/activity";
 import {
@@ -45,6 +53,7 @@ function useRowTone() {
         hairline: "border-black/[0.08]",
         glyph: "#00000059",
         chevron: "#00000040",
+        placeholder: "bg-white/40",
       }
     : {
         ink: "text-foreground",
@@ -55,6 +64,7 @@ function useRowTone() {
         hairline: "border-foreground/[0.08]",
         glyph: palette.fg(0.35),
         chevron: palette.fg(0.25),
+        placeholder: "bg-foreground/[0.08]",
       };
 }
 
@@ -321,9 +331,14 @@ function SwapItem({
 }) {
   const tone = useRowTone();
   const settled = entry.status === "confirmed";
+  const failed = entry.status === "failed";
   const route = swapVenueLabel(swap);
   const received = swapAmountLabel(swap.receive);
   const paid = swapAmountLabel(swap.pay);
+  // Where it is going is known from the quote; how it is doing is not, so a
+  // running swap names its route when it has one and says it is swapping
+  // when it does not.
+  const subtitle = failed ? statusLabel(entry) : (route ?? statusLabel(entry));
 
   return (
     <HapticPressable
@@ -345,29 +360,33 @@ function SwapItem({
             numberOfLines={1}
             className={cn("text-sm", tone.muted)}
           >
-            {settled ? (route ?? statusLabel(entry)) : statusLabel(entry)}
+            {subtitle}
           </Typography>
         </View>
         <View className="items-end gap-0.5">
-          {received && (
+          {received ? (
             <Typography
               weight="600"
               className={cn(
                 "text-sm tracking-[0.5px]",
                 settled ? tone.up : tone.muted,
-                entry.status === "failed" && "line-through"
+                failed && "line-through"
               )}
             >
               +{received}
             </Typography>
+          ) : (
+            entry.status === "pending" && (
+              <AmountPlaceholder className={tone.placeholder} />
+            )
           )}
           {paid && (
             <Typography
               weight="600"
               className={cn(
                 "text-sm tracking-[0.5px]",
-                settled ? tone.down : tone.muted,
-                entry.status === "failed" && "line-through"
+                failed ? tone.muted : tone.down,
+                failed && "line-through"
               )}
             >
               -{paid}
@@ -376,6 +395,28 @@ function SwapItem({
         </View>
       </View>
     </HapticPressable>
+  );
+}
+
+/**
+ * Holds the place of an amount not known yet, at the height of the line it
+ * stands in for, so the row does not shift when the figure arrives.
+ */
+function AmountPlaceholder({ className }: { className: string }) {
+  const reduceMotion = useReducedMotion();
+  const shown = useSharedValue(1);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    shown.value = withRepeat(withTiming(0.4, { duration: 800 }), -1, true);
+  }, [reduceMotion, shown]);
+
+  const pulse = useAnimatedStyle(() => ({ opacity: shown.value }));
+
+  return (
+    <Animated.View style={pulse}>
+      <View className={cn("my-[3px] h-3.5 w-20 rounded-full", className)} />
+    </Animated.View>
   );
 }
 

@@ -1,4 +1,6 @@
 import React, { useCallback, useState } from "react";
+import { addPendingSwap, removePendingSwap } from "@/utils/pendingSwaps";
+import type { SwapPair } from "@/utils/swapPair";
 import { ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
@@ -66,7 +68,7 @@ export function useExecuteSwap() {
   const [isExecuting, setIsExecuting] = useState(false);
 
   const execute = useCallback(
-    async (quote: SwapQuote): Promise<SwapOutcome> => {
+    async (quote: SwapQuote, pair: SwapPair): Promise<SwapOutcome> => {
       const wallet = embedded.wallets?.[0];
       if (!wallet || !account) return { status: "failed", message: NOT_READY };
 
@@ -149,6 +151,25 @@ export function useExecuteSwap() {
         }
 
         const { signature } = await apiClient.submitSwap(signedBase64);
+        addPendingSwap({
+          signature,
+          createdAt: new Date().toISOString(),
+          pay: {
+            mint: pair.pay.mint,
+            amountRaw: quote.amountInRaw,
+            decimals: pair.pay.decimals,
+            name: pair.pay.name,
+            symbol: pair.pay.symbol,
+            iconUrl: pair.pay.iconUrl,
+          },
+          receive: {
+            mint: pair.receive.mint,
+            name: pair.receive.name,
+            symbol: pair.receive.symbol,
+            iconUrl: pair.receive.iconUrl,
+          },
+          venues: quote.venues,
+        });
         followToOutcome(signature, queryClient);
         return { status: "submitted", signature };
       } catch (error) {
@@ -197,6 +218,8 @@ function followToOutcome(signature: string, queryClient: QueryClient) {
         { id: SWAP_TOAST_ID, tone: "success" }
       );
     } else if (outcome === "failed") {
+      // Nothing changed hands, so there is nothing for Activity to show.
+      removePendingSwap(signature);
       showToast(
         "Swap failed",
         <Ionicons name="close-circle" size={16} className="text-destructive" />,
