@@ -6,7 +6,13 @@ const SOL = "So11111111111111111111111111111111111111112";
 const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const JUP = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN";
 
-const token = (mint: string, owner: string, amount: string) => ({
+const token = (
+  mint: string,
+  owner: string,
+  amount: string,
+  accountIndex = 2
+) => ({
+  accountIndex,
   mint,
   owner,
   uiTokenAmount: { amount },
@@ -58,6 +64,30 @@ describe("receivedBySwap", () => {
           preTokenBalances: [token(SOL, VAULT, "0")],
           postTokenBalances: [token(SOL, VAULT, "6342817")],
         }),
+        VAULT,
+        SOL
+      )
+    ).toBe("6342817");
+  });
+
+  it("does not count the rent of a wrapped account the swap closed", () => {
+    // The vault held a wrapped SOL account with 0.001 SOL in it. The swap
+    // closed it, so its tokens, its 0.00203928 SOL of rent and the 0.0063
+    // SOL bought all land in the vault as plain SOL.
+    const rent = 2_039_280;
+    expect(
+      receivedBySwap(
+        {
+          accountKeys: ["FeePayer", VAULT, "VaultWsol"],
+          preBalances: [5_000_000, 15_000_000, rent + 1_000_000],
+          postBalances: [
+            5_000_000,
+            15_000_000 + 1_000_000 + rent + 6_342_817,
+            0,
+          ],
+          preTokenBalances: [token(SOL, VAULT, "1000000", 2)],
+          postTokenBalances: [],
+        },
         VAULT,
         SOL
       )
