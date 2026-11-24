@@ -51,6 +51,9 @@ final class PrivacyCover {
   private var window: UIWindow?
   private var backgroundedAt: Date?
   private var holding = false
+  /// Bumped whenever a hold is started or cancelled, so a release left over
+  /// from an earlier return cannot clear a cover put up since.
+  private var holdGeneration = 0
 
   func start() {
     DispatchQueue.main.async { [self] in
@@ -112,7 +115,7 @@ final class PrivacyCover {
   /// JS has put the lock screen up, so the blur held over it can go.
   func reveal() {
     DispatchQueue.main.async { [self] in
-      guard holding else { return }
+      guard holding, isActive() else { return }
       holding = false
       hide()
     }
@@ -125,12 +128,16 @@ final class PrivacyCover {
   }
 
   @objc private func willResignActive() {
+    // Leaving again before the lock screen is drawn: the cover now stays for
+    // the new trip out, not for the return that started the hold.
+    cancelHold()
     let now = snapshot()
     guard now.enabled, !now.prompting else { return }
     show()
   }
 
   @objc private func didEnterBackground() {
+    cancelHold()
     backgroundedAt = Date()
     // Leaving the app while a prompt is up is still leaving it.
     if snapshot().enabled { show() }
@@ -144,15 +151,26 @@ final class PrivacyCover {
       // The app is about to lock. Keep the blur until the lock screen is
       // drawn, or the Account shows for the frames in between.
       holding = true
+      holdGeneration += 1
+      let generation = holdGeneration
       DispatchQueue.main.asyncAfter(deadline: .now() + Self.holdTimeout) { [self] in
-        guard holding else { return }
+        guard holding, generation == holdGeneration, isActive() else { return }
         holding = false
         hide()
       }
       return
     }
-    holding = false
+    cancelHold()
     hide()
+  }
+
+  private func cancelHold() {
+    holding = false
+    holdGeneration += 1
+  }
+
+  private func isActive() -> Bool {
+    UIApplication.shared.applicationState == .active
   }
 
   private func show() {
