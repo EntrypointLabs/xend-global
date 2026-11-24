@@ -56,6 +56,7 @@ export function PendingChangeNotice() {
     <PendingChangeModal
       visible
       startedHere={startedHere(change.transactionIndex)}
+      kind={change.kind}
       executableAt={change.executableAt}
       rejecting={reject.isPending}
       error={
