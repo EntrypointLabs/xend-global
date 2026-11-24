@@ -71,6 +71,16 @@ export type SubmitResponse = z.infer<typeof SubmitResponseSchema>;
 
 // ── GET /transfers ──────────────────────────────────────────────────
 
+const SwapSideSchema = z.object({
+  mint: z.string(),
+  /** As quoted. The row for this side, when there is one, has what moved. */
+  amountRaw: z.string(),
+  decimals: z.number().int().nullable(),
+  tokenName: z.string().nullable(),
+  tokenSymbol: z.string().nullable(),
+  tokenIconUrl: z.string().nullable(),
+});
+
 export const TransferRowSchema = z.object({
   id: z.string(),
   direction: z.enum(['SEND', 'RECEIVE']),
@@ -96,6 +106,19 @@ export const TransferRowSchema = z.object({
    * by. Absent on an ordinary transfer.
    */
   swap: z.boolean().optional(),
+  /**
+   * The whole swap this movement was one side of, so a client can show it as
+   * one trade. Carried on every row of the swap, because the chain does not
+   * always report both sides as transfers.
+   */
+  swapDetails: z
+    .object({
+      pay: SwapSideSchema,
+      receive: SwapSideSchema,
+      /** The venues the route ran through, in order. Empty when not kept. */
+      venues: z.array(z.string()),
+    })
+    .optional(),
   /**
    * What the transfer was worth in USD when it happened, as a decimal string.
    *

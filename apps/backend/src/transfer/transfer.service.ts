@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createId } from '@paralleldrive/cuid2';
-import { eq, and, inArray, lt, or, desc, sql } from 'drizzle-orm';
+import { eq, and, inArray, isNotNull, lt, or, desc, sql } from 'drizzle-orm';
 import {
   PublicKey,
   TransactionInstruction,
@@ -623,15 +623,38 @@ export class TransferService {
    * themselves come from the chain indexer, which cannot tell a swap's two
    * sides from a payment out and a payment in.
    */
-  private async swapSignaturesAmong(
+  private async swapsAmong(
     signatures: string[],
-  ): Promise<Set<string>> {
-    if (signatures.length === 0) return new Set();
+  ): Promise<Map<string, typeof swaps.$inferSelect>> {
+    if (signatures.length === 0) return new Map();
     const rows = await this.db.client
-      .select({ signature: swaps.signature })
+      .select()
       .from(swaps)
       .where(inArray(swaps.signature, signatures));
-    return new Set(rows.map((row) => row.signature));
+    return new Map(rows.map((row) => [row.signature, row]));
+  }
+
+  /**
+   * Decimals for mints, from any transfer of them ever indexed. A swap's
+   * received side is not always indexed as a transfer of its own, so the
+   * page being read cannot be relied on to carry it.
+   */
+  private async decimalsFor(mints: string[]): Promise<Map<string, number>> {
+    const distinct = [...new Set(mints)];
+    if (distinct.length === 0) return new Map();
+    const rows = await this.db.client
+      .selectDistinct({ mint: transfers.mint, decimals: transfers.decimals })
+      .from(transfers)
+      .where(
+        and(inArray(transfers.mint, distinct), isNotNull(transfers.decimals)),
+      );
+    return new Map(
+      rows.flatMap((row) =>
+        typeof row.decimals === 'number'
+          ? [[row.mint, row.decimals] as const]
+          : [],
+      ),
+    );
   }
 
   /**
@@ -798,10 +821,38 @@ export class TransferService {
     // Named per page rather than per holding, so a row keeps its identity
     // after the Consumer has sold the token. Cheap: the provider caches, and
     // a page rarely spans more than a handful of mints.
-    const metadata = await this.tokenMetadataFor(page.map((r) => r.mint));
-    const swapped = await this.swapSignaturesAmong(
+    const swapped = await this.swapsAmong(
       page.flatMap((r) => (r.signature ? [r.signature] : [])),
     );
+    const swapMints = [...swapped.values()].flatMap((swap) => [
+      swap.inputMint,
+      swap.outputMint,
+    ]);
+    const metadata = await this.tokenMetadataFor([
+      ...page.map((r) => r.mint),
+      ...swapMints,
+    ]);
+    const swapDecimals = await this.decimalsFor(swapMints);
+    const swapSide = (mint: string, amountRaw: string) => ({
+      mint,
+      amountRaw,
+      decimals: swapDecimals.get(mint) ?? null,
+      tokenName: metadata.get(mint)?.name ?? null,
+      tokenSymbol: metadata.get(mint)?.symbol ?? null,
+      tokenIconUrl: metadata.get(mint)?.iconUrl ?? null,
+    });
+    const swapDetailsFor = (signature: string | null) => {
+      const swap = signature ? swapped.get(signature) : undefined;
+      if (!swap) return {};
+      return {
+        swap: true,
+        swapDetails: {
+          pay: swapSide(swap.inputMint, swap.amountInRaw),
+          receive: swapSide(swap.outputMint, swap.amountOutRaw),
+          venues: swap.venues ?? [],
+        },
+      };
+    };
     const ramps = await this.ramps.forUser(userId, page);
 
     const nextCursor = hasMore
@@ -840,7 +891,7 @@ export class TransferService {
           // Defensive default: the column is notNull default 'transfer'.
           kind: r.kind ?? 'transfer',
           merchantName: r.merchantName ?? null,
-          ...(r.signature && swapped.has(r.signature) ? { swap: true } : {}),
+          ...swapDetailsFor(r.signature),
           merchantCategory: r.merchantCategory ?? null,
           merchantLogoUrl: r.merchantId
             ? merchantLogoUrl(

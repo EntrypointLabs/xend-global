@@ -1,0 +1,1 @@
+ALTER TABLE "swaps" ADD COLUMN "venues" text[];

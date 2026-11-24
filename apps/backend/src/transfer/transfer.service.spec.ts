@@ -65,8 +65,8 @@ type TransfersRow = typeof transfers.$inferSelect;
 interface FakeStore {
   smartAccounts: SmartAccountsRow[];
   transfers: TransfersRow[];
-  /** Signatures this backend broadcast as swaps. */
-  swaps?: { signature: string }[];
+  /** Swaps this backend broadcast. */
+  swaps?: Partial<typeof swaps.$inferSelect>[];
 }
 
 type Collection = 'smartAccounts' | 'transfers' | 'swaps';
@@ -125,6 +125,9 @@ function makeFakeDb(store: FakeStore): DbService {
     select: () => ({
       from: (tbl: unknown) => makeSelectChain(collectionFor(tbl)),
     }),
+    selectDistinct: () => ({
+      from: (tbl: unknown) => makeSelectChain(collectionFor(tbl)),
+    }),
     insert: (tbl: unknown) => {
       const collection = collectionFor(tbl);
       return {
@@ -169,6 +172,7 @@ function makeFakeDb(store: FakeStore): DbService {
 // ── Test fixtures ─────────────────────────────────────────────────────
 
 const usdcMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
 const usdtMint = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 const bonkMint = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
 
@@ -1235,7 +1239,16 @@ describe('TransferService.list', () => {
       store: {
         smartAccounts: [account],
         transfers: [leg('t_swap', 'sig_swap'), leg('t_send', 'sig_send')],
-        swaps: [{ signature: 'sig_swap' }],
+        swaps: [
+          {
+            signature: 'sig_swap',
+            inputMint: usdcMint,
+            outputMint: WRAPPED_SOL,
+            amountInRaw: '100000000',
+            amountOutRaw: '1440000000',
+            venues: ['AlphaQ', 'SolFi V2'],
+          },
+        ],
       },
     });
 
@@ -1244,6 +1257,58 @@ describe('TransferService.list', () => {
       ['t_swap', true],
       ['t_send', undefined],
     ]);
+    // Both sides ride on the one row the chain reported, so the trade can be
+    // shown whole even when its received side was never indexed.
+    expect(out.transfers[0].swapDetails).toMatchObject({
+      pay: { mint: usdcMint, amountRaw: '100000000' },
+      receive: { mint: WRAPPED_SOL, amountRaw: '1440000000', decimals: null },
+      venues: ['AlphaQ', 'SolFi V2'],
+    });
+    expect(out.transfers[1].swapDetails).toBeUndefined();
+  });
+
+  it('sends no venues for a swap recorded before they were kept', async () => {
+    const account = makeAccount();
+    const { service } = makeService({
+      solana: makeSolana({}),
+      account,
+      store: {
+        smartAccounts: [account],
+        transfers: [
+          {
+            id: 't_swap',
+            smartAccountId: account.id,
+            signature: 'sig_swap',
+            direction: 'SEND',
+            mint: usdcMint,
+            amountRaw: '100000000',
+            fromAddress: account.walletAddress,
+            toAddress: Keypair.generate().publicKey.toBase58(),
+            status: 'CONFIRMED',
+            decimals: 6,
+            createdAt: new Date('2026-02-02'),
+            confirmedAt: null,
+            kind: 'transfer',
+          } as unknown as TransfersRow,
+        ],
+        swaps: [
+          {
+            signature: 'sig_swap',
+            inputMint: usdcMint,
+            outputMint: WRAPPED_SOL,
+            amountInRaw: '100000000',
+            amountOutRaw: '1440000000',
+            venues: null,
+          },
+        ],
+      },
+    });
+
+    const out = await service.list('u_test');
+    expect(out.transfers[0].swapDetails).toMatchObject({
+      pay: { decimals: 6 },
+      venues: [],
+    });
   });
 
   it('maps a plain transfer to kind=transfer with a null merchant name', async () => {

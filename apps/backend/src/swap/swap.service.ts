@@ -271,6 +271,7 @@ export class SwapService {
         outputMint: price.outputMint,
         amountInRaw: price.amountInRaw,
         amountOutRaw: price.amountOutRaw,
+        venues: price.venues,
       },
       PREPARED_TX_TTL_SECONDS,
     );

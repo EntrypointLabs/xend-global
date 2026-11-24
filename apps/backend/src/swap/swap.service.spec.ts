@@ -542,6 +542,7 @@ describe('SwapService', () => {
           outputMint: WRAPPED_SOL_MINT.toBase58(),
           amountInRaw: '100000000',
           amountOutRaw: '1440000000',
+          venues: ['Whirlpool'],
         },
       ]);
       // A second submit of the same bytes finds nothing prepared.

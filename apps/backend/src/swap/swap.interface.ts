@@ -16,6 +16,8 @@ export interface SwapRecord {
   outputMint: string;
   amountInRaw: string;
   amountOutRaw: string;
+  /** The venues the route ran through, in order. */
+  venues: string[];
 }
 
 export interface SwapRecords {
