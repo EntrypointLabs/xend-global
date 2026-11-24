@@ -94,7 +94,19 @@ final class PrivacyCover {
   func endPrompt() {
     state.lock()
     openPrompts = max(0, openPrompts - 1)
+    let lastPrompt = openPrompts == 0
     state.unlock()
+    guard lastPrompt else { return }
+    // A resign that came while the prompt was being answered was skipped, and
+    // Notification Center keeps the app inactive without another one. If the
+    // app is still not active once the prompt is done, the Consumer has left.
+    DispatchQueue.main.async { [self] in
+      let now = snapshot()
+      guard now.enabled, !now.prompting,
+        UIApplication.shared.applicationState != .active
+      else { return }
+      show()
+    }
   }
 
   /// JS has put the lock screen up, so the blur held over it can go.
