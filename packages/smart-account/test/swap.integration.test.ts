@@ -17,12 +17,13 @@ import {
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
+  SystemProgram,
   TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
   type Connection,
 } from "@solana/web3.js";
-import { accounts } from "@sqds/smart-account";
+import { accounts, instructions, utils } from "@sqds/smart-account";
 import { LiteSVM } from "litesvm";
 import { describe, expect, it } from "vitest";
 
@@ -35,6 +36,7 @@ import {
   buildProvisionAccount,
   ABOVE_LIMIT_PROGRAM_ALLOWLIST,
   buildSwap,
+  buildSwapOnAllowance,
   buildUpdateAboveLimitAllowlist,
   decodeAllowedPrograms,
   derivePolicyAddress,
@@ -42,6 +44,7 @@ import {
   describeTransaction,
   fetchStagedSettingsChange,
   JUPITER_PROGRAM_ID,
+  JUPITER_ROUTE_ACCOUNTS,
   minimumAmountOut,
   SETTINGS_TIME_LOCK_SECONDS,
   SYSTEM_PROGRAM_ID,
@@ -685,6 +688,319 @@ describe.skipIf(!HAVE_FIXTURES)(
           h.snapshot.slippageBps,
         ),
       );
+    });
+  },
+);
+
+/*
+ * A swap on an Account whose policy has never heard of Jupiter.
+ *
+ * The vault does not call Jupiter. It lends the primary signer an allowance
+ * for exactly the amount being swapped, which is a Token instruction every
+ * Account's policy already admits, and Jupiter is called beside the vault with
+ * the primary signer as the transfer authority. Source and destination are
+ * still the vault's own token accounts, so nothing leaves it, and the whole
+ * thing is one transaction: no settings change, so no time lock.
+ */
+describe.skipIf(!HAVE_FIXTURES)(
+  "a swap on an Account that never added Jupiter to its policy",
+  () => {
+    const BEFORE_JUPITER = ABOVE_LIMIT_PROGRAM_ALLOWLIST.filter(
+      (program) => !program.equals(JUPITER_PROGRAM_ID),
+    );
+    const TOKEN_APPROVE = 4;
+    const TOKEN_CLOSE_ACCOUNT = 9;
+
+    const vaultAccount = (h: Harness, mint: PublicKey) =>
+      associatedTokenAddress(h.addresses.vault, mint, TOKEN_PROGRAM_ID);
+
+    /** The vault acting under its above-limit policy, both keys signing. */
+    function asVault(
+      h: Harness,
+      inner: TransactionInstruction[],
+    ): TransactionInstruction {
+      const compiled = utils.instructionsToSynchronousTransactionDetails({
+        vaultPda: h.addresses.vault,
+        members: [],
+        transaction_instructions: inner,
+      });
+      return instructions.executePolicyPayloadSync({
+        policy: h.abovePolicy,
+        accountIndex: 0,
+        numSigners: 2,
+        policyPayload: {
+          __kind: "ProgramInteraction",
+          fields: [
+            {
+              instructionConstraintIndices: Uint8Array.from(
+                inner.map((ix) =>
+                  BEFORE_JUPITER.findIndex((p) => p.equals(ix.programId)),
+                ),
+              ),
+              transactionPayload: {
+                __kind: "SyncTransaction",
+                fields: [
+                  { accountIndex: 0, instructions: compiled.instructions },
+                ],
+              },
+            },
+          ],
+        },
+        instruction_accounts: [
+          ...[h.primary, h.approval].map((signer) => ({
+            pubkey: signer.publicKey,
+            isSigner: true,
+            isWritable: false,
+          })),
+          ...compiled.accounts,
+        ],
+      });
+    }
+
+    function approve(h: Harness, mint: PublicKey, amount: bigint) {
+      const data = Buffer.alloc(9);
+      data.writeUInt8(TOKEN_APPROVE, 0);
+      data.writeBigUInt64LE(amount, 1);
+      return new TransactionInstruction({
+        programId: TOKEN_PROGRAM_ID,
+        keys: [
+          { pubkey: vaultAccount(h, mint), isSigner: false, isWritable: true },
+          { pubkey: h.primary.publicKey, isSigner: false, isWritable: false },
+          // Writable only because the SDK's compiler wants a writable signer.
+          { pubkey: h.addresses.vault, isSigner: true, isWritable: true },
+        ],
+        data,
+      });
+    }
+
+    function closeWrapped(h: Harness) {
+      return new TransactionInstruction({
+        programId: TOKEN_PROGRAM_ID,
+        keys: [
+          {
+            pubkey: vaultAccount(h, WRAPPED_SOL_MINT),
+            isSigner: false,
+            isWritable: true,
+          },
+          { pubkey: h.addresses.vault, isSigner: false, isWritable: true },
+          { pubkey: h.addresses.vault, isSigner: true, isWritable: true },
+        ],
+        data: Buffer.from([TOKEN_CLOSE_ACCOUNT]),
+      });
+    }
+
+    const refundRent = (h: Harness) =>
+      SystemProgram.transfer({
+        fromPubkey: h.addresses.vault,
+        toPubkey: h.feePayer.publicKey,
+        lamports: TOKEN_ACCOUNT_RENT_LAMPORTS,
+      });
+
+    /** The same route, with the primary signer moving the tokens. */
+    function routeBesideTheVault(h: Harness, authority = h.primary.publicKey) {
+      return new TransactionInstruction({
+        programId: h.route.programId,
+        data: h.route.data,
+        keys: h.route.keys.map((key, i) =>
+          i === JUPITER_ROUTE_ACCOUNTS.transferAuthority
+            ? { pubkey: authority, isSigner: true, isWritable: false }
+            : key,
+        ),
+      });
+    }
+
+    const delegated = (h: Harness, mint: PublicKey): bigint => {
+      const account = h.svm.getAccount(vaultAccount(h, mint));
+      if (!account) return 0n;
+      const data = Buffer.from(account.data);
+      // COption<Pubkey> delegate at 72, delegated_amount at 121.
+      return data.readUInt32LE(72) === 0 ? 0n : data.readBigUInt64LE(121);
+    };
+
+    /** The swap as the package builds it for an Account without Jupiter. */
+    function onAllowance(
+      h: Harness,
+      sol: { wrapInput?: boolean; unwrapOutput?: boolean },
+    ) {
+      return buildSwapOnAllowance({
+        addresses: h.addresses,
+        policy: h.abovePolicy,
+        signers: [h.primary.publicKey, h.approval.publicKey],
+        delegate: h.primary.publicKey,
+        route: h.route,
+        refundRentTo: h.feePayer.publicKey,
+        allowedPrograms: BEFORE_JUPITER,
+        ...sol,
+      });
+    }
+
+    function usdcToSol(h: Harness, amountApproved?: bigint) {
+      const usdc = new PublicKey(h.snapshot.inputMint);
+      return transaction(
+        h,
+        amountApproved === undefined
+          ? [
+              openTokenAccount(h, WRAPPED_SOL_MINT),
+              ...onAllowance(h, { unwrapOutput: true }),
+            ]
+          : [
+              openTokenAccount(h, WRAPPED_SOL_MINT),
+              asVault(h, [approve(h, usdc, amountApproved)]),
+              routeBesideTheVault(h),
+              asVault(h, [closeWrapped(h), refundRent(h)]),
+            ],
+        [h.primary, h.approval],
+      );
+    }
+
+    it("turns USDC into SOL in one transaction, with no change to the policy", () => {
+      const h = setUp(USDC_TO_SOL, BEFORE_JUPITER);
+      const usdc = new PublicKey(h.snapshot.inputMint);
+      const amountIn = BigInt(h.snapshot.amountIn);
+      fundToken(h, usdc, amountIn + 5_000_000n);
+
+      const tx = usdcToSol(h);
+      expect(tx.serialize().length).toBeLessThanOrEqual(MAX_TRANSACTION_BYTES);
+      // What a signer is shown is the swap that then happens.
+      expect(
+        describeTransaction(Buffer.from(tx.serialize()).toString("base64"), {
+          addresses: h.addresses,
+          lookupTables: h.lookupTables,
+        }),
+      ).toMatchObject({
+        kind: "swap",
+        outputMint: "SOL",
+        amountIn,
+        quotedAmountOut: BigInt(h.snapshot.quotedAmountOut),
+        slippageBps: h.snapshot.slippageBps,
+        refundsRent: true,
+      });
+
+      const payerBefore = lamports(h, h.feePayer.publicKey);
+      const result = h.svm.sendTransaction(tx);
+      expect(failed(result), logsOf(result)).toBe(false);
+
+      expect(lamports(h, h.addresses.vault)).toBeGreaterThanOrEqual(
+        minimumAmountOut(
+          BigInt(h.snapshot.quotedAmountOut),
+          h.snapshot.slippageBps,
+        ),
+      );
+      expect(tokenBalance(h, usdc)).toBe(5_000_000n);
+      expect(tokenBalance(h, WRAPPED_SOL_MINT)).toBeNull();
+      // The allowance was for the swap and the swap used all of it.
+      expect(delegated(h, usdc)).toBe(0n);
+      expect(payerBefore - lamports(h, h.feePayer.publicKey)).toBeLessThan(
+        100_000n,
+      );
+      // The policy is untouched: still no Jupiter on it.
+      const info = h.svm.getAccount(h.abovePolicy)!;
+      const allowed = decodeAllowedPrograms(h.abovePolicy, {
+        ...info,
+        data: Buffer.from(info.data),
+      } as never);
+      expect(allowed.some((p) => p.equals(JUPITER_PROGRAM_ID))).toBe(false);
+    });
+
+    it("turns SOL into USDC the same way", () => {
+      const h = setUp(SOL_TO_USDC, BEFORE_JUPITER);
+      const usdc = new PublicKey(h.snapshot.outputMint);
+      const amountIn = BigInt(h.snapshot.amountIn);
+      h.svm.airdrop(h.addresses.vault, amountIn + BigInt(LAMPORTS_PER_SOL));
+
+      const tx = transaction(
+        h,
+        [
+          openTokenAccount(h, WRAPPED_SOL_MINT),
+          openTokenAccount(h, usdc),
+          ...onAllowance(h, { wrapInput: true }),
+        ],
+        [h.primary, h.approval],
+      );
+      expect(
+        describeTransaction(Buffer.from(tx.serialize()).toString("base64"), {
+          addresses: h.addresses,
+          lookupTables: h.lookupTables,
+        }),
+      ).toMatchObject({ kind: "swap", inputMint: "SOL", amountIn });
+      expect(tx.serialize().length).toBeLessThanOrEqual(MAX_TRANSACTION_BYTES);
+
+      const result = h.svm.sendTransaction(tx);
+      expect(failed(result), logsOf(result)).toBe(false);
+      expect(tokenBalance(h, usdc)).toBeGreaterThanOrEqual(
+        minimumAmountOut(
+          BigInt(h.snapshot.quotedAmountOut),
+          h.snapshot.slippageBps,
+        ),
+      );
+      expect(lamports(h, h.addresses.vault)).toBe(BigInt(LAMPORTS_PER_SOL));
+      expect(tokenBalance(h, WRAPPED_SOL_MINT)).toBeNull();
+    });
+
+    it("moves nothing when the route fails, allowance included", () => {
+      const h = setUp(USDC_TO_SOL, BEFORE_JUPITER);
+      const usdc = new PublicKey(h.snapshot.inputMint);
+      const amountIn = BigInt(h.snapshot.amountIn);
+      fundToken(h, usdc, amountIn);
+
+      // An allowance one unit short, so the route cannot draw what it needs.
+      const result = h.svm.sendTransaction(usdcToSol(h, amountIn - 1n));
+
+      expect(failed(result)).toBe(true);
+      expect(tokenBalance(h, usdc)).toBe(amountIn);
+      expect(delegated(h, usdc)).toBe(0n);
+    });
+
+    it("cannot be done by the primary signer without the approval signer", () => {
+      const h = setUp(USDC_TO_SOL, BEFORE_JUPITER);
+      const usdc = new PublicKey(h.snapshot.inputMint);
+      const amountIn = BigInt(h.snapshot.amountIn);
+      fundToken(h, usdc, amountIn);
+
+      // No allowance from the vault, so the primary signer has no authority
+      // over the vault's tokens on its own.
+      const result = h.svm.sendTransaction(
+        transaction(
+          h,
+          [openTokenAccount(h, WRAPPED_SOL_MINT), routeBesideTheVault(h)],
+          [h.primary],
+        ),
+      );
+
+      expect(failed(result)).toBe(true);
+      expect(tokenBalance(h, usdc)).toBe(amountIn);
+    });
+
+    it("costs about the same bytes as the swap from inside the vault", () => {
+      const inside = setUp(USDC_TO_SOL);
+      const insideSize = transaction(
+        inside,
+        [
+          openTokenAccount(inside, WRAPPED_SOL_MINT),
+          buildSwap({
+            addresses: inside.addresses,
+            policy: inside.abovePolicy,
+            signers: [inside.primary.publicKey, inside.approval.publicKey],
+            route: inside.route,
+            unwrapOutput: true,
+            refundRentTo: inside.feePayer.publicKey,
+          }),
+        ],
+        [inside.primary, inside.approval],
+      ).serialize().length;
+
+      const beside = setUp(USDC_TO_SOL, BEFORE_JUPITER);
+      fundToken(
+        beside,
+        new PublicKey(beside.snapshot.inputMint),
+        BigInt(beside.snapshot.amountIn),
+      );
+      const besideSize = usdcToSol(beside).serialize().length;
+
+      // Measured at 1007 inside and 1041 beside for a direct route: a second
+      // call into the vault, less the nesting the first one no longer needs.
+      expect(besideSize - insideSize).toBeLessThan(64);
+      expect(besideSize).toBeLessThanOrEqual(MAX_TRANSACTION_BYTES);
     });
   },
 );

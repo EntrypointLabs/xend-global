@@ -12,6 +12,14 @@ export interface TurnkeyPolicyBody {
  * The programs an S2 signature may reach. Everything a Spend or a Settings
  * change touches, and nothing else: the Squads program, System, Token,
  * Token-2022, Associated Token and ComputeBudget.
+ *
+ * One thing an S2 signature does reach is not on it. An Account whose Squads
+ * policy predates Swap swaps on an allowance, with the swap program called
+ * beside the vault as an instruction of its own, and these policies would
+ * refuse that transaction. They are only ever written at enrolment, and every
+ * Account enrolled from now on has a Squads policy that admits Swap and so
+ * never takes that shape. Writing them onto an older sub-organization would
+ * stop its Account swapping.
  */
 export const APPROVAL_SIGNER_PROGRAM_ALLOWLIST: readonly string[] = [
   PROGRAM_ID.toBase58(),

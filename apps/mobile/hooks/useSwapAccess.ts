@@ -1,5 +1,5 @@
 import { useEmbeddedSolanaWallet } from "@privy-io/expo";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchStagedSettingsChange } from "@prydd/smart-account";
 import { VersionedTransaction } from "@solana/web3.js";
 import { fromByteArray, toByteArray } from "base64-js";
@@ -7,7 +7,6 @@ import { Buffer } from "buffer";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccount } from "@/hooks/useAccount";
-import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { PENDING_CHANGE_KEY } from "@/hooks/usePendingAccountChange";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
@@ -39,9 +38,9 @@ type SolanaProvider = {
 };
 
 /**
- * Whether this Account can swap. An Account set up before Swap needs a
- * one-time change to its spending rules first, and that change waits out the
- * same 24 hour delay as any other.
+ * Whether a change that adds Swap to this Account's spending rules is still
+ * waiting. Nothing depends on it to swap any more, and no new one is started:
+ * this is only read so a change already under way is seen through.
  */
 export function useSwapAccess() {
   const { user } = useAuth();
@@ -133,36 +132,6 @@ async function runSwapAccess(
     );
     plan = undefined;
   }
-}
-
-/** The Consumer turning Swap on: one confirmation, then the delay. */
-export function useTurnOnSwap() {
-  const queryClient = useQueryClient();
-  const embeddedSolana = useEmbeddedSolanaWallet();
-  const { data: account } = useAccount();
-  const { recordStarted } = useInitiatedChanges();
-
-  return useMutation({
-    mutationFn: async () => {
-      const wallet = embeddedSolana.wallets?.[0];
-      if (!wallet || !account) throw new Error("Account not ready");
-      // The provider first, and only then the staging call: the change is
-      // announced the moment it is staged, so failing to reach the signer
-      // afterwards would leave a notice for a change nobody is walking.
-      const provider = (await wallet.getProvider()) as SolanaProvider;
-      const first = await apiClient.startSwapAccess();
-      return runSwapAccess(account, provider, {
-        first,
-        onStaged: recordStarted,
-      });
-    },
-    // Settled rather than success: a walk that failed part way has still
-    // moved, and the screen has to show where it actually got to.
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: SWAP_ACCESS_KEY });
-      queryClient.invalidateQueries({ queryKey: PENDING_CHANGE_KEY });
-    },
-  });
 }
 
 /**

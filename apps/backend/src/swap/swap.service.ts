@@ -11,6 +11,7 @@ import {
   ABOVE_LIMIT_PROGRAM_ALLOWLIST,
   associatedTokenAddress,
   buildSwap,
+  buildSwapOnAllowance,
   deriveAccountAddresses,
   derivePolicyAddress,
   describeTransaction,
@@ -110,10 +111,22 @@ interface StoredQuote {
  * will run any route the two signers approve. Holding the route to the quote
  * is the signing device's job, which is why the route is built in one fixed
  * shape here and never handed over as the provider wrote it.
+ *
+ * An Account set up before Swap has a policy that does not admit the swap
+ * program, and adding it is a settings change that waits out the time lock.
+ * Such an Account swaps on an allowance instead: the vault lends its primary
+ * signer the right to move exactly the amount being swapped, and the route
+ * runs beside the vault. Same two signatures, same check on the device, and
+ * nothing to wait for.
  */
 @Injectable()
 export class SwapService {
   private readonly logger = new Logger(SwapService.name);
+  /**
+   * Policies already seen to admit the swap program. A program is never
+   * taken off a policy, so only the ones without it are worth reading again.
+   */
+  private readonly admitsSwap = new Set<string>();
 
   constructor(
     private readonly config: ConfigService,
@@ -146,6 +159,7 @@ export class SwapService {
       throw new NoSwapRouteError('Choose two different assets');
     }
     const account = await this.accountOf(userId);
+    const shape = await this.shapeFor(account);
 
     let refusal = 'No route for this pair';
     const avoid = new Set<string>();
@@ -173,7 +187,7 @@ export class SwapService {
       if (price.amountInRaw !== request.amountRaw) break;
       try {
         route = await this.provider.route(price, account.addresses.vault);
-        refusal = (await this.unsendable(account, price, route)) ?? '';
+        refusal = (await this.unsendable(account, price, route, shape)) ?? '';
       } catch (err) {
         if (!(err instanceof NoSwapRouteError)) throw err;
         refusal = err.message;
@@ -232,12 +246,7 @@ export class SwapService {
     const route = restore(stored.route);
     const account = await this.accountOf(userId);
 
-    const allowed = await this.chain.allowedPrograms(account.policy);
-    if (!allowed.some((program) => program.equals(JUPITER_PROGRAM_ID))) {
-      throw new AccountNeedsUpdateError(
-        'This Account was set up before Swap and its policy does not admit it',
-      );
-    }
+    const shape = await this.shapeFor(account);
 
     const pair = await this.pairOf(account, price);
     const [inputExists, outputExists] = await this.chain.exists([
@@ -248,7 +257,7 @@ export class SwapService {
       instructions: this.instructions(account, pair, route, {
         inputExists,
         outputExists,
-        allowed,
+        ...shape,
       }),
       lookupTables: await this.chain.lookupTables(route.lookupTables),
     });
@@ -267,7 +276,7 @@ export class SwapService {
     this.logger.log(
       `swap.prepared userId=${userId} provider=${this.provider.name}` +
         ` venue=${price.venue ?? 'unknown'} in=${price.inputMint}` +
-        ` out=${price.outputMint}`,
+        ` out=${price.outputMint} onAllowance=${shape.onAllowance}`,
     );
 
     return {
@@ -289,6 +298,7 @@ export class SwapService {
     account: SwapAccount,
     price: SwapPrice,
     route: SwapRoute,
+    shape: SwapShape,
   ): Promise<string | null> {
     const pair = await this.pairOf(account, price);
     const lookupTables = await this.chain.lookupTables(route.lookupTables);
@@ -298,7 +308,13 @@ export class SwapService {
         instructions: this.instructions(account, pair, route, {
           inputExists: false,
           outputExists: false,
-          allowed: ABOVE_LIMIT_PROGRAM_ALLOWLIST,
+          // An Account that calls Jupiter itself is drafted against the full
+          // list, as it always was. One on an allowance is drafted against
+          // its own, because its own is what the instruction has to index.
+          ...shape,
+          allowed: shape.onAllowance
+            ? shape.allowed
+            : ABOVE_LIMIT_PROGRAM_ALLOWLIST,
         }),
         lookupTables,
       });
@@ -318,11 +334,7 @@ export class SwapService {
     account: SwapAccount,
     pair: SwapPair,
     route: SwapRoute,
-    state: {
-      inputExists: boolean;
-      outputExists: boolean;
-      allowed: readonly PublicKey[];
-    },
+    state: SwapShape & { inputExists: boolean; outputExists: boolean },
   ): TransactionInstruction[] {
     const feePayer = new PublicKey(this.chain.feePayer);
     const open = (
@@ -355,19 +367,44 @@ export class SwapService {
       (pair.wrapInput && !state.inputExists) ||
       (pair.unwrapOutput && !state.outputExists);
 
+    const swap = {
+      addresses: account.addresses,
+      policy: account.policy,
+      signers: [account.primarySigner, account.approvalSigner],
+      route: route.instruction,
+      wrapInput: pair.wrapInput,
+      unwrapOutput: pair.unwrapOutput,
+      refundRentTo: frontedWrappedSolRent ? feePayer : undefined,
+      allowedPrograms: state.allowed,
+    };
     return [
       ...opens,
-      buildSwap({
-        addresses: account.addresses,
-        policy: account.policy,
-        signers: [account.primarySigner, account.approvalSigner],
-        route: route.instruction,
-        wrapInput: pair.wrapInput,
-        unwrapOutput: pair.unwrapOutput,
-        refundRentTo: frontedWrappedSolRent ? feePayer : undefined,
-        allowedPrograms: state.allowed,
-      }),
+      ...(state.onAllowance
+        ? buildSwapOnAllowance({ ...swap, delegate: account.primarySigner })
+        : [buildSwap(swap)]),
     ];
+  }
+
+  /**
+   * Which of the two shapes this Account's swap takes, read off its policy.
+   *
+   * A policy with no Token program on it is not one provisioning wrote, and
+   * neither shape can run under it.
+   */
+  private async shapeFor(account: SwapAccount): Promise<SwapShape> {
+    const policy = account.policy.toBase58();
+    if (this.admitsSwap.has(policy)) {
+      return { onAllowance: false, allowed: ABOVE_LIMIT_PROGRAM_ALLOWLIST };
+    }
+    const allowed = await this.chain.allowedPrograms(account.policy);
+    if (allowed.some((program) => program.equals(JUPITER_PROGRAM_ID))) {
+      this.admitsSwap.add(policy);
+      return { onAllowance: false, allowed };
+    }
+    if (!allowed.some((program) => program.equals(TOKEN_PROGRAM_ID))) {
+      throw new AccountNeedsUpdateError('This Account is not set up to swap');
+    }
+    return { onAllowance: true, allowed };
   }
 
   private async pairOf(
@@ -487,6 +524,13 @@ interface SwapAccount {
   policy: PublicKey;
   primarySigner: PublicKey;
   approvalSigner: PublicKey;
+}
+
+interface SwapShape {
+  /** True when the vault lends an allowance and the route runs beside it. */
+  onAllowance: boolean;
+  /** The programs the Account's policy admits, in constraint order. */
+  allowed: readonly PublicKey[];
 }
 
 interface SwapPair {
