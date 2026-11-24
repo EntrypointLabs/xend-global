@@ -33,6 +33,7 @@ import {
   minimumAmountOut,
   readJupiterRouteTerms,
   TOKEN_ACCOUNT_RENT_LAMPORTS,
+  type JupiterRouteTerms,
 } from "./swap.js";
 
 const PRIMARY_ACCOUNT_INDEX = 0;
@@ -40,6 +41,7 @@ const NATIVE_MINT = PublicKey.default;
 
 const SYSTEM_TRANSFER = 2;
 const TOKEN_TRANSFER_CHECKED = 12;
+const TOKEN_APPROVE = 4;
 const TOKEN_CLOSE_ACCOUNT = 9;
 const TOKEN_SYNC_NATIVE = 17;
 const COMPUTE_BUDGET_HARMLESS = new Set([1, 2, 3, 4]);
@@ -89,6 +91,12 @@ export interface SpendDescription {
  * Nothing leaves the Account: both sides are the vault's own. What a signer
  * has to hold it to is the pair, the amount paid, and the least it may
  * receive, because the policy it executes under checks none of those.
+ *
+ * It arrives in one of two shapes and reads the same from either. The vault
+ * may call Jupiter itself, under a policy that admits it. Or the vault may
+ * lend one of its signers an allowance for exactly the amount being swapped,
+ * with Jupiter called beside it, which is how an Account whose policy has
+ * never admitted Jupiter swaps without a settings change.
  */
 export interface SwapDescription {
   kind: "swap";
@@ -299,9 +307,46 @@ interface DecodedSwap {
   rentRefundTo: PublicKey | null;
 }
 
+/** A `shared_accounts_route`, held to everything that can be read off it. */
+interface ReadRoute {
+  /** Whoever moves the tokens: the vault, or a signer it lent an allowance. */
+  authority: PublicKey;
+  source: PublicKey;
+  destination: PublicKey;
+  sourceMint: PublicKey;
+  destinationMint: PublicKey;
+  terms: JupiterRouteTerms;
+  accounts: PublicKey[];
+}
+
+/** The vault lending a signer an allowance, wrapping SOL first if it pays in SOL. */
+interface DecodedSwapAllowance {
+  kind: "swap-allowance";
+  consensus: PublicKey;
+  signers: PublicKey[];
+  vault: PublicKey;
+  source: PublicKey;
+  tokenProgram: PublicKey;
+  delegate: PublicKey;
+  amount: bigint;
+  wrapsInput: boolean;
+}
+
+/** The vault closing its wrapped SOL account once a route has run beside it. */
+interface DecodedSwapTidy {
+  kind: "swap-tidy";
+  consensus: PublicKey;
+  signers: PublicKey[];
+  vault: PublicKey;
+  rentRefundTo: PublicKey | null;
+}
+
 type Decoded =
   | { kind: "spend"; spend: SpendDescription }
   | DecodedSwap
+  | DecodedSwapAllowance
+  | { kind: "swap-route"; route: ReadRoute }
+  | DecodedSwapTidy
   | {
       kind: "propose";
       settings: PublicKey;
@@ -343,6 +388,12 @@ function decodeInstruction(
   }
   if (programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)) {
     return decodeAssociatedToken(accounts, data);
+  }
+  if (programId.equals(JUPITER_PROGRAM_ID)) {
+    // Only ever acceptable beside an allowance from the vault, which is
+    // decided once the whole message has been read.
+    const route = readRoute(accounts, data);
+    return route.kind === "unknown" ? route : { kind: "swap-route", route };
   }
   if (programId.equals(COMPUTE_BUDGET_PROGRAM_ID)) {
     return COMPUTE_BUDGET_HARMLESS.has(data[0] ?? -1)
@@ -507,6 +558,12 @@ function decodeSyncSpend(accounts: PublicKey[], data: Buffer): Decoded {
     ) {
       return decodeSwap(consensus, signers, inner.instructions);
     }
+    const aroundASwap = decodeAroundASwap(
+      consensus,
+      signers,
+      inner.instructions,
+    );
+    if (aroundASwap) return aroundASwap;
     if (inner.instructions.length !== 1) {
       return unknown(
         `above-limit spend wraps ${inner.instructions.length} instructions, not one transfer`,
@@ -567,46 +624,10 @@ function decodeSwap(
   const routeAt = inner.findIndex((ix) =>
     ix.programId.equals(JUPITER_PROGRAM_ID),
   );
-  const route = inner[routeAt]!;
-  const terms = readJupiterRouteTerms(route.data);
-  if (!terms) {
-    return unknown(
-      "swap through a Jupiter instruction this signer cannot read",
-    );
-  }
-  const at = JUPITER_ROUTE_ACCOUNTS;
-  if (route.accounts.length < at.fixedLength) {
-    return unknown("malformed swap route");
-  }
-  const vault = route.accounts[at.transferAuthority]!;
-  const source = route.accounts[at.source]!;
-  const destination = route.accounts[at.destination]!;
-  const sourceMint = route.accounts[at.sourceMint]!;
-  const destinationMint = route.accounts[at.destinationMint]!;
-
-  if (!route.accounts[at.program]!.equals(JUPITER_PROGRAM_ID)) {
-    return unknown("malformed swap route");
-  }
-  // Jupiter passes its own program id where an optional account is absent.
-  if (
-    terms.platformFeeBps !== 0 ||
-    !route.accounts[at.platformFee]!.equals(JUPITER_PROGRAM_ID)
-  ) {
-    return unknown("swap pays a fee to a third party");
-  }
-  if (sourceMint.equals(destinationMint)) {
-    return unknown("swap of an asset for itself");
-  }
-  // Each hop is handed a slice of the accounts after the fixed ones. The
-  // vault's signature travels with it into any hop that names it, so a route
-  // that did could spend from a token account that is no part of this swap.
-  if (
-    route.accounts.some(
-      (account, i) => account.equals(vault) && i !== at.transferAuthority,
-    )
-  ) {
-    return unknown("swap route hands the vault's signature to a venue");
-  }
+  const read = readRoute(inner[routeAt]!.accounts, inner[routeAt]!.data);
+  if (read.kind === "unknown") return read;
+  const { source, destination, sourceMint, destinationMint, terms } = read;
+  const vault = read.authority;
   if (!isAssociatedTokenAccount(source, vault, sourceMint)) {
     return unknown("swap does not draw on the vault's token account");
   }
@@ -704,6 +725,179 @@ function decodeSwap(
       refundsRent: rentRefundTo !== null,
     },
   };
+}
+
+/**
+ * Reads a `shared_accounts_route` and refuses one this signer cannot hold to
+ * its terms, whoever its transfer authority turns out to be.
+ */
+function readRoute(
+  accounts: PublicKey[],
+  data: Buffer,
+): ({ kind: "route" } & ReadRoute) | UnknownDescription {
+  const terms = readJupiterRouteTerms(data);
+  if (!terms) {
+    return unknown(
+      "swap through a Jupiter instruction this signer cannot read",
+    );
+  }
+  const at = JUPITER_ROUTE_ACCOUNTS;
+  if (accounts.length < at.fixedLength) {
+    return unknown("malformed swap route");
+  }
+  const authority = accounts[at.transferAuthority]!;
+  const sourceMint = accounts[at.sourceMint]!;
+  const destinationMint = accounts[at.destinationMint]!;
+
+  if (!accounts[at.program]!.equals(JUPITER_PROGRAM_ID)) {
+    return unknown("malformed swap route");
+  }
+  // Jupiter passes its own program id where an optional account is absent.
+  if (
+    terms.platformFeeBps !== 0 ||
+    !accounts[at.platformFee]!.equals(JUPITER_PROGRAM_ID)
+  ) {
+    return unknown("swap pays a fee to a third party");
+  }
+  if (sourceMint.equals(destinationMint)) {
+    return unknown("swap of an asset for itself");
+  }
+  // Each hop is handed a slice of the accounts after the fixed ones. The
+  // authority's signature travels with it into any hop that names it, so a
+  // route that did could spend from a token account that is no part of this
+  // swap.
+  if (
+    accounts.some(
+      (account, i) => account.equals(authority) && i !== at.transferAuthority,
+    )
+  ) {
+    return unknown("swap route hands the vault's signature to a venue");
+  }
+  return {
+    kind: "route",
+    authority,
+    source: accounts[at.source]!,
+    destination: accounts[at.destination]!,
+    sourceMint,
+    destinationMint,
+    terms,
+    accounts,
+  };
+}
+
+/**
+ * Reads the two things the vault does around a route that runs beside it:
+ * lending the allowance before, and closing its wrapped SOL account after.
+ * Null when the instructions are neither, so the caller reads them as an
+ * ordinary Spend.
+ *
+ * Each is held to one exact shape. An allowance is the dangerous instruction
+ * here: it hands a single signer authority over the vault's tokens, so it is
+ * only ever read as part of a swap, and the swap it belongs to is checked
+ * against it once the whole message is known.
+ */
+function decodeAroundASwap(
+  consensus: PublicKey,
+  signers: PublicKey[],
+  inner: InnerInstruction[],
+): Decoded | null {
+  const last = inner[inner.length - 1];
+  if (last && isApproveShaped(last)) {
+    const [source, delegate, vault] = last.accounts as [
+      PublicKey,
+      PublicKey,
+      PublicKey,
+    ];
+    const amount = last.data.readBigUInt64LE(1);
+    const before = inner.slice(0, -1);
+    let wrapsInput = false;
+    if (before.length > 0) {
+      const wrappedSol = associatedTokenAddress(
+        vault,
+        WRAPPED_SOL_MINT,
+        TOKEN_PROGRAM_ID,
+      );
+      const [fund, sync, ...extra] = before;
+      const funded = fund && readSystemTransfer(fund);
+      if (
+        extra.length > 0 ||
+        !funded ||
+        !funded.from.equals(vault) ||
+        !funded.to.equals(wrappedSol) ||
+        funded.lamports !== amount ||
+        !sync ||
+        !isTokenInstruction(sync, TOKEN_SYNC_NATIVE, [wrappedSol]) ||
+        !source.equals(wrappedSol) ||
+        !last.programId.equals(TOKEN_PROGRAM_ID)
+      ) {
+        return unknown(
+          "an allowance is preceded by something other than wrapping SOL",
+        );
+      }
+      wrapsInput = true;
+    }
+    return {
+      kind: "swap-allowance",
+      consensus,
+      signers,
+      vault,
+      source,
+      tokenProgram: last.programId,
+      delegate,
+      amount,
+      wrapsInput,
+    };
+  }
+
+  const [first, second, ...extra] = inner;
+  if (
+    first &&
+    first.programId.equals(TOKEN_PROGRAM_ID) &&
+    first.data.length === 1 &&
+    first.data[0] === TOKEN_CLOSE_ACCOUNT
+  ) {
+    const vault = first.accounts[2];
+    if (
+      extra.length > 0 ||
+      first.accounts.length !== 3 ||
+      !vault ||
+      !first.accounts[1]!.equals(vault) ||
+      !first.accounts[0]!.equals(
+        associatedTokenAddress(vault, WRAPPED_SOL_MINT, TOKEN_PROGRAM_ID),
+      )
+    ) {
+      return unknown(
+        "closes something other than the vault's wrapped SOL account",
+      );
+    }
+    let rentRefundTo: PublicKey | null = null;
+    if (second) {
+      const refund = readSystemTransfer(second);
+      if (
+        !refund ||
+        !refund.from.equals(vault) ||
+        refund.to.equals(vault) ||
+        refund.lamports !== TOKEN_ACCOUNT_RENT_LAMPORTS
+      ) {
+        return unknown(
+          "swap is followed by a transfer that is not a rent refund",
+        );
+      }
+      rentRefundTo = refund.to;
+    }
+    return { kind: "swap-tidy", consensus, signers, vault, rentRefundTo };
+  }
+  return null;
+}
+
+function isApproveShaped(ix: InnerInstruction): boolean {
+  return (
+    (ix.programId.equals(TOKEN_PROGRAM_ID) ||
+      ix.programId.equals(TOKEN_2022_PROGRAM_ID)) &&
+    ix.data.length === 9 &&
+    ix.data[0] === TOKEN_APPROVE &&
+    ix.accounts.length === 3
+  );
 }
 
 function isAssociatedTokenAccount(
@@ -863,6 +1057,28 @@ function assemble(
   const transfers = decoded.filter((d) => d.kind === "transfer");
   const opens = decoded.filter((d) => d.kind === "open-token-account");
 
+  const aroundASwap = decoded.filter(
+    (d) =>
+      d.kind === "swap-allowance" ||
+      d.kind === "swap-route" ||
+      d.kind === "swap-tidy",
+  );
+  if (aroundASwap.length > 0) {
+    if (
+      swaps.length ||
+      spends.length ||
+      proposes.length ||
+      proposals.length ||
+      votes.length ||
+      transfers.length
+    ) {
+      return unknown("a swap travelling with something else");
+    }
+    const swap = joinAllowanceSwap(aroundASwap);
+    if (swap.kind === "unknown") return swap;
+    return assembleSwap(swap, opens, context, feePayer);
+  }
+
   if (swaps.length > 0) {
     if (
       swaps.length > 1 ||
@@ -930,6 +1146,111 @@ function assemble(
       ? "more than one transfer"
       : "nothing this signer recognises",
   );
+}
+
+/**
+ * Reads an allowance, a route and a tidy-up as the one swap they have to be.
+ *
+ * Nothing on chain ties the three together, so everything that makes them a
+ * swap and not an allowance handed to a stranger is checked here: the
+ * allowance goes to a key that is signing, it covers the route's source and
+ * exactly the amount the route draws, and that same key and no other is the
+ * route's authority. In that order, with nothing between.
+ */
+function joinAllowanceSwap(parts: Decoded[]): DecodedSwap | UnknownDescription {
+  const [allowance, routed, tidy, ...extra] = parts;
+  if (
+    extra.length > 0 ||
+    allowance?.kind !== "swap-allowance" ||
+    routed?.kind !== "swap-route" ||
+    (tidy !== undefined && tidy.kind !== "swap-tidy")
+  ) {
+    return unknown(
+      "an allowance, a swap route or an unwrap outside the one order a swap takes",
+    );
+  }
+  const { route } = routed;
+  const { vault, delegate } = allowance;
+
+  if (delegate.equals(vault)) {
+    return unknown("the vault lends an allowance to itself");
+  }
+  if (!allowance.signers.some((signer) => signer.equals(delegate))) {
+    return unknown("an allowance goes to a key that is not signing the swap");
+  }
+  if (!route.authority.equals(delegate)) {
+    return unknown("the swap route is not run by the key the vault allowed");
+  }
+  if (route.accounts.some((account) => account.equals(vault))) {
+    return unknown("swap route names the vault among its accounts");
+  }
+  if (
+    !allowance.source.equals(
+      associatedTokenAddress(vault, route.sourceMint, allowance.tokenProgram),
+    ) ||
+    !route.source.equals(allowance.source)
+  ) {
+    return unknown("swap does not draw on the vault's token account");
+  }
+  if (
+    !isAssociatedTokenAccount(route.destination, vault, route.destinationMint)
+  ) {
+    return unknown("swap does not pay into the vault's token account");
+  }
+  if (allowance.amount !== route.terms.amountIn) {
+    return unknown("the allowance is not the amount the swap pays");
+  }
+  if (tidy) {
+    const sameSigners =
+      tidy.signers.length === allowance.signers.length &&
+      tidy.signers.every((signer, i) => signer.equals(allowance.signers[i]!));
+    if (
+      !tidy.vault.equals(vault) ||
+      !tidy.consensus.equals(allowance.consensus) ||
+      !sameSigners
+    ) {
+      return unknown("the swap is tidied up by a different account");
+    }
+  }
+
+  const wrappedSol = associatedTokenAddress(
+    vault,
+    WRAPPED_SOL_MINT,
+    TOKEN_PROGRAM_ID,
+  );
+  const closesWrappedSol = tidy !== undefined;
+  const { wrapsInput } = allowance;
+  const unwrapsOutput =
+    closesWrappedSol && route.destination.equals(wrappedSol) && !wrapsInput;
+  if (wrapsInput !== (closesWrappedSol && !unwrapsOutput)) {
+    return unknown(
+      "swap wraps SOL without unwrapping what is left, or the reverse",
+    );
+  }
+  const rentRefundTo = tidy?.rentRefundTo ?? null;
+
+  return {
+    kind: "swap",
+    sourceMint: route.sourceMint,
+    destinationMint: route.destinationMint,
+    rentRefundTo,
+    swap: {
+      kind: "swap",
+      vault,
+      consensus: allowance.consensus,
+      signers: allowance.signers,
+      inputMint: wrapsInput ? "SOL" : route.sourceMint,
+      outputMint: unwrapsOutput ? "SOL" : route.destinationMint,
+      amountIn: route.terms.amountIn,
+      quotedAmountOut: route.terms.quotedAmountOut,
+      slippageBps: route.terms.slippageBps,
+      minimumAmountOut: minimumAmountOut(
+        route.terms.quotedAmountOut,
+        route.terms.slippageBps,
+      ),
+      refundsRent: rentRefundTo !== null,
+    },
+  };
 }
 
 /**

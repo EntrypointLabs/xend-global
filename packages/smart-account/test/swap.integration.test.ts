@@ -36,6 +36,7 @@ import {
   buildProvisionAccount,
   ABOVE_LIMIT_PROGRAM_ALLOWLIST,
   buildSwap,
+  buildSwapOnAllowance,
   buildUpdateAboveLimitAllowlist,
   decodeAllowedPrograms,
   derivePolicyAddress,
@@ -709,7 +710,6 @@ describe.skipIf(!HAVE_FIXTURES)(
     );
     const TOKEN_APPROVE = 4;
     const TOKEN_CLOSE_ACCOUNT = 9;
-    const TOKEN_SYNC_NATIVE = 17;
 
     const vaultAccount = (h: Harness, mint: PublicKey) =>
       associatedTokenAddress(h.addresses.vault, mint, TOKEN_PROGRAM_ID);
@@ -817,18 +817,38 @@ describe.skipIf(!HAVE_FIXTURES)(
       return data.readUInt32LE(72) === 0 ? 0n : data.readBigUInt64LE(121);
     };
 
+    /** The swap as the package builds it for an Account without Jupiter. */
+    function onAllowance(
+      h: Harness,
+      sol: { wrapInput?: boolean; unwrapOutput?: boolean },
+    ) {
+      return buildSwapOnAllowance({
+        addresses: h.addresses,
+        policy: h.abovePolicy,
+        signers: [h.primary.publicKey, h.approval.publicKey],
+        delegate: h.primary.publicKey,
+        route: h.route,
+        refundRentTo: h.feePayer.publicKey,
+        allowedPrograms: BEFORE_JUPITER,
+        ...sol,
+      });
+    }
+
     function usdcToSol(h: Harness, amountApproved?: bigint) {
       const usdc = new PublicKey(h.snapshot.inputMint);
       return transaction(
         h,
-        [
-          openTokenAccount(h, WRAPPED_SOL_MINT),
-          asVault(h, [
-            approve(h, usdc, amountApproved ?? BigInt(h.snapshot.amountIn)),
-          ]),
-          routeBesideTheVault(h),
-          asVault(h, [closeWrapped(h), refundRent(h)]),
-        ],
+        amountApproved === undefined
+          ? [
+              openTokenAccount(h, WRAPPED_SOL_MINT),
+              ...onAllowance(h, { unwrapOutput: true }),
+            ]
+          : [
+              openTokenAccount(h, WRAPPED_SOL_MINT),
+              asVault(h, [approve(h, usdc, amountApproved)]),
+              routeBesideTheVault(h),
+              asVault(h, [closeWrapped(h), refundRent(h)]),
+            ],
         [h.primary, h.approval],
       );
     }
@@ -841,6 +861,20 @@ describe.skipIf(!HAVE_FIXTURES)(
 
       const tx = usdcToSol(h);
       expect(tx.serialize().length).toBeLessThanOrEqual(MAX_TRANSACTION_BYTES);
+      // What a signer is shown is the swap that then happens.
+      expect(
+        describeTransaction(Buffer.from(tx.serialize()).toString("base64"), {
+          addresses: h.addresses,
+          lookupTables: h.lookupTables,
+        }),
+      ).toMatchObject({
+        kind: "swap",
+        outputMint: "SOL",
+        amountIn,
+        quotedAmountOut: BigInt(h.snapshot.quotedAmountOut),
+        slippageBps: h.snapshot.slippageBps,
+        refundsRent: true,
+      });
 
       const payerBefore = lamports(h, h.feePayer.publicKey);
       const result = h.svm.sendTransaction(tx);
@@ -873,31 +907,22 @@ describe.skipIf(!HAVE_FIXTURES)(
       const usdc = new PublicKey(h.snapshot.outputMint);
       const amountIn = BigInt(h.snapshot.amountIn);
       h.svm.airdrop(h.addresses.vault, amountIn + BigInt(LAMPORTS_PER_SOL));
-      const wrapped = vaultAccount(h, WRAPPED_SOL_MINT);
 
       const tx = transaction(
         h,
         [
           openTokenAccount(h, WRAPPED_SOL_MINT),
           openTokenAccount(h, usdc),
-          asVault(h, [
-            SystemProgram.transfer({
-              fromPubkey: h.addresses.vault,
-              toPubkey: wrapped,
-              lamports: amountIn,
-            }),
-            new TransactionInstruction({
-              programId: TOKEN_PROGRAM_ID,
-              keys: [{ pubkey: wrapped, isSigner: false, isWritable: true }],
-              data: Buffer.from([TOKEN_SYNC_NATIVE]),
-            }),
-            approve(h, WRAPPED_SOL_MINT, amountIn),
-          ]),
-          routeBesideTheVault(h),
-          asVault(h, [closeWrapped(h), refundRent(h)]),
+          ...onAllowance(h, { wrapInput: true }),
         ],
         [h.primary, h.approval],
       );
+      expect(
+        describeTransaction(Buffer.from(tx.serialize()).toString("base64"), {
+          addresses: h.addresses,
+          lookupTables: h.lookupTables,
+        }),
+      ).toMatchObject({ kind: "swap", inputMint: "SOL", amountIn });
       expect(tx.serialize().length).toBeLessThanOrEqual(MAX_TRANSACTION_BYTES);
 
       const result = h.svm.sendTransaction(tx);

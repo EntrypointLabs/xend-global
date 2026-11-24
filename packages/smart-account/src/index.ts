@@ -83,6 +83,7 @@ export {
 
 export {
   buildSwap,
+  buildSwapOnAllowance,
   JUPITER_ROUTE_ACCOUNTS,
   minimumAmountOut,
   readJupiterRouteTerms,

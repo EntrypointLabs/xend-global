@@ -13,6 +13,7 @@ import {
 import {
   ABOVE_LIMIT_PROGRAM_ALLOWLIST,
   JUPITER_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   WRAPPED_SOL_MINT,
 } from "./programs.js";
@@ -253,6 +254,132 @@ export function buildSwap({
     );
   }
 
+  return underPolicy(inner, { addresses, policy, signers, allowedPrograms });
+}
+
+export interface BuildSwapOnAllowanceParams extends BuildSwapParams {
+  /**
+   * The signer that moves the tokens once the vault has allowed it to. One of
+   * `signers`, so it is already signing the transaction.
+   */
+  delegate: PublicKey;
+}
+
+/**
+ * Builds a swap for an Account whose policy does not admit Jupiter.
+ *
+ * The vault never calls Jupiter here. It lends `delegate` an allowance for
+ * exactly the amount being swapped, which is a Token instruction every
+ * Account's policy admits, and the route then runs beside the vault with the
+ * delegate as its transfer authority. Both sides of the swap are still the
+ * vault's own token accounts, and the three instructions travel in one
+ * transaction, so the allowance cannot outlive a swap that fails.
+ *
+ * It needs no settings change, which is the point: adding a program to a
+ * policy waits out the Settings time lock, and this does not.
+ *
+ * Returns the allowance, the route, and, when wrapped SOL is involved, the
+ * instruction that closes the vault's wrapped SOL account afterwards.
+ */
+export function buildSwapOnAllowance({
+  addresses,
+  policy,
+  signers,
+  delegate,
+  route,
+  wrapInput = false,
+  unwrapOutput = false,
+  refundRentTo,
+  allowedPrograms = ABOVE_LIMIT_PROGRAM_ALLOWLIST,
+}: BuildSwapOnAllowanceParams): TransactionInstruction[] {
+  if (signers.length < 2) {
+    throw new Error(`a swap takes two signers, got ${signers.length}`);
+  }
+  if (!signers.some((signer) => signer.equals(delegate))) {
+    throw new Error("the allowance goes to a key that is not signing the swap");
+  }
+  const terms = assertVaultRoute(route, addresses.vault);
+  if (refundRentTo && !wrapInput && !unwrapOutput) {
+    throw new Error("a rent refund without a wrapped SOL account to close");
+  }
+
+  const wrappedSol = associatedTokenAddress(
+    addresses.vault,
+    WRAPPED_SOL_MINT,
+    TOKEN_PROGRAM_ID,
+  );
+  const source = route.keys[JUPITER_ROUTE_ACCOUNTS.source]!.pubkey;
+  const sourceMint = route.keys[JUPITER_ROUTE_ACCOUNTS.sourceMint]!.pubkey;
+  const destinationMint =
+    route.keys[JUPITER_ROUTE_ACCOUNTS.destinationMint]!.pubkey;
+  if (wrapInput && !sourceMint.equals(WRAPPED_SOL_MINT)) {
+    throw new Error("wrapping SOL for a route that does not spend it");
+  }
+  if (unwrapOutput && !destinationMint.equals(WRAPPED_SOL_MINT)) {
+    throw new Error("unwrapping SOL from a route that does not pay it");
+  }
+  const tokenProgram = [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].find(
+    (program) =>
+      source.equals(
+        associatedTokenAddress(addresses.vault, sourceMint, program),
+      ),
+  );
+  if (!tokenProgram) {
+    throw new Error("the route does not draw on the vault's token account");
+  }
+
+  const before: TransactionInstruction[] = [];
+  if (wrapInput) {
+    before.push(
+      SystemProgram.transfer({
+        fromPubkey: addresses.vault,
+        toPubkey: wrappedSol,
+        lamports: terms.amountIn,
+      }),
+      syncNative(wrappedSol),
+    );
+  }
+  before.push(
+    approve(source, delegate, addresses.vault, terms.amountIn, tokenProgram),
+  );
+
+  const after: TransactionInstruction[] = [];
+  if (wrapInput || unwrapOutput) {
+    after.push(closeAccount(wrappedSol, addresses.vault));
+  }
+  if (refundRentTo) {
+    after.push(
+      SystemProgram.transfer({
+        fromPubkey: addresses.vault,
+        toPubkey: refundRentTo,
+        lamports: TOKEN_ACCOUNT_RENT_LAMPORTS,
+      }),
+    );
+  }
+
+  const under = { addresses, policy, signers, allowedPrograms };
+  return [
+    underPolicy(before, under),
+    withAuthority(route, delegate),
+    ...(after.length > 0 ? [underPolicy(after, under)] : []),
+  ];
+}
+
+/** The vault running `inner` under its above-limit policy. */
+function underPolicy(
+  inner: TransactionInstruction[],
+  {
+    addresses,
+    policy,
+    signers,
+    allowedPrograms,
+  }: {
+    addresses: AccountAddresses;
+    policy: PublicKey;
+    signers: PublicKey[];
+    allowedPrograms: readonly PublicKey[];
+  },
+): TransactionInstruction {
   const compiled = utils.instructionsToSynchronousTransactionDetails({
     vaultPda: addresses.vault,
     members: [],
@@ -354,8 +481,48 @@ function asVaultSigned(
   });
 }
 
+const TOKEN_APPROVE = 4;
 const TOKEN_CLOSE_ACCOUNT = 9;
 const TOKEN_SYNC_NATIVE = 17;
+
+/** The route as Jupiter built it, with `authority` moving the tokens. */
+function withAuthority(
+  route: TransactionInstruction,
+  authority: PublicKey,
+): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: route.programId,
+    data: route.data,
+    keys: route.keys.map((key, i) =>
+      i === JUPITER_ROUTE_ACCOUNTS.transferAuthority
+        ? { pubkey: authority, isSigner: true, isWritable: false }
+        : key,
+    ),
+  });
+}
+
+function approve(
+  source: PublicKey,
+  delegate: PublicKey,
+  vault: PublicKey,
+  amount: bigint,
+  tokenProgram: PublicKey,
+): TransactionInstruction {
+  const data = Buffer.alloc(9);
+  data.writeUInt8(TOKEN_APPROVE, 0);
+  data.writeBigUInt64LE(amount, 1);
+  return new TransactionInstruction({
+    programId: tokenProgram,
+    keys: [
+      { pubkey: source, isSigner: false, isWritable: true },
+      { pubkey: delegate, isSigner: false, isWritable: false },
+      // Writable for the reason `asVaultSigned` gives: the payload compiler
+      // refuses a message with no writable signer.
+      { pubkey: vault, isSigner: true, isWritable: true },
+    ],
+    data,
+  });
+}
 
 function syncNative(account: PublicKey): TransactionInstruction {
   return new TransactionInstruction({
