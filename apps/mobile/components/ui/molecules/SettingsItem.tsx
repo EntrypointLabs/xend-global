@@ -4,7 +4,6 @@ import { Typography } from "../atoms/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "../atoms/HapticPressable";
 import { GLASS_COLORS, useOnPhoto } from "@/components/ui/glass";
-import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 
 interface SettingsItemProps {
@@ -13,11 +12,6 @@ interface SettingsItemProps {
   onPress?: () => void;
   showChevron?: boolean;
   color?: string;
-  /**
-   * Marks a black glyph, which is tinted wherever black would not show: on
-   * the photo and on the dark canvas. Coloured glyphs keep their colour.
-   */
-  tintOnPhoto?: boolean;
 }
 
 export function SettingsItem({
@@ -26,15 +20,8 @@ export function SettingsItem({
   onPress,
   showChevron = true,
   color,
-  tintOnPhoto = false,
 }: SettingsItemProps) {
   const onPhoto = useOnPhoto();
-  const palette = usePalette();
-  const glyphTint = onPhoto
-    ? "#FFFFFF"
-    : palette.dark
-      ? palette.foreground
-      : undefined;
 
   return (
     <HapticPressable
@@ -49,7 +36,6 @@ export function SettingsItem({
             source={icon as ImageSourcePropType}
             className="size-6"
             resizeMode="contain"
-            tintColor={tintOnPhoto ? glyphTint : undefined}
           />
         )}
       </View>

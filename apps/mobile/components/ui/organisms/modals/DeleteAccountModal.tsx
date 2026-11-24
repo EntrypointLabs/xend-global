@@ -78,7 +78,7 @@ export function DeleteAccountModal({
               </View>
 
               <View className="h-44 items-center justify-center overflow-hidden rounded-3xl border border-foreground/10 bg-foreground/[0.03]">
-                <View className="h-14 w-14 items-center justify-center rounded-full bg-[#F90101] dark:bg-destructive">
+                <View className="h-14 w-14 items-center justify-center rounded-full bg-destructive">
                   <Ionicons name="trash" size={26} color="#fff" />
                 </View>
                 <Image
