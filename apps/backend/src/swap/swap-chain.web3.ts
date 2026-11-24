@@ -9,14 +9,17 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js';
-import { decodeAllowedPrograms } from '@prydd/smart-account';
+import {
+  decodeAllowedPrograms,
+  JUPITER_PROGRAM_ID,
+} from '@prydd/smart-account';
 
 import {
   SETTLEMENT_AUTHORITY_SIGNER,
   type SettlementAuthoritySigner,
 } from '../settlement/settlement-authority.interface';
 import { withPriorityFee } from '../solana/priority-fee';
-import { NoSwapRouteError } from './swap.errors';
+import { NoSwapRouteError, SwapPriceMovedError } from './swap.errors';
 import type { CompiledSwap, SwapChain } from './swap.interface';
 
 const MAX_TRANSACTION_BYTES = 1232;
@@ -142,6 +145,9 @@ export class Web3SwapChain implements SwapChain, OnModuleInit {
         `swap.simulation_failed err=${JSON.stringify(simulated.value.err)}` +
           ` logs=${JSON.stringify(simulated.value.logs?.slice(-6) ?? [])}`,
       );
+      if (pastItsFloor(simulated.value.logs ?? [])) {
+        throw new SwapPriceMovedError('The price moved before the swap ran');
+      }
       throw new NoSwapRouteError('The swap would not go through right now');
     }
 
@@ -181,6 +187,14 @@ export class Web3SwapChain implements SwapChain, OnModuleInit {
       }).compileToV0Message(params.lookupTables),
     );
   }
+}
+
+/** Jupiter's `SlippageToleranceExceeded`, as its program logs it. */
+const JUPITER_PAST_FLOOR = `Program ${JUPITER_PROGRAM_ID.toBase58()} failed: custom program error: 0x1771`;
+
+/** Whether a failed run failed because the venue paid less than the floor. */
+function pastItsFloor(logs: readonly string[]): boolean {
+  return logs.some((line) => line.includes(JUPITER_PAST_FLOOR));
 }
 
 /**

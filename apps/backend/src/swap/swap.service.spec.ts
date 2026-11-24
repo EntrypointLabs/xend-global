@@ -23,6 +23,7 @@ import {
   AccountNeedsUpdateError,
   NoSwapRouteError,
   SwapMismatchError,
+  SwapPriceMovedError,
   SwapQuoteExpiredError,
   SwapUnavailableError,
 } from './swap.errors';
@@ -98,12 +99,15 @@ function setUp({
   allowed = [...ABOVE_LIMIT_PROGRAM_ALLOWLIST],
   existing = [] as PublicKey[],
   unsignable = 'none' as 'none' | 'multi-hop' | 'every' | 'whirlpool',
+  runs = [] as ('price-moved' | 'fails')[],
 }: {
   env?: Record<string, unknown>;
   allowed?: PublicKey[];
   existing?: PublicKey[];
   /** Which routes name the vault among a venue's accounts. */
   unsignable?: 'none' | 'multi-hop' | 'every' | 'whirlpool';
+  /** How each run of a swap against the chain ends, in order; then they pass. */
+  runs?: ('price-moved' | 'fails')[];
 } = {}) {
   const values: Record<string, unknown> = {
     SOLANA_CLUSTER: 'mainnet',
@@ -191,6 +195,13 @@ function setUp({
         ).serialize(),
       ).toString('base64'),
     compile: ({ instructions }) => {
+      const outcome = runs.shift();
+      if (outcome === 'price-moved') {
+        return Promise.reject(new SwapPriceMovedError('moved'));
+      }
+      if (outcome === 'fails') {
+        return Promise.reject(new NoSwapRouteError('would not run'));
+      }
       const message = new TransactionMessage({
         payerKey: feePayer.publicKey,
         recentBlockhash: BLOCKHASH,
@@ -287,6 +298,28 @@ describe('SwapService', () => {
     await expect(service.quote('consumer', usdcToSol)).resolves.toMatchObject({
       venue: 'Raydium',
     });
+  });
+
+  it('routes around a venue that has already moved off its price', async () => {
+    const { service } = setUp({ runs: ['price-moved'] });
+    await expect(service.quote('consumer', usdcToSol)).resolves.toMatchObject({
+      venue: 'Raydium',
+    });
+  });
+
+  it('still prices a swap that would not run, such as one past the balance', async () => {
+    const { service } = setUp({ runs: ['fails'] });
+    await expect(service.quote('consumer', usdcToSol)).resolves.toMatchObject({
+      venue: 'Whirlpool',
+    });
+  });
+
+  it('says the price moved when it moves between the quote and the swap', async () => {
+    const { service } = setUp({ runs: [undefined as never, 'price-moved'] });
+    const { quoteId } = await service.quote('consumer', usdcToSol);
+    await expect(service.prepare('consumer', quoteId)).rejects.toBeInstanceOf(
+      SwapPriceMovedError,
+    );
   });
 
   it('quotes nothing when no route could be signed', async () => {

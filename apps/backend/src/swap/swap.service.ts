@@ -48,11 +48,13 @@ import {
   AccountNeedsUpdateError,
   NoSwapRouteError,
   SwapMismatchError,
+  SwapPriceMovedError,
   SwapQuoteExpiredError,
   SwapUnavailableError,
 } from './swap.errors';
 import { SWAP_CHAIN, SWAP_PROVIDER, SWAP_RECORDS } from './swap.interface';
 import type {
+  CompiledSwap,
   SwapChain,
   SwapPrice,
   SwapProvider,
@@ -80,10 +82,18 @@ const QUOTE_RETENTION_SECONDS = 120;
  */
 const MAX_QUOTE_ATTEMPTS = 5;
 
+/**
+ * Why a route whose venue no longer pays what it quoted is refused. Some
+ * venues requote faster than a price can travel to the phone and back, and a
+ * quote from one of those is a price nobody can take.
+ */
+const PRICE_ALREADY_GONE = 'the venue no longer pays the price it quoted';
+
 /** Refusals that are about the venues on a route, so other venues may pass. */
 const VENUE_REFUSALS = new Set([
   VENUE_TAKES_VAULT_SIGNATURE,
   ROUTE_TERMS_UNREADABLE,
+  PRICE_ALREADY_GONE,
 ]);
 
 interface StoredRoute {
@@ -187,7 +197,10 @@ export class SwapService {
       if (price.amountInRaw !== request.amountRaw) break;
       try {
         route = await this.provider.route(price, account.addresses.vault);
-        refusal = (await this.unsendable(account, price, route, shape)) ?? '';
+        refusal =
+          (await this.unsendable(account, price, route, shape)) ??
+          (await this.alreadyGone(account, price, route, shape)) ??
+          '';
       } catch (err) {
         if (!(err instanceof NoSwapRouteError)) throw err;
         refusal = err.message;
@@ -248,19 +261,7 @@ export class SwapService {
 
     const shape = await this.shapeFor(account);
 
-    const pair = await this.pairOf(account, price);
-    const [inputExists, outputExists] = await this.chain.exists([
-      pair.inputAccount,
-      pair.outputAccount,
-    ]);
-    const compiled = await this.chain.compile({
-      instructions: this.instructions(account, pair, route, {
-        inputExists,
-        outputExists,
-        ...shape,
-      }),
-      lookupTables: await this.chain.lookupTables(route.lookupTables),
-    });
+    const compiled = await this.compile(account, price, route, shape);
 
     await this.prepared.set<PreparedSwap>(
       preparedKey(compiled.messageBase64),
@@ -286,6 +287,53 @@ export class SwapService {
       blockhash: compiled.blockhash,
       lastValidBlockHeight: compiled.lastValidBlockHeight,
     };
+  }
+
+  /** The swap as it will be sent, run first against the chain as it stands. */
+  private async compile(
+    account: SwapAccount,
+    price: SwapPrice,
+    route: SwapRoute,
+    shape: SwapShape,
+  ): Promise<CompiledSwap> {
+    const pair = await this.pairOf(account, price);
+    const [inputExists, outputExists] = await this.chain.exists([
+      pair.inputAccount,
+      pair.outputAccount,
+    ]);
+    return this.chain.compile({
+      instructions: this.instructions(account, pair, route, {
+        inputExists,
+        outputExists,
+        ...shape,
+      }),
+      lookupTables: await this.chain.lookupTables(route.lookupTables),
+    });
+  }
+
+  /**
+   * Whether the venue has already moved off the price it quoted, found by
+   * running the swap before offering it.
+   *
+   * Only that one failure counts. A swap that would not run for any other
+   * reason, most often an amount larger than the Account holds, is still
+   * priced: the Consumer asked what the trade is worth, and the answer to
+   * that does not depend on whether they can make it yet.
+   */
+  private async alreadyGone(
+    account: SwapAccount,
+    price: SwapPrice,
+    route: SwapRoute,
+    shape: SwapShape,
+  ): Promise<string | null> {
+    try {
+      await this.compile(account, price, route, shape);
+      return null;
+    } catch (err) {
+      if (err instanceof SwapPriceMovedError) return PRICE_ALREADY_GONE;
+      if (err instanceof NoSwapRouteError) return null;
+      throw err;
+    }
   }
 
   /**
