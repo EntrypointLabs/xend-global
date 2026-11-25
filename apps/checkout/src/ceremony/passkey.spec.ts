@@ -3,7 +3,13 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ signTransaction: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  signTransaction: vi.fn(),
+  assertCheckoutSpend: vi.fn(),
+}));
+vi.mock('./verifySpend', () => ({
+  assertCheckoutSpend: mocks.assertCheckoutSpend,
+}));
 vi.mock('@privy-io/react-auth', () => ({
   usePrivy: () => ({ authenticated: true }),
   useIdentityToken: () => ({ identityToken: 'identity' }),
@@ -33,6 +39,7 @@ afterEach(() => act(() => root?.unmount()));
 
 describe('Payment signing network', () => {
   beforeEach(() => {
+    mocks.assertCheckoutSpend.mockReset();
     mocks.signTransaction
       .mockReset()
       .mockResolvedValue({ signedTransaction: new Uint8Array([1]) });
@@ -46,7 +53,13 @@ describe('Payment signing network', () => {
     'passes the backend %s network to the signer with a configured RPC',
     async (cluster, chain) => {
       const { result } = renderHook(() => usePasskeyCeremony());
-      await result.current.signSpend('AQ==', 'consumer-s1', cluster);
+      await result.current.signSpend(
+        'AQ==',
+        'consumer-s1',
+        cluster,
+        '1000',
+        'store-wallet',
+      );
       expect(mocks.signTransaction).toHaveBeenCalledWith(
         expect.objectContaining({
           chain,
@@ -64,9 +77,32 @@ describe('Payment signing network', () => {
     async (cluster) => {
       const { result } = renderHook(() => usePasskeyCeremony());
       await expect(
-        result.current.signSpend('AQ==', 'consumer-s1', cluster as string),
+        result.current.signSpend(
+          'AQ==',
+          'consumer-s1',
+          cluster as string,
+          '1000',
+          'store-wallet',
+        ),
       ).rejects.toThrow('execution network');
       expect(mocks.signTransaction).not.toHaveBeenCalled();
     },
   );
+
+  it('signs nothing when the Spend does not match the Payment on screen', async () => {
+    mocks.assertCheckoutSpend.mockImplementation(() => {
+      throw new Error('it sends a different amount');
+    });
+    const { result } = renderHook(() => usePasskeyCeremony());
+    await expect(
+      result.current.signSpend(
+        'AQ==',
+        'consumer-s1',
+        'devnet',
+        '1000',
+        'store-wallet',
+      ),
+    ).rejects.toThrow('different amount');
+    expect(mocks.signTransaction).not.toHaveBeenCalled();
+  });
 });

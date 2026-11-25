@@ -6,6 +6,7 @@ import {
 } from '@privy-io/react-auth';
 import { useSignTransaction, useWallets } from '@privy-io/react-auth/solana';
 import { checkoutChain } from '../lib/solana';
+import { assertCheckoutSpend } from './verifySpend';
 
 export interface CeremonyResult {
   /** The provider IDENTITY token, passed to authorize as providerToken. */
@@ -107,8 +108,18 @@ export function usePasskeyCeremony() {
       unsignedTxBase64: string,
       signerAddress: string,
       executionCluster: string,
+      usdcSettlementRaw: string,
+      payoutWallet: string,
     ): Promise<string> => {
       const chain = checkoutChain(executionCluster);
+      // The vendor's own transaction sheet is hidden below, so this is the
+      // only thing that reads the bytes before the key signs them.
+      assertCheckoutSpend(unsignedTxBase64, {
+        signerAddress,
+        executionCluster,
+        usdcSettlementRaw,
+        payoutWallet,
+      });
       if (!authedRef.current) {
         // A Session says the Consumer is recognised, not that a signer is
         // available. If the provider session has lapsed the passkey has to be
