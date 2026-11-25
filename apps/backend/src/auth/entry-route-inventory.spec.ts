@@ -35,6 +35,7 @@ const ENTRY_ALLOWED: readonly string[] = [
   'GET /wallet/me',
   'GET /wallet/me/balances',
   'GET /earn',
+  'GET /earn/history',
   'GET /transfers',
   'GET /account/me',
   'GET /account/recovery',
