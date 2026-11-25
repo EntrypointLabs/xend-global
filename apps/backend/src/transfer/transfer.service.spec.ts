@@ -25,6 +25,7 @@ import {
   IntentMismatchError,
   RpcUnavailableError,
   UnsupportedMintError,
+  BelowRentMinimumError,
 } from './transfer.errors';
 
 /**
@@ -308,9 +309,20 @@ function makeVaultSpend(opts: { approvalSigner?: PublicKey } = {}) {
     route: opts.approvalSigner ? 'two-signature' : 'spending-limit',
     needsApprovalSignature: Boolean(opts.approvalSigner),
   });
-  const spends = { prepare, submit } as unknown as SpendService;
+  const mintDecimals = jest.fn().mockResolvedValue(6);
+  const spends = {
+    prepare,
+    submit,
+    mintDecimals,
+  } as unknown as SpendService;
 
-  return { spends, prepare, submit, vaultAddress: vault.toBase58() };
+  return {
+    spends,
+    prepare,
+    submit,
+    mintDecimals,
+    vaultAddress: vault.toBase58(),
+  };
 }
 
 function makeService(opts: {
@@ -571,6 +583,130 @@ describe('TransferService.submit', () => {
     expect(store.transfers[0].mint).toBe(usdcMint);
     expect(store.transfers[0].amountRaw).toBe('1000000');
     expect(sendRawTransaction).toHaveBeenCalledWith(signedTxBase64);
+  });
+
+  describe('sending any token from the vault', () => {
+    const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
+    const JUP = 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN';
+
+    it('sends SOL as plain SOL with nine decimals, and keeps its mint for Activity', async () => {
+      const { spends, prepare, mintDecimals } = makeVaultSpend();
+      const { service } = makeService({
+        solana: makeSolana({}),
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+      });
+
+      await service.prepare('u_test', {
+        toAddress: Keypair.generate().publicKey.toBase58(),
+        mint: WRAPPED_SOL,
+        amountRaw: '50000000',
+      });
+
+      expect(prepare).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mint: PublicKey.default.toBase58(),
+          decimals: 9,
+        }),
+      );
+      expect(mintDecimals).not.toHaveBeenCalled();
+    });
+
+    it('sends a token outside the stablecoins at its own decimals', async () => {
+      const { spends, prepare, mintDecimals } = makeVaultSpend();
+      mintDecimals.mockResolvedValue(6);
+      const { service } = makeService({
+        solana: makeSolana({}),
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+      });
+
+      await service.prepare('u_test', {
+        toAddress: Keypair.generate().publicKey.toBase58(),
+        mint: JUP,
+        amountRaw: '310000000',
+      });
+
+      expect(mintDecimals).toHaveBeenCalledWith(JUP);
+      expect(prepare).toHaveBeenCalledWith(
+        expect.objectContaining({ mint: JUP, decimals: 6, bothKeys: true }),
+      );
+    });
+
+    it('sends dollars from inside the app on both keys too', async () => {
+      const { spends, prepare } = makeVaultSpend();
+      const { service } = makeService({
+        solana: makeSolana({}),
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+      });
+
+      await service.prepare('u_test', {
+        toAddress: Keypair.generate().publicKey.toBase58(),
+        mint: usdcMint,
+        amountRaw: '1000000',
+      });
+
+      expect(prepare).toHaveBeenCalledWith(
+        expect.objectContaining({ bothKeys: true }),
+      );
+    });
+
+    it('refuses an address that is not a token', async () => {
+      const { spends, mintDecimals } = makeVaultSpend();
+      mintDecimals.mockRejectedValue(new Error('no such mint'));
+      const { service } = makeService({
+        solana: makeSolana({}),
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+      });
+
+      await expect(
+        service.prepare('u_test', {
+          toAddress: Keypair.generate().publicKey.toBase58(),
+          mint: Keypair.generate().publicKey.toBase58(),
+          amountRaw: '1',
+        }),
+      ).rejects.toBeInstanceOf(UnsupportedMintError);
+    });
+
+    it('refuses too little SOL for an empty address before anything is signed', async () => {
+      const { spends, prepare } = makeVaultSpend();
+      const { service } = makeService({
+        solana: makeSolana({
+          accountExists: jest.fn().mockResolvedValue(false),
+        }),
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+      });
+
+      await expect(
+        service.prepare('u_test', {
+          toAddress: Keypair.generate().publicKey.toBase58(),
+          mint: WRAPPED_SOL,
+          amountRaw: '500000',
+        }),
+      ).rejects.toBeInstanceOf(BelowRentMinimumError);
+      expect(prepare).not.toHaveBeenCalled();
+    });
+
+    it('lets enough SOL open an empty address', async () => {
+      const { spends, prepare } = makeVaultSpend();
+      const { service } = makeService({
+        solana: makeSolana({
+          accountExists: jest.fn().mockResolvedValue(false),
+        }),
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+      });
+
+      await service.prepare('u_test', {
+        toAddress: Keypair.generate().publicKey.toBase58(),
+        mint: WRAPPED_SOL,
+        amountRaw: '890880',
+      });
+      expect(prepare).toHaveBeenCalled();
+    });
   });
 
   it('quotes a vault Spend as free, because the authority pays for it', async () => {

@@ -13,6 +13,14 @@ export class InvalidRecipientError extends Error {
   }
 }
 
+export class BelowRentMinimumError extends Error {
+  readonly code = 'BELOW_RENT_MINIMUM';
+  constructor(message: string) {
+    super(message);
+    this.name = 'BelowRentMinimumError';
+  }
+}
+
 export class UnsupportedMintError extends Error {
   readonly code = 'UNSUPPORTED_MINT';
   constructor(message: string) {
