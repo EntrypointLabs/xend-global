@@ -63,6 +63,23 @@ function spend(amount: bigint, to: PublicKey = destination): string {
   ]);
 }
 
+function spendOnBothKeys(amount: bigint, to: PublicKey = destination): string {
+  return compile([
+    buildSpend({
+      addresses,
+      request: { mint: USDC, amount, destination: to },
+      route: {
+        kind: "two-signature",
+        reason: "in-app",
+        policy: derivePolicyAddress(addresses.settings, 2n),
+      },
+      signers: [primary, approval],
+      decimals: 6,
+      tokenProgram: TOKEN_PROGRAM_ID,
+    }),
+  ]);
+}
+
 const expectedSpend = {
   vault,
   destination: destination.toBase58(),
@@ -86,6 +103,17 @@ describe("checkSpend", () => {
     expect(checkSpend(spend(2_500_000n, elsewhere), expectedSpend)).toBe(
       "it pays someone else"
     );
+  });
+
+  it("accepts both keys paying into the recipient's existing token account", () => {
+    expect(checkSpend(spendOnBothKeys(2_500_000n), expectedSpend)).toBeNull();
+  });
+
+  it("refuses both keys paying into someone else's token account", () => {
+    const elsewhere = Keypair.generate().publicKey;
+    expect(
+      checkSpend(spendOnBothKeys(2_500_000n, elsewhere), expectedSpend)
+    ).toBe("it pays someone else");
   });
 
   it("refuses another Account's vault", () => {

@@ -1,3 +1,4 @@
+import { WRAPPED_SOL_MINT } from '@prydd/smart-account';
 import {
   Inject,
   Injectable,
@@ -56,6 +57,8 @@ import {
   PresenceProofRequiredError,
   RpcUnavailableError,
   UnsupportedMintError,
+  BelowRentMinimumError,
+  InsufficientSolError,
 } from './transfer.errors';
 import { verifyPresenceProof } from './presence-proof';
 import {
@@ -69,6 +72,10 @@ import type {
   TransferRow,
 } from './dtos';
 import { ReconcilerService } from '../activity/reconciler.service';
+
+const SOL_DECIMALS = 9;
+/** What an account with no data needs to stay open. */
+const RENT_EXEMPT_MINIMUM_LAMPORTS = 890_880n;
 
 /**
  * A prepared transfer intent. Held in the prepared-transaction store only
@@ -196,7 +203,12 @@ export class TransferService {
     // the balance being rescued is the one still sitting in the Privy wallet.
     const isSweepToVault = squads?.vaultAddress === req.toAddress;
     if (squads && !isSweepToVault) {
-      return this.prepareVaultSpend(userId, account.id, req);
+      return this.prepareVaultSpend(
+        userId,
+        account.id,
+        squads.vaultAddress,
+        req,
+      );
     }
 
     const fromAddress = account.walletAddress;
@@ -363,6 +375,45 @@ export class TransferService {
   }
 
   /**
+   * Refuses SOL that would land in an address with nothing in it yet and too
+   * little to keep it open. The chain rejects such a transfer outright, after
+   * the Consumer has confirmed it twice.
+   */
+  private async assertVaultHoldsSol(
+    vaultAddress: string,
+    amountRaw: string,
+  ): Promise<void> {
+    let lamports: bigint;
+    try {
+      lamports = await this.solana.getSolBalance(vaultAddress);
+    } catch (err) {
+      throw new RpcUnavailableError('failed to read the SOL balance', err);
+    }
+    if (lamports < BigInt(amountRaw)) {
+      throw new InsufficientSolError(
+        'the vault holds less plain SOL than the send; wrapped SOL cannot be sent',
+      );
+    }
+  }
+
+  private async assertSolReachesRecipient(req: {
+    toAddress: string;
+    amountRaw: string;
+  }): Promise<void> {
+    let opened: boolean;
+    try {
+      opened = await this.solana.accountExists(req.toAddress);
+    } catch (err) {
+      throw new RpcUnavailableError('failed to check the recipient', err);
+    }
+    if (!opened && BigInt(req.amountRaw) < RENT_EXEMPT_MINIMUM_LAMPORTS) {
+      throw new BelowRentMinimumError(
+        'an empty address needs at least the rent-exempt minimum of SOL',
+      );
+    }
+  }
+
+  /**
    * Builds a Spend out of the Squads vault.
    *
    * The returned transaction may still need the approval signer, which the
@@ -373,6 +424,7 @@ export class TransferService {
   private async prepareVaultSpend(
     userId: string,
     smartAccountId: string,
+    vaultAddress: string,
     req: { toAddress: string; mint: string; amountRaw: string; memo?: string },
   ): Promise<PrepareResponse> {
     try {
@@ -380,20 +432,38 @@ export class TransferService {
     } catch {
       throw new InvalidRecipientError('toAddress is not a valid Solana pubkey');
     }
-    if (!this.mintAllowlist.has(req.mint)) {
-      throw new UnsupportedMintError(
-        `mint ${req.mint} not in supported set for v1`,
-      );
+    try {
+      new PublicKey(req.mint);
+    } catch {
+      throw new UnsupportedMintError(`mint ${req.mint} not a valid pubkey`);
+    }
+
+    // Any token the vault holds can be sent. SOL is named by its wrapped
+    // mint, as everywhere else, but leaves the vault as plain SOL, so only
+    // the plain part of a SOL balance can go.
+    const native = req.mint === WRAPPED_SOL_MINT.toBase58();
+    if (native) {
+      await this.assertVaultHoldsSol(vaultAddress, req.amountRaw);
+      await this.assertSolReachesRecipient(req);
+    }
+    let decimals: number;
+    try {
+      decimals = native
+        ? SOL_DECIMALS
+        : await this.spends.mintDecimals(req.mint);
+    } catch {
+      throw new UnsupportedMintError(`mint ${req.mint} is not a token`);
     }
 
     const spend = await this.spends.prepare({
       userId,
       destination: req.toAddress,
-      mint: req.mint,
+      mint: native ? PublicKey.default.toBase58() : req.mint,
       amountRaw: req.amountRaw,
-      // Both allowlisted stablecoins are 6 decimals on Solana; the allowlist
-      // check above is what keeps that true.
-      decimals: 6,
+      decimals,
+      // A send from inside the app always carries both keys, behind the one
+      // Face ID the device key asks for. The spending limit is for checkout.
+      bothKeys: true,
     });
 
     const intentId = createId();

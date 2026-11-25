@@ -19,6 +19,7 @@ import {
 } from "@/utils/apiClient";
 import { checkSpend, MISMATCH_MESSAGE } from "@/utils/verifyTransaction";
 import { isUserCanceledSign } from "@/utils/signing";
+import { toRawAmount, WRAPPED_SOL_MINT } from "@/utils/swap";
 import { getUsdcMint } from "@/utils/cluster";
 import { showToast } from "@/utils/toast";
 import {
@@ -56,6 +57,18 @@ const TOO_SLOW = "This took too long. Nothing has been sent.";
 const UNKNOWN_OUTCOME =
   "We could not tell whether it went through. Sending again cannot send twice.";
 const SOMETHING_WRONG = "Something went wrong. Nothing has been sent.";
+const EMPTY_ADDRESS_NEEDS_MORE_SOL =
+  "That address is empty, so it needs at least 0.00089 SOL to open. Send a little more.";
+const TOKEN_CANNOT_BE_SENT =
+  "This token cannot be sent. Nothing has been sent.";
+const NOT_ENOUGH_PLAIN_SOL =
+  "Some of your SOL is wrapped and cannot be sent. Send a little less.";
+
+/** The token a crypto send moves: its mint, and the decimals amounts use. */
+export interface SendToken {
+  mint: string;
+  decimals: number;
+}
 const NOT_READY = "Your Account is not ready yet. Try again in a moment.";
 
 function toastSending() {
@@ -240,18 +253,19 @@ export function useSendExecutor() {
    *  - Privy session expiry: SDK silently re-prompts; we do NOT logout.
    */
   const sendCrypto = useCallback(
-    async (recipient: string, amount: string): Promise<SendStart> => {
+    async (
+      recipient: string,
+      amount: string,
+      token?: SendToken
+    ): Promise<SendStart> => {
       const embeddedWallet = embeddedSolana.wallets?.[0];
       if (!embeddedWallet) return { status: "failed", reason: NOT_READY };
 
-      const mint = getUsdcMint();
-      // USDC has 6 decimals; backend wants the integer string at native
-      // decimals. BigInt-safe construction future-proofs against larger
-      // mints with 9 decimals.
-      const amountRaw = BigInt(
-        Math.round(Number(amount) * 1_000_000)
-      ).toString();
-      const key = `${recipient}:${amountRaw}`;
+      const mint = token?.mint ?? getUsdcMint();
+      // The backend wants the integer at the token's own decimals, built from
+      // the typed digits rather than through a float.
+      const amountRaw = toRawAmount(amount, token?.decimals ?? 6);
+      const key = `${recipient}:${mint}:${amountRaw}`;
 
       if (pendingCrypto && pendingCrypto.key !== key) pendingCrypto = null;
       // A retry that already holds a signed transfer resumes at the submit
@@ -276,6 +290,12 @@ export function useSendExecutor() {
               });
             } else if (err?.data?.code === "RPC_UNAVAILABLE") {
               return { status: "failed", reason: NETWORK_BUSY };
+            } else if (err?.data?.code === "BELOW_RENT_MINIMUM") {
+              return { status: "failed", reason: EMPTY_ADDRESS_NEEDS_MORE_SOL };
+            } else if (err?.data?.code === "INSUFFICIENT_SOL") {
+              return { status: "failed", reason: NOT_ENOUGH_PLAIN_SOL };
+            } else if (err?.data?.code === "UNSUPPORTED_MINT") {
+              return { status: "failed", reason: TOKEN_CANNOT_BE_SENT };
             } else {
               throw err;
             }
@@ -287,7 +307,8 @@ export function useSendExecutor() {
           const mismatch = checkSpend(prep.unsignedTxBase64, {
             vault: account?.address ?? "",
             destination: recipient,
-            mint,
+            // SOL leaves the vault as plain SOL, which the reader names as such.
+            mint: mint === WRAPPED_SOL_MINT ? "SOL" : mint,
             amountRaw,
           });
           if (mismatch) {
@@ -305,12 +326,12 @@ export function useSendExecutor() {
               toByteArray(prep.unsignedTxBase64)
             );
 
-            // Above the spending limit the vault needs the approval signer too,
-            // and it has to go first: Turnkey's policy engine evaluates the
-            // payload it is handed, and the activity is documented as unsigned
-            // in / signed out rather than additive. The primary then fills its
-            // own signature slot and leaves this one intact.
-            // Submitting one signature short is rejected on chain, not refused.
+            // A send from inside the app carries both keys. The approval signer
+            // has to go first: Turnkey's policy engine evaluates the payload it
+            // is handed, and the activity is documented as unsigned in /
+            // signed out rather than additive. The primary then fills its own
+            // signature slot silently, so this is the only Face ID the send
+            // asks for. Submitting one signature short is rejected on chain.
             if (prep.needsApprovalSignature) {
               if (!account) throw new Error("Account not loaded");
               const signedHex = await signWithApprovalSigner({
@@ -319,7 +340,7 @@ export function useSendExecutor() {
                 unsignedTransaction: Buffer.from(
                   toByteArray(prep.unsignedTxBase64)
                 ).toString("hex"),
-                prompt: SIGN_PROMPT.payment,
+                prompt: SIGN_PROMPT.send,
               });
               tx = VersionedTransaction.deserialize(
                 Buffer.from(signedHex, "hex")

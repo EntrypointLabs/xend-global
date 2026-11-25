@@ -8,6 +8,7 @@ import {
   BottomSheetTextInput,
   type BottomSheetBackdropProps,
   type BottomSheetFooterProps,
+  type BottomSheetModalProps,
 } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -69,10 +70,28 @@ const SEARCH_HEIGHT = 84;
  * can be relied on: a tick for a verified token, a warning for one wearing a
  * verified token's ticker, and nothing for the rest.
  */
+interface TokenPickerSheetProps {
+  side: SwapSide;
+  /** Defaults to the swap side's own heading. */
+  title?: string;
+  /**
+   * For a picker outside Swap: what is chosen now, and what to do with a new
+   * pick. Without them the sheet reads and writes the swap pair.
+   */
+  selectedMint?: string;
+  onPick?: (token: SwapToken) => void;
+  /** "push" when opened from inside another sheet, which it must not replace. */
+  stackBehavior?: "push" | "replace" | "switch";
+  /** Over another sheet, a zIndex above that sheet's, or it opens underneath. */
+  containerStyle?: BottomSheetModalProps["containerStyle"];
+}
+
 export const TokenPickerSheet = forwardRef<
   BottomSheetModal,
-  { side: SwapSide }
->(({ side }, ref) => {
+  TokenPickerSheetProps
+>((props, ref) => {
+  const { side, title, selectedMint, onPick, stackBehavior, containerStyle } =
+    props;
   const palette = usePalette();
   const insets = useSafeAreaInsets();
   const pair = useSwapPair();
@@ -128,9 +147,11 @@ export const TokenPickerSheet = forwardRef<
     if (ref && typeof ref !== "function") ref.current?.dismiss();
   };
   const pick = (token: SwapToken) => {
-    pickSwapToken(side, token);
+    if (onPick) onPick(token);
+    else pickSwapToken(side, token);
     close();
   };
+  const chosenMint = selectedMint ?? pair[side].mint;
 
   const waiting = receiving && (offered.isLoading || offered.isStale);
   const empty = sections.every((section) => section.data.length === 0);
@@ -159,6 +180,8 @@ export const TokenPickerSheet = forwardRef<
   return (
     <BottomSheetModal
       ref={ref}
+      stackBehavior={stackBehavior}
+      containerStyle={containerStyle}
       snapPoints={snapPoints}
       enableDynamicSizing={false}
       enablePanDownToClose
@@ -178,7 +201,7 @@ export const TokenPickerSheet = forwardRef<
       <View className="flex-1">
         <View className="items-center pb-1 pt-1">
           <Typography variant="title1" weight="600">
-            {receiving ? "You receive" : "You pay"}
+            {title ?? (receiving ? "You receive" : "You pay")}
           </Typography>
         </View>
 
@@ -269,7 +292,7 @@ export const TokenPickerSheet = forwardRef<
             renderItem={({ item }: { item: Row }) => (
               <TokenRow
                 row={item}
-                selected={item.token.mint === pair[side].mint}
+                selected={item.token.mint === chosenMint}
                 onPress={() => pick(item.token)}
               />
             )}

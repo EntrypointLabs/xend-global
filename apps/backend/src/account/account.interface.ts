@@ -348,6 +348,9 @@ export interface SpendChain {
    */
   tokenProgramFor(mint: string): Promise<import('@solana/web3.js').PublicKey>;
 
+  /** A token mint's decimals, read from the mint account. */
+  decimalsFor(mint: string): Promise<number>;
+
   /**
    * Compiles a Spend with the settlement authority as fee payer.
    *

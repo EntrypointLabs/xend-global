@@ -50,6 +50,11 @@ export const TokenBalanceSchema = z.object({
    * rendering a broken image.
    */
   iconUrl: z.string().nullable(),
+  /**
+   * On the SOL entry only: how much of it is plain SOL. The rest sits in a
+   * wrapped SOL account, which a swap can spend but a send cannot.
+   */
+  nativeAmountRaw: z.string().optional(),
 });
 export type TokenBalanceDto = z.infer<typeof TokenBalanceSchema>;
 

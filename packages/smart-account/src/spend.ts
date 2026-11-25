@@ -74,6 +74,11 @@ export type SpendRoute =
   | { kind: "two-signature"; reason: TwoSignatureReason; policy: PublicKey };
 
 export type TwoSignatureReason =
+  /**
+   * Sent from inside the app, where both keys are on hand behind one Face ID.
+   * The spending limit is for paying a Merchant at checkout, outside it.
+   */
+  | "in-app"
   | "no-spending-limit"
   | "different-mint"
   | "exceeds-per-use"

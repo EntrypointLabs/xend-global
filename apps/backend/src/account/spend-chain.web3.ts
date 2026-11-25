@@ -26,6 +26,8 @@ import { withPriorityFee } from '../solana/priority-fee';
 import { AccountCreationError } from './account.errors';
 import type { SpendChain } from './account.interface';
 
+const MINT_DECIMALS_OFFSET = 44;
+
 /**
  * Chain reads and transaction assembly for Spends, on web3.js per ADR 0020.
  */
@@ -102,6 +104,19 @@ export class Web3SpendChain implements SpendChain, OnModuleInit {
     // The account's owner IS its token program, which is the only source that
     // stays correct as Token-2022 mints appear alongside classic ones.
     return info.owner;
+  }
+
+  async decimalsFor(mint: string): Promise<number> {
+    const info = await this.rpc.getAccountInfo(
+      new PublicKey(mint),
+      'confirmed',
+    );
+    if (!info) {
+      throw new AccountCreationError(`Mint ${mint} does not exist on chain`);
+    }
+    // The base mint layout is shared by Token and Token-2022, with decimals
+    // as the single byte after supply.
+    return info.data[MINT_DECIMALS_OFFSET];
   }
 
   async wouldSucceed(instruction: TransactionInstruction): Promise<boolean> {

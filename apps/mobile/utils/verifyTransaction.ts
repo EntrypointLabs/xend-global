@@ -1,9 +1,12 @@
 import {
   ABOVE_LIMIT_PROGRAM_ALLOWLIST,
+  associatedTokenAddress,
   derivePolicyAddress,
   describeTransaction,
   type SettingsChangeAction,
   type StagedSettingsChange,
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
   type TransactionDescription,
 } from "@prydd/smart-account";
 import { type AddressLookupTableAccount, PublicKey } from "@solana/web3.js";
@@ -86,8 +89,24 @@ function describe(
   });
 }
 
-function sameKey(a: PublicKey | null, b: string): boolean {
-  return a !== null && a.toBase58() === b;
+/**
+ * A token transfer into an account that already exists names only that
+ * account, not its owner. It still pays the recipient when it is their
+ * associated token account, under either token program.
+ */
+function paysRecipient(
+  description: Extract<TransactionDescription, { kind: "spend" }>,
+  recipient: string
+): boolean {
+  if (description.destination) {
+    return description.destination.toBase58() === recipient;
+  }
+  const { destinationTokenAccount: paidInto, mint } = description;
+  if (!paidInto || mint === "SOL") return false;
+  const owner = new PublicKey(recipient);
+  return [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].some((program) =>
+    paidInto.equals(associatedTokenAddress(owner, mint, program))
+  );
 }
 
 /**
@@ -113,13 +132,12 @@ export function checkSpend(
   if (description.vault.toBase58() !== expected.vault) {
     return "it moves money out of another account";
   }
-  const paid = description.destination ?? description.destinationTokenAccount;
-  if (!sameKey(paid, expected.destination)) {
-    return "it pays someone else";
-  }
   const mint = description.mint === "SOL" ? "SOL" : description.mint.toBase58();
   if (mint !== expected.mint) {
     return "it sends a different currency";
+  }
+  if (!paysRecipient(description, expected.destination)) {
+    return "it pays someone else";
   }
   if (description.amount !== BigInt(expected.amountRaw)) {
     return "it sends a different amount";

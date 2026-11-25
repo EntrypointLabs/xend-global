@@ -22,6 +22,8 @@ import RecipientStep from "./RecipientStep";
 import BankRecipientStep from "./BankRecipientStep";
 import AmountStep from "./AmountStep";
 import { QRScannerModal } from "./QRScannerModal";
+import { TokenPickerSheet } from "@/components/swap/TokenPickerSheet";
+import { getUsdcMint } from "@/utils/cluster";
 import type { BankRecipient, SendMode } from "./bankAccount";
 
 export interface SendFlowModalRef {
@@ -47,6 +49,10 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
     const background =
       mode === "bank" || palette.dark ? palette.card : "#F0F0F0";
     const scannerRef = useRef<BottomSheetModal>(null);
+    // Beside the scanner rather than inside the amount step: a sheet opened
+    // from inside this one's content lands underneath it.
+    const tokenPickerRef = useRef<BottomSheetModal>(null);
+    const [sendMint, setSendMint] = useState(getUsdcMint);
 
     const [, setStep] = useState<Step>("Recipient");
     const [recipient, setRecipient] = useState<string>("");
@@ -69,6 +75,7 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
             setStep("Recipient");
             setRecipient("");
             setBankRecipient(null);
+            setSendMint(getUsdcMint());
             translateX.value = 0;
           }, 300);
         }
@@ -172,6 +179,8 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
                   <AmountStep
                     mode="crypto"
                     recipient={recipient}
+                    mint={sendMint}
+                    onChooseToken={() => tokenPickerRef.current?.present()}
                     onBack={handleBack}
                     onClose={handleClose}
                   />
@@ -183,6 +192,17 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
 
         {mode === "crypto" && (
           <QRScannerModal ref={scannerRef} onScan={handleScan} />
+        )}
+        {mode === "crypto" && (
+          <TokenPickerSheet
+            ref={tokenPickerRef}
+            side="pay"
+            title="Send"
+            selectedMint={sendMint}
+            onPick={(token) => setSendMint(token.mint)}
+            stackBehavior="push"
+            containerStyle={{ zIndex: 2 }}
+          />
         )}
       </>
     );

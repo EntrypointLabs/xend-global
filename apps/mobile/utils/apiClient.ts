@@ -470,6 +470,11 @@ export const TokenBalanceSchema = z.object({
   name: z.string().nullish(),
   /** Absolute URL of the token's logo, when one is known. */
   iconUrl: z.string().nullish(),
+  /**
+   * On the SOL entry only: the plain SOL in it. The rest is wrapped, which a
+   * swap can spend but a send cannot.
+   */
+  nativeAmountRaw: z.string().optional(),
 });
 export type TokenBalance = z.infer<typeof TokenBalanceSchema>;
 
