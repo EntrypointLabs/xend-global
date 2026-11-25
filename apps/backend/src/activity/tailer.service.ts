@@ -5,6 +5,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { TokenNamer } from '../tokens/token-namer.service';
 import { TOKEN_PRICE_PROVIDER } from '../prices/token-price.interface';
 import type { TokenPriceProvider } from '../prices/token-price.interface';
+import { usdValueOf } from '../prices/usd-value';
 import type { ConfirmedTransferEvent } from '../solana/solana-rpc.interface';
 import type { WalletAddress } from '../wallet/wallet-provider.interface';
 import { RampActivityService } from '../fiat/ramp-activity';
@@ -56,18 +57,7 @@ export class TailerService {
     eventDecimals: number | null,
   ): Promise<string | null> {
     try {
-      const quote = (await this.prices.getUsdPrices([mint])).get(mint);
-      // The chain's own decimals first: they are authoritative and present even
-      // for mints no price index lists. Refusing to value a transfer just
-      // because the quote omitted decimals left rows permanently unvalued that
-      // the balance endpoint could price perfectly well.
-      const decimals = eventDecimals ?? quote?.decimals ?? null;
-      if (!quote || decimals === null) return null;
-
-      const divisor = 10n ** BigInt(decimals);
-      const whole = Number(amountRaw / divisor);
-      const fraction = Number(amountRaw % divisor) / Number(divisor);
-      return ((whole + fraction) * quote.usdPrice).toFixed(6);
+      return await usdValueOf(this.prices, mint, amountRaw, eventDecimals);
     } catch (err) {
       // A price outage must not cost us the transfer row itself.
       this.logger.warn(`tailer.price.unavailable mint=${mint}`, err);

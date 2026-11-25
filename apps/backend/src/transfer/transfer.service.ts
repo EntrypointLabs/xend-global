@@ -44,6 +44,9 @@ import { PREPARED_TX_STORE } from '../prepared/prepared-tx.interface';
 import type { PreparedTxStore } from '../prepared/prepared-tx.interface';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import { TOKEN_METADATA_PROVIDER } from '../tokens/token-metadata.interface';
+import { TOKEN_PRICE_PROVIDER } from '../prices/token-price.interface';
+import type { TokenPriceProvider } from '../prices/token-price.interface';
+import { usdValueOf } from '../prices/usd-value';
 import type {
   TokenMetadata,
   TokenMetadataProvider,
@@ -103,6 +106,11 @@ interface IntentRecord {
    * tx can't diverge from the recorded intent.
    */
   messageBase64: string;
+  /**
+   * The token's decimals, when the prepare step read them. Prices the send at
+   * the moment it is submitted.
+   */
+  decimals?: number;
   /**
    * True when this leaves the Squads vault rather than the Privy wallet. Such a
    * transaction is paid for by the settlement authority, so it comes back from
@@ -164,6 +172,7 @@ export class TransferService {
     @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
     private readonly reconciler: ReconcilerService,
     private readonly ramps: RampActivityService,
+    @Inject(TOKEN_PRICE_PROVIDER) private readonly prices: TokenPriceProvider,
     @Optional() private readonly feePayer?: FeePayerWatchService,
   ) {
     // Pull the stablecoin mint allowlist from env so devnet vs mainnet
@@ -482,6 +491,7 @@ export class TransferService {
       blockhash: spend.blockhash,
       lastValidBlockHeight: spend.lastValidBlockHeight,
       messageBase64: spend.messageBase64,
+      decimals,
       vaultSpend: true,
       needsApprovalSignature: spend.needsApprovalSignature,
       createdAt: now,
@@ -637,6 +647,7 @@ export class TransferService {
     //    (intent_id, submitted_at) while preserving the status guard — a
     //    CONFIRMED/FAILED row must never regress to PENDING.
     const now = new Date();
+    const usdValue = await this.sentValue(intent);
     const [row] = await this.db.client
       .insert(transfers)
       .values({
@@ -650,6 +661,8 @@ export class TransferService {
         toAddress: intent.toAddress,
         status: 'PENDING',
         submittedAt: now,
+        usdValue,
+        usdPricedAt: usdValue === null ? null : now,
       })
       .onConflictDoUpdate({
         // The whole leg, matching the unique index: a signature alone is not a
@@ -686,6 +699,29 @@ export class TransferService {
       signature,
       status: 'PENDING',
     };
+  }
+
+  /**
+   * What the send is worth as it leaves, so its Activity row carries dollars
+   * from the first moment rather than once the indexer catches up. The
+   * indexer keeps a value already on the row, so this is the one that stands.
+   */
+  private async sentValue(intent: IntentRecord): Promise<string | null> {
+    try {
+      return await usdValueOf(
+        this.prices,
+        intent.mint,
+        BigInt(intent.amountRaw),
+        intent.decimals ?? null,
+      );
+    } catch (err) {
+      // A price outage must not cost the Consumer their send.
+      this.logger.warn(
+        `transfer.submit.price_unavailable mint=${intent.mint}`,
+        err,
+      );
+      return null;
+    }
   }
 
   /**
