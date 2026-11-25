@@ -154,6 +154,26 @@ export class EarnService {
     return info.data.readBigUInt64LE(64);
   }
   async catalog(userId: string) {
+    // These deployments exist only on mainnet. No mainnet address is a
+    // valuation source for a devnet Account, even when the wallet read works.
+    if (this.config.get<string>('SOLANA_CLUSTER') !== 'mainnet')
+      return {
+        products: (Object.keys(EARN_PROVIDERS) as EarnProviderId[]).map(
+          (id) => ({
+            id,
+            provider: EARN_PROVIDERS[id].name,
+            name: 'Lending Yield',
+            apy: null,
+            positionShares: '0',
+            positionMinor: '0',
+            available: false,
+            withdrawAvailable: false,
+            updatedAt: new Date().toISOString(),
+          }),
+        ),
+        lifetimeMinor: '0',
+        lastSevenDaysMinor: '0',
+      };
     const a = await this.account(userId);
     const ready =
       a.approvalCompatible &&
@@ -385,9 +405,6 @@ export class EarnService {
       });
       if (status.value) return { signature: pin.signature };
     }
-    await this.infrastructure(pin.quote.action);
-    if (tx.signatures.slice(1).some((s) => s.every((b) => b === 0)))
-      throw new BadRequestException('Both Account signatures are required');
     if ((await this.rpc.getBlockHeight('confirmed')) > pin.blockHeight)
       throw new ConflictException({
         code: 'EARN_QUOTE_EXPIRED',
@@ -397,6 +414,16 @@ export class EarnService {
         message:
           'The approval expired. Check your balance before trying again.',
       });
+    try {
+      await this.infrastructure(pin.quote.action);
+    } catch (error) {
+      // Recovery is a read, not another deposit. A pause or deployment outage
+      // must not hide an already sponsored signature from its Account.
+      if (pin.signature) return { signature: pin.signature };
+      throw error;
+    }
+    if (tx.signatures.slice(1).some((s) => s.every((b) => b === 0)))
+      throw new BadRequestException('Both Account signatures are required');
     if (tx.message.header.numRequiredSignatures !== 3)
       throw new BadRequestException('Unexpected Earn signers');
     const message = tx.message.serialize();

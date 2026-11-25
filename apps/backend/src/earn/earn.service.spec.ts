@@ -172,8 +172,9 @@ function setup() {
       });
     },
   );
+  const lookupTables = jest.fn().mockResolvedValue([]);
   const chain = {
-    lookupTables: jest.fn().mockResolvedValue([]),
+    lookupTables,
     compile,
   } as unknown as Web3SwapChain;
   const durable = new Map<string, EarnPending>();
@@ -215,6 +216,7 @@ function setup() {
     broadcast,
     authority,
     chain,
+    lookupTables,
     config,
     signTransaction,
     compile,
@@ -522,5 +524,91 @@ describe('Earn preparation expiry recovery', () => {
     await expect(h.service.submit('a', wire)).resolves.toEqual(sent);
     expect(h.rpc.isBlockhashValid).not.toHaveBeenCalled();
     expect(h.broadcast).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Earn disabled environments and recovery', () => {
+  it('serves disabled zero positions on devnet without querying pinned mainnet markets', async () => {
+    const h = setup();
+    h.config.set('SOLANA_CLUSTER', 'devnet');
+    jest.mocked(readEarnExchangeRate).mockClear();
+    const catalog = await h.service.catalog('a');
+    expect(catalog.lifetimeMinor).toBe('0');
+    expect(catalog.products).toHaveLength(2);
+    expect(catalog.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'kamino',
+          apy: null,
+          positionMinor: '0',
+          available: false,
+          withdrawAvailable: false,
+        }),
+        expect.objectContaining({
+          id: 'jupiter',
+          apy: null,
+          positionMinor: '0',
+          available: false,
+          withdrawAvailable: false,
+        }),
+      ]),
+    );
+    expect(readEarnExchangeRate).not.toHaveBeenCalled();
+    expect(h.rpc.getAccountInfo).not.toHaveBeenCalled();
+    expect(h.lookupTables).not.toHaveBeenCalled();
+  });
+  it('reveals the saved sponsored signature during a deposit pause without rebroadcasting', async () => {
+    const h = setup();
+    const q = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', q.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    const wire = Buffer.from(tx.serialize()).toString('base64');
+    h.broadcast.mockRejectedValueOnce(new Error('lost response'));
+    await expect(h.service.submit('a', wire)).rejects.toMatchObject({
+      response: { code: 'EARN_PENDING' },
+    });
+    const saved = [...h.durable.values()][0];
+    h.config.set('EARN_DEPOSITS_KILLSWITCH', true);
+    await expect(h.service.submit('a', wire)).resolves.toEqual({
+      signature: saved.signature,
+    });
+    h.config.set('EARN_FORWARDER_PROGRAM', '');
+    await expect(h.service.submit('a', wire)).resolves.toEqual({
+      signature: saved.signature,
+    });
+    h.rpc.getBlockHeight.mockResolvedValue(200);
+    await expect(h.service.submit('a', wire)).rejects.toMatchObject({
+      response: { code: 'EARN_QUOTE_EXPIRED', signature: saved.signature },
+    });
+    expect(h.broadcast).toHaveBeenCalledTimes(1);
+    expect(h.signTransaction).toHaveBeenCalledTimes(1);
+  });
+  it('can expire an unsigned approval during a deposit pause without infrastructure', async () => {
+    const h = setup();
+    const q = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', q.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    h.config.set('EARN_DEPOSITS_KILLSWITCH', true);
+    h.config.set('EARN_FORWARDER_PROGRAM', '');
+    h.rpc.getBlockHeight.mockResolvedValue(200);
+    await expect(
+      h.service.submit('a', Buffer.from(tx.serialize()).toString('base64')),
+    ).rejects.toMatchObject({ response: { code: 'EARN_QUOTE_EXPIRED' } });
+    expect(h.broadcast).not.toHaveBeenCalled();
+    expect(h.signTransaction).not.toHaveBeenCalled();
   });
 });
