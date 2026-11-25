@@ -1,8 +1,17 @@
 import { parseKaminoRate, parseJupiterRate } from './earn-rate';
 import { EARN_RECORDS, type EarnRecords } from './earn-records';
 import {
+  historyPoints,
+  rangeStartDay,
+  snapshotsToRecord,
+  utcDay,
+  type EarnHistoryRange,
+  type ProviderEarnings,
+} from './earn-history';
+import {
   Inject,
   Injectable,
+  Logger,
   ServiceUnavailableException,
   BadRequestException,
   ConflictException,
@@ -78,6 +87,7 @@ const fail = () =>
   });
 @Injectable()
 export class EarnService {
+  private readonly logger = new Logger(EarnService.name);
   private rpc: Connection;
   constructor(
     private readonly config: ConfigService,
@@ -176,10 +186,69 @@ export class EarnService {
     }
     return { total, withdrawable };
   }
+  private mainnet() {
+    return this.config.get<string>('SOLANA_CLUSTER') === 'mainnet';
+  }
+  private async position(vault: PublicKey, provider: EarnProviderId) {
+    const [price, holdings] = await Promise.all([
+      readEarnExchangeRate(this.rpc, provider),
+      this.receiptBalances(
+        vault,
+        new PublicKey(EARN_PROVIDERS[provider].receipt),
+      ),
+    ]);
+    return {
+      price,
+      holdings,
+      shares: holdings.total,
+      value: sharesValue(holdings.total, price),
+    };
+  }
+  private async recordSnapshots(
+    userId: string,
+    positions: Record<EarnProviderId, { shares: bigint; value: bigint }>,
+    earnings: Record<EarnProviderId, ProviderEarnings>,
+  ) {
+    const withHistory = await this.records.providersWithHistory(userId);
+    await this.records.recordSnapshots(
+      userId,
+      utcDay(new Date()),
+      snapshotsToRecord(positions, earnings, withHistory),
+    );
+  }
+  async snapshot(userId: string): Promise<void> {
+    if (!this.mainnet()) return;
+    const a = await this.account(userId);
+    await this.records.reconcile(userId, this.rpc);
+    const providers = Object.keys(EARN_PROVIDERS) as EarnProviderId[];
+    const read = await Promise.all(
+      providers.map((provider) => this.position(a.addresses.vault, provider)),
+    );
+    const positions = Object.fromEntries(
+      providers.map((provider, i) => [
+        provider,
+        { shares: read[i].shares, value: read[i].value },
+      ]),
+    ) as Record<EarnProviderId, { shares: bigint; value: bigint }>;
+    const earnings = await this.records.earnings(userId, positions);
+    await this.recordSnapshots(userId, positions, earnings.providers);
+  }
+  async history(
+    userId: string,
+    provider: EarnProviderId,
+    range: EarnHistoryRange,
+  ) {
+    const rows = await this.records.snapshots(
+      userId,
+      provider,
+      rangeStartDay(range, new Date()),
+    );
+    return { provider, points: historyPoints(rows) };
+  }
   async catalog(userId: string) {
     // These deployments exist only on mainnet. No mainnet address is a
     // valuation source for a devnet Account, even when the wallet read works.
-    if (this.config.get<string>('SOLANA_CLUSTER') !== 'mainnet')
+    if (!this.mainnet())
       return {
         products: (Object.keys(EARN_PROVIDERS) as EarnProviderId[]).map(
           (id) => ({
@@ -192,6 +261,8 @@ export class EarnService {
             withdrawableMinor: '0',
             available: false,
             withdrawAvailable: false,
+            lifetimeMinor: '0',
+            lastSevenDaysMinor: '0',
             updatedAt: new Date().toISOString(),
           }),
         ),
@@ -215,12 +286,11 @@ export class EarnService {
       (Object.keys(EARN_PROVIDERS) as EarnProviderId[]).map(
         async (provider) => {
           const p = EARN_PROVIDERS[provider];
-          const [price, holdings] = await Promise.all([
-            readEarnExchangeRate(this.rpc, provider),
-            this.receiptBalances(a.addresses.vault, new PublicKey(p.receipt)),
-          ]);
-          const shares = holdings.total;
-          positions[provider] = { shares, value: sharesValue(shares, price) };
+          const { price, holdings, shares, value } = await this.position(
+            a.addresses.vault,
+            provider,
+          );
+          positions[provider] = { shares, value };
           let apy: number | null = null;
           // Rate failure never fabricates a zero and does not erase a real position.
           try {
@@ -252,7 +322,7 @@ export class EarnService {
             name: 'Lending Yield',
             apy,
             positionShares: shares.toString(),
-            positionMinor: sharesValue(shares, price).toString(),
+            positionMinor: value.toString(),
             withdrawableMinor: sharesValue(
               holdings.withdrawable,
               price,
@@ -269,7 +339,20 @@ export class EarnService {
       this.records.earnings(userId, positions),
       this.balance(a.addresses.vault, EARN_USDC),
     ]);
-    return { products, ...earnings, depositableMinor: depositable.toString() };
+    // The chart is a side effect of this read and must never delay or fail it.
+    void this.recordSnapshots(userId, positions, earnings.providers).catch(
+      (err: unknown) => this.logger.warn('earn.snapshot_failed', err),
+    );
+    return {
+      products: products.map((product) => ({
+        ...product,
+        lifetimeMinor: earnings.providers[product.id].lifetimeMinor,
+        lastSevenDaysMinor: earnings.providers[product.id].lastSevenDaysMinor,
+      })),
+      lifetimeMinor: earnings.lifetimeMinor,
+      lastSevenDaysMinor: earnings.lastSevenDaysMinor,
+      depositableMinor: depositable.toString(),
+    };
   }
   async quote(userId: string, dto: EarnRequest): Promise<EarnQuote> {
     await this.infrastructure(dto.action);

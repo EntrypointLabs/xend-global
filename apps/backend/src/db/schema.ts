@@ -13,6 +13,8 @@ import {
   uuid,
   check,
   customType,
+  date,
+  primaryKey,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
@@ -1986,4 +1988,28 @@ export const earnOperations = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({ userIdx: index('earn_operations_user_idx').on(table.userId) }),
+);
+
+/** One Earn position's closing value per UTC day, for the earnings chart. */
+export const earnPositionSnapshots = pgTable(
+  'earn_position_snapshots',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: text('provider').$type<'kamino' | 'jupiter'>().notNull(),
+    day: date('day', { mode: 'string' }).notNull(),
+    valueMinor: text('value_minor').notNull(),
+    /** Deposits minus withdrawals as of this day, in USDC minor units. */
+    netDepositedMinor: text('net_deposited_minor').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.provider, table.day] }),
+  ],
 );
