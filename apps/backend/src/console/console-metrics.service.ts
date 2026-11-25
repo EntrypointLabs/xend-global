@@ -57,6 +57,15 @@ interface CountsRow extends Record<string, unknown> {
  * before the remainder is called a send. Without that a swap would count
  * twice: once as itself and once as a send to an address nobody knows.
  *
+ * A swap can leave several outgoing legs on one signature: a native SOL input
+ * is wrapped by one transfer and spent by another, and a rent refund can add a
+ * third. They are one trade, so it is worth its largest leg rather than their
+ * sum.
+ *
+ * A ramp order is dated by the payload's last update, which is the moment its
+ * status became completed, because the row's own creation time can be days
+ * before the money moved.
+ *
  * Timestamps are compared as UTC wall-clock values: most tables store them
  * without a zone, and the fiat tables, which do not, are converted to match.
  */
@@ -64,7 +73,10 @@ const EVENTS = sql`
   WITH ramp AS (
     SELECT
       user_id,
-      created_at AT TIME ZONE 'UTC' AS at,
+      COALESCE(
+        (payload->>'updatedAt')::timestamptz,
+        created_at
+      ) AT TIME ZONE 'UTC' AS at,
       payload->>'id' AS id,
       payload->>'status' AS status,
       payload->'route'->>'direction' AS direction,
@@ -102,9 +114,10 @@ const EVENTS = sql`
         WHERE r.direction = 'send' AND r.deposit_address = m.to_address
       )
     UNION ALL
-    SELECT 'swap', user_id, at, usd, signature
+    SELECT 'swap', min(user_id), min(at), max(usd), signature
     FROM moves
     WHERE direction = 'SEND' AND is_swap
+    GROUP BY signature
     UNION ALL
     SELECT 'deposit', user_id, at, usd, id
     FROM moves m
