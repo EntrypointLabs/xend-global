@@ -11,6 +11,10 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { Keypad } from "@/components/ui/molecules";
 import { Image } from "expo-image";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { TokenMark } from "@/components/ui/atoms/TokenMark";
+import { getUsdcMint } from "@/utils/cluster";
+import { formatRawAmountShort, toAmountInput, toRawAmount } from "@/utils/swap";
+import { heldSwapTokens, type HeldSwapToken } from "@/utils/swapTokens";
 import { Ionicons } from "@expo/vector-icons";
 import { formatAmount, truncateAddress } from "@/utils/helper";
 import { useBalances } from "@/hooks/useBalances";
@@ -18,8 +22,6 @@ import { useEarnPosition } from "@/hooks/useEarn";
 import HapticPressable from "../../atoms/HapticPressable";
 import { cn } from "@/utils/cn";
 import { usePalette } from "@/hooks/usePalette";
-import { useAccount } from "@/hooks/useAccount";
-import { describeSecondCheck, SECOND_CHECK_NOTE } from "@/utils/spendingLimit";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { displayMoney, usdcAsDollars } from "@/utils/display-money";
@@ -45,7 +47,13 @@ interface StepProps {
 }
 
 type AmountStepProps =
-  | (StepProps & { mode: "crypto"; recipient: string })
+  | (StepProps & {
+      mode: "crypto";
+      recipient: string;
+      /** The token being sent, chosen in the sheet the Send flow owns. */
+      mint: string;
+      onChooseToken: () => void;
+    })
   | (StepProps & { mode: "bank"; recipient: BankRecipient | null });
 
 type AmountStatus = "idle" | "ready" | "error";
@@ -59,49 +67,96 @@ export default function AmountStep(props: AmountStepProps) {
   );
 }
 
+/** Shown before the balance loads, and when no dollars are held. */
+function emptyUsdc(): HeldSwapToken {
+  return {
+    mint: getUsdcMint(),
+    symbol: "USDC",
+    name: "USD Coin",
+    decimals: 6,
+    iconUrl: null,
+    amountRaw: "0",
+    usdPrice: 1,
+  };
+}
+
 function CryptoAmountStep({
   recipient,
+  mint,
+  onChooseToken,
   onBack,
   onClose,
-}: StepProps & { recipient: string }) {
-  const { data: account } = useAccount();
+}: StepProps & {
+  recipient: string;
+  mint: string;
+  onChooseToken: () => void;
+}) {
   const { sendCrypto } = useSendExecutor();
-  const { total } = useBalances();
-  const balance = total ?? 0;
+  const { tokens } = useBalances();
   const palette = usePalette();
+  const held = useMemo(() => heldSwapTokens(tokens), [tokens]);
+
+  const token =
+    held.find((candidate) => candidate.mint === mint) ??
+    held.find((candidate) => candidate.mint === getUsdcMint()) ??
+    emptyUsdc();
+  const isDollars = token.mint === getUsdcMint();
+  const heldRaw = BigInt(token.amountRaw);
 
   return (
     <AmountPad
+      // A new token starts from an empty amount: digits typed for one
+      // token mean something else in another.
+      key={token.mint}
       recipientLabel={truncateAddress(recipient)}
-      maxDecimals={8}
+      maxDecimals={token.decimals}
       chip={
-        <TouchableOpacity className="flex-row items-center rounded-full bg-white px-3 py-1.5 shadow-sm dark:bg-foreground/10">
-          <View className="mr-2 h-5 w-5 items-center justify-center rounded-full bg-blue-500">
-            <Ionicons name="logo-usd" size={12} color="white" />
-          </View>
-          <Typography weight="700" className="mr-1 text-foreground">
-            USDC
+        <HapticPressable
+          onPress={onChooseToken}
+          accessibilityRole="button"
+          accessibilityLabel={`Sending ${token.symbol}. Change token`}
+          className="flex-row items-center gap-1.5 rounded-full bg-white py-1.5 pl-1.5 pr-3 shadow-sm dark:bg-foreground/10"
+        >
+          <TokenMark
+            mint={token.mint}
+            label={token.symbol}
+            iconUrl={token.iconUrl}
+            size={22}
+          />
+          <Typography weight="700" className="text-foreground">
+            {token.symbol}
           </Typography>
           <Ionicons name="chevron-down" size={12} color={palette.foreground} />
-        </TouchableOpacity>
+        </HapticPressable>
       }
-      balanceLabel={`${balance ? balance.toFixed(2) : "0.00"} USDC`}
-      maxAmount={balance.toString()}
+      balanceLabel={`${heldLabel(token, isDollars)} ${token.symbol}`}
+      maxAmount={toAmountInput(token.amountRaw, token.decimals)}
       statusOf={(amount) => {
-        if (Number(amount) > 0 && Number(amount) <= Number(balance))
-          return "ready";
-        if (amount && Number(amount) > Number(balance)) return "error";
-        return "idle";
-      }}
-      noteFor={(amount) => {
-        const secondCheck = describeSecondCheck(account, amount);
-        return secondCheck ? SECOND_CHECK_NOTE[secondCheck.reason] : null;
+        const raw = BigInt(toRawAmount(amount, token.decimals));
+        if (raw === 0n) return "idle";
+        return raw <= heldRaw ? "ready" : "error";
       }}
       onBack={onBack}
-      onContinue={(amount) => sendCrypto(recipient, amount)}
+      onContinue={(amount) =>
+        sendCrypto(recipient, amount, {
+          mint: token.mint,
+          decimals: token.decimals,
+        })
+      }
       onSending={onClose}
     />
   );
+}
+
+/** A balance as the pill shows it: dollars to the cent, other tokens cut short. */
+function heldLabel(token: HeldSwapToken, isDollars: boolean): string {
+  if (!isDollars) return formatRawAmountShort(token.amountRaw, token.decimals);
+  const [whole, fraction = ""] = formatRawAmountShort(
+    token.amountRaw,
+    token.decimals,
+    2
+  ).split(".");
+  return `${whole}.${fraction.padEnd(2, "0")}`;
 }
 
 function BankAmountStep({
