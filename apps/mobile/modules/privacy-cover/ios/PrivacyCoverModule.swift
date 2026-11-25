@@ -58,10 +58,6 @@ final class PrivacyCover {
   /// How long an answered prompt that never resigned the app still claims a
   /// late resign. Past this, a resign is the Consumer leaving.
   private static let lateResignWindow: TimeInterval = 0.6
-  /// The longest an answered prompt may hold the cover back. Face ID's
-  /// checkmark takes about a second; if the app is still inactive after this,
-  /// it is not the prompt keeping it so, and the cover goes up.
-  private static let promptExitLimit: TimeInterval = 2
 
   // Main thread only.
   private var started = false
@@ -116,6 +112,11 @@ final class PrivacyCover {
   /// The prompt is answered. The cover stays off until the app is active
   /// again, which is when the dialog has really gone; any resign after that is
   /// the Consumer leaving and is covered as usual.
+  ///
+  /// There is no time limit on that wait. Face ID holds the app inactive for
+  /// its checkmark after answering, past two seconds on a cold start, and a
+  /// limit shorter than that flashes the cover over the app just unlocked.
+  /// Leaving during the wait still covers: it sends the app to the background.
   func endPrompt() {
     state.lock()
     openPrompts = max(0, openPrompts - 1)
@@ -139,15 +140,6 @@ final class PrivacyCover {
         state.unlock()
         if unchanged, isActive() { settlePrompt() }
       }
-    }
-    DispatchQueue.main.asyncAfter(deadline: .now() + Self.promptExitLimit) { [self] in
-      state.lock()
-      let stillWaiting =
-        generation == promptGeneration && openPrompts == 0 && awaitingActive
-      if stillWaiting { awaitingActive = false }
-      let on = enabled
-      state.unlock()
-      if stillWaiting, on, !isActive() { show() }
     }
   }
 

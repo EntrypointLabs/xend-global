@@ -35,8 +35,6 @@ if (APP_LOCK_DISABLED) {
 // Common banking-app grace period; tune here if product wants a different one.
 export const BACKGROUND_GRACE_PERIOD_MS = 5 * 60 * 1000;
 
-const PROMPT_RECHECK_MS = 200;
-
 interface AppLockContextType {
   /** True while the authenticated app should stay hidden behind the lock. */
   isLocked: boolean;
@@ -147,7 +145,6 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
 
   const backgroundedAtRef = useRef<number | null>(null);
   useEffect(() => {
-    let recheck: ReturnType<typeof setInterval> | undefined;
     const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
       if (!enabled) return;
 
@@ -161,24 +158,14 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
       // itself also reports inactive, and is not the Consumer leaving: the
       // screen stays as it was underneath it. On iOS builds with the native
       // cover, that cover does all of this without waiting on JS.
-      clearInterval(recheck);
+      //
+      // Held back until the next change rather than for a fixed time: Face ID
+      // keeps the app inactive for its checkmark after it has answered, longer
+      // on a cold start, and a cover timed to give up before then flashes up
+      // over the app the Consumer has just unlocked. Leaving still covers,
+      // because leaving sends the app to the background.
       const heldBack = state === "inactive" && isSystemPromptOpen();
       setIsObscured(!privacyCover.available && state !== "active" && !heldBack);
-
-      // The prompt can go away while the app stays inactive, for example when
-      // the Consumer pulls down Notification Center right after answering it.
-      // No further change event arrives for that, so keep looking until the
-      // app is active again or the cover is up.
-      if (heldBack && !privacyCover.available) {
-        recheck = setInterval(() => {
-          if (AppState.currentState === "active") {
-            clearInterval(recheck);
-          } else if (!isSystemPromptOpen()) {
-            clearInterval(recheck);
-            setIsObscured(true);
-          }
-        }, PROMPT_RECHECK_MS);
-      }
 
       if (authenticatingRef.current) return;
 
@@ -201,10 +188,7 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
         }
       }
     });
-    return () => {
-      clearInterval(recheck);
-      sub.remove();
-    };
+    return () => sub.remove();
   }, [enabled]);
 
   return (
