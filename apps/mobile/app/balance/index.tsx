@@ -33,7 +33,7 @@ import { ToastProvider } from "@/contexts/ToastContext";
 import CashScreen from "@/app/cash";
 import InvestmentsScreen from "@/app/investments";
 import { useBalances } from "@/hooks/useBalances";
-import { earnHeadlineApy, useEarnPosition } from "@/hooks/useEarn";
+import { useEarnHeadlineApy, useEarnPosition } from "@/hooks/useEarn";
 import { useFeature } from "@/hooks/useFeature";
 import { useInvestments } from "@/hooks/useInvestments";
 import { usePalette } from "@/hooks/usePalette";
@@ -77,6 +77,8 @@ export default function BalanceScreen() {
       ? "Checking what you hold"
       : "Hold assets alongside your dollars";
   const { balance: earnBalance } = useEarnPosition();
+  const earnHeadlineApy = useEarnHeadlineApy();
+  const earnRate = earnHeadlineApy > 0 ? `${earnHeadlineApy.toFixed(2)}%` : "—";
   const { holdings } = useInvestments();
   const { width } = useWindowDimensions();
   const progress = useSharedValue(0);
@@ -312,7 +314,7 @@ export default function BalanceScreen() {
                       ? `Earn, $${formatMoney(earnBalance)}`
                       : earnBalance === null
                         ? "Earn balance unavailable"
-                        : `Earn, ${earnHeadlineApy()} a year`
+                        : `Earn, ${earnRate} a year`
                   }
                   onPress={openEarn}
                 >
@@ -324,7 +326,7 @@ export default function BalanceScreen() {
                       />
                     }
                     title="Earn"
-                    subtitle={`${earnHeadlineApy()} a year on your dollars`}
+                    subtitle={`${earnRate} a year on your dollars`}
                     trailing={
                       earnBalance !== null && earnBalance > 0 ? (
                         <Amount link>{`$${formatMoney(earnBalance)}`}</Amount>

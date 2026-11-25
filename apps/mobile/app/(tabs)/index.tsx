@@ -14,7 +14,7 @@ import { usePalette } from "@/hooks/usePalette";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { BalanceChart } from "@/components/ui/organisms/BalanceChart";
 import { useBalanceDelta, useBalanceHistory } from "@/hooks/useBalanceHistory";
-import { earnHeadlineApy, useEarnPosition } from "@/hooks/useEarn";
+import { useEarnHeadlineApy, useEarnPosition } from "@/hooks/useEarn";
 import { useInvestments } from "@/hooks/useInvestments";
 import { useSendGate } from "@/hooks/useSendGate";
 import { formatMoney, selectPortfolioTotal } from "@/utils/balances";
@@ -143,11 +143,12 @@ function HomeScreenContent() {
   // the empty-state copy only belongs on an account known to hold nothing.
   const known = total !== null;
   const earnDepositsEnabled = useFeature("earnDeposits");
+  const earnHeadlineApy = useEarnHeadlineApy();
   const nudges: StatusItem[] = homeNudges({
     cashUsd: known ? portfolio.cashUsd : null,
     earnUsd: earnBalance,
     earnDepositsEnabled,
-    earnApy: Number.parseFloat(earnHeadlineApy()),
+    earnApy: Number(earnHeadlineApy.toFixed(2)),
     currency: countryCard?.currency ?? null,
     symbol: countryCard?.symbol ?? null,
     perUsd: countryCard?.currency

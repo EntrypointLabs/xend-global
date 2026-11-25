@@ -22,12 +22,6 @@ export interface NudgeInputs {
 }
 
 /**
- * Below this the yearly figure rounds to nothing, so the nudge quotes the rate
- * instead of promising "about $0".
- */
-const MIN_YEARLY_TO_QUOTE = 1;
-
-/**
  * Things the Consumer has not tried yet, offered once nothing needs them. Each
  * one stops on its own once it no longer applies: Earn once money is in it,
  * and both when there is nothing to put to work.
@@ -38,14 +32,10 @@ export function homeNudges(input: NudgeInputs): Nudge[] {
   const nudges: Nudge[] = [];
 
   if (input.earnDepositsEnabled && input.earnUsd === 0 && input.earnApy > 0) {
-    const yearly = (cashUsd * input.earnApy) / 100;
     nudges.push({
       key: "earn",
-      title: `Earn ${input.earnApy}% a year`,
-      subtitle:
-        yearly >= MIN_YEARLY_TO_QUOTE
-          ? `About $${Math.round(yearly).toLocaleString("en-US")} a year on your cash`
-          : "On cash you are not spending",
+      title: `Earn up to ${input.earnApy}% per year`,
+      subtitle: "Put your dollars into Earn",
     });
   }
 
