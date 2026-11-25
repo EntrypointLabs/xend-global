@@ -8,6 +8,8 @@ import { PaymentsPanel } from "./PaymentsPanel";
 import { PaymentDetail } from "./PaymentDetail";
 import { AuditPanel } from "./AuditPanel";
 import { ReceivingAccount } from "./ReceivingAccount";
+import { BrandSection } from "./BrandSection";
+import type { MerchantCategory } from "./merchantCategory";
 
 /**
  * A dev-only harness for eyeballing the portal panels without Privy sign-in or
@@ -141,6 +143,8 @@ const stub: PortalClient = {
     }
     return {} as T;
   },
+  put: async <T,>(): Promise<T> => ({}) as T,
+  delete: async <T,>(): Promise<T> => ({}) as T,
 };
 
 const PANELS = [
@@ -149,7 +153,45 @@ const PANELS = [
   "webhooks",
   "audit",
   "receiving",
+  "brand",
 ] as const;
+
+const SAMPLE_LOGO = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#e8552d"/><path d="M18 44 32 18l14 26h-7l-7-13-7 13z" fill="#fff"/></svg>',
+)}`;
+
+function BrandReview() {
+  const [category, setCategory] = useState<MerchantCategory>("food_drink");
+  const [logoUrl, setLogoUrl] = useState<string | null>(SAMPLE_LOGO);
+  return (
+    <section className="account-workspace">
+      <BrandSection
+        merchant={{
+          displayName: "Ada Stores",
+          logoUrl,
+          category,
+          logoSource: logoUrl ? "upload" : null,
+        }}
+        onCategory={async (next) => setCategory(next)}
+        onUpload={async ({ contentType, dataBase64 }) =>
+          setLogoUrl(`data:${contentType};base64,${dataBase64}`)
+        }
+        onRemove={async () => setLogoUrl(null)}
+      />
+      <BrandSection
+        merchant={{
+          displayName: "Mama Put Kitchen",
+          logoUrl: "/review-missing-logo.png",
+          category: "food_drink",
+          logoSource: "site",
+        }}
+        onCategory={async () => {}}
+        onUpload={async () => {}}
+        onRemove={async () => {}}
+      />
+    </section>
+  );
+}
 
 function Review() {
   const [panel, setPanel] = useState<(typeof PANELS)[number]>("payments");
@@ -215,6 +257,7 @@ function Review() {
             </div>
           </section>
         )}
+        {panel === "brand" && <BrandReview />}
       </main>
     </div>
   );

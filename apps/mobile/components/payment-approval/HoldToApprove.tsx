@@ -4,6 +4,7 @@ import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 
 import { Typography } from "@/components/ui/atoms/Typography";
+import { usePalette } from "@/hooks/usePalette";
 
 /**
  * Long enough that a pocket or a stray thumb cannot approve a Payment, short
@@ -28,6 +29,7 @@ export function HoldToApprove({
   onApprove: () => void;
   disabled?: boolean;
 }) {
+  const palette = usePalette();
   const progress = useRef(new Animated.Value(0)).current;
   const [width, setWidth] = useState(0);
   const ticked = useRef(new Set<number>());
@@ -101,19 +103,26 @@ export function HoldToApprove({
         if (e.nativeEvent.actionName === "activate" && !disabled) onApprove();
       }}
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-      className="h-16 w-full overflow-hidden rounded-full bg-[#0E0F0C]"
+      className="h-16 w-full overflow-hidden rounded-full bg-[#0E0F0C] dark:bg-primary"
     >
       <Animated.View
         pointerEvents="none"
-        className="absolute inset-y-0 left-0 w-full rounded-full bg-white/25"
+        className="absolute inset-y-0 left-0 w-full rounded-full bg-primary-foreground/25"
         style={{ transform: [{ translateX: fill }] }}
       />
       <View
         pointerEvents="none"
         className="flex-1 flex-row items-center justify-center gap-2.5"
       >
-        <Ionicons name="finger-print" size={20} color="#fff" />
-        <Typography weight="600" className="text-[16px] text-white">
+        <Ionicons
+          name="finger-print"
+          size={20}
+          color={palette.primaryForeground}
+        />
+        <Typography
+          weight="600"
+          className="text-[16px] text-primary-foreground"
+        >
           {label}
         </Typography>
       </View>

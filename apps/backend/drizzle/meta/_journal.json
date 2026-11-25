@@ -463,6 +463,34 @@
       "when": 1795193976296,
       "tag": "0065_fiat_verifications",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1795327870150,
+      "tag": "0066_merchant_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1795447523051,
+      "tag": "0067_swap",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1795551314412,
+      "tag": "0068_swap_venues",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1795583131312,
+      "tag": "0069_earn_operations",
+      "breakpoints": true
     }
   ]
 }

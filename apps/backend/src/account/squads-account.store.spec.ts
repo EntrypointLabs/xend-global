@@ -39,6 +39,7 @@ function dbRow(patch: Partial<DbRow> = {}): DbRow {
     pendingSpendingLimitCreating: true,
     pendingSpendingLimitPeriod: 'Daily',
     pendingSpendingLimitPrevious: '$100 a day',
+    pendingSwapAccessChangeIndex: '11',
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...patch,

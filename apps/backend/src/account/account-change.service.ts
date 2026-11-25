@@ -7,6 +7,7 @@ import {
 } from '@prydd/smart-account';
 
 import { AccountEventsService } from '../activity/account-events.service';
+import type { StagedChangeKind } from '../notifications/security-notice.service';
 import {
   PREPARED_TX_STORE,
   PREPARED_TX_TTL_SECONDS,
@@ -17,7 +18,6 @@ import { AccountCreationError } from './account.errors';
 import {
   ABOVE_LIMIT_POLICY_SEED,
   PROVISIONING_CHAIN,
-  spendingLimitSeed,
   SQUADS_ACCOUNT_STORE,
 } from './account.interface';
 import type {
@@ -66,11 +66,32 @@ export interface StagedChange {
    * rather than suppressing it.
    */
   selfInitiated: boolean;
+  /**
+   * Which of the backend's own flows staged this, or null when none did.
+   *
+   * Several changes can wait at once, and the app has to tell them apart: a
+   * Swap change waiting is no reason to hold back a new Spending Limit. Null
+   * is the one that matters most, a change that reached the chain without
+   * passing through here.
+   */
+  kind: StagedChangeKind | null;
 }
+
+/**
+ * How far back a first look goes. Everything behind it was settled or
+ * cancelled long before, on any Account that has not been driven to stage
+ * this many changes without landing one.
+ */
+const SCAN_LIMIT = 40n;
 
 @Injectable()
 export class AccountChangeService {
   private readonly logger = new Logger(AccountChangeService.name);
+  /**
+   * Per Settings address, the index every change up to which has settled.
+   * Only a saving on reads: losing it on restart costs one longer look.
+   */
+  private readonly settledThrough = new Map<string, bigint>();
 
   constructor(
     @Inject(SQUADS_ACCOUNT_STORE) private readonly store: SquadsAccountStore,
@@ -91,44 +112,98 @@ export class AccountChangeService {
     @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
   ) {}
 
-  /** The change awaiting execution on this Consumer's Account, if any. */
-  async pending(userId: string): Promise<StagedChange | null> {
+  /** Every change awaiting execution on this Consumer's Account, oldest first. */
+  async pending(userId: string): Promise<StagedChange[]> {
     const account = await this.store.findByUserId(userId);
-    if (!account) return null;
+    if (!account) return [];
     return this.pendingFor(account);
   }
 
-  async pendingFor(account: SquadsAccountRow): Promise<StagedChange | null> {
+  /**
+   * Reads every index that can still land, not only the newest.
+   *
+   * Several changes may wait at once, and the newest is the one a Consumer
+   * just made. Looking only there would let a change nobody here staged sit
+   * unannounced behind it for its whole time lock.
+   */
+  async pendingFor(account: SquadsAccountRow): Promise<StagedChange[]> {
     const settings = await this.chain.readSettings(account.settingsAddress);
 
     // Before provisioning finishes, the only change in flight is the one the
     // Consumer is making.
     if (!(await this.isProvisioned(account, settings.timeLockSeconds))) {
-      return null;
+      return [];
     }
 
-    const proposal = await this.chain.readProposal(
-      account.settingsAddress,
-      settings.transactionIndex,
-    );
-    if (!proposal || proposal.settled) return null;
+    const top = settings.transactionIndex;
+    // A signer change cancels everything at or below the stale index without
+    // touching the proposals, so those still read as open and are not.
+    let floor = settings.staleTransactionIndex ?? 0n;
+    const settled = this.settledThrough.get(account.settingsAddress) ?? 0n;
+    if (settled > floor) floor = settled;
+    const capped = top - floor > SCAN_LIMIT;
+    if (capped) floor = top - SCAN_LIMIT;
 
-    const open = await this.recovery.pendingChange(account.userId);
+    const kinds = await this.knownKinds(account);
+    const waiting: StagedChange[] = [];
+    let unbroken = !capped;
+    let settledThrough = floor;
 
-    return {
-      transactionIndex: settings.transactionIndex.toString(),
-      status: proposal.status,
-      approvals: proposal.approved,
-      selfInitiated: open?.changeIndex === settings.transactionIndex,
-      executableAt:
-        proposal.status === 'Approved' && proposal.statusTimestamp !== null
-          ? new Date(
-              Number(
-                proposal.statusTimestamp + BigInt(SETTINGS_TIME_LOCK_SECONDS),
-              ) * 1000,
-            ).toISOString()
-          : null,
+    for (let index = floor + 1n; index <= top; index += 1n) {
+      const proposal = await this.chain.readProposal(
+        account.settingsAddress,
+        index,
+      );
+      if (proposal?.settled) {
+        if (unbroken) settledThrough = index;
+        continue;
+      }
+      // A missing proposal is not a settled one: the transaction can exist
+      // without it and be given one later, so the next look reads it again.
+      unbroken = false;
+      if (!proposal) continue;
+
+      const kind = kinds.get(index.toString()) ?? null;
+      waiting.push({
+        transactionIndex: index.toString(),
+        status: proposal.status,
+        approvals: proposal.approved,
+        selfInitiated: kind !== null,
+        kind,
+        executableAt:
+          proposal.status === 'Approved' && proposal.statusTimestamp !== null
+            ? new Date(
+                Number(
+                  proposal.statusTimestamp + BigInt(SETTINGS_TIME_LOCK_SECONDS),
+                ) * 1000,
+              ).toISOString()
+            : null,
+      });
+    }
+
+    // Settled is final, so the next look starts after the last index every
+    // earlier one has reached it.
+    if (settledThrough > settled) {
+      this.settledThrough.set(account.settingsAddress, settledThrough);
+    }
+    return waiting;
+  }
+
+  /** The indexes the backend's own flows staged, and what each one is. */
+  private async knownKinds(
+    account: SquadsAccountRow,
+  ): Promise<Map<string, StagedChangeKind>> {
+    const kinds = new Map<string, StagedChangeKind>();
+    const note = (index: string | null | undefined, kind: StagedChangeKind) => {
+      if (index) kinds.set(index, kind);
     };
+    note(account.pendingSpendingLimitChangeIndex, 'spending_limit');
+    note(account.pendingSwapAccessChangeIndex, 'swap_access');
+    note(account.pendingApprovalChangeIndex, 'device');
+    note(account.pendingPrimaryChangeIndex, 'passkey');
+    const open = await this.recovery.pendingChange(account.userId);
+    if (open) kinds.set(open.changeIndex.toString(), 'recovery_key');
+    return kinds;
   }
 
   /**
@@ -145,7 +220,11 @@ export class AccountChangeService {
    * cheap and ineffective is worse for the Consumer than one that works and
    * asks for a fingerprint.
    */
-  async prepareRejection(userId: string): Promise<{
+  async prepareRejection(
+    userId: string,
+    /** Which waiting change to reject. Required once more than one waits. */
+    index?: string,
+  ): Promise<{
     unsignedTxBase64: string;
     blockhash: string;
     lastValidBlockHeight: number;
@@ -155,11 +234,24 @@ export class AccountChangeService {
       throw new AccountCreationError('No Account exists for this Consumer');
     }
 
-    const staged = await this.pendingFor(account);
-    if (!staged) {
+    const waiting = await this.pendingFor(account);
+    if (waiting.length === 0) {
       throw new AccountCreationError(
         'No settings change is awaiting a decision',
       );
+    }
+    if (index === undefined && waiting.length > 1) {
+      // Guessing here would reject a change the Consumer did not point at.
+      throw new AccountCreationError(
+        'More than one change is waiting; say which one to reject',
+      );
+    }
+    const staged =
+      index === undefined
+        ? waiting[0]
+        : waiting.find((change) => change.transactionIndex === index);
+    if (!staged) {
+      throw new AccountCreationError('That change is no longer waiting');
     }
 
     const addresses = deriveAccountAddresses(account.settingsSeed);
@@ -261,12 +353,14 @@ export class AccountChangeService {
     }
     await this.prepared.delete(preparedKey(userId));
 
-    // A rejected change never reaches the signer set, so any recovery key row
+    // A rejected change never reaches the signer set, so a recovery key row
     // staged against it has to go back. Leaving it would show the Consumer a
     // key that is pending forever and block the next change on the in-flight
-    // guard.
+    // guard. Only the row for this change: another may be waiting beside it.
     const open = await this.recovery.pendingChange(userId);
-    if (open) await this.recovery.abandon(userId, open.changeIndex);
+    if (open && open.changeIndex.toString() === expected.transactionIndex) {
+      await this.recovery.abandon(userId, open.changeIndex);
+    }
 
     await this.events.recordSettingsChangeRejected(userId, {
       changeIndex: expected.transactionIndex,
@@ -279,20 +373,23 @@ export class AccountChangeService {
     return signature;
   }
 
+  /**
+   * Whether provisioning has finished, which is when a waiting change is
+   * worth telling the Consumer about.
+   *
+   * Provisioning raises the time lock last, after both policies exist, so the
+   * lock and the above-limit policy together say it is done. The Spending
+   * Limit policy is deliberately not asked about: a Consumer may remove their
+   * limit, and an Account without one still has changes to announce.
+   */
   private async isProvisioned(
     account: SquadsAccountRow,
     timeLockSeconds: number,
   ): Promise<boolean> {
     if (timeLockSeconds === 0) return false;
-    return (
-      (await this.chain.policyExists(
-        account.settingsAddress,
-        spendingLimitSeed(account),
-      )) &&
-      (await this.chain.policyExists(
-        account.settingsAddress,
-        ABOVE_LIMIT_POLICY_SEED,
-      ))
+    return this.chain.policyExists(
+      account.settingsAddress,
+      ABOVE_LIMIT_POLICY_SEED,
     );
   }
 }

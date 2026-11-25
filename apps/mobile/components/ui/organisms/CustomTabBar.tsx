@@ -29,6 +29,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/utils/cn";
 import { isPhotoRoute } from "@/components/ui/glass";
 import { useColorfulTheme } from "@/contexts/AppearanceContext";
+import { usePalette } from "@/hooks/usePalette";
 
 const iconMappings = {
   index: Home,
@@ -76,8 +77,13 @@ export function CustomTabBar({
   const isHome = segments[0] === "(tabs)" && segments[1] === undefined;
   const colorful = useColorfulTheme();
   const onPhoto = isPhotoRoute(segments, colorful);
-  // The same fill as Add money: white on the photo, black on white.
-  const fabTint = onPhoto ? "#FFFFFF" : "#0A0A0A";
+  const palette = usePalette();
+  // The same fill as Add money: white on the photo, the primary fill off it.
+  const fabTint = onPhoto
+    ? "#FFFFFF"
+    : palette.dark
+      ? palette.primary
+      : "#0A0A0A";
   const isSettingsSubPage =
     segments[0] === "(tabs)" &&
     segments[1] === "settings" &&
@@ -111,7 +117,10 @@ export function CustomTabBar({
 
   return (
     <>
-      <ContainerWrapper withBlur={!onPhoto && !LIQUID}>
+      <ContainerWrapper
+        withBlur={!onPhoto && !LIQUID}
+        blurTint={palette.dark ? "dark" : "light"}
+      >
         <ActionPill
           liquid
           collapsed={collapsed}
@@ -175,10 +184,10 @@ export function CustomTabBar({
             <HapticPressable
               className={cn(
                 // The same fill as Add money in each theme: white on the
-                // photo, black on white. One primary action, one solid fill.
+                // photo, the primary fill off it. One primary action, one fill.
                 // On liquid glass that fill becomes the glass's tint instead.
                 "h-[50px] w-[50px] items-center justify-center rounded-[28px]",
-                !LIQUID && (onPhoto ? "bg-white" : "bg-black"),
+                !LIQUID && (onPhoto ? "bg-white" : "bg-primary"),
                 readOnly && "opacity-30"
               )}
               // PLATFORM-SHADOW
@@ -201,7 +210,7 @@ export function CustomTabBar({
               <Ionicons
                 name="add"
                 size={28}
-                color={onPhoto ? "black" : "white"}
+                color={onPhoto ? "black" : palette.primaryForeground}
               />
             </HapticPressable>
           </Animated.View>
@@ -219,9 +228,11 @@ export function CustomTabBar({
 const ContainerWrapper = ({
   children,
   withBlur,
+  blurTint,
 }: {
   children: React.ReactNode;
   withBlur?: boolean;
+  blurTint: "light" | "dark";
 }) => {
   const insets = useSafeAreaInsets();
   const bottom = insets.bottom + 8;
@@ -242,7 +253,7 @@ const ContainerWrapper = ({
   return (
     <BlurView
       intensity={10}
-      tint="light"
+      tint={blurTint}
       className="absolute left-0 right-0 z-[1] flex-row items-center justify-between px-4 pt-2.5"
       // MEASURED-LAYOUT (safe-area inset)
       style={{ bottom }}

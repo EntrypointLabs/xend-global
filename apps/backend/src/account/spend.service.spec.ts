@@ -87,6 +87,7 @@ function chain(
         lastValidBlockHeight: 100,
       }),
     tokenProgramFor: () => Promise.resolve(TOKEN_PROGRAM_ID_FAKE),
+    decimalsFor: () => Promise.resolve(6),
     createDestinationTokenAccount: () => Promise.resolve(null),
     feePayer: AUTHORITY,
   };
@@ -241,6 +242,21 @@ describe('SpendService.prepare', () => {
 
     expect(result.route).toBe('two-signature');
     expect(simulated).toHaveLength(0);
+  });
+
+  it('takes both keys for a send from inside the app, even one the limit admits', async () => {
+    const { spendChain, read } = chain([limit()]);
+
+    const result = await service(spendChain).prepare({
+      ...request,
+      bothKeys: true,
+    });
+
+    // Both keys are on hand inside the app behind one Face ID, so the limit,
+    // which is for checkout, has no say in it and is not even read.
+    expect(result.route).toBe('two-signature');
+    expect(result.needsApprovalSignature).toBe(true);
+    expect(read).toEqual([]);
   });
 
   it('reads the limits of the Account being spent from', async () => {

@@ -3,6 +3,8 @@ import { Ionicons } from "@expo/vector-icons";
 
 import HapticPressable from "../atoms/HapticPressable";
 import { Typography } from "../atoms/Typography";
+import { usePalette } from "@/hooks/usePalette";
+import { cn } from "@/utils/cn";
 import type { PopoverAnchor } from "./ContactActionsPopover";
 
 interface KeyActionsPopoverProps {
@@ -29,7 +31,6 @@ interface KeyActionsPopoverProps {
 
 const MENU_WIDTH = 220;
 const MENU_OFFSET_Y = 4;
-const DESTRUCTIVE = "#F90101";
 
 export function KeyActionsPopover({
   visible,
@@ -63,6 +64,7 @@ export function KeyActionsPopover({
     >
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <View
+        className="bg-[#F9F9F9] dark:bg-card"
         style={[styles.menu, { top, left, width: MENU_WIDTH }]}
         pointerEvents="box-none"
       >
@@ -109,6 +111,7 @@ function Row({
   onPress: () => void;
   destructive?: boolean;
 }) {
+  const palette = usePalette();
   return (
     <HapticPressable
       className="flex-row items-center gap-4 px-6 py-3"
@@ -117,13 +120,12 @@ function Row({
       <Ionicons
         name={icon}
         size={16}
-        color={destructive ? DESTRUCTIVE : "#000"}
+        color={destructive ? palette.destructive : palette.foreground}
       />
       <Typography
         weight="500"
-        className="text-base"
-        // DYNAMIC-COLOR (destructive stays a glyph and a word, never a fill)
-        style={destructive ? { color: DESTRUCTIVE } : undefined}
+        // Destructive stays a glyph and a word, never a fill.
+        className={cn("text-base", destructive && "text-destructive")}
       >
         {label}
       </Typography>
@@ -134,7 +136,6 @@ function Row({
 const styles = StyleSheet.create({
   menu: {
     position: "absolute",
-    backgroundColor: "#F9F9F9",
     borderRadius: 16,
     paddingVertical: 4,
     shadowColor: "#000",

@@ -49,6 +49,12 @@ export interface PrepareSpendParams {
    * account-creation instruction.
    */
   destinationTokenAccount?: string;
+  /**
+   * Sign with both keys whatever the spending limit says. A send from inside
+   * the app has both keys behind one Face ID; the limit exists for checkout,
+   * where only the primary key is on hand.
+   */
+  bothKeys?: boolean;
 }
 
 /**
@@ -93,6 +99,11 @@ export class SpendService {
     @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
   ) {}
 
+  /** A token's decimals, as its mint account records them. */
+  mintDecimals(mint: string): Promise<number> {
+    return this.chain.decimalsFor(mint);
+  }
+
   async prepare(params: PrepareSpendParams): Promise<UnsignedSpend> {
     const account = await this.store.findByUserId(params.userId);
     if (!account) {
@@ -118,24 +129,16 @@ export class SpendService {
       ? undefined
       : await this.chain.tokenProgramFor(request.mint.toBase58());
 
-    const limits = await this.chain.readSpendingLimits(
-      account.settingsAddress,
-      spendingLimitSeed(account),
-    );
     const aboveLimitPolicy = derivePolicyAddress(
       addresses.settings,
       ABOVE_LIMIT_POLICY_SEED,
     );
-    const resolved = resolveSpendRoute(request, limits, aboveLimitPolicy);
-    const route = await this.recheckAgainstProgram(
-      resolved,
-      limits,
-      request,
-      addresses,
-      account,
-      params.decimals,
-      tokenProgram,
-    );
+    const route: SpendRoute = params.bothKeys
+      ? { kind: 'two-signature', reason: 'in-app', policy: aboveLimitPolicy }
+      : await this.limitedRoute(request, account, addresses, aboveLimitPolicy, {
+          decimals: params.decimals,
+          tokenProgram,
+        });
     const signers = signersFor(route, account);
 
     const instruction = buildSpend({
@@ -187,6 +190,30 @@ export class SpendService {
       /** Mobile needs this to know whether to ask Turnkey for a signature. */
       needsApprovalSignature: route.kind === 'two-signature',
     };
+  }
+
+  /** The route the spending limit picks, checked against the program. */
+  private async limitedRoute(
+    request: Parameters<typeof resolveSpendRoute>[0],
+    account: Parameters<SpendService['recheckAgainstProgram']>[4],
+    addresses: ReturnType<typeof deriveAccountAddresses>,
+    aboveLimitPolicy: PublicKey,
+    mint: { decimals: number; tokenProgram: PublicKey | undefined },
+  ): Promise<SpendRoute> {
+    const limits = await this.chain.readSpendingLimits(
+      account.settingsAddress,
+      spendingLimitSeed(account),
+    );
+    const resolved = resolveSpendRoute(request, limits, aboveLimitPolicy);
+    return this.recheckAgainstProgram(
+      resolved,
+      limits,
+      request,
+      addresses,
+      account,
+      mint.decimals,
+      mint.tokenProgram,
+    );
   }
 
   /**

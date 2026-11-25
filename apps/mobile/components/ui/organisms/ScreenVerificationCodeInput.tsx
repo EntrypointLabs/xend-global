@@ -3,6 +3,7 @@ import { Pressable, TextInput, View } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { AUTH_BRAND_BLUE } from "@/constants/Colors";
 import { useScreenTheme } from "@/contexts/ScreenThemeContext";
+import { usePalette } from "@/hooks/usePalette";
 
 interface ScreenVerificationCodeInputProps {
   length?: number;
@@ -11,7 +12,8 @@ interface ScreenVerificationCodeInputProps {
    * `screen` follows the screen theme, which is what the auth stack wants.
    *
    * `light` is the fixed treatment the settings screens use: a barely-there
-   * fill on white, no border until the box is the live one. The screen theme
+   * fill on the page, no border until the box is the live one. It follows the
+   * app's light or dark mode rather than the screen theme. The screen theme
    * is a mutable provider carried over from whichever screen set it last, so
    * on a white screen it can hand back a mid-grey box, and these screens have
    * a reference to match.
@@ -33,17 +35,18 @@ export function ScreenVerificationCodeInput({
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const { textColor, backgroundColor } = useScreenTheme();
+  const palette = usePalette();
 
   const isBackgroundDark =
     backgroundColor === "#000000" || backgroundColor.toLowerCase() === "#000";
   const inputBackgroundColor = isBackgroundDark ? "#FFFFFF" : "#000000";
 
   const light = tone === "light";
-  const boxBackground = light ? "#00000008" : inputBackgroundColor + "40";
-  const digitColor = light ? "#00000066" : textColor;
+  const boxBackground = light ? palette.fg(0.03) : inputBackgroundColor + "40";
+  const digitColor = light ? palette.fg(0.4) : textColor;
   // Auth dark canvas uses brand blue for the live box; light screens stay muted.
   const activeBorder = light
-    ? "#00000026"
+    ? palette.fg(0.15)
     : isBackgroundDark
       ? AUTH_BRAND_BLUE
       : textColor;

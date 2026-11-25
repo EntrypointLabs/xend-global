@@ -4,8 +4,11 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ThemedScreen } from "@/components/ui/layout";
+import { Pop, Rise } from "@/components/ui/motion";
+import { usePalette } from "@/hooks/usePalette";
 
 export default function SuccessScreen() {
+  const palette = usePalette();
   const handleContinue = () => {
     router.replace("/(tabs)");
   };
@@ -17,10 +20,18 @@ export default function SuccessScreen() {
         onPress={handleContinue}
         activeOpacity={0.8}
       >
-        <Ionicons name="checkmark-circle-outline" size={80} color="black" />
-        <Typography weight="500" className="mt-4 text-black/60">
-          All done!
-        </Typography>
+        <Pop haptic="success">
+          <Ionicons
+            name="checkmark-circle-outline"
+            size={80}
+            color={palette.foreground}
+          />
+        </Pop>
+        <Rise index={2}>
+          <Typography weight="500" className="mt-4 text-foreground/60">
+            All done!
+          </Typography>
+        </Rise>
       </TouchableOpacity>
     </ThemedScreen>
   );

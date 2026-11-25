@@ -27,6 +27,7 @@ import { useUserId } from "@/hooks/useUserId";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { apiClient } from "@/utils/apiClient";
 import type { BankAccountRecordSchema } from "@/utils/bank-accounts";
+import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 import { SEED_DEMO, SEED_USER } from "@/utils/devSeed";
 import {
@@ -37,8 +38,6 @@ import {
 
 type BankAccountRecord = z.infer<typeof BankAccountRecordSchema>;
 type ActiveAccount = NonNullable<BankAccountRecord["account"]>;
-
-const DIVIDER_COLOR = "rgba(0,0,0,0.12)";
 
 const BENEFITS: {
   icon: keyof typeof Ionicons.glyphMap;
@@ -91,6 +90,8 @@ export const BankDetailsSheet = forwardRef<
   BottomSheetModal,
   BankDetailsSheetProps
 >(({ variant = "receive" }, ref) => {
+  const palette = usePalette();
+  const dividerColor = palette.fg(0.12);
   const withWallet = variant === "account";
   const address = useWalletAddress();
   const snapPoints = useMemo(() => ["94%"], []);
@@ -202,7 +203,7 @@ export const BankDetailsSheet = forwardRef<
   if (accountsQuery.isPending) {
     body = (
       <View className="mt-16 items-center">
-        <ActivityIndicator size="small" color="black" />
+        <ActivityIndicator size="small" color={palette.foreground} />
       </View>
     );
   } else if (accountsQuery.isError) {
@@ -231,7 +232,7 @@ export const BankDetailsSheet = forwardRef<
           />
           <Divider
             type="dashed"
-            color={DIVIDER_COLOR}
+            color={dividerColor}
             dashGap={6}
             className="my-5"
           />
@@ -275,15 +276,15 @@ export const BankDetailsSheet = forwardRef<
         />
         <Divider
           type="dashed"
-          color={DIVIDER_COLOR}
+          color={dividerColor}
           dashGap={6}
           className="my-5"
         />
         <View className="flex-row items-center gap-3">
-          <ActivityIndicator size="small" color="black" />
+          <ActivityIndicator size="small" color={palette.foreground} />
           <Typography
             weight="500"
-            className="flex-1 text-[15px] leading-5 text-black/40"
+            className="flex-1 text-[15px] leading-5 text-foreground/40"
           >
             Setting up your account. This takes a few seconds.
           </Typography>
@@ -321,7 +322,7 @@ export const BankDetailsSheet = forwardRef<
         />
         <Divider
           type="dashed"
-          color={DIVIDER_COLOR}
+          color={dividerColor}
           dashGap={6}
           className="my-5"
         />
@@ -342,7 +343,10 @@ export const BankDetailsSheet = forwardRef<
           />
         </View>
         {email ? (
-          <Typography weight="500" className="mt-4 text-[13px] text-black/40">
+          <Typography
+            weight="500"
+            className="mt-4 text-[13px] text-foreground/40"
+          >
             {`We'll use ${email}`}
           </Typography>
         ) : null}
@@ -381,7 +385,7 @@ export const BankDetailsSheet = forwardRef<
           />
           <Divider
             type="dashed"
-            color={DIVIDER_COLOR}
+            color={dividerColor}
             dashGap={6}
             className="my-5"
           />
@@ -402,7 +406,7 @@ export const BankDetailsSheet = forwardRef<
                 </View>
                 <Typography
                   weight="500"
-                  className="flex-1 text-[15px] leading-5 text-black/40"
+                  className="flex-1 text-[15px] leading-5 text-foreground/40"
                 >
                   {benefit.text}
                 </Typography>
@@ -410,9 +414,13 @@ export const BankDetailsSheet = forwardRef<
             ))}
           </View>
         </View>
-        <View className="flex-row items-center justify-center gap-2 bg-black/[0.02] py-4">
-          <Ionicons name="checkmark-circle" size={18} color="black" />
-          <Typography weight="500" className="text-[15px] text-black">
+        <View className="flex-row items-center justify-center gap-2 bg-foreground/[0.02] py-4">
+          <Ionicons
+            name="checkmark-circle"
+            size={18}
+            color={palette.foreground}
+          />
+          <Typography weight="500" className="text-[15px] text-foreground">
             Ready to use right away
           </Typography>
         </View>
@@ -443,7 +451,7 @@ export const BankDetailsSheet = forwardRef<
           />
           <Divider
             type="dashed"
-            color={DIVIDER_COLOR}
+            color={dividerColor}
             dashGap={6}
             className="my-5"
           />
@@ -484,16 +492,21 @@ export const BankDetailsSheet = forwardRef<
       android_keyboardInputMode="adjustResize"
       onDismiss={handleDismiss}
       handleIndicatorStyle={{ display: "none" }}
-      backgroundStyle={{ backgroundColor: "#F0F0F0" }}
+      backgroundStyle={{
+        backgroundColor: palette.dark ? palette.background : "#F0F0F0",
+      }}
       containerStyle={{ zIndex: 1 }}
     >
       <ScreenThemeProvider>
-        <BottomSheetView className="h-full flex-1 bg-[#F0F0F0]">
+        <BottomSheetView className="h-full flex-1 bg-[#F0F0F0] dark:bg-background">
           <View className="mb-8 items-center px-4">
             <TabHeaderText className="text-center">
               {withWallet ? "Account details" : "Receive"}
             </TabHeaderText>
-            <Typography weight="500" className="mt-1 text-sm text-black/30">
+            <Typography
+              weight="500"
+              className="mt-1 text-sm text-foreground/30"
+            >
               {withWallet
                 ? "Everything someone needs to pay you"
                 : "Receive naira via bank transfer"}
@@ -537,13 +550,14 @@ function NameInput(
     | "textContentType"
   >
 ) {
+  const palette = usePalette();
   return (
     <BottomSheetTextInput
       {...props}
       autoCapitalize="words"
       autoCorrect={false}
-      placeholderTextColor="#0000004D"
-      className="h-14 rounded-full bg-black/5 px-5 text-[15px] text-black"
+      placeholderTextColor={palette.fg(0.3)}
+      className="h-14 rounded-full bg-foreground/5 px-5 text-[15px] text-foreground"
     />
   );
 }

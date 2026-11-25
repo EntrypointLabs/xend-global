@@ -70,6 +70,8 @@ export interface SquadsAccountRow {
   pendingSpendingLimitCreating?: boolean | null;
   pendingSpendingLimitPeriod?: string | null;
   pendingSpendingLimitPrevious?: string | null;
+  /** Set only while the allowlist update is in flight. See SwapAccessService. */
+  pendingSwapAccessChangeIndex?: string | null;
 }
 
 export interface SquadsAccountStore {
@@ -201,6 +203,12 @@ export interface SettingsState {
   /** The last index the program assigned. The next change takes this plus one. */
   transactionIndex: bigint;
   /**
+   * Every change at or below this index is dead, whatever its proposal says:
+   * a signer change that lands cancels everything still waiting by moving
+   * this up, and leaves the proposals reading as open. Absent means zero.
+   */
+  staleTransactionIndex?: bigint;
+  /**
    * The last policy seed the program assigned, or null before it has assigned
    * any. A policy created on this Account has to take this plus one.
    */
@@ -252,6 +260,14 @@ export interface ProvisioningChain {
     policySeed: bigint,
   ): Promise<import('@prydd/smart-account').SpendingLimit>;
   policyExists(settingsAddress: string, policySeed: bigint): Promise<boolean>;
+  /**
+   * The programs a program-interaction policy admits, in constraint order.
+   * Empty when the policy does not exist.
+   */
+  readAllowedPrograms(
+    settingsAddress: string,
+    policySeed: bigint,
+  ): Promise<import('@solana/web3.js').PublicKey[]>;
   /** Null when no proposal was ever created at that index. */
   readProposal(
     settingsAddress: string,
@@ -331,6 +347,9 @@ export interface SpendChain {
    * not asked about.
    */
   tokenProgramFor(mint: string): Promise<import('@solana/web3.js').PublicKey>;
+
+  /** A token mint's decimals, read from the mint account. */
+  decimalsFor(mint: string): Promise<number>;
 
   /**
    * Compiles a Spend with the settlement authority as fee payer.

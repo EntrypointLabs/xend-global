@@ -1,7 +1,14 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { WRAPPED_SOL_MINT } from '@prydd/smart-account';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createId } from '@paralleldrive/cuid2';
-import { eq, and, lt, or, desc, sql } from 'drizzle-orm';
+import { eq, and, inArray, lt, or, desc, sql } from 'drizzle-orm';
 import {
   PublicKey,
   TransactionInstruction,
@@ -20,11 +27,26 @@ import { AccountEventsService } from '../activity/account-events.service';
 import { SpendService } from '../account/spend.service';
 import { DbService } from '../db/db.service';
 import { RampActivityService } from '../fiat/ramp-activity';
-import { smartAccounts, transfers, payments, merchants } from '../db/schema';
+import {
+  FeePayerWatchService,
+  isFeePayerShortfall,
+} from '../settlement/fee-payer-watch';
+import {
+  smartAccounts,
+  transfers,
+  payments,
+  merchants,
+  merchantLogos,
+  swaps,
+} from '../db/schema';
+import { merchantLogoUrl } from '../merchant/merchant-logo.url';
 import { PREPARED_TX_STORE } from '../prepared/prepared-tx.interface';
 import type { PreparedTxStore } from '../prepared/prepared-tx.interface';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
 import { TOKEN_METADATA_PROVIDER } from '../tokens/token-metadata.interface';
+import { TOKEN_PRICE_PROVIDER } from '../prices/token-price.interface';
+import type { TokenPriceProvider } from '../prices/token-price.interface';
+import { usdValueOf } from '../prices/usd-value';
 import type {
   TokenMetadata,
   TokenMetadataProvider,
@@ -38,6 +60,8 @@ import {
   PresenceProofRequiredError,
   RpcUnavailableError,
   UnsupportedMintError,
+  BelowRentMinimumError,
+  InsufficientSolError,
 } from './transfer.errors';
 import { verifyPresenceProof } from './presence-proof';
 import {
@@ -51,6 +75,10 @@ import type {
   TransferRow,
 } from './dtos';
 import { ReconcilerService } from '../activity/reconciler.service';
+
+const SOL_DECIMALS = 9;
+/** What an account with no data needs to stay open. */
+const RENT_EXEMPT_MINIMUM_LAMPORTS = 890_880n;
 
 /**
  * A prepared transfer intent. Held in the prepared-transaction store only
@@ -78,6 +106,11 @@ interface IntentRecord {
    * tx can't diverge from the recorded intent.
    */
   messageBase64: string;
+  /**
+   * The token's decimals, when the prepare step read them. Prices the send at
+   * the moment it is submitted.
+   */
+  decimals?: number;
   /**
    * True when this leaves the Squads vault rather than the Privy wallet. Such a
    * transaction is paid for by the settlement authority, so it comes back from
@@ -139,6 +172,8 @@ export class TransferService {
     @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
     private readonly reconciler: ReconcilerService,
     private readonly ramps: RampActivityService,
+    @Inject(TOKEN_PRICE_PROVIDER) private readonly prices: TokenPriceProvider,
+    @Optional() private readonly feePayer?: FeePayerWatchService,
   ) {
     // Pull the stablecoin mint allowlist from env so devnet vs mainnet
     // mints can swap without code changes.
@@ -177,7 +212,12 @@ export class TransferService {
     // the balance being rescued is the one still sitting in the Privy wallet.
     const isSweepToVault = squads?.vaultAddress === req.toAddress;
     if (squads && !isSweepToVault) {
-      return this.prepareVaultSpend(userId, account.id, req);
+      return this.prepareVaultSpend(
+        userId,
+        account.id,
+        squads.vaultAddress,
+        req,
+      );
     }
 
     const fromAddress = account.walletAddress;
@@ -344,6 +384,45 @@ export class TransferService {
   }
 
   /**
+   * Refuses SOL that would land in an address with nothing in it yet and too
+   * little to keep it open. The chain rejects such a transfer outright, after
+   * the Consumer has confirmed it twice.
+   */
+  private async assertVaultHoldsSol(
+    vaultAddress: string,
+    amountRaw: string,
+  ): Promise<void> {
+    let lamports: bigint;
+    try {
+      lamports = await this.solana.getSolBalance(vaultAddress);
+    } catch (err) {
+      throw new RpcUnavailableError('failed to read the SOL balance', err);
+    }
+    if (lamports < BigInt(amountRaw)) {
+      throw new InsufficientSolError(
+        'the vault holds less plain SOL than the send; wrapped SOL cannot be sent',
+      );
+    }
+  }
+
+  private async assertSolReachesRecipient(req: {
+    toAddress: string;
+    amountRaw: string;
+  }): Promise<void> {
+    let opened: boolean;
+    try {
+      opened = await this.solana.accountExists(req.toAddress);
+    } catch (err) {
+      throw new RpcUnavailableError('failed to check the recipient', err);
+    }
+    if (!opened && BigInt(req.amountRaw) < RENT_EXEMPT_MINIMUM_LAMPORTS) {
+      throw new BelowRentMinimumError(
+        'an empty address needs at least the rent-exempt minimum of SOL',
+      );
+    }
+  }
+
+  /**
    * Builds a Spend out of the Squads vault.
    *
    * The returned transaction may still need the approval signer, which the
@@ -354,6 +433,7 @@ export class TransferService {
   private async prepareVaultSpend(
     userId: string,
     smartAccountId: string,
+    vaultAddress: string,
     req: { toAddress: string; mint: string; amountRaw: string; memo?: string },
   ): Promise<PrepareResponse> {
     try {
@@ -361,20 +441,38 @@ export class TransferService {
     } catch {
       throw new InvalidRecipientError('toAddress is not a valid Solana pubkey');
     }
-    if (!this.mintAllowlist.has(req.mint)) {
-      throw new UnsupportedMintError(
-        `mint ${req.mint} not in supported set for v1`,
-      );
+    try {
+      new PublicKey(req.mint);
+    } catch {
+      throw new UnsupportedMintError(`mint ${req.mint} not a valid pubkey`);
+    }
+
+    // Any token the vault holds can be sent. SOL is named by its wrapped
+    // mint, as everywhere else, but leaves the vault as plain SOL, so only
+    // the plain part of a SOL balance can go.
+    const native = req.mint === WRAPPED_SOL_MINT.toBase58();
+    if (native) {
+      await this.assertVaultHoldsSol(vaultAddress, req.amountRaw);
+      await this.assertSolReachesRecipient(req);
+    }
+    let decimals: number;
+    try {
+      decimals = native
+        ? SOL_DECIMALS
+        : await this.spends.mintDecimals(req.mint);
+    } catch {
+      throw new UnsupportedMintError(`mint ${req.mint} is not a token`);
     }
 
     const spend = await this.spends.prepare({
       userId,
       destination: req.toAddress,
-      mint: req.mint,
+      mint: native ? PublicKey.default.toBase58() : req.mint,
       amountRaw: req.amountRaw,
-      // Both allowlisted stablecoins are 6 decimals on Solana; the allowlist
-      // check above is what keeps that true.
-      decimals: 6,
+      decimals,
+      // A send from inside the app always carries both keys, behind the one
+      // Face ID the device key asks for. The spending limit is for checkout.
+      bothKeys: true,
     });
 
     const intentId = createId();
@@ -393,6 +491,7 @@ export class TransferService {
       blockhash: spend.blockhash,
       lastValidBlockHeight: spend.lastValidBlockHeight,
       messageBase64: spend.messageBase64,
+      decimals,
       vaultSpend: true,
       needsApprovalSignature: spend.needsApprovalSignature,
       createdAt: now,
@@ -523,6 +622,12 @@ export class TransferService {
         `transfer.submit.rpc_failed intent_id=${req.intentId} vault_spend=${intent.vaultSpend}`,
         err instanceof Error ? (err.stack ?? err.message) : String(err),
       );
+      if (isFeePayerShortfall(err)) {
+        this.logger.error(
+          `transfer.submit.fee_payer_short intent_id=${req.intentId}`,
+        );
+        void this.feePayer?.onShortfall();
+      }
       throw new RpcUnavailableError(
         'sendRawTransaction failed; no transfer row written',
         err,
@@ -542,6 +647,7 @@ export class TransferService {
     //    (intent_id, submitted_at) while preserving the status guard — a
     //    CONFIRMED/FAILED row must never regress to PENDING.
     const now = new Date();
+    const usdValue = await this.sentValue(intent);
     const [row] = await this.db.client
       .insert(transfers)
       .values({
@@ -555,6 +661,8 @@ export class TransferService {
         toAddress: intent.toAddress,
         status: 'PENDING',
         submittedAt: now,
+        usdValue,
+        usdPricedAt: usdValue === null ? null : now,
       })
       .onConflictDoUpdate({
         // The whole leg, matching the unique index: a signature alone is not a
@@ -591,6 +699,45 @@ export class TransferService {
       signature,
       status: 'PENDING',
     };
+  }
+
+  /**
+   * What the send is worth as it leaves, so its Activity row carries dollars
+   * from the first moment rather than once the indexer catches up. The
+   * indexer keeps a value already on the row, so this is the one that stands.
+   */
+  private async sentValue(intent: IntentRecord): Promise<string | null> {
+    try {
+      return await usdValueOf(
+        this.prices,
+        intent.mint,
+        BigInt(intent.amountRaw),
+        intent.decimals ?? null,
+      );
+    } catch (err) {
+      // A price outage must not cost the Consumer their send.
+      this.logger.warn(
+        `transfer.submit.price_unavailable mint=${intent.mint}`,
+        err,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Which of these signatures were swaps this backend broadcast. The rows
+   * themselves come from the chain indexer, which cannot tell a swap's two
+   * sides from a payment out and a payment in.
+   */
+  private async swapsAmong(
+    signatures: string[],
+  ): Promise<Map<string, typeof swaps.$inferSelect>> {
+    if (signatures.length === 0) return new Map();
+    const rows = await this.db.client
+      .select()
+      .from(swaps)
+      .where(inArray(swaps.signature, signatures));
+    return new Map(rows.map((row) => [row.signature, row]));
   }
 
   /**
@@ -731,6 +878,9 @@ export class TransferService {
         signature: transfers.signature,
         kind: transfers.kind,
         merchantName: merchants.displayName,
+        merchantId: merchants.id,
+        merchantCategory: merchants.category,
+        merchantLogoUpdatedAt: merchantLogos.updatedAt,
         usdValue: transfers.usdValue,
         decimals: transfers.decimals,
         createdAt: transfers.createdAt,
@@ -739,6 +889,7 @@ export class TransferService {
       .from(transfers)
       .leftJoin(payments, eq(transfers.paymentId, payments.id))
       .leftJoin(merchants, eq(payments.merchantId, merchants.id))
+      .leftJoin(merchantLogos, eq(merchantLogos.merchantId, merchants.id))
       .where(
         cursorWhere
           ? and(eq(transfers.smartAccountId, account.id), cursorWhere)
@@ -753,7 +904,45 @@ export class TransferService {
     // Named per page rather than per holding, so a row keeps its identity
     // after the Consumer has sold the token. Cheap: the provider caches, and
     // a page rarely spans more than a handful of mints.
-    const metadata = await this.tokenMetadataFor(page.map((r) => r.mint));
+    const swapped = await this.swapsAmong(
+      page.flatMap((r) => (r.signature ? [r.signature] : [])),
+    );
+    const swapMints = [...swapped.values()].flatMap((swap) => [
+      swap.inputMint,
+      swap.outputMint,
+    ]);
+    const metadata = await this.tokenMetadataFor([
+      ...page.map((r) => r.mint),
+      ...swapMints,
+    ]);
+    const swapSide = (
+      mint: string,
+      amountRaw: string,
+      decimals: number | null,
+    ) => ({
+      mint,
+      amountRaw,
+      decimals,
+      tokenName: metadata.get(mint)?.name ?? null,
+      tokenSymbol: metadata.get(mint)?.symbol ?? null,
+      tokenIconUrl: metadata.get(mint)?.iconUrl ?? null,
+    });
+    const swapDetailsFor = (signature: string | null) => {
+      const swap = signature ? swapped.get(signature) : undefined;
+      if (!swap) return {};
+      return {
+        swap: true,
+        swapDetails: {
+          pay: swapSide(swap.inputMint, swap.amountInRaw, swap.inputDecimals),
+          receive: swapSide(
+            swap.outputMint,
+            swap.amountOutRaw,
+            swap.outputDecimals,
+          ),
+          venues: swap.venues ?? [],
+        },
+      };
+    };
     const ramps = await this.ramps.forUser(userId, page);
 
     const nextCursor = hasMore
@@ -792,6 +981,15 @@ export class TransferService {
           // Defensive default: the column is notNull default 'transfer'.
           kind: r.kind ?? 'transfer',
           merchantName: r.merchantName ?? null,
+          ...swapDetailsFor(r.signature),
+          merchantCategory: r.merchantCategory ?? null,
+          merchantLogoUrl: r.merchantId
+            ? merchantLogoUrl(
+                this.config.get<string>('PUBLIC_API_URL'),
+                r.merchantId,
+                r.merchantLogoUpdatedAt,
+              )
+            : null,
           usdValue: r.usdValue ?? null,
           decimals: r.decimals ?? null,
           tokenName: metadata.get(r.mint)?.name ?? null,

@@ -11,6 +11,7 @@ import { FeatureScreen } from "@/components/ui/feature/FeatureScreen";
 import { Illustration } from "@/components/ui/feature/Illustration";
 import { ScreenVerificationCodeInput } from "@/components/ui/organisms";
 import { useNow } from "@/hooks/useNow";
+import { usePalette } from "@/hooks/usePalette";
 import { apiClient } from "@/utils/apiClient";
 import { fiatErrorMessage, type Verification } from "@/utils/fiat";
 
@@ -33,6 +34,7 @@ type Step = "intro" | "bvn" | "code";
  */
 export default function VerifyIdentityScreen() {
   const router = useRouter();
+  const palette = usePalette();
   const queryClient = useQueryClient();
   const status = useQuery({
     queryKey: ["fiat", "verification"],
@@ -108,7 +110,7 @@ export default function VerifyIdentityScreen() {
       <Result
         art="verify"
         title="You're verified"
-        body="Your naira limit is lifted: no more ₦50,000 daily cap on deposits or bank sends."
+        body="Your naira limits are raised, so you can add and send well over ₦50,000 a day."
         action={{ title: "Done", onPress: close }}
       />
     );
@@ -159,17 +161,17 @@ export default function VerifyIdentityScreen() {
           />
         }
       >
-        <View className="overflow-hidden rounded-[28px] bg-[#F2F2F0] px-6 pb-5 pt-7">
+        <View className="overflow-hidden rounded-[28px] bg-muted px-6 pb-5 pt-7">
           <Typography
             accessibilityRole="header"
-            className="max-w-[210px] text-[34px] uppercase leading-[34px] tracking-[-1px] text-[#0E0F0C]"
+            className="max-w-[210px] text-[34px] uppercase leading-[34px] tracking-[-1px] text-ink"
             style={DISPLAY}
           >
             Raise your limit
           </Typography>
           <Typography
             weight="500"
-            className="mt-2 max-w-[200px] text-[14px] leading-[20px] text-black/55"
+            className="mt-2 max-w-[200px] text-[14px] leading-[20px] text-foreground/55"
           >
             One BVN check, about a minute.
           </Typography>
@@ -196,10 +198,10 @@ export default function VerifyIdentityScreen() {
           />
         </View>
         {consent.data ? (
-          <View className="mt-7 rounded-[20px] bg-black/[0.03] p-4">
+          <View className="mt-7 rounded-[20px] bg-foreground/[0.03] p-4">
             <Typography
               weight="500"
-              className="text-[12px] leading-[18px] text-black/60"
+              className="text-[12px] leading-[18px] text-foreground/60"
             >
               {consent.data.text}
             </Typography>
@@ -236,13 +238,13 @@ export default function VerifyIdentityScreen() {
         <Typography
           accessibilityRole="header"
           weight="700"
-          className="mt-2 text-[28px] leading-[34px] tracking-[-0.6px] text-[#0E0F0C]"
+          className="mt-2 text-[28px] leading-[34px] tracking-[-0.6px] text-ink"
         >
           Enter your BVN
         </Typography>
         <Typography
           weight="500"
-          className="mt-2 text-[14px] leading-[20px] text-black/55"
+          className="mt-2 text-[14px] leading-[20px] text-foreground/55"
         >
           {
             "11 digits. Dial *565*0# on the phone linked to your bank if you don't know it."
@@ -260,13 +262,17 @@ export default function VerifyIdentityScreen() {
           autoFocus
           secureTextEntry={false}
           placeholder="00000000000"
-          placeholderTextColor="#00000026"
+          placeholderTextColor={palette.fg(0.15)}
           accessibilityLabel="Bank Verification Number"
-          className="mt-8 h-16 rounded-[20px] bg-black/[0.04] px-5 text-[24px] tabular-nums tracking-[3px] text-[#0E0F0C]"
+          className="mt-8 h-16 rounded-[20px] bg-foreground/[0.04] px-5 text-[24px] tabular-nums tracking-[3px] text-ink"
         />
         <View className="mt-4 flex-row items-center gap-2">
-          <Ionicons name="lock-closed-outline" size={14} color="#00000073" />
-          <Typography weight="500" className="text-[12px] text-black/60">
+          <Ionicons
+            name="lock-closed-outline"
+            size={14}
+            color={palette.fg(0.45)}
+          />
+          <Typography weight="500" className="text-[12px] text-foreground/60">
             Sent securely to Paj. Prydd never stores it.
           </Typography>
         </View>
@@ -289,13 +295,13 @@ export default function VerifyIdentityScreen() {
       <Typography
         accessibilityRole="header"
         weight="700"
-        className="mt-2 text-[28px] leading-[34px] tracking-[-0.6px] text-[#0E0F0C]"
+        className="mt-2 text-[28px] leading-[34px] tracking-[-0.6px] text-ink"
       >
         Check WhatsApp
       </Typography>
       <Typography
         weight="500"
-        className="mt-2 text-[14px] leading-[20px] text-black/55"
+        className="mt-2 text-[14px] leading-[20px] text-foreground/55"
       >
         We sent a code to the phone number on your BVN. It works for 10 minutes.
       </Typography>
@@ -307,13 +313,13 @@ export default function VerifyIdentityScreen() {
       </View>
       <View className="mt-6 items-center">
         {busy ? (
-          <Typography weight="500" className="text-[14px] text-black/60">
+          <Typography weight="500" className="text-[14px] text-foreground/60">
             Checking…
           </Typography>
         ) : wait > 0 ? (
           <Typography
             weight="500"
-            className="text-[14px] tabular-nums text-black/60"
+            className="text-[14px] tabular-nums text-foreground/60"
           >
             {`Send a new code in ${Math.ceil(wait / 1000)}s`}
           </Typography>
@@ -323,7 +329,7 @@ export default function VerifyIdentityScreen() {
             onPress={() => void resend()}
             className="h-11 justify-center px-4"
           >
-            <Typography weight="600" className="text-[14px] text-[#0E0F0C]">
+            <Typography weight="600" className="text-[14px] text-ink">
               Send a new code
             </Typography>
           </HapticPressable>
@@ -347,21 +353,22 @@ function Benefit({
   title: string;
   body: string;
 }) {
+  const palette = usePalette();
   return (
     <View className="flex-row gap-3.5">
-      <View className="size-10 items-center justify-center rounded-full border border-black/[0.1]">
-        <Ionicons name={icon} size={19} color="#0E0F0C" />
+      <View className="size-10 items-center justify-center rounded-full border border-foreground/[0.1]">
+        <Ionicons name={icon} size={19} color={palette.ink} />
       </View>
       <View className="flex-1">
         <Typography
           weight="600"
-          className="text-[15px] leading-[20px] text-[#0E0F0C]"
+          className="text-[15px] leading-[20px] text-ink"
         >
           {title}
         </Typography>
         <Typography
           weight="500"
-          className="mt-0.5 text-[13px] leading-[18px] text-black/60"
+          className="mt-0.5 text-[13px] leading-[18px] text-foreground/60"
         >
           {body}
         </Typography>
@@ -385,6 +392,7 @@ function Result({
   body: string;
   action: { title: string; onPress: () => void };
 }) {
+  const palette = usePalette();
   return (
     <FeatureScreen
       leave="close"
@@ -399,26 +407,32 @@ function Result({
             className={
               tone === "success"
                 ? "size-16 items-center justify-center rounded-full bg-success/15"
-                : "size-16 items-center justify-center rounded-full bg-black/[0.05]"
+                : "size-16 items-center justify-center rounded-full bg-foreground/[0.05]"
             }
           >
             <Ionicons
               name={icon ?? "information-circle-outline"}
               size={32}
-              color={tone === "success" ? "#16A34A" : "#0E0F0C"}
+              color={
+                tone === "success"
+                  ? palette.dark
+                    ? palette.success
+                    : "#16A34A"
+                  : palette.ink
+              }
             />
           </View>
         )}
         <Typography
           accessibilityRole="header"
           weight="700"
-          className="mt-6 text-center text-[26px] leading-[32px] tracking-[-0.5px] text-[#0E0F0C]"
+          className="mt-6 text-center text-[26px] leading-[32px] tracking-[-0.5px] text-ink"
         >
           {title}
         </Typography>
         <Typography
           weight="500"
-          className="mt-2 max-w-[310px] text-center text-[14px] leading-[20px] text-black/55"
+          className="mt-2 max-w-[310px] text-center text-[14px] leading-[20px] text-foreground/55"
         >
           {body}
         </Typography>

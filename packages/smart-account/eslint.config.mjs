@@ -4,8 +4,8 @@ import { config } from '@prydd/eslint-config/base';
 export default [
   ...config,
   {
-    // Fixture tooling is a Node script run by hand, never bundled.
-    files: ['test/fixtures/**/*.mjs'],
+    // Fixture and generator tooling is run by hand with Node, never bundled.
+    files: ['test/fixtures/**/*.mjs', 'scripts/**/*.mjs'],
     languageOptions: { globals: { console: 'readonly', process: 'readonly' } },
     rules: { 'turbo/no-undeclared-env-vars': 'off' },
   },

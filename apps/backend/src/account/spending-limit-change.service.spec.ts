@@ -106,6 +106,8 @@ function store(
 interface ChainState {
   transactionIndex?: bigint;
   proposal?: Partial<ProposalState> | null;
+  /** Proposals for other changes waiting on the Account, by index. */
+  others?: Record<string, Partial<ProposalState> | null>;
   spendingLimit?: SpendingLimit | null;
   /** Whether the Account has been provisioned, so the seed after the limit is spent. */
   aboveLimit?: boolean;
@@ -137,25 +139,31 @@ function fakeChain(state: ChainState = {}) {
         ? Promise.reject(new Error('no policy account'))
         : Promise.resolve(state.spendingLimit ?? limit());
     },
+    readAllowedPrograms: () => Promise.resolve([]),
     policyExists: (_settings, seed) =>
       Promise.resolve(
         seed === ABOVE_LIMIT_POLICY_SEED
           ? (state.aboveLimit ?? state.spendingLimit !== null)
           : state.spendingLimit !== null,
       ),
-    readProposal: () =>
-      Promise.resolve(
-        state.proposal
+    readProposal: (_settings, index) => {
+      const found =
+        index.toString() in (state.others ?? {})
+          ? state.others?.[index.toString()]
+          : state.proposal;
+      return Promise.resolve(
+        found
           ? {
               approved: [],
               rejected: [],
               settled: false,
               status: 'Active',
               statusTimestamp: null,
-              ...state.proposal,
+              ...found,
             }
           : null,
-      ),
+      );
+    },
     compile: (params) => {
       compiled.push({
         instructions: params.instructions as { programId: PublicKey }[],
@@ -287,7 +295,44 @@ describe('SpendingLimitChangeService.start', () => {
     ).rejects.toThrow(/already in flight/);
   });
 
-  it('refuses to start while a recovery key change holds the next index', async () => {
+  it('starts beside a Swap change that already holds its index', async () => {
+    const { service } = build(
+      { others: { '4': { status: 'Approved' } } },
+      { ...ACCOUNT, pendingSwapAccessChangeIndex: '4' },
+    );
+
+    const plan = await service.start(USER, { maxPerPeriod: '250000000' });
+
+    // Each rewrites its own policy, so neither disturbs the other and each
+    // waits out its own time lock.
+    expect(plan).toMatchObject({ step: 'propose', changeIndex: '5' });
+  });
+
+  it('ignores a Swap change the chain has already settled', async () => {
+    const { service } = build(
+      { others: { '4': { status: 'Executed', settled: true } } },
+      { ...ACCOUNT, pendingSwapAccessChangeIndex: '4' },
+    );
+
+    await expect(
+      service.start(USER, { maxPerPeriod: '250000000' }),
+    ).resolves.toMatchObject({ step: 'propose' });
+  });
+
+  it('refuses while a Swap change has not taken its index yet', async () => {
+    const { service, calls } = build(
+      { others: { '5': null } },
+      { ...ACCOUNT, pendingSwapAccessChangeIndex: '5' },
+    );
+
+    // Staged but not proposed: starting now would claim the same index.
+    await expect(
+      service.start(USER, { maxPerPeriod: '250000000' }),
+    ).rejects.toThrow(/still being set up/);
+    expect(calls).toEqual([]);
+  });
+
+  it('refuses to start behind a recovery key change', async () => {
     const { chain } = fakeChain();
     const { events } = fakeEvents();
     const service = new SpendingLimitChangeService(
@@ -301,7 +346,7 @@ describe('SpendingLimitChangeService.start', () => {
 
     await expect(
       service.start(USER, { maxPerPeriod: '250000000' }),
-    ).rejects.toThrow(/already in flight/);
+    ).rejects.toThrow(/keys on this Account/);
   });
 
   it('refuses to start a second Spending Limit change over the first', async () => {

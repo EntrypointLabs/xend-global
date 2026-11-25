@@ -10,7 +10,7 @@ import {
   SwapTransactionError,
 } from "@/utils/swapTransaction";
 
-export type SwapOutcome =
+export type SocketSwapOutcome =
   | { status: "submitted"; signature: string }
   | { status: "canceled" }
   | { status: "failed"; message: string };
@@ -18,12 +18,17 @@ export type SwapOutcome =
 /** Matches the reference integration; preflight rejects on a co-signed route. */
 const SEND_OPTIONS = { skipPreflight: true, maxRetries: 3 } as const;
 
-export function useExecuteSwap() {
+/**
+ * Signs a Socket route from the embedded wallet and broadcasts it. Kept for
+ * cross-chain swaps, and only good for money that wallet itself holds: it
+ * cannot reach the Account's vault. See `useExecuteSwap`.
+ */
+export function useExecuteSocketSwap() {
   const embedded = useEmbeddedSolanaWallet();
   const [isExecuting, setIsExecuting] = useState(false);
 
   const execute = useCallback(
-    async (quote: SwapQuote): Promise<SwapOutcome> => {
+    async (quote: SwapQuote): Promise<SocketSwapOutcome> => {
       const wallet = embedded.wallets?.[0];
       if (!wallet) return { status: "failed", message: "Wallet not ready" };
 

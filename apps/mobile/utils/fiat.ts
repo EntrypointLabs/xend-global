@@ -97,7 +97,10 @@ export const FiatOrderSchema = z.object({
 export const FiatLimitsSchema = z.object({
   verified: z.boolean(),
   limitMinor: z.string().regex(/^\d+$/),
-  usedMinor: z.string().regex(/^\d+$/),
+  used: z.object({
+    receive: z.string().regex(/^\d+$/),
+    send: z.string().regex(/^\d+$/),
+  }),
   windowHours: z.number(),
 });
 export const VerificationSchema = z.object({
@@ -143,9 +146,15 @@ export function fiatAmountMinor(input: string, decimals: 2 | 6): string | null {
     (whole + fraction.padEnd(decimals, "0")).replace(/^0+/, "") || "0";
   return minor === "0" ? null : minor;
 }
-/** Naira left before verification is needed: the allowance minus the last 24h. */
-export function nairaAllowanceLeft(limits: FiatLimits): bigint {
-  const left = BigInt(limits.limitMinor) - BigInt(limits.usedMinor);
+/**
+ * Naira left before verification is needed: the allowance minus the last 24h
+ * in that direction. Adding and sending are counted apart.
+ */
+export function nairaAllowanceLeft(
+  limits: FiatLimits,
+  direction: FiatRoute["direction"]
+): bigint {
+  const left = BigInt(limits.limitMinor) - BigInt(limits.used[direction]);
   return left > 0n ? left : 0n;
 }
 /** Minor units as a plain decimal string, for sendCrypto and display. */

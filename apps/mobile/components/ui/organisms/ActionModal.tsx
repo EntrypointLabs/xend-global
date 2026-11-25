@@ -10,7 +10,7 @@ import {
 import { Typography } from "@/components/ui/atoms/Typography";
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { ThemedText } from "@/components/ui/atoms";
-import { useThemeColor } from "@/hooks/useThemeColor";
+import { usePalette } from "@/hooks/usePalette";
 import { OnPhotoProvider } from "@/components/ui/glass";
 import Animated, {
   useSharedValue,
@@ -82,8 +82,9 @@ export function ActionModal({
   useStarburstModal = false,
   onDismissed,
 }: ActionModalProps): ReactElement {
-  const backgroundColor = useThemeColor({}, "background");
-  const textColor = useThemeColor({}, "text");
+  const palette = usePalette();
+  const backgroundColor = palette.card;
+  const textColor = palette.foreground;
 
   const translateY = useSharedValue(0);
 
@@ -181,7 +182,7 @@ export function ActionModal({
                     </View>
                   ) : null}
 
-                  {/* A white card, so nothing in it is on the photo even when
+                  {/* A solid card, so nothing in it is on the photo even when
                       the screen that opened it is. */}
                   <OnPhotoProvider value={false}>
                     <View style={styles.contentContainer}>{children}</View>

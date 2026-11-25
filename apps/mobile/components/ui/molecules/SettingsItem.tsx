@@ -12,8 +12,6 @@ interface SettingsItemProps {
   onPress?: () => void;
   showChevron?: boolean;
   color?: string;
-  /** Tint a black glyph white on the photo. Coloured glyphs keep their colour. */
-  tintOnPhoto?: boolean;
 }
 
 export function SettingsItem({
@@ -22,7 +20,6 @@ export function SettingsItem({
   onPress,
   showChevron = true,
   color,
-  tintOnPhoto = false,
 }: SettingsItemProps) {
   const onPhoto = useOnPhoto();
 
@@ -39,7 +36,6 @@ export function SettingsItem({
             source={icon as ImageSourcePropType}
             className="size-6"
             resizeMode="contain"
-            tintColor={onPhoto && tintOnPhoto ? "#FFFFFF" : undefined}
           />
         )}
       </View>
@@ -47,7 +43,7 @@ export function SettingsItem({
       <View className="flex-1">
         <Typography
           weight="500"
-          className={cn("text-lg", onPhoto ? "text-white" : "text-black")}
+          className={cn("text-lg", onPhoto ? "text-white" : "text-foreground")}
           // Only when set: an undefined `color` in the style still overrides
           // the class colour and turns the label black on the photo.
           style={color ? { color } : undefined}
@@ -66,7 +62,7 @@ export function SettingsItem({
           <Ionicons
             name="chevron-forward"
             size={20}
-            className="!text-black/40"
+            className="!text-foreground/40"
           />
         ))}
     </HapticPressable>

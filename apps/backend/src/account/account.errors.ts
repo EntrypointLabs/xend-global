@@ -72,6 +72,14 @@ export class DeviceNotAttestedError extends Error {
  * The message is the Consumer's to act on, so it survives to the client.
  * Mapped to 409 SPENDING_LIMIT_CHANGE_REFUSED.
  */
+export class SwapAccessError extends Error {
+  readonly code = 'SWAP_ACCESS_REFUSED';
+  constructor(message: string) {
+    super(message);
+    this.name = 'SwapAccessError';
+  }
+}
+
 export class SpendingLimitChangeError extends Error {
   readonly code = 'SPENDING_LIMIT_CHANGE_REFUSED';
   constructor(message: string) {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MERCHANT_CATEGORIES } from '../db/schema';
 
 // DTOs for the /transfers/prepare, /transfers/submit, and
 // GET /transfers endpoints.
@@ -70,6 +71,17 @@ export type SubmitResponse = z.infer<typeof SubmitResponseSchema>;
 
 // ── GET /transfers ──────────────────────────────────────────────────
 
+const SwapSideSchema = z.object({
+  mint: z.string(),
+  /** As quoted. The row for this side, when there is one, has what moved. */
+  amountRaw: z.string(),
+  /** Null on swaps recorded before decimals were kept. */
+  decimals: z.number().int().nullable(),
+  tokenName: z.string().nullable(),
+  tokenSymbol: z.string().nullable(),
+  tokenIconUrl: z.string().nullable(),
+});
+
 export const TransferRowSchema = z.object({
   id: z.string(),
   direction: z.enum(['SEND', 'RECEIVE']),
@@ -85,6 +97,29 @@ export const TransferRowSchema = z.object({
   // to match the SEND/RECEIVE direction enum or Zod rejects every real row.
   kind: z.enum(['transfer', 'payment']),
   merchantName: z.string().nullable(),
+  /** Set only for a Payment: the Merchant's logo, which may 404 when it has none. */
+  merchantLogoUrl: z.string().nullable(),
+  /** Set only for a Payment: what the Merchant sells, for a fallback icon. */
+  merchantCategory: z.enum(MERCHANT_CATEGORIES).nullable(),
+  /**
+   * True when the movement was one side of the Consumer's own swap, so the
+   * counterparty is a trading venue rather than anyone they paid or were paid
+   * by. Absent on an ordinary transfer.
+   */
+  swap: z.boolean().optional(),
+  /**
+   * The whole swap this movement was one side of, so a client can show it as
+   * one trade. Carried on every row of the swap, because the chain does not
+   * always report both sides as transfers.
+   */
+  swapDetails: z
+    .object({
+      pay: SwapSideSchema,
+      receive: SwapSideSchema,
+      /** The venues the route ran through, in order. Empty when not kept. */
+      venues: z.array(z.string()),
+    })
+    .optional(),
   /**
    * What the transfer was worth in USD when it happened, as a decimal string.
    *
@@ -141,6 +176,7 @@ export const TransferRowSchema = z.object({
       bankCode: z.string().nullable(),
       logoKey: z.string().nullable(),
       accountLast4: z.string().nullable(),
+      refund: z.literal(true).optional(),
     })
     .nullable(),
   createdAt: z.string().datetime(),

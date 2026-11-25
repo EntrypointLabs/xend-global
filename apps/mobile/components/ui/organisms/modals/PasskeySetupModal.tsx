@@ -3,7 +3,7 @@ import { View, ActivityIndicator, Modal, StyleSheet } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
-import { useThemeColor } from "@/hooks/useThemeColor";
+import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 
 interface PasskeySetupModalProps {
@@ -25,7 +25,8 @@ export function PasskeySetupModal({
   onSkip,
   skipLabel = "Skip for now",
 }: PasskeySetupModalProps) {
-  const backgroundColor = useThemeColor({}, "background");
+  const palette = usePalette();
+  const backgroundColor = palette.card;
 
   return (
     <Modal
@@ -43,13 +44,16 @@ export function PasskeySetupModal({
               </Typography>
             </View>
 
-            <Typography weight="600" className="mb-2 text-center text-xl">
+            <Typography
+              weight="600"
+              className="mb-2 text-center text-xl text-foreground"
+            >
               Set up your passkey
             </Typography>
 
             <Typography
               weight="400"
-              className="mb-6 max-w-[260px] text-center text-sm leading-5 opacity-50"
+              className="mb-6 max-w-[260px] text-center text-sm leading-5 text-foreground opacity-50"
             >
               A passkey lets you securely sign transactions using biometrics
               like Face ID or fingerprint.
@@ -59,7 +63,7 @@ export function PasskeySetupModal({
               <View className="w-full items-center">
                 <Typography
                   weight="400"
-                  className="mb-4 text-center text-sm text-[#FF4444]"
+                  className="mb-4 text-center text-sm text-[#FF4444] dark:text-destructive"
                 >
                   {error}
                 </Typography>
@@ -67,14 +71,17 @@ export function PasskeySetupModal({
                   onPress={onRetry}
                   disabled={isLoading}
                   className={cn(
-                    "w-full items-center justify-center rounded-full bg-black py-4",
+                    "w-full items-center justify-center rounded-full bg-primary py-4",
                     isLoading && "opacity-50"
                   )}
                 >
                   {isLoading ? (
-                    <ActivityIndicator color="#fff" />
+                    <ActivityIndicator color={palette.primaryForeground} />
                   ) : (
-                    <Typography weight="600" className="text-base text-white">
+                    <Typography
+                      weight="600"
+                      className="text-base text-primary-foreground"
+                    >
                       Try Again
                     </Typography>
                   )}
@@ -85,14 +92,17 @@ export function PasskeySetupModal({
                 onPress={onAddPasskey}
                 disabled={isLoading}
                 className={cn(
-                  "w-full items-center justify-center rounded-full bg-black py-4",
+                  "w-full items-center justify-center rounded-full bg-primary py-4",
                   isLoading && "opacity-50"
                 )}
               >
                 {isLoading ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color={palette.primaryForeground} />
                 ) : (
-                  <Typography weight="600" className="text-base text-white">
+                  <Typography
+                    weight="600"
+                    className="text-base text-primary-foreground"
+                  >
                     Set up Passkey
                   </Typography>
                 )}
@@ -107,7 +117,7 @@ export function PasskeySetupModal({
               >
                 <Typography
                   weight="500"
-                  className="text-sm text-black opacity-60"
+                  className="text-sm text-foreground opacity-60"
                 >
                   {skipLabel}
                 </Typography>

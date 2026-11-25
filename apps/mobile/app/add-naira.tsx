@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/organisms/naira/parts";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNow } from "@/hooks/useNow";
+import { usePalette } from "@/hooks/usePalette";
+import { Pop, Rise } from "@/components/ui/motion";
 import { apiClient } from "@/utils/apiClient";
 import { displayMoney, usdcAsDollars } from "@/utils/display-money";
 import {
@@ -35,7 +37,6 @@ const ROUTE_ID = "paj:ngn-usdc";
 // stops showing it, so a late transfer still lands.
 const LATE_WINDOW_MS = 72 * 60 * 60 * 1000;
 const DISPLAY = { fontFamily: "Montserrat_900Black" } as const;
-const INK = "#0E0F0C";
 
 type Stage =
   | { kind: "amount" }
@@ -138,7 +139,7 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
     placeholderData: (previous) => previous,
   });
 
-  const left = limits.data ? nairaAllowanceLeft(limits.data) : null;
+  const left = limits.data ? nairaAllowanceLeft(limits.data, "receive") : null;
   const verified = limits.data?.verified === true;
   const overLimit = !verified && left !== null && BigInt(amount * 100) > left;
   const estimate =
@@ -204,17 +205,17 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
         </View>
       }
     >
-      <View className="overflow-hidden rounded-[28px] bg-[#F2F2F0] px-6 pb-5 pt-7">
+      <View className="overflow-hidden rounded-[28px] bg-muted px-6 pb-5 pt-7">
         <Typography
           accessibilityRole="header"
-          className="text-[34px] uppercase leading-[34px] tracking-[-1px] text-[#0E0F0C]"
+          className="text-[34px] uppercase leading-[34px] tracking-[-1px] text-ink"
           style={DISPLAY}
         >
           Add naira
         </Typography>
         <Typography
           weight="500"
-          className="mt-2 max-w-[220px] text-[14px] leading-[20px] text-black/55"
+          className="mt-2 max-w-[220px] text-[14px] leading-[20px] text-foreground/55"
         >
           Pay from any Nigerian bank. It lands as dollars in your Account.
         </Typography>
@@ -224,7 +225,7 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
         <View className="h-16" />
       </View>
 
-      <Typography weight="500" className="mt-7 text-[14px] text-black/60">
+      <Typography weight="500" className="mt-7 text-[14px] text-foreground/60">
         You send
       </Typography>
       <HapticPressable
@@ -234,7 +235,7 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
         className="mt-1 flex-row items-center"
       >
         <Typography
-          className={cn(size.text, typed ? "text-[#0E0F0C]" : "text-black/20")}
+          className={cn(size.text, typed ? "text-ink" : "text-foreground/20")}
           style={DISPLAY}
         >
           ₦
@@ -245,7 +246,7 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
           {typed ? null : (
             <Typography
               pointerEvents="none"
-              className="absolute left-0 text-[52px] leading-[60px] text-black/20"
+              className="absolute left-0 text-[52px] leading-[60px] text-foreground/20"
               style={DISPLAY}
             >
               0
@@ -261,7 +262,7 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
             keyboardType="number-pad"
             accessibilityLabel="Amount in naira"
             accessibilityHint="Or pick an amount below"
-            className={cn("h-[72px] py-0 text-[#0E0F0C]", size.input)}
+            className={cn("h-[72px] py-0 text-ink", size.input)}
             style={DISPLAY}
           />
         </View>
@@ -280,14 +281,14 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
             }}
             className={cn(
               "h-10 items-center justify-center rounded-full px-4",
-              amount === preset ? "bg-black" : "bg-black/[0.05]"
+              amount === preset ? "bg-primary" : "bg-foreground/[0.05]"
             )}
           >
             <Typography
               weight="600"
               className={cn(
                 "text-[14px]",
-                amount === preset ? "text-white" : "text-[#0E0F0C]"
+                amount === preset ? "text-primary-foreground" : "text-ink"
               )}
             >
               {naira(preset).replace(".00", "")}
@@ -296,7 +297,7 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
         ))}
       </View>
 
-      <View className="mt-7 gap-4 border-t border-black/[0.08] pt-5">
+      <View className="mt-7 gap-4 border-t border-foreground/[0.08] pt-5">
         <Row
           label="You get"
           value={
@@ -308,7 +309,7 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
           }
         />
         {verified ? (
-          <Row label="Limit" value="Verified, no daily cap" />
+          <Row label="Limit" value="Raised" />
         ) : (
           <HapticPressable
             accessibilityRole="button"
@@ -316,7 +317,7 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
             onPress={() => router.push("/verify-identity")}
             className="flex-row items-center justify-between"
           >
-            <Typography weight="500" className="text-[15px] text-black/60">
+            <Typography weight="500" className="text-[15px] text-foreground/60">
               Left today
             </Typography>
             <View className="flex-row items-center gap-1.5">
@@ -324,7 +325,7 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
                 weight="600"
                 className={cn(
                   "text-[15px] tabular-nums",
-                  overLimit ? "text-destructive" : "text-[#0E0F0C]"
+                  overLimit ? "text-destructive" : "text-ink"
                 )}
               >
                 {left === null
@@ -360,13 +361,10 @@ function amountSize(digits: number) {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <View className="flex-row items-center justify-between">
-      <Typography weight="500" className="text-[15px] text-black/60">
+      <Typography weight="500" className="text-[15px] text-foreground/60">
         {label}
       </Typography>
-      <Typography
-        weight="600"
-        className="text-[15px] tabular-nums text-[#0E0F0C]"
-      >
+      <Typography weight="600" className="text-[15px] tabular-nums text-ink">
         {value}
       </Typography>
     </View>
@@ -432,6 +430,7 @@ function PayStage({
   remaining: number;
   onSent: () => void;
 }) {
+  const palette = usePalette();
   const i = order.instructions;
   const amount = i.transferAmount ?? order.quote.debit;
   const amountLabel = displayMoney("NGN", amount.amountMinor);
@@ -448,19 +447,25 @@ function PayStage({
           accessibilityLabel={`Details expire in ${minutes} minutes`}
           className={cn(
             "flex-row items-center gap-1.5 rounded-full px-3 py-1.5",
-            urgent ? "bg-destructive/10" : "bg-black/[0.05]"
+            urgent ? "bg-destructive/10" : "bg-foreground/[0.05]"
           )}
         >
           <Ionicons
             name="time-outline"
             size={14}
-            color={urgent ? "#DC2626" : "#0E0F0C"}
+            color={
+              urgent
+                ? palette.dark
+                  ? palette.destructive
+                  : "#DC2626"
+                : palette.ink
+            }
           />
           <Typography
             weight="600"
             className={cn(
               "text-[13px] tabular-nums",
-              urgent ? "text-destructive" : "text-[#0E0F0C]"
+              urgent ? "text-destructive" : "text-ink"
             )}
           >
             {`Expires in ${minutes}:${String(seconds).padStart(2, "0")}`}
@@ -468,14 +473,14 @@ function PayStage({
         </View>
         <Typography
           accessibilityRole="header"
-          className="mt-5 text-center text-[40px] leading-[46px] text-[#0E0F0C]"
+          className="mt-5 text-center text-[40px] leading-[46px] text-ink"
           style={DISPLAY}
         >
           {amountLabel}
         </Typography>
         <Typography
           weight="500"
-          className="mt-1 text-center text-[14px] text-black/60"
+          className="mt-1 text-center text-[14px] text-foreground/60"
         >
           {`You get ≈ ${usdcAsDollars(order.quote.credit.amountMinor, "down")}`}
         </Typography>
@@ -489,7 +494,7 @@ function PayStage({
           />
           <Divider
             type="dashed"
-            color="rgba(0,0,0,0.12)"
+            color={palette.fg(0.12)}
             dashGap={6}
             className="my-5"
           />
@@ -546,12 +551,13 @@ function Rule({
   icon: keyof typeof Ionicons.glyphMap;
   text: string;
 }) {
+  const palette = usePalette();
   return (
     <View className="flex-row items-start gap-3">
-      <Ionicons name={icon} size={18} color="#0000008C" />
+      <Ionicons name={icon} size={18} color={palette.fg(0.55)} />
       <Typography
         weight="500"
-        className="flex-1 text-[14px] leading-[20px] text-black/60"
+        className="flex-1 text-[14px] leading-[20px] text-foreground/60"
       >
         {text}
       </Typography>
@@ -613,7 +619,7 @@ function WatchStage({
         <Illustration name="deposit" size={150} />
         <Typography
           accessibilityRole="header"
-          className="mt-4 text-center text-[28px] leading-[34px] tracking-[-0.6px] text-[#0E0F0C]"
+          className="mt-4 text-center text-[28px] leading-[34px] tracking-[-0.6px] text-ink"
           style={DISPLAY}
         >
           {done
@@ -626,7 +632,7 @@ function WatchStage({
         </Typography>
         <Typography
           weight="500"
-          className="mt-2 max-w-[300px] text-center text-[14px] leading-[20px] text-black/55"
+          className="mt-2 max-w-[300px] text-center text-[14px] leading-[20px] text-foreground/55"
         >
           {done
             ? "Arrived in your Account."
@@ -638,7 +644,7 @@ function WatchStage({
         </Typography>
       </View>
 
-      <View className="mt-8 rounded-[28px] border border-black/5 bg-white p-6">
+      <View className="mt-8 rounded-[28px] border border-foreground/5 bg-card p-6">
         {STEPS.map((step, index) => {
           const complete = index < reached || done;
           const active = index === reached && !done;
@@ -656,8 +662,8 @@ function WatchStage({
                     complete
                       ? "bg-success"
                       : active
-                        ? "border-2 border-[#0E0F0C]"
-                        : "border-2 border-black/15"
+                        ? "border-2 border-ink"
+                        : "border-2 border-foreground/15"
                   )}
                 >
                   {complete ? (
@@ -668,7 +674,7 @@ function WatchStage({
                   <View
                     className={cn(
                       "my-1 w-0.5 flex-1",
-                      complete ? "bg-success" : "bg-black/10"
+                      complete ? "bg-success" : "bg-foreground/10"
                     )}
                   />
                 ) : null}
@@ -680,14 +686,14 @@ function WatchStage({
                   weight="600"
                   className={cn(
                     "text-[15px]",
-                    complete || active ? "text-[#0E0F0C]" : "text-black/35"
+                    complete || active ? "text-ink" : "text-foreground/35"
                   )}
                 >
                   {step.title}
                 </Typography>
                 <Typography
                   weight="500"
-                  className="mt-0.5 text-[13px] text-black/60"
+                  className="mt-0.5 text-[13px] text-foreground/60"
                 >
                   {step.body}
                 </Typography>
@@ -713,6 +719,7 @@ function Outcome({
   primary: { title: string; onPress: () => void };
   secondary: { title: string; onPress: () => void };
 }) {
+  const palette = usePalette();
   return (
     <FeatureScreen
       leave="close"
@@ -729,22 +736,28 @@ function Outcome({
       }
     >
       <View className="flex-1 items-center justify-center pb-16">
-        <View className="size-16 items-center justify-center rounded-full bg-black/[0.05]">
-          <Ionicons name={icon} size={30} color={INK} />
-        </View>
-        <Typography
-          accessibilityRole="header"
-          weight="700"
-          className="mt-6 text-center text-[26px] leading-[32px] tracking-[-0.5px] text-[#0E0F0C]"
-        >
-          {title}
-        </Typography>
-        <Typography
-          weight="500"
-          className="mt-2 max-w-[310px] text-center text-[14px] leading-[20px] text-black/55"
-        >
-          {body}
-        </Typography>
+        <Pop haptic="warning">
+          <View className="size-16 items-center justify-center rounded-full bg-foreground/[0.05]">
+            <Ionicons name={icon} size={30} color={palette.ink} />
+          </View>
+        </Pop>
+        <Rise index={2}>
+          <Typography
+            accessibilityRole="header"
+            weight="700"
+            className="mt-6 text-center text-[26px] leading-[32px] tracking-[-0.5px] text-ink"
+          >
+            {title}
+          </Typography>
+        </Rise>
+        <Rise index={3}>
+          <Typography
+            weight="500"
+            className="mt-2 max-w-[310px] text-center text-[14px] leading-[20px] text-foreground/55"
+          >
+            {body}
+          </Typography>
+        </Rise>
       </View>
     </FeatureScreen>
   );

@@ -19,11 +19,11 @@ export function ThemedScreen({
   useSafeArea = true,
   safeAreaEdges = ["top", "right", "bottom", "left"],
 }: ThemedScreenProps) {
-  const containerClass = cn("flex-1 bg-white", className);
+  const containerClass = cn("flex-1 bg-background", className);
 
   const content = (
     <>
-      <StatusBar style="dark" />
+      <StatusBar style="auto" />
       {/* MEASURED-LAYOUT */}
       <View className={containerClass} style={style}>
         {children}

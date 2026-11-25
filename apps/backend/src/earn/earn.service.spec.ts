@@ -1,0 +1,771 @@
+import { ConfigService } from '@nestjs/config';
+import {
+  Connection,
+  Keypair,
+  PublicKey,
+  TransactionMessage,
+  VersionedTransaction,
+  AddressLookupTableAccount,
+  type AccountInfo,
+} from '@solana/web3.js';
+import { EarnService } from './earn.service';
+import {
+  associatedTokenAddress,
+  EARN_USDC,
+  EARN_PROVIDERS,
+  TOKEN_PROGRAM_ID,
+  deriveAccountAddresses,
+  readEarnExchangeRate,
+  decodeAllowedPrograms,
+} from '@prydd/smart-account';
+import type { EarnRecords, EarnPending } from './earn-records';
+import type { ApprovalSignerStore } from '../turnkey/approval-signer.store';
+import type { PreparedTxStore } from '../prepared/prepared-tx.interface';
+import type { SquadsAccountStore } from '../account/account.interface';
+import type { SettlementAuthoritySigner } from '../settlement/settlement-authority.interface';
+import type { Web3SwapChain } from '../swap/swap-chain.web3';
+import { createHash } from 'node:crypto';
+import { getBase58Decoder } from '@solana/kit';
+jest.mock('@jup-ag/lend/earn', () => ({
+  getLendingTokenDetails: jest.fn().mockResolvedValue({ supplyRate: '400' }),
+}));
+jest.mock('@prydd/smart-account', () => {
+  const actual = jest.requireActual<typeof import('@prydd/smart-account')>(
+    '@prydd/smart-account',
+  );
+  return {
+    ...actual,
+    readEarnExchangeRate: jest.fn(),
+    readEarnForwarderCode: jest.fn().mockResolvedValue(Buffer.from([1, 2, 3])),
+    decodeAllowedPrograms: jest.fn(() => actual.ABOVE_LIMIT_PROGRAM_ALLOWLIST),
+  };
+});
+class MemoryPrepared implements PreparedTxStore {
+  readonly store = new Map<string, unknown>();
+  set<T>(key: string, value: T): Promise<void> {
+    this.store.set(key, value);
+    return Promise.resolve();
+  }
+  get<T>(key: string): Promise<T | null> {
+    return Promise.resolve(
+      structuredClone((this.store.get(key) as T | undefined) ?? null),
+    );
+  }
+  delete(key: string): Promise<void> {
+    this.store.delete(key);
+    return Promise.resolve();
+  }
+}
+function setup() {
+  const primary = Keypair.generate(),
+    approval = Keypair.generate(),
+    sponsor = Keypair.generate(),
+    program = Keypair.generate().publicKey,
+    addresses = deriveAccountAddresses(42n);
+  const config = new ConfigService({
+    HELIUS_RPC_URL: 'http://rpc.test',
+    SOLANA_CLUSTER: 'mainnet',
+    EARN_DEPOSITS_KILLSWITCH: false,
+    EARN_FORWARDER_PROGRAM: program.toBase58(),
+    EARN_FORWARDER_CODE_SHA256: createHash('sha256')
+      .update(Buffer.from([1, 2, 3]))
+      .digest('hex'),
+    EARN_LOOKUP_TABLE: Keypair.generate().publicKey.toBase58(),
+  });
+  const prepared = new MemoryPrepared(),
+    store = prepared.store;
+  const row = {
+    settingsSeed: 42n,
+    primarySigner: primary.publicKey.toBase58(),
+    approvalSigner: approval.publicKey.toBase58(),
+  };
+  const accounts = {
+    findByUserId: jest.fn().mockResolvedValue(row),
+  } as unknown as SquadsAccountStore;
+  const broadcast = jest
+    .fn<
+      ReturnType<Connection['sendRawTransaction']>,
+      Parameters<Connection['sendRawTransaction']>
+    >()
+    .mockResolvedValue('broadcast');
+  const getAccountInfo = jest.fn(
+    (key: PublicKey): Promise<AccountInfo<Buffer> | null> => {
+      if (key.equals(program))
+        return Promise.resolve({
+          executable: true,
+          owner: PublicKey.default,
+          lamports: 1,
+          data: Buffer.alloc(0),
+          rentEpoch: 0,
+        });
+      const mint = key.equals(
+        associatedTokenAddress(addresses.vault, EARN_USDC, TOKEN_PROGRAM_ID),
+      )
+        ? EARN_USDC
+        : new PublicKey(EARN_PROVIDERS.kamino.receipt);
+      const data = Buffer.alloc(165);
+      mint.toBuffer().copy(data);
+      addresses.vault.toBuffer().copy(data, 32);
+      data.writeBigUInt64LE(100_000_000n, 64);
+      return Promise.resolve({
+        executable: false,
+        owner: TOKEN_PROGRAM_ID,
+        lamports: 1,
+        data,
+        rentEpoch: 0,
+      });
+    },
+  );
+  const rpc = {
+    sendRawTransaction: broadcast,
+    getBlockHeight: jest.fn().mockResolvedValue(100),
+    isBlockhashValid: jest
+      .fn()
+      .mockResolvedValue({ context: { slot: 1 }, value: true }),
+    getSignatureStatus: jest
+      .fn()
+      .mockResolvedValue({ context: { slot: 1 }, value: null }),
+    getAccountInfo,
+    getTokenAccountsByOwner: jest.fn().mockResolvedValue({ value: [] }),
+  };
+  jest
+    .mocked(readEarnExchangeRate)
+    .mockResolvedValue({ numerator: 2n, denominator: 1n });
+  const signTransaction = jest.fn((wire: string): Promise<string> => {
+    const tx = VersionedTransaction.deserialize(Buffer.from(wire, 'base64'));
+    tx.sign([sponsor]);
+    return Promise.resolve(Buffer.from(tx.serialize()).toString('base64'));
+  });
+  const authority: SettlementAuthoritySigner = {
+    address: sponsor.publicKey.toBase58(),
+    signAndSend: jest.fn(),
+    signTransaction,
+  };
+  const compile = jest.fn(
+    (
+      params: Parameters<Web3SwapChain['compile']>[0],
+    ): ReturnType<Web3SwapChain['compile']> => {
+      const instructions = params.instructions;
+      const entries = [
+        ...new Map(
+          instructions
+            .flatMap((ix) => ix.keys)
+            .filter((k) => !k.isSigner)
+            .map((k) => [k.pubkey.toBase58(), k.pubkey]),
+        ).values(),
+      ];
+      const table = new AddressLookupTableAccount({
+        key: Keypair.generate().publicKey,
+        state: {
+          addresses: entries,
+          deactivationSlot: 0xffffffffffffffffn,
+          lastExtendedSlot: 0,
+          lastExtendedSlotStartIndex: 0,
+        },
+      });
+      const tx = new VersionedTransaction(
+        new TransactionMessage({
+          payerKey: sponsor.publicKey,
+          recentBlockhash: PublicKey.default.toBase58(),
+          instructions,
+        }).compileToV0Message([table]),
+      );
+      return Promise.resolve({
+        unsignedTxBase64: Buffer.from(tx.serialize()).toString('base64'),
+        messageBase64: Buffer.from(tx.message.serialize()).toString('base64'),
+        blockhash: PublicKey.default.toBase58(),
+        lastValidBlockHeight: 150,
+      });
+    },
+  );
+  const lookupTables = jest.fn().mockResolvedValue([]);
+  const chain = {
+    lookupTables,
+    compile,
+  } as unknown as Web3SwapChain;
+  const durable = new Map<string, EarnPending>();
+  const records: EarnRecords = {
+    recover: jest.fn((userId: string, messageHash: string) => {
+      const row = durable.get(messageHash);
+      return Promise.resolve(row?.userId === userId ? row : null);
+    }),
+    pending: jest.fn((p: EarnPending) => {
+      durable.set(p.messageHash, p);
+      return Promise.resolve();
+    }),
+    reconcile: jest.fn().mockResolvedValue(undefined),
+    earnings: jest
+      .fn()
+      .mockResolvedValue({ lifetimeMinor: '0', lastSevenDaysMinor: '0' }),
+  };
+  const service = new EarnService(
+    config,
+    accounts,
+    prepared,
+    authority,
+    chain,
+    {
+      findBySubOrganization: jest.fn().mockResolvedValue({ policyIds: null }),
+    } as unknown as ApprovalSignerStore,
+    records,
+  );
+  (service as unknown as { rpc: Connection }).rpc =
+    rpc as unknown as Connection;
+  return {
+    service,
+    primary,
+    approval,
+    sponsor,
+    program,
+    prepared,
+    store,
+    broadcast,
+    authority,
+    chain,
+    lookupTables,
+    config,
+    signTransaction,
+    compile,
+    durable,
+    rpc,
+  };
+}
+afterEach(() => jest.restoreAllMocks());
+describe('Earn preparation and submission', () => {
+  it('prices a deposit and bounds the receipt floor', async () => {
+    const h = setup();
+    const q = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    expect(q.inputAmountRaw).toBe('1000000');
+    expect(q.expectedOutRaw).toBe('500000');
+    expect(q.minimumOutRaw).toBe('497500');
+  });
+  it('prices withdrawals in shares and refuses more than the owned position', async () => {
+    const h = setup();
+    const q = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'redeem',
+      amountMinor: '1000000',
+    });
+    expect(q.inputAmountRaw).toBe('500000');
+    await expect(
+      h.service.quote('a', {
+        provider: 'kamino',
+        action: 'redeem',
+        amountMinor: '200000001',
+      }),
+    ).rejects.toThrow();
+  });
+  it('redeems all shares at the slider maximum despite a changed exchange value', async () => {
+    const h = setup();
+    const q = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'redeem',
+      amountMinor: '199999999',
+      withdrawAll: true,
+    });
+    expect(q.inputAmountRaw).toBe('100000000');
+    expect(q.expectedOutRaw).toBe('200000000');
+  });
+  it('refuses zero, negative, overflow and insufficient amounts', async () => {
+    const h = setup();
+    for (const amountMinor of ['0', '-1', '18446744073709551616', '100000001'])
+      await expect(
+        h.service.quote('a', {
+          provider: 'kamino',
+          action: 'deposit',
+          amountMinor,
+        }),
+      ).rejects.toThrow();
+  });
+  it('pins quotes to their Consumer and refuses expired estimates', async () => {
+    const h = setup();
+    const q = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    await expect(h.service.prepare('b', q.quoteId)).rejects.toThrow();
+    const stored = h.store.get(`earn:quote:${q.quoteId}`) as {
+      expiresAt: number;
+    };
+    stored.expiresAt = 0;
+    await expect(h.service.prepare('a', q.quoteId)).rejects.toThrow();
+  });
+  it('keeps the existing Token constraint ordering and builds a forwarding plan', async () => {
+    const h = setup();
+    const q = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    await h.service.prepare('a', q.quoteId);
+    expect(decodeAllowedPrograms).toHaveBeenCalled();
+    const ixs = h.compile.mock.calls[0][0].instructions;
+    expect(ixs).toHaveLength(6);
+    expect(ixs[4].programId.equals(h.program)).toBe(true);
+  });
+  it('rejects a transaction belonging to another Consumer and missing or forged signatures', async () => {
+    const h = setup();
+    const q = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', q.quoteId);
+    await expect(
+      h.service.submit('b', prep.unsignedTxBase64),
+    ).rejects.toThrow();
+    await expect(
+      h.service.submit('a', prep.unsignedTxBase64),
+    ).rejects.toThrow();
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.signatures[1].fill(1);
+    tx.signatures[2].fill(1);
+    await expect(
+      h.service.submit('a', Buffer.from(tx.serialize()).toString('base64')),
+    ).rejects.toThrow();
+    expect(h.broadcast).not.toHaveBeenCalled();
+  });
+  it('persists the fully signed wire before broadcast and reuses it after an ambiguous error', async () => {
+    const h = setup();
+    const q = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', q.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    const wire = Buffer.from(tx.serialize()).toString('base64');
+    h.broadcast.mockRejectedValueOnce(new Error('network dropped'));
+    await expect(h.service.submit('a', wire)).rejects.toThrow();
+    expect(h.signTransaction).toHaveBeenCalledTimes(1);
+    const saved = [...h.store.values()].find(
+      (v: unknown) => !!(v as { wire?: string }).wire,
+    ) as { wire: string; signature: string };
+    expect(saved.wire).toBeTruthy();
+    expect(saved.signature).toBe(
+      getBase58Decoder().decode(
+        VersionedTransaction.deserialize(Buffer.from(saved.wire, 'base64'))
+          .signatures[0],
+      ),
+    );
+    await expect(h.service.submit('a', wire)).resolves.toEqual({
+      signature: saved.signature,
+    });
+    expect(h.signTransaction).toHaveBeenCalledTimes(1);
+    expect(h.broadcast.mock.calls[0][0]).toEqual(h.broadcast.mock.calls[1][0]);
+  });
+  it('refuses expired unsigned approvals and disabled infrastructure', async () => {
+    const h = setup();
+    h.config.set('EARN_DEPOSITS_KILLSWITCH', true);
+    await expect(
+      h.service.quote('a', {
+        provider: 'kamino',
+        action: 'deposit',
+        amountMinor: '1000000',
+      }),
+    ).rejects.toThrow();
+    h.config.set('EARN_DEPOSITS_KILLSWITCH', false);
+    h.config.set('EARN_FORWARDER_PROGRAM', '');
+    await expect(
+      h.service.quote('a', {
+        provider: 'kamino',
+        action: 'deposit',
+        amountMinor: '1000000',
+      }),
+    ).rejects.toThrow();
+  });
+  it('keeps withdrawals available while deposits are paused', async () => {
+    const h = setup();
+    h.config.set('EARN_DEPOSITS_KILLSWITCH', true);
+    await expect(
+      h.service.quote('a', {
+        provider: 'kamino',
+        action: 'redeem',
+        amountMinor: '1000000',
+      }),
+    ).resolves.toHaveProperty('action', 'redeem');
+    await expect(
+      h.service.quote('a', {
+        provider: 'kamino',
+        action: 'deposit',
+        amountMinor: '1000000',
+      }),
+    ).rejects.toThrow();
+  });
+  it('recovers the identical broadcast from the durable ledger after the cache is lost', async () => {
+    const h = setup();
+    const quote = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', quote.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    const wire = Buffer.from(tx.serialize()).toString('base64');
+    h.broadcast.mockRejectedValueOnce(new Error('network lost'));
+    await expect(h.service.submit('a', wire)).rejects.toThrow();
+    h.store.clear();
+    await expect(h.service.submit('a', wire)).resolves.toHaveProperty(
+      'signature',
+    );
+    expect(h.signTransaction).toHaveBeenCalledTimes(1);
+    expect(h.broadcast.mock.calls[0][0]).toEqual(h.broadcast.mock.calls[1][0]);
+  });
+  it('refuses an expired approval without sending or signing as sponsor', async () => {
+    const h = setup();
+    const quote = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', quote.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    h.rpc.getBlockHeight.mockResolvedValue(200);
+    await expect(
+      h.service.submit('a', Buffer.from(tx.serialize()).toString('base64')),
+    ).rejects.toThrow();
+    expect(h.signTransaction).not.toHaveBeenCalled();
+    expect(h.broadcast).not.toHaveBeenCalled();
+  });
+});
+
+describe('Earn preparation expiry recovery', () => {
+  it('recovers a concurrent sponsor after reading an unsigned pin near expiry', async () => {
+    const h = setup();
+    const quote = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', quote.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    const wire = Buffer.from(tx.serialize()).toString('base64');
+    let concurrent: { signature: string } | undefined;
+    h.rpc.getBlockHeight.mockImplementationOnce(async () => {
+      concurrent = await h.service.submit('a', wire);
+      return 200;
+    });
+    h.rpc.isBlockhashValid.mockResolvedValue({
+      context: { slot: 1 },
+      value: false,
+    });
+    const result = await h.service.submit('a', wire);
+    expect(result).toEqual(concurrent);
+    expect(h.broadcast).toHaveBeenCalledTimes(1);
+    expect(h.signTransaction).toHaveBeenCalledTimes(1);
+  });
+  it('returns a sponsored signature on expiry so a lost response does not bypass final status checks', async () => {
+    const h = setup();
+    const quote = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', quote.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    const wire = Buffer.from(tx.serialize()).toString('base64');
+    const sent = await h.service.submit('a', wire);
+    h.rpc.getBlockHeight.mockResolvedValue(200);
+    await expect(h.service.submit('a', wire)).rejects.toMatchObject({
+      response: { code: 'EARN_QUOTE_EXPIRED', signature: sent.signature },
+    });
+    expect(h.signTransaction).toHaveBeenCalledTimes(1);
+    expect(h.broadcast).toHaveBeenCalledTimes(1);
+  });
+  it('releases an expired never-broadcast approval after the preparation cache is lost', async () => {
+    const h = setup();
+    const quote = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', quote.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    const wire = Buffer.from(tx.serialize()).toString('base64');
+    h.store.clear();
+    await expect(h.service.submit('a', wire)).rejects.toMatchObject({
+      response: { code: 'EARN_PREPARATION_UNAVAILABLE' },
+    });
+    h.rpc.isBlockhashValid
+      .mockResolvedValueOnce({ context: { slot: 2 }, value: true })
+      .mockResolvedValueOnce({ context: { slot: 1 }, value: false });
+    await expect(h.service.submit('a', wire)).rejects.toMatchObject({
+      response: { code: 'EARN_PREPARATION_UNAVAILABLE' },
+    });
+    h.rpc.isBlockhashValid.mockResolvedValue({
+      context: { slot: 1 },
+      value: false,
+    });
+    await expect(h.service.submit('a', wire)).rejects.toMatchObject({
+      response: { code: 'EARN_QUOTE_EXPIRED' },
+    });
+    expect(h.rpc.isBlockhashValid).toHaveBeenLastCalledWith(
+      tx.message.recentBlockhash,
+      { commitment: 'finalized' },
+    );
+    expect(h.broadcast).not.toHaveBeenCalled();
+    expect(h.signTransaction).not.toHaveBeenCalled();
+  });
+  it('checks durable broadcast status before treating a lost pin as expired', async () => {
+    const h = setup();
+    const quote = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', quote.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    const wire = Buffer.from(tx.serialize()).toString('base64');
+    const sent = await h.service.submit('a', wire);
+    h.store.clear();
+    h.rpc.isBlockhashValid.mockResolvedValue({
+      context: { slot: 1 },
+      value: false,
+    });
+    h.rpc.getSignatureStatus.mockResolvedValue({
+      context: { slot: 1 },
+      value: { confirmationStatus: 'confirmed' },
+    });
+    await expect(h.service.submit('a', wire)).resolves.toEqual(sent);
+    expect(h.rpc.isBlockhashValid).not.toHaveBeenCalled();
+    expect(h.broadcast).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Earn disabled environments and recovery', () => {
+  it('serves disabled zero positions on devnet without querying pinned mainnet markets', async () => {
+    const h = setup();
+    h.config.set('SOLANA_CLUSTER', 'devnet');
+    jest.mocked(readEarnExchangeRate).mockClear();
+    const catalog = await h.service.catalog('a');
+    expect(catalog.lifetimeMinor).toBe('0');
+    expect(catalog.products).toHaveLength(2);
+    expect(catalog.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'kamino',
+          apy: null,
+          positionMinor: '0',
+          available: false,
+          withdrawAvailable: false,
+        }),
+        expect.objectContaining({
+          id: 'jupiter',
+          apy: null,
+          positionMinor: '0',
+          available: false,
+          withdrawAvailable: false,
+        }),
+      ]),
+    );
+    expect(readEarnExchangeRate).not.toHaveBeenCalled();
+    expect(h.rpc.getAccountInfo).not.toHaveBeenCalled();
+    expect(h.lookupTables).not.toHaveBeenCalled();
+  });
+  it('reveals the saved sponsored signature during a deposit pause without rebroadcasting', async () => {
+    const h = setup();
+    const q = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', q.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    const wire = Buffer.from(tx.serialize()).toString('base64');
+    h.broadcast.mockRejectedValueOnce(new Error('lost response'));
+    await expect(h.service.submit('a', wire)).rejects.toMatchObject({
+      response: { code: 'EARN_PENDING' },
+    });
+    const saved = [...h.durable.values()][0];
+    h.config.set('EARN_DEPOSITS_KILLSWITCH', true);
+    await expect(h.service.submit('a', wire)).resolves.toEqual({
+      signature: saved.signature,
+    });
+    h.config.set('EARN_FORWARDER_PROGRAM', '');
+    await expect(h.service.submit('a', wire)).resolves.toEqual({
+      signature: saved.signature,
+    });
+    h.rpc.getBlockHeight.mockResolvedValue(200);
+    await expect(h.service.submit('a', wire)).rejects.toMatchObject({
+      response: { code: 'EARN_QUOTE_EXPIRED', signature: saved.signature },
+    });
+    expect(h.broadcast).toHaveBeenCalledTimes(1);
+    expect(h.signTransaction).toHaveBeenCalledTimes(1);
+  });
+  it('can expire an unsigned approval during a deposit pause without infrastructure', async () => {
+    const h = setup();
+    const q = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', q.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    h.config.set('EARN_DEPOSITS_KILLSWITCH', true);
+    h.config.set('EARN_FORWARDER_PROGRAM', '');
+    h.rpc.getBlockHeight.mockResolvedValue(200);
+    h.rpc.isBlockhashValid.mockResolvedValue({
+      context: { slot: 1 },
+      value: false,
+    });
+    await expect(
+      h.service.submit('a', Buffer.from(tx.serialize()).toString('base64')),
+    ).rejects.toMatchObject({ response: { code: 'EARN_QUOTE_EXPIRED' } });
+    expect(h.broadcast).not.toHaveBeenCalled();
+    expect(h.signTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('Earn valuation across vault-owned token accounts', () => {
+  it('values non-associated receipts without offering them as canonical withdrawals', async () => {
+    const h = setup();
+    const owner = deriveAccountAddresses(42n).vault;
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: false } as Response);
+    h.rpc.getTokenAccountsByOwner.mockImplementation(
+      (wallet: PublicKey, filter: { mint: PublicKey }) => {
+        expect(wallet.equals(owner)).toBe(true);
+        const entry = (amount: bigint, canonical: boolean) => {
+          const data = Buffer.alloc(165);
+          filter.mint.toBuffer().copy(data);
+          owner.toBuffer().copy(data, 32);
+          data.writeBigUInt64LE(amount, 64);
+          return {
+            pubkey: canonical
+              ? associatedTokenAddress(owner, filter.mint, TOKEN_PROGRAM_ID)
+              : Keypair.generate().publicKey,
+            account: {
+              owner: TOKEN_PROGRAM_ID,
+              data,
+              lamports: 1,
+              executable: false,
+              rentEpoch: 0,
+            },
+          };
+        };
+        return Promise.resolve({
+          value: [entry(100_000_000n, true), entry(50_000_000n, false)],
+        });
+      },
+    );
+    const catalog = await h.service.catalog('a');
+    for (const p of catalog.products) {
+      expect(p.positionShares).toBe('150000000');
+      expect(p.positionMinor).toBe('300000000');
+      expect(p.withdrawableMinor).toBe('200000000');
+    }
+  });
+  it('keeps an externally held position visible when the canonical account is empty', async () => {
+    const h = setup();
+    const owner = deriveAccountAddresses(42n).vault;
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: false } as Response);
+    h.rpc.getTokenAccountsByOwner.mockImplementation(
+      (_wallet: PublicKey, filter: { mint: PublicKey }) => {
+        const data = Buffer.alloc(165);
+        filter.mint.toBuffer().copy(data);
+        owner.toBuffer().copy(data, 32);
+        data.writeBigUInt64LE(50_000_000n, 64);
+        return Promise.resolve({
+          value: [
+            {
+              pubkey: Keypair.generate().publicKey,
+              account: {
+                owner: TOKEN_PROGRAM_ID,
+                data,
+                lamports: 1,
+                executable: false,
+                rentEpoch: 0,
+              },
+            },
+          ],
+        });
+      },
+    );
+    const catalog = await h.service.catalog('a');
+    expect(
+      catalog.products.every(
+        (p) =>
+          p.positionMinor === '100000000' &&
+          p.withdrawableMinor === '0' &&
+          !p.withdrawAvailable,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('Canonical Earn cash limits', () => {
+  it('returns the spendable ATA balance independently of arbitrary owner-account ordering', async () => {
+    const h = setup();
+    const owner = deriveAccountAddresses(42n).vault;
+    const canonical = associatedTokenAddress(
+      owner,
+      EARN_USDC,
+      TOKEN_PROGRAM_ID,
+    );
+    const original = h.rpc.getAccountInfo.getMockImplementation()!;
+    h.rpc.getAccountInfo.mockImplementation((key: PublicKey) => {
+      if (!key.equals(canonical)) return original(key);
+      const data = Buffer.alloc(165);
+      EARN_USDC.toBuffer().copy(data);
+      owner.toBuffer().copy(data, 32);
+      data.writeBigUInt64LE(10_006_000n, 64);
+      return Promise.resolve({
+        executable: false,
+        owner: TOKEN_PROGRAM_ID,
+        lamports: 1,
+        data,
+        rentEpoch: 0,
+      });
+    });
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: false } as Response);
+    h.rpc.getTokenAccountsByOwner.mockResolvedValue({ value: [] });
+    const catalog = await h.service.catalog('a');
+    expect(catalog.depositableMinor).toBe('10006000');
+    expect(h.rpc.getAccountInfo).toHaveBeenCalledWith(canonical);
+    expect(
+      h.rpc.getTokenAccountsByOwner.mock.calls.every(
+        (call: unknown[]) =>
+          !(call[1] as { mint: PublicKey }).mint.equals(EARN_USDC),
+      ),
+    ).toBe(true);
+  });
+});

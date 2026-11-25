@@ -15,6 +15,7 @@ import type { ReconcilerService } from '../activity/reconciler.service';
 import type { RampActivityService } from '../fiat/ramp-activity';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
+import type { TokenPriceProvider } from '../prices/token-price.interface';
 import type { ApprovalSignerStore } from '../turnkey/approval-signer.store';
 import { InMemoryPreparedTxStore } from '../prepared/prepared-tx.memory';
 import { generateKeyPairSync, sign } from 'node:crypto';
@@ -25,6 +26,8 @@ import {
   IntentMismatchError,
   RpcUnavailableError,
   UnsupportedMintError,
+  BelowRentMinimumError,
+  InsufficientSolError,
 } from './transfer.errors';
 
 /**
@@ -40,7 +43,7 @@ function signPrepared(unsignedTxBase64: string): string {
   tx.signatures = tx.signatures.map(() => new Uint8Array(64).fill(7));
   return Buffer.from(tx.serialize()).toString('base64');
 }
-import { smartAccounts, transfers } from '../db/schema';
+import { smartAccounts, swaps, transfers } from '../db/schema';
 
 /**
  * Integration tests for TransferService (prepare / submit / list):
@@ -65,22 +68,29 @@ type TransfersRow = typeof transfers.$inferSelect;
 interface FakeStore {
   smartAccounts: SmartAccountsRow[];
   transfers: TransfersRow[];
+  /** Swaps this backend broadcast. */
+  swaps?: Partial<typeof swaps.$inferSelect>[];
 }
 
+type Collection = 'smartAccounts' | 'transfers' | 'swaps';
+
 function makeFakeDb(store: FakeStore): DbService {
-  const collectionFor = (tbl: unknown): 'smartAccounts' | 'transfers' => {
+  const collectionFor = (tbl: unknown): Collection => {
     if (tbl === smartAccounts) return 'smartAccounts';
     if (tbl === transfers) return 'transfers';
+    if (tbl === swaps) return 'swaps';
     throw new Error('unknown table');
   };
 
-  const makeSelectChain = (collection: 'smartAccounts' | 'transfers') => {
+  const makeSelectChain = (collection: Collection) => {
     // We track ordering + limit so the list() path tests work, but
     // ignore the where(opaque) predicate (caller asserts on overall
     // outcome with at most a few seeded rows).
     const ctx: { limit?: number; orderDesc?: boolean } = {};
     const execute = () => {
-      let rows = (store[collection] as Record<string, unknown>[]).slice();
+      let rows = (
+        (store[collection] ?? []) as Record<string, unknown>[]
+      ).slice();
       if (ctx.orderDesc) {
         rows = rows.sort((a, b) => {
           const ad = (a.createdAt as Date).getTime();
@@ -140,6 +150,7 @@ function makeFakeDb(store: FakeStore): DbService {
               submittedAt: vals.submittedAt ?? null,
               confirmedAt: vals.confirmedAt ?? null,
               failureReason: vals.failureReason ?? null,
+              usdValue: vals.usdValue ?? null,
             };
           } else {
             row = vals;
@@ -162,6 +173,7 @@ function makeFakeDb(store: FakeStore): DbService {
 // ── Test fixtures ─────────────────────────────────────────────────────
 
 const usdcMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
 const usdtMint = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 const bonkMint = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
 
@@ -200,7 +212,7 @@ function makeSolana(opts: Partial<SolanaRpc>): SolanaRpc {
         blockhash: '11111111111111111111111111111111',
         lastValidBlockHeight: 12345,
       }),
-    getSolBalance: jest.fn().mockResolvedValue(0n),
+    getSolBalance: opts.getSolBalance ?? jest.fn().mockResolvedValue(0n),
     getTokenBalances: opts.getTokenBalances ?? jest.fn().mockResolvedValue([]),
     sendRawTransaction:
       opts.sendRawTransaction ?? jest.fn().mockResolvedValue('sig-default'),
@@ -300,9 +312,20 @@ function makeVaultSpend(opts: { approvalSigner?: PublicKey } = {}) {
     route: opts.approvalSigner ? 'two-signature' : 'spending-limit',
     needsApprovalSignature: Boolean(opts.approvalSigner),
   });
-  const spends = { prepare, submit } as unknown as SpendService;
+  const mintDecimals = jest.fn().mockResolvedValue(6);
+  const spends = {
+    prepare,
+    submit,
+    mintDecimals,
+  } as unknown as SpendService;
 
-  return { spends, prepare, submit, vaultAddress: vault.toBase58() };
+  return {
+    spends,
+    prepare,
+    submit,
+    mintDecimals,
+    vaultAddress: vault.toBase58(),
+  };
 }
 
 function makeService(opts: {
@@ -320,6 +343,8 @@ function makeService(opts: {
     string,
     { name: string; symbol: string; iconUrl: string | null }
   >;
+  /** Dollar prices by mint. Unpriced unless a test says otherwise. */
+  prices?: Record<string, { usdPrice: number; decimals: number }>;
 }) {
   const account = opts.account ?? makeAccount();
   const store: FakeStore = opts.store ?? {
@@ -370,6 +395,17 @@ function makeService(opts: {
     {
       forUser: () => Promise.resolve(new Map()),
     } as unknown as RampActivityService,
+    {
+      getUsdPrices: () =>
+        Promise.resolve(
+          new Map(
+            Object.entries(opts.prices ?? {}).map(([mint, p]) => [
+              mint,
+              { ...p, priceChange24h: null },
+            ]),
+          ),
+        ),
+    } as TokenPriceProvider,
   );
   return { service, store, account, reconciler };
 }
@@ -532,6 +568,44 @@ describe('TransferService.prepare', () => {
 // ── submit ────────────────────────────────────────────────────────────
 
 describe('TransferService.submit', () => {
+  it('stamps what the send is worth as it leaves', async () => {
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const { service, store } = makeService({
+      solana: makeSolana({}),
+      prices: { [usdcMint]: { usdPrice: 1, decimals: 6 } },
+    });
+
+    const prep = await service.prepare('u_test', {
+      toAddress: recipient,
+      mint: usdcMint,
+      amountRaw: '2500000',
+    });
+    await service.submit('u_test', {
+      intentId: prep.intentId,
+      signedTxBase64: signPrepared(prep.unsignedTxBase64),
+    });
+
+    expect(store.transfers[0].usdValue).toBe('2.500000');
+  });
+
+  it('still sends when the token cannot be priced', async () => {
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const { service, store } = makeService({ solana: makeSolana({}) });
+
+    const prep = await service.prepare('u_test', {
+      toAddress: recipient,
+      mint: usdcMint,
+      amountRaw: '2500000',
+    });
+    await service.submit('u_test', {
+      intentId: prep.intentId,
+      signedTxBase64: signPrepared(prep.unsignedTxBase64),
+    });
+
+    expect(store.transfers[0].status).toBe('PENDING');
+    expect(store.transfers[0].usdValue).toBeNull();
+  });
+
   it('writes PENDING transfers row with signature on the happy path', async () => {
     const recipient = Keypair.generate().publicKey.toBase58();
     const sendRawTransaction = jest.fn().mockResolvedValue('sig-happy');
@@ -563,6 +637,153 @@ describe('TransferService.submit', () => {
     expect(store.transfers[0].mint).toBe(usdcMint);
     expect(store.transfers[0].amountRaw).toBe('1000000');
     expect(sendRawTransaction).toHaveBeenCalledWith(signedTxBase64);
+  });
+
+  describe('sending any token from the vault', () => {
+    const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
+    const JUP = 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN';
+    const getSolBalance = () => jest.fn().mockResolvedValue(1_000_000_000n);
+
+    it('sends SOL as plain SOL with nine decimals, and keeps its mint for Activity', async () => {
+      const { spends, prepare, mintDecimals } = makeVaultSpend();
+      const { service } = makeService({
+        solana: makeSolana({ getSolBalance: getSolBalance() }),
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+      });
+
+      await service.prepare('u_test', {
+        toAddress: Keypair.generate().publicKey.toBase58(),
+        mint: WRAPPED_SOL,
+        amountRaw: '50000000',
+      });
+
+      expect(prepare).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mint: PublicKey.default.toBase58(),
+          decimals: 9,
+        }),
+      );
+      expect(mintDecimals).not.toHaveBeenCalled();
+    });
+
+    it('sends a token outside the stablecoins at its own decimals', async () => {
+      const { spends, prepare, mintDecimals } = makeVaultSpend();
+      mintDecimals.mockResolvedValue(6);
+      const { service } = makeService({
+        solana: makeSolana({}),
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+      });
+
+      await service.prepare('u_test', {
+        toAddress: Keypair.generate().publicKey.toBase58(),
+        mint: JUP,
+        amountRaw: '310000000',
+      });
+
+      expect(mintDecimals).toHaveBeenCalledWith(JUP);
+      expect(prepare).toHaveBeenCalledWith(
+        expect.objectContaining({ mint: JUP, decimals: 6, bothKeys: true }),
+      );
+    });
+
+    it('sends dollars from inside the app on both keys too', async () => {
+      const { spends, prepare } = makeVaultSpend();
+      const { service } = makeService({
+        solana: makeSolana({}),
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+      });
+
+      await service.prepare('u_test', {
+        toAddress: Keypair.generate().publicKey.toBase58(),
+        mint: usdcMint,
+        amountRaw: '1000000',
+      });
+
+      expect(prepare).toHaveBeenCalledWith(
+        expect.objectContaining({ bothKeys: true }),
+      );
+    });
+
+    it('refuses an address that is not a token', async () => {
+      const { spends, mintDecimals } = makeVaultSpend();
+      mintDecimals.mockRejectedValue(new Error('no such mint'));
+      const { service } = makeService({
+        solana: makeSolana({}),
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+      });
+
+      await expect(
+        service.prepare('u_test', {
+          toAddress: Keypair.generate().publicKey.toBase58(),
+          mint: Keypair.generate().publicKey.toBase58(),
+          amountRaw: '1',
+        }),
+      ).rejects.toBeInstanceOf(UnsupportedMintError);
+    });
+
+    it('refuses too little SOL for an empty address before anything is signed', async () => {
+      const { spends, prepare } = makeVaultSpend();
+      const { service } = makeService({
+        solana: makeSolana({
+          accountExists: jest.fn().mockResolvedValue(false),
+          getSolBalance: getSolBalance(),
+        }),
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+      });
+
+      await expect(
+        service.prepare('u_test', {
+          toAddress: Keypair.generate().publicKey.toBase58(),
+          mint: WRAPPED_SOL,
+          amountRaw: '500000',
+        }),
+      ).rejects.toBeInstanceOf(BelowRentMinimumError);
+      expect(prepare).not.toHaveBeenCalled();
+    });
+
+    it('refuses more SOL than the vault holds as plain SOL', async () => {
+      const { spends, prepare } = makeVaultSpend();
+      const { service } = makeService({
+        solana: makeSolana({
+          getSolBalance: jest.fn().mockResolvedValue(100_000_000n),
+        }),
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+      });
+
+      await expect(
+        service.prepare('u_test', {
+          toAddress: Keypair.generate().publicKey.toBase58(),
+          mint: WRAPPED_SOL,
+          amountRaw: '1100000000',
+        }),
+      ).rejects.toBeInstanceOf(InsufficientSolError);
+      expect(prepare).not.toHaveBeenCalled();
+    });
+
+    it('lets enough SOL open an empty address', async () => {
+      const { spends, prepare } = makeVaultSpend();
+      const { service } = makeService({
+        solana: makeSolana({
+          accountExists: jest.fn().mockResolvedValue(false),
+          getSolBalance: getSolBalance(),
+        }),
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+      });
+
+      await service.prepare('u_test', {
+        toAddress: Keypair.generate().publicKey.toBase58(),
+        mint: WRAPPED_SOL,
+        amountRaw: '890880',
+      });
+      expect(prepare).toHaveBeenCalled();
+    });
   });
 
   it('quotes a vault Spend as free, because the authority pays for it', async () => {
@@ -1198,6 +1419,111 @@ describe('TransferService.list', () => {
     const out = await service.list('u_test');
     expect(out.transfers[0].kind).toBe('payment');
     expect(out.transfers[0].merchantName).toBe('Cafe Neo');
+  });
+
+  it('marks the rows of a swap this backend broadcast, and no others', async () => {
+    const account = makeAccount();
+    const leg = (id: string, signature: string) =>
+      ({
+        id,
+        smartAccountId: account.id,
+        intentId: null,
+        signature,
+        legIndex: 0,
+        direction: 'SEND',
+        mint: usdcMint,
+        amountRaw: '100000000',
+        fromAddress: account.walletAddress,
+        toAddress: Keypair.generate().publicKey.toBase58(),
+        status: 'CONFIRMED',
+        slot: null,
+        createdAt: new Date(id === 't_swap' ? '2026-02-02' : '2026-02-01'),
+        submittedAt: null,
+        confirmedAt: null,
+        failureReason: null,
+        kind: 'transfer',
+      }) as unknown as TransfersRow;
+    const { service } = makeService({
+      solana: makeSolana({}),
+      account,
+      store: {
+        smartAccounts: [account],
+        transfers: [leg('t_swap', 'sig_swap'), leg('t_send', 'sig_send')],
+        swaps: [
+          {
+            signature: 'sig_swap',
+            inputMint: usdcMint,
+            outputMint: WRAPPED_SOL,
+            amountInRaw: '100000000',
+            amountOutRaw: '1440000000',
+            venues: ['AlphaQ', 'SolFi V2'],
+            inputDecimals: 6,
+            outputDecimals: 9,
+          },
+        ],
+      },
+    });
+
+    const out = await service.list('u_test');
+    expect(out.transfers.map((t) => [t.id, t.swap])).toEqual([
+      ['t_swap', true],
+      ['t_send', undefined],
+    ]);
+    // Both sides ride on the one row the chain reported, so the trade can be
+    // shown whole even when its received side was never indexed.
+    expect(out.transfers[0].swapDetails).toMatchObject({
+      pay: { mint: usdcMint, amountRaw: '100000000' },
+      receive: { mint: WRAPPED_SOL, amountRaw: '1440000000', decimals: 9 },
+      venues: ['AlphaQ', 'SolFi V2'],
+    });
+    expect(out.transfers[1].swapDetails).toBeUndefined();
+  });
+
+  it('sends no venues or decimals for a swap recorded before they were kept', async () => {
+    const account = makeAccount();
+    const { service } = makeService({
+      solana: makeSolana({}),
+      account,
+      store: {
+        smartAccounts: [account],
+        transfers: [
+          {
+            id: 't_swap',
+            smartAccountId: account.id,
+            signature: 'sig_swap',
+            direction: 'SEND',
+            mint: usdcMint,
+            amountRaw: '100000000',
+            fromAddress: account.walletAddress,
+            toAddress: Keypair.generate().publicKey.toBase58(),
+            status: 'CONFIRMED',
+            decimals: 6,
+            createdAt: new Date('2026-02-02'),
+            confirmedAt: null,
+            kind: 'transfer',
+          } as unknown as TransfersRow,
+        ],
+        swaps: [
+          {
+            signature: 'sig_swap',
+            inputMint: usdcMint,
+            outputMint: WRAPPED_SOL,
+            amountInRaw: '100000000',
+            amountOutRaw: '1440000000',
+            venues: null,
+            inputDecimals: null,
+            outputDecimals: null,
+          },
+        ],
+      },
+    });
+
+    const out = await service.list('u_test');
+    expect(out.transfers[0].swapDetails).toMatchObject({
+      pay: { decimals: null },
+      receive: { decimals: null },
+      venues: [],
+    });
   });
 
   it('maps a plain transfer to kind=transfer with a null merchant name', async () => {

@@ -12,6 +12,7 @@ import {
   BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
+import { usePalette } from "@/hooks/usePalette";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -21,8 +22,15 @@ import RecipientStep from "./RecipientStep";
 import BankRecipientStep from "./BankRecipientStep";
 import AmountStep from "./AmountStep";
 import { QRScannerModal } from "./QRScannerModal";
+import {
+  SheetStackProvider,
+  SHEET_LAYER,
+  STACKED_CORNERS,
+  useSheetStack,
+} from "@/hooks/useSheetStack";
+import { TokenPickerSheet } from "@/components/swap/TokenPickerSheet";
+import { getUsdcMint } from "@/utils/cluster";
 import type { BankRecipient, SendMode } from "./bankAccount";
-import { BANK_SHEET_BG } from "./BankSheetParts";
 
 export interface SendFlowModalRef {
   present: () => void;
@@ -43,8 +51,15 @@ const springConfig = {};
 export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
   ({ mode = "crypto", onClose }, ref) => {
     const snapPoints = useMemo(() => ["94%"], []);
-    const background = mode === "bank" ? BANK_SHEET_BG : "#F0F0F0";
+    const palette = usePalette();
+    const background =
+      mode === "bank" || palette.dark ? palette.card : "#F0F0F0";
     const scannerRef = useRef<BottomSheetModal>(null);
+    const { stack, ownPosition, coveredStyle } = useSheetStack();
+    // Beside the scanner rather than inside the amount step: a sheet opened
+    // from inside this one's content lands underneath it.
+    const tokenPickerRef = useRef<BottomSheetModal>(null);
+    const [sendMint, setSendMint] = useState(getUsdcMint);
 
     const [, setStep] = useState<Step>("Recipient");
     const [recipient, setRecipient] = useState<string>("");
@@ -67,6 +82,7 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
             setStep("Recipient");
             setRecipient("");
             setBankRecipient(null);
+            setSendMint(getUsdcMint());
             translateX.value = 0;
           }, 300);
         }
@@ -116,7 +132,7 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
     });
 
     return (
-      <>
+      <SheetStackProvider value={stack}>
         <BottomSheetModal
           ref={ref}
           snapPoints={snapPoints}
@@ -131,58 +147,72 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
           keyboardBlurBehavior="restore"
           android_keyboardInputMode="adjustResize"
           handleIndicatorStyle={{ display: "none" }}
-          backgroundStyle={{ backgroundColor: background }}
-          containerStyle={{ zIndex: 1 }}
+          animatedPosition={ownPosition}
+          backgroundStyle={[{ backgroundColor: background }, STACKED_CORNERS]}
+          containerStyle={[SHEET_LAYER.covered, coveredStyle]}
         >
-          <BottomSheetView
-            className="h-full flex-1 overflow-hidden"
-            style={{ backgroundColor: background }}
-          >
-            <Animated.View
-              className="w-[200%] flex-1 flex-row"
-              style={requestLayout}
-            >
-              <View className="w-full flex-1">
-                {mode === "bank" ? (
-                  <BankRecipientStep
-                    onNext={handleBankNext}
-                    onClose={handleClose}
-                  />
-                ) : (
-                  <RecipientStep
-                    onClose={handleClose}
-                    onNext={handleNext}
-                    onScanPress={handleScanPress}
-                    recipient={recipient}
-                    setRecipient={setRecipient}
-                  />
-                )}
-              </View>
-              <View className="w-full flex-1">
-                {mode === "bank" ? (
-                  <AmountStep
-                    mode="bank"
-                    recipient={bankRecipient}
-                    onBack={handleBack}
-                    onClose={handleClose}
-                  />
-                ) : (
-                  <AmountStep
-                    mode="crypto"
-                    recipient={recipient}
-                    onBack={handleBack}
-                    onClose={handleClose}
-                  />
-                )}
-              </View>
-            </Animated.View>
+          <BottomSheetView className="h-full flex-1 overflow-hidden">
+            {/* The sheet renders through a portal, which drops the provider above. */}
+            <SheetStackProvider value={stack}>
+              <Animated.View
+                className="w-[200%] flex-1 flex-row"
+                style={requestLayout}
+              >
+                <View className="w-full flex-1">
+                  {mode === "bank" ? (
+                    <BankRecipientStep
+                      onNext={handleBankNext}
+                      onClose={handleClose}
+                    />
+                  ) : (
+                    <RecipientStep
+                      onClose={handleClose}
+                      onNext={handleNext}
+                      onScanPress={handleScanPress}
+                      recipient={recipient}
+                      setRecipient={setRecipient}
+                    />
+                  )}
+                </View>
+                <View className="w-full flex-1">
+                  {mode === "bank" ? (
+                    <AmountStep
+                      mode="bank"
+                      recipient={bankRecipient}
+                      onBack={handleBack}
+                      onClose={handleClose}
+                    />
+                  ) : (
+                    <AmountStep
+                      mode="crypto"
+                      recipient={recipient}
+                      mint={sendMint}
+                      onChooseToken={() => tokenPickerRef.current?.present()}
+                      onBack={handleBack}
+                      onClose={handleClose}
+                    />
+                  )}
+                </View>
+              </Animated.View>
+            </SheetStackProvider>
           </BottomSheetView>
         </BottomSheetModal>
 
         {mode === "crypto" && (
           <QRScannerModal ref={scannerRef} onScan={handleScan} />
         )}
-      </>
+        {mode === "crypto" && (
+          <TokenPickerSheet
+            ref={tokenPickerRef}
+            side="pay"
+            title="Send"
+            selectedMint={sendMint}
+            onPick={(token) => setSendMint(token.mint)}
+            stackBehavior="push"
+            containerStyle={SHEET_LAYER.covering}
+          />
+        )}
+      </SheetStackProvider>
     );
   }
 );

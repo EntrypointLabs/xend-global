@@ -1,3 +1,4 @@
+import { EarnModule } from './earn/earn.module';
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -35,6 +36,7 @@ import { ConsoleModule } from './console/console.module';
 import { TestDashboardModule } from './test-dashboard/test-dashboard.module';
 import { HealthModule } from './health/health.module';
 import { FeaturesModule } from './features/features.module';
+import { SwapModule } from './swap/swap.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { TracingModule } from './tracing/tracing.module';
 import { THROTTLE_LIMITS } from './common/throttle';
@@ -66,6 +68,8 @@ const testDashboardEnabled = process.env.NODE_ENV !== 'production';
     SolanaModule,
     KycModule,
     TransferModule,
+    SwapModule,
+    EarnModule,
     ActivityModule,
     RedisModule,
     EventsModule,

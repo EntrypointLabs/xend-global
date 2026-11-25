@@ -12,7 +12,7 @@ import { Buffer } from "buffer";
 import { ACCOUNT_QUERY_KEY, useAccount } from "@/hooks/useAccount";
 import {
   PENDING_CHANGE_KEY,
-  usePendingAccountChange,
+  usePendingAccountChanges,
 } from "@/hooks/usePendingAccountChange";
 import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
@@ -190,7 +190,14 @@ export function useFinishSpendingLimitChange() {
   const queryClient = useQueryClient();
   const embeddedSolana = useEmbeddedSolanaWallet();
   const { data: account } = useAccount();
-  const { data: change } = usePendingAccountChange();
+  const { data: changes } = usePendingAccountChanges();
+  // Only once both keys have approved it. Before that the next step asks for
+  // a fingerprint, and that belongs to the screen where the Consumer set the
+  // limit, not to opening the app.
+  const change = changes?.find(
+    (candidate) =>
+      candidate.kind === "spending_limit" && candidate.executableAt !== null
+  );
 
   const wallet = embeddedSolana.wallets?.[0];
 
@@ -212,7 +219,7 @@ export function useFinishSpendingLimitChange() {
     // It reads the deadline off the chain, and a phone with a skewed clock
     // must not be the thing that decides a security delay is over. Asking
     // early is cheap: the walk gets `waiting` back and stops without signing.
-    enabled: !!account && !!wallet && change?.selfInitiated === true,
+    enabled: !!account && !!wallet && !!change,
     staleTime: 30_000,
     gcTime: 0,
     retry: false,

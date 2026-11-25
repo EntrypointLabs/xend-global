@@ -8,8 +8,14 @@ import {
   mapAccountEventToActivityEntry,
   ActivityEntry,
   groupIntoSections,
+  isSwapRentRefund,
   mapTransferRowToActivityEntry,
+  mapTransferRowsToActivityEntries,
+  pendingSwapEntries,
   statusLabel,
+  swapAmountLabel,
+  swapPairLabel,
+  swapVenueLabel,
 } from "@/utils/activity";
 import { describeToken } from "@/utils/tokens";
 import {
@@ -749,5 +755,219 @@ describe("awaitingPaymentActivityEntry", () => {
       "awaiting:pi_1",
       "event:1",
     ]);
+  });
+});
+
+describe("a swap in the feed", () => {
+  const SOL = "So11111111111111111111111111111111111111112";
+  const ctx = { selfAddress: SELF, decimalsByMint: {} };
+
+  it("reads as a swap on both sides rather than a send and a receive", () => {
+    const paid = mapTransferRowToActivityEntry(makeRow({ swap: true }), ctx);
+    const received = mapTransferRowToActivityEntry(
+      makeRow({ swap: true, direction: "RECEIVE", mint: SOL }),
+      ctx
+    );
+    expect(statusLabel(paid)).toBe("Swapped");
+    expect(statusLabel(received)).toBe("Swapped");
+    expect(
+      statusLabel(
+        mapTransferRowToActivityEntry(
+          makeRow({ swap: true, status: "PENDING" }),
+          ctx
+        )
+      )
+    ).toBe("Swapping…");
+  });
+
+  it("leaves an ordinary send worded as a send", () => {
+    expect(statusLabel(mapTransferRowToActivityEntry(makeRow(), ctx))).toBe(
+      "Sent"
+    );
+  });
+
+  it("hides the rent a swap repays, and nothing else of that size", () => {
+    const refund = makeRow({ swap: true, mint: SOL, amountRaw: "2039280" });
+    expect(isSwapRentRefund(refund)).toBe(true);
+    expect(isSwapRentRefund({ ...refund, swap: undefined })).toBe(false);
+    expect(isSwapRentRefund({ ...refund, direction: "RECEIVE" })).toBe(false);
+    expect(isSwapRentRefund({ ...refund, amountRaw: "1000000000" })).toBe(
+      false
+    );
+  });
+});
+
+describe("a swap shown as one trade", () => {
+  const SOL = "So11111111111111111111111111111111111111112";
+  const ctx = { selfAddress: SELF, decimalsByMint: {} };
+  const side = (mint: string, amountRaw: string, decimals: number | null) => ({
+    mint,
+    amountRaw,
+    decimals,
+    tokenName: null,
+    tokenSymbol: null,
+    tokenIconUrl: null,
+  });
+  const details = {
+    pay: { ...side(USDC_MINT, "1000000", 6), tokenSymbol: "USDC" },
+    receive: side(SOL, "6342817", 9),
+    venues: ["AlphaQ", "SolFi V2", "AlphaQ"],
+  };
+  const leg = (overrides: Partial<TransferRow>) =>
+    makeRow({ swap: true, swapDetails: details, ...overrides });
+
+  it("makes one entry of a swap whose paid side came twice and received side never", () => {
+    const entries = mapTransferRowsToActivityEntries(
+      [leg({ id: "a" }), leg({ id: "b" })],
+      ctx
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0].swap).toMatchObject({
+      pay: { mint: USDC_MINT, amountRaw: "1000000", decimals: 6 },
+      receive: { mint: SOL, amountRaw: "6342817", decimals: 9 },
+    });
+  });
+
+  it("shows what moved when the chain reported a side once", () => {
+    const [entry] = mapTransferRowsToActivityEntries(
+      [
+        leg({ id: "a" }),
+        leg({ id: "b", direction: "RECEIVE", mint: SOL, amountRaw: "6300000" }),
+      ],
+      ctx
+    );
+    expect(entry.swap?.receive.amountRaw).toBe("6300000");
+  });
+
+  it("keeps ordinary rows and other swaps apart", () => {
+    const entries = mapTransferRowsToActivityEntries(
+      [
+        leg({ id: "a" }),
+        makeRow({ id: "plain", signature: "sig-plain" }),
+        leg({ id: "c", signature: "sig-2" }),
+      ],
+      ctx
+    );
+    expect(entries.map((e) => e.id).sort()).toEqual(["a", "c", "plain"]);
+  });
+
+  it("still hides the rent a swap repays", () => {
+    const entries = mapTransferRowsToActivityEntries(
+      [leg({ id: "a" }), leg({ id: "rent", mint: SOL, amountRaw: "2039280" })],
+      ctx
+    );
+    expect(entries.map((e) => e.id)).toEqual(["a"]);
+  });
+
+  it("names the pair, each venue once, and short amounts", () => {
+    const [entry] = mapTransferRowsToActivityEntries([leg({})], ctx);
+    expect(swapPairLabel(entry.swap!)).toBe("USDC → SOL");
+    expect(swapVenueLabel(entry.swap!)).toBe("via AlphaQ + 1 more");
+    expect(swapAmountLabel(entry.swap!.receive)).toBe("0.00634 SOL");
+    expect(swapAmountLabel(entry.swap!.pay)).toBe("$1.00");
+    expect(
+      swapAmountLabel({ mint: SOL, amountRaw: "12616000000", decimals: 9 })
+    ).toBe("12.616 SOL");
+  });
+
+  it("leaves out an amount whose precision was never recorded", () => {
+    const WBTC = "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh";
+    const [entry] = mapTransferRowsToActivityEntries(
+      [
+        leg({
+          swapDetails: {
+            ...details,
+            receive: side(WBTC, "100000", null),
+          },
+        }),
+      ],
+      ctx
+    );
+    expect(entry.swap?.receive.decimals).toBeNull();
+    expect(swapAmountLabel(entry.swap!.receive)).toBeNull();
+    expect(swapAmountLabel(entry.swap!.pay)).toBe("$1.00");
+  });
+
+  it("knows SOL's precision without being told", () => {
+    const [entry] = mapTransferRowsToActivityEntries(
+      [
+        leg({
+          swapDetails: { ...details, receive: side(SOL, "6342817", null) },
+        }),
+      ],
+      ctx
+    );
+    expect(swapAmountLabel(entry.swap!.receive)).toBe("0.00634 SOL");
+  });
+
+  it("says nothing of the route when it was not kept", () => {
+    const [entry] = mapTransferRowsToActivityEntries(
+      [leg({ swapDetails: { ...details, venues: [] } })],
+      ctx
+    );
+    expect(swapVenueLabel(entry.swap!)).toBeNull();
+  });
+});
+
+describe("a swap still on its way", () => {
+  const SOL = "So11111111111111111111111111111111111111112";
+  const sent = {
+    account: SELF,
+    signature: "sig-sent",
+    createdAt: "2026-07-02T10:00:00.000Z",
+    pay: {
+      mint: USDC_MINT,
+      amountRaw: "1000000",
+      decimals: 6,
+      symbol: "USDC",
+      name: "USD Coin",
+    },
+    receive: { mint: SOL, decimals: 9, symbol: "SOL", name: "Solana" },
+    venues: ["AlphaQ", "SolFi V2", "AlphaQ"],
+  };
+
+  it("shows from the moment it is sent, paid amount exact and received unknown", () => {
+    const [entry] = pendingSwapEntries([sent], [], SELF);
+    expect(entry.status).toBe("pending");
+    expect(statusLabel(entry)).toBe("Swapping…");
+    expect(swapPairLabel(entry.swap!)).toBe("USDC → SOL");
+    expect(swapVenueLabel(entry.swap!)).toBe("via AlphaQ + 1 more");
+    expect(swapAmountLabel(entry.swap!.pay)).toBe("$1.00");
+    expect(swapAmountLabel(entry.swap!.receive)).toBeNull();
+  });
+
+  it("gives way once the feed reports the swap", () => {
+    expect(
+      pendingSwapEntries([sent], [makeRow({ signature: "sig-sent" })], SELF)
+    ).toEqual([]);
+    expect(
+      pendingSwapEntries([sent], [makeRow({ signature: "other" })], SELF)
+    ).toHaveLength(1);
+  });
+
+  it("settles the moment this phone sees it land, amount to follow", () => {
+    const [entry] = pendingSwapEntries([{ ...sent, settled: true }], [], SELF);
+    expect(entry.status).toBe("confirmed");
+    expect(entry.swap?.receiving).toBe(true);
+    expect(swapAmountLabel(entry.swap!.receive)).toBeNull();
+  });
+
+  it("shows what came back once it is read", () => {
+    const [entry] = pendingSwapEntries(
+      [{ ...sent, settled: true, receivedRaw: "6342817" }],
+      [],
+      SELF
+    );
+    expect(entry.swap?.receiving).toBe(false);
+    expect(swapAmountLabel(entry.swap!.receive)).toBe("0.00634 SOL");
+  });
+
+  it("is shown only to the Account that sent it", () => {
+    expect(pendingSwapEntries([sent], [], "someone-else")).toEqual([]);
+  });
+
+  it("says it is swapping where the route is not known", () => {
+    const [entry] = pendingSwapEntries([{ ...sent, venues: [] }], [], SELF);
+    expect(swapVenueLabel(entry.swap!)).toBeNull();
   });
 });

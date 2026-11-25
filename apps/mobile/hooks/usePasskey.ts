@@ -6,6 +6,7 @@ import { labelNextPasskey } from "@/utils/passkeyLabel";
 
 import { hasLinkedPasskey } from "@/utils/auth";
 import { apiClient } from "@/utils/apiClient";
+import { withSystemPrompt } from "@/utils/systemPrompt";
 
 /** Raw passkey entry on Privy's `linked_accounts` (snake_case REST shape). */
 type RawPasskeyAccount = {
@@ -100,7 +101,9 @@ export function usePasskey() {
     setError(null);
     try {
       labelNextPasskey(email);
-      const updated = await linkWithPasskey({ relyingParty: RELYING_PARTY });
+      const updated = await withSystemPrompt(() =>
+        linkWithPasskey({ relyingParty: RELYING_PARTY })
+      );
       mirrorEnrolledPasskeys(updated ?? null);
       return hasLinkedPasskey(updated);
     } catch (err) {

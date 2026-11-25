@@ -25,6 +25,13 @@ export interface SettingsState {
   timeLockSeconds: number;
   /** The index the next settings change will take. */
   transactionIndex: bigint;
+  /**
+   * Every change at or below this index is dead, whatever its proposal says.
+   * The program moves it up to `transactionIndex` when the signer set, the
+   * threshold or the time lock changes, which cancels everything still
+   * waiting without touching the proposals themselves.
+   */
+  staleTransactionIndex: bigint;
   signers: SettingsSigner[];
   /**
    * The last policy seed the program assigned, or null before it has assigned
@@ -87,6 +94,7 @@ export async function fetchSettings(
   return {
     timeLockSeconds: state.timeLock,
     transactionIndex: toBigInt(state.transactionIndex),
+    staleTransactionIndex: toBigInt(state.staleTransactionIndex),
     signers: state.signers.map(({ key, permissions }) => ({
       key,
       permissions: { mask: permissions.mask },
@@ -99,7 +107,9 @@ export async function fetchSettings(
 }
 
 /** The seed the next policy on this Account has to take. */
-export function nextPolicySeed(settings: SettingsState): bigint {
+export function nextPolicySeed(
+  settings: Pick<SettingsState, "policySeed">,
+): bigint {
   return (settings.policySeed ?? 0n) + 1n;
 }
 
@@ -186,6 +196,35 @@ export function decodeSpendingLimit(
     remainingInPeriod: toBigInt(spendingLimit.usage.remainingInPeriod),
     destinations,
   };
+}
+
+/**
+ * The programs a program-interaction policy admits, in constraint order.
+ *
+ * What says whether an Account can do something that needs a program added to
+ * the allowlist after it was provisioned: the policy keeps the list it was
+ * created with until a settings change rewrites it.
+ */
+export function decodeAllowedPrograms(
+  policy: PublicKey,
+  info: AccountInfo<Buffer>,
+): PublicKey[] {
+  let state: accounts.Policy;
+  try {
+    [state] = accounts.Policy.fromAccountInfo(info);
+  } catch (cause) {
+    throw new AccountStateError(
+      `Could not decode the policy at ${policy.toBase58()}: ${describe(cause)}`,
+    );
+  }
+  if (state.policyState.__kind !== "ProgramInteraction") {
+    throw new AccountStateError(
+      `Policy ${policy.toBase58()} holds a ${state.policyState.__kind} policy, not a program allowlist`,
+    );
+  }
+  return state.policyState.fields[0].instructionsConstraints.map(
+    (constraint) => constraint.programId,
+  );
 }
 
 /** The SDK's u64s are BN at runtime whatever the declaration says. */

@@ -12,8 +12,13 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
 import { PillButton } from "@/components/ui/kit";
 import type { Bank } from "@/utils/bank-directory";
+import { usePalette } from "@/hooks/usePalette";
+import {
+  SHEET_LAYER,
+  STACKED_CORNERS,
+  useCoveringSheet,
+} from "@/hooks/useSheetStack";
 import { BankLogo } from "./BankLogo";
-import { BANK_SHEET_BG } from "./BankSheetParts";
 
 const ROW_HEIGHT = 60;
 
@@ -38,13 +43,17 @@ export const BankSearchSheet = forwardRef<
   }
 >(({ banks, loading, failed, onRetry, onPick }, ref) => {
   const [search, setSearch] = useState("");
+  const palette = usePalette();
+  const { stacked, sheetProps: stackProps } = useCoveringSheet();
   const snapPoints = useMemo(() => ["86%"], []);
   const filtered = search
     ? banks.filter((bank) => matchesSearch(bank.name, search))
     : banks;
   const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
-    []
+    (props: BottomSheetBackdropProps) => (
+      <BlurBackdrop {...props} stacked={stacked} />
+    ),
+    [stacked]
   );
 
   return (
@@ -58,23 +67,31 @@ export const BankSearchSheet = forwardRef<
       keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
       onDismiss={() => setSearch("")}
-      backgroundStyle={{ backgroundColor: BANK_SHEET_BG }}
-      containerStyle={{ zIndex: 2 }}
+      backgroundStyle={[
+        { backgroundColor: palette.card },
+        stacked && STACKED_CORNERS,
+      ]}
+      handleIndicatorStyle={
+        palette.dark ? { backgroundColor: palette.fg(0.75) } : undefined
+      }
+      containerStyle={SHEET_LAYER.covering}
+      {...stackProps}
     >
       <View className="flex-1">
         <Typography
           accessibilityRole="header"
           weight="700"
-          className="px-5 pt-2 text-[24px] leading-[30px] tracking-[-0.5px] text-[#0E0F0C]"
+          className="px-5 pt-2 text-[24px] leading-[30px] tracking-[-0.5px] text-ink"
         >
           Choose bank
         </Typography>
-        <View className="mx-5 mb-2 mt-4 h-12 flex-row items-center gap-2 rounded-full bg-black/[0.04] px-4">
-          <Ionicons name="search" size={16} color="#00000073" />
+        <View className="mx-5 mb-2 mt-4 h-12 flex-row items-center gap-2 rounded-full bg-foreground/[0.04] px-4">
+          <Ionicons name="search" size={16} color={palette.fg(0.45)} />
           <BottomSheetTextInput
-            className="flex-1 py-0 font-inter-medium text-[15px] tracking-normal text-[#0E0F0C]"
+            className="flex-1 py-0 font-inter-medium text-[15px] tracking-normal text-ink"
             placeholder="Search banks"
-            placeholderTextColor="#0000008C"
+            placeholderTextColor={palette.fg(0.55)}
+            keyboardAppearance={palette.dark ? "dark" : "light"}
             value={search}
             onChangeText={setSearch}
             autoCorrect={false}
@@ -86,20 +103,27 @@ export const BankSearchSheet = forwardRef<
               onPress={() => setSearch("")}
               accessibilityLabel="Clear search"
             >
-              <Ionicons name="close-circle" size={18} color="#00000040" />
+              <Ionicons
+                name="close-circle"
+                size={18}
+                color={palette.fg(0.25)}
+              />
             </HapticPressable>
           ) : null}
         </View>
         {loading ? (
           <View className="items-center py-10">
-            <ActivityIndicator size="small" color="#00000040" />
+            <ActivityIndicator size="small" color={palette.fg(0.25)} />
           </View>
         ) : failed ? (
           <View className="mx-5 mt-4">
-            <Typography weight="600" className="text-[16px] text-black">
+            <Typography weight="600" className="text-[16px] text-foreground">
               Could not load banks
             </Typography>
-            <Typography weight="500" className="mt-1 text-[14px] text-black/55">
+            <Typography
+              weight="500"
+              className="mt-1 text-[14px] text-foreground/55"
+            >
               Check your connection and try again.
             </Typography>
             <PillButton
@@ -125,7 +149,7 @@ export const BankSearchSheet = forwardRef<
                 <Typography
                   weight="500"
                   numberOfLines={1}
-                  className="flex-1 text-[15px] text-[#0E0F0C]"
+                  className="flex-1 text-[15px] text-ink"
                 >
                   {item.name}
                 </Typography>
@@ -143,7 +167,7 @@ export const BankSearchSheet = forwardRef<
             ListEmptyComponent={
               <Typography
                 weight="500"
-                className="mx-5 py-10 text-center text-[15px] text-black/55"
+                className="mx-5 py-10 text-center text-[15px] text-foreground/55"
               >
                 {`No banks match "${search}"`}
               </Typography>

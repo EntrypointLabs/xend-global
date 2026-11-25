@@ -6,6 +6,7 @@ import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 
 import { GlassButton } from "@/components/ui/atoms/Glass";
+import { usePalette } from "@/hooks/usePalette";
 
 /** Pushed over Home: back arrow for a step inside a flow, a cross to leave it. */
 export type FeatureLeave = "back" | "close";
@@ -21,6 +22,7 @@ export function FeatureScreen({
   footer,
   scroll = true,
   avoidKeyboard = false,
+  onBack,
   children,
 }: {
   leave?: FeatureLeave;
@@ -28,12 +30,16 @@ export function FeatureScreen({
   scroll?: boolean;
   /** Lifts the footer above the keyboard, for pages typed into. */
   avoidKeyboard?: boolean;
+  /** Replaces the default back, for a page that must not return to where it was opened from. */
+  onBack?: () => void;
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const goBack = () =>
-    router.canGoBack() ? router.back() : router.replace("/(tabs)");
+  const palette = usePalette();
+  const goBack =
+    onBack ??
+    (() => (router.canGoBack() ? router.back() : router.replace("/(tabs)")));
 
   const body = scroll ? (
     <ScrollView
@@ -53,9 +59,11 @@ export function FeatureScreen({
   );
 
   return (
-    <View className="flex-1 bg-white" style={{ paddingTop: insets.top + 8 }}>
-      {/* Always white, whatever the system theme sets the bar to. */}
-      <StatusBar style="dark" />
+    <View
+      className="flex-1 bg-background"
+      style={{ paddingTop: insets.top + 8 }}
+    >
+      <StatusBar style="auto" />
       <View className="px-5 pb-4">
         <GlassButton
           radius={999}
@@ -63,12 +71,12 @@ export function FeatureScreen({
           accessibilityLabel={leave === "close" ? "Close" : "Back"}
           onPress={goBack}
           className="size-11 items-center justify-center rounded-full"
-          fallbackClassName="border border-black/[0.08] bg-white"
+          fallbackClassName="border border-foreground/[0.08] bg-card"
         >
           <Ionicons
             name={leave === "close" ? "close" : "arrow-back"}
             size={22}
-            color="#0A0A0A"
+            color={palette.dark ? palette.foreground : "#0A0A0A"}
           />
         </GlassButton>
       </View>

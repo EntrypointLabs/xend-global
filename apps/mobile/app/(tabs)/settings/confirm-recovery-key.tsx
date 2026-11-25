@@ -14,6 +14,7 @@ import {
   useRotateContactEmail,
 } from "@/hooks/useRecoveryKeys";
 import { truncateAddress } from "@/utils/helper";
+import { usePalette } from "@/hooks/usePalette";
 
 /**
  * Last look before the key is staged, and the two signatures that stage it.
@@ -25,6 +26,7 @@ import { truncateAddress } from "@/utils/helper";
  * key going out as well as one coming in, and the same day of waiting.
  */
 export default function ConfirmRecoveryKeyScreen() {
+  const palette = usePalette();
   // One screen for both channels and for the address change: the review, the
   // two signatures and the wait are identical, and only the card differs.
   const { address, email, grantId, intent, current } = useLocalSearchParams<{
@@ -85,15 +87,19 @@ export default function ConfirmRecoveryKeyScreen() {
       <ScreenLayout>
         <View className="flex-1 px-3">
           <View className="flex-1 items-center justify-center">
-            <View className="size-16 items-center justify-center rounded-3xl bg-black">
-              <Ionicons name="time-outline" size={30} color="#FFFFFF" />
+            <View className="size-16 items-center justify-center rounded-3xl bg-primary">
+              <Ionicons
+                name="time-outline"
+                size={30}
+                color={palette.primaryForeground}
+              />
             </View>
-            <Typography weight="700" className="mt-6 text-3xl text-black">
+            <Typography weight="700" className="mt-6 text-3xl text-foreground">
               {changing ? "Email change started" : "Recovery Key added"}
             </Typography>
             <Typography
               weight="500"
-              className="mt-3 text-center text-base leading-6 text-black/40"
+              className="mt-3 text-center text-base leading-6 text-foreground/40"
             >
               {changing
                 ? `The new address takes over on ${when(activeAt)}. Until then your current address stays on your account, and you can cancel any time before.`
@@ -102,12 +108,18 @@ export default function ConfirmRecoveryKeyScreen() {
           </View>
 
           <HapticPressable
+            // Back to the Keys & Recovery this flow started from, not a
+            // second copy stacked on top: from a copy, going back would walk
+            // into this finished flow again.
             onPress={() =>
-              router.navigate("/settings/keys-and-recovery" as never)
+              router.dismissTo("/settings/keys-and-recovery" as never)
             }
-            className="h-14 items-center justify-center rounded-full bg-black"
+            className="h-14 items-center justify-center rounded-full bg-primary"
           >
-            <Typography weight="700" className="text-[15px] text-white">
+            <Typography
+              weight="700"
+              className="text-[15px] text-primary-foreground"
+            >
               Done
             </Typography>
           </HapticPressable>
@@ -122,36 +134,42 @@ export default function ConfirmRecoveryKeyScreen() {
         <HapticPressable
           onPress={() => router.back()}
           disabled={busy}
-          className="size-10 items-center justify-center rounded-full bg-black/[0.08]"
+          className="size-10 items-center justify-center rounded-full bg-foreground/[0.08]"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="chevron-back" size={20} color="#00000066" />
+          <Ionicons name="chevron-back" size={20} color={palette.fg(0.4)} />
         </HapticPressable>
 
         <Typography
           weight="700"
-          className="mt-8 text-5xl leading-[44px] text-black"
+          className="mt-8 text-5xl leading-[44px] text-foreground"
         >
           {changing ? "Change\nemail" : "Add\nRecovery Key"}
         </Typography>
 
-        <Typography weight="500" className="mt-6 text-lg leading-7 text-black">
+        <Typography
+          weight="500"
+          className="mt-6 text-lg leading-7 text-foreground"
+        >
           {changing
             ? "Please review the new address below\nand confirm to finish."
             : "Please review your new key below\nand confirm to finish."}
         </Typography>
 
-        <View className="mt-8 rounded-3xl bg-black/[0.03] p-5">
-          <Typography weight="600" className="text-[15px] text-black">
+        <View className="mt-8 rounded-3xl bg-foreground/[0.03] p-5">
+          <Typography weight="600" className="text-[15px] text-foreground">
             {email ? "Email" : "Crypto wallet"}
           </Typography>
-          <Typography weight="500" className="mt-4 text-[15px] text-black/40">
+          <Typography
+            weight="500"
+            className="mt-4 text-[15px] text-foreground/40"
+          >
             {email ?? truncateAddress(String(address ?? ""), 6, 6)}
           </Typography>
           {changing && current && (
             <Typography
               weight="500"
-              className="mt-2 text-[13px] text-black/30"
+              className="mt-2 text-[13px] text-foreground/30"
               numberOfLines={1}
             >
               Replaces {current}
@@ -161,7 +179,7 @@ export default function ConfirmRecoveryKeyScreen() {
 
         <Typography
           weight="400"
-          className="mt-5 text-[12px] leading-[18px] text-black/40"
+          className="mt-5 text-[12px] leading-[18px] text-foreground/40"
         >
           {changing
             ? "Both Active Keys approve this, then a one day security delay before the new address takes over. Until then the current one stays on your account."
@@ -180,13 +198,13 @@ export default function ConfirmRecoveryKeyScreen() {
           onPress={confirm}
           disabled={busy || !account}
           className={`h-14 flex-row items-center justify-center gap-3 rounded-full ${
-            busy || !account ? "bg-black/10" : "bg-black"
+            busy || !account ? "bg-foreground/10" : "bg-primary"
           }`}
         >
-          {busy && <ActivityIndicator size="small" color="#00000040" />}
+          {busy && <ActivityIndicator size="small" color={palette.fg(0.25)} />}
           <Typography
             weight="700"
-            className={`text-lg ${busy || !account ? "text-black/30" : "text-white"}`}
+            className={`text-lg ${busy || !account ? "text-foreground/30" : "text-primary-foreground"}`}
           >
             {busy
               ? "Approving on this device"

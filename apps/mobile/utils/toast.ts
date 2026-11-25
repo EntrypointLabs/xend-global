@@ -18,10 +18,19 @@ type ToastHandler = (
   options?: ToastOptions
 ) => void;
 
-let handler: ToastHandler | null = null;
+const handlers: ToastHandler[] = [];
 
-export const setToastHandler = (fn: ToastHandler | null) => {
-  handler = fn;
+/**
+ * Registers a toast host and returns the call that removes it. Hosts stack:
+ * a screen presented as a native modal mounts its own, since the app's host is
+ * drawn underneath it, and the app's host takes over again when it leaves.
+ */
+export const addToastHandler = (fn: ToastHandler) => {
+  handlers.push(fn);
+  return () => {
+    const index = handlers.lastIndexOf(fn);
+    if (index !== -1) handlers.splice(index, 1);
+  };
 };
 
 export const showToast = (
@@ -29,5 +38,5 @@ export const showToast = (
   icon?: ReactNode,
   options?: ToastOptions
 ) => {
-  handler?.(label, icon, options);
+  handlers[handlers.length - 1]?.(label, icon, options);
 };

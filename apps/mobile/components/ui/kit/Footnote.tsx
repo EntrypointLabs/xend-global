@@ -18,7 +18,7 @@ export function Footnote({
       className={cn(
         tone === "error"
           ? "text-[13px] leading-5 text-destructive"
-          : "text-[12px] leading-[18px] text-black/40",
+          : "text-[12px] leading-[18px] text-foreground/40",
         className
       )}
     >

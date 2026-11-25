@@ -4,6 +4,7 @@ import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
+import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 import { apiClient } from "@/utils/apiClient";
 import { useToast } from "@/contexts/ToastContext";
@@ -12,21 +13,23 @@ import { ErrorCode, ErrorMessages } from "@/utils/errors";
 interface DeleteAccountModalProps {
   visible: boolean;
   onClose: () => void;
-  balance: number;
-  balanceDisplay: string;
+  /** Nothing is held: no tokens, no SOL, nothing in Earn. */
+  canDelete: boolean;
+  /** What is still held, in dollars, or null when none of it is priced. */
+  heldDisplay: string | null;
   onDeleted: () => void | Promise<void>;
 }
 
 export function DeleteAccountModal({
   visible,
   onClose,
-  balance,
-  balanceDisplay,
+  canDelete,
+  heldDisplay,
   onDeleted,
 }: DeleteAccountModalProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const { showToast } = useToast();
-  const canDelete = balance === 0;
+  const palette = usePalette();
 
   const handleDelete = async () => {
     if (!canDelete || isDeleting) return;
@@ -62,22 +65,26 @@ export function DeleteAccountModal({
           pointerEvents="box-none"
         >
           <Pressable onPress={() => {}} className="w-full">
-            <View className="w-[92%] self-center rounded-3xl bg-white p-6">
+            <View className="w-[92%] self-center rounded-3xl bg-card p-6">
               <View className="mb-4 flex-row items-center justify-between">
-                <Typography weight="700" className="text-xl text-black">
+                <Typography weight="700" className="text-xl text-foreground">
                   Delete Account
                 </Typography>
                 <HapticPressable onPress={onClose} className="p-1">
-                  <Ionicons name="close" size={22} color="#00000066" />
+                  <Ionicons name="close" size={22} color={palette.fg(0.4)} />
                 </HapticPressable>
               </View>
 
-              <View className="h-44 items-center justify-center overflow-hidden rounded-3xl border border-black/10 bg-black/[0.03]">
-                <View className="h-14 w-14 items-center justify-center rounded-full bg-[#F90101]">
+              <View className="h-44 items-center justify-center overflow-hidden rounded-3xl border border-foreground/10 bg-foreground/[0.03]">
+                <View className="h-14 w-14 items-center justify-center rounded-full bg-destructive">
                   <Ionicons name="trash" size={26} color="#fff" />
                 </View>
                 <Image
-                  source={require("@/assets/images/logo/prydd-mark-black-2048.png")}
+                  source={
+                    palette.dark
+                      ? require("@/assets/images/logo/prydd-mark-white-2048.png")
+                      : require("@/assets/images/logo/prydd-mark-black-2048.png")
+                  }
                   className="absolute bottom-3 right-3 size-5 opacity-20"
                   resizeMode="contain"
                 />
@@ -85,7 +92,7 @@ export function DeleteAccountModal({
 
               <Typography
                 weight="500"
-                className="mt-4 text-sm leading-5 text-black/60"
+                className="mt-4 text-sm leading-5 text-foreground/60"
               >
                 Deleting your account will permanently close it. If you
                 continue, you will not be able to recover, access, or perform
@@ -94,7 +101,7 @@ export function DeleteAccountModal({
 
               <Typography
                 weight="500"
-                className="mt-3 text-sm leading-5 text-black/60"
+                className="mt-3 text-sm leading-5 text-foreground/60"
               >
                 By continuing, you confirm your Balance is at $0 and that any
                 assets sent to this account after deletion will be lost.
@@ -105,17 +112,21 @@ export function DeleteAccountModal({
                   weight="500"
                   className="mt-3 text-sm leading-5 text-destructive"
                 >
-                  You still have a Balance of {balanceDisplay} — send or
-                  withdraw it first.
+                  {heldDisplay
+                    ? `You still have a Balance of ${heldDisplay}. Send or withdraw it first.`
+                    : "You still hold assets in this Account. Send or withdraw them first."}
                 </Typography>
               )}
 
               <View className="mt-6 flex-row gap-3">
                 <HapticPressable
                   onPress={onClose}
-                  className="flex-1 items-center justify-center rounded-full bg-black/5 py-4"
+                  className="flex-1 items-center justify-center rounded-full bg-foreground/5 py-4"
                 >
-                  <Typography weight="600" className="text-base text-black">
+                  <Typography
+                    weight="600"
+                    className="text-base text-foreground"
+                  >
                     Cancel
                   </Typography>
                 </HapticPressable>
@@ -125,14 +136,16 @@ export function DeleteAccountModal({
                   disabled={!canDelete || isDeleting}
                   className={cn(
                     "flex-1 items-center justify-center rounded-full py-4",
-                    canDelete ? "bg-black" : "bg-black/10"
+                    canDelete ? "bg-primary" : "bg-foreground/10"
                   )}
                 >
                   <Typography
                     weight="600"
                     className={cn(
                       "text-base",
-                      canDelete ? "text-white" : "text-black/40"
+                      canDelete
+                        ? "text-primary-foreground"
+                        : "text-foreground/40"
                     )}
                   >
                     {isDeleting ? "Deleting…" : "Continue"}

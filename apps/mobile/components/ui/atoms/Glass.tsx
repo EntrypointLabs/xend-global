@@ -11,6 +11,8 @@ import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { useOnPhoto } from "@/components/ui/glass";
+import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 
 /** iOS 26's own material. Older systems and Android keep the solid look. */
@@ -68,7 +70,7 @@ export function Sheen() {
 }
 
 /** The solid look a control keeps where liquid glass is not available. */
-const SOLID = "bg-white shadow-sm";
+const SOLID = "bg-card shadow-sm";
 
 function Pane({
   radius,
@@ -79,9 +81,17 @@ function Pane({
   tintColor?: ColorValue;
   interactive: boolean;
 }) {
+  const onPhoto = useOnPhoto();
+  const palette = usePalette();
   return (
     <GlassView
       glassEffectStyle="regular"
+      // Left to choose for itself, clear glass comes up dark grey and only
+      // turns light about a second after it appears. Tinted glass carries its
+      // own colour and is left alone.
+      colorScheme={
+        tintColor ? undefined : onPhoto || palette.dark ? "dark" : "light"
+      }
       tintColor={tintColor}
       isInteractive={interactive}
       style={[StyleSheet.absoluteFill, { borderRadius: radius }]}

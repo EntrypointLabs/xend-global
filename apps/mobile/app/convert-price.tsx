@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   FlatList,
   InputAccessoryView,
@@ -20,6 +20,7 @@ import { FeatureScreen } from "@/components/ui/feature/FeatureScreen";
 import { Illustration } from "@/components/ui/feature/Illustration";
 import { useCountryCard } from "@/hooks/useCountryCard";
 import { useDisplayRates } from "@/hooks/useDisplayRates";
+import { usePalette } from "@/hooks/usePalette";
 import {
   formatCodeRate,
   formatCurrencyAmount,
@@ -31,12 +32,12 @@ import {
 import { cn } from "@/utils/cn";
 import { currencyFlagUrl, currencyName } from "@/utils/currencies";
 
-const INK = "#0E0F0C";
 const DONE_BAR = "convert-price-done";
 const DISPLAY = { fontFamily: "Montserrat_900Black" } as const;
 
 /** A currency's round flag, or a globe where no one country fits. */
 function CurrencyFlag({ code, size }: { code: string; size: number }) {
+  const palette = usePalette();
   const uri = currencyFlagUrl(code);
   // A flag that will not load (offline, not served yet) falls back to the
   // globe rather than leaving an empty ring.
@@ -46,7 +47,7 @@ function CurrencyFlag({ code, size }: { code: string; size: number }) {
       <View
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        className="overflow-hidden rounded-full border border-black/[0.08] bg-black/[0.06]"
+        className="overflow-hidden rounded-full border border-foreground/[0.08] bg-foreground/[0.06]"
         style={{ width: size, height: size }}
       >
         <Image
@@ -63,10 +64,10 @@ function CurrencyFlag({ code, size }: { code: string; size: number }) {
     <View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      className="items-center justify-center rounded-full bg-black/[0.06]"
+      className="items-center justify-center rounded-full bg-foreground/[0.06]"
       style={{ width: size, height: size }}
     >
-      <Ionicons name="globe-outline" size={size * 0.6} color={INK} />
+      <Ionicons name="globe-outline" size={size * 0.6} color={palette.ink} />
     </View>
   );
 }
@@ -111,7 +112,10 @@ export default function ConvertPriceScreen() {
       <FeatureScreen scroll={false}>
         <View className="flex-1 items-center justify-center pb-24">
           <Illustration name="convert" size={200} />
-          <Typography weight="500" className="mt-6 text-[16px] text-black/55">
+          <Typography
+            weight="500"
+            className="mt-6 text-[16px] text-foreground/55"
+          >
             {"Getting today's rates"}
           </Typography>
         </View>
@@ -143,7 +147,7 @@ export default function ConvertPriceScreen() {
 
   return (
     <FeatureScreen>
-      <Typography weight="500" className="mt-4 text-[14px] text-black/60">
+      <Typography weight="500" className="mt-4 text-[14px] text-foreground/60">
         It costs
       </Typography>
       <View className="mt-2 flex-row items-center justify-between gap-4">
@@ -168,12 +172,12 @@ export default function ConvertPriceScreen() {
           inputAccessoryViewID={DONE_BAR}
           selectTextOnFocus
           accessibilityLabel={`Price in ${from}`}
-          className="flex-1 text-right text-[52px] text-[#0E0F0C]"
+          className="flex-1 text-right text-[52px] text-ink"
           style={DISPLAY}
         />
       </View>
 
-      <Typography weight="500" className="mt-7 text-[14px] text-black/60">
+      <Typography weight="500" className="mt-7 text-[14px] text-foreground/60">
         You pay
       </Typography>
       <View className="mt-2 flex-row items-center justify-between gap-4">
@@ -182,37 +186,40 @@ export default function ConvertPriceScreen() {
           numberOfLines={1}
           adjustsFontSizeToFit
           accessibilityLabel={`${formatCurrencyAmount(usd, "USD")} US dollars`}
-          className="flex-1 text-right text-[52px] text-[#0E0F0C]"
+          className="flex-1 text-right text-[52px] text-ink"
           style={DISPLAY}
         >
           {formatCurrencyAmount(usd, "USD")}
         </Typography>
       </View>
 
-      <View className="mt-8 border-t border-black/[0.08] pt-6">
+      <View className="mt-8 border-t border-foreground/[0.08] pt-6">
         <View className="flex-row items-center justify-between">
-          <Typography weight="600" className="text-[15px] text-[#0E0F0C]">
+          <Typography weight="600" className="text-[15px] text-ink">
             Exchange rate
           </Typography>
-          <Typography weight="600" className="text-[15px] text-[#0E0F0C]">
+          <Typography weight="600" className="text-[15px] text-ink">
             {formatCodeRate(from, rate)}
           </Typography>
         </View>
-        <Typography weight="500" className="mt-1.5 text-[12px] text-black/45">
+        <Typography
+          weight="500"
+          className="mt-1.5 text-[12px] text-foreground/45"
+        >
           {"Today's reference rate."}
         </Typography>
       </View>
 
       {Platform.OS === "ios" ? (
         <InputAccessoryView nativeID={DONE_BAR}>
-          <View className="flex-row justify-end border-t border-black/[0.08] bg-[#F7F7F7] px-4 py-2">
+          <View className="flex-row justify-end border-t border-foreground/[0.08] bg-[#F7F7F7] px-4 py-2 dark:bg-muted">
             <HapticPressable
               accessibilityRole="button"
               accessibilityLabel="Done"
               onPress={() => Keyboard.dismiss()}
               className="rounded-full px-4 py-2"
             >
-              <Typography weight="600" className="text-[16px] text-[#0E0F0C]">
+              <Typography weight="600" className="text-[16px] text-ink">
                 Done
               </Typography>
             </HapticPressable>
@@ -242,6 +249,7 @@ function CurrencyChip({
   code: string;
   onPress?: () => void;
 }) {
+  const palette = usePalette();
   return (
     <HapticPressable
       accessibilityRole={onPress ? "button" : "text"}
@@ -250,13 +258,15 @@ function CurrencyChip({
       }
       disabled={!onPress}
       onPress={onPress}
-      className="flex-row items-center gap-2 rounded-full bg-black/[0.05] py-2 pl-2 pr-3.5"
+      className="flex-row items-center gap-2 rounded-full bg-foreground/[0.05] py-2 pl-2 pr-3.5"
     >
       <CurrencyFlag code={code} size={26} />
-      <Typography weight="600" className="text-[15px] text-[#0E0F0C]">
+      <Typography weight="600" className="text-[15px] text-ink">
         {code}
       </Typography>
-      {onPress ? <Ionicons name="chevron-down" size={16} color={INK} /> : null}
+      {onPress ? (
+        <Ionicons name="chevron-down" size={16} color={palette.ink} />
+      ) : null}
     </HapticPressable>
   );
 }
@@ -275,32 +285,50 @@ function CurrencyPicker({
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const palette = usePalette();
+  const [search, setSearch] = useState("");
+  const keyboard = useKeyboardHeight();
+  const shown = useMemo(
+    () =>
+      search ? codes.filter((code) => matchesCurrency(code, search)) : codes,
+    [codes, search]
+  );
   return (
     <Modal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={onClose}
+      onDismiss={() => setSearch("")}
     >
-      <View className="flex-1 bg-white px-5 pt-6">
+      <View className="flex-1 bg-card px-5 pt-6">
         <View className="flex-row items-center justify-between">
-          <Typography weight="700" className="text-[18px] text-[#0E0F0C]">
+          <Typography weight="700" className="text-[18px] text-ink">
             Choose a currency
           </Typography>
           <HapticPressable
             accessibilityRole="button"
             accessibilityLabel="Close"
             onPress={onClose}
-            className="size-10 items-center justify-center rounded-full bg-black/[0.05]"
+            className="size-10 items-center justify-center rounded-full bg-foreground/[0.05]"
           >
-            <Ionicons name="close" size={20} color={INK} />
+            <Ionicons name="close" size={20} color={palette.ink} />
           </HapticPressable>
         </View>
         <FlatList
           className="mt-4"
-          data={codes}
+          data={shown}
           keyExtractor={(code) => code}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          ListEmptyComponent={
+            <Typography
+              weight="500"
+              className="py-10 text-center text-[15px] text-foreground/55"
+            >
+              {`No currencies match "${search}"`}
+            </Typography>
+          }
           renderItem={({ item }) => (
             <HapticPressable
               accessibilityRole="button"
@@ -311,23 +339,94 @@ function CurrencyPicker({
             >
               <CurrencyFlag code={item} size={36} />
               <View className="flex-1">
-                <Typography weight="600" className="text-[15px] text-[#0E0F0C]">
+                <Typography weight="600" className="text-[15px] text-ink">
                   {currencyName(item)}
                 </Typography>
-                <Typography weight="500" className="text-[13px] text-black/50">
+                <Typography
+                  weight="500"
+                  className="text-[13px] text-foreground/50"
+                >
                   {item}
                 </Typography>
               </View>
               <Ionicons
                 name="checkmark"
                 size={20}
-                color={INK}
+                color={palette.ink}
                 className={cn(item !== current && "opacity-0")}
               />
             </HapticPressable>
           )}
         />
+        <View
+          className="pt-2"
+          style={{
+            paddingBottom:
+              keyboard > 0 ? keyboard + 8 : Math.max(insets.bottom, 12),
+          }}
+        >
+          <View className="h-12 flex-row items-center gap-2 rounded-full bg-foreground/[0.04] px-4">
+            <Ionicons name="search" size={16} color={palette.fg(0.45)} />
+            <TextInput
+              className="flex-1 py-0 font-inter-medium text-[15px] tracking-normal text-ink"
+              placeholder="Search currencies"
+              placeholderTextColor={palette.fg(0.55)}
+              keyboardAppearance={palette.dark ? "dark" : "light"}
+              value={search}
+              onChangeText={setSearch}
+              autoCorrect={false}
+              autoCapitalize="none"
+              returnKeyType="search"
+            />
+            {search ? (
+              <HapticPressable
+                onPress={() => setSearch("")}
+                accessibilityLabel="Clear search"
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={18}
+                  color={palette.fg(0.25)}
+                />
+              </HapticPressable>
+            ) : null}
+          </View>
+        </View>
       </View>
     </Modal>
   );
+}
+
+/** By name or code, every typed word anywhere in either. */
+function matchesCurrency(code: string, query: string): boolean {
+  const haystack = `${currencyName(code)} ${code}`.toLowerCase();
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((word) => haystack.includes(word));
+}
+
+/**
+ * How far the keyboard covers the bottom of the screen. A page sheet ends at
+ * the bottom edge, so the whole keyboard sits over it, which is more than a
+ * KeyboardAvoidingView inside the sheet works out.
+ */
+function useKeyboardHeight(): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      (event) => setHeight(event.endCoordinates.height)
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => setHeight(0)
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return height;
 }

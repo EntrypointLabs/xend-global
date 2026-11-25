@@ -6,6 +6,7 @@ import { ActionModal } from "../ActionModal";
 import { Typography } from "../../atoms/Typography";
 import HapticPressable from "../../atoms/HapticPressable";
 import { RampMark } from "@/components/ui/atoms/RampMark";
+import { usePalette, type ThemedPalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 import { truncateAddress } from "@/utils/helper";
 import { activityDetailTimestamp, type ActivityEntry } from "@/utils/activity";
@@ -19,50 +20,56 @@ import {
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
+type StatusTone = "success" | "destructive" | "waiting" | "neutral";
+
 export interface StatusMeta {
   label: string;
-  color: string;
+  tone: StatusTone;
   icon: IoniconName;
   textClass: string;
 }
 
-const MUTED = "rgba(0,0,0,0.3)";
+export function statusColor(tone: StatusTone, palette: ThemedPalette) {
+  if (tone === "success") return palette.success;
+  if (tone === "destructive") return palette.destructive;
+  return tone === "waiting" ? "#FF9500" : "#8E8E93";
+}
 
 /** How a bank send's payout outcome reads, when it differs from the funding leg. */
 const OUTCOME_META: Record<RampOutcome, StatusMeta> = {
   completed: {
     label: "Completed",
-    color: "#34C759",
+    tone: "success",
     icon: "checkmark-circle",
     textClass: "text-success",
   },
   processing: {
     label: "Processing",
-    color: "#FF9500",
+    tone: "waiting",
     icon: "time",
     textClass: "text-[#FF9500]",
   },
   refunding: {
     label: "Refunding",
-    color: "#FF9500",
+    tone: "waiting",
     icon: "arrow-undo-circle",
     textClass: "text-[#FF9500]",
   },
   refunded: {
     label: "Refunded to your Account",
-    color: "#8E8E93",
+    tone: "neutral",
     icon: "arrow-undo-circle",
-    textClass: "text-black/50",
+    textClass: "text-foreground/50",
   },
   failed: {
     label: "Failed",
-    color: "#FF3B30",
+    tone: "destructive",
     icon: "close-circle",
     textClass: "text-destructive",
   },
 };
 
-function Row({
+export function Row({
   label,
   children,
 }: {
@@ -71,7 +78,7 @@ function Row({
 }) {
   return (
     <View className="flex-row items-center justify-between py-2.5">
-      <Typography weight="600" className="text-black/[0.35]">
+      <Typography weight="600" className="text-foreground/[0.35]">
         {label}
       </Typography>
       <View className="ml-6 shrink flex-row items-center justify-end">
@@ -81,16 +88,20 @@ function Row({
   );
 }
 
-function Value({ children }: { children: React.ReactNode }) {
+export function Value({ children }: { children: React.ReactNode }) {
   return (
-    <Typography weight="600" numberOfLines={1} className="shrink text-right">
+    <Typography
+      weight="600"
+      numberOfLines={1}
+      className="shrink text-right text-foreground"
+    >
       {children}
     </Typography>
   );
 }
 
 /** One titled block of rows, the way Monzo gathers a receipt into sections. */
-function Group({
+export function Group({
   title,
   children,
 }: {
@@ -102,12 +113,14 @@ function Group({
       {title && (
         <Typography
           weight="600"
-          className="mb-1.5 px-1 text-xs uppercase tracking-[0.6px] text-black/[0.35]"
+          className="mb-1.5 px-1 text-xs uppercase tracking-[0.6px] text-foreground/[0.35]"
         >
           {title}
         </Typography>
       )}
-      <View className="rounded-2xl bg-black/[0.03] px-4 py-1">{children}</View>
+      <View className="rounded-2xl bg-foreground/[0.03] px-4 py-1">
+        {children}
+      </View>
     </View>
   );
 }
@@ -131,9 +144,12 @@ export function RampTransactionDetail({
   status: StatusMeta;
   onCopy: (text: string) => Promise<void>;
 }) {
+  const palette = usePalette();
+  const muted = palette.fg(0.3);
   const ramp = item.ramp!;
+  const isRefund = ramp.refund === true;
   const isSend = ramp.direction === "send";
-  const outcome = rampOutcome(ramp, item.status);
+  const outcome = isRefund ? "refunded" : rampOutcome(ramp, item.status);
   const status = outcome ? OUTCOME_META[outcome] : transferStatus;
   const naira = formatNaira(ramp.fiatAmountMinor, ramp.fiatDecimals);
   const dollars = formatDollarsMinor(item.amountRaw, item.decimals);
@@ -152,7 +168,7 @@ export function RampTransactionDetail({
           onPress={onClose}
           className="absolute -right-4 -top-4 p-4"
         >
-          <FontAwesome6 name="xmark" size={20} color={MUTED} />
+          <FontAwesome6 name="xmark" size={20} color={muted} />
         </HapticPressable>
 
         {/* Two lines, side by side: the amount is what the eye should land on.
@@ -160,11 +176,14 @@ export function RampTransactionDetail({
         <View className="mt-8 w-full flex-row items-center gap-4">
           <RampMark ramp={ramp} size={56} />
           <View className="flex-1 items-end">
-            <Typography weight="700" className="text-3xl">
-              {naira}
+            <Typography weight="700" className="text-3xl text-foreground">
+              {isRefund ? `+${dollars}` : naira}
             </Typography>
-            <Typography weight="500" className="mt-0.5 text-sm text-black/40">
-              {dollars} · {date}
+            <Typography
+              weight="500"
+              className="mt-0.5 text-sm text-foreground/40"
+            >
+              {isRefund ? date : `${dollars} · ${date}`}
             </Typography>
           </View>
         </View>
@@ -174,11 +193,15 @@ export function RampTransactionDetail({
             <Typography className={cn("mr-1", status.textClass)}>
               {status.label}
             </Typography>
-            <Ionicons name={status.icon} size={14} color={status.color} />
+            <Ionicons
+              name={status.icon}
+              size={14}
+              color={statusColor(status.tone, palette)}
+            />
           </Row>
         </Group>
 
-        <Group title={isSend ? "Sent to" : "From"}>
+        <Group title={isRefund ? "Bank send to" : isSend ? "Sent to" : "From"}>
           {isSend ? (
             <>
               <Row label="Name">
@@ -197,24 +220,35 @@ export function RampTransactionDetail({
           )}
         </Group>
 
-        <Group title="Conversion">
-          <Row label={isSend ? "They get" : "You paid"}>
-            <Value>{naira}</Value>
-          </Row>
-          <Row label={isSend ? "From your Account" : "Into your Account"}>
-            <Value>{dollars}</Value>
-          </Row>
-          {ramp.rate && (
-            <Row label="Rate">
-              <Value>{formatRate(ramp.rate)} = $1</Value>
+        {isRefund ? (
+          <Group title="Refund">
+            <Row label="They were to get">
+              <Value>{naira}</Value>
             </Row>
-          )}
-          {ramp.feeMinor && (
-            <Row label="Partner fee">
-              <Value>{formatDollarsMinor(ramp.feeMinor, 6)}</Value>
+            <Row label="Back in your Account">
+              <Value>{dollars}</Value>
             </Row>
-          )}
-        </Group>
+          </Group>
+        ) : (
+          <Group title="Conversion">
+            <Row label={isSend ? "They get" : "You paid"}>
+              <Value>{naira}</Value>
+            </Row>
+            <Row label={isSend ? "From your Account" : "Into your Account"}>
+              <Value>{dollars}</Value>
+            </Row>
+            {ramp.rate && (
+              <Row label="Rate">
+                <Value>{formatRate(ramp.rate)} = $1</Value>
+              </Row>
+            )}
+            {ramp.feeMinor && (
+              <Row label="Partner fee">
+                <Value>{formatDollarsMinor(ramp.feeMinor, 6)}</Value>
+              </Row>
+            )}
+          </Group>
+        )}
 
         <View className="mt-3 w-full px-1 pb-3">
           <Row label="Onchain transaction">
@@ -223,13 +257,13 @@ export function RampTransactionDetail({
                 className="flex-row items-center"
                 onPress={() => onCopy(item.signature as string)}
               >
-                <Typography weight="600" className="mr-1">
+                <Typography weight="600" className="mr-1 text-foreground">
                   {truncateAddress(item.signature)}
                 </Typography>
-                <Ionicons name="copy-outline" size={14} color={MUTED} />
+                <Ionicons name="copy-outline" size={14} color={muted} />
               </TouchableOpacity>
             ) : (
-              <Typography weight="600" className="text-black/30">
+              <Typography weight="600" className="text-foreground/30">
                 Pending
               </Typography>
             )}

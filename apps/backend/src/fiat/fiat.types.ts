@@ -23,6 +23,8 @@ export interface FiatOrder {
   simulation: boolean;
   /** The provider's on-chain signature for the USDC leg, once reported. */
   settlementSignature?: string;
+  /** The transfer that brought a returned send's USDC back to the Account. */
+  refundSignature?: string;
 }
 export type SimulationEvent =
   | 'payment_received'

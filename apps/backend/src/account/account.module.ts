@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AccountEventsModule } from '../activity/account-events.module';
+import { AccountNameController } from './account-name.controller';
 import { SettingsActivityModule } from '../activity/settings-activity.signal';
 import { AttestationModule } from '../attestation/attestation.module';
 import { DbModule } from '../db/db.module';
@@ -23,6 +24,7 @@ import { RecoveryChangeService } from './recovery-change.service';
 import { SpendModule } from './spend.module';
 import { SpendingLimitChangeService } from './spending-limit-change.service';
 import { SpendingLimitService } from './spending-limit.service';
+import { SwapAccessService } from './swap-access.service';
 import { SweepService } from './sweep.service';
 import { ACCOUNT_CHAIN, PROVISIONING_CHAIN } from './account.interface';
 import { AccountService } from './account.service';
@@ -42,7 +44,7 @@ import { AccountService } from './account.service';
     SpendModule,
     PreparedModule,
   ],
-  controllers: [AccountController],
+  controllers: [AccountController, AccountNameController],
   providers: [
     AccountService,
     SpendingLimitService,
@@ -52,6 +54,7 @@ import { AccountService } from './account.service';
     AccountChangeWatcher,
     RecoveryChangeService,
     SpendingLimitChangeService,
+    SwapAccessService,
     DeviceRotationService,
     PrimaryRotationService,
     { provide: ACCOUNT_CHAIN, useClass: Web3AccountChain },
@@ -66,6 +69,7 @@ import { AccountService } from './account.service';
     AccountChangeService,
     RecoveryChangeService,
     SpendingLimitChangeService,
+    SwapAccessService,
     DeviceRotationService,
     PrimaryRotationService,
   ],

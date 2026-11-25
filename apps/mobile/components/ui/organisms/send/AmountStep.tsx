@@ -11,14 +11,18 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { Keypad } from "@/components/ui/molecules";
 import { Image } from "expo-image";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { TokenMark } from "@/components/ui/atoms/TokenMark";
+import { getUsdcMint } from "@/utils/cluster";
+import { formatRawAmountShort, toAmountInput, toRawAmount } from "@/utils/swap";
+import { heldSwapTokens, type HeldSwapToken } from "@/utils/swapTokens";
+import { formatUsdFromString } from "@/utils/balances";
 import { Ionicons } from "@expo/vector-icons";
 import { formatAmount, truncateAddress } from "@/utils/helper";
 import { useBalances } from "@/hooks/useBalances";
 import { useEarnPosition } from "@/hooks/useEarn";
 import HapticPressable from "../../atoms/HapticPressable";
 import { cn } from "@/utils/cn";
-import { useAccount } from "@/hooks/useAccount";
-import { describeSecondCheck, SECOND_CHECK_NOTE } from "@/utils/spendingLimit";
+import { usePalette } from "@/hooks/usePalette";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { displayMoney, usdcAsDollars } from "@/utils/display-money";
@@ -36,12 +40,7 @@ import {
 } from "@/hooks/useSendExecutor";
 import { groupAccountNumber, type BankRecipient } from "./bankAccount";
 import { BankLogo } from "./BankLogo";
-import {
-  BANK_SHEET_BG,
-  BankSheetFooter,
-  BankSheetTop,
-  DISPLAY,
-} from "./BankSheetParts";
+import { BankSheetFooter, BankSheetTop, DISPLAY } from "./BankSheetParts";
 
 interface StepProps {
   onBack: () => void;
@@ -49,7 +48,13 @@ interface StepProps {
 }
 
 type AmountStepProps =
-  | (StepProps & { mode: "crypto"; recipient: string })
+  | (StepProps & {
+      mode: "crypto";
+      recipient: string;
+      /** The token being sent, chosen in the sheet the Send flow owns. */
+      mint: string;
+      onChooseToken: () => void;
+    })
   | (StepProps & { mode: "bank"; recipient: BankRecipient | null });
 
 type AmountStatus = "idle" | "ready" | "error";
@@ -59,52 +64,118 @@ export default function AmountStep(props: AmountStepProps) {
   return props.recipient ? (
     <BankAmountStep {...props} recipient={props.recipient} />
   ) : (
-    <View className="flex-1" style={{ backgroundColor: BANK_SHEET_BG }} />
+    <View className="flex-1" />
   );
+}
+
+/** Shown before the balance loads, and when no dollars are held. */
+function emptyUsdc(): HeldSwapToken {
+  return {
+    mint: getUsdcMint(),
+    symbol: "USDC",
+    name: "USD Coin",
+    decimals: 6,
+    iconUrl: null,
+    amountRaw: "0",
+    usdPrice: 1,
+  };
 }
 
 function CryptoAmountStep({
   recipient,
+  mint,
+  onChooseToken,
   onBack,
   onClose,
-}: StepProps & { recipient: string }) {
-  const { data: account } = useAccount();
+}: StepProps & {
+  recipient: string;
+  mint: string;
+  onChooseToken: () => void;
+}) {
   const { sendCrypto } = useSendExecutor();
-  const { total } = useBalances();
-  const balance = total ?? 0;
+  const { tokens } = useBalances();
+  const palette = usePalette();
+  const held = useMemo(() => heldSwapTokens(tokens), [tokens]);
+
+  const token =
+    held.find((candidate) => candidate.mint === mint) ??
+    held.find((candidate) => candidate.mint === getUsdcMint()) ??
+    emptyUsdc();
+  const isDollars = token.mint === getUsdcMint();
+  const sendableRaw =
+    tokens.find((balance) => balance.mint === token.mint)?.nativeAmountRaw ??
+    token.amountRaw;
+  const heldRaw = BigInt(sendableRaw);
+  const price = isDollars ? 1 : token.usdPrice;
+  const worthOf =
+    price === null
+      ? undefined
+      : (amount: string) =>
+          amount ? formatUsdFromString(String(Number(amount) * price)) : "$0";
 
   return (
     <AmountPad
+      // A new token starts from an empty amount: digits typed for one
+      // token mean something else in another.
+      key={token.mint}
       recipientLabel={truncateAddress(recipient)}
-      maxDecimals={8}
-      chip={
-        <TouchableOpacity className="flex-row items-center rounded-full bg-white px-3 py-1.5 shadow-sm">
-          <View className="mr-2 h-5 w-5 items-center justify-center rounded-full bg-blue-500">
-            <Ionicons name="logo-usd" size={12} color="white" />
-          </View>
-          <Typography weight="700" className="mr-1">
-            USDC
+      maxDecimals={token.decimals}
+      // Fixed while a send is being prepared: a new token would remount the
+      // pad and let a second send start beside the one being signed.
+      chip={(busy) => (
+        <HapticPressable
+          onPress={onChooseToken}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={`Sending ${token.symbol}. Change token`}
+          accessibilityState={{ disabled: busy }}
+          className="flex-row items-center gap-1.5 rounded-full bg-white py-1.5 pl-1.5 pr-3 shadow-sm dark:bg-foreground/10"
+        >
+          <TokenMark
+            mint={token.mint}
+            label={token.symbol}
+            iconUrl={token.iconUrl}
+            size={22}
+          />
+          <Typography weight="700" className="text-foreground">
+            {token.symbol}
           </Typography>
-          <Ionicons name="chevron-down" size={12} color="black" />
-        </TouchableOpacity>
-      }
-      balanceLabel={`${balance ? balance.toFixed(2) : "0.00"} USDC`}
-      maxAmount={balance.toString()}
+          <Ionicons name="chevron-down" size={12} color={palette.foreground} />
+        </HapticPressable>
+      )}
+      balanceLabel={`${heldLabel(sendableRaw, token.decimals, isDollars)} ${token.symbol}`}
+      maxAmount={toAmountInput(sendableRaw, token.decimals)}
+      worthOf={worthOf}
       statusOf={(amount) => {
-        if (Number(amount) > 0 && Number(amount) <= Number(balance))
-          return "ready";
-        if (amount && Number(amount) > Number(balance)) return "error";
-        return "idle";
-      }}
-      noteFor={(amount) => {
-        const secondCheck = describeSecondCheck(account, amount);
-        return secondCheck ? SECOND_CHECK_NOTE[secondCheck.reason] : null;
+        const raw = BigInt(toRawAmount(amount, token.decimals));
+        if (raw === 0n) return "idle";
+        return raw <= heldRaw ? "ready" : "error";
       }}
       onBack={onBack}
-      onContinue={(amount) => sendCrypto(recipient, amount)}
+      onContinue={(amount) =>
+        sendCrypto(recipient, amount, {
+          mint: token.mint,
+          decimals: token.decimals,
+        })
+      }
       onSending={onClose}
     />
   );
+}
+
+/** A balance as the pill shows it: dollars to the cent, other tokens cut short. */
+function heldLabel(
+  amountRaw: string,
+  decimals: number,
+  isDollars: boolean
+): string {
+  if (!isDollars) return formatRawAmountShort(amountRaw, decimals);
+  const [whole, fraction = ""] = formatRawAmountShort(
+    amountRaw,
+    decimals,
+    2
+  ).split(".");
+  return `${whole}.${fraction.padEnd(2, "0")}`;
 }
 
 function BankAmountStep({
@@ -113,6 +184,7 @@ function BankAmountStep({
   onClose,
 }: StepProps & { recipient: BankRecipient }) {
   const router = useRouter();
+  const palette = usePalette();
   const { prepareBank, fundBank } = useSendExecutor();
   const { usdc, portfolio } = useBalances();
   const { balance: earnBalance } = useEarnPosition();
@@ -145,7 +217,7 @@ function BankAmountStep({
 
   const verified = limits.data?.verified === true;
   const left =
-    limits.data && !verified ? nairaAllowanceLeft(limits.data) : null;
+    limits.data && !verified ? nairaAllowanceLeft(limits.data, "send") : null;
   const tooSmall = kobo > 0n && kobo < MIN_PAYOUT_KOBO;
   const overLimit = left !== null && kobo > left;
   const usdcMinor = BigInt(Math.floor(usdc * 1_000_000));
@@ -158,6 +230,7 @@ function BankAmountStep({
   // Home's headline also counts investments and Earn; only cash can be paid
   // out to a bank, so say why the two numbers differ.
   const elsewhere =
+    earnBalance !== null &&
     portfolio.cashUsd + portfolio.investmentsUsd + earnBalance - usdc >= 0.01;
 
   const openVerify = () => {
@@ -256,12 +329,7 @@ function BankAmountStep({
             : { text: "", tone: "muted" };
 
   return (
-    <Pressable
-      accessible={false}
-      onPress={Keyboard.dismiss}
-      className="flex-1"
-      style={{ backgroundColor: BANK_SHEET_BG }}
-    >
+    <Pressable accessible={false} onPress={Keyboard.dismiss} className="flex-1">
       <BankSheetTop leave="back" onPress={onBack} disabled={busy} />
       <View className="flex-row items-center justify-center gap-3 px-5">
         <BankLogo name={recipient.bankName} logoKey={recipient.logoKey} />
@@ -269,14 +337,14 @@ function BankAmountStep({
           <Typography
             weight="600"
             numberOfLines={1}
-            className="text-[15px] text-[#0E0F0C]"
+            className="text-[15px] text-ink"
           >
             {recipient.accountName}
           </Typography>
           <Typography
             weight="500"
             numberOfLines={1}
-            className="text-[13px] tabular-nums text-black/55"
+            className="text-[13px] tabular-nums text-foreground/55"
           >
             {`${recipient.bankName} · ${groupAccountNumber(recipient.accountNumber)}`}
           </Typography>
@@ -295,7 +363,7 @@ function BankAmountStep({
           className={cn(
             "text-center",
             displayStep(formatted, "lg"),
-            amount ? "text-[#0E0F0C]" : "text-black/20"
+            amount ? "text-ink" : "text-foreground/20"
           )}
           style={DISPLAY}
         >
@@ -305,24 +373,25 @@ function BankAmountStep({
           weight="500"
           className={cn(
             "mt-1 min-h-5 text-center text-[14px] tabular-nums",
-            helper.tone === "error" ? "text-destructive" : "text-black/55"
+            helper.tone === "error" ? "text-destructive" : "text-foreground/55"
           )}
         >
           {helper.text}
         </Typography>
 
-        <View className="mt-5 h-11 w-full flex-row items-center gap-2 rounded-full bg-black/[0.04] px-4">
+        <View className="mt-5 h-11 w-full flex-row items-center gap-2 rounded-full bg-foreground/[0.04] px-4">
           <Image
             source={require("@/assets/icons/support.png")}
             style={{ width: 16, height: 16 }}
-            tintColor="#000000BF"
+            tintColor={palette.fg(0.75)}
             contentFit="contain"
             accessibilityElementsHidden
           />
           <BottomSheetTextInput
-            className="flex-1 py-0 font-inter-medium text-[15px] tracking-normal text-[#0E0F0C]"
+            className="flex-1 py-0 font-inter-medium text-[15px] tracking-normal text-ink"
             placeholder={`Note for ${recipient.accountName.split(" ")[0]} (optional)`}
-            placeholderTextColor="#0000008C"
+            placeholderTextColor={palette.fg(0.55)}
+            keyboardAppearance={palette.dark ? "dark" : "light"}
             value={note}
             onChangeText={(text) => setNote(text.slice(0, NOTE_MAX))}
             onFocus={() => setWritingNote(true)}
@@ -334,16 +403,16 @@ function BankAmountStep({
         </View>
       </View>
 
-      <View className="mx-5 mb-1 flex-row items-center justify-between rounded-full bg-black/[0.04] py-2 pl-2 pr-4">
-        <View className="flex-row items-center gap-1.5 rounded-full bg-white py-1 pl-1.5 pr-3">
+      <View className="mx-5 mb-1 flex-row items-center justify-between rounded-full bg-foreground/[0.04] py-2 pl-2 pr-4">
+        <View className="flex-row items-center gap-1.5 rounded-full bg-white py-1 pl-1.5 pr-3 dark:bg-foreground/10">
           <Typography className="text-[15px]">🇳🇬</Typography>
-          <Typography weight="600" className="text-[14px] text-[#0E0F0C]">
+          <Typography weight="600" className="text-[14px] text-ink">
             NGN
           </Typography>
         </View>
         <Typography
           weight="500"
-          className="text-[13px] tabular-nums text-black/55"
+          className="text-[13px] tabular-nums text-foreground/55"
         >
           {left !== null
             ? `${displayMoney("NGN", left.toString())} left today · ${cashLabel}`
@@ -420,6 +489,7 @@ function BankReview({
   onConfirm: () => Promise<SendStart>;
   onSending: () => void;
 }) {
+  const palette = usePalette();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const deposit = order.instructions.depositAmount!;
@@ -460,7 +530,7 @@ function BankReview({
   };
 
   return (
-    <View className="flex-1" style={{ backgroundColor: BANK_SHEET_BG }}>
+    <View className="flex-1">
       <BankSheetTop leave="back" onPress={onBack} disabled={busy} />
       <View className="flex-1 items-center justify-center px-6 pb-10">
         <BankLogo
@@ -471,14 +541,14 @@ function BankReview({
         <Typography
           weight="600"
           numberOfLines={1}
-          className="mt-3 text-[16px] text-[#0E0F0C]"
+          className="mt-3 text-[16px] text-ink"
         >
           {recipient.accountName}
         </Typography>
         <Typography
           weight="500"
           numberOfLines={1}
-          className="mt-0.5 text-[13px] tabular-nums text-black/55"
+          className="mt-0.5 text-[13px] tabular-nums text-foreground/55"
         >
           {`${recipient.bankName} · ${groupAccountNumber(recipient.accountNumber)}`}
         </Typography>
@@ -487,32 +557,32 @@ function BankReview({
           accessibilityRole="header"
           accessibilityLabel={`${firstName} gets ${naira}`}
           numberOfLines={1}
-          className={cn("mt-8 text-[#0E0F0C]", displayStep(naira, "lg"))}
+          className={cn("mt-8 text-ink", displayStep(naira, "lg"))}
           style={DISPLAY}
         >
           {naira}
         </Typography>
 
         {note ? (
-          <View className="mt-6 max-w-full flex-row items-center gap-2 rounded-full bg-black/[0.04] py-2 pl-3 pr-4">
+          <View className="mt-6 max-w-full flex-row items-center gap-2 rounded-full bg-foreground/[0.04] py-2 pl-3 pr-4">
             <Image
               source={require("@/assets/icons/support.png")}
               style={{ width: 14, height: 14 }}
-              tintColor="#000000BF"
+              tintColor={palette.fg(0.75)}
               contentFit="contain"
               accessibilityElementsHidden
             />
             <Typography
               weight="500"
               numberOfLines={2}
-              className="shrink text-[14px] text-[#0E0F0C]"
+              className="shrink text-[14px] text-ink"
             >
               {note}
             </Typography>
           </View>
         ) : null}
 
-        <View className="mt-10 w-full gap-3.5 rounded-3xl bg-black/[0.03] px-5 py-5">
+        <View className="mt-10 w-full gap-3.5 rounded-3xl bg-foreground/[0.03] px-5 py-5">
           <ReviewRow label="From your Account" value={dollars} strong />
           <ReviewRow label="Fee, included" value={feeLabel(feeMinor)} />
           <ReviewRow
@@ -551,13 +621,13 @@ function ReviewRow({
 }) {
   return (
     <View className="flex-row items-center justify-between gap-4">
-      <Typography weight="500" className="text-[15px] text-black/55">
+      <Typography weight="500" className="text-[15px] text-foreground/55">
         {label}
       </Typography>
       <Typography
         weight={strong ? "700" : "600"}
         numberOfLines={1}
-        className="shrink text-right text-[15px] tabular-nums text-[#0E0F0C]"
+        className="shrink text-right text-[15px] tabular-nums text-ink"
       >
         {value}
       </Typography>
@@ -570,12 +640,15 @@ interface AmountPadProps {
   recipientDetail?: string;
   prefix?: string;
   maxDecimals: number;
-  chip: React.ReactNode;
+  /** A function when the chip has to stand still while a send is under way. */
+  chip: React.ReactNode | ((busy: boolean) => React.ReactNode);
   balanceLabel: string;
   /** Absent when no exact maximum exists, which hides MAX. */
   maxAmount?: string;
   statusOf: (amount: string) => AmountStatus;
   noteFor?: (amount: string) => string | null;
+  /** The amount in dollars, under the number. Absent when it cannot be priced. */
+  worthOf?: (amount: string) => string;
   onBack: () => void;
   onContinue: (amount: string) => Promise<SendStart>;
   onSending: () => void;
@@ -591,6 +664,7 @@ function AmountPad({
   maxAmount,
   statusOf,
   noteFor,
+  worthOf,
   onBack,
   onContinue,
   onSending,
@@ -673,19 +747,19 @@ function AmountPad({
   }, [amount, prefix, maxDecimals]);
 
   return (
-    <View className="flex-1 bg-[#F0F0F0]">
+    <View className="flex-1">
       <View className="relative mb-6 flex-1 px-4">
         {/* Header */}
         <View className="mb-4 flex-row items-center justify-between">
           <TouchableOpacity
             onPress={onBack}
             disabled={busy}
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-100"
+            className="h-10 w-10 items-center justify-center rounded-full bg-gray-100 dark:bg-muted"
           >
             <Ionicons name="chevron-back" size={24} color="#999" />
           </TouchableOpacity>
           <View className="items-center">
-            <Typography weight="700" className="text-lg">
+            <Typography weight="700" className="text-lg text-foreground">
               Enter amount
             </Typography>
             <Typography className="text-sm text-gray-400">
@@ -706,14 +780,18 @@ function AmountPad({
             weight="700"
             className={cn(
               "text-7xl tracking-tight",
-              !amount ? "text-gray-300" : "text-black"
+              !amount
+                ? "text-gray-300 dark:text-foreground/20"
+                : "text-foreground"
             )}
           >
             {formattedAmount}
           </Typography>
-          {/* <View className="flex-row items-center mt-2">
-                        <Text className="text-gray-400 text-lg font-medium mr-1">$0</Text>
-                    </View> */}
+          {worthOf ? (
+            <Typography weight="500" className="mt-2 text-lg text-gray-400">
+              {worthOf(amount)}
+            </Typography>
+          ) : null}
 
           {/* Swap Icon Button */}
           {/* <TouchableOpacity className="absolute right-0 top-1/2 mt-4 w-10 h-10 bg-white rounded-full items-center justify-center border border-gray-100 shadow-sm">
@@ -722,8 +800,8 @@ function AmountPad({
         </View>
 
         {/* Token Selector & Max */}
-        <View className="mx-6 mb-8 flex-row items-center justify-between rounded-full bg-[#F9F9F9] p-2">
-          {chip}
+        <View className="mx-6 mb-8 flex-row items-center justify-between rounded-full bg-[#F9F9F9] p-2 dark:bg-muted">
+          {typeof chip === "function" ? chip(busy) : chip}
 
           <Typography weight="500" className="ml-3 flex-1 text-gray-400">
             {balanceLabel}
@@ -731,14 +809,17 @@ function AmountPad({
 
           {maxAmount !== undefined ? (
             <TouchableOpacity
-              className="rounded-full bg-black px-4 py-1.5"
+              className="rounded-full bg-primary px-4 py-1.5"
               onPress={() => {
                 if (busy) return;
                 setFailure(null);
                 setAmount(maxAmount);
               }}
             >
-              <Typography weight="700" className="text-xs text-white">
+              <Typography
+                weight="700"
+                className="text-xs text-primary-foreground"
+              >
                 MAX
               </Typography>
             </TouchableOpacity>
@@ -758,7 +839,9 @@ function AmountPad({
               weight="500"
               className={cn(
                 "text-center text-sm",
-                failure ? "text-destructive" : "text-gray-500"
+                failure
+                  ? "text-destructive"
+                  : "text-gray-500 dark:text-foreground/55"
               )}
             >
               {note}
@@ -767,21 +850,27 @@ function AmountPad({
         </View>
 
         <HapticPressable
-          className={cn("mb-2 w-full items-center rounded-full bg-black py-4", {
-            "opacity-70": status === "idle",
-            "opacity-100": status === "ready",
-            "bg-red-500/30": status === "error",
-          })}
+          className={cn(
+            "mb-2 w-full items-center rounded-full bg-primary py-4",
+            {
+              "opacity-70": status === "idle",
+              "opacity-100": status === "ready",
+              "bg-red-500/30": status === "error",
+            }
+          )}
           onPress={handleContinue}
           disabled={busy || status === "error" || status === "idle"}
         >
           {busy ? (
-            <ActivityIndicator size="small" className="text-white" />
+            <ActivityIndicator
+              size="small"
+              className="text-primary-foreground"
+            />
           ) : (
             <Typography
               weight="500"
               className={cn(
-                "text-base text-white",
+                "text-base text-primary-foreground",
                 status === "error" && "text-red-500"
               )}
             >

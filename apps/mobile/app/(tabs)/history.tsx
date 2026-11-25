@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from "react";
+import { usePendingSwaps } from "@/utils/pendingSwaps";
 import { ActivityIndicator, View } from "react-native";
 import { PhotoScreen, useSurface } from "@/components/ui/glass";
 import { Typography } from "@/components/ui/atoms/Typography";
@@ -15,12 +16,16 @@ import { useTransfersInfinite, usePendingWatch } from "@/hooks/useTransfers";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { useCollapseOnScroll } from "@/hooks/useTabBarCollapse";
 import { useBalances } from "@/hooks/useBalances";
-import { useAwaitingPayments } from "@/hooks/useAwaitingPayments";
+import {
+  useAwaitingPayments,
+  useCanSeeAwaitingPayments,
+} from "@/hooks/useAwaitingPayments";
 import {
   awaitingPaymentActivityEntry,
   groupIntoSections,
   mapAccountEventToActivityEntry,
-  mapTransferRowToActivityEntry,
+  mapTransferRowsToActivityEntries,
+  pendingSwapEntries,
   type ActivityEntry,
 } from "@/utils/activity";
 import { requestApproval } from "@/utils/approvalRequests";
@@ -38,21 +43,25 @@ export default function HistoryScreen() {
     refetch,
   } = useTransfersInfinite();
 
-  const { data: awaiting } = useAwaitingPayments();
+  const { data: awaiting, refetch: refetchAwaiting } = useAwaitingPayments();
+  const canSeeAwaiting = useCanSeeAwaitingPayments();
 
   const [selectedItem, setSelectedItem] = useState<ActivityEntry | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const transferRows = (
-    data?.pages.flatMap((page) => page.transfers) ?? []
-  ).map((row) =>
-    mapTransferRowToActivityEntry(row, {
+  const pendingSwaps = usePendingSwaps();
+  const rawTransfers = data?.pages.flatMap((page) => page.transfers) ?? [];
+  // A swap shows from the moment it is sent, not from when the chain reports
+  // it, and gives way to the reported row as soon as that arrives.
+  const transferRows = [
+    ...pendingSwapEntries(pendingSwaps, rawTransfers, address ?? ""),
+    ...mapTransferRowsToActivityEntries(rawTransfers, {
       selfAddress: address ?? "",
       decimalsByMint,
       iconsByMint,
-    })
-  );
+    }),
+  ];
 
   // Merged for display only. The events deliberately do not live in
   // `page.transfers`, because the balance chart walks that array and would
@@ -72,6 +81,19 @@ export default function HistoryScreen() {
   const rows = [...transferRows, ...eventRows, ...awaitingRows].sort(
     (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
   );
+
+  // An open receipt follows the row it was opened from, so a swap opened while
+  // pending turns into the settled swap in place once the feed reports it.
+  const shownItem = selectedItem
+    ? (rows.find(
+        (row) =>
+          row.id === selectedItem.id ||
+          (row.isSwap === true &&
+            selectedItem.isSwap === true &&
+            row.signature !== null &&
+            row.signature === selectedItem.signature)
+      ) ?? selectedItem)
+    : null;
 
   // Only a transfer can be in flight; an event is recorded after the fact.
   usePendingWatch(transferRows.some((row) => row.status === "pending"));
@@ -99,11 +121,17 @@ export default function HistoryScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refetch();
+      // Everything the feed shows, so a pull also catches a Payment that
+      // started or finished waiting on this phone.
+      // refetch() ignores a query's `enabled`, so the gate is repeated here.
+      await Promise.all([
+        refetch(),
+        canSeeAwaiting ? refetchAwaiting() : undefined,
+      ]);
     } finally {
       setRefreshing(false);
     }
-  }, [refetch]);
+  }, [refetch, refetchAwaiting, canSeeAwaiting]);
 
   return (
     <PhotoScreen scene="sky" warm blurred>
@@ -120,21 +148,24 @@ export default function HistoryScreen() {
         isFetchingNextPage={isFetchingNextPage}
         onRefresh={onRefresh}
         refreshing={refreshing}
-        ListEmptyComponent={
-          isLoading ? (
-            <View className="items-center py-16">
-              <ActivityIndicator color="#FFFFFF" />
-            </View>
-          ) : undefined
-        }
+        ListEmptyComponent={isLoading ? <LoadingRow /> : undefined}
       />
 
       <TransactionDetailModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
-        item={selectedItem}
+        item={shownItem}
       />
     </PhotoScreen>
+  );
+}
+
+function LoadingRow() {
+  const S = useSurface();
+  return (
+    <View className="items-center py-16">
+      <ActivityIndicator color={S.colors.ink} />
+    </View>
   );
 }
 

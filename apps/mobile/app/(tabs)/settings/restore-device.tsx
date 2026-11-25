@@ -11,6 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDeviceRotation } from "@/hooks/useDeviceRotation";
 import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { apiClient, apiErrorStatus } from "@/utils/apiClient";
+import { usePalette } from "@/hooks/usePalette";
 
 type Stage = "explain" | "code" | "working" | "waiting";
 
@@ -29,6 +30,7 @@ type Stage = "explain" | "code" | "working" | "waiting";
  * inside the window.
  */
 export default function RestoreDeviceScreen() {
+  const palette = usePalette();
   const { email, sessionTier } = useAuth();
   const rotation = useDeviceRotation();
   // The swap is signed by the passkey on this phone, and an email-only
@@ -81,15 +83,19 @@ export default function RestoreDeviceScreen() {
     return (
       <ScreenLayout>
         <View className="flex-1 items-center justify-center px-3">
-          <View className="size-16 items-center justify-center rounded-3xl bg-black">
-            <Ionicons name="time-outline" size={30} color="#FFFFFF" />
+          <View className="size-16 items-center justify-center rounded-3xl bg-primary">
+            <Ionicons
+              name="time-outline"
+              size={30}
+              color={palette.primaryForeground}
+            />
           </View>
-          <Typography weight="700" className="mt-6 text-3xl text-black">
+          <Typography weight="700" className="mt-6 text-3xl text-foreground">
             Recovering on this phone
           </Typography>
           <Typography
             weight="500"
-            className="mt-3 text-center text-base leading-6 text-black/40"
+            className="mt-3 text-center text-base leading-6 text-foreground/40"
           >
             {activeAt
               ? `It finishes on ${when(activeAt)}. Open Prydd after that and this phone takes over as your Device Key.`
@@ -97,16 +103,19 @@ export default function RestoreDeviceScreen() {
           </Typography>
           <Typography
             weight="400"
-            className="mt-6 text-center text-sm leading-5 text-black/40"
+            className="mt-6 text-center text-sm leading-5 text-foreground/40"
           >
             If you still have your old phone, you can cancel this from there
             before it lands.
           </Typography>
           <HapticPressable
             onPress={() => router.dismissAll()}
-            className="mt-10 h-14 w-full items-center justify-center rounded-full bg-black"
+            className="mt-10 h-14 w-full items-center justify-center rounded-full bg-primary"
           >
-            <Typography weight="700" className="text-[15px] text-white">
+            <Typography
+              weight="700"
+              className="text-[15px] text-primary-foreground"
+            >
               Done
             </Typography>
           </HapticPressable>
@@ -123,30 +132,33 @@ export default function RestoreDeviceScreen() {
             stage === "code" ? setStage("explain") : router.back()
           }
           disabled={stage === "working"}
-          className="size-10 items-center justify-center rounded-full bg-black/[0.08]"
+          className="size-10 items-center justify-center rounded-full bg-foreground/[0.08]"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="chevron-back" size={20} color="#00000066" />
+          <Ionicons name="chevron-back" size={20} color={palette.fg(0.4)} />
         </HapticPressable>
 
         <Typography
           weight="700"
-          className="mt-10 text-5xl leading-[44px] text-black"
+          className="mt-10 text-5xl leading-[44px] text-foreground"
         >
           {stage === "code" ? "Confirm email" : "Recover on\nthis phone"}
         </Typography>
 
         {stage === "code" ? (
           <>
-            <Typography weight="500" className="mt-8 text-lg text-black/40">
+            <Typography
+              weight="500"
+              className="mt-8 text-lg text-foreground/40"
+            >
               The code has been sent to
             </Typography>
-            <Typography weight="600" className="mt-3 text-2xl text-black">
+            <Typography weight="600" className="mt-3 text-2xl text-foreground">
               {email}
             </Typography>
             <Typography
               weight="500"
-              className="mt-8 text-lg leading-7 text-black/40"
+              className="mt-8 text-lg leading-7 text-foreground/40"
             >
               Please check your inbox and{"\n"}paste the code from the email
               below
@@ -164,13 +176,13 @@ export default function RestoreDeviceScreen() {
           <>
             <Typography
               weight="500"
-              className="mt-6 text-lg leading-7 text-black"
+              className="mt-6 text-lg leading-7 text-foreground"
             >
               Your Device Key lives on the phone you set Prydd up with, and it
               cannot be copied here.
             </Typography>
 
-            <View className="mt-8 gap-5 rounded-3xl bg-black/[0.03] p-5">
+            <View className="mt-8 gap-5 rounded-3xl bg-foreground/[0.03] p-5">
               <Step
                 icon="mail-outline"
                 title="We email you a code"
@@ -192,8 +204,11 @@ export default function RestoreDeviceScreen() {
 
         {stage === "working" && (
           <View className="mt-8 items-center">
-            <ActivityIndicator color="#000" />
-            <Typography weight="500" className="mt-3 text-sm text-black/40">
+            <ActivityIndicator color={palette.foreground} />
+            <Typography
+              weight="500"
+              className="mt-3 text-sm text-foreground/40"
+            >
               Approving on this phone
             </Typography>
           </View>
@@ -211,7 +226,7 @@ export default function RestoreDeviceScreen() {
           <>
             <Typography
               weight="500"
-              className="mb-4 text-center text-sm leading-5 text-black/40"
+              className="mb-4 text-center text-sm leading-5 text-foreground/40"
             >
               Your passkey signs this swap, so sign in with it first. The code
               comes after.
@@ -219,10 +234,17 @@ export default function RestoreDeviceScreen() {
             <HapticPressable
               onPress={() => void passkey.signIn()}
               disabled={passkey.busy}
-              className="h-14 flex-row items-center justify-center gap-3 rounded-full bg-black"
+              className="h-14 flex-row items-center justify-center gap-3 rounded-full bg-primary"
             >
-              <Ionicons name="finger-print-outline" size={20} color="#FFFFFF" />
-              <Typography weight="700" className="text-[15px] text-white">
+              <Ionicons
+                name="finger-print-outline"
+                size={20}
+                color={palette.primaryForeground}
+              />
+              <Typography
+                weight="700"
+                className="text-[15px] text-primary-foreground"
+              >
                 {passkey.busy
                   ? "Waiting for your passkey"
                   : "Sign in with passkey"}
@@ -233,9 +255,12 @@ export default function RestoreDeviceScreen() {
           stage === "explain" && (
             <HapticPressable
               onPress={sendCode}
-              className="h-14 items-center justify-center rounded-full bg-black"
+              className="h-14 items-center justify-center rounded-full bg-primary"
             >
-              <Typography weight="700" className="text-[15px] text-white">
+              <Typography
+                weight="700"
+                className="text-[15px] text-primary-foreground"
+              >
                 Email me a code
               </Typography>
             </HapticPressable>
@@ -255,16 +280,17 @@ function Step({
   title: string;
   body: string;
 }) {
+  const palette = usePalette();
   return (
     <View className="flex-row gap-4">
-      <Ionicons name={icon} size={20} color="#000000" />
+      <Ionicons name={icon} size={20} color={palette.foreground} />
       <View className="flex-1">
-        <Typography weight="600" className="text-[15px] text-black">
+        <Typography weight="600" className="text-[15px] text-foreground">
           {title}
         </Typography>
         <Typography
           weight="400"
-          className="mt-1 text-sm leading-5 text-black/40"
+          className="mt-1 text-sm leading-5 text-foreground/40"
         >
           {body}
         </Typography>

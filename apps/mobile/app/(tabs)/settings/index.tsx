@@ -6,45 +6,66 @@ import {
   TouchableOpacity,
   Linking,
 } from "react-native";
+import * as Application from "expo-application";
 import Constants from "expo-constants";
 import { Typography } from "@/components/ui/atoms/Typography";
 import {
   groupedRowClass,
   PhotoScreen,
-  surfaceFor,
+  useSurfaceFor,
 } from "@/components/ui/glass";
 import { useColorfulTheme } from "@/contexts/AppearanceContext";
 import { cn } from "@/utils/cn";
 import { SettingsItem } from "@/components/ui/molecules";
-import { Ionicons } from "@expo/vector-icons";
+import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import { Spacing } from "@/constants/Spacing";
 import { useAuth } from "@/contexts/AuthContext";
 import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { EditWalletModal } from "@/components/ui/organisms/modals/EditWalletModal";
 import { NotificationsModal } from "@/components/ui/organisms/modals/NotificationsModal";
 import { DeleteAccountModal } from "@/components/ui/organisms/modals/DeleteAccountModal";
-import { useWalletName } from "@/hooks/useWalletName";
+import { ACCOUNT_NAME_MAX_LENGTH, useWalletName } from "@/hooks/useWalletName";
 import { useCollapseOnScroll } from "@/hooks/useTabBarCollapse";
 import { useBalances } from "@/hooks/useBalances";
+import { useEarnPosition } from "@/hooks/useEarn";
+import { formatMoney, holdingsBeforeDelete } from "@/utils/balances";
 import { useRouter } from "expo-router";
 import { useToast } from "@/contexts/ToastContext";
 import { useNotificationPreference } from "@/hooks/usePushRegistration";
+import { usePalette } from "@/hooks/usePalette";
 
 const PRYDD_TWITTER_URL = "https://x.com/pryddfinance";
 const PRIVACY_POLICY_URL = "https://www.prydd.co/legal/privacy-policy";
 const TERMS_URL = "https://www.prydd.co/legal/terms-of-service";
 
-const APP_VERSION = Constants.expoConfig?.version ?? "1.0.0";
-const APP_BUILD =
-  Constants.expoConfig?.ios?.buildNumber ??
-  Constants.expoConfig?.android?.versionCode?.toString();
+// Read from the installed binary. EAS assigns the build number at build time,
+// so it never appears in the app config.
+const APP_VERSION =
+  Application.nativeApplicationVersion ??
+  Constants.expoConfig?.version ??
+  "1.0.0";
+const APP_BUILD = Application.nativeBuildVersion;
+
+const MARKS = {
+  editAccount: [
+    require("@/assets/icons/marks/edit-account-ink.webp"),
+    require("@/assets/icons/marks/edit-account-paper.webp"),
+  ],
+  logout: [
+    require("@/assets/icons/marks/logout-ink.webp"),
+    require("@/assets/icons/marks/logout-paper.webp"),
+  ],
+  deleteAccount: [
+    require("@/assets/icons/marks/delete-account-ink.webp"),
+    require("@/assets/icons/marks/delete-account-paper.webp"),
+  ],
+} as const;
 
 interface SettingsRow {
   label: string;
   icon: React.ComponentProps<typeof SettingsItem>["icon"];
   onPress: () => void;
   color?: string;
-  tintOnPhoto?: boolean;
 }
 
 export default function SettingsScreen() {
@@ -53,7 +74,8 @@ export default function SettingsScreen() {
   // This screen sits above the photo context PhotoScreen creates, so it
   // reads the theme directly.
   const colorful = useColorfulTheme();
-  const S = surfaceFor(colorful);
+  const S = useSurfaceFor(colorful);
+  const palette = usePalette();
   const { logout, user } = useAuth();
   const { name: walletName, setName: setWalletName } = useWalletName();
   const [showEditWallet, setShowEditWallet] = useState(false);
@@ -61,7 +83,9 @@ export default function SettingsScreen() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notifications = useNotificationPreference();
   const { showToast } = useToast();
-  const { total: balanceTotal, totalDisplay: balanceDisplay } = useBalances();
+  const { tokens } = useBalances();
+  const { balance: earnBalance } = useEarnPosition();
+  const held = holdingsBeforeDelete(tokens, earnBalance);
 
   const accountAddress = user?.smart_account_address || user?.address;
 
@@ -70,9 +94,11 @@ export default function SettingsScreen() {
     await logout();
   };
 
-  // The photo's brighter red only on the photo; the stock red on white.
-  const deleteRed = colorful ? "#FF7A70" : "#F90101";
+  // The photo's brighter red only on the photo; the stock red off it.
+  const deleteRed = colorful ? "#FF7A70" : palette.destructive;
 
+  const onDark = colorful || palette.dark;
+  const mark = (name: keyof typeof MARKS) => MARKS[name][onDark ? 1 : 0];
   const sections: { title: string; data: SettingsRow[] }[] = [
     {
       title: "Security",
@@ -86,13 +112,13 @@ export default function SettingsScreen() {
           onPress: () => router.push("/settings/keys-and-recovery" as never),
         },
         {
-          label: "Spending Limits",
-          icon: require("@/assets/icons/spending-limt.png"),
+          label: "Quick pay",
+          icon: require("@/assets/icons/quick-pay.png"),
           onPress: () => router.push("/settings/spending-limits" as never),
         },
         {
           label: "Connected Merchants",
-          icon: require("@/assets/icons/card.png"),
+          icon: require("@/assets/icons/merchants.png"),
           onPress: () => router.push("/settings/connected-merchants" as never),
         },
       ],
@@ -102,19 +128,23 @@ export default function SettingsScreen() {
       data: [
         {
           label: "Edit Account",
-          icon: require("@/assets/icons/edit-wallet.png"),
-          tintOnPhoto: true,
+          icon: mark("editAccount"),
           onPress: () => setShowEditWallet(true),
         },
         {
           label: "Appearance",
-          icon: <Ionicons name="color-palette" size={24} color="#FF8A1F" />,
+          icon: require("@/assets/icons/appearance.png"),
           onPress: () => router.push("/settings/appearance" as never),
         },
         {
           label: "Notifications",
           icon: require("@/assets/icons/notification.png"),
           onPress: () => setNotificationsOpen(true),
+        },
+        {
+          label: "Naira limits",
+          icon: require("@/assets/icons/naira-limits.png"),
+          onPress: () => router.push("/naira-limits" as never),
         },
         {
           label: "Address book",
@@ -143,29 +173,25 @@ export default function SettingsScreen() {
         },
         {
           label: "Follow @pryddfinance",
-          icon: require("@/assets/icons/x.png"),
+          icon: (
+            <FontAwesome6 name="x-twitter" size={20} color={S.colors.ink} />
+          ),
           onPress: () => {
             Linking.openURL(PRYDD_TWITTER_URL);
           },
         },
         {
           label: "Logout",
-          icon: (
-            <Ionicons name="log-out-outline" size={22} color={S.colors.ink} />
-          ),
+          icon: mark("logout"),
           onPress: logout,
         },
         {
           label: "Delete Account",
-          // The photo's brighter destructive red; the stock #F90101 is too dark
-          // to read on the veil.
-          icon: (
-            <Ionicons
-              name="person-remove-outline"
-              size={22}
-              color={deleteRed}
-            />
-          ),
+          // The photo's brighter destructive red; the stock one is too dark to
+          // read on the veil.
+          icon: colorful
+            ? require("@/assets/icons/marks/delete-account-photo.webp")
+            : mark("deleteAccount"),
           onPress: () => setShowDeleteAccount(true),
           color: deleteRed,
         },
@@ -188,7 +214,7 @@ export default function SettingsScreen() {
                   "flex-row items-center justify-between p-4",
                   colorful
                     ? "rounded-[16px] border border-white/[0.18] bg-black/60"
-                    : "rounded-3xl bg-black"
+                    : "rounded-3xl bg-black dark:bg-card"
                 )}
                 activeOpacity={0.9}
                 accessibilityRole="button"
@@ -225,7 +251,6 @@ export default function SettingsScreen() {
                 icon={item.icon}
                 onPress={item.onPress}
                 color={item.color}
-                tintOnPhoto={item.tintOnPhoto}
               />
             );
             if (!colorful) return row;
@@ -251,7 +276,7 @@ export default function SettingsScreen() {
             <View className="mt-8 items-center">
               <Image
                 source={
-                  colorful
+                  colorful || palette.dark
                     ? require("@/assets/images/logo/prydd-mark-white-2048.png")
                     : require("@/assets/images/logo/prydd-mark-black-2048.png")
                 }
@@ -299,12 +324,15 @@ export default function SettingsScreen() {
         initialName={walletName}
         address={accountAddress ?? ""}
         onSave={setWalletName}
+        maxLength={ACCOUNT_NAME_MAX_LENGTH}
       />
       <DeleteAccountModal
         visible={showDeleteAccount}
         onClose={() => setShowDeleteAccount(false)}
-        balance={balanceTotal}
-        balanceDisplay={`$${balanceDisplay}`}
+        canDelete={!held.holdsAnything}
+        heldDisplay={
+          held.usd !== null && held.usd > 0 ? `$${formatMoney(held.usd)}` : null
+        }
         onDeleted={handleAccountDeleted}
       />
       <NotificationsModal

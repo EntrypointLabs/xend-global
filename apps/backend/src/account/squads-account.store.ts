@@ -93,5 +93,6 @@ function toRow(row: typeof squadsAccounts.$inferSelect): SquadsAccountRow {
     pendingSpendingLimitCreating: row.pendingSpendingLimitCreating,
     pendingSpendingLimitPeriod: row.pendingSpendingLimitPeriod,
     pendingSpendingLimitPrevious: row.pendingSpendingLimitPrevious,
+    pendingSwapAccessChangeIndex: row.pendingSwapAccessChangeIndex,
   };
 }

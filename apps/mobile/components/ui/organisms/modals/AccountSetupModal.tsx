@@ -3,7 +3,7 @@ import { View, ActivityIndicator, Modal, StyleSheet } from "react-native";
 import { Typography } from "@/components/ui/atoms/Typography";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
-import { useThemeColor } from "@/hooks/useThemeColor";
+import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 import type { AccountSetupStage } from "@/hooks/useAccountSetup";
 
@@ -34,7 +34,8 @@ export function AccountSetupModal({
   onRetry,
   onSkip,
 }: AccountSetupModalProps) {
-  const backgroundColor = useThemeColor({}, "background");
+  const palette = usePalette();
+  const backgroundColor = palette.card;
   const copy = STAGE_COPY[stage];
   const busy = stage !== "idle";
 
@@ -54,13 +55,16 @@ export function AccountSetupModal({
               </Typography>
             </View>
 
-            <Typography weight="600" className="mb-2 text-center text-xl">
+            <Typography
+              weight="600"
+              className="mb-2 text-center text-xl text-foreground"
+            >
               {copy.title}
             </Typography>
 
             <Typography
               weight="400"
-              className="mb-6 max-w-[260px] text-center text-sm leading-5 opacity-50"
+              className="mb-6 max-w-[260px] text-center text-sm leading-5 text-foreground opacity-50"
             >
               {copy.body}
             </Typography>
@@ -69,15 +73,18 @@ export function AccountSetupModal({
               <View className="w-full items-center">
                 <Typography
                   weight="400"
-                  className="mb-4 text-center text-sm text-[#FF4444]"
+                  className="mb-4 text-center text-sm text-[#FF4444] dark:text-destructive"
                 >
                   {error}
                 </Typography>
                 <HapticPressable
                   onPress={onRetry}
-                  className="w-full items-center justify-center rounded-full bg-black py-4"
+                  className="w-full items-center justify-center rounded-full bg-primary py-4"
                 >
-                  <Typography weight="600" className="text-base text-white">
+                  <Typography
+                    weight="600"
+                    className="text-base text-primary-foreground"
+                  >
                     Try Again
                   </Typography>
                 </HapticPressable>
@@ -87,14 +94,17 @@ export function AccountSetupModal({
                 onPress={onStart}
                 disabled={busy}
                 className={cn(
-                  "w-full items-center justify-center rounded-full bg-black py-4",
+                  "w-full items-center justify-center rounded-full bg-primary py-4",
                   busy && "opacity-50"
                 )}
               >
                 {busy ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color={palette.primaryForeground} />
                 ) : (
-                  <Typography weight="600" className="text-base text-white">
+                  <Typography
+                    weight="600"
+                    className="text-base text-primary-foreground"
+                  >
                     Secure my wallet
                   </Typography>
                 )}
@@ -110,7 +120,7 @@ export function AccountSetupModal({
               >
                 <Typography
                   weight="500"
-                  className="text-sm text-black opacity-60"
+                  className="text-sm text-foreground opacity-60"
                 >
                   {error ? "Continue anyway" : "Not now"}
                 </Typography>
@@ -132,7 +142,7 @@ export function AccountSetupModal({
 const STAGE_COPY: Record<AccountSetupStage, { title: string; body: string }> = {
   idle: {
     title: "Secure your Account",
-    body: "One quick step sets up your spending limit and approvals. You will be asked for your fingerprint once.",
+    body: "One quick step sets up Quick pay, so everyday payments need just one check. You will be asked for your fingerprint once.",
   },
   creating: {
     title: "Creating your Account",
@@ -140,7 +150,7 @@ const STAGE_COPY: Record<AccountSetupStage, { title: string; body: string }> = {
   },
   securing: {
     title: "Securing your Account",
-    body: "Setting your daily limit and approvals, so everyday payments go through with a single tap.",
+    body: "Setting up Quick pay, so everyday payments go through with a single check.",
   },
 };
 

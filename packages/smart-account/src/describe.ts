@@ -4,8 +4,11 @@ import {
   MessageV0,
   PublicKey,
   VersionedTransaction,
+  type AccountInfo,
+  type Connection,
 } from "@solana/web3.js";
 import {
+  accounts as squadsAccounts,
   generated,
   getPolicyPda,
   getProposalPda,
@@ -18,17 +21,29 @@ import type { LimitPeriod } from "./policy.js";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   COMPUTE_BUDGET_PROGRAM_ID,
+  JUPITER_PROGRAM_ID,
   SYSTEM_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
+  WRAPPED_SOL_MINT,
 } from "./programs.js";
 import { associatedTokenAddress } from "./spend.js";
+import {
+  JUPITER_ROUTE_ACCOUNTS,
+  minimumAmountOut,
+  readJupiterRouteTerms,
+  TOKEN_ACCOUNT_RENT_LAMPORTS,
+  type JupiterRouteTerms,
+} from "./swap.js";
 
 const PRIMARY_ACCOUNT_INDEX = 0;
 const NATIVE_MINT = PublicKey.default;
 
 const SYSTEM_TRANSFER = 2;
 const TOKEN_TRANSFER_CHECKED = 12;
+const TOKEN_APPROVE = 4;
+const TOKEN_CLOSE_ACCOUNT = 9;
+const TOKEN_SYNC_NATIVE = 17;
 const COMPUTE_BUDGET_HARMLESS = new Set([1, 2, 3, 4]);
 
 /**
@@ -41,6 +56,7 @@ const COMPUTE_BUDGET_HARMLESS = new Set([1, 2, 3, 4]);
  */
 export type TransactionDescription =
   | SpendDescription
+  | SwapDescription
   | SettingsChangeDescription
   | VoteDescription
   | TransferDescription
@@ -67,6 +83,41 @@ export interface SpendDescription {
   decimals: number | null;
   /** The message also opens the destination's associated token account. */
   opensDestinationTokenAccount: boolean;
+}
+
+/**
+ * One asset in the vault exchanged for another, through Jupiter.
+ *
+ * Nothing leaves the Account: both sides are the vault's own. What a signer
+ * has to hold it to is the pair, the amount paid, and the least it may
+ * receive, because the policy it executes under checks none of those.
+ *
+ * It arrives in one of two shapes and reads the same from either. The vault
+ * may call Jupiter itself, under a policy that admits it. Or the vault may
+ * lend one of its signers an allowance for exactly the amount being swapped,
+ * with Jupiter called beside it, which is how an Account whose policy has
+ * never admitted Jupiter swaps without a settings change.
+ */
+export interface SwapDescription {
+  kind: "swap";
+  vault: PublicKey;
+  consensus: PublicKey;
+  signers: PublicKey[];
+  inputMint: PublicKey | "SOL";
+  outputMint: PublicKey | "SOL";
+  /** In the input mint's smallest units. */
+  amountIn: bigint;
+  /** What the route was priced at, in the output mint's smallest units. */
+  quotedAmountOut: bigint;
+  slippageBps: number;
+  /** Jupiter fails the swap if the vault would receive less than this. */
+  minimumAmountOut: bigint;
+  /**
+   * True when the swap repays the fee payer the rent of the wrapped SOL
+   * account it closes. Never more than one token account's rent, and never to
+   * anyone but the fee payer.
+   */
+  refundsRent: boolean;
 }
 
 export interface SettingsChangeDescription {
@@ -133,6 +184,10 @@ export type SettingsChangeAction =
   | { kind: "policy-remove"; policy: PublicKey }
   | { kind: "other"; name: string };
 
+/**
+ * What a policy would hold. `expires` is true when the policy stops working
+ * at a set time: one that does takes every Spend made under it down with it.
+ */
 export type PolicyTerms =
   | {
       kind: "spending-limit";
@@ -144,6 +199,7 @@ export type PolicyTerms =
       signers: PublicKey[];
       threshold: number;
       timeLock: number;
+      expires: boolean;
     }
   | {
       kind: "program-interaction";
@@ -153,6 +209,7 @@ export type PolicyTerms =
       signers: PublicKey[];
       threshold: number;
       timeLock: number;
+      expires: boolean;
     }
   | {
       kind: "other";
@@ -160,6 +217,7 @@ export type PolicyTerms =
       signers: PublicKey[];
       threshold: number;
       timeLock: number;
+      expires: boolean;
     };
 
 export interface DescribeContext {
@@ -218,6 +276,9 @@ function describe(
     });
   }
 
+  const feePayer = keys.get(0);
+  if (!feePayer) return unknown("message has no fee payer");
+
   const decoded: Decoded[] = [];
   for (const ix of message.compiledInstructions) {
     const programId = keys.get(ix.programIdIndex);
@@ -234,11 +295,58 @@ function describe(
     decoded.push(result);
   }
 
-  return assemble(decoded, context);
+  return assemble(decoded, context, feePayer);
+}
+
+interface DecodedSwap {
+  kind: "swap";
+  swap: SwapDescription;
+  /** The mints as the route names them, where SOL is its wrapped mint. */
+  sourceMint: PublicKey;
+  destinationMint: PublicKey;
+  rentRefundTo: PublicKey | null;
+}
+
+/** A `shared_accounts_route`, held to everything that can be read off it. */
+interface ReadRoute {
+  /** Whoever moves the tokens: the vault, or a signer it lent an allowance. */
+  authority: PublicKey;
+  source: PublicKey;
+  destination: PublicKey;
+  sourceMint: PublicKey;
+  destinationMint: PublicKey;
+  terms: JupiterRouteTerms;
+  accounts: PublicKey[];
+}
+
+/** The vault lending a signer an allowance, wrapping SOL first if it pays in SOL. */
+interface DecodedSwapAllowance {
+  kind: "swap-allowance";
+  consensus: PublicKey;
+  signers: PublicKey[];
+  vault: PublicKey;
+  source: PublicKey;
+  tokenProgram: PublicKey;
+  delegate: PublicKey;
+  amount: bigint;
+  wrapsInput: boolean;
+}
+
+/** The vault closing its wrapped SOL account once a route has run beside it. */
+interface DecodedSwapTidy {
+  kind: "swap-tidy";
+  consensus: PublicKey;
+  signers: PublicKey[];
+  vault: PublicKey;
+  rentRefundTo: PublicKey | null;
 }
 
 type Decoded =
   | { kind: "spend"; spend: SpendDescription }
+  | DecodedSwap
+  | DecodedSwapAllowance
+  | { kind: "swap-route"; route: ReadRoute }
+  | DecodedSwapTidy
   | {
       kind: "propose";
       settings: PublicKey;
@@ -256,6 +364,8 @@ type Decoded =
   | { kind: "transfer"; transfer: TransferDescription }
   | {
       kind: "open-token-account";
+      /** Who pays the rent if the account does not exist yet. */
+      payer: PublicKey;
       ata: PublicKey;
       owner: PublicKey;
       mint: PublicKey;
@@ -278,6 +388,12 @@ function decodeInstruction(
   }
   if (programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)) {
     return decodeAssociatedToken(accounts, data);
+  }
+  if (programId.equals(JUPITER_PROGRAM_ID)) {
+    // Only ever acceptable beside an allowance from the vault, which is
+    // decided once the whole message has been read.
+    const route = readRoute(accounts, data);
+    return route.kind === "unknown" ? route : { kind: "swap-route", route };
   }
   if (programId.equals(COMPUTE_BUDGET_PROGRAM_ID)) {
     return COMPUTE_BUDGET_HARMLESS.has(data[0] ?? -1)
@@ -437,6 +553,17 @@ function decodeSyncSpend(accounts: PublicKey[], data: Buffer): Decoded {
     }
     const inner = parseInnerInstructions(Buffer.from(instructions), rest);
     if (inner.kind === "unknown") return inner;
+    if (
+      inner.instructions.some((ix) => ix.programId.equals(JUPITER_PROGRAM_ID))
+    ) {
+      return decodeSwap(consensus, signers, inner.instructions);
+    }
+    const aroundASwap = decodeAroundASwap(
+      consensus,
+      signers,
+      inner.instructions,
+    );
+    if (aroundASwap) return aroundASwap;
     if (inner.instructions.length !== 1) {
       return unknown(
         `above-limit spend wraps ${inner.instructions.length} instructions, not one transfer`,
@@ -474,20 +601,351 @@ function decodeSyncSpend(accounts: PublicKey[], data: Buffer): Decoded {
   return unknown(`spend under a ${payload.__kind} policy`);
 }
 
+interface InnerInstruction {
+  programId: PublicKey;
+  accounts: PublicKey[];
+  data: Buffer;
+}
+
+/**
+ * Reads a swap out of the instructions an above-limit Spend wraps.
+ *
+ * The policy admits any Jupiter instruction, so this is deliberately narrow:
+ * one `shared_accounts_route` between two of the vault's own token accounts,
+ * with SOL wrapped before it and unwrapped after it and nothing else. A route
+ * that does not fit is refused rather than read loosely, because a loose read
+ * here is the only thing a wrong swap would have to get past.
+ */
+function decodeSwap(
+  consensus: PublicKey,
+  signers: PublicKey[],
+  inner: InnerInstruction[],
+): Decoded {
+  const routeAt = inner.findIndex((ix) =>
+    ix.programId.equals(JUPITER_PROGRAM_ID),
+  );
+  const read = readRoute(inner[routeAt]!.accounts, inner[routeAt]!.data);
+  if (read.kind === "unknown") return read;
+  const { source, destination, sourceMint, destinationMint, terms } = read;
+  const vault = read.authority;
+  if (!isAssociatedTokenAccount(source, vault, sourceMint)) {
+    return unknown("swap does not draw on the vault's token account");
+  }
+  if (!isAssociatedTokenAccount(destination, vault, destinationMint)) {
+    return unknown("swap does not pay into the vault's token account");
+  }
+
+  const wrappedSol = associatedTokenAddress(
+    vault,
+    WRAPPED_SOL_MINT,
+    TOKEN_PROGRAM_ID,
+  );
+  const before = inner.slice(0, routeAt);
+  const after = inner.slice(routeAt + 1);
+
+  let wrapsInput = false;
+  if (before.length > 0) {
+    const [fund, sync, ...extra] = before;
+    const funded = fund && readSystemTransfer(fund);
+    if (
+      extra.length > 0 ||
+      !funded ||
+      !funded.from.equals(vault) ||
+      !funded.to.equals(wrappedSol) ||
+      funded.lamports !== terms.amountIn ||
+      !sync ||
+      !isTokenInstruction(sync, TOKEN_SYNC_NATIVE, [wrappedSol]) ||
+      !source.equals(wrappedSol)
+    ) {
+      return unknown("swap is preceded by something other than wrapping SOL");
+    }
+    wrapsInput = true;
+  }
+
+  let closesWrappedSol = false;
+  let rentRefundTo: PublicKey | null = null;
+  const [first, second, ...extra] = after;
+  if (extra.length > 0) {
+    return unknown("swap is followed by more than unwrapping SOL");
+  }
+  if (first) {
+    if (
+      !isTokenInstruction(first, TOKEN_CLOSE_ACCOUNT, [
+        wrappedSol,
+        vault,
+        vault,
+      ])
+    ) {
+      return unknown("swap is followed by something other than unwrapping SOL");
+    }
+    closesWrappedSol = true;
+  }
+  if (second) {
+    const refund = readSystemTransfer(second);
+    if (
+      !refund ||
+      !refund.from.equals(vault) ||
+      refund.to.equals(vault) ||
+      refund.lamports !== TOKEN_ACCOUNT_RENT_LAMPORTS
+    ) {
+      return unknown(
+        "swap is followed by a transfer that is not a rent refund",
+      );
+    }
+    rentRefundTo = refund.to;
+  }
+
+  const unwrapsOutput =
+    closesWrappedSol && destination.equals(wrappedSol) && !wrapsInput;
+  if (wrapsInput !== (closesWrappedSol && !unwrapsOutput)) {
+    return unknown(
+      "swap wraps SOL without unwrapping what is left, or the reverse",
+    );
+  }
+
+  return {
+    kind: "swap",
+    sourceMint,
+    destinationMint,
+    rentRefundTo,
+    swap: {
+      kind: "swap",
+      vault,
+      consensus,
+      signers,
+      inputMint: wrapsInput ? "SOL" : sourceMint,
+      outputMint: unwrapsOutput ? "SOL" : destinationMint,
+      amountIn: terms.amountIn,
+      quotedAmountOut: terms.quotedAmountOut,
+      slippageBps: terms.slippageBps,
+      minimumAmountOut: minimumAmountOut(
+        terms.quotedAmountOut,
+        terms.slippageBps,
+      ),
+      refundsRent: rentRefundTo !== null,
+    },
+  };
+}
+
+/**
+ * Reads a `shared_accounts_route` and refuses one this signer cannot hold to
+ * its terms, whoever its transfer authority turns out to be.
+ */
+function readRoute(
+  accounts: PublicKey[],
+  data: Buffer,
+): ({ kind: "route" } & ReadRoute) | UnknownDescription {
+  const terms = readJupiterRouteTerms(data);
+  if (!terms) {
+    return unknown(
+      "swap through a Jupiter instruction this signer cannot read",
+    );
+  }
+  const at = JUPITER_ROUTE_ACCOUNTS;
+  if (accounts.length < at.fixedLength) {
+    return unknown("malformed swap route");
+  }
+  const authority = accounts[at.transferAuthority]!;
+  const sourceMint = accounts[at.sourceMint]!;
+  const destinationMint = accounts[at.destinationMint]!;
+
+  if (!accounts[at.program]!.equals(JUPITER_PROGRAM_ID)) {
+    return unknown("malformed swap route");
+  }
+  // Jupiter passes its own program id where an optional account is absent.
+  if (
+    terms.platformFeeBps !== 0 ||
+    !accounts[at.platformFee]!.equals(JUPITER_PROGRAM_ID)
+  ) {
+    return unknown("swap pays a fee to a third party");
+  }
+  if (sourceMint.equals(destinationMint)) {
+    return unknown("swap of an asset for itself");
+  }
+  // Each hop is handed a slice of the accounts after the fixed ones. The
+  // authority's signature travels with it into any hop that names it, so a
+  // route that did could spend from a token account that is no part of this
+  // swap.
+  if (
+    accounts.some(
+      (account, i) => account.equals(authority) && i !== at.transferAuthority,
+    )
+  ) {
+    return unknown("swap route hands the vault's signature to a venue");
+  }
+  return {
+    kind: "route",
+    authority,
+    source: accounts[at.source]!,
+    destination: accounts[at.destination]!,
+    sourceMint,
+    destinationMint,
+    terms,
+    accounts,
+  };
+}
+
+/**
+ * Reads the two things the vault does around a route that runs beside it:
+ * lending the allowance before, and closing its wrapped SOL account after.
+ * Null when the instructions are neither, so the caller reads them as an
+ * ordinary Spend.
+ *
+ * Each is held to one exact shape. An allowance is the dangerous instruction
+ * here: it hands a single signer authority over the vault's tokens, so it is
+ * only ever read as part of a swap, and the swap it belongs to is checked
+ * against it once the whole message is known.
+ */
+function decodeAroundASwap(
+  consensus: PublicKey,
+  signers: PublicKey[],
+  inner: InnerInstruction[],
+): Decoded | null {
+  const last = inner[inner.length - 1];
+  if (last && isApproveShaped(last)) {
+    const [source, delegate, vault] = last.accounts as [
+      PublicKey,
+      PublicKey,
+      PublicKey,
+    ];
+    const amount = last.data.readBigUInt64LE(1);
+    const before = inner.slice(0, -1);
+    let wrapsInput = false;
+    if (before.length > 0) {
+      const wrappedSol = associatedTokenAddress(
+        vault,
+        WRAPPED_SOL_MINT,
+        TOKEN_PROGRAM_ID,
+      );
+      const [fund, sync, ...extra] = before;
+      const funded = fund && readSystemTransfer(fund);
+      if (
+        extra.length > 0 ||
+        !funded ||
+        !funded.from.equals(vault) ||
+        !funded.to.equals(wrappedSol) ||
+        funded.lamports !== amount ||
+        !sync ||
+        !isTokenInstruction(sync, TOKEN_SYNC_NATIVE, [wrappedSol]) ||
+        !source.equals(wrappedSol) ||
+        !last.programId.equals(TOKEN_PROGRAM_ID)
+      ) {
+        return unknown(
+          "an allowance is preceded by something other than wrapping SOL",
+        );
+      }
+      wrapsInput = true;
+    }
+    return {
+      kind: "swap-allowance",
+      consensus,
+      signers,
+      vault,
+      source,
+      tokenProgram: last.programId,
+      delegate,
+      amount,
+      wrapsInput,
+    };
+  }
+
+  const [first, second, ...extra] = inner;
+  if (
+    first &&
+    first.programId.equals(TOKEN_PROGRAM_ID) &&
+    first.data.length === 1 &&
+    first.data[0] === TOKEN_CLOSE_ACCOUNT
+  ) {
+    const vault = first.accounts[2];
+    if (
+      extra.length > 0 ||
+      first.accounts.length !== 3 ||
+      !vault ||
+      !first.accounts[1]!.equals(vault) ||
+      !first.accounts[0]!.equals(
+        associatedTokenAddress(vault, WRAPPED_SOL_MINT, TOKEN_PROGRAM_ID),
+      )
+    ) {
+      return unknown(
+        "closes something other than the vault's wrapped SOL account",
+      );
+    }
+    let rentRefundTo: PublicKey | null = null;
+    if (second) {
+      const refund = readSystemTransfer(second);
+      if (
+        !refund ||
+        !refund.from.equals(vault) ||
+        refund.to.equals(vault) ||
+        refund.lamports !== TOKEN_ACCOUNT_RENT_LAMPORTS
+      ) {
+        return unknown(
+          "swap is followed by a transfer that is not a rent refund",
+        );
+      }
+      rentRefundTo = refund.to;
+    }
+    return { kind: "swap-tidy", consensus, signers, vault, rentRefundTo };
+  }
+  return null;
+}
+
+function isApproveShaped(ix: InnerInstruction): boolean {
+  return (
+    (ix.programId.equals(TOKEN_PROGRAM_ID) ||
+      ix.programId.equals(TOKEN_2022_PROGRAM_ID)) &&
+    ix.data.length === 9 &&
+    ix.data[0] === TOKEN_APPROVE &&
+    ix.accounts.length === 3
+  );
+}
+
+function isAssociatedTokenAccount(
+  account: PublicKey,
+  owner: PublicKey,
+  mint: PublicKey,
+): boolean {
+  return [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].some((tokenProgram) =>
+    account.equals(associatedTokenAddress(owner, mint, tokenProgram)),
+  );
+}
+
+function readSystemTransfer(
+  ix: InnerInstruction,
+): { from: PublicKey; to: PublicKey; lamports: bigint } | null {
+  const [from, to] = ix.accounts;
+  if (
+    !ix.programId.equals(SYSTEM_PROGRAM_ID) ||
+    ix.data.length !== 12 ||
+    ix.data.readUInt32LE(0) !== SYSTEM_TRANSFER ||
+    ix.accounts.length !== 2 ||
+    !from ||
+    !to
+  ) {
+    return null;
+  }
+  return { from, to, lamports: ix.data.readBigUInt64LE(4) };
+}
+
+function isTokenInstruction(
+  ix: InnerInstruction,
+  tag: number,
+  accounts: PublicKey[],
+): boolean {
+  return (
+    ix.programId.equals(TOKEN_PROGRAM_ID) &&
+    ix.data.length === 1 &&
+    ix.data[0] === tag &&
+    ix.accounts.length === accounts.length &&
+    accounts.every((account, i) => account.equals(ix.accounts[i]!))
+  );
+}
+
 /** The wire form `instructionsToSynchronousTransactionDetails` writes. */
 function parseInnerInstructions(
   bytes: Buffer,
   accounts: PublicKey[],
-):
-  | {
-      kind: "ok";
-      instructions: {
-        programId: PublicKey;
-        accounts: PublicKey[];
-        data: Buffer;
-      }[];
-    }
-  | UnknownDescription {
+): { kind: "ok"; instructions: InnerInstruction[] } | UnknownDescription {
   let offset = 0;
   const count = bytes[offset++];
   if (count === undefined) return unknown("empty inner instruction list");
@@ -520,7 +978,9 @@ function parseInnerInstructions(
     instructions.push({
       programId,
       accounts: ixAccounts,
-      data: bytes.subarray(offset, offset + dataLength),
+      // Copied into a Buffer of its own: on a phone a bare slice is a plain
+      // byte array, and what reads this next uses Buffer's readers.
+      data: Buffer.from(bytes.subarray(offset, offset + dataLength)),
     });
     offset += dataLength;
   }
@@ -576,26 +1036,64 @@ function decodeAssociatedToken(accounts: PublicKey[], data: Buffer): Decoded {
     data.length === 0 ||
     (data.length === 1 && (data[0] === 0 || data[0] === 1));
   if (!create) return unknown("Associated Token instruction other than create");
-  const [, ata, owner, mint, , tokenProgram] = accounts;
-  if (!ata || !owner || !mint || !tokenProgram) {
+  const [payer, ata, owner, mint, , tokenProgram] = accounts;
+  if (!payer || !ata || !owner || !mint || !tokenProgram) {
     return unknown("malformed associated token account creation");
   }
   if (!ata.equals(associatedTokenAddress(owner, mint, tokenProgram))) {
     return unknown("associated token account does not derive from its owner");
   }
-  return { kind: "open-token-account", ata, owner, mint };
+  return { kind: "open-token-account", payer, ata, owner, mint };
 }
 
 function assemble(
   decoded: Decoded[],
   context: DescribeContext,
+  feePayer: PublicKey,
 ): TransactionDescription {
   const spends = decoded.filter((d) => d.kind === "spend");
+  const swaps = decoded.filter((d) => d.kind === "swap");
   const proposes = decoded.filter((d) => d.kind === "propose");
   const proposals = decoded.filter((d) => d.kind === "create-proposal");
   const votes = decoded.filter((d) => d.kind === "vote");
   const transfers = decoded.filter((d) => d.kind === "transfer");
   const opens = decoded.filter((d) => d.kind === "open-token-account");
+
+  const aroundASwap = decoded.filter(
+    (d) =>
+      d.kind === "swap-allowance" ||
+      d.kind === "swap-route" ||
+      d.kind === "swap-tidy",
+  );
+  if (aroundASwap.length > 0) {
+    if (
+      swaps.length ||
+      spends.length ||
+      proposes.length ||
+      proposals.length ||
+      votes.length ||
+      transfers.length
+    ) {
+      return unknown("a swap travelling with something else");
+    }
+    const swap = joinAllowanceSwap(aroundASwap);
+    if (swap.kind === "unknown") return swap;
+    return assembleSwap(swap, opens, context, feePayer);
+  }
+
+  if (swaps.length > 0) {
+    if (
+      swaps.length > 1 ||
+      spends.length ||
+      proposes.length ||
+      proposals.length ||
+      votes.length ||
+      transfers.length
+    ) {
+      return unknown("a swap travelling with something else");
+    }
+    return assembleSwap(swaps[0]!, opens, context, feePayer);
+  }
 
   if (proposes.length > 0) {
     if (spends.length || transfers.length || opens.length) {
@@ -650,6 +1148,157 @@ function assemble(
       ? "more than one transfer"
       : "nothing this signer recognises",
   );
+}
+
+/**
+ * Reads an allowance, a route and a tidy-up as the one swap they have to be.
+ *
+ * Nothing on chain ties the three together, so everything that makes them a
+ * swap and not an allowance handed to a stranger is checked here: the
+ * allowance goes to a key that is signing, it covers the route's source and
+ * exactly the amount the route draws, and that same key and no other is the
+ * route's authority. In that order, with nothing between.
+ */
+function joinAllowanceSwap(parts: Decoded[]): DecodedSwap | UnknownDescription {
+  const [allowance, routed, tidy, ...extra] = parts;
+  if (
+    extra.length > 0 ||
+    allowance?.kind !== "swap-allowance" ||
+    routed?.kind !== "swap-route" ||
+    (tidy !== undefined && tidy.kind !== "swap-tidy")
+  ) {
+    return unknown(
+      "an allowance, a swap route or an unwrap outside the one order a swap takes",
+    );
+  }
+  const { route } = routed;
+  const { vault, delegate } = allowance;
+
+  if (delegate.equals(vault)) {
+    return unknown("the vault lends an allowance to itself");
+  }
+  if (!allowance.signers.some((signer) => signer.equals(delegate))) {
+    return unknown("an allowance goes to a key that is not signing the swap");
+  }
+  if (!route.authority.equals(delegate)) {
+    return unknown("the swap route is not run by the key the vault allowed");
+  }
+  if (route.accounts.some((account) => account.equals(vault))) {
+    return unknown("swap route names the vault among its accounts");
+  }
+  if (
+    !allowance.source.equals(
+      associatedTokenAddress(vault, route.sourceMint, allowance.tokenProgram),
+    ) ||
+    !route.source.equals(allowance.source)
+  ) {
+    return unknown("swap does not draw on the vault's token account");
+  }
+  if (
+    !isAssociatedTokenAccount(route.destination, vault, route.destinationMint)
+  ) {
+    return unknown("swap does not pay into the vault's token account");
+  }
+  if (allowance.amount !== route.terms.amountIn) {
+    return unknown("the allowance is not the amount the swap pays");
+  }
+  if (tidy) {
+    const sameSigners =
+      tidy.signers.length === allowance.signers.length &&
+      tidy.signers.every((signer, i) => signer.equals(allowance.signers[i]!));
+    if (
+      !tidy.vault.equals(vault) ||
+      !tidy.consensus.equals(allowance.consensus) ||
+      !sameSigners
+    ) {
+      return unknown("the swap is tidied up by a different account");
+    }
+  }
+
+  const wrappedSol = associatedTokenAddress(
+    vault,
+    WRAPPED_SOL_MINT,
+    TOKEN_PROGRAM_ID,
+  );
+  const closesWrappedSol = tidy !== undefined;
+  const { wrapsInput } = allowance;
+  const unwrapsOutput =
+    closesWrappedSol && route.destination.equals(wrappedSol) && !wrapsInput;
+  if (wrapsInput !== (closesWrappedSol && !unwrapsOutput)) {
+    return unknown(
+      "swap wraps SOL without unwrapping what is left, or the reverse",
+    );
+  }
+  const rentRefundTo = tidy?.rentRefundTo ?? null;
+
+  return {
+    kind: "swap",
+    sourceMint: route.sourceMint,
+    destinationMint: route.destinationMint,
+    rentRefundTo,
+    swap: {
+      kind: "swap",
+      vault,
+      consensus: allowance.consensus,
+      signers: allowance.signers,
+      inputMint: wrapsInput ? "SOL" : route.sourceMint,
+      outputMint: unwrapsOutput ? "SOL" : route.destinationMint,
+      amountIn: route.terms.amountIn,
+      quotedAmountOut: route.terms.quotedAmountOut,
+      slippageBps: route.terms.slippageBps,
+      minimumAmountOut: minimumAmountOut(
+        route.terms.quotedAmountOut,
+        route.terms.slippageBps,
+      ),
+      refundsRent: rentRefundTo !== null,
+    },
+  };
+}
+
+/**
+ * A swap may open the vault's own account for either side of the pair, and
+ * nothing else: an account opened for anyone but the vault is rent spent on a
+ * stranger, and one for a third mint has no part in the swap.
+ */
+function assembleSwap(
+  decoded: DecodedSwap,
+  opens: Extract<Decoded, { kind: "open-token-account" }>[],
+  context: DescribeContext,
+  feePayer: PublicKey,
+): TransactionDescription {
+  const { swap } = decoded;
+  if (!swap.vault.equals(context.addresses.vault)) {
+    return unknown("the swap spends from an account other than this one");
+  }
+  if (opens.length > 2) return unknown("opens more than a swap's two accounts");
+  for (const open of opens) {
+    const ofThePair =
+      open.mint.equals(decoded.sourceMint) ||
+      open.mint.equals(decoded.destinationMint);
+    if (!open.owner.equals(swap.vault) || !ofThePair) {
+      return unknown("opens a token account the swap does not use");
+    }
+  }
+  if (decoded.rentRefundTo) {
+    if (!decoded.rentRefundTo.equals(feePayer)) {
+      return unknown(
+        "the swap refunds rent to someone other than the fee payer",
+      );
+    }
+    // A refund is only owed for rent the fee payer puts up here. Without the
+    // opening instruction the wrapped SOL account was already the vault's,
+    // rent included, and the refund would be the vault's own money leaving.
+    // Whether the account already exists cannot be read from a message, so
+    // whoever signs still has to check that against the chain.
+    const fronted = opens.some(
+      (open) =>
+        open.mint.equals(WRAPPED_SOL_MINT) && open.payer.equals(feePayer),
+    );
+    if (!fronted) {
+      return unknown("the swap refunds rent the fee payer did not put up");
+    }
+  }
+  return swap;
 }
 
 /**
@@ -805,6 +1454,68 @@ function assertOwned(
   return null;
 }
 
+/** A settings change as the chain holds it while it waits to be executed. */
+export interface StagedSettingsChange {
+  settings: PublicKey;
+  proposal: PublicKey;
+  transactionIndex: bigint;
+  actions: SettingsChangeAction[];
+}
+
+/**
+ * Reads the change a proposal stands for, or null when there is none to read.
+ *
+ * An approval or an execute names a proposal and nothing about what it does,
+ * so a signer shown only that instruction is approving blind. This is what
+ * lets it look. Both accounts are found by address derivation from the
+ * Account's own settings, so what comes back is what the program will act on
+ * and not something another party could put in its place.
+ */
+export async function fetchStagedSettingsChange(
+  connection: Connection,
+  settings: PublicKey,
+  proposal: PublicKey,
+): Promise<StagedSettingsChange | null> {
+  const proposalInfo = await connection.getAccountInfo(proposal);
+  if (!isSquadsAccount(proposalInfo, squadsAccounts.proposalDiscriminator)) {
+    return null;
+  }
+  const [held] = squadsAccounts.Proposal.fromAccountInfo(proposalInfo);
+  const transactionIndex = toBigInt(held.transactionIndex);
+  const derived = getProposalPda({
+    settingsPda: settings,
+    transactionIndex,
+  })[0];
+  if (!derived.equals(proposal)) return null;
+
+  const [transaction] = getTransactionPda({
+    settingsPda: settings,
+    transactionIndex,
+  });
+  const info = await connection.getAccountInfo(transaction);
+  if (!isSquadsAccount(info, squadsAccounts.settingsTransactionDiscriminator)) {
+    return null;
+  }
+  const [change] = squadsAccounts.SettingsTransaction.fromAccountInfo(info);
+  return {
+    settings,
+    proposal,
+    transactionIndex,
+    actions: change.actions.map((action) => describeAction(action, settings)),
+  };
+}
+
+function isSquadsAccount(
+  info: AccountInfo<Buffer> | null,
+  discriminator: readonly number[],
+): info is AccountInfo<Buffer> {
+  return (
+    info !== null &&
+    info.owner.equals(PROGRAM_ID) &&
+    discriminator.every((byte, i) => info.data[i] === byte)
+  );
+}
+
 function describeAction(
   action: generated.SettingsAction,
   settings: PublicKey,
@@ -858,6 +1569,7 @@ function describeTerms(
     signers: generated.SmartAccountSigner[];
     threshold: number;
     timeLock: number;
+    expirationArgs?: unknown;
   },
 ): PolicyTerms {
   const signers = policy.signers.map((s) => s.key);
@@ -865,6 +1577,8 @@ function describeTerms(
     signers,
     threshold: policy.threshold,
     timeLock: policy.timeLock,
+    expires:
+      policy.expirationArgs !== null && policy.expirationArgs !== undefined,
   };
   if (payload.__kind === "SpendingLimit") {
     const [limit] = payload.fields;

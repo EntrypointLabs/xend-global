@@ -11,12 +11,14 @@
  * stay server-side, so adding a fee later means moving this behind the backend.
  */
 
+import { formatRawAmount, WRAPPED_SOL_MINT } from "@/utils/swap";
+
+export { formatRawAmount, WRAPPED_SOL_MINT };
+
 const QUOTE_ENDPOINT = "https://public-backend.socket.tech/v3/swap/quote";
 
 /** Socket's identifier for Solana. Not the 7565164 other bridges use. */
 export const SOLANA_CHAIN_ID = 89999;
-
-export const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
 
 /** Seconds of headroom before `expiresAt`, so a quote cannot die mid-signature. */
 const EXPIRY_BUFFER_SECONDS = 10;
@@ -173,18 +175,4 @@ function readTxKind(kind: unknown): SwapTxKind | null {
 export function isQuoteExpired(quote: SwapQuote, nowMs: number): boolean {
   if (!quote.expiresAt) return false;
   return quote.expiresAt - EXPIRY_BUFFER_SECONDS <= Math.floor(nowMs / 1000);
-}
-
-/** Raw integer string to display units, without going through a float. */
-export function formatRawAmount(raw: string, decimals: number): string {
-  const negative = raw.startsWith("-");
-  const digits = (negative ? raw.slice(1) : raw).padStart(decimals + 1, "0");
-  const whole = digits
-    .slice(0, digits.length - decimals)
-    .replace(/^0+(?=\d)/, "");
-  const fraction = digits.slice(digits.length - decimals).replace(/0+$/, "");
-  // Grouped by string surgery. toLocaleString would route through a float and
-  // silently round token amounts past 2^53.
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${negative ? "-" : ""}${grouped}${fraction ? `.${fraction}` : ""}`;
 }

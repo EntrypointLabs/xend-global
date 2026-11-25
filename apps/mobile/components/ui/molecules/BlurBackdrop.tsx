@@ -8,6 +8,7 @@ import Animated, {
 } from "react-native-reanimated";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
+import { SHEET_LAYER } from "@/hooks/useSheetStack";
 
 /**
  * A gorhom bottom-sheet backdrop with the same frosted blur as the modals.
@@ -20,7 +21,14 @@ import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 export function BlurBackdrop({
   animatedIndex,
   style,
-}: BottomSheetBackdropProps) {
+  stacked = false,
+}: BottomSheetBackdropProps & {
+  /**
+   * Over another sheet, which is already frosted behind. A second frost
+   * would darken everything twice; a light wash only sets the lower sheet back.
+   */
+  stacked?: boolean;
+}) {
   const { close } = useBottomSheet();
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -33,10 +41,17 @@ export function BlurBackdrop({
   }));
 
   return (
-    <Animated.View style={[style, animatedStyle]}>
-      <FrostBlurView style={StyleSheet.absoluteFill}>
-        <HapticPressable className="flex-1" onPress={() => close()} />
-      </FrostBlurView>
+    <Animated.View style={[style, stacked && SHEET_LAYER.wash, animatedStyle]}>
+      {stacked ? (
+        <HapticPressable
+          className="flex-1 bg-black/[0.06]"
+          onPress={() => close()}
+        />
+      ) : (
+        <FrostBlurView style={StyleSheet.absoluteFill}>
+          <HapticPressable className="flex-1" onPress={() => close()} />
+        </FrostBlurView>
+      )}
     </Animated.View>
   );
 }

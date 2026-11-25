@@ -1,3 +1,5 @@
+import type { SwapTokenCategory, SwapTokenListing } from "@/utils/swap";
+import { WRAPPED_SOL_MINT } from "@/utils/swap";
 import type {
   AccountResponse,
   ProvisioningStep,
@@ -47,6 +49,11 @@ export const SEED_USER = {
 function usdcMint(): string {
   return getUsdcMint();
 }
+
+const siteIcon = (domain: string) =>
+  `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+
+const MISSING_LOGO = "https://prydd.co/__seed__/no-such-logo.png";
 
 const hoursAgo = (h: number) =>
   new Date(Date.now() - h * 3_600_000).toISOString();
@@ -192,6 +199,54 @@ export function seedTransfers(): TransferListResponse {
           confirmedAt: hoursAgo(0.2),
         },
         {
+          id: "t-ramp-refund",
+          direction: "RECEIVE",
+          mint,
+          amountRaw: "1187458",
+          fromAddress: "Mp6SdLdTHkpomAPp61jCd4NBusdT7XW1Epo2rzGwhK8",
+          toAddress: WALLET,
+          status: "CONFIRMED",
+          signature: sig("r6"),
+          memo: null,
+          kind: "transfer",
+          merchantName: null,
+          ramp: { ...demoRampActivity.moniepointSend, refund: true },
+          createdAt: hoursAgo(0.1),
+          confirmedAt: hoursAgo(0.1),
+        },
+        {
+          id: "t-ramp-legacy",
+          direction: "SEND",
+          mint,
+          amountRaw: "1398601",
+          fromAddress: WALLET,
+          toAddress: "Leg3kQe7VbN2mXc9pLs4dRw6TzYu8oJi1gHa5Kf8Ab3",
+          status: "CONFIRMED",
+          signature: sig("r4"),
+          memo: null,
+          kind: "transfer",
+          merchantName: null,
+          ramp: demoRampActivity.legacySend,
+          createdAt: hoursAgo(1),
+          confirmedAt: hoursAgo(1),
+        },
+        {
+          id: "t-ramp-moniepoint",
+          direction: "SEND",
+          mint,
+          amountRaw: "1210226",
+          fromAddress: WALLET,
+          toAddress: "Mp6SdLdTHkpomAPp61jCd4NBusdT7XW1Epo2rzGwhK8",
+          status: "CONFIRMED",
+          signature: sig("r7"),
+          memo: null,
+          kind: "transfer",
+          merchantName: null,
+          ramp: demoRampActivity.moniepointSend,
+          createdAt: hoursAgo(2),
+          confirmedAt: hoursAgo(2),
+        },
+        {
           id: "t-ramp-gtb",
           direction: "SEND",
           mint,
@@ -206,6 +261,24 @@ export function seedTransfers(): TransferListResponse {
           ramp: demoRampActivity.gtbSend,
           createdAt: hoursAgo(3),
           confirmedAt: hoursAgo(3),
+        },
+        {
+          id: "t-00",
+          direction: "SEND",
+          mint,
+          amountRaw: "8000000",
+          fromAddress: WALLET,
+          toAddress: other,
+          status: "CONFIRMED",
+          signature: sig("p0"),
+          memo: null,
+          kind: "payment",
+          merchantName: "Prydd Shop",
+          // Answers 404, the way a Merchant with no logo and no site icon does.
+          merchantLogoUrl: MISSING_LOGO,
+          merchantCategory: "shopping",
+          createdAt: hoursAgo(1),
+          confirmedAt: hoursAgo(1),
         },
         {
           id: "t-01",
@@ -234,6 +307,8 @@ export function seedTransfers(): TransferListResponse {
           memo: null,
           kind: "payment",
           merchantName: "Blue Bottle Coffee",
+          merchantLogoUrl: siteIcon("bluebottlecoffee.com"),
+          merchantCategory: "food_drink",
           createdAt: hoursAgo(6),
           confirmedAt: hoursAgo(6),
         },
@@ -279,6 +354,8 @@ export function seedTransfers(): TransferListResponse {
           memo: null,
           kind: "payment",
           merchantName: "Whole Foods Market",
+          merchantLogoUrl: null,
+          merchantCategory: "groceries",
           createdAt: hoursAgo(74),
           confirmedAt: hoursAgo(74),
         },
@@ -324,20 +401,125 @@ export function seedTransfers(): TransferListResponse {
           memo: null,
           kind: "payment",
           merchantName: "Uber",
+          merchantLogoUrl: siteIcon("uber.com"),
+          merchantCategory: "transport",
           createdAt: hoursAgo(146),
           confirmedAt: hoursAgo(146),
         },
       ] satisfies TransferListResponse["transfers"]
-    ).map(withFrozenValue),
+    )
+      .map((row): TransferListResponse["transfers"][number] =>
+        withFrozenValue(row)
+      )
+      .concat(seedSwaps(mint, sig)),
   };
+}
+
+const USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+
+/**
+ * Two swaps, shaped as the chain reports them. The first has its paid side
+ * twice and its received side missing, as real swaps from an Account have
+ * arrived; the second has both sides.
+ */
+function seedSwaps(
+  usdc: string,
+  sig: (s: string) => string
+): TransferListResponse["transfers"] {
+  const venue = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+  const side = (mint: string, amountRaw: string, decimals: number) => ({
+    mint,
+    amountRaw,
+    decimals,
+    tokenName: null as string | null,
+    tokenSymbol: null as string | null,
+    tokenIconUrl: null as string | null,
+  });
+  const solSwap = {
+    pay: side(usdc, "1000000", 6),
+    receive: side(WRAPPED_SOL_MINT, "6342817", 9),
+    venues: ["AlphaQ", "SolFi V2", "HumidiFi", "AlphaQ"],
+  };
+  const usdtSwap = {
+    pay: {
+      ...side(USDT_MINT, "4995400", 6),
+      tokenName: "USDT",
+      tokenSymbol: "USDT",
+    },
+    receive: side(usdc, "4989400", 6),
+    venues: ["AlphaQ"],
+  };
+  const leg = (
+    id: string,
+    signature: string,
+    direction: "SEND" | "RECEIVE",
+    mint: string,
+    amountRaw: string,
+    decimals: number,
+    swapDetails: typeof solSwap,
+    at: number
+  ) => ({
+    id,
+    direction,
+    mint,
+    amountRaw,
+    decimals,
+    fromAddress: direction === "SEND" ? WALLET : venue,
+    toAddress: direction === "SEND" ? venue : WALLET,
+    status: "CONFIRMED" as const,
+    signature,
+    memo: null,
+    kind: "transfer" as const,
+    merchantName: null,
+    swap: true,
+    swapDetails,
+    usdValue: null,
+    createdAt: hoursAgo(at),
+    confirmedAt: hoursAgo(at),
+  });
+  return [
+    leg("t-swap-sol-a", sig("s1"), "SEND", usdc, "1000000", 6, solSwap, 0.1),
+    leg("t-swap-sol-b", sig("s1"), "SEND", usdc, "1000000", 6, solSwap, 0.1),
+    leg(
+      "t-swap-usdt-pay",
+      sig("s2"),
+      "SEND",
+      USDT_MINT,
+      "4995400",
+      6,
+      usdtSwap,
+      0.3
+    ),
+    leg(
+      "t-swap-usdt-get",
+      sig("s2"),
+      "RECEIVE",
+      usdc,
+      "4989400",
+      6,
+      usdtSwap,
+      0.3
+    ),
+  ];
 }
 
 export function seedSessions(): ListSessionsResponse {
   return {
     sessions: [
       {
+        id: "s-00",
+        merchantDisplayName: "Prydd Shop",
+        merchantLogoUrl: MISSING_LOGO,
+        merchantCategory: "shopping",
+        createdAt: hoursAgo(48),
+        lastUsedAt: hoursAgo(1),
+        expiresAt: hoursAgo(-660),
+      },
+      {
         id: "s-01",
         merchantDisplayName: "Blue Bottle Coffee",
+        merchantLogoUrl: siteIcon("bluebottlecoffee.com"),
+        merchantCategory: "food_drink",
         createdAt: hoursAgo(240),
         lastUsedAt: hoursAgo(6),
         expiresAt: hoursAgo(-480),
@@ -345,6 +527,8 @@ export function seedSessions(): ListSessionsResponse {
       {
         id: "s-02",
         merchantDisplayName: "Whole Foods Market",
+        merchantLogoUrl: null,
+        merchantCategory: "groceries",
         createdAt: hoursAgo(400),
         lastUsedAt: hoursAgo(74),
         expiresAt: hoursAgo(-320),
@@ -352,6 +536,8 @@ export function seedSessions(): ListSessionsResponse {
       {
         id: "s-03",
         merchantDisplayName: "Spotify",
+        merchantLogoUrl: siteIcon("spotify.com"),
+        merchantCategory: "entertainment",
         createdAt: hoursAgo(720),
         lastUsedAt: hoursAgo(30),
         expiresAt: hoursAgo(-600),
@@ -465,6 +651,7 @@ export function seedPendingChange(): StagedChange | null {
     approvals: [],
     executableAt: new Date(Date.now() + 23.5 * 3600 * 1000).toISOString(),
     selfInitiated: state === "self",
+    kind: state === "self" ? "recovery_key" : null,
   };
 }
 
@@ -501,4 +688,144 @@ export function seedAccount(): AccountResponse {
  */
 export function seedProvisioningStep(): ProvisioningStep {
   return { done: true, needsApprovalSignature: false };
+}
+
+const ICONS = "https://static.datapi.jup.ag/token-icons";
+
+/** A few of the assets Swap offers, enough to show every shelf populated. */
+export function seedSwapTokens(
+  query: string,
+  category: SwapTokenCategory | null
+): SwapTokenListing[] {
+  const wanted = query.trim().toLowerCase();
+  const token = (
+    mint: string,
+    symbol: string,
+    name: string,
+    decimals: number,
+    icon: string,
+    shelf: SwapTokenCategory,
+    usdPrice: number
+  ): SwapTokenListing => ({
+    mint,
+    symbol,
+    name,
+    decimals,
+    iconUrl: `${ICONS}/${icon}.webp`,
+    category: shelf,
+    trust: "verified",
+    usdPrice,
+  });
+  const all = [
+    token(
+      "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      "USDT",
+      "USDT",
+      6,
+      "36574a5ee2cd469e059d070180985e59fbd57c82a54ea95763fab39973174100",
+      "crypto",
+      1
+    ),
+    token(
+      "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH",
+      "USDG",
+      "Global Dollar",
+      6,
+      "234d4d10c9356ac40b3f8a4dac8cb363beec75ba2f9c8a18157742494193b4d7",
+      "crypto",
+      0.9997
+    ),
+    token(
+      "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh",
+      "WBTC",
+      "Wrapped BTC (Portal)",
+      8,
+      "010fb6db6c343cd0f90214ab1770278012d0c58a091d1f64715343817dbfb27e",
+      "crypto",
+      86282.66
+    ),
+    token(
+      "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+      "RAY",
+      "Raydium",
+      6,
+      "e3a3487516776ef5cd3166a0861525d053845b5aa0cf27442a56ca65e673b265",
+      "crypto",
+      1.84
+    ),
+    token(
+      "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
+      "NVDAx",
+      "NVIDIA xStock",
+      8,
+      "5550a81a36c9cce2af5d8b738bcf665c7b4da250a4652dd025107a5d6f0b9458",
+      "stocks",
+      165
+    ),
+    token(
+      "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "SPYx",
+      "SP500 xStock",
+      8,
+      "4d04cfdd8396f0c9274d49f135a458b7d4726cc098e3fc69bb3b4124eb24a2f2",
+      "stocks",
+      719.87
+    ),
+    token(
+      "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      "Bonk",
+      "Bonk",
+      5,
+      "7461f749f396872bdba0559323970190e22056d87f08792ce597c00f3c23a6d0",
+      "meme",
+      0.00002134
+    ),
+    token(
+      "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN",
+      "TRUMP",
+      "OFFICIAL TRUMP",
+      6,
+      "e142362a7cf11f8765782343c1de0087c7c046c5a0b0a3ad2c301719858ff769",
+      "meme",
+      0.9213
+    ),
+  ];
+  if (wanted) {
+    const copies: SwapTokenListing[] = [
+      {
+        ...token(
+          "Usdt1111111111111111111111111111111111111111",
+          "USDT",
+          "USDT",
+          6,
+          "none",
+          "crypto",
+          0.0004
+        ),
+        iconUrl: null,
+        trust: "caution",
+      },
+      {
+        ...token(
+          "Rayd1111111111111111111111111111111111111111",
+          "RAYDOG",
+          "Raydog",
+          6,
+          "none",
+          "meme",
+          0.00012
+        ),
+        iconUrl: null,
+        trust: "unverified",
+      },
+    ];
+    return [...all, ...copies].filter(
+      (listed) =>
+        listed.name.toLowerCase().includes(wanted) ||
+        listed.symbol.toLowerCase().includes(wanted)
+    );
+  }
+  return all.filter((listed) =>
+    category ? listed.category === category : listed.category === "crypto"
+  );
 }

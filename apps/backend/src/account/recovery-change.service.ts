@@ -28,6 +28,11 @@ import type {
   SquadsAccountRow,
   SquadsAccountStore,
 } from './account.interface';
+import {
+  OVERLAP_MESSAGE,
+  overlapBlocker,
+  stillWaiting,
+} from './change-overlap';
 
 /**
  * The steps a recovery key change passes through on the device.
@@ -164,6 +169,16 @@ export class RecoveryChangeService {
       };
     }
 
+    const ahead = await this.changesAhead(account);
+    if (ahead) {
+      return {
+        done: false,
+        step: 'waiting',
+        changeIndex: open.changeIndex.toString(),
+        executableAt: ahead.toISOString(),
+      };
+    }
+
     return this.prepare(userId, account, 'execute', open.changeIndex);
   }
 
@@ -189,8 +204,7 @@ export class RecoveryChangeService {
     const account = await this.requireAccount(userId);
     if (
       account.pendingApprovalChangeIndex ||
-      account.pendingPrimaryChangeIndex ||
-      account.pendingSpendingLimitChangeIndex
+      account.pendingPrimaryChangeIndex
     ) {
       // A rotation has already claimed the next index. Staging here would
       // claim it again, and whichever change landed second would be settled
@@ -200,6 +214,19 @@ export class RecoveryChangeService {
       );
     }
     const settings = await this.chain.readSettings(account.settingsAddress);
+    // A Spending Limit or Swap change may be waiting, as long as its clock is
+    // already running: this change lands after it, so one that is never
+    // approved would hold a recovery key back indefinitely.
+    for (const index of policyChangeIndexes(account)) {
+      const blocker = await overlapBlocker(
+        this.chain,
+        account,
+        settings,
+        index,
+        'approved',
+      );
+      if (blocker) throw new AccountCreationError(OVERLAP_MESSAGE[blocker]);
+    }
     const changeIndex = settings.transactionIndex + 1n;
 
     for (const signerId of signerIds) {
@@ -339,6 +366,32 @@ export class RecoveryChangeService {
   }
 
   /**
+   * When the Spending Limit or Swap changes still waiting can have landed, or
+   * null when none is.
+   *
+   * Changing the signer set cancels every other change still waiting, so this
+   * one holds its last step until they are through. They were approved first,
+   * which puts their deadlines behind this one's; a change that is already
+   * past its deadline is waiting on the app to land it, so the answer is to
+   * ask again shortly.
+   */
+  private async changesAhead(account: SquadsAccountRow): Promise<Date | null> {
+    const indexes = policyChangeIndexes(account);
+    if (indexes.length === 0) return null;
+    const settings = await this.chain.readSettings(account.settingsAddress);
+    let latest: Date | null = null;
+    for (const index of indexes) {
+      const waiting = await stillWaiting(this.chain, account, settings, index);
+      if (!waiting) continue;
+      const at = new Date(
+        Math.max(waiting.executableAt?.getTime() ?? 0, Date.now() + RECHECK_MS),
+      );
+      if (!latest || at > latest) latest = at;
+    }
+    return latest;
+  }
+
+  /**
    * An executed proposal at an index proves that some change landed there, not
    * that it was this one. The staged keys are checked against the signer set
    * the chain actually holds before the rows are committed, so a settled row
@@ -430,6 +483,16 @@ export class RecoveryChangeService {
       );
     }
   }
+}
+
+/** How soon to ask again when the only thing left is another change landing. */
+const RECHECK_MS = 30_000;
+
+function policyChangeIndexes(account: SquadsAccountRow): string[] {
+  return [
+    account.pendingSpendingLimitChangeIndex,
+    account.pendingSwapAccessChangeIndex,
+  ].filter((index): index is string => !!index);
 }
 
 function preparedKey(userId: string): string {

@@ -131,6 +131,17 @@ with the same body and header works too:
 - **Popup closed is not failed.** If the popup closes with no result, the
   SDK reports `unresolved` (check server-side), never a false failure.
 
+`onUnresolved` tells you why, in `reason`:
+
+- `redirected` or `popup_blocked`: the SDK is already sending the page to
+  Prydd to finish the payment. Do not navigate in this callback; a navigation
+  of your own cancels that redirect.
+- `popup_closed` or `channel_lost`: the shopper left the Prydd window without a
+  result. Keep them where they are and confirm the order server-side; most of
+  the time they backed out or were short of balance.
+- `confirmation_timeout`: the payment may still be settling. Show the order as
+  pending and confirm it server-side.
+
 ## Brand note
 
 The button uses Inter Display Medium with system fallbacks. The font is

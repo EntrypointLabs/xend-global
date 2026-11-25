@@ -3,6 +3,7 @@ import { View } from "react-native";
 import { Image } from "expo-image";
 import { FontAwesome6 } from "@expo/vector-icons";
 import { Typography } from "@/components/ui/atoms/Typography";
+import { usePalette } from "@/hooks/usePalette";
 import { BANK_LOGOS } from "@/utils/bankLogos";
 import { shortBankName, type RampDetails } from "@/utils/ramp";
 
@@ -24,13 +25,14 @@ export function RampMark({
   ramp: RampDetails;
   size?: number;
 }) {
+  const palette = usePalette();
   const disc = { width: size, height: size };
   const logo = ramp.logoKey ? BANK_LOGOS[ramp.logoKey] : undefined;
 
   if (logo) {
     return (
       <View
-        className="items-center justify-center overflow-hidden rounded-full border border-black/[0.06] bg-white"
+        className="items-center justify-center overflow-hidden rounded-full border border-foreground/[0.06] bg-white"
         style={disc}
       >
         <Image
@@ -44,7 +46,7 @@ export function RampMark({
 
   return (
     <View
-      className="items-center justify-center rounded-full bg-black/5"
+      className="items-center justify-center rounded-full bg-[#F2F2F2] dark:bg-muted"
       style={disc}
     >
       {ramp.bankName ? (
@@ -55,7 +57,7 @@ export function RampMark({
         <FontAwesome6
           name="building-columns"
           size={size * 0.38}
-          color="#0E0F0C"
+          color={palette.ink}
         />
       )}
     </View>

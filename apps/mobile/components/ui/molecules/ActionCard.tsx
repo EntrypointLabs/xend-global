@@ -64,8 +64,8 @@ export function ActionCard({
       className={cn(
         "justify-between rounded-2xl border bg-card px-4",
         funded
-          ? "border-[0.3px] border-solid border-black/[0.12]"
-          : "border-dashed border-black/[0.12]"
+          ? "border-[0.3px] border-solid border-foreground/[0.12]"
+          : "border-dashed border-foreground/[0.12]"
       )}
       onPress={onPress}
     >

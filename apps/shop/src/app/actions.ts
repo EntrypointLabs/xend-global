@@ -79,6 +79,21 @@ export async function checkOrder(orderId: string): Promise<Order | null> {
   }
 }
 
+/**
+ * A fresh read past the polling throttle, for the one moment a stale answer
+ * could cost money: deciding whether a shopper may start another payment.
+ */
+export async function checkOrderNow(orderId: string): Promise<Order | null> {
+  try {
+    return await reconcileOrder(orderId, { force: true });
+  } catch (err) {
+    console.error("order check failed", orderId, err);
+    return null;
+  } finally {
+    after(() => reconcileOpenOrders(3).catch(() => undefined));
+  }
+}
+
 export async function lookupOrders(
   email: string,
   number: string,

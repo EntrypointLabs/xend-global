@@ -11,6 +11,7 @@ import {
   SUPPORT_TOPIC_COPY,
   type SupportTopic,
 } from "@/utils/support";
+import { usePalette } from "@/hooks/usePalette";
 
 const TOPIC_ICON: Record<SupportTopic, keyof typeof Ionicons.glyphMap> = {
   account_access: "key-outline",
@@ -26,29 +27,30 @@ const TOPIC_ICON: Record<SupportTopic, keyof typeof Ionicons.glyphMap> = {
  * their Account is one tap from saying so and the team reads it first.
  */
 export default function SupportScreen() {
+  const palette = usePalette();
   return (
     <ScreenLayout>
       <View className="flex-1 px-3">
         <HapticPressable
           onPress={() => router.back()}
-          className="size-10 items-center justify-center rounded-full bg-black/[0.08]"
+          className="size-10 items-center justify-center rounded-full bg-foreground/[0.08]"
           accessibilityRole="button"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="chevron-back" size={20} color="#00000066" />
+          <Ionicons name="chevron-back" size={20} color={palette.fg(0.4)} />
         </HapticPressable>
 
         <Typography
           weight="700"
           accessibilityRole="header"
-          className="mt-10 text-5xl leading-[44px] text-black"
+          className="mt-10 text-5xl leading-[44px] text-foreground"
         >
           How can{"\n"}we help?
         </Typography>
 
         <Typography
           weight="600"
-          className="mt-5 text-[15px] leading-6 text-black"
+          className="mt-5 text-[15px] leading-6 text-foreground"
         >
           Pick what your message is about
         </Typography>
@@ -71,23 +73,34 @@ export default function SupportScreen() {
                     params: { topic },
                   } as never)
                 }
-                className="flex-row items-center gap-4 border-b border-black/[0.06] py-4"
+                className="flex-row items-center gap-4 border-b border-foreground/[0.06] py-4"
               >
-                <View className="size-12 items-center justify-center rounded-full border border-black/10">
-                  <Ionicons name={TOPIC_ICON[topic]} size={20} color="#000" />
+                <View className="size-12 items-center justify-center rounded-full border border-foreground/10">
+                  <Ionicons
+                    name={TOPIC_ICON[topic]}
+                    size={20}
+                    color={palette.foreground}
+                  />
                 </View>
                 <View className="flex-1 gap-0.5">
-                  <Typography weight="600" className="text-base text-black">
+                  <Typography
+                    weight="600"
+                    className="text-base text-foreground"
+                  >
                     {label}
                   </Typography>
                   <Typography
                     weight="500"
-                    className="text-sm leading-5 text-black/40"
+                    className="text-sm leading-5 text-foreground/40"
                   >
                     {detail}
                   </Typography>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color="#00000059" />
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={palette.fg(0.35)}
+                />
               </HapticPressable>
             );
           })}

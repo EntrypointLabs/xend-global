@@ -223,6 +223,94 @@ export async function* streamConfirmedTransfersViaConnection(
 }
 
 /**
+ * Parsed instruction types that move value. The last is how the newer token
+ * program moves a token that charges a fee on transfer.
+ */
+const TRANSFER_TYPES = new Set([
+  'transfer',
+  'transferChecked',
+  'transferCheckedWithFee',
+]);
+
+/** Parsed instruction types that open a token account and name its owner. */
+const TOKEN_ACCOUNT_OPENINGS = new Set([
+  'initializeAccount',
+  'initializeAccount2',
+  'initializeAccount3',
+  'create',
+  'createIdempotent',
+]);
+
+interface FundingInstruction {
+  type?: string;
+  info?: {
+    account?: string;
+    destination?: string;
+    newAccount?: string;
+    source?: string;
+    owner?: string;
+    lamports?: number;
+  };
+}
+
+/**
+ * Rent that others paid into token accounts which this transaction then
+ * closed into `owner`, by who paid it.
+ */
+function rentFrontedForClosedAccounts(
+  instructions: (ParsedInstruction | PartiallyDecodedInstruction)[],
+  accountOwners: Map<string, { owner: string }>,
+  owner: string,
+): Map<string, number[]> {
+  const parsed = instructions.flatMap((ix) =>
+    'parsed' in ix ? [ix.parsed as FundingInstruction | undefined] : [],
+  );
+  const closedIntoOwner = new Set(
+    parsed.flatMap((p) =>
+      p?.type === 'closeAccount' &&
+      p.info?.account &&
+      p.info.destination === owner
+        ? [p.info.account]
+        : [],
+    ),
+  );
+
+  const fronted = new Map<string, number[]>();
+  for (const p of parsed) {
+    const funded =
+      p?.type === 'createAccount' ? p.info?.newAccount : p?.info?.destination;
+    const payer = p?.info?.source;
+    const lamports = p?.info?.lamports;
+    if (
+      (p?.type !== 'createAccount' && p?.type !== 'transfer') ||
+      !funded ||
+      !payer ||
+      lamports === undefined ||
+      payer === owner ||
+      !closedIntoOwner.has(funded) ||
+      accountOwners.get(funded)?.owner !== owner
+    ) {
+      continue;
+    }
+    fronted.set(payer, [...(fronted.get(payer) ?? []), lamports]);
+  }
+  return fronted;
+}
+
+/** Uses up one matching amount, so a second refund of it is still recorded. */
+function takeFronted(
+  fronted: Map<string, number[]>,
+  payer: string,
+  lamports: number,
+): boolean {
+  const amounts = fronted.get(payer);
+  const at = amounts?.indexOf(lamports) ?? -1;
+  if (!amounts || at < 0) return false;
+  amounts.splice(at, 1);
+  return true;
+}
+
+/**
  * Pull SPL token transfer events from a parsed transaction. Inspects
  * top-level + inner instructions for `spl-token`'s `transferChecked`
  * and `transfer` variants. Returns events where the owner participates
@@ -233,7 +321,7 @@ export async function* streamConfirmedTransfersViaConnection(
  * info for plain `transfer`. If neither is available (rare), the event
  * is skipped.
  */
-function extractTokenTransfers(
+export function extractTokenTransfers(
   tx: ParsedTransactionWithMeta,
   owner: WalletAddress,
 ): ConfirmedTransferEvent[] {
@@ -278,6 +366,40 @@ function extractTokenTransfers(
     }
   }
 
+  // A token account opened and closed inside this transaction is in neither
+  // balance snapshot, so its owner is read from the instruction that opened
+  // it. A swap into SOL is paid through exactly such an account.
+  for (const ix of allInstructions) {
+    if (!('parsed' in ix)) continue;
+    const opened = ix.parsed as
+      | {
+          type?: string;
+          info?: {
+            account?: string;
+            mint?: string;
+            owner?: string;
+            wallet?: string;
+          };
+        }
+      | undefined;
+    if (!opened?.type || !TOKEN_ACCOUNT_OPENINGS.has(opened.type)) continue;
+    const account = opened.info?.account;
+    const holder = opened.info?.owner ?? opened.info?.wallet;
+    const mint = opened.info?.mint;
+    if (!account || !holder || !mint || accountOwners.has(account)) continue;
+    accountOwners.set(account, {
+      owner: holder,
+      mint,
+      decimals: mint === WRAPPED_SOL_MINT ? LAMPORT_DECIMALS : null,
+    });
+  }
+
+  const frontedRent = rentFrontedForClosedAccounts(
+    allInstructions,
+    accountOwners,
+    owner,
+  );
+
   for (const ix of allInstructions) {
     if (!('parsed' in ix)) continue;
     const parsed = ix.parsed as
@@ -289,6 +411,8 @@ function extractTokenTransfers(
             authority?: string;
             mint?: string;
             tokenAmount?: { amount: string };
+            /** What a fee-charging token keeps back from the recipient. */
+            feeAmount?: { amount: string };
             amount?: string;
             /** System Program transfers carry lamports, not a token amount. */
             lamports?: number;
@@ -296,9 +420,7 @@ function extractTokenTransfers(
         }
       | undefined;
     if (!parsed) continue;
-    if (parsed.type !== 'transfer' && parsed.type !== 'transferChecked') {
-      continue;
-    }
+    if (!TRANSFER_TYPES.has(parsed.type)) continue;
 
     // Native SOL, which moves through the System Program rather than as a
     // token. Without this the Consumer's SOL is visible in their balance but
@@ -311,6 +433,15 @@ function extractTokenTransfers(
       const lamports = parsed.info.lamports;
       if (!from || !to || lamports === undefined) continue;
       if (from !== owner && to !== owner) continue;
+      // SOL moved into the owner's own wrapped SOL account has not left
+      // them. Whatever then spends it is a token transfer and is counted
+      // there, once.
+      if (accountOwners.get(to)?.owner === owner) continue;
+      // Rent someone else put up for a token account that was closed into
+      // the owner, handed back. The rent arriving is not a transfer and is
+      // never recorded, so recording its return would show a loss that did
+      // not happen.
+      if (from === owner && takeFronted(frontedRent, to, lamports)) continue;
       events.push({
         signature,
         legIndex: legs.next(WRAPPED_SOL_MINT, from, to, BigInt(lamports)),
@@ -325,7 +456,12 @@ function extractTokenTransfers(
       continue;
     }
 
-    if (ix.programId.toBase58() !== TOKEN_PROGRAM_ID.toBase58()) continue;
+    if (
+      !ix.programId.equals(TOKEN_PROGRAM_ID) &&
+      !ix.programId.equals(TOKEN_2022_PROGRAM_ID)
+    ) {
+      continue;
+    }
 
     const sourceAcct = parsed.info.source;
     const destAcct = parsed.info.destination;
@@ -340,15 +476,23 @@ function extractTokenTransfers(
 
     const mint = parsed.info.mint ?? sourceMeta?.mint ?? destMeta?.mint;
     if (!mint) continue;
-    const amountStr =
-      parsed.info.tokenAmount?.amount ?? parsed.info.amount ?? '0';
+    const sent = BigInt(
+      parsed.info.tokenAmount?.amount ?? parsed.info.amount ?? '0',
+    );
+    // A fee-charging token leaves the sender in full and reaches the
+    // recipient short of the fee, which is withheld in their account and is
+    // not theirs to spend. So what the owner sent is the whole amount, and
+    // what the owner received is the amount less the fee.
+    const withheld = BigInt(parsed.info.feeAmount?.amount ?? '0');
+    const amountRaw =
+      toOwner === owner && withheld <= sent ? sent - withheld : sent;
 
     events.push({
       signature,
-      legIndex: legs.next(mint, fromOwner, toOwner, BigInt(amountStr)),
+      legIndex: legs.next(mint, fromOwner, toOwner, amountRaw),
       slot,
       mint,
-      amountRaw: BigInt(amountStr),
+      amountRaw,
       decimals: sourceMeta?.decimals ?? destMeta?.decimals ?? null,
       fromAddress: fromOwner,
       toAddress: toOwner,

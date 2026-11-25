@@ -26,21 +26,22 @@ function staged(overrides: Partial<StagedChange> = {}): StagedChange {
     approvals: [],
     executableAt: null,
     selfInitiated: false,
+    kind: null,
     ...overrides,
   };
 }
 
 function setUp(
-  pending: Record<string, StagedChange | null | Error>,
+  pending: Record<string, StagedChange | StagedChange[] | null | Error>,
   accounts = Object.keys(pending).map(account),
 ) {
   const recorded: { userId: string; params: Record<string, unknown> }[] = [];
   const changes = {
     pendingFor: (row: SquadsAccountRow) => {
       const answer = pending[row.userId];
-      return answer instanceof Error
-        ? Promise.reject(answer)
-        : Promise.resolve(answer ?? null);
+      if (answer instanceof Error) return Promise.reject(answer);
+      if (Array.isArray(answer)) return Promise.resolve(answer);
+      return Promise.resolve(answer ? [answer] : []);
     },
   } as unknown as AccountChangeService;
   const events = {
@@ -86,15 +87,33 @@ describe('AccountChangeWatcher', () => {
 
   it('names the change when the backend staged it, and admits ignorance otherwise', async () => {
     const { watcher, recorded } = setUp({
-      'user-1': staged({ selfInitiated: true }),
+      'user-1': staged({ selfInitiated: true, kind: 'spending_limit' }),
       'user-2': staged({ selfInitiated: false }),
     });
 
     await watcher.tick();
 
     expect(recorded.map((r) => r.params.change)).toEqual([
-      'recovery_key',
+      'spending_limit',
       undefined,
+    ]);
+  });
+
+  it('records every change waiting, not only the newest', async () => {
+    const { watcher, recorded } = setUp({
+      'user-1': [
+        staged({ transactionIndex: '7' }),
+        staged({ transactionIndex: '8', kind: 'swap_access' }),
+      ],
+    });
+
+    await watcher.tick();
+
+    // The one nobody here staged sits behind a change the Consumer made
+    // afterwards, and it is the one that has to be announced.
+    expect(recorded.map((r) => r.params)).toEqual([
+      { changeIndex: '7', change: undefined },
+      { changeIndex: '8', change: 'swap_access' },
     ]);
   });
 

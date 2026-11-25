@@ -193,7 +193,7 @@ One reverse-chronological feed per Account covering everything: Spends, Receives
 ### 3.5 Investments and Swap
 
 - **Investments** is a read of every token the Consumer holds that is not their spending balance. Nothing to opt into; it is a view of what they already own.
-- **Swap** between held assets, quoted and executed in-app. The receive side stays blank until a real quote arrives, because showing a converted figure without a real rate would invent a price someone might act on. It does not work yet; see section 9.
+- **Swap** between held assets, quoted and executed in-app. The receive side stays blank until a real quote arrives, because showing a converted figure without a real rate would invent a price someone might act on. It runs as a Spend out of the Account's vault through Jupiter, signed by both keys. See section 9 for what is still unproven.
 
 ### 3.6 Earn
 
@@ -490,7 +490,7 @@ A marketing site must not contradict any line in this section.
 - **Prydd Plus does not exist.** Same.
 - **Earn deposits do not work.** The position reads correctly and there is no way to fund it.
 - **Hide my wallet does not work.** The toggle renders and there is nothing behind it.
-- **Swap does not work.** The screen and live quotes are built, but it signs from the embedded wallet while the Balance sits in the Account's vault, so it cannot spend the Consumer's money.
+- **Swap has not moved real money yet.** It executes from the Account's vault through Jupiter under the two-key policy, and that is proven against the deployed programs locally, not on mainnet. An Account provisioned before Jupiter joined the policy's allowlist turns Swap on with one confirmation and the 24 hour delay. Only SOL and USDC can be picked on the swap screen. Token-2022 assets can be bought but not sold.
 - **Virtual bank accounts are not live.** The older documentation describing them belongs to a discontinued vendor integration.
 - **Naira payouts are switched off.** The adapter is built and gated, pending a settlement route that works natively on Solana.
 - **The merchant portal does not exist.** There is an internal operations console behind Basic Auth (read views plus webhook redelivery and the recovery-signer freeze) and a manual script.

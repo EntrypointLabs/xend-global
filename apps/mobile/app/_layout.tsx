@@ -9,16 +9,21 @@ import "@/global.css";
 import "@/utils/cssInteropSetup";
 import { installPrivyRequestLog } from "@/utils/privyRequestLog";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { AppLockProvider, useAppLock } from "@/contexts/AppLockContext";
+import {
+  AppLockProvider,
+  BACKGROUND_GRACE_PERIOD_MS,
+  useAppLock,
+} from "@/contexts/AppLockContext";
 import { ScreenThemeProvider } from "@/contexts/ScreenThemeContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { isPhotoRoute } from "@/components/ui/glass";
 import {
   AppearanceProvider,
+  loadAppearance,
   useColorfulTheme,
 } from "@/contexts/AppearanceContext";
-import { useTheme } from "@/hooks/useTheme";
-import { cn } from "@/utils/cn";
+import { usePalette } from "@/hooks/usePalette";
+import * as SystemUI from "expo-system-ui";
 import { ModalFlowProvider } from "@/contexts/ModalFlowContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import {
@@ -30,6 +35,8 @@ import Constants from "expo-constants";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { FullWindowOverlay } from "react-native-screens";
+import { privacyCover } from "@/modules/privacy-cover/src";
+import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { PaymentApprovalHost } from "@/components/payment-approval/PaymentApprovalHost";
 import {
   focusManager,
@@ -137,6 +144,7 @@ const FULL_SCREEN_ROUTES = [
   "find-atm",
   "add-naira",
   "verify-identity",
+  "naira-limits",
 ] as const;
 
 const SLIDE_OVER = {
@@ -155,6 +163,7 @@ function AuthLayout() {
   const onPhoto =
     isPhotoRoute(segments as string[], useColorfulTheme()) ||
     (segments as string[])[2] === "theme-preview";
+  const { background } = usePalette();
 
   // The screens are held apart from this component's own renders on purpose.
   // `useSegments()` above changes on every navigation, and without this the
@@ -169,10 +178,27 @@ function AuthLayout() {
             <BlurTargetHost>
               {/* Every route switches in place as before; the full-screen
               feature pages slide over Home and swipe back to it. */}
-              <Stack screenOptions={{ headerShown: false, animation: "none" }}>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  animation: "none",
+                  // What shows behind a screen while it slides in.
+                  contentStyle: { backgroundColor: background },
+                }}
+              >
                 {FULL_SCREEN_ROUTES.map((name) => (
                   <Stack.Screen key={name} name={name} options={SLIDE_OVER} />
                 ))}
+                {/* Drawn over Home, which stays on screen blurred behind it;
+                the screen animates itself open from the total. */}
+                <Stack.Screen
+                  name="balance/index"
+                  options={{
+                    presentation: "transparentModal",
+                    animation: "none",
+                    contentStyle: { backgroundColor: "transparent" },
+                  }}
+                />
               </Stack>
             </BlurTargetHost>
             <StatusBar
@@ -182,7 +208,7 @@ function AuthLayout() {
         </ModalFlowProvider>
       </ScreenThemeProvider>
     ),
-    [colorScheme, onPhoto]
+    [colorScheme, onPhoto, background]
   );
 
   if (isAuthenticated === null) {
@@ -212,8 +238,6 @@ function AuthLayout() {
     return <Redirect href="/(tabs)" withAnchor />;
   }
 
-  // Theming is driven by NativeWind (ThemedRoot's `dark` class) and
-  // ScreenThemeProvider; the navigator inherits light/dark from the OS.
   return screens;
 }
 
@@ -221,6 +245,22 @@ function AuthLayout() {
 // go in the window itself. Android has no equivalent: there it stays a view over
 // the root, and a native modal that is open will still show above it.
 const CoverHost = Platform.OS === "ios" ? FullWindowOverlay : React.Fragment;
+
+// Strong enough that a Balance cannot be read through it.
+const OBSCURED_BLUR_INTENSITY = 85;
+
+/**
+ * What the app switcher and the notification shade show in place of the
+ * screen: the same screen, blurred, so it reads as the app set aside rather
+ * than as a fault. Android cannot blur what is behind a plain view, and only
+ * covers once the app is already in the background, so it keeps the splash.
+ */
+function ObscuredCover() {
+  if (Platform.OS !== "ios") return <LoadingScreen />;
+  return (
+    <FrostBlurView intensity={OBSCURED_BLUR_INTENSITY} className="flex-1" />
+  );
+}
 
 /**
  * App lock: once signed in and out of the auth stack, the biometric unlock
@@ -234,15 +274,20 @@ const CoverHost = Platform.OS === "ios" ? FullWindowOverlay : React.Fragment;
 function AppCover() {
   const segments = useSegments();
   const { isAuthenticated } = useAuth();
-  const { isLocked, isObscured } = useAppLock();
+  const { isLocked, isObscured, promptReady } = useAppLock();
+  const covering = !!isAuthenticated && segments[0] !== "(auth)";
 
-  if (!isAuthenticated || segments[0] === "(auth)") return null;
+  useEffect(() => {
+    privacyCover.configure(covering && promptReady, BACKGROUND_GRACE_PERIOD_MS);
+  }, [covering, promptReady]);
+
+  if (!covering) return null;
   if (!isLocked && !isObscured) return null;
 
   return (
     <CoverHost>
       <View className="absolute inset-0">
-        {isLocked ? <LockScreen /> : <LoadingScreen />}
+        {isLocked ? <LockScreen /> : <ObscuredCover />}
       </View>
     </CoverHost>
   );
@@ -278,7 +323,12 @@ function RootLayout() {
     return () => clearTimeout(timer);
   }, []);
 
-  const ready = loaded || !!error || fontTimeout;
+  const [appearanceLoaded, setAppearanceLoaded] = useState(false);
+  useEffect(() => {
+    loadAppearance().finally(() => setAppearanceLoaded(true));
+  }, []);
+
+  const ready = (loaded || !!error || fontTimeout) && appearanceLoaded;
 
   useEffect(() => {
     if (ready) {
@@ -383,10 +433,15 @@ function PrivyAppShell({ children }: { children: React.ReactNode }) {
 }
 
 function ThemedRoot({ children }: { children: React.ReactNode }) {
-  const { theme } = useTheme();
-  return (
-    <View className={cn("flex-1", theme === "dark" && "dark")}>{children}</View>
-  );
+  const { background } = usePalette();
+
+  // The window behind the React tree: seen under the keyboard, during a
+  // rotation and at the edges of a native transition.
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(background).catch(() => {});
+  }, [background]);
+
+  return <View className="flex-1">{children}</View>;
 }
 
 export default SENTRY_ENABLED ? Sentry.wrap(RootLayout) : RootLayout;

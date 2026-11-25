@@ -3,6 +3,9 @@ import type {
   AwaitingPayment,
   TransferRow,
 } from "@/utils/apiClient";
+import { getUsdcMint } from "@/utils/cluster";
+import { formatRawAmount, WRAPPED_SOL_MINT } from "@/utils/swap";
+import type { MerchantCategory } from "@/utils/merchantCategory";
 import { describeToken, formatTokenAmount } from "@/utils/tokens";
 import {
   formatDollarsMinor,
@@ -25,6 +28,17 @@ export interface ActivityEntry {
   // "awaiting" are client-side only, since CONTEXT.md defines Activity as
   // covering non-money events too.
   kind: "transfer" | "payment" | "security" | "awaiting";
+  /**
+   * One side of the Consumer's own swap. Still a transfer, with a direction
+   * and an amount, but the other party is a trading venue: showing its
+   * address as someone they paid would misdescribe what they did.
+   */
+  isSwap?: boolean;
+  /**
+   * Both sides of the swap and where it was routed, when the feed carries
+   * them. The entry is then the whole trade, not one side of it.
+   */
+  swap?: SwapSummary;
   /** Set only on `security` entries: what changed on the Account. */
   securityLabel?: string;
   /**
@@ -43,6 +57,9 @@ export interface ActivityEntry {
    */
   securityKind?: AccountEventRow["kind"];
   merchantName: string | null;
+  /** Set only on `payment` entries. */
+  merchantLogoUrl?: string | null;
+  merchantCategory?: MerchantCategory | null;
   /**
    * Set only on `awaiting` entries: the Merchant's own currency and the figure
    * they quoted.
@@ -78,6 +95,32 @@ export interface ActivityEntry {
   ramp?: RampDetails | null;
   createdAt: string;
   confirmedAt: string | null;
+}
+
+export interface SwapSide {
+  mint: string;
+  amountRaw: string;
+  /**
+   * Null when nothing says how precise the mint is: a swap recorded before
+   * decimals were kept, whose side was never indexed and is not held. The
+   * amount is then left unshown rather than guessed.
+   */
+  decimals: number | null;
+  name?: string | null;
+  symbol?: string | null;
+  iconUrl?: string | null;
+}
+
+export interface SwapSummary {
+  pay: SwapSide;
+  receive: SwapSide;
+  /**
+   * The received amount is on its way rather than unrecorded: this phone sent
+   * the swap and has not read what came back yet.
+   */
+  receiving?: boolean;
+  /** The venues the route ran through, in order, each named once. */
+  venues: string[];
 }
 
 export interface ActivitySection {
@@ -126,7 +169,12 @@ export function mapTransferRowToActivityEntry(
     direction,
     status: row.status.toLowerCase() as ActivityEntry["status"],
     kind: row.kind === "payment" ? "payment" : "transfer",
+    isSwap: row.swap === true,
     merchantName: row.merchantName,
+    merchantLogoUrl:
+      row.kind === "payment" ? (row.merchantLogoUrl ?? null) : null,
+    merchantCategory:
+      row.kind === "payment" ? (row.merchantCategory ?? null) : null,
     mint: row.mint,
     amountRaw: row.amountRaw,
     // The row's own decimals first. The holdings lookup only knows mints the
@@ -145,6 +193,182 @@ export function mapTransferRowToActivityEntry(
     createdAt: row.createdAt,
     confirmedAt: row.confirmedAt,
   };
+}
+
+/** Mints whose precision is fixed, for swaps that did not record theirs. */
+const KNOWN_DECIMALS: Record<string, number> = { [WRAPPED_SOL_MINT]: 9 };
+const USDC_DECIMALS = 6;
+
+/**
+ * Transfer rows as Activity entries, with each swap as one entry.
+ *
+ * The chain reports a swap as separate movements, and not reliably: the paid
+ * side can arrive twice and the received side not at all. Shown as they come,
+ * one trade reads as several unrelated payments.
+ */
+export function mapTransferRowsToActivityEntries(
+  rows: TransferRow[],
+  ctx: MapTransferContext
+): ActivityEntry[] {
+  const entries: ActivityEntry[] = [];
+  const swaps = new Map<string, TransferRow[]>();
+
+  for (const row of rows) {
+    if (isSwapRentRefund(row)) continue;
+    if (!row.swapDetails || !row.signature) {
+      entries.push(mapTransferRowToActivityEntry(row, ctx));
+      continue;
+    }
+    const legs = swaps.get(row.signature);
+    if (legs) legs.push(row);
+    else swaps.set(row.signature, [row]);
+  }
+
+  for (const legs of swaps.values()) {
+    const details = legs[0].swapDetails!;
+    const side = (
+      quoted: typeof details.pay,
+      direction: TransferRow["direction"]
+    ): SwapSide => {
+      const moved = legs.filter(
+        (leg) => leg.direction === direction && leg.mint === quoted.mint
+      );
+      // What moved, when the chain reported it exactly once. Otherwise the
+      // quoted figure, which is within the slippage the Consumer accepted.
+      const leg = moved.length === 1 ? moved[0] : undefined;
+      return {
+        mint: quoted.mint,
+        amountRaw: leg?.amountRaw ?? quoted.amountRaw,
+        decimals:
+          quoted.decimals ??
+          moved[0]?.decimals ??
+          ctx.decimalsByMint[quoted.mint] ??
+          KNOWN_DECIMALS[quoted.mint] ??
+          (quoted.mint === getUsdcMint() ? USDC_DECIMALS : null),
+        name: quoted.tokenName ?? moved[0]?.tokenName ?? null,
+        symbol: quoted.tokenSymbol ?? moved[0]?.tokenSymbol ?? null,
+        iconUrl:
+          quoted.tokenIconUrl ??
+          moved[0]?.tokenIconUrl ??
+          ctx.iconsByMint?.[quoted.mint] ??
+          null,
+      };
+    };
+    // The paid side stands for the trade: it is the row the chain always
+    // reports, and its time is when the Consumer acted.
+    const base = legs.find((leg) => leg.direction === "SEND") ?? legs[0];
+    entries.push({
+      ...mapTransferRowToActivityEntry(base, ctx),
+      swap: {
+        pay: side(details.pay, "SEND"),
+        receive: side(details.receive, "RECEIVE"),
+        venues: [...new Set(details.venues)],
+      },
+    });
+  }
+
+  return entries;
+}
+
+/** A swap this phone sent that the chain has not yet reported. */
+export interface PendingSwap {
+  /** The Account that sent it; another signed in on this phone never sees it. */
+  account: string;
+  signature: string;
+  createdAt: string;
+  pay: Omit<SwapSide, "decimals"> & { decimals: number };
+  receive: Omit<SwapSide, "amountRaw" | "decimals"> & { decimals: number };
+  venues: string[];
+  /** The chain has confirmed it, as this phone saw for itself. */
+  settled?: boolean;
+  /** What reached the Account, read from the confirmed transaction. */
+  receivedRaw?: string;
+}
+
+/**
+ * Pending swaps as Activity entries, leaving out any the feed already has.
+ *
+ * What was paid is known exactly, because the phone signed it. What came back
+ * is not known until the swap settles, so the received side carries no
+ * precision and the row draws a placeholder in place of its amount.
+ */
+export function pendingSwapEntries(
+  pending: PendingSwap[],
+  rows: TransferRow[],
+  selfAddress: string
+): ActivityEntry[] {
+  const reported = new Set(rows.map((row) => row.signature));
+  return pending
+    .filter(
+      (swap) => swap.account === selfAddress && !reported.has(swap.signature)
+    )
+    .map((swap) => ({
+      id: `swap:${swap.signature}`,
+      direction: "send",
+      status: swap.settled ? "confirmed" : "pending",
+      kind: "transfer",
+      isSwap: true,
+      merchantName: null,
+      mint: swap.pay.mint,
+      amountRaw: swap.pay.amountRaw,
+      decimals: swap.pay.decimals,
+      iconUrl: swap.pay.iconUrl ?? null,
+      tokenName: swap.pay.name ?? null,
+      tokenSymbol: swap.pay.symbol ?? null,
+      self: selfAddress,
+      counterparty: "",
+      signature: swap.signature,
+      memo: null,
+      createdAt: swap.createdAt,
+      confirmedAt: swap.settled ? swap.createdAt : null,
+      swap: {
+        pay: swap.pay,
+        receive: swap.receivedRaw
+          ? { ...swap.receive, amountRaw: swap.receivedRaw }
+          : { ...swap.receive, amountRaw: "0", decimals: null },
+        venues: [...new Set(swap.venues)],
+        receiving: !swap.receivedRaw,
+      },
+    }));
+}
+
+/** "USDC → SOL": what a swap traded, in the order the money moved. */
+export function swapPairLabel(swap: SwapSummary): string {
+  const symbol = (side: SwapSide) =>
+    describeToken(side.mint, side.symbol, side.name).symbol || "Token";
+  return `${symbol(swap.pay)} → ${symbol(swap.receive)}`;
+}
+
+/** "via AlphaQ + 2 more", or null when the route was not kept. */
+export function swapVenueLabel(swap: SwapSummary): string | null {
+  const [first, ...rest] = swap.venues;
+  if (!first) return null;
+  return rest.length > 0
+    ? `via ${first} + ${rest.length} more`
+    : `via ${first}`;
+}
+
+/**
+ * One side of a swap as a figure with its ticker: "0.00344 ZEC", "$4.99".
+ *
+ * Shortened to what a row has room for: four decimals for a whole amount,
+ * three significant digits below one. USDC reads as dollars, as everywhere
+ * else in Activity.
+ */
+export function swapAmountLabel(side: SwapSide): string | null {
+  if (side.decimals === null) return null;
+  const { symbol } = describeToken(side.mint, side.symbol, side.name);
+  if (symbol === "USDC")
+    return formatDollarsMinor(side.amountRaw, side.decimals);
+  const [whole, fraction = ""] = formatRawAmount(
+    side.amountRaw,
+    side.decimals
+  ).split(".");
+  const places =
+    whole === "0" ? (fraction.match(/^0*/)?.[0].length ?? 0) + 3 : 4;
+  const kept = fraction.slice(0, places).replace(/0+$/, "");
+  const amount = kept ? `${whole}.${kept}` : whole;
+  return symbol ? `${amount} ${symbol}` : amount;
 }
 
 // Newest-first, matching the backend's `createdAt desc, id desc`. ISO 8601
@@ -198,9 +422,33 @@ export function statusLabel(entry: ActivityEntry): string {
     if (entry.status === "failed") return "Failed";
     return "Paid";
   }
+  if (entry.isSwap) {
+    if (entry.status === "pending") return "Swapping…";
+    if (entry.status === "failed") return "Failed";
+    return "Swapped";
+  }
+  if (entry.ramp?.refund) return "Refund";
   if (entry.status === "pending") return "Sending…";
   if (entry.status === "failed") return "Failed";
   return entry.direction === "send" ? "Sent" : "Received";
+}
+
+/**
+ * The rent a swap repays to whoever opened its wrapped SOL account.
+ *
+ * A real movement, so it stays in the transfers the balance chart walks, but
+ * it is plumbing: a third row of 0.002 SOL beside a swap's two sides reads as
+ * a fee the Consumer was charged, which it is not.
+ */
+const SWAP_RENT_REFUND_LAMPORTS = "2039280";
+
+export function isSwapRentRefund(row: TransferRow): boolean {
+  return (
+    row.swap === true &&
+    row.direction === "SEND" &&
+    row.mint === WRAPPED_SOL_MINT &&
+    row.amountRaw === SWAP_RENT_REFUND_LAMPORTS
+  );
 }
 
 /**
@@ -288,6 +536,8 @@ export function awaitingPaymentActivityEntry(
  */
 export function arrivalLabel(row: TransferRow): string {
   const decimals = row.decimals ?? DEFAULT_DECIMALS;
+  if (row.ramp?.refund)
+    return `Refunded ${formatDollarsMinor(row.amountRaw, decimals)}`;
   // A naira deposit arrives as the naira the Consumer paid in.
   if (row.ramp)
     return `Received ${formatNaira(row.ramp.fiatAmountMinor, row.ramp.fiatDecimals)}`;

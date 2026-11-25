@@ -3,6 +3,8 @@ import { View, type ImageSourcePropType } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 
+import { usePalette } from "@/hooks/usePalette";
+
 /**
  * Every illustration a feature page can lead with. A name maps to its render
  * once the art exists; a new name can map to null and the slot holds a quiet
@@ -22,6 +24,7 @@ const ART: Record<IllustrationName, ImageSourcePropType | null> = {
   deposit: require("@/assets/illustrations/convert.webp"),
   // Same stand-in until the identity render (a painted shield) is made.
   verify: require("@/assets/illustrations/convert.webp"),
+  limit: require("@/assets/illustrations/limit.webp"),
 };
 
 export type IllustrationName =
@@ -33,7 +36,8 @@ export type IllustrationName =
   | "atm"
   | "error"
   | "deposit"
-  | "verify";
+  | "verify"
+  | "limit";
 
 export function Illustration({
   name,
@@ -42,6 +46,7 @@ export function Illustration({
   name: IllustrationName;
   size: number;
 }) {
+  const palette = usePalette();
   const source = ART[name];
   if (source) {
     return (
@@ -58,10 +63,14 @@ export function Illustration({
     <View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      className="items-center justify-center rounded-[36px] border border-dashed border-black/15 bg-black/[0.03]"
+      className="items-center justify-center rounded-[36px] border border-dashed border-foreground/15 bg-foreground/[0.03]"
       style={{ width: size, height: size }}
     >
-      <Ionicons name="image-outline" size={size * 0.18} color="#0000002E" />
+      <Ionicons
+        name="image-outline"
+        size={size * 0.18}
+        color={palette.fg(0.18)}
+      />
     </View>
   );
 }

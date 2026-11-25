@@ -1,3 +1,149 @@
+diff --git a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheet/BottomSheet.tsx b/node_modules/@gorhom/bottom-sheet/src/components/bottomSheet/BottomSheet.tsx
+index fc52033..85efd26 100644
+--- a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheet/BottomSheet.tsx
++++ b/node_modules/@gorhom/bottom-sheet/src/components/bottomSheet/BottomSheet.tsx
+@@ -1307,15 +1307,34 @@ const BottomSheetComponent = forwardRef<BottomSheet, BottomSheetProps>(
+           };
+         });
+ 
+-        runOnUI(animateToPosition)(
+-          targetPosition,
+-          ANIMATION_SOURCE.USER,
+-          0,
+-          animationConfigs
+-        );
++        runOnUI(() => {
++          'worklet';
++          /**
++           * a sheet that has not moved yet is already at the closed position,
++           * and `animateToPosition` returns early for it. Finish the close
++           * here, or the force closing flag stays set for good and every
++           * later snap is ignored.
++           */
++          if (animatedPosition.get() === targetPosition) {
++            stopAnimation();
++            animatedCurrentIndex.set(-1);
++            runOnJS(handleOnClose)();
++            return;
++          }
++          animateToPosition(
++            targetPosition,
++            ANIMATION_SOURCE.USER,
++            0,
++            animationConfigs
++          );
++        })();
+       },
+       [
+         animateToPosition,
++        stopAnimation,
++        handleOnClose,
++        animatedPosition,
++        animatedCurrentIndex,
+         isInTemporaryPosition,
+         animatedDetentsState,
+         animatedAnimationState,
+diff --git a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetHostingContainer/BottomSheetHostingContainer.tsx b/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetHostingContainer/BottomSheetHostingContainer.tsx
+index 879061d..960c326 100644
+--- a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetHostingContainer/BottomSheetHostingContainer.tsx
++++ b/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetHostingContainer/BottomSheetHostingContainer.tsx
+@@ -8,6 +8,7 @@ import {
+   View,
+   type ViewStyle,
+ } from 'react-native';
++import Animated from 'react-native-reanimated';
+ import { print } from '../../utilities';
+ import { styles } from './styles';
+ import type { BottomSheetHostingContainerProps } from './types';
+@@ -114,7 +115,7 @@ function BottomSheetHostingContainerComponent({
+ 
+   //#region render
+   return (
+-    <View
++    <Animated.View
+       ref={containerRef}
+       pointerEvents="box-none"
+       onLayout={shouldCalculateHeight ? handleLayoutEvent : undefined}
+@@ -122,7 +123,7 @@ function BottomSheetHostingContainerComponent({
+       collapsable={true}
+     >
+       {children}
+-    </View>
++    </Animated.View>
+   );
+   //#endregion
+ }
+diff --git a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetModal/BottomSheetModal.tsx b/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetModal/BottomSheetModal.tsx
+index 2954b3f..110cb61 100644
+--- a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetModal/BottomSheetModal.tsx
++++ b/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetModal/BottomSheetModal.tsx
+@@ -85,6 +85,8 @@ function BottomSheetModalComponent<T = never>(
+   const currentIndexRef = useRef(!animateOnMount ? index : -1);
+   const nextIndexRef = useRef<number | null>(null);
+   const restoreIndexRef = useRef(-1);
++  const pendingPresentRef = useRef<number | null>(null);
++  const dismissOnOpenRef = useRef(false);
+   //#endregion
+ 
+   //#region variables
+@@ -102,6 +104,7 @@ function BottomSheetModalComponent<T = never>(
+     currentIndexRef.current = -1;
+     restoreIndexRef.current = -1;
+     statusRef.current = MODAL_STATUS.INITIAL;
++    dismissOnOpenRef.current = false;
+   }, []);
+   const unmount = useCallback(
+     function unmount() {
+@@ -240,7 +243,9 @@ function BottomSheetModalComponent<T = never>(
+         });
+       }
+ 
+-      requestAnimationFrame(() => {
++      dismissOnOpenRef.current = false;
++      pendingPresentRef.current = requestAnimationFrame(() => {
++        pendingPresentRef.current = null;
+         if (mount && bottomSheetRef.current) {
+           statusRef.current = MODAL_STATUS.ANIMATING;
+           bottomSheetRef.current.snapToIndex(index);
+@@ -288,6 +293,23 @@ function BottomSheetModalComponent<T = never>(
+         return;
+       }
+ 
++      /**
++       * a dismiss that lands before the sheet has started to open has no
++       * closing animation to run. Marking the modal as dismissing here would
++       * never be undone: nothing closes, `onClose` never fires, and every
++       * later `present` is ignored. Cancel a mount that has not happened yet,
++       * otherwise hold the dismiss until the opening animation begins.
++       */
++      if (currentIndexRef.current === -1 && nextIndexRef.current === null) {
++        if (pendingPresentRef.current !== null) {
++          cancelAnimationFrame(pendingPresentRef.current);
++          pendingPresentRef.current = null;
++        } else {
++          dismissOnOpenRef.current = true;
++        }
++        return;
++      }
++
+       statusRef.current = MODAL_STATUS.DISMISSING;
+       willUnmountSheet(key);
+       bottomSheetRef.current?.forceClose(animationConfigs);
+@@ -477,8 +499,13 @@ function BottomSheetModalComponent<T = never>(
+       if (_providedOnAnimate) {
+         _providedOnAnimate(fromIndex, toIndex, fromPosition, toPosition);
+       }
++
++      if (dismissOnOpenRef.current && toIndex !== -1) {
++        dismissOnOpenRef.current = false;
++        handleDismiss();
++      }
+     },
+-    [_providedOnAnimate]
++    [_providedOnAnimate, handleDismiss]
+   );
+   const handleBottomSheetOnClose = useCallback(
+     function handleBottomSheetOnClose() {
 diff --git a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetTextInput/BottomSheetTextInput.tsx b/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetTextInput/BottomSheetTextInput.tsx
 index 861d276..5b9d398 100644
 --- a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetTextInput/BottomSheetTextInput.tsx

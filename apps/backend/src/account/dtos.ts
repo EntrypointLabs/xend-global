@@ -93,6 +93,17 @@ export const AccountResponseSchema = z.object({
 
 export type AccountResponse = z.infer<typeof AccountResponseSchema>;
 
+/**
+ * Which waiting change to reject. Optional so a build that knows of only one
+ * can still reject it; refused when more than one is waiting.
+ */
+export const PrepareRejectionSchema = z
+  .object({
+    transactionIndex: z.string().regex(/^\d+$/).optional(),
+  })
+  .default({});
+export type PrepareRejectionDto = z.infer<typeof PrepareRejectionSchema>;
+
 /** A signed rejection of a staged settings change. */
 export const SubmitRejectionSchema = z.object({
   signedTxBase64: z.string().min(1),

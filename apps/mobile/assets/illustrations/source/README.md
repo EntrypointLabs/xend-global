@@ -27,6 +27,7 @@ match `jar.webp`, which set the style.
 | `convert`  | Convert price       | A thick gold coin standing on its edge, tilted, with two chunky curved arrows looping around it.                                   |
 | `atm`      | Find an ATM         | A chunky, rounded cash machine dispensing a short stack of banknotes; blank glowing screen.                                        |
 | `error`    | Error state         | A chunky exclamation mark in two separate pieces, a tall tapered bar and a round dot, tilted slightly.                             |
+| `limit`    | Spending limit      | A chunky rounded dial gauge, a thick semicircular arc with a stubby needle two thirds of the way round, a gold coin at its base.   |
 
 ## Activity marks
 

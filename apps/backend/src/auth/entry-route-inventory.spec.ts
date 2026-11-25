@@ -34,6 +34,7 @@ import { UnifiedLocalGuard } from '../fiat/unified/unified-local.guard';
 const ENTRY_ALLOWED: readonly string[] = [
   'GET /wallet/me',
   'GET /wallet/me/balances',
+  'GET /earn',
   'GET /transfers',
   'GET /account/me',
   'GET /account/recovery',
@@ -64,6 +65,18 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   // Spending, at any amount.
   'POST /transfers/prepare',
   'POST /transfers/submit',
+  'GET /swaps/tokens',
+  'POST /swaps/quote',
+  'POST /swaps/prepare',
+  'POST /swaps/submit',
+  // Lending moves require a full session; valuations are read-only.
+  'POST /earn/quote',
+  'POST /earn/prepare',
+  'POST /earn/submit',
+  'GET /account/swap-access',
+  'POST /account/swap-access/start',
+  'POST /account/swap-access/next',
+  'POST /account/swap-access/submit',
   'GET /payments/pending',
   'GET /payments/pending/:reference/status',
   'POST /payments/pending/:reference/prepare',
@@ -104,6 +117,7 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'DELETE /wallet/me',
   // Writes with nothing urgent about them, so they wait for the passkey.
   'POST /feedback',
+  'POST /account/name',
   // Where notices go and whether they are wanted.
   'POST /notifications/devices',
   'DELETE /notifications/devices',
@@ -190,6 +204,9 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'GET /merchant-portal/payments',
   'GET /merchant-portal/payments/:id',
   'GET /merchant-portal/audit',
+  'PUT /merchant-portal/branding',
+  'PUT /merchant-portal/logo',
+  'DELETE /merchant-portal/logo',
   'POST /internal/refunds',
   'POST /internal/webhook_endpoints',
   'GET /internal/merchants/:merchantId/webhook_endpoints',
@@ -216,6 +233,8 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /webhooks/fiat/paycrest',
   'GET /health',
   'GET /health/live',
+  // A public image a Merchant shows the world; no session reaches it.
+  'GET /v1/merchant-logos/:id',
   'GET /features',
   'GET /fx/display-rates',
   'GET /metrics',
@@ -384,6 +403,14 @@ describe('entry session route inventory', () => {
     const mustBeClosed = [
       'POST /transfers/prepare',
       'POST /transfers/submit',
+      'POST /swaps/prepare',
+      'POST /swaps/submit',
+      // Lending moves require a full session; valuations are read-only.
+      'POST /earn/quote',
+      'POST /earn/prepare',
+      'POST /earn/submit',
+      'POST /account/swap-access/start',
+      'POST /account/swap-access/submit',
       'POST /payments/pending/:reference/prepare',
       'POST /payments/pending/:reference/submit',
       'POST /auth/passkey-credentials',

@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
   check,
+  customType,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
@@ -255,6 +256,29 @@ export const merchantStatusEnum = pgEnum('merchant_status', [
   'active',
   'suspended',
 ]);
+
+/** What a Merchant sells, so the app can show a category icon when it has no logo. */
+export const MERCHANT_CATEGORIES = [
+  'shopping',
+  'food_drink',
+  'groceries',
+  'transport',
+  'travel',
+  'entertainment',
+  'health',
+  'services',
+  'bills',
+  'other',
+] as const;
+export type MerchantCategory = (typeof MERCHANT_CATEGORIES)[number];
+export const merchantCategoryEnum = pgEnum(
+  'merchant_category',
+  MERCHANT_CATEGORIES,
+);
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => 'bytea',
+});
 
 export const apiKeyModeEnum = pgEnum('api_key_mode', ['test', 'live']);
 
@@ -762,8 +786,47 @@ export const squadsAccounts = pgTable('squads_accounts', {
   pendingSpendingLimitPeriod: text('pending_spending_limit_period'),
   /** The terms being replaced, kept because the outcome is recorded against them. */
   pendingSpendingLimitPrevious: text('pending_spending_limit_previous'),
+  /**
+   * The change in flight that brings the above-limit policy up to the current
+   * program allowlist, which is what lets an Account provisioned before Swap
+   * use it. Null means nothing is staged.
+   */
+  pendingSwapAccessChangeIndex: text('pending_swap_access_change_index'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/**
+ * swaps: the swaps this backend broadcast, by signature.
+ *
+ * A swap reaches Activity as the movements it caused, which arrive from the
+ * chain indexer with no idea why they happened: money left for an address
+ * nobody knows and something else arrived. This is what says those rows were
+ * the Consumer's own swap. It is a label for rows that exist anyway, never a
+ * record of whether the swap settled.
+ */
+export const swaps = pgTable('swaps', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => createId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id),
+  signature: text('signature').notNull().unique(),
+  inputMint: text('input_mint').notNull(),
+  outputMint: text('output_mint').notNull(),
+  /** Integer strings at each mint's own decimals. The output is as quoted. */
+  amountInRaw: text('amount_in_raw').notNull(),
+  amountOutRaw: text('amount_out_raw').notNull(),
+  /**
+   * The venues the route ran through, in order, as the provider names them.
+   * Null on swaps recorded before this was kept.
+   */
+  venues: text('venues').array(),
+  /** Each mint's decimals, so the trade can be shown without looking them up. */
+  inputDecimals: integer('input_decimals'),
+  outputDecimals: integer('output_decimals'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 /**
@@ -984,6 +1047,7 @@ export const merchants = pgTable('merchants', {
   name: text('name').notNull(),
   displayName: text('display_name').notNull(),
   status: merchantStatusEnum('status').notNull().default('active'),
+  category: merchantCategoryEnum('category').notNull().default('other'),
   intentTtlMinutes: integer('intent_ttl_minutes'),
   allowedOrigins: text('allowed_origins').array(),
   // KYB gates LIVE-mode key issuance only; test keys are never gated. Stamped
@@ -1008,6 +1072,22 @@ export const merchants = pgTable('merchants', {
   flatFeeBps: integer('flat_fee_bps').notNull().default(0),
   fxSpreadBps: integer('fx_spread_bps').notNull().default(0),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/**
+ * A Merchant's logo, kept here rather than in object storage because logos are
+ * small, few and read through one cached endpoint. An `upload` row is what the
+ * owner chose; a `site` row is the icon found on their store, re-fetched once
+ * it is stale, and a `site` row with no data remembers that none was found.
+ */
+export const merchantLogos = pgTable('merchant_logos', {
+  merchantId: text('merchant_id')
+    .primaryKey()
+    .references(() => merchants.id, { onDelete: 'cascade' }),
+  source: text('source').$type<'upload' | 'site'>().notNull(),
+  contentType: text('content_type'),
+  data: bytea('data'),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
@@ -1879,4 +1959,31 @@ export const feedback = pgTable(
     index('feedback_created_idx').on(table.createdAt),
     check('feedback_rating_check', sql`${table.rating} BETWEEN 1 AND 5`),
   ],
+);
+
+/** Confirmed Earn cash/share deltas, plus the immutable broadcast for retries. */
+export const earnOperations = pgTable(
+  'earn_operations',
+  {
+    signature: text('signature').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: text('provider').$type<'kamino' | 'jupiter'>().notNull(),
+    action: text('action').$type<'deposit' | 'redeem'>().notNull(),
+    status: text('status')
+      .$type<'pending' | 'confirmed' | 'failed'>()
+      .notNull()
+      .default('pending'),
+    vault: text('vault').notNull(),
+    wire: text('wire'),
+    messageHash: text('message_hash').notNull().unique(),
+    quote: jsonb('quote').$type<Record<string, string | number>>().notNull(),
+    blockHeight: integer('block_height').notNull(),
+    cashDeltaRaw: text('cash_delta_raw'),
+    shareDeltaRaw: text('share_delta_raw'),
+    confirmedAt: timestamp('confirmed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({ userIdx: index('earn_operations_user_idx').on(table.userId) }),
 );

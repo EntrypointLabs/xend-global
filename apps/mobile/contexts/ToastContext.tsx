@@ -11,7 +11,7 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { cn } from "@/utils/cn";
 import {
-  setToastHandler,
+  addToastHandler,
   type ToastOptions,
   type ToastTone,
 } from "@/utils/toast";
@@ -19,13 +19,13 @@ import {
 const DEFAULT_DURATION_MS = 3000;
 
 const TONE_SURFACE: Record<ToastTone, string> = {
-  default: "border-black/5",
+  default: "border-foreground/5",
   success: "border-success/20 bg-success/10",
   failed: "border-destructive/20 bg-destructive/10",
 };
 
 const TONE_TEXT: Record<ToastTone, string> = {
-  default: "text-black",
+  default: "text-foreground",
   success: "text-success",
   failed: "text-destructive",
 };
@@ -116,8 +116,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
-    setToastHandler(showToast);
-    return () => setToastHandler(null);
+    return addToastHandler(showToast);
   }, [showToast]);
 
   return (
@@ -137,7 +136,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           ]}
         >
           <View
-            className="mx-4 rounded-full bg-white"
+            className="mx-4 rounded-full bg-card"
             // PLATFORM-SHADOW: lifts the pill off same-colored content so it
             // stays visible on both iOS and Android (no reliable blur on Android).
             style={{
@@ -148,7 +147,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               elevation: 6,
             }}
           >
-            {/* The tint sits on a white base because a translucent pill would
+            {/* The tint sits on an opaque base because a translucent pill would
                 show whatever it floats over. */}
             <View
               className={cn(

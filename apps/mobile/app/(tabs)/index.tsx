@@ -10,13 +10,14 @@ import { SendModal } from "@/components/ui/organisms/modals/SendModal";
 import { ReceiveModal } from "@/components/ui/organisms/modals/ReceiveModal";
 import { QRCodeModal } from "@/components/ui/organisms/modals/QRCodeModal";
 import { useFeature } from "@/hooks/useFeature";
+import { usePalette } from "@/hooks/usePalette";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
 import { BalanceChart } from "@/components/ui/organisms/BalanceChart";
 import { useBalanceDelta, useBalanceHistory } from "@/hooks/useBalanceHistory";
 import { earnHeadlineApy, useEarnPosition } from "@/hooks/useEarn";
 import { useInvestments } from "@/hooks/useInvestments";
 import { useSendGate } from "@/hooks/useSendGate";
-import { formatMoney } from "@/utils/balances";
+import { formatMoney, selectPortfolioTotal } from "@/utils/balances";
 import { useBalances } from "@/hooks/useBalances";
 import { useCollapseOnScroll } from "@/hooks/useTabBarCollapse";
 import {
@@ -42,7 +43,7 @@ import { cn } from "@/utils/cn";
 import {
   OnPhotoProvider,
   PhotoBackdrop,
-  surfaceFor,
+  useSurfaceFor,
   useOnPhoto,
   useSurface,
 } from "@/components/ui/glass";
@@ -86,7 +87,8 @@ const CARD_ACTION_ROUTES = {
 function HomeScreenContent() {
   const colorful = useColorfulTheme();
   // This component creates the photo context, so it reads the theme directly.
-  const S = surfaceFor(colorful);
+  const S = useSurfaceFor(colorful);
+  const palette = usePalette();
   const router = useRouter();
   const swapEnabled = useFeature("swap");
   const { size } = useResponsiveLayout();
@@ -103,7 +105,12 @@ function HomeScreenContent() {
     isLoading: isBalanceLoading,
     refetch: refetchBalances,
   } = useBalances();
-  const { balance: earnBalance } = useEarnPosition();
+  const {
+    balance: earnBalance,
+    isLoading: isEarnLoading,
+    isError: isEarnError,
+    refetch: refetchEarn,
+  } = useEarnPosition();
   const { holdings } = useInvestments();
   const gateSend = useSendGate();
   const [hidden, setHidden] = useState(false);
@@ -113,11 +120,15 @@ function HomeScreenContent() {
 
   // Everything the Consumer owns, in USD: cash, investments and Earn. The Card
   // joins this sum when it holds a balance of its own.
-  const total = portfolio.cashUsd + portfolio.investmentsUsd + earnBalance;
-  const totalDisplay = total.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const total = selectPortfolioTotal(
+    isBalanceLoading || isBalanceError ? null : portfolio,
+    earnBalance
+  );
+  const totalDisplay =
+    total?.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }) ?? "—";
   const address = useWalletAddress();
   const accountDetailsRef = useRef<BottomSheetModal>(null);
   const { name: walletName } = useWalletName();
@@ -127,10 +138,10 @@ function HomeScreenContent() {
 
   const history = useBalanceHistory(total);
   const delta = useBalanceDelta(history);
-  const hasBalance = total > 0;
+  const hasBalance = total !== null && total > 0;
   // Loading and a failed read are "unknown", which is not the same as empty:
   // the empty-state copy only belongs on an account known to hold nothing.
-  const known = !isBalanceLoading && !isBalanceError;
+  const known = total !== null;
   const earnDepositsEnabled = useFeature("earnDeposits");
   const nudges: StatusItem[] = homeNudges({
     cashUsd: known ? portfolio.cashUsd : null,
@@ -202,39 +213,91 @@ function HomeScreenContent() {
             </View>
 
             <View>
-              <Typography weight="500" className={cn("text-sm", S.caption)}>
-                Total Balance
-              </Typography>
-              {isBalanceError ? (
-                <HapticPressable
-                  className="flex-row items-center gap-1.5 self-start py-2"
-                  onPress={() => refetchBalances()}
-                >
-                  <Typography
-                    weight="700"
-                    className="leading-[120%] tracking-[-1.1px]"
-                    style={{ fontSize: size(40) }}
-                  >
-                    ——
+              {isBalanceError || isEarnError ? (
+                <>
+                  <Typography weight="500" className={cn("text-sm", S.caption)}>
+                    Total Balance
                   </Typography>
-                  <View className="flex-row items-center gap-1 rounded-full bg-black/5 px-2.5 py-1">
-                    <Ionicons name="refresh" size={14} color="#999" />
-                    <Typography weight="500" className="text-sm text-black/40">
-                      Couldn&apos;t load balance. Tap to retry
+                  <HapticPressable
+                    className="flex-row items-center gap-1.5 self-start py-2"
+                    onPress={() => {
+                      void refetchBalances();
+                      void refetchEarn();
+                    }}
+                  >
+                    <Typography
+                      weight="700"
+                      className="leading-[120%] tracking-[-1.1px]"
+                      style={{ fontSize: size(40) }}
+                    >
+                      ——
                     </Typography>
+                    <View
+                      className={cn(
+                        "flex-row items-center gap-1 rounded-full px-2.5 py-1",
+                        colorful ? "bg-black/5" : "bg-foreground/5"
+                      )}
+                    >
+                      <Ionicons
+                        name="refresh"
+                        size={14}
+                        color={
+                          !colorful && palette.dark ? palette.fg(0.4) : "#999"
+                        }
+                      />
+                      <Typography
+                        weight="500"
+                        className={cn(
+                          "text-sm",
+                          colorful ? "text-black/40" : "text-foreground/40"
+                        )}
+                      >
+                        Couldn&apos;t load balance. Tap to retry
+                      </Typography>
+                    </View>
+                  </HapticPressable>
+                </>
+              ) : (
+                // The total is the way into its parts: Cash, Investments and
+                // Earn each have a page, and Home has no other route to them.
+                <HapticPressable
+                  accessibilityRole="link"
+                  accessibilityLabel={
+                    hidden
+                      ? "Total balance, hidden"
+                      : total === null
+                        ? "Total balance unavailable"
+                        : `Total balance, $${totalDisplay}`
+                  }
+                  accessibilityHint="Shows what it is made of"
+                  onPress={() => router.push("/balance")}
+                  className="self-start"
+                >
+                  <View className="flex-row items-center gap-1">
+                    <Typography
+                      weight="500"
+                      className={cn("text-sm", S.caption)}
+                    >
+                      Total Balance
+                    </Typography>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={13}
+                      color={S.colors.caption}
+                    />
+                  </View>
+                  <View className="flex-row flex-wrap items-baseline gap-x-2">
+                    <Amount
+                      rolling
+                      hidden={hidden}
+                      weight="700"
+                      className={cn("leading-[120%] tracking-[-1.1px]", S.ink)}
+                      style={{ fontSize: size(40) }}
+                      amount={totalDisplay}
+                    />
+                    {dayChange !== null && <DayChange amount={dayChange} />}
                   </View>
                 </HapticPressable>
-              ) : (
-                <View className="flex-row flex-wrap items-baseline gap-x-2">
-                  <Amount
-                    hidden={hidden}
-                    weight="700"
-                    className={cn("leading-[120%] tracking-[-1.1px]", S.ink)}
-                    style={{ fontSize: size(40) }}
-                    amount={totalDisplay}
-                  />
-                  {dayChange !== null && <DayChange amount={dayChange} />}
-                </View>
               )}
             </View>
 
@@ -242,7 +305,7 @@ function HomeScreenContent() {
             the first deposit. With nothing to plot the chart shows its muted
             resting bars, which is what "no data yet" looks like. */}
             <BalanceChart
-              loading={isBalanceLoading}
+              loading={isBalanceLoading || isEarnLoading}
               history={hasBalance ? history : []}
               style={{
                 marginTop: size(CHART_GAP_ABOVE),
@@ -298,6 +361,7 @@ function HomeScreenContent() {
                 <CountryAccountWidget
                   card={countryCard}
                   onAction={(action) => router.push(CARD_ACTION_ROUTES[action])}
+                  onPress={() => router.push("/cash")}
                   {...localLabels(
                     countryCard,
                     rates,
@@ -380,11 +444,14 @@ function Amount({
   hidden,
   ...props
 }: React.ComponentProps<typeof BalanceView> & { hidden: boolean }) {
-  if (hidden) {
-    const { amount: _amount, ...text } = props;
+  if (hidden || props.amount === "—") {
+    const { amount: _amount, rolling: _rolling, ...text } = props;
     return (
-      <Typography {...text} accessibilityLabel="Hidden">
-        ••••
+      <Typography
+        {...text}
+        accessibilityLabel={hidden ? "Hidden" : "Balance unavailable"}
+      >
+        {hidden ? "••••" : "—"}
       </Typography>
     );
   }
@@ -406,6 +473,7 @@ function ActionButton({
 }) {
   const S = useSurface();
   const onPhoto = useOnPhoto();
+  const palette = usePalette();
   return (
     <GlassButton
       radius={999}
@@ -413,7 +481,15 @@ function ActionButton({
       onPress={onPress}
       // Add money keeps its weight as tinted glass, the fill it had before;
       // Send and Swap are clear glass.
-      tintColor={primary ? (onPhoto ? "#FFFFFF" : "#0A0A0A") : undefined}
+      tintColor={
+        primary
+          ? onPhoto
+            ? "#FFFFFF"
+            : palette.dark
+              ? palette.primary
+              : "#0A0A0A"
+          : undefined
+      }
       className="flex-1 items-center rounded-full py-3"
       fallbackClassName={primary ? S.primaryButton : S.secondaryButton}
       // PLATFORM-SHADOW

@@ -1,4 +1,11 @@
 import {
+  EarnCatalogSchema,
+  EarnQuoteSchema,
+  EarnPreparedSchema,
+  type EarnProvider,
+  type EarnAction,
+} from "@/utils/earn";
+import {
   NairaTransferSchema,
   NairaTransfersSchema,
 } from "@/utils/naira-transfers";
@@ -32,6 +39,7 @@ import {
   VerificationSchema,
 } from "@/utils/fiat";
 import { z } from "zod";
+import { MERCHANT_CATEGORIES } from "@/utils/merchantCategory";
 
 import * as Sentry from "@sentry/react-native";
 
@@ -50,6 +58,7 @@ import {
 } from "@/utils/displayRates";
 import {
   SEED_DEMO,
+  seedSwapTokens,
   seedAccount,
   seedProvisioningStep,
   seedRecoveryKeys,
@@ -60,6 +69,7 @@ import {
   seedTransfers,
   seedWallet,
 } from "@/utils/devSeed";
+import { SWAP_TOKEN_CATEGORIES, type SwapTokenCategory } from "@/utils/swap";
 import { demoFiat } from "@/utils/devSeedFiat";
 import { demoApproval } from "@/utils/devSeedApproval";
 import {
@@ -248,11 +258,25 @@ export const StagedChangeSchema = z.object({
    * Keys & Recovery screen with a way to cancel it.
    */
   selfInitiated: z.boolean(),
+  /**
+   * Which of Prydd's own flows staged it, or null when none did.
+   *
+   * Several changes can wait at once, so a screen that only cares about one
+   * kind reads this rather than treating any waiting change as its own. A
+   * string, not an enum: a kind this build has never heard of is still a
+   * change Prydd staged.
+   */
+  kind: z
+    .string()
+    .nullish()
+    .transform((kind) => kind ?? null),
 });
 export type StagedChange = z.infer<typeof StagedChangeSchema>;
 
 export const PendingChangeResponseSchema = z.object({
   change: StagedChangeSchema.nullable(),
+  /** Every change waiting, oldest first. Absent from a backend that knew of one. */
+  changes: z.array(StagedChangeSchema).optional(),
 });
 
 export const PreparedRejectionSchema = z.object({
@@ -453,6 +477,11 @@ export const TokenBalanceSchema = z.object({
   name: z.string().nullish(),
   /** Absolute URL of the token's logo, when one is known. */
   iconUrl: z.string().nullish(),
+  /**
+   * On the SOL entry only: the plain SOL in it. The rest is wrapped, which a
+   * swap can spend but a send cannot.
+   */
+  nativeAmountRaw: z.string().optional(),
 });
 export type TokenBalance = z.infer<typeof TokenBalanceSchema>;
 
@@ -498,6 +527,67 @@ export const PrepareTransferResponseSchema = z.object({
 export type PrepareTransferResponse = z.infer<
   typeof PrepareTransferResponseSchema
 >;
+
+/**
+ * Whether this Account can swap. `off` is an Account set up before Swap, which
+ * needs a one-time change to its spending rules; `pending` is that change
+ * waiting out its security delay.
+ */
+export const SwapAccessStatusSchema = z.object({
+  state: z.enum(["ready", "off", "pending"]),
+  executableAt: z.string().optional(),
+});
+export type SwapAccessStatus = z.infer<typeof SwapAccessStatusSchema>;
+
+export const SwapAccessStepSchema = z.object({
+  done: z.boolean(),
+  step: z.enum(["stage", "approve", "waiting", "execute"]).optional(),
+  unsignedTxBase64: z.string().optional(),
+  changeIndex: z.string().optional(),
+  executableAt: z.string().optional(),
+  needsApprovalSignature: z.boolean().optional(),
+});
+export type SwapAccessStep = z.infer<typeof SwapAccessStepSchema>;
+
+const SwapTokensResponseSchema = z.object({
+  tokens: z.array(
+    z.object({
+      mint: z.string(),
+      symbol: z.string(),
+      name: z.string(),
+      decimals: z.number().int().nonnegative(),
+      iconUrl: z.string().nullable(),
+      category: z.enum(SWAP_TOKEN_CATEGORIES),
+      trust: z.enum(["verified", "unverified", "caution"]),
+      usdPrice: z.number().nullable(),
+    })
+  ),
+});
+
+/** Mirrors `SwapQuoteResponse` in apps/backend/src/swap/dtos.ts. */
+export const SwapQuoteResponseSchema = z.object({
+  quoteId: z.string(),
+  inputMint: z.string(),
+  outputMint: z.string(),
+  amountInRaw: z.string(),
+  amountOutRaw: z.string(),
+  minAmountOutRaw: z.string(),
+  slippageBps: z.number().int().nonnegative(),
+  venue: z.string().nullable(),
+  /** Absent from a backend older than this build. */
+  venues: z.array(z.string()).optional(),
+  expiresAt: z.number(),
+});
+export type SwapQuoteResponse = z.infer<typeof SwapQuoteResponseSchema>;
+
+export const PrepareSwapResponseSchema = z.object({
+  unsignedTxBase64: z.string(),
+  vaultAddress: z.string(),
+  primarySigner: z.string(),
+});
+export type PrepareSwapResponse = z.infer<typeof PrepareSwapResponseSchema>;
+
+export const SubmitSwapResponseSchema = z.object({ signature: z.string() });
 
 /**
  * A Payment waiting on this phone.
@@ -560,6 +650,22 @@ export type SubmitTransferResponse = z.infer<
   typeof SubmitTransferResponseSchema
 >;
 
+// A category this build does not know yet reads as none, so one new value on
+// the backend cannot fail the parse of a whole Activity page.
+const MerchantCategorySchema = z
+  .enum(MERCHANT_CATEGORIES)
+  .nullish()
+  .catch(null);
+
+const SwapSideSchema = z.object({
+  mint: z.string(),
+  amountRaw: z.string(),
+  decimals: z.number().nullish(),
+  tokenName: z.string().nullish(),
+  tokenSymbol: z.string().nullish(),
+  tokenIconUrl: z.string().nullish(),
+});
+
 export const TransferRowSchema = z.object({
   id: z.string(),
   direction: z.enum(["SEND", "RECEIVE"]),
@@ -575,6 +681,23 @@ export const TransferRowSchema = z.object({
   // is the presentation literal (never uppercased).
   kind: z.enum(["transfer", "payment"]),
   merchantName: z.string().nullable(),
+  /** One side of the Consumer's own swap, so the other party is a venue. */
+  swap: z.boolean().optional(),
+  /**
+   * The whole swap, on each of its rows. Dropped rather than failing the feed
+   * if it ever arrives in a shape this build does not know.
+   */
+  swapDetails: z
+    .object({
+      pay: SwapSideSchema,
+      receive: SwapSideSchema,
+      venues: z.array(z.string()),
+    })
+    .optional()
+    .catch(undefined),
+  /** Set only on Payments. May 404, so it is a candidate, not a promise. */
+  merchantLogoUrl: z.string().nullish(),
+  merchantCategory: MerchantCategorySchema,
   /**
    * What the transfer was worth in USD when it happened, as a decimal string.
    * Frozen server-side at index time, never re-priced on read.
@@ -622,6 +745,8 @@ export const TransferRowSchema = z.object({
       bankCode: z.string().nullable(),
       logoKey: z.string().nullable(),
       accountLast4: z.string().nullable(),
+      // The arrival that brought a returned bank send's dollars back.
+      refund: z.literal(true).optional(),
     })
     .nullish(),
   createdAt: z.string().datetime(),
@@ -672,6 +797,8 @@ export type TransferListResponse = z.infer<typeof TransferListResponseSchema>;
 export const SessionSummarySchema = z.object({
   id: z.string(),
   merchantDisplayName: z.string(),
+  merchantLogoUrl: z.string().nullish(),
+  merchantCategory: MerchantCategorySchema,
   createdAt: z.string().datetime(),
   lastUsedAt: z.string().datetime(),
   expiresAt: z.string().datetime(),
@@ -768,6 +895,18 @@ class BackendClient {
         body: JSON.stringify({ quoteId, idempotencyKey }),
       })
     );
+  }
+  /**
+   * Tells the backend the Account was renamed, so it appears in Activity. The
+   * name itself stays on the device.
+   */
+  async recordAccountRename(name: string, previous: string | null) {
+    if (SEED_DEMO) return;
+    await this.request<void>("/account/name", {
+      auth: true,
+      method: "POST",
+      body: JSON.stringify({ name, previous }),
+    });
   }
   async observedBalances() {
     if (SEED_DEMO) return demoFiat.observedBalances();
@@ -1391,20 +1530,27 @@ class BackendClient {
     return ProvisioningSubmitSchema.parse(raw);
   }
 
-  /** GET /account/changes/pending — a settings change awaiting a decision. */
-  async getPendingAccountChange(): Promise<StagedChange | null> {
-    if (SEED_DEMO) return seedPendingChange();
+  /** GET /account/changes/pending — the settings changes awaiting a decision. */
+  async getPendingAccountChanges(): Promise<StagedChange[]> {
+    if (SEED_DEMO) {
+      const seeded = seedPendingChange();
+      return seeded ? [seeded] : [];
+    }
     const raw = await this.request<unknown>("/account/changes/pending", {
       method: "GET",
       auth: true,
     });
-    return PendingChangeResponseSchema.parse(raw).change;
+    const { change, changes } = PendingChangeResponseSchema.parse(raw);
+    return changes ?? (change ? [change] : []);
   }
 
   /** POST /account/changes/reject/prepare — the rejection to sign. */
-  async prepareChangeRejection(): Promise<PreparedRejection> {
+  async prepareChangeRejection(
+    transactionIndex: string
+  ): Promise<PreparedRejection> {
     const raw = await this.request<unknown>("/account/changes/reject/prepare", {
       method: "POST",
+      body: JSON.stringify({ transactionIndex }),
       auth: true,
     });
     return PreparedRejectionSchema.parse(raw);
@@ -1867,6 +2013,132 @@ class BackendClient {
       auth: true,
     });
     return SubmitTransferResponseSchema.parse(raw);
+  }
+
+  /** GET /account/swap-access: whether this Account can swap yet. */
+  async getSwapAccess(): Promise<SwapAccessStatus> {
+    if (SEED_DEMO) return { state: "ready" };
+    const raw = await this.request<unknown>("/account/swap-access", {
+      method: "GET",
+      auth: true,
+    });
+    return SwapAccessStatusSchema.parse(raw);
+  }
+
+  /** POST /account/swap-access/next: the next step, or done. */
+  async nextSwapAccessStep(): Promise<SwapAccessStep> {
+    const raw = await this.request<unknown>("/account/swap-access/next", {
+      method: "POST",
+      auth: true,
+    });
+    return SwapAccessStepSchema.parse(raw);
+  }
+
+  /** POST /account/swap-access/submit: lands a signed step. */
+  async submitSwapAccessStep(signedTxBase64: string): Promise<void> {
+    await this.request<unknown>("/account/swap-access/submit", {
+      method: "POST",
+      body: JSON.stringify({ signedTxBase64 }),
+      auth: true,
+    });
+  }
+
+  /**
+   * GET /swaps/tokens: the verified assets Swap offers. Those matching
+   * `query`, or else the popular ones in `category`, or else the everyday
+   * list.
+   */
+  async swapTokens(
+    query: string,
+    category: SwapTokenCategory | null,
+    signal?: AbortSignal
+  ) {
+    if (SEED_DEMO) return seedSwapTokens(query, category);
+    const params = query
+      ? `?q=${encodeURIComponent(query)}`
+      : category
+        ? `?category=${category}`
+        : "";
+    const raw = await this.request<unknown>(`/swaps/tokens${params}`, {
+      auth: true,
+      signal,
+    });
+    return SwapTokensResponseSchema.parse(raw).tokens;
+  }
+
+  /**
+   * POST /swaps/quote: prices swapping one of the Account's assets for
+   * another. Native SOL is named by its wrapped mint.
+   */
+  async swapQuote(
+    body: { inputMint: string; outputMint: string; amountRaw: string },
+    signal?: AbortSignal
+  ): Promise<SwapQuoteResponse> {
+    const raw = await this.request<unknown>("/swaps/quote", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+      signal,
+    });
+    return SwapQuoteResponseSchema.parse(raw);
+  }
+
+  async getEarn() {
+    return EarnCatalogSchema.parse(
+      await this.request<unknown>("/earn", { auth: true })
+    );
+  }
+  async quoteEarn(
+    provider: EarnProvider,
+    action: EarnAction,
+    amountMinor: string,
+    withdrawAll = false
+  ) {
+    return EarnQuoteSchema.parse(
+      await this.request<unknown>("/earn/quote", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ provider, action, amountMinor, withdrawAll }),
+      })
+    );
+  }
+  async prepareEarn(quoteId: string) {
+    return EarnPreparedSchema.parse(
+      await this.request<unknown>("/earn/prepare", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ quoteId }),
+      })
+    );
+  }
+  async submitEarn(signedTxBase64: string): Promise<{ signature: string }> {
+    return z.object({ signature: z.string() }).parse(
+      await this.request<unknown>("/earn/submit", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ signedTxBase64 }),
+      })
+    );
+  }
+
+  /** POST /swaps/prepare: the unsigned swap for a quote still on offer. */
+  async prepareSwap(quoteId: string): Promise<PrepareSwapResponse> {
+    const raw = await this.request<unknown>("/swaps/prepare", {
+      method: "POST",
+      body: JSON.stringify({ quoteId }),
+      auth: true,
+    });
+    return PrepareSwapResponseSchema.parse(raw);
+  }
+
+  /** POST /swaps/submit: lands a swap both of the Account's keys signed. */
+  async submitSwap(signedTxBase64: string): Promise<{ signature: string }> {
+    const raw = await this.request<unknown>("/swaps/submit", {
+      method: "POST",
+      body: JSON.stringify({ signedTxBase64 }),
+      auth: true,
+    });
+    return SubmitSwapResponseSchema.parse(raw);
   }
 
   /** GET /payments/pending — Payments a Merchant is waiting on, that only

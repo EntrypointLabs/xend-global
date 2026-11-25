@@ -2,6 +2,7 @@ import { requireNativeModule } from "expo-modules-core";
 import { Platform } from "react-native";
 
 import { accountScope } from "./accountScope";
+import { withSystemPrompt } from "@/utils/systemPrompt";
 
 /**
  * The approval signer's key (S2 in ADR 0025): a P-256 keypair generated inside
@@ -81,8 +82,12 @@ export function devicePlatform(): DevicePlatform {
 export const hardwareKey = {
   enrol: async (nonce: string) => native.enrol(nonce, await accountScope()),
   getPublicKey: async () => native.getPublicKey(await accountScope()),
-  sign: async (payloadHex: string, title: string, reason: string) =>
-    native.sign(payloadHex, title, reason, await accountScope()),
+  sign: async (payloadHex: string, title: string, reason: string) => {
+    const scope = await accountScope();
+    return withSystemPrompt(() =>
+      native.sign(payloadHex, title, reason, scope)
+    );
+  },
   reset: async () => native.reset(await accountScope()),
 };
 
@@ -108,6 +113,18 @@ export const SIGN_PROMPT = {
   send: {
     title: "Confirm this send",
     reason: "Check it is you before Prydd sends this money",
+  },
+  swapAccess: {
+    title: "Turn on Swap",
+    reason: "Confirm it is you turning on Swap for your account",
+  },
+  earn: {
+    title: "Confirm this Earn move",
+    reason: "Check it is you before Prydd moves this money",
+  },
+  swap: {
+    title: "Confirm this swap",
+    reason: "Check it is you before Prydd swaps this money",
   },
   // Worded as stopping rather than approving. This is the one prompt a
   // Consumer may reach while being attacked, and "approve" is the last word

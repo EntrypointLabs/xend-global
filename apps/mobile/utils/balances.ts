@@ -1,3 +1,4 @@
+import { EARN_PROVIDERS } from "@prydd/smart-account";
 import type { TokenBalance } from "@/utils/apiClient";
 import { getUsdcMint } from "@/utils/cluster";
 
@@ -102,7 +103,11 @@ export function selectPortfolio(tokens: TokenBalance[] | undefined): Portfolio {
   if (!tokens) return empty;
 
   const cash = cashMints();
+  const earnMints = new Set(
+    Object.values(EARN_PROVIDERS).map((p) => p.receipt as string)
+  );
   return tokens.reduce<Portfolio>((acc, token) => {
+    if (earnMints.has(token.mint)) return acc;
     if (cash.has(token.mint)) {
       acc.cashUsd += rawToNumber(token.amountRaw, token.decimals);
       return acc;
@@ -117,6 +122,38 @@ export function selectPortfolio(tokens: TokenBalance[] | undefined): Portfolio {
     acc.investmentsUsd += token.usdValue;
     return acc;
   }, empty);
+}
+
+/** A portfolio headline requires every bucket to have a known valuation. */
+export function selectPortfolioTotal(
+  portfolio: Portfolio | null,
+  earnUsd: number | null
+): number | null {
+  return portfolio === null || earnUsd === null
+    ? null
+    : portfolio.cashUsd + portfolio.investmentsUsd + earnUsd;
+}
+
+/**
+ * What stands between the Consumer and deleting their Account: everything
+ * they hold, priced the way the home screen prices it.
+ *
+ * Deletion is refused while anything at all is held, priced or not, because
+ * whatever is left behind is lost with the Account. So `holdsAnything` is
+ * decided by amounts, and `usd` is only what can be said about them.
+ */
+export function holdingsBeforeDelete(
+  tokens: TokenBalance[] | undefined,
+  earnUsd: number | null
+): { usd: number | null; holdsAnything: boolean } {
+  const { cashUsd, investmentsUsd } = selectPortfolio(tokens);
+  return {
+    usd: earnUsd === null ? null : cashUsd + investmentsUsd + earnUsd,
+    holdsAnything:
+      earnUsd === null ||
+      earnUsd > 0 ||
+      (tokens ?? []).some((token) => BigInt(token.amountRaw) > 0n),
+  };
 }
 
 /**

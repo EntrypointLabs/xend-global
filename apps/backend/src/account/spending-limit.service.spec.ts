@@ -33,6 +33,7 @@ function chain(limits: readonly SpendingLimit[] | Error) {
     compile: () => Promise.reject(new Error('not part of this read')),
     wouldSucceed: () => Promise.reject(new Error('not part of this read')),
     tokenProgramFor: () => Promise.resolve(TOKEN_PROGRAM_ID_FAKE),
+    decimalsFor: () => Promise.resolve(6),
     createDestinationTokenAccount: () => Promise.resolve(null),
     feePayer: AUTHORITY,
   };

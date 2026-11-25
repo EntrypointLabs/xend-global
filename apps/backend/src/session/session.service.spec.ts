@@ -38,6 +38,9 @@ function sessionRow(over: Partial<SessionRow> = {}): SessionRow {
 interface ListRow {
   id: string;
   merchantDisplayName: string;
+  merchantId: string;
+  merchantCategory: string;
+  merchantLogoUpdatedAt: Date | null;
   createdAt: Date;
   lastUsedAt: Date;
   expiresAt: Date;
@@ -59,6 +62,7 @@ function makeFakeDb(cfg: {
         if (projection) {
           const jchain = {
             innerJoin: () => jchain,
+            leftJoin: () => jchain,
             where: () => Promise.resolve(cfg.listRows ?? []),
           };
           return jchain;
@@ -104,6 +108,7 @@ function makeConfig(over: Record<string, string | number> = {}): ConfigService {
     ...over,
   };
   return {
+    get: (key: string): string | number | undefined => values[key],
     getOrThrow: (key: string): string | number => {
       const v = values[key];
       if (v === undefined) throw new Error(`missing config ${key}`);
@@ -351,6 +356,9 @@ describe('SessionService.listForConsumer', () => {
         {
           id: 's1',
           merchantDisplayName: 'Acme Store',
+          merchantId: 'm_1',
+          merchantCategory: 'food_drink',
+          merchantLogoUpdatedAt: new Date('2026-01-03'),
           createdAt: new Date('2026-01-01'),
           lastUsedAt: new Date('2026-01-02'),
           expiresAt: new Date('2026-04-01'),
@@ -363,6 +371,10 @@ describe('SessionService.listForConsumer', () => {
 
     expect(summaries).toHaveLength(1);
     expect(summaries[0].merchantDisplayName).toBe('Acme Store');
+    expect(summaries[0].merchantCategory).toBe('food_drink');
+    expect(summaries[0].merchantLogoUrl).toBe(
+      `https://api.prydd.co/v1/merchant-logos/m_1?v=${new Date('2026-01-03').getTime()}`,
+    );
     expect(summaries[0].createdAt).toBe(new Date('2026-01-01').toISOString());
     expect(summaries[0]).not.toHaveProperty('tokenHash');
   });

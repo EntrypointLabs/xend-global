@@ -9,6 +9,7 @@ import {
 import { ActivityItem } from "./ActivityItem";
 import { Typography } from "../atoms/Typography";
 import type { ActivityEntry } from "@/utils/activity";
+import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
 import { GLASS, groupedRowClass, useOnPhoto } from "@/components/ui/glass";
 
@@ -60,11 +61,17 @@ export const ActivityList = memo(
     scrollEventThrottle,
   }: ActivityListProps) => {
     const onPhoto = useOnPhoto();
+    const palette = usePalette();
+    const spinner = onPhoto
+      ? "#FFFFFF"
+      : palette.dark
+        ? palette.foreground
+        : undefined;
     const emptyState = ListEmptyComponent ?? (
       <View className="items-center py-16">
         <Typography
           weight="500"
-          className={onPhoto ? GLASS.copy : "text-black/30"}
+          className={onPhoto ? GLASS.copy : "text-foreground/30"}
         >
           No activity yet
         </Typography>
@@ -98,7 +105,7 @@ export const ActivityList = memo(
             weight="600"
             className={cn(
               "text-sm",
-              onPhoto ? cn("pb-2 pt-5", GLASS.caption) : "text-black/30"
+              onPhoto ? cn("pb-2 pt-5", GLASS.caption) : "text-foreground/30"
             )}
           >
             {formatSectionTitle(title)}
@@ -113,7 +120,7 @@ export const ActivityList = memo(
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor={onPhoto ? "#FFFFFF" : undefined}
+              tintColor={spinner}
             />
           ) : undefined
         }
@@ -121,7 +128,7 @@ export const ActivityList = memo(
         ListFooterComponent={
           isFetchingNextPage ? (
             <View className="py-4">
-              <ActivityIndicator color={onPhoto ? "#FFFFFF" : undefined} />
+              <ActivityIndicator color={spinner} />
             </View>
           ) : null
         }

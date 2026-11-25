@@ -161,7 +161,8 @@ export class PrimaryRotationService {
 
     if (
       account.pendingApprovalChangeIndex ||
-      account.pendingSpendingLimitChangeIndex
+      account.pendingSpendingLimitChangeIndex ||
+      account.pendingSwapAccessChangeIndex
     ) {
       // Every settings change races the same index, and the two rotations
       // write the same signer set on top of that.
