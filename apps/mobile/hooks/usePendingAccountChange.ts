@@ -74,9 +74,9 @@ export function useRejectAccountChange() {
       const wallet = embeddedSolana.wallets?.[0];
       if (!wallet) throw new Error("Wallet not ready");
       if (!account) throw new Error("Account not ready");
-      const shown = queryClient.getQueryData<StagedChange | null>(
-        PENDING_CHANGE_KEY
-      );
+      const shown = queryClient
+        .getQueryData<StagedChange[]>(PENDING_CHANGE_KEY)
+        ?.find((change) => change.transactionIndex === transactionIndex);
       if (!shown) throw new Error("No change to reject");
       const provider = await wallet.getProvider();
 

@@ -381,6 +381,9 @@ export function checkRejection(
   base64: string,
   expected: { vault: string; transactionIndex: string }
 ): string | null {
+  if (!expected.transactionIndex) {
+    return "it rejects a change that was not shown";
+  }
   let description: TransactionDescription;
   try {
     description = describe(base64, expected.vault);

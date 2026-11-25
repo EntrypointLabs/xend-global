@@ -616,6 +616,13 @@ describe("checkRejection", () => {
       "it approves a different change"
     );
   });
+
+  it("refuses when no change on screen is named", () => {
+    const unnamed = { vault, transactionIndex: undefined as unknown as string };
+    expect(checkRejection(reject(4n), unnamed)).toBe(
+      "it rejects a change that was not shown"
+    );
+  });
 });
 
 describe("checkTransfer", () => {
