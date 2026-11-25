@@ -9,6 +9,7 @@ import { Buffer } from "buffer";
 import { toByteArray, fromByteArray } from "base64-js";
 import { VersionedTransaction } from "@solana/web3.js";
 import { useAccount, ACCOUNT_QUERY_KEY } from "@/hooks/useAccount";
+import { settleTransferInFeed } from "@/utils/transferFeed";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
 import { signPresenceProof } from "@/modules/hardware-key/src/presence";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
@@ -423,6 +424,7 @@ export function useSendExecutor() {
           sendingUntil
         );
         if (settled === "PENDING") return;
+        settleTransferInFeed(queryClient, submitted.transferId, settled);
         invalidateAfterCryptoSend(queryClient);
         if (settled === "FAILED") {
           toastFailed(`transfer ${submitted.transferId} failed on chain`);

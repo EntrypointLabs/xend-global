@@ -15,6 +15,7 @@ import type { ReconcilerService } from '../activity/reconciler.service';
 import type { RampActivityService } from '../fiat/ramp-activity';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
+import type { TokenPriceProvider } from '../prices/token-price.interface';
 import type { ApprovalSignerStore } from '../turnkey/approval-signer.store';
 import { InMemoryPreparedTxStore } from '../prepared/prepared-tx.memory';
 import { generateKeyPairSync, sign } from 'node:crypto';
@@ -149,6 +150,7 @@ function makeFakeDb(store: FakeStore): DbService {
               submittedAt: vals.submittedAt ?? null,
               confirmedAt: vals.confirmedAt ?? null,
               failureReason: vals.failureReason ?? null,
+              usdValue: vals.usdValue ?? null,
             };
           } else {
             row = vals;
@@ -341,6 +343,8 @@ function makeService(opts: {
     string,
     { name: string; symbol: string; iconUrl: string | null }
   >;
+  /** Dollar prices by mint. Unpriced unless a test says otherwise. */
+  prices?: Record<string, { usdPrice: number; decimals: number }>;
 }) {
   const account = opts.account ?? makeAccount();
   const store: FakeStore = opts.store ?? {
@@ -391,6 +395,17 @@ function makeService(opts: {
     {
       forUser: () => Promise.resolve(new Map()),
     } as unknown as RampActivityService,
+    {
+      getUsdPrices: () =>
+        Promise.resolve(
+          new Map(
+            Object.entries(opts.prices ?? {}).map(([mint, p]) => [
+              mint,
+              { ...p, priceChange24h: null },
+            ]),
+          ),
+        ),
+    } as TokenPriceProvider,
   );
   return { service, store, account, reconciler };
 }
@@ -553,6 +568,44 @@ describe('TransferService.prepare', () => {
 // ── submit ────────────────────────────────────────────────────────────
 
 describe('TransferService.submit', () => {
+  it('stamps what the send is worth as it leaves', async () => {
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const { service, store } = makeService({
+      solana: makeSolana({}),
+      prices: { [usdcMint]: { usdPrice: 1, decimals: 6 } },
+    });
+
+    const prep = await service.prepare('u_test', {
+      toAddress: recipient,
+      mint: usdcMint,
+      amountRaw: '2500000',
+    });
+    await service.submit('u_test', {
+      intentId: prep.intentId,
+      signedTxBase64: signPrepared(prep.unsignedTxBase64),
+    });
+
+    expect(store.transfers[0].usdValue).toBe('2.500000');
+  });
+
+  it('still sends when the token cannot be priced', async () => {
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const { service, store } = makeService({ solana: makeSolana({}) });
+
+    const prep = await service.prepare('u_test', {
+      toAddress: recipient,
+      mint: usdcMint,
+      amountRaw: '2500000',
+    });
+    await service.submit('u_test', {
+      intentId: prep.intentId,
+      signedTxBase64: signPrepared(prep.unsignedTxBase64),
+    });
+
+    expect(store.transfers[0].status).toBe('PENDING');
+    expect(store.transfers[0].usdValue).toBeNull();
+  });
+
   it('writes PENDING transfers row with signature on the happy path', async () => {
     const recipient = Keypair.generate().publicKey.toBase58();
     const sendRawTransaction = jest.fn().mockResolvedValue('sig-happy');

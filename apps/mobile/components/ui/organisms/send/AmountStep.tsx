@@ -15,6 +15,7 @@ import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { getUsdcMint } from "@/utils/cluster";
 import { formatRawAmountShort, toAmountInput, toRawAmount } from "@/utils/swap";
 import { heldSwapTokens, type HeldSwapToken } from "@/utils/swapTokens";
+import { formatUsdFromString } from "@/utils/balances";
 import { Ionicons } from "@expo/vector-icons";
 import { formatAmount, truncateAddress } from "@/utils/helper";
 import { useBalances } from "@/hooks/useBalances";
@@ -105,6 +106,12 @@ function CryptoAmountStep({
     tokens.find((balance) => balance.mint === token.mint)?.nativeAmountRaw ??
     token.amountRaw;
   const heldRaw = BigInt(sendableRaw);
+  const price = isDollars ? 1 : token.usdPrice;
+  const worthOf =
+    price === null
+      ? undefined
+      : (amount: string) =>
+          amount ? formatUsdFromString(String(Number(amount) * price)) : "$0";
 
   return (
     <AmountPad
@@ -138,6 +145,7 @@ function CryptoAmountStep({
       )}
       balanceLabel={`${heldLabel(sendableRaw, token.decimals, isDollars)} ${token.symbol}`}
       maxAmount={toAmountInput(sendableRaw, token.decimals)}
+      worthOf={worthOf}
       statusOf={(amount) => {
         const raw = BigInt(toRawAmount(amount, token.decimals));
         if (raw === 0n) return "idle";
@@ -638,6 +646,8 @@ interface AmountPadProps {
   maxAmount?: string;
   statusOf: (amount: string) => AmountStatus;
   noteFor?: (amount: string) => string | null;
+  /** The amount in dollars, under the number. Absent when it cannot be priced. */
+  worthOf?: (amount: string) => string;
   onBack: () => void;
   onContinue: (amount: string) => Promise<SendStart>;
   onSending: () => void;
@@ -653,6 +663,7 @@ function AmountPad({
   maxAmount,
   statusOf,
   noteFor,
+  worthOf,
   onBack,
   onContinue,
   onSending,
@@ -775,9 +786,11 @@ function AmountPad({
           >
             {formattedAmount}
           </Typography>
-          {/* <View className="flex-row items-center mt-2">
-                        <Text className="text-gray-400 text-lg font-medium mr-1">$0</Text>
-                    </View> */}
+          {worthOf ? (
+            <Typography weight="500" className="mt-2 text-lg text-gray-400">
+              {worthOf(amount)}
+            </Typography>
+          ) : null}
 
           {/* Swap Icon Button */}
           {/* <TouchableOpacity className="absolute right-0 top-1/2 mt-4 w-10 h-10 bg-white rounded-full items-center justify-center border border-gray-100 shadow-sm">
