@@ -1,6 +1,6 @@
 # 0041: Earn through existing Account token allowances
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-11-25
 **Deciders:** Product owner and implementation review
 **Tags:** earn, security, backend, mobile, solana
@@ -43,3 +43,7 @@ The phone rebuilds every message byte, independently reads the exchange ratio an
 - [Forwarder review and activation steps](../../programs/earn-forwarder/README.md)
 - [Swap allowance precedent](../../packages/smart-account/src/token-allowance.ts)
 - [Transaction verification](../../packages/smart-account/src/earn-verify.ts)
+
+## Deployment on 2026-11-25
+
+The project owner funded deployment and designated the PRYDD Protocol Authority Squad. The forwarder was deployed with upgrade authority assigned to that Squad's vault in the same transaction. Its 2-of-3 threshold and on-chain ownership were verified; the fee wallet only pays operational costs. See the [mainnet deployment record](../../programs/earn-forwarder/deployments/mainnet.json). Backend/mobile activation and an explicitly approved funded canary remain separate release steps.

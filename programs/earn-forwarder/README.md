@@ -22,14 +22,29 @@ npm run test --workspace=@prydd/smart-account
 
 The integration suite runs the actual downloaded Kamino, Jupiter lending/liquidity and Squads bytecode with the compiled forwarder in LiteSVM. It verifies deposit/redemption with an independent sponsor, existing two-signature policy, unchanged time-locked Settings, transaction size under 1232 bytes using a static shared lookup table, revocation after success and rollback on failure. It never broadcasts a real financial transaction. Missing fixtures are explicitly skipped; a passing skipped suite is not deployment verification.
 
-## Production activation requires operator review
+## Mainnet deployment
 
-1. Review this new contract and its tests before accepting funds. Local tests are not an independent security audit. Choose an operator-controlled deployment/upgrade authority; no Consumer signing key is needed. Do not use a generated build/test keypair as a production authority.
-2. Deploy the reviewed `.so` once using the operator's normal Solana deployment process. This has an operator-paid rent/network cost. Do not weaken Consumer settings or their 24-hour lock. Do not make the program immutable until its review and upgrade policy have been explicitly decided.
-3. Build the smart-account package and run the lookup helper in its default **read-only** planning mode. Supply `EARN_FORWARDER_PROGRAM` and `HELIUS_RPC_URL` through the operator environment, and `--binary programs/earn-forwarder/target/deploy/prydd_earn_forwarder.so`. It prints the public canonical code hash, static market accounts and lookup rent estimate. No user-specific lookup table is required.
-4. After approval, rerun with `--execute --payer-keypair /secure/operator-keypair.json` to create the shared lookup table. This script will refuse a deployed program whose code differs from the reviewed binary. It prints only public setup values, never keys.
-5. Apply migration `0069_earn_operations.sql` through the normal backend migration process. Configure backend `EARN_FORWARDER_PROGRAM`, `EARN_LOOKUP_TABLE`, `EARN_FORWARDER_CODE_SHA256`. Set mobile `EXPO_PUBLIC_EARN_FORWARDER_PROGRAM` and `EXPO_PUBLIC_EARN_FORWARDER_CODE_SHA256` to the same public address/hash and distribute the normal app update. Both sides verify the code before enabling/signing. Missing deployment/configuration fails closed.
-6. Confirm sponsor SOL is funded, API/Redis/DB/RPC access is healthy and `EARN_DEPOSITS_KILLSWITCH` is false. The feature flag alone cannot enable an undeployed program. After operator-approved deployment, use an explicitly approved small deposit **and withdrawal** from an existing test Account before general rollout.
+Deployed on 2026-11-25 from source commit `9775e23b0bf2a083a0c0701d0865e123fc754bae`. The [deployment record](./deployments/mainnet.json) contains the finalized transaction, program-data address, exact code hash and shared lookup table.
+
+- Program: `2W8jBW5wRb4sekq5kjhAkdHFBUDPUzb5LnQ4KSa32AKu`
+- Upgrade authority: `65UdyhQDorffWGvf9ivvejXwRCNCBKiDKW36LgcbQBQL` (the project Squad's vault; 2-of-3, no timelock at deployment).
+- Squad configuration account: `87KMy1bL1xbJxDMa2VecMZohZVLa2mWgFoXQisyK2ehn`. This is not the upgrade-authority address.
+- Shared lookup table: `2fM7RUifC6M6c7TgdKBmDWuWSYzb9mDks8uVQAPyXS1F`; 21 verified static addresses, managed by the fee wallet.
+
+[Deployment and authority assignment](https://explorer.solana.com/tx/3Zeqr3Yf9amoCtzYrYU1XH86AS2hR5V4bgDoEvCMChsDxH7b27XRzKUeurNWkQbF4EC3SmtqYMFEXocw9UoYjujs) happened atomically in one fee-wallet transaction. The fee wallet does not retain program upgrade authority. The upload buffer was closed. Initial upload transaction retries were resumed against the same buffer and program identity.
+
+The initial deployment was not a Squad proposal, so it will not appear as an executed proposal in the Squad's transaction history. To register it in the Squads dashboard, connect a member wallet, open **Developers → Programs → Add Program**, use the name **Prydd Earn Forwarder**, and enter the program address above. The on-chain authority is already the Squad vault; no new authority transfer is needed. Future upgrades require the Squad's approval threshold. See [Squads program management](https://docs.squads.so/main/navigating-your-squad/developers-assets/programs).
+
+## Backend and mobile activation
+
+The contract deployment does not publish a backend or mobile release. No Consumer deposit or withdrawal was broadcast during deployment.
+
+1. Apply migration `0069_earn_operations.sql` through the normal backend migration process.
+2. Configure backend `EARN_FORWARDER_PROGRAM`, `EARN_LOOKUP_TABLE`, `EARN_FORWARDER_CODE_SHA256` from the deployment record; the values are also in `.env.example`. Ensure the backend cluster and RPC are mainnet.
+3. Set mobile `EXPO_PUBLIC_EARN_FORWARDER_PROGRAM` and `EXPO_PUBLIC_EARN_FORWARDER_CODE_SHA256` to the matching public values in `example.env`, then distribute the reviewed app update. Both sides verify the executable before enabling/signing.
+4. Confirm sponsor SOL, API, Redis, DB and RPC readiness. Use an operator-approved existing test Account for a small deposit **and withdrawal** through Face ID before general rollout. `EARN_DEPOSITS_KILLSWITCH` controls deposits; exits and approval recovery stay available during a pause.
+
+For a replacement deployment, review the new contract, select the project-controlled upgrade authority, build/test it, deploy once, verify the executable and authority, then create the shared lookup table. `apps/backend/scripts/setup-earn-lookup.mjs` defaults to a read-only plan; `--execute --payer-keypair /secure/operator-keypair.json` creates the table only after verifying the deployed binary hash. Never use a generated build/test authority or weaken Consumer permissions. Local tests and code review are not an independent security audit.
 
 There are no new Kamino or Jupiter API keys required. Read data and Jupiter rate data use the existing RPC connection; Kamino's public rate endpoint is optional and a rate outage does not fabricate a yield or erase a position.
 
