@@ -21,6 +21,14 @@ export class BelowRentMinimumError extends Error {
   }
 }
 
+export class InsufficientSolError extends Error {
+  readonly code = 'INSUFFICIENT_SOL';
+  constructor(message: string) {
+    super(message);
+    this.name = 'InsufficientSolError';
+  }
+}
+
 export class UnsupportedMintError extends Error {
   readonly code = 'UNSUPPORTED_MINT';
   constructor(message: string) {

@@ -58,6 +58,7 @@ import {
   RpcUnavailableError,
   UnsupportedMintError,
   BelowRentMinimumError,
+  InsufficientSolError,
 } from './transfer.errors';
 import { verifyPresenceProof } from './presence-proof';
 import {
@@ -202,7 +203,12 @@ export class TransferService {
     // the balance being rescued is the one still sitting in the Privy wallet.
     const isSweepToVault = squads?.vaultAddress === req.toAddress;
     if (squads && !isSweepToVault) {
-      return this.prepareVaultSpend(userId, account.id, req);
+      return this.prepareVaultSpend(
+        userId,
+        account.id,
+        squads.vaultAddress,
+        req,
+      );
     }
 
     const fromAddress = account.walletAddress;
@@ -373,6 +379,23 @@ export class TransferService {
    * little to keep it open. The chain rejects such a transfer outright, after
    * the Consumer has confirmed it twice.
    */
+  private async assertVaultHoldsSol(
+    vaultAddress: string,
+    amountRaw: string,
+  ): Promise<void> {
+    let lamports: bigint;
+    try {
+      lamports = await this.solana.getSolBalance(vaultAddress);
+    } catch (err) {
+      throw new RpcUnavailableError('failed to read the SOL balance', err);
+    }
+    if (lamports < BigInt(amountRaw)) {
+      throw new InsufficientSolError(
+        'the vault holds less plain SOL than the send; wrapped SOL cannot be sent',
+      );
+    }
+  }
+
   private async assertSolReachesRecipient(req: {
     toAddress: string;
     amountRaw: string;
@@ -401,6 +424,7 @@ export class TransferService {
   private async prepareVaultSpend(
     userId: string,
     smartAccountId: string,
+    vaultAddress: string,
     req: { toAddress: string; mint: string; amountRaw: string; memo?: string },
   ): Promise<PrepareResponse> {
     try {
@@ -414,12 +438,14 @@ export class TransferService {
       throw new UnsupportedMintError(`mint ${req.mint} not a valid pubkey`);
     }
 
-    // Any token the vault holds can be sent. Only the dollar has a spending
-    // limit, so anything else takes the two-signature route, which is what
-    // keeps opening up the mint safe. SOL is named by its wrapped mint, as
-    // everywhere else, but leaves the vault as plain SOL.
+    // Any token the vault holds can be sent. SOL is named by its wrapped
+    // mint, as everywhere else, but leaves the vault as plain SOL, so only
+    // the plain part of a SOL balance can go.
     const native = req.mint === WRAPPED_SOL_MINT.toBase58();
-    if (native) await this.assertSolReachesRecipient(req);
+    if (native) {
+      await this.assertVaultHoldsSol(vaultAddress, req.amountRaw);
+      await this.assertSolReachesRecipient(req);
+    }
     let decimals: number;
     try {
       decimals = native

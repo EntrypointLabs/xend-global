@@ -31,6 +31,7 @@ import {
   RpcUnavailableError,
   UnsupportedMintError,
   BelowRentMinimumError,
+  InsufficientSolError,
 } from './transfer.errors';
 
 interface AuthenticatedRequest extends Request {
@@ -106,7 +107,10 @@ export class TransferController {
         HttpStatus.BAD_REQUEST,
       );
     }
-    if (err instanceof BelowRentMinimumError) {
+    if (
+      err instanceof BelowRentMinimumError ||
+      err instanceof InsufficientSolError
+    ) {
       throw new HttpException(
         { code: err.code, message: err.message },
         HttpStatus.BAD_REQUEST,

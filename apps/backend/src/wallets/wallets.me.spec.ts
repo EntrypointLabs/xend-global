@@ -219,6 +219,7 @@ describe('WalletsService (/wallet/me + /wallet/me/balances)', () => {
           priceChange24h: 5.13,
           name: null,
           iconUrl: null,
+          nativeAmountRaw: '5000000000',
         },
       ]);
     });
@@ -256,6 +257,8 @@ describe('WalletsService (/wallet/me + /wallet/me/balances)', () => {
           priceChange24h: 5.13,
           name: null,
           iconUrl: null,
+          // Only the plain part can be sent; the wrapped part is for swaps.
+          nativeAmountRaw: '3000000000',
         },
       ]);
     });

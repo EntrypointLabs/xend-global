@@ -137,6 +137,9 @@ export class WalletsService {
         usdValue: usdValueOf(t, usdPrices.get(t.mint)?.usdPrice),
         usdPrice: usdPrices.get(t.mint)?.usdPrice ?? null,
         priceChange24h: usdPrices.get(t.mint)?.priceChange24h ?? null,
+        ...(t.mint === WRAPPED_SOL_MINT && {
+          nativeAmountRaw: lamports.toString(),
+        }),
       })),
       fetchedAtSlot: blockhash.lastValidBlockHeight,
     };

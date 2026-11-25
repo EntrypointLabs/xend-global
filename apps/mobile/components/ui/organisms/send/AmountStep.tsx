@@ -101,7 +101,10 @@ function CryptoAmountStep({
     held.find((candidate) => candidate.mint === getUsdcMint()) ??
     emptyUsdc();
   const isDollars = token.mint === getUsdcMint();
-  const heldRaw = BigInt(token.amountRaw);
+  const sendableRaw =
+    tokens.find((balance) => balance.mint === token.mint)?.nativeAmountRaw ??
+    token.amountRaw;
+  const heldRaw = BigInt(sendableRaw);
 
   return (
     <AmountPad
@@ -110,11 +113,15 @@ function CryptoAmountStep({
       key={token.mint}
       recipientLabel={truncateAddress(recipient)}
       maxDecimals={token.decimals}
-      chip={
+      // Fixed while a send is being prepared: a new token would remount the
+      // pad and let a second send start beside the one being signed.
+      chip={(busy) => (
         <HapticPressable
           onPress={onChooseToken}
+          disabled={busy}
           accessibilityRole="button"
           accessibilityLabel={`Sending ${token.symbol}. Change token`}
+          accessibilityState={{ disabled: busy }}
           className="flex-row items-center gap-1.5 rounded-full bg-white py-1.5 pl-1.5 pr-3 shadow-sm dark:bg-foreground/10"
         >
           <TokenMark
@@ -128,9 +135,9 @@ function CryptoAmountStep({
           </Typography>
           <Ionicons name="chevron-down" size={12} color={palette.foreground} />
         </HapticPressable>
-      }
-      balanceLabel={`${heldLabel(token, isDollars)} ${token.symbol}`}
-      maxAmount={toAmountInput(token.amountRaw, token.decimals)}
+      )}
+      balanceLabel={`${heldLabel(sendableRaw, token.decimals, isDollars)} ${token.symbol}`}
+      maxAmount={toAmountInput(sendableRaw, token.decimals)}
       statusOf={(amount) => {
         const raw = BigInt(toRawAmount(amount, token.decimals));
         if (raw === 0n) return "idle";
@@ -149,11 +156,15 @@ function CryptoAmountStep({
 }
 
 /** A balance as the pill shows it: dollars to the cent, other tokens cut short. */
-function heldLabel(token: HeldSwapToken, isDollars: boolean): string {
-  if (!isDollars) return formatRawAmountShort(token.amountRaw, token.decimals);
+function heldLabel(
+  amountRaw: string,
+  decimals: number,
+  isDollars: boolean
+): string {
+  if (!isDollars) return formatRawAmountShort(amountRaw, decimals);
   const [whole, fraction = ""] = formatRawAmountShort(
-    token.amountRaw,
-    token.decimals,
+    amountRaw,
+    decimals,
     2
   ).split(".");
   return `${whole}.${fraction.padEnd(2, "0")}`;
@@ -624,7 +635,8 @@ interface AmountPadProps {
   recipientDetail?: string;
   prefix?: string;
   maxDecimals: number;
-  chip: React.ReactNode;
+  /** A function when the chip has to stand still while a send is under way. */
+  chip: React.ReactNode | ((busy: boolean) => React.ReactNode);
   balanceLabel: string;
   /** Absent when no exact maximum exists, which hides MAX. */
   maxAmount?: string;
@@ -779,7 +791,7 @@ function AmountPad({
 
         {/* Token Selector & Max */}
         <View className="mx-6 mb-8 flex-row items-center justify-between rounded-full bg-[#F9F9F9] p-2 dark:bg-muted">
-          {chip}
+          {typeof chip === "function" ? chip(busy) : chip}
 
           <Typography weight="500" className="ml-3 flex-1 text-gray-400">
             {balanceLabel}

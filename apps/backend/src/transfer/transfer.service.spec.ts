@@ -26,6 +26,7 @@ import {
   RpcUnavailableError,
   UnsupportedMintError,
   BelowRentMinimumError,
+  InsufficientSolError,
 } from './transfer.errors';
 
 /**
@@ -209,7 +210,7 @@ function makeSolana(opts: Partial<SolanaRpc>): SolanaRpc {
         blockhash: '11111111111111111111111111111111',
         lastValidBlockHeight: 12345,
       }),
-    getSolBalance: jest.fn().mockResolvedValue(0n),
+    getSolBalance: opts.getSolBalance ?? jest.fn().mockResolvedValue(0n),
     getTokenBalances: opts.getTokenBalances ?? jest.fn().mockResolvedValue([]),
     sendRawTransaction:
       opts.sendRawTransaction ?? jest.fn().mockResolvedValue('sig-default'),
@@ -588,11 +589,12 @@ describe('TransferService.submit', () => {
   describe('sending any token from the vault', () => {
     const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
     const JUP = 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN';
+    const getSolBalance = () => jest.fn().mockResolvedValue(1_000_000_000n);
 
     it('sends SOL as plain SOL with nine decimals, and keeps its mint for Activity', async () => {
       const { spends, prepare, mintDecimals } = makeVaultSpend();
       const { service } = makeService({
-        solana: makeSolana({}),
+        solana: makeSolana({ getSolBalance: getSolBalance() }),
         squadsAccount: { settingsAddress: 'settings' },
         spends,
       });
@@ -675,6 +677,7 @@ describe('TransferService.submit', () => {
       const { service } = makeService({
         solana: makeSolana({
           accountExists: jest.fn().mockResolvedValue(false),
+          getSolBalance: getSolBalance(),
         }),
         squadsAccount: { settingsAddress: 'settings' },
         spends,
@@ -690,11 +693,32 @@ describe('TransferService.submit', () => {
       expect(prepare).not.toHaveBeenCalled();
     });
 
+    it('refuses more SOL than the vault holds as plain SOL', async () => {
+      const { spends, prepare } = makeVaultSpend();
+      const { service } = makeService({
+        solana: makeSolana({
+          getSolBalance: jest.fn().mockResolvedValue(100_000_000n),
+        }),
+        squadsAccount: { settingsAddress: 'settings' },
+        spends,
+      });
+
+      await expect(
+        service.prepare('u_test', {
+          toAddress: Keypair.generate().publicKey.toBase58(),
+          mint: WRAPPED_SOL,
+          amountRaw: '1100000000',
+        }),
+      ).rejects.toBeInstanceOf(InsufficientSolError);
+      expect(prepare).not.toHaveBeenCalled();
+    });
+
     it('lets enough SOL open an empty address', async () => {
       const { spends, prepare } = makeVaultSpend();
       const { service } = makeService({
         solana: makeSolana({
           accountExists: jest.fn().mockResolvedValue(false),
+          getSolBalance: getSolBalance(),
         }),
         squadsAccount: { settingsAddress: 'settings' },
         spends,

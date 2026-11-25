@@ -61,6 +61,8 @@ const EMPTY_ADDRESS_NEEDS_MORE_SOL =
   "That address is empty, so it needs at least 0.00089 SOL to open. Send a little more.";
 const TOKEN_CANNOT_BE_SENT =
   "This token cannot be sent. Nothing has been sent.";
+const NOT_ENOUGH_PLAIN_SOL =
+  "Some of your SOL is wrapped and cannot be sent. Send a little less.";
 
 /** The token a crypto send moves: its mint, and the decimals amounts use. */
 export interface SendToken {
@@ -290,6 +292,8 @@ export function useSendExecutor() {
               return { status: "failed", reason: NETWORK_BUSY };
             } else if (err?.data?.code === "BELOW_RENT_MINIMUM") {
               return { status: "failed", reason: EMPTY_ADDRESS_NEEDS_MORE_SOL };
+            } else if (err?.data?.code === "INSUFFICIENT_SOL") {
+              return { status: "failed", reason: NOT_ENOUGH_PLAIN_SOL };
             } else if (err?.data?.code === "UNSUPPORTED_MINT") {
               return { status: "failed", reason: TOKEN_CANNOT_BE_SENT };
             } else {
