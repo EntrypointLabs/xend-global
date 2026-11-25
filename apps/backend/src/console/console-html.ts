@@ -19,7 +19,8 @@ const STYLES = `
   }
   nav {
     display: flex;
-    gap: 20px;
+    flex-wrap: wrap;
+    gap: 8px 20px;
     padding: 20px 0;
     border-bottom: 1px solid #e5e5e5;
     margin-bottom: 24px;
@@ -69,17 +70,18 @@ export function escapeHtml(value: string): string {
 }
 
 /** Full HTML document wrapper with the shared nav and style block. */
-export function layout(title: string, body: string): string {
+export function layout(title: string, body: string, pageStyles = ''): string {
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)} · Prydd Console</title>
-<style>${STYLES}</style>
+<style>${STYLES}${pageStyles}</style>
 </head>
 <body>
 <nav>
+  <a href="/console/metrics">Metrics</a>
   <a href="/console/payments">Payments</a>
   <a href="/console/deliveries">Deliveries</a>
   <a href="/console/keys">Keys</a>

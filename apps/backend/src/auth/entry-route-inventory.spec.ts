@@ -213,6 +213,7 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /internal/webhook_endpoints/:id/rotate_secret',
   'POST /internal/webhook_deliveries/:id/redeliver',
   'GET /console',
+  'GET /console/metrics',
   'GET /console/payments',
   'GET /console/deliveries',
   'GET /console/keys',

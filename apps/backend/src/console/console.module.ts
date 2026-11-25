@@ -6,6 +6,7 @@ import { AdminAuditService } from './admin-audit.service';
 import { ConsoleAuthGuard } from './console-auth.guard';
 import { ConsoleCsrfGuard } from './console-csrf.guard';
 import { ConsoleService } from './console.service';
+import { ConsoleMetricsService } from './console-metrics.service';
 import { ConsoleController } from './console.controller';
 
 /**
@@ -24,6 +25,7 @@ import { ConsoleController } from './console.controller';
     ConsoleAuthGuard,
     ConsoleCsrfGuard,
     ConsoleService,
+    ConsoleMetricsService,
     AdminAuditService,
   ],
   controllers: [ConsoleController],
