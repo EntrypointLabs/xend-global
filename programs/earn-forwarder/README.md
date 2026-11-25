@@ -42,7 +42,7 @@ The contract deployment does not publish a backend or mobile release. No Consume
 1. Apply migration `0069_earn_operations.sql` through the normal backend migration process.
 2. Configure backend `EARN_FORWARDER_PROGRAM`, `EARN_LOOKUP_TABLE`, `EARN_FORWARDER_CODE_SHA256` from the deployment record; the values are also in `.env.example`. Ensure the backend cluster and RPC are mainnet.
 3. Set mobile `EXPO_PUBLIC_EARN_FORWARDER_PROGRAM` and `EXPO_PUBLIC_EARN_FORWARDER_CODE_SHA256` to the matching public values in `example.env`, then distribute the reviewed app update. Both sides verify the executable before enabling/signing.
-4. Confirm sponsor SOL, API, Redis, DB and RPC readiness. Use an operator-approved existing test Account for a small deposit **and withdrawal** through Face ID before general rollout. `EARN_DEPOSITS_KILLSWITCH` controls deposits; exits and approval recovery stay available during a pause.
+4. Confirm sponsor SOL, API, Redis, DB and RPC readiness. After the release is available, verify a small deposit **and withdrawal** through Face ID with the operator’s existing test Account. Release authorization is already recorded; this verification does not require a new signer or permission delay. `EARN_DEPOSITS_KILLSWITCH` controls deposits; exits and approval recovery stay available during a pause.
 
 For a replacement deployment, review the new contract, select the project-controlled upgrade authority, build/test it, deploy once, verify the executable and authority, then create the shared lookup table. `apps/backend/scripts/setup-earn-lookup.mjs` defaults to a read-only plan; `--execute --payer-keypair /secure/operator-keypair.json` creates the table only after verifying the deployed binary hash. Never use a generated build/test authority or weaken Consumer permissions. Local tests and code review are not an independent security audit.
 
@@ -50,7 +50,7 @@ There are no new Kamino or Jupiter API keys required. Read data and Jupiter rate
 
 ### Existing cloud signer policies
 
-The optional Turnkey deny policy can refuse a newly introduced top-level program independently of Squads. Accounts enrolled without those policies take the normal existing Face ID path immediately. Accounts with recorded cloud policies are deliberately unavailable until their policy compatibility is reviewed. Nothing bypasses Turnkey or silently rewrites its policy. This is not a Solana 24-hour wait, but those accounts need a separate explicit cloud-policy update path before activation. The local inventory inspected during development had three enrolled signers, none with cloud policies; that is not a production inventory assertion.
+The optional Turnkey deny policy can refuse a newly introduced top-level program independently of Squads. Accounts enrolled without those policies take the normal existing Face ID path immediately. Accounts with recorded cloud policies are deliberately unavailable until their policy compatibility is reviewed. Nothing bypasses Turnkey or silently rewrites its policy. This is not a Solana 24-hour wait, but those accounts need a separate explicit cloud-policy update path before activation. The production inventory checked on 2026-11-25 had six Accounts with enrolled approval signers and no recorded cloud policies. Read-only mainnet simulations passed deposits and withdrawals for both providers using an existing Account’s unchanged policy; no Consumer transaction was broadcast.
 
 ### Accounting and recovery
 

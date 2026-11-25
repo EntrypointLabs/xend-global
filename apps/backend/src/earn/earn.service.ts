@@ -383,6 +383,38 @@ export class EarnService {
       forwarderProgram: infrastructure.program.toBase58(),
     };
   }
+  private async recoverUnsignedExpiry(
+    userId: string,
+    key: string,
+    tx: VersionedTransaction,
+  ): Promise<{ signature: string }> {
+    const validity = await Promise.all(
+      (['confirmed', 'finalized'] as const).map((commitment) =>
+        this.rpc.isBlockhashValid(tx.message.recentBlockhash, { commitment }),
+      ),
+    );
+    // A request may have read an unsigned pin while another request sponsors
+    // and broadcasts it. Re-read AFTER finalized expiry: any transaction that
+    // could already have landed must have been durably recorded before send.
+    // A sponsor still in flight cannot newly land once this hash has expired.
+    const recovered = await this.records.recover(userId, key);
+    const latest = await this.prepared.get<Pin>(key);
+    const signature =
+      recovered?.signature ??
+      (latest?.userId === userId ? latest.signature : undefined);
+    if (signature) return { signature };
+    if (validity.every((result) => !result.value))
+      throw new ConflictException({
+        code: 'EARN_QUOTE_EXPIRED',
+        message:
+          'The approval expired. Check your balance before trying again.',
+      });
+    throw new ConflictException({
+      code: 'EARN_PREPARATION_UNAVAILABLE',
+      message: 'Your approval is still being checked. Try again shortly.',
+    });
+  }
+
   async submit(userId: string, signedTxBase64: string) {
     let tx: VersionedTransaction;
     try {
@@ -408,27 +440,7 @@ export class EarnService {
         };
     }
     if (!pin) {
-      // Every broadcast is recorded durably first. With neither record nor pin,
-      // this approval was never broadcast by us. Wait for its blockhash to be
-      // invalid in both confirmed and finalized banks before discarding it. A
-      // fresh confirmed blockhash may not exist in the finalized bank yet.
-      const validity = await Promise.all(
-        ['confirmed', 'finalized'].map((commitment) =>
-          this.rpc.isBlockhashValid(tx.message.recentBlockhash, {
-            commitment: commitment as 'confirmed' | 'finalized',
-          }),
-        ),
-      );
-      if (validity.every((result) => !result.value))
-        throw new ConflictException({
-          code: 'EARN_QUOTE_EXPIRED',
-          message:
-            'The approval expired. Check your balance before trying again.',
-        });
-      throw new ConflictException({
-        code: 'EARN_PREPARATION_UNAVAILABLE',
-        message: 'Your approval is still being checked. Try again shortly.',
-      });
+      return this.recoverUnsignedExpiry(userId, key, tx);
     }
     if (pin.userId !== userId)
       throw new BadRequestException('Earn transaction does not match');
@@ -438,7 +450,8 @@ export class EarnService {
       });
       if (status.value) return { signature: pin.signature };
     }
-    if ((await this.rpc.getBlockHeight('confirmed')) > pin.blockHeight)
+    if ((await this.rpc.getBlockHeight('confirmed')) > pin.blockHeight) {
+      if (!pin.signature) return this.recoverUnsignedExpiry(userId, key, tx);
       throw new ConflictException({
         code: 'EARN_QUOTE_EXPIRED',
         // A lost submission response may have kept this signature off the phone.
@@ -447,6 +460,7 @@ export class EarnService {
         message:
           'The approval expired. Check your balance before trying again.',
       });
+    }
     try {
       await this.infrastructure(pin.quote.action);
     } catch (error) {

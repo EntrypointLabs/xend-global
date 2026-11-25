@@ -47,7 +47,9 @@ class MemoryPrepared implements PreparedTxStore {
     return Promise.resolve();
   }
   get<T>(key: string): Promise<T | null> {
-    return Promise.resolve((this.store.get(key) as T | undefined) ?? null);
+    return Promise.resolve(
+      structuredClone((this.store.get(key) as T | undefined) ?? null),
+    );
   }
   delete(key: string): Promise<void> {
     this.store.delete(key);
@@ -444,6 +446,33 @@ describe('Earn preparation and submission', () => {
 });
 
 describe('Earn preparation expiry recovery', () => {
+  it('recovers a concurrent sponsor after reading an unsigned pin near expiry', async () => {
+    const h = setup();
+    const quote = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', quote.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    const wire = Buffer.from(tx.serialize()).toString('base64');
+    let concurrent: { signature: string } | undefined;
+    h.rpc.getBlockHeight.mockImplementationOnce(async () => {
+      concurrent = await h.service.submit('a', wire);
+      return 200;
+    });
+    h.rpc.isBlockhashValid.mockResolvedValue({
+      context: { slot: 1 },
+      value: false,
+    });
+    const result = await h.service.submit('a', wire);
+    expect(result).toEqual(concurrent);
+    expect(h.broadcast).toHaveBeenCalledTimes(1);
+    expect(h.signTransaction).toHaveBeenCalledTimes(1);
+  });
   it('returns a sponsored signature on expiry so a lost response does not bypass final status checks', async () => {
     const h = setup();
     const quote = await h.service.quote('a', {
@@ -609,6 +638,10 @@ describe('Earn disabled environments and recovery', () => {
     h.config.set('EARN_DEPOSITS_KILLSWITCH', true);
     h.config.set('EARN_FORWARDER_PROGRAM', '');
     h.rpc.getBlockHeight.mockResolvedValue(200);
+    h.rpc.isBlockhashValid.mockResolvedValue({
+      context: { slot: 1 },
+      value: false,
+    });
     await expect(
       h.service.submit('a', Buffer.from(tx.serialize()).toString('base64')),
     ).rejects.toMatchObject({ response: { code: 'EARN_QUOTE_EXPIRED' } });

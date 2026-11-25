@@ -5,6 +5,8 @@ import { useUserId } from "@/hooks/useUserId";
 import { apiClient } from "@/utils/apiClient";
 import { SEED_DEMO } from "@/utils/devSeed";
 import { selectEarnBalance, type EarnProvider } from "@/utils/earn";
+import { useWalletAddress } from "@/hooks/useWalletAddress";
+import { fetchEarnFromChain } from "@/utils/earnChain";
 
 export interface EarnProduct {
   id: EarnProvider;
@@ -47,9 +49,17 @@ export const EARN_PRODUCTS: EarnProduct[] = [
 function useEarnData() {
   const { isAuthenticated } = useAuth();
   const userId = useUserId();
+  const address = useWalletAddress();
   return useQuery({
     queryKey: ["earn", userId],
-    queryFn: () => apiClient.getEarn(),
+    queryFn: async () => {
+      try {
+        return await apiClient.getEarn();
+      } catch (error) {
+        if (!address) throw error;
+        return fetchEarnFromChain(address);
+      }
+    },
     enabled: !!isAuthenticated && !SEED_DEMO,
     staleTime: 15000,
     refetchInterval: 30000,
