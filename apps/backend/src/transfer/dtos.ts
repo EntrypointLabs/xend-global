@@ -121,6 +121,19 @@ export const TransferRowSchema = z.object({
     })
     .optional(),
   /**
+   * The Earn deposit or withdrawal this movement was one leg of, so a client
+   * can show it as one entry instead of a USDC send and a receipt-token
+   * receive. Carried on every row of the transaction. `amountRaw` is the USDC
+   * moved, in minor units, always positive. Absent on an ordinary transfer.
+   */
+  earn: z
+    .object({
+      provider: z.enum(['kamino', 'jupiter']),
+      action: z.enum(['deposit', 'redeem']),
+      amountRaw: z.string(),
+    })
+    .optional(),
+  /**
    * What the transfer was worth in USD when it happened, as a decimal string.
    *
    * Frozen at index time rather than priced on read: five SOL received while

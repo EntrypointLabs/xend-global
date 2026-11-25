@@ -1,9 +1,18 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { z } from 'zod';
 import { AllowEntry } from '../auth/allow-entry.decorator';
 import { ConsumerAuthGuard } from '../auth/consumer-auth.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { EarnService, type EarnRequest } from './earn.service';
+import { EARN_HISTORY_RANGES, type EarnHistoryRange } from './earn-history';
 import type { Request } from 'express';
 interface AuthenticatedRequest extends Request {
   user: { userId: string };
@@ -14,6 +23,12 @@ export const EarnQuoteRequestSchema = z
     action: z.enum(['deposit', 'redeem']),
     amountMinor: z.string().regex(/^[1-9]\d{0,19}$/),
     withdrawAll: z.boolean().optional(),
+  })
+  .strict();
+export const EarnHistoryQuerySchema = z
+  .object({
+    provider: z.enum(['kamino', 'jupiter']),
+    range: z.enum(EARN_HISTORY_RANGES).default('30d'),
   })
   .strict();
 const prepareSchema = z.object({ quoteId: z.string().uuid() }).strict();
@@ -28,6 +43,15 @@ export class EarnController {
   @Get()
   catalog(@Req() req: AuthenticatedRequest) {
     return this.earn.catalog(req.user.userId);
+  }
+  @AllowEntry()
+  @Get('history')
+  history(
+    @Req() req: AuthenticatedRequest,
+    @Query(new ZodValidationPipe(EarnHistoryQuerySchema))
+    query: { provider: 'kamino' | 'jupiter'; range: EarnHistoryRange },
+  ) {
+    return this.earn.history(req.user.userId, query.provider, query.range);
   }
   @Post('quote') quote(
     @Req() req: AuthenticatedRequest,

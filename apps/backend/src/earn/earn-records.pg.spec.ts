@@ -60,6 +60,15 @@ suite('Earn ledger against Postgres', () => {
       'utf8',
     ).replace('REFERENCES "public"."users"', `REFERENCES "${schema}"."users"`);
     await client.query(migration);
+    await client.query(
+      readFileSync(
+        join(__dirname, '../../drizzle/0070_earn_position_snapshots.sql'),
+        'utf8',
+      ).replace(
+        'REFERENCES "public"."users"',
+        `REFERENCES "${schema}"."users"`,
+      ),
+    );
     records = new DrizzleEarnRecords({
       client: drizzle(client),
     } as unknown as DbService);
@@ -71,7 +80,7 @@ suite('Earn ledger against Postgres', () => {
     }
   });
   beforeEach(async () => {
-    await client.query('TRUNCATE earn_operations');
+    await client.query('TRUNCATE earn_operations, earn_position_snapshots');
   });
   it('deduplicates the signed broadcast and computes confirmed income from actual deltas', async () => {
     const pending = {
@@ -117,7 +126,10 @@ suite('Earn ledger against Postgres', () => {
         kamino: { shares: 9000000n, value: 11000000n },
         jupiter: { shares: 0n, value: 0n },
       }),
-    ).toEqual({ lifetimeMinor: '1000000', lastSevenDaysMinor: '1000000' });
+    ).toMatchObject({
+      lifetimeMinor: '1000000',
+      lastSevenDaysMinor: '1000000',
+    });
   });
   it('leaves income unknown for externally received shares and for a missing seven-day baseline', async () => {
     expect(
@@ -125,7 +137,7 @@ suite('Earn ledger against Postgres', () => {
         kamino: { shares: 1n, value: 1n },
         jupiter: { shares: 0n, value: 0n },
       }),
-    ).toEqual({ lifetimeMinor: null, lastSevenDaysMinor: null });
+    ).toMatchObject({ lifetimeMinor: null, lastSevenDaysMinor: null });
     await records.pending({
       ...pendingMeta,
       userId: 'consumer',
@@ -143,7 +155,7 @@ suite('Earn ledger against Postgres', () => {
         kamino: { shares: 100n, value: 110n },
         jupiter: { shares: 0n, value: 0n },
       }),
-    ).toEqual({ lifetimeMinor: '10', lastSevenDaysMinor: null });
+    ).toMatchObject({ lifetimeMinor: '10', lastSevenDaysMinor: null });
   });
   it('reconciles older confirmed transfers beyond a page of unresolved broadcasts', async () => {
     await records.pending({
@@ -189,7 +201,7 @@ suite('Earn ledger against Postgres', () => {
         kamino: { shares: 9n, value: 11n },
         jupiter: { shares: 0n, value: 0n },
       }),
-    ).toEqual({ lifetimeMinor: '1', lastSevenDaysMinor: '1' });
+    ).toMatchObject({ lifetimeMinor: '1', lastSevenDaysMinor: '1' });
   });
   it('does not count unconfirmed or failed transactions as earnings', async () => {
     await records.pending({
@@ -219,6 +231,111 @@ suite('Earn ledger against Postgres', () => {
     expect(
       (await client.query('SELECT status,wire FROM earn_operations')).rows[0],
     ).toEqual({ status: 'failed', wire: null });
+  });
+  it('keeps one snapshot per position per day and lists only users with confirmed Earn', async () => {
+    await client.query(
+      "INSERT INTO users VALUES ('other') ON CONFLICT DO NOTHING",
+    );
+    await records.pending({
+      ...pendingMeta,
+      userId: 'other',
+      signature: 'sig-unconfirmed',
+      vault,
+      provider: 'kamino',
+      action: 'deposit',
+      wire: 'wire',
+    });
+    await records.pending({
+      ...pendingMeta,
+      messageHash: 'message-two',
+      userId: 'consumer',
+      signature: 'sig-confirmed',
+      vault,
+      provider: 'jupiter',
+      action: 'deposit',
+      wire: 'wire',
+    });
+    await client.query(
+      "UPDATE earn_operations SET status='confirmed' WHERE signature='sig-confirmed'",
+    );
+    expect(await records.usersWithEarn()).toEqual(['consumer']);
+    expect(await records.providersWithHistory('consumer')).toEqual(new Set());
+    await records.recordSnapshots('consumer', '2026-11-01', [
+      { provider: 'jupiter', valueMinor: '100', netDepositedMinor: '100' },
+    ]);
+    await records.recordSnapshots('consumer', '2026-11-25', [
+      { provider: 'jupiter', valueMinor: '101', netDepositedMinor: '100' },
+      { provider: 'kamino', valueMinor: '0', netDepositedMinor: '0' },
+    ]);
+    await records.recordSnapshots('consumer', '2026-11-25', [
+      { provider: 'jupiter', valueMinor: '102', netDepositedMinor: '100' },
+    ]);
+    await records.recordSnapshots('consumer', '2026-11-26', []);
+    expect(await records.providersWithHistory('consumer')).toEqual(
+      new Set(['jupiter', 'kamino']),
+    );
+    expect(await records.snapshots('consumer', 'jupiter', null)).toEqual([
+      { day: '2026-11-01', valueMinor: '100', netDepositedMinor: '100' },
+      { day: '2026-11-25', valueMinor: '102', netDepositedMinor: '100' },
+    ]);
+    expect(
+      await records.snapshots('consumer', 'jupiter', '2026-11-19'),
+    ).toEqual([
+      { day: '2026-11-25', valueMinor: '102', netDepositedMinor: '100' },
+    ]);
+    expect(await records.snapshots('other', 'jupiter', null)).toEqual([]);
+  });
+  it('measures seven-day income from the week-old snapshot, or the earliest one', async () => {
+    await records.pending({
+      ...pendingMeta,
+      userId: 'consumer',
+      signature: 'sig-old-jupiter',
+      vault,
+      provider: 'jupiter',
+      action: 'deposit',
+      wire: 'wire',
+    });
+    await records.pending({
+      ...pendingMeta,
+      messageHash: 'message-kamino',
+      userId: 'consumer',
+      signature: 'sig-old-kamino',
+      vault,
+      provider: 'kamino',
+      action: 'deposit',
+      wire: 'wire',
+    });
+    await client.query(
+      "UPDATE earn_operations SET status='confirmed', cash_delta_raw='-1000', share_delta_raw='1000', confirmed_at=now()-interval '30 days'",
+    );
+    const day = (n: number) =>
+      new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+    await records.recordSnapshots('consumer', day(20), [
+      { provider: 'jupiter', valueMinor: '1005', netDepositedMinor: '1000' },
+    ]);
+    await records.recordSnapshots('consumer', day(8), [
+      { provider: 'jupiter', valueMinor: '1010', netDepositedMinor: '1000' },
+    ]);
+    await records.recordSnapshots('consumer', day(3), [
+      { provider: 'jupiter', valueMinor: '1030', netDepositedMinor: '1000' },
+      { provider: 'kamino', valueMinor: '1004', netDepositedMinor: '1000' },
+    ]);
+    const result = await records.earnings('consumer', {
+      kamino: { shares: 1000n, value: 1006n },
+      jupiter: { shares: 1000n, value: 1040n },
+    });
+    expect(result.providers.jupiter).toMatchObject({
+      lifetimeMinor: '40',
+      lastSevenDaysMinor: '30',
+    });
+    expect(result.providers.kamino).toMatchObject({
+      lifetimeMinor: '6',
+      lastSevenDaysMinor: '2',
+    });
+    expect(result).toMatchObject({
+      lifetimeMinor: '46',
+      lastSevenDaysMinor: '32',
+    });
   });
 });
 describe('Earn delta parsing', () => {

@@ -7,11 +7,13 @@ import { SettlementAuthorityModule } from '../settlement/settlement-authority.mo
 import { Web3SwapChain } from '../swap/swap-chain.web3';
 import { EarnController } from './earn.controller';
 import { EarnService } from './earn.service';
+import { EarnSnapshotJob } from './earn-snapshot.job';
 @Module({
   imports: [SpendModule, SettlementAuthorityModule, TurnkeyModule, DbModule],
   controllers: [EarnController],
   providers: [
     EarnService,
+    EarnSnapshotJob,
     Web3SwapChain,
     { provide: EARN_RECORDS, useClass: DrizzleEarnRecords },
   ],

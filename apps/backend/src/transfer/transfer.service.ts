@@ -38,6 +38,7 @@ import {
   merchants,
   merchantLogos,
   swaps,
+  earnOperations,
 } from '../db/schema';
 import { merchantLogoUrl } from '../merchant/merchant-logo.url';
 import { PREPARED_TX_STORE } from '../prepared/prepared-tx.interface';
@@ -741,6 +742,43 @@ export class TransferService {
   }
 
   /**
+   * Which of these signatures were the Consumer's own Earn deposits or
+   * withdrawals. On chain they are a USDC leg and a receipt-token leg, and
+   * neither says it was lending.
+   */
+  private async earnAmong(
+    userId: string,
+    signatures: string[],
+  ): Promise<Map<string, NonNullable<TransferRow['earn']>>> {
+    if (signatures.length === 0) return new Map();
+    const rows = await this.db.client
+      .select({
+        signature: earnOperations.signature,
+        provider: earnOperations.provider,
+        action: earnOperations.action,
+        cashDeltaRaw: earnOperations.cashDeltaRaw,
+        quote: earnOperations.quote,
+      })
+      .from(earnOperations)
+      .where(
+        and(
+          eq(earnOperations.userId, userId),
+          inArray(earnOperations.signature, signatures),
+        ),
+      );
+    return new Map(
+      rows.map((row) => [
+        row.signature,
+        {
+          provider: row.provider,
+          action: row.action,
+          amountRaw: earnCashMoved(row),
+        },
+      ]),
+    );
+  }
+
+  /**
    * Refuses to broadcast a Spend nobody proved they were present for.
    *
    * Which proof depends on the route, and the route is read from the intent
@@ -943,6 +981,14 @@ export class TransferService {
         },
       };
     };
+    const earned = await this.earnAmong(
+      userId,
+      page.flatMap((r) => (r.signature ? [r.signature] : [])),
+    );
+    const earnFor = (signature: string | null) => {
+      const earn = signature ? earned.get(signature) : undefined;
+      return earn ? { earn } : {};
+    };
     const ramps = await this.ramps.forUser(userId, page);
 
     const nextCursor = hasMore
@@ -982,6 +1028,7 @@ export class TransferService {
           kind: r.kind ?? 'transfer',
           merchantName: r.merchantName ?? null,
           ...swapDetailsFor(r.signature),
+          ...earnFor(r.signature),
           merchantCategory: r.merchantCategory ?? null,
           merchantLogoUrl: r.merchantId
             ? merchantLogoUrl(
@@ -1044,4 +1091,26 @@ export class TransferService {
 
 function intentKey(intentId: string): string {
   return `transfer-intent:${intentId}`;
+}
+
+/**
+ * The USDC an Earn operation moved, in minor units. The vault's measured
+ * delta is authoritative; before it is recorded the quote stands in, where a
+ * deposit's input is USDC but a withdrawal's input is receipt shares, so its
+ * USDC side is the expected output.
+ */
+function earnCashMoved(row: {
+  action: 'deposit' | 'redeem';
+  cashDeltaRaw: string | null;
+  quote: Record<string, string | number>;
+}): string {
+  if (row.cashDeltaRaw !== null) {
+    const delta = BigInt(row.cashDeltaRaw);
+    return (delta < 0n ? -delta : delta).toString();
+  }
+  const fromQuote =
+    row.action === 'deposit'
+      ? row.quote.inputAmountRaw
+      : row.quote.expectedOutRaw;
+  return String(fromQuote ?? row.quote.amountMinor ?? '0');
 }

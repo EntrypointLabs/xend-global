@@ -1,5 +1,7 @@
 import {
   EarnCatalogSchema,
+  EarnHistorySchema,
+  type EarnRange,
   EarnQuoteSchema,
   EarnPreparedSchema,
   type EarnProvider,
@@ -690,6 +692,18 @@ export const TransferRowSchema = z.object({
       pay: SwapSideSchema,
       receive: SwapSideSchema,
       venues: z.array(z.string()),
+    })
+    .optional()
+    .catch(undefined),
+  /**
+   * The Earn deposit or withdrawal this row was one leg of, on every leg.
+   * `amountRaw` is the USDC moved, in minor units, always positive.
+   */
+  earn: z
+    .object({
+      provider: z.enum(["kamino", "jupiter"]),
+      action: z.enum(["deposit", "redeem"]),
+      amountRaw: z.string(),
     })
     .optional()
     .catch(undefined),
@@ -2084,6 +2098,14 @@ class BackendClient {
   async getEarn() {
     return EarnCatalogSchema.parse(
       await this.request<unknown>("/earn", { auth: true })
+    );
+  }
+  async getEarnHistory(provider: EarnProvider, range: EarnRange) {
+    return EarnHistorySchema.parse(
+      await this.request<unknown>(
+        `/earn/history?provider=${provider}&range=${range}`,
+        { auth: true }
+      )
     );
   }
   async quoteEarn(

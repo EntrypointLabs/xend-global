@@ -145,6 +145,7 @@ const FULL_SCREEN_ROUTES = [
   "add-naira",
   "verify-identity",
   "naira-limits",
+  "earn/[provider]",
 ] as const;
 
 const SLIDE_OVER = {

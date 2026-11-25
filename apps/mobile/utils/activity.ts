@@ -39,6 +39,11 @@ export interface ActivityEntry {
    * them. The entry is then the whole trade, not one side of it.
    */
   swap?: SwapSummary;
+  /**
+   * The Earn deposit or withdrawal this entry stands for. The entry's amount
+   * is then the USDC moved and the receipt token is never shown.
+   */
+  earn?: EarnMovement;
   /** Set only on `security` entries: what changed on the Account. */
   securityLabel?: string;
   /**
@@ -122,6 +127,13 @@ export interface SwapSummary {
   /** The venues the route ran through, in order, each named once. */
   venues: string[];
 }
+
+export type EarnMovement = NonNullable<TransferRow["earn"]>;
+
+export const EARN_PROVIDER_NAMES: Record<EarnMovement["provider"], string> = {
+  kamino: "Kamino",
+  jupiter: "Jupiter Lend",
+};
 
 export interface ActivitySection {
   title: string;
@@ -212,9 +224,16 @@ export function mapTransferRowsToActivityEntries(
 ): ActivityEntry[] {
   const entries: ActivityEntry[] = [];
   const swaps = new Map<string, TransferRow[]>();
+  const earns = new Map<string, TransferRow[]>();
 
   for (const row of rows) {
     if (isSwapRentRefund(row)) continue;
+    if (row.earn && row.signature) {
+      const legs = earns.get(row.signature);
+      if (legs) legs.push(row);
+      else earns.set(row.signature, [row]);
+      continue;
+    }
     if (!row.swapDetails || !row.signature) {
       entries.push(mapTransferRowToActivityEntry(row, ctx));
       continue;
@@ -267,7 +286,53 @@ export function mapTransferRowsToActivityEntries(
     });
   }
 
+  for (const legs of earns.values()) entries.push(earnEntry(legs, ctx));
+
   return entries;
+}
+
+/**
+ * One Earn deposit or withdrawal from whichever of its legs were indexed.
+ *
+ * On chain it is a USDC leg and a receipt-token leg, which read as a payment
+ * to a vault and a deposit of some unfamiliar token. Either can be missing, so
+ * the amount comes from the operation, not from a leg.
+ */
+function earnEntry(
+  legs: TransferRow[],
+  ctx: MapTransferContext
+): ActivityEntry {
+  const earn = legs[0].earn!;
+  const direction = earn.action === "deposit" ? "SEND" : "RECEIVE";
+  const usdc = getUsdcMint();
+  const base =
+    legs.find((leg) => leg.mint === usdc && leg.direction === direction) ??
+    legs[0];
+  return {
+    ...mapTransferRowToActivityEntry(base, ctx),
+    direction: earn.action === "deposit" ? "send" : "receive",
+    mint: usdc,
+    amountRaw: earn.amountRaw,
+    decimals: USDC_DECIMALS,
+    iconUrl: null,
+    tokenName: null,
+    tokenSymbol: "USDC",
+    // Money moved between the Consumer's own holdings, so it is neither spent
+    // nor received.
+    usdValue: null,
+    counterparty: "",
+    earn: { ...earn },
+  };
+}
+
+/** "Deposit" or "Withdrawal". */
+export function earnActionLabel(earn: EarnMovement): string {
+  return earn.action === "deposit" ? "Deposit" : "Withdrawal";
+}
+
+/** "Jupiter Lend Deposit": what the receipt says happened. */
+export function earnReceiptLabel(earn: EarnMovement): string {
+  return `${EARN_PROVIDER_NAMES[earn.provider]} ${earnActionLabel(earn)}`;
 }
 
 /** A swap this phone sent that the chain has not yet reported. */
@@ -421,6 +486,12 @@ export function statusLabel(entry: ActivityEntry): string {
     if (entry.status === "pending") return "Paying…";
     if (entry.status === "failed") return "Failed";
     return "Paid";
+  }
+  if (entry.earn) {
+    if (entry.status === "failed") return "Failed";
+    if (entry.status === "pending")
+      return entry.earn.action === "deposit" ? "Depositing…" : "Withdrawing…";
+    return earnActionLabel(entry.earn);
   }
   if (entry.isSwap) {
     if (entry.status === "pending") return "Swapping…";

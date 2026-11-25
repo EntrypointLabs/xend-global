@@ -88,8 +88,8 @@ export default function HistoryScreen() {
     ? (rows.find(
         (row) =>
           row.id === selectedItem.id ||
-          (row.isSwap === true &&
-            selectedItem.isSwap === true &&
+          (((row.isSwap === true && selectedItem.isSwap === true) ||
+            (row.earn !== undefined && selectedItem.earn !== undefined)) &&
             row.signature !== null &&
             row.signature === selectedItem.signature)
       ) ?? selectedItem)

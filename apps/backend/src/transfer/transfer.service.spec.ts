@@ -43,7 +43,7 @@ function signPrepared(unsignedTxBase64: string): string {
   tx.signatures = tx.signatures.map(() => new Uint8Array(64).fill(7));
   return Buffer.from(tx.serialize()).toString('base64');
 }
-import { smartAccounts, swaps, transfers } from '../db/schema';
+import { earnOperations, smartAccounts, swaps, transfers } from '../db/schema';
 
 /**
  * Integration tests for TransferService (prepare / submit / list):
@@ -70,15 +70,18 @@ interface FakeStore {
   transfers: TransfersRow[];
   /** Swaps this backend broadcast. */
   swaps?: Partial<typeof swaps.$inferSelect>[];
+  /** Earn deposits and withdrawals this backend broadcast. */
+  earnOperations?: Partial<typeof earnOperations.$inferSelect>[];
 }
 
-type Collection = 'smartAccounts' | 'transfers' | 'swaps';
+type Collection = 'smartAccounts' | 'transfers' | 'swaps' | 'earnOperations';
 
 function makeFakeDb(store: FakeStore): DbService {
   const collectionFor = (tbl: unknown): Collection => {
     if (tbl === smartAccounts) return 'smartAccounts';
     if (tbl === transfers) return 'transfers';
     if (tbl === swaps) return 'swaps';
+    if (tbl === earnOperations) return 'earnOperations';
     throw new Error('unknown table');
   };
 
@@ -1524,6 +1527,78 @@ describe('TransferService.list', () => {
       receive: { decimals: null },
       venues: [],
     });
+  });
+
+  it('carries the Earn operation on every leg of its transaction', async () => {
+    const account = makeAccount();
+    const leg = (
+      id: string,
+      signature: string,
+      direction: 'SEND' | 'RECEIVE',
+      mint: string,
+    ) =>
+      ({
+        id,
+        smartAccountId: account.id,
+        signature,
+        direction,
+        mint,
+        amountRaw: '14040000',
+        fromAddress: account.walletAddress,
+        toAddress: account.walletAddress,
+        status: 'CONFIRMED',
+        createdAt: new Date('2026-02-02'),
+        confirmedAt: null,
+        kind: 'transfer',
+      }) as unknown as TransfersRow;
+    const jlUsdc = Keypair.generate().publicKey.toBase58();
+    const { service } = makeService({
+      solana: makeSolana({}),
+      account,
+      store: {
+        smartAccounts: [account],
+        transfers: [
+          leg('t_in', 'sig_dep', 'RECEIVE', jlUsdc),
+          leg('t_out', 'sig_dep', 'SEND', usdcMint),
+          leg('t_wd', 'sig_wd', 'RECEIVE', usdcMint),
+          leg('t_send', 'sig_send', 'SEND', usdcMint),
+        ],
+        earnOperations: [
+          {
+            signature: 'sig_dep',
+            provider: 'jupiter',
+            action: 'deposit',
+            cashDeltaRaw: '-15000000',
+            quote: { inputAmountRaw: '14990000', amountMinor: '15000000' },
+          },
+          {
+            signature: 'sig_wd',
+            provider: 'kamino',
+            action: 'redeem',
+            cashDeltaRaw: null,
+            quote: { inputAmountRaw: '9800000', expectedOutRaw: '10010000' },
+          },
+        ],
+      },
+    });
+
+    const out = await service.list('u_test');
+    const byId = new Map(out.transfers.map((t) => [t.id, t.earn]));
+    const deposit = {
+      provider: 'jupiter',
+      action: 'deposit',
+      amountRaw: '15000000',
+    };
+    expect(byId.get('t_in')).toEqual(deposit);
+    expect(byId.get('t_out')).toEqual(deposit);
+    // Before the vault delta is recorded the quote's USDC side stands in,
+    // which for a withdrawal is the expected output, not the shares burned.
+    expect(byId.get('t_wd')).toEqual({
+      provider: 'kamino',
+      action: 'redeem',
+      amountRaw: '10010000',
+    });
+    expect(byId.get('t_send')).toBeUndefined();
   });
 
   it('maps a plain transfer to kind=transfer with a null merchant name', async () => {

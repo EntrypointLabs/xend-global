@@ -184,7 +184,7 @@ function setup() {
     compile,
   } as unknown as Web3SwapChain;
   const durable = new Map<string, EarnPending>();
-  const records: EarnRecords = {
+  const recordMocks = {
     recover: jest.fn((userId: string, messageHash: string) => {
       const row = durable.get(messageHash);
       return Promise.resolve(row?.userId === userId ? row : null);
@@ -194,10 +194,28 @@ function setup() {
       return Promise.resolve();
     }),
     reconcile: jest.fn().mockResolvedValue(undefined),
-    earnings: jest
-      .fn()
-      .mockResolvedValue({ lifetimeMinor: '0', lastSevenDaysMinor: '0' }),
+    earnings: jest.fn().mockResolvedValue({
+      lifetimeMinor: '0',
+      lastSevenDaysMinor: '0',
+      providers: {
+        kamino: {
+          lifetimeMinor: '0',
+          lastSevenDaysMinor: '0',
+          netDepositedMinor: '0',
+        },
+        jupiter: {
+          lifetimeMinor: '0',
+          lastSevenDaysMinor: '0',
+          netDepositedMinor: '0',
+        },
+      },
+    }),
+    providersWithHistory: jest.fn().mockResolvedValue(new Set()),
+    recordSnapshots: jest.fn().mockResolvedValue(undefined),
+    snapshots: jest.fn().mockResolvedValue([]),
+    usersWithEarn: jest.fn().mockResolvedValue([]),
   };
+  const records: EarnRecords = recordMocks;
   const service = new EarnService(
     config,
     accounts,
@@ -228,6 +246,7 @@ function setup() {
     compile,
     durable,
     rpc,
+    records: recordMocks,
   };
 }
 afterEach(() => jest.restoreAllMocks());
@@ -767,5 +786,114 @@ describe('Canonical Earn cash limits', () => {
           !(call[1] as { mint: PublicKey }).mint.equals(EARN_USDC),
       ),
     ).toBe(true);
+  });
+});
+
+describe('Earn position history', () => {
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  const noFetch = () =>
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: false } as Response);
+  it('reports each position earnings beside the totals', async () => {
+    const h = setup();
+    noFetch();
+    h.records.earnings.mockResolvedValue({
+      lifetimeMinor: null,
+      lastSevenDaysMinor: null,
+      providers: {
+        kamino: {
+          lifetimeMinor: '250',
+          lastSevenDaysMinor: null,
+          netDepositedMinor: '1000',
+        },
+        jupiter: {
+          lifetimeMinor: null,
+          lastSevenDaysMinor: null,
+          netDepositedMinor: null,
+        },
+      },
+    });
+    const catalog = await h.service.catalog('a');
+    expect(catalog).not.toHaveProperty('providers');
+    expect(catalog.lifetimeMinor).toBeNull();
+    expect(catalog.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'kamino',
+          lifetimeMinor: '250',
+          lastSevenDaysMinor: null,
+        }),
+        expect.objectContaining({
+          id: 'jupiter',
+          lifetimeMinor: null,
+          lastSevenDaysMinor: null,
+        }),
+      ]),
+    );
+  });
+  it('records the day snapshot after a catalog read and still answers when the write fails', async () => {
+    const h = setup();
+    noFetch();
+    h.rpc.getTokenAccountsByOwner.mockResolvedValue({ value: [] });
+    jest
+      .mocked(h.records.providersWithHistory)
+      .mockResolvedValue(new Set(['jupiter']));
+    await h.service.catalog('a');
+    await flush();
+    expect(h.records.recordSnapshots).toHaveBeenCalledWith(
+      'a',
+      new Date().toISOString().slice(0, 10),
+      [{ provider: 'jupiter', valueMinor: '0', netDepositedMinor: '0' }],
+    );
+    jest
+      .mocked(h.records.recordSnapshots)
+      .mockRejectedValueOnce(new Error('database down'));
+    await expect(h.service.catalog('a')).resolves.toHaveProperty('products');
+    await flush();
+  });
+  it('snapshots nothing off mainnet', async () => {
+    const h = setup();
+    h.config.set('SOLANA_CLUSTER', 'devnet');
+    await h.service.snapshot('a');
+    await h.service.catalog('a');
+    await flush();
+    expect(h.records.reconcile).not.toHaveBeenCalled();
+    expect(h.records.recordSnapshots).not.toHaveBeenCalled();
+  });
+  it('snapshots positions without the catalog rate lookups', async () => {
+    const h = setup();
+    const fetch = noFetch();
+    await h.service.snapshot('a');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(h.records.reconcile).toHaveBeenCalledWith('a', h.rpc);
+    expect(h.records.recordSnapshots).toHaveBeenCalledWith(
+      'a',
+      expect.any(String),
+      [],
+    );
+  });
+  it('returns history points ascending with earnings clamped at zero', async () => {
+    const h = setup();
+    h.records.snapshots.mockResolvedValue([
+      {
+        day: '2026-11-25',
+        valueMinor: '15030000',
+        netDepositedMinor: '15000000',
+      },
+      {
+        day: '2026-11-24',
+        valueMinor: '14999999',
+        netDepositedMinor: '15000000',
+      },
+    ]);
+    await expect(h.service.history('a', 'jupiter', 'all')).resolves.toEqual({
+      provider: 'jupiter',
+      points: [
+        { day: '2026-11-24', valueMinor: '14999999', earnedMinor: '0' },
+        { day: '2026-11-25', valueMinor: '15030000', earnedMinor: '30000' },
+      ],
+    });
+    expect(h.records.snapshots).toHaveBeenCalledWith('a', 'jupiter', null);
   });
 });

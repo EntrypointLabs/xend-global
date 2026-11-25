@@ -31,6 +31,23 @@ describe("recentRecipientsFrom", () => {
     ]);
   });
 
+  it("leaves out the vault an Earn deposit paid", () => {
+    const rows = [
+      {
+        ...send("vault", "2026-08-29T10:00:00.000Z"),
+        earn: {
+          provider: "jupiter" as const,
+          action: "deposit" as const,
+          amountRaw: "15000000",
+        },
+      },
+      send("alice", "2026-08-20T10:00:00.000Z"),
+    ];
+    expect(recentRecipientsFrom(rows, NONE, 5).map((r) => r.address)).toEqual([
+      "alice",
+    ]);
+  });
+
   it("counts repeat sends to one address as one entry", () => {
     const rows = [
       send("alice", "2026-08-29T10:00:00.000Z"),

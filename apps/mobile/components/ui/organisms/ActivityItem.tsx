@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Image, View } from "react-native";
+import { Image, View, type ImageSourcePropType } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
   useAnimatedStyle,
@@ -9,8 +9,13 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { Typography } from "../atoms/Typography";
-import type { ActivityEntry, SwapSummary } from "@/utils/activity";
+import type {
+  ActivityEntry,
+  EarnMovement,
+  SwapSummary,
+} from "@/utils/activity";
 import {
+  EARN_PROVIDER_NAMES,
   statusLabel,
   swapAmountLabel,
   swapPairLabel,
@@ -86,6 +91,10 @@ export function ActivityItem({ onPress, ...entry }: ActivityItemProps) {
 
   if (entry.ramp) {
     return <RampItem entry={entry} onPress={onPress} />;
+  }
+
+  if (entry.earn) {
+    return <EarnItem entry={entry} earn={entry.earn} onPress={onPress} />;
   }
 
   if (entry.swap) {
@@ -392,6 +401,84 @@ function SwapItem({
             </Typography>
           )}
         </View>
+      </View>
+    </HapticPressable>
+  );
+}
+
+const EARN_LOGOS: Record<EarnMovement["provider"], ImageSourcePropType> = {
+  kamino: require("@/assets/icons/kamino.png"),
+  jupiter: require("@/assets/icons/jupiter.png"),
+};
+
+export function EarnMark({
+  provider,
+  size = 40,
+}: {
+  provider: EarnMovement["provider"];
+  size?: 40 | 64;
+}) {
+  return (
+    <Image
+      source={EARN_LOGOS[provider]}
+      className={cn(
+        "rounded-full",
+        size === 64 ? "h-[64px] w-[64px]" : "h-[40px] w-[40px]"
+      )}
+      accessibilityIgnoresInvertColors
+    />
+  );
+}
+
+/**
+ * An Earn deposit or withdrawal as the one thing the Consumer did: dollars
+ * moved into or out of a provider. Unsigned, because the money stayed theirs.
+ */
+function EarnItem({
+  entry,
+  earn,
+  onPress,
+}: {
+  entry: ActivityEntry;
+  earn: EarnMovement;
+  onPress?: () => void;
+}) {
+  const tone = useRowTone();
+  const isInactive = entry.status === "pending" || entry.status === "failed";
+
+  return (
+    <HapticPressable
+      className="flex-row items-center gap-3.5 py-3"
+      onPress={onPress}
+    >
+      <EarnMark provider={earn.provider} />
+      <View className="flex-1 flex-row items-center justify-between gap-3">
+        <View className="flex-1 flex-col">
+          <Typography
+            weight="600"
+            numberOfLines={1}
+            className={cn("mb-0.5", tone.ink)}
+          >
+            {EARN_PROVIDER_NAMES[earn.provider]}
+          </Typography>
+          <Typography
+            weight="500"
+            numberOfLines={1}
+            className={cn("text-sm", tone.muted)}
+          >
+            {statusLabel(entry)}
+          </Typography>
+        </View>
+        <Typography
+          weight="600"
+          className={cn(
+            "text-sm tracking-[0.5px]",
+            isInactive ? tone.muted : tone.ink,
+            entry.status === "failed" && "line-through"
+          )}
+        >
+          {formatDollarsMinor(earn.amountRaw, entry.decimals)}
+        </Typography>
       </View>
     </HapticPressable>
   );

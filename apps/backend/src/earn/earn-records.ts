@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, asc, gt } from 'drizzle-orm';
+import { and, eq, asc, desc, gt, gte, lte, sql } from 'drizzle-orm';
 import { Connection, type VersionedTransactionResponse } from '@solana/web3.js';
 import {
   EARN_PROVIDERS,
@@ -7,7 +7,15 @@ import {
   EARN_USDC,
 } from '@prydd/smart-account';
 import { DbService } from '../db/db.service';
-import { earnOperations } from '../db/schema';
+import { earnOperations, earnPositionSnapshots } from '../db/schema';
+import {
+  providerEarnings,
+  totalEarnings,
+  weekAgoDay,
+  type EarnBaseline,
+  type EarnSnapshot,
+  type ProviderEarnings,
+} from './earn-history';
 export const EARN_RECORDS = Symbol('EarnRecords');
 export interface EarnPending {
   userId: string;
@@ -39,7 +47,20 @@ export interface EarnRecords {
   ): Promise<{
     lifetimeMinor: string | null;
     lastSevenDaysMinor: string | null;
+    providers: Record<EarnProviderId, ProviderEarnings>;
   }>;
+  providersWithHistory(userId: string): Promise<Set<EarnProviderId>>;
+  recordSnapshots(
+    userId: string,
+    day: string,
+    snapshots: EarnSnapshot[],
+  ): Promise<void>;
+  snapshots(
+    userId: string,
+    provider: EarnProviderId,
+    fromDay: string | null,
+  ): Promise<{ day: string; valueMinor: string; netDepositedMinor: string }[]>;
+  usersWithEarn(): Promise<string[]>;
 }
 export function earnDeltas(
   tx: VersionedTransactionResponse,
@@ -149,39 +170,144 @@ export class DrizzleEarnRecords implements EarnRecords {
     userId: string,
     positions: Record<EarnProviderId, { shares: bigint; value: bigint }>,
   ) {
-    const rows = await this.db.client
-      .select()
-      .from(earnOperations)
-      .where(eq(earnOperations.userId, userId));
-    let lifetime = 0n;
-    let recentOnly = true;
-    for (const provider of ['kamino', 'jupiter'] as const) {
-      const confirmed = rows.filter(
-        (r) => r.provider === provider && r.status === 'confirmed',
-      );
-      const recorded = confirmed.reduce(
-        (n, r) => n + BigInt(r.shareDeltaRaw ?? '0'),
-        0n,
-      );
-      if (recorded !== positions[provider].shares)
-        return { lifetimeMinor: null, lastSevenDaysMinor: null };
-      lifetime +=
-        positions[provider].value +
-        confirmed.reduce((n, r) => n + BigInt(r.cashDeltaRaw ?? '0'), 0n);
-      if (
-        confirmed.some(
-          (r) =>
-            !r.confirmedAt ||
-            r.confirmedAt.getTime() < Date.now() - 7 * 86400000,
-        )
-      )
-        recentOnly = false;
-    }
-    // Once the position predates this window, a historic price/snapshot is
-    // necessary. Do not present lifetime income as seven-day income.
-    return {
-      lifetimeMinor: lifetime.toString(),
-      lastSevenDaysMinor: recentOnly ? lifetime.toString() : null,
+    const now = Date.now();
+    const [rows, baselines] = await Promise.all([
+      this.db.client
+        .select()
+        .from(earnOperations)
+        .where(eq(earnOperations.userId, userId)),
+      this.baselines(userId, weekAgoDay(now)),
+    ]);
+    const providers = {
+      kamino: providerEarnings(
+        rows,
+        'kamino',
+        positions.kamino,
+        now,
+        baselines.kamino,
+      ),
+      jupiter: providerEarnings(
+        rows,
+        'jupiter',
+        positions.jupiter,
+        now,
+        baselines.jupiter,
+      ),
     };
+    return { ...totalEarnings(providers), providers };
+  }
+  private async baselines(
+    userId: string,
+    weekAgo: string,
+  ): Promise<Record<EarnProviderId, EarnBaseline>> {
+    const columns = {
+      provider: earnPositionSnapshots.provider,
+      day: earnPositionSnapshots.day,
+      valueMinor: earnPositionSnapshots.valueMinor,
+      netDepositedMinor: earnPositionSnapshots.netDepositedMinor,
+    };
+    const [weekAgoRows, earliestRows] = await Promise.all([
+      this.db.client
+        .selectDistinctOn([earnPositionSnapshots.provider], columns)
+        .from(earnPositionSnapshots)
+        .where(
+          and(
+            eq(earnPositionSnapshots.userId, userId),
+            lte(earnPositionSnapshots.day, weekAgo),
+          ),
+        )
+        .orderBy(
+          earnPositionSnapshots.provider,
+          desc(earnPositionSnapshots.day),
+        ),
+      this.db.client
+        .selectDistinctOn([earnPositionSnapshots.provider], columns)
+        .from(earnPositionSnapshots)
+        .where(eq(earnPositionSnapshots.userId, userId))
+        .orderBy(
+          earnPositionSnapshots.provider,
+          asc(earnPositionSnapshots.day),
+        ),
+    ]);
+    const pick = (
+      rows: typeof weekAgoRows,
+      provider: EarnProviderId,
+    ): EarnBaseline['earliest'] => {
+      const row = rows.find((r) => r.provider === provider);
+      return row
+        ? {
+            day: row.day,
+            valueMinor: row.valueMinor,
+            netDepositedMinor: row.netDepositedMinor,
+          }
+        : null;
+    };
+    return {
+      kamino: {
+        weekAgo: pick(weekAgoRows, 'kamino'),
+        earliest: pick(earliestRows, 'kamino'),
+      },
+      jupiter: {
+        weekAgo: pick(weekAgoRows, 'jupiter'),
+        earliest: pick(earliestRows, 'jupiter'),
+      },
+    };
+  }
+  async providersWithHistory(userId: string) {
+    const rows = await this.db.client
+      .selectDistinct({ provider: earnPositionSnapshots.provider })
+      .from(earnPositionSnapshots)
+      .where(eq(earnPositionSnapshots.userId, userId));
+    return new Set(rows.map((r) => r.provider));
+  }
+  async recordSnapshots(
+    userId: string,
+    day: string,
+    snapshots: EarnSnapshot[],
+  ) {
+    if (!snapshots.length) return;
+    await this.db.client
+      .insert(earnPositionSnapshots)
+      .values(snapshots.map((s) => ({ ...s, userId, day })))
+      .onConflictDoUpdate({
+        target: [
+          earnPositionSnapshots.userId,
+          earnPositionSnapshots.provider,
+          earnPositionSnapshots.day,
+        ],
+        set: {
+          valueMinor: sql`excluded.value_minor`,
+          netDepositedMinor: sql`excluded.net_deposited_minor`,
+          updatedAt: sql`now()`,
+        },
+      });
+  }
+  async snapshots(
+    userId: string,
+    provider: EarnProviderId,
+    fromDay: string | null,
+  ) {
+    return this.db.client
+      .select({
+        day: earnPositionSnapshots.day,
+        valueMinor: earnPositionSnapshots.valueMinor,
+        netDepositedMinor: earnPositionSnapshots.netDepositedMinor,
+      })
+      .from(earnPositionSnapshots)
+      .where(
+        and(
+          eq(earnPositionSnapshots.userId, userId),
+          eq(earnPositionSnapshots.provider, provider),
+          fromDay ? gte(earnPositionSnapshots.day, fromDay) : undefined,
+        ),
+      )
+      .orderBy(asc(earnPositionSnapshots.day));
+  }
+  async usersWithEarn() {
+    const rows = await this.db.client
+      .selectDistinct({ userId: earnOperations.userId })
+      .from(earnOperations)
+      .where(eq(earnOperations.status, 'confirmed'));
+    return rows.map((r) => r.userId);
   }
 }
