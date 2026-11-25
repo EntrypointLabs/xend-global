@@ -73,3 +73,7 @@ apps/mobile/ios/
 # the builder too. Only the LiteSVM fixtures are dropped, and they are
 # gitignored already.
 packages/smart-account/test/fixtures/
+
+# Local deployment tooling may contain signing material. Never upload it.
+/work/
+programs/**/target/
