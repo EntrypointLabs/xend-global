@@ -3,6 +3,7 @@ import type { AwaitingPayment, TransferRow } from "@/utils/apiClient";
 import {
   arrivalLabel,
   activityDetailTimestamp,
+  earnReceiptLabel,
   awaitingPaymentActivityEntry,
   securityActivityEntry,
   mapAccountEventToActivityEntry,
@@ -969,5 +970,136 @@ describe("a swap still on its way", () => {
   it("says it is swapping where the route is not known", () => {
     const [entry] = pendingSwapEntries([{ ...sent, venues: [] }], [], SELF);
     expect(swapVenueLabel(entry.swap!)).toBeNull();
+  });
+});
+
+describe("an Earn deposit or withdrawal", () => {
+  const JL_USDC = "JlUsdcMint111111111111111111111111111111111";
+  const VAULT = "JupLendVault1111111111111111111111111111111";
+  const ctx = { selfAddress: SELF, decimalsByMint: {} };
+  const deposit = {
+    provider: "jupiter" as const,
+    action: "deposit" as const,
+    amountRaw: "15000000",
+  };
+  const usdcOut = (over: Partial<TransferRow> = {}) =>
+    makeRow({
+      id: "usdc-out",
+      signature: "sig-earn",
+      mint: USDC_MINT,
+      amountRaw: "15000000",
+      toAddress: VAULT,
+      earn: deposit,
+      ...over,
+    });
+  const receiptIn = (over: Partial<TransferRow> = {}) =>
+    makeRow({
+      id: "jl-in",
+      signature: "sig-earn",
+      direction: "RECEIVE",
+      mint: JL_USDC,
+      amountRaw: "14040000",
+      fromAddress: VAULT,
+      tokenSymbol: "jlUSDC",
+      usdValue: "15.00",
+      earn: deposit,
+      ...over,
+    });
+
+  const originalUsdc = process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS;
+  beforeEach(() => {
+    process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS = USDC_MINT;
+  });
+  afterAll(() => {
+    process.env.EXPO_PUBLIC_USDC_MINT_ADDRESS = originalUsdc;
+  });
+
+  it("is one entry for both legs, standing on the USDC leg", () => {
+    const entries = mapTransferRowsToActivityEntries(
+      [receiptIn(), usdcOut()],
+      ctx
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      id: "usdc-out",
+      direction: "send",
+      mint: USDC_MINT,
+      amountRaw: "15000000",
+      decimals: 6,
+      usdValue: null,
+      earn: deposit,
+    });
+  });
+
+  it("never shows the receipt token, even when it is the only leg indexed", () => {
+    const [entry, ...rest] = mapTransferRowsToActivityEntries(
+      [receiptIn()],
+      ctx
+    );
+    expect(rest).toHaveLength(0);
+    expect(entry).toMatchObject({
+      id: "jl-in",
+      direction: "send",
+      mint: USDC_MINT,
+      amountRaw: "15000000",
+      tokenSymbol: "USDC",
+      counterparty: "",
+      earn: deposit,
+    });
+    expect(
+      describeToken(entry.mint, entry.tokenSymbol, entry.tokenName).symbol
+    ).toBe("USDC");
+  });
+
+  it("keeps separate operations and ordinary rows apart", () => {
+    const withdrawal = {
+      provider: "kamino" as const,
+      action: "redeem" as const,
+      amountRaw: "5000000",
+    };
+    const entries = mapTransferRowsToActivityEntries(
+      [
+        receiptIn(),
+        usdcOut(),
+        makeRow({
+          id: "usdc-in",
+          signature: "sig-wd",
+          direction: "RECEIVE",
+          earn: withdrawal,
+        }),
+        makeRow({ id: "plain", signature: "sig-plain" }),
+      ],
+      ctx
+    );
+    expect(entries.map((e) => e.id).sort()).toEqual([
+      "plain",
+      "usdc-in",
+      "usdc-out",
+    ]);
+    const wd = entries.find((e) => e.id === "usdc-in")!;
+    expect(wd).toMatchObject({
+      direction: "receive",
+      amountRaw: "5000000",
+      earn: withdrawal,
+    });
+  });
+
+  it("reads as the action in the row and provider plus action on the receipt", () => {
+    const [entry] = mapTransferRowsToActivityEntries([usdcOut()], ctx);
+    expect(statusLabel(entry)).toBe("Deposit");
+    expect(earnReceiptLabel(entry.earn!)).toBe("Jupiter Lend Deposit");
+    const [wd] = mapTransferRowsToActivityEntries(
+      [
+        makeRow({
+          direction: "RECEIVE",
+          earn: { provider: "kamino", action: "redeem", amountRaw: "1" },
+        }),
+      ],
+      ctx
+    );
+    expect(statusLabel(wd)).toBe("Withdrawal");
+    expect(earnReceiptLabel(wd.earn!)).toBe("Kamino Withdrawal");
+    expect(statusLabel({ ...entry, status: "pending" })).toBe("Depositing…");
+    expect(statusLabel({ ...entry, status: "failed" })).toBe("Failed");
   });
 });

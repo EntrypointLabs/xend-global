@@ -29,6 +29,7 @@ import {
 } from "./RampTransactionDetail";
 import { formatDollarsMinor } from "@/utils/ramp";
 import { SwapTransactionDetail } from "./SwapTransactionDetail";
+import { EarnTransactionDetail } from "./EarnTransactionDetail";
 
 interface TransactionDetailModalProps {
   visible: boolean;
@@ -95,6 +96,19 @@ export function TransactionDetailModal({
         visible={visible}
         onClose={onClose}
         item={item}
+        status={status}
+        onCopy={copyToClipboard}
+      />
+    );
+  }
+
+  if (item.earn) {
+    return (
+      <EarnTransactionDetail
+        visible={visible}
+        onClose={onClose}
+        item={item}
+        earn={item.earn}
         status={status}
         onCopy={copyToClipboard}
       />

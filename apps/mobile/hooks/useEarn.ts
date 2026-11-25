@@ -4,7 +4,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useUserId } from "@/hooks/useUserId";
 import { apiClient } from "@/utils/apiClient";
 import { SEED_DEMO } from "@/utils/devSeed";
-import { selectEarnBalance, type EarnProvider } from "@/utils/earn";
+import {
+  formatEarnedMinor,
+  selectEarnBalance,
+  type EarnProvider,
+  type EarnRange,
+} from "@/utils/earn";
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { fetchEarnFromChain } from "@/utils/earnChain";
 
@@ -16,7 +21,13 @@ export interface EarnProduct {
   apyDisplay: string;
   apy: number | null;
   learnMoreUrl: string;
+  /** What the protocol is and how it pays, for the position page. */
+  about: string;
   network: string;
+  /** Dollars currently in this product. Null until read. */
+  position?: number | null;
+  lifetimeEarned?: string;
+  lastSevenDays?: string;
   simulated?: boolean;
   available?: boolean;
   withdrawAvailable?: boolean;
@@ -31,6 +42,8 @@ export const EARN_PRODUCTS: EarnProduct[] = [
     apyDisplay: "—",
     apy: null,
     learnMoreUrl: "https://kamino.com",
+    about:
+      "Kamino is a lending market on Solana. Your dollars are lent to borrowers through Kamino, and you earn the interest they pay. The rate moves with how much is supplied and how much is borrowed.",
     network: "Solana",
     icon: require("@/assets/icons/kamino.png"),
   },
@@ -43,6 +56,8 @@ export const EARN_PRODUCTS: EarnProduct[] = [
     apyDisplay: "—",
     apy: null,
     learnMoreUrl: "https://jup.ag/lend",
+    about:
+      "Jupiter Lend is the lending market from Jupiter on Solana. Your dollars are lent to borrowers through Jupiter Lend, and you earn the interest they pay. The rate moves with how much is supplied and how much is borrowed.",
     network: "Solana",
     icon: require("@/assets/icons/jupiter.png"),
   },
@@ -80,6 +95,17 @@ export function useEarnProducts() {
         apy,
         apyDisplay: apy === null ? "—" : `${(apy * 100).toFixed(2)}%`,
         simulated: SEED_DEMO,
+        position: SEED_DEMO
+          ? 0
+          : live && !query.isError
+            ? Number(live.positionMinor) / 1e6
+            : null,
+        lifetimeEarned: SEED_DEMO
+          ? "0.00"
+          : formatEarnedMinor(live?.lifetimeMinor),
+        lastSevenDays: SEED_DEMO
+          ? "0.00"
+          : formatEarnedMinor(live?.lastSevenDaysMinor),
         available: !SEED_DEMO && sessionTier === "full" && !!live?.available,
         withdrawAvailable:
           !SEED_DEMO && sessionTier === "full" && !!live?.withdrawAvailable,
@@ -147,13 +173,21 @@ export function useEarnPosition(): EarnPosition {
           : "0.00%",
     lifetimeEarned: SEED_DEMO
       ? "0.00"
-      : query.data?.lifetimeMinor != null
-        ? (Number(query.data.lifetimeMinor) / 1e6).toFixed(2)
-        : "—",
+      : formatEarnedMinor(query.data?.lifetimeMinor),
     lastSevenDays: SEED_DEMO
       ? "0.00"
-      : query.data?.lastSevenDaysMinor != null
-        ? (Number(query.data.lastSevenDaysMinor) / 1e6).toFixed(2)
-        : "—",
+      : formatEarnedMinor(query.data?.lastSevenDaysMinor),
   };
+}
+
+export function useEarnHistory(provider: EarnProvider, range: EarnRange) {
+  const { isAuthenticated } = useAuth();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: ["earn", userId, "history", provider, range],
+    queryFn: () => apiClient.getEarnHistory(provider, range),
+    enabled: !!isAuthenticated && !SEED_DEMO,
+    staleTime: 60000,
+    retry: 1,
+  });
 }

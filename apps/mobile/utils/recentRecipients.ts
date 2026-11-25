@@ -11,7 +11,7 @@ export interface RecentRecipient {
 /** The fields of a feed row this needs, so a caller can pass a lighter shape. */
 export type SendRow = Pick<
   TransferRow,
-  "direction" | "kind" | "toAddress" | "createdAt" | "swap"
+  "direction" | "kind" | "toAddress" | "createdAt" | "swap" | "earn"
 >;
 
 /**
@@ -34,6 +34,8 @@ export function recentRecipientsFrom(
     // A swap pays a trading venue's account, which changes from one swap to
     // the next and is nobody a Consumer would send to.
     if (row.swap) continue;
+    // An Earn deposit pays a lending vault, not a person.
+    if (row.earn) continue;
     if (excluded.has(row.toAddress)) continue;
 
     const seen = byAddress.get(row.toAddress);

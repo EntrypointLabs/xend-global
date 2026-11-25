@@ -25,6 +25,7 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { usePalette } from "@/hooks/usePalette";
+import { showToast } from "@/utils/toast";
 import type { EarnProduct } from "@/hooks/useEarn";
 import { formatEarnMoney, projectedValue } from "@/utils/earnProjection";
 
@@ -357,14 +358,12 @@ function DepositScreen({
       withdraw && amount === limit
     );
     if (result.status === "confirmed") {
-      setMessage(
-        wasPending
-          ? "Move confirmed"
-          : withdraw
-            ? "Money withdrawn"
-            : "Money added"
+      showToast(
+        wasPending ? "Confirmed" : withdraw ? "Withdrawn" : "Deposited",
+        <Ionicons name="checkmark-circle" size={16} className="text-success" />,
+        { tone: "success" }
       );
-      setChosen(0);
+      onChange(null);
     } else if (result.status === "pending")
       setMessage(
         "Your approval is saved. Check its status before trying another amount."

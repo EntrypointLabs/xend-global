@@ -131,7 +131,10 @@ export function usePendingWatch(hasPending = false) {
           head !== undefined &&
           head.id !== lastHeadIdRef.current &&
           head.direction === "RECEIVE" &&
-          head.status === "CONFIRMED";
+          head.status === "CONFIRMED" &&
+          // The Consumer just moved this themselves, and the leg that arrives
+          // first may be the receipt token, which they never asked for.
+          head.earn === undefined;
 
         if (wasWatching && isNewArrival) showToast(arrivalLabel(head));
       }
