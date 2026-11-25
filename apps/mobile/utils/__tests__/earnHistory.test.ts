@@ -1,4 +1,4 @@
-import { earnBars, formatEarnedMinor } from "@/utils/earn";
+import { earnBars, formatEarnedMinor, productEarnings } from "@/utils/earn";
 
 const today = new Date("2026-11-25T12:00:00Z");
 const point = (day: string, earned: number) => ({
@@ -63,5 +63,63 @@ describe("earnBars", () => {
     );
     expect(all.map((b) => b.label)).toEqual(["2026-09", "2026-10", "2026-11"]);
     expect(Number(all[1].earned.toFixed(2))).toBe(0.1);
+  });
+});
+
+describe("productEarnings", () => {
+  const product = (
+    id: "kamino" | "jupiter",
+    positionMinor: string,
+    extra: Record<string, string | null> = {}
+  ) => ({
+    id,
+    provider: id,
+    name: "Lending Yield",
+    apy: 0.04,
+    positionShares: positionMinor,
+    positionMinor,
+    withdrawableMinor: positionMinor,
+    available: true,
+    withdrawAvailable: true,
+    updatedAt: "2026-11-25T00:00:00.000Z",
+    ...extra,
+  });
+  const catalog = (products: ReturnType<typeof product>[]) => ({
+    depositableMinor: "0",
+    lifetimeMinor: "40000",
+    lastSevenDaysMinor: "10000",
+    products,
+  });
+
+  it("uses the product's own figures when the server sends them", () => {
+    expect(
+      productEarnings(
+        catalog([
+          product("jupiter", "15000000", {
+            lifetimeMinor: "30000",
+            lastSevenDaysMinor: "5000",
+          }),
+        ]),
+        "jupiter"
+      )
+    ).toEqual({ lifetimeMinor: "30000", lastSevenDaysMinor: "5000" });
+  });
+
+  it("falls back to the totals while only this product holds money", () => {
+    expect(
+      productEarnings(
+        catalog([product("jupiter", "15000000"), product("kamino", "0")]),
+        "jupiter"
+      )
+    ).toEqual({ lifetimeMinor: "40000", lastSevenDaysMinor: "10000" });
+  });
+
+  it("stays unknown when the totals span more than one position", () => {
+    expect(
+      productEarnings(
+        catalog([product("jupiter", "15000000"), product("kamino", "5000000")]),
+        "jupiter"
+      )
+    ).toEqual({ lifetimeMinor: null, lastSevenDaysMinor: null });
   });
 });

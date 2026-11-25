@@ -35,6 +35,7 @@ export default function EarnScreen() {
     lastSevenDays,
   } = useEarnPosition();
   const held = products.filter((p) => (p.position ?? 0) >= 0.01);
+  const earning = apyDisplay !== "—" && balance !== null && balance > 0;
   const others = products.filter((p) => !held.includes(p));
 
   return (
@@ -57,8 +58,12 @@ export default function EarnScreen() {
           <Typography variant="body" className="text-foreground/20">
             •
           </Typography>
-          <Typography variant="body" className="text-foreground/40">
-            APY {apyDisplay}
+          <Typography
+            variant="body"
+            weight={earning ? "600" : undefined}
+            className={earning ? "text-success" : "text-foreground/40"}
+          >
+            {apyDisplay === "—" ? "APY unavailable" : `${apyDisplay} APY`}
           </Typography>
         </View>
         {balanceDisplay === "—" ? (
@@ -119,12 +124,22 @@ export default function EarnScreen() {
       </ScrollView>
 
       <EarnActionBar
+        hidden={!!flow}
         canWithdraw={
           balance !== null &&
           Object.values(withdrawableBalances).some((value) => value > 0)
         }
         onDeposit={() => setFlow({ step: "choose" })}
-        onWithdraw={() => setFlow({ step: "choose-withdraw" })}
+        onWithdraw={() => {
+          const withdrawable = products.filter(
+            (p) => (withdrawableBalances[p.id] ?? 0) > 0
+          );
+          setFlow(
+            withdrawable.length === 1
+              ? { step: "withdraw", productId: withdrawable[0].id }
+              : { step: "choose-withdraw" }
+          );
+        }}
       />
 
       {hasExternalReceipts && (
@@ -183,8 +198,8 @@ function StatCard({
         </Typography>
       </View>
       {amount === "—" ? (
-        <Typography variant="title2" weight="600">
-          —
+        <Typography variant="title2" className="text-foreground/30">
+          Unavailable
         </Typography>
       ) : (
         <BalanceView variant="title2" weight="600" amount={amount} />

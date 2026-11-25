@@ -31,7 +31,13 @@ import { formatEarnMoney, projectedValue } from "@/utils/earnProjection";
 
 export type EarnFlowState =
   | { step: "choose" | "choose-withdraw" }
-  | { step: "info" | "deposit" | "withdraw"; productId: string };
+  | { step: "info"; productId: string }
+  | {
+      step: "deposit" | "withdraw";
+      productId: string;
+      /** Where back returns to. Without it the screen was opened directly and back closes it. */
+      from?: "choose" | "choose-withdraw" | "info";
+    };
 type Props = {
   flow: EarnFlowState | null;
   products: EarnProduct[];
@@ -51,11 +57,28 @@ export function EarnFlow(props: Props) {
       ? props.products.find((p) => p.id === flow.productId)
       : undefined;
   const fullScreen = flow?.step === "deposit" || flow?.step === "withdraw";
+  // A full screen opened straight from a page slides up over it; a sheet fades
+  // in over the blur. Fading a full screen in shows both screens at once.
+  const [presentation, setPresentation] = useState<{
+    open: boolean;
+    animation: "fade" | "slide";
+  }>({ open: false, animation: "fade" });
+  if (!!flow !== presentation.open) {
+    setPresentation({
+      open: !!flow,
+      animation: flow && fullScreen ? "slide" : presentation.animation,
+    });
+  }
+  const withdrawable = props.products.filter(
+    (p) => (props.positionBalances[p.id] ?? 0) > 0
+  );
+  const pickable =
+    flow?.step === "choose-withdraw" ? withdrawable : props.products;
   return (
     <Modal
       visible={!!flow}
       transparent
-      animationType="fade"
+      animationType={flow ? presentation.animation : "fade"}
       onRequestClose={() => props.onChange(null)}
     >
       {fullScreen && product ? (
@@ -64,6 +87,7 @@ export function EarnFlow(props: Props) {
           {...props}
           product={product}
           withdraw={flow.step === "withdraw"}
+          from={"from" in flow ? flow.from : undefined}
         />
       ) : (
         <View className="flex-1 justify-end">
@@ -91,7 +115,11 @@ export function EarnFlow(props: Props) {
                 <Discovery
                   product={product}
                   onDeposit={() =>
-                    props.onChange({ step: "deposit", productId: product.id })
+                    props.onChange({
+                      step: "deposit",
+                      productId: product.id,
+                      from: "info",
+                    })
                   }
                   onClose={() => props.onChange(null)}
                 />
@@ -99,13 +127,6 @@ export function EarnFlow(props: Props) {
                 <>
                   <CloseButton onPress={() => props.onChange(null)} />
                   <View className="items-center pb-7 pt-1">
-                    <View className="mb-4 h-12 w-12 items-center justify-center rounded-full bg-foreground/[0.02]">
-                      <Ionicons
-                        name="information-circle-outline"
-                        size={25}
-                        color={palette.foreground}
-                      />
-                    </View>
                     <Typography variant="title1" weight="600">
                       {flow?.step === "choose-withdraw"
                         ? "Withdraw"
@@ -118,37 +139,39 @@ export function EarnFlow(props: Props) {
                       Choose product
                     </Typography>
                   </View>
-                  {props.products.map((p) => (
+                  {pickable.map((p) => (
                     <HapticPressable
                       key={p.id}
                       accessibilityRole="button"
                       accessibilityLabel={`Select ${p.provider} ${p.name}`}
-                      disabled={
-                        flow?.step === "choose-withdraw" &&
-                        !(props.positionBalances[p.id] > 0)
-                      }
                       onPress={() =>
-                        props.onChange({
-                          step:
-                            flow?.step === "choose-withdraw"
-                              ? "withdraw"
-                              : "deposit",
-                          productId: p.id,
-                        })
+                        props.onChange(
+                          flow?.step === "choose-withdraw"
+                            ? {
+                                step: "withdraw",
+                                productId: p.id,
+                                from: "choose-withdraw",
+                              }
+                            : {
+                                step: "deposit",
+                                productId: p.id,
+                                from: "choose",
+                              }
+                        )
                       }
                       className="flex-row items-center gap-3 pb-2 pt-3"
                     >
                       <ProviderIcon product={p} />
                       <View className="flex-1">
                         <Typography variant="title2" weight="600">
-                          {p.name}
+                          {p.provider}
                         </Typography>
                         <View className="mt-1 flex-row items-center gap-1">
                           <Typography
                             variant="body"
                             className="text-foreground/30"
                           >
-                            {p.provider} ·{" "}
+                            {p.name} ·{" "}
                           </Typography>
                           <Typography variant="body" className="text-success">
                             {p.apy === null ? "Rate unavailable" : p.apyDisplay}
@@ -219,22 +242,17 @@ function Discovery({
     <View>
       <CloseButton onPress={onClose} />
       <View className="mb-5 items-center gap-1 pt-1">
-        <Typography variant="title1" weight="600">
-          {product.name}
-        </Typography>
         <View className="flex-row items-center gap-2">
-          <Typography variant="body" className="text-foreground/30">
-            Provided by
-          </Typography>
-          {product.icon ? (
-            <Image source={product.icon} className="h-4 w-4 rounded" />
-          ) : (
-            <Typography variant="caption">J</Typography>
+          {product.icon && (
+            <Image source={product.icon} className="h-6 w-6 rounded-md" />
           )}
-          <Typography variant="body" weight="600">
+          <Typography variant="title1" weight="600">
             {product.provider}
           </Typography>
         </View>
+        <Typography variant="body" className="text-foreground/30">
+          {product.name}
+        </Typography>
       </View>
       <View className="rounded-[24px] border border-foreground/5 bg-foreground/[0.01] p-5">
         <View className="flex-row items-center justify-between gap-2 pb-4">
@@ -264,7 +282,7 @@ function Discovery({
           </View>
         </View>
         <Typography variant="body" weight="600" className="mb-4 mt-4">
-          Your potential earn
+          What you could earn
         </Typography>
         <View className="mb-4 flex-row justify-between">
           <View>
@@ -342,7 +360,12 @@ function DepositScreen({
   balanceReady,
   depositsEnabled,
   onChange,
-}: Props & { product: EarnProduct; withdraw: boolean }) {
+  from,
+}: Props & {
+  product: EarnProduct;
+  withdraw: boolean;
+  from?: "choose" | "choose-withdraw" | "info";
+}) {
   const palette = usePalette();
   const insets = useSafeAreaInsets();
   const execution = useExecuteEarn();
@@ -370,7 +393,9 @@ function DepositScreen({
       );
     else if (result.status === "failed") setMessage(result.message);
   };
-  const [chosen, setChosen] = useState(Math.min(1000, limit));
+  // Withdrawing starts at everything; depositing starts at nothing, so no
+  // amount moves without the Consumer choosing it.
+  const [chosen, setChosen] = useState(withdraw ? limit : 0);
   const [years, setYears] = useState(10);
   const amount = Math.min(chosen, limit);
   const canMove =
@@ -393,17 +418,29 @@ function DepositScreen({
       style={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 12 }}
     >
       <View className="mb-6 flex-row items-center justify-between">
-        <HapticPressable
-          accessibilityRole="button"
-          accessibilityLabel="Back to products"
-          disabled={execution.isExecuting}
-          onPress={() =>
-            onChange({ step: withdraw ? "choose-withdraw" : "choose" })
-          }
-          className="h-10 w-10 items-center justify-center rounded-full bg-foreground/5"
-        >
-          <Ionicons name="chevron-back" size={20} color={palette.foreground} />
-        </HapticPressable>
+        {from ? (
+          <HapticPressable
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            disabled={execution.isExecuting}
+            onPress={() =>
+              onChange(
+                from === "info"
+                  ? { step: "info", productId: product.id }
+                  : { step: from }
+              )
+            }
+            className="h-10 w-10 items-center justify-center rounded-full bg-foreground/5"
+          >
+            <Ionicons
+              name="chevron-back"
+              size={20}
+              color={palette.foreground}
+            />
+          </HapticPressable>
+        ) : (
+          <View className="h-10 w-10" />
+        )}
         <Typography variant="body" weight="600">
           {withdraw ? "Withdraw" : "Deposit"}
         </Typography>
@@ -417,13 +454,14 @@ function DepositScreen({
           <Ionicons name="close" size={19} color={palette.foreground} />
         </HapticPressable>
       </View>
+      {withdraw && <View className="flex-1" />}
       <View className="items-center">
         <Typography variant="caption" className="text-foreground/40">
           {withdraw
             ? "You receive"
             : product.apy === null
               ? "Rate unavailable"
-              : `Start Earning ${product.apyDisplay} ⓘ`}
+              : `Start earning ${product.apyDisplay}`}
         </Typography>
         <Typography
           variant="h2"
@@ -440,7 +478,7 @@ function DepositScreen({
         <Typography variant="caption" className="mt-1 text-foreground/40">
           {withdraw
             ? `From ${product.provider}`
-            : `Estimated Value in ${years} ${years === 1 ? "Year" : "Years"}`}
+            : `Estimated value in ${years} ${years === 1 ? "year" : "years"}`}
         </Typography>
         {product.simulated && (
           <Typography variant="caption" className="mt-1 text-foreground/30">
@@ -448,34 +486,36 @@ function DepositScreen({
           </Typography>
         )}
       </View>
-      <View className="mb-8 mt-9 flex-1">
-        {!withdraw && (
-          <ProjectionChart
-            apy={product.apy}
-            amount={amount}
-            years={years}
-            onYears={setYears}
-          />
-        )}
-        {!withdraw && (
-          <View className="mt-3 flex-row justify-between">
-            <Typography variant="caption" className="text-foreground/35">
-              Today
+      {withdraw ? (
+        <View className="h-10" />
+      ) : (
+        <>
+          <View className="mb-8 mt-9 flex-1">
+            <ProjectionChart
+              apy={product.apy}
+              amount={amount}
+              years={years}
+              onYears={setYears}
+            />
+            <View className="mt-3 flex-row justify-between">
+              <Typography variant="caption" className="text-foreground/35">
+                Today
+              </Typography>
+              <Typography variant="caption" className="text-foreground/35">
+                30Y
+              </Typography>
+            </View>
+          </View>
+          <View className="items-center pb-3">
+            <Typography variant="caption" className="text-foreground/40">
+              Initial deposit
             </Typography>
-            <Typography variant="caption" className="text-foreground/35">
-              30Y
+            <Typography variant="title1" weight="600" className="mt-1">
+              {formatEarnMoney(amount)}
             </Typography>
           </View>
-        )}
-      </View>
-      <View className="items-center pb-3">
-        <Typography variant="caption" className="text-foreground/40">
-          {withdraw ? "Withdrawal amount" : "Initial Deposit"}
-        </Typography>
-        <Typography variant="title1" weight="600" className="mt-1">
-          {formatEarnMoney(amount)}
-        </Typography>
-      </View>
+        </>
+      )}
       <View
         accessible
         accessibilityRole="adjustable"
@@ -522,10 +562,11 @@ function DepositScreen({
         className="mb-4 mt-3 text-center text-foreground/35"
       >
         {balanceReady
-          ? `${formatEarnMoney(limit)} available`
-          : "Balance unavailable"}{" "}
-        · Returns vary
+          ? `${formatEarnMoney(limit)} ${withdraw ? "in this position" : "available"}`
+          : "Balance unavailable"}
+        {withdraw ? "" : " · Returns vary"}
       </Typography>
+      {withdraw && <View className="flex-1" />}
       <HapticPressable
         accessibilityRole="button"
         accessibilityState={{
@@ -564,7 +605,9 @@ function DepositScreen({
               : !(withdraw ? product.withdrawAvailable : product.available) ||
                   !execution.configured
                 ? "Not available yet"
-                : "Rates vary. Network fees are covered.")}
+                : withdraw
+                  ? "Arrives in your cash balance. Network fees are covered."
+                  : "Rates vary. Network fees are covered.")}
       </Typography>
     </View>
   );

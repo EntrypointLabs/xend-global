@@ -71,7 +71,7 @@ export default function EarnPositionScreen() {
           <Image source={product.icon} className="h-9 w-9 rounded-xl" />
         )}
         <Typography variant="title2" weight="600">
-          {product.name}
+          {product.provider}
         </Typography>
       </View>
 
@@ -82,7 +82,7 @@ export default function EarnPositionScreen() {
       >
         <View className="flex-row items-center gap-2">
           <Typography variant="body" className="text-foreground/40">
-            Balance
+            {product.name}
           </Typography>
           <Typography variant="body" className="text-foreground/20">
             •
@@ -134,9 +134,34 @@ export default function EarnPositionScreen() {
                 </View>
               ))}
             </View>
+          ) : history.isError ? (
+            <View className="flex-1 items-center justify-center gap-3 px-8">
+              <Typography
+                variant="body"
+                className="text-center text-foreground/50"
+              >
+                Earnings could not be loaded.
+              </Typography>
+              <HapticPressable
+                accessibilityRole="button"
+                onPress={() => {
+                  void history.refetch();
+                }}
+                className="rounded-full bg-foreground/5 px-4 py-2"
+              >
+                <Typography variant="body" weight="600">
+                  Try again
+                </Typography>
+              </HapticPressable>
+            </View>
           ) : (
             <>
-              <View className="flex-1 items-center justify-center gap-3 px-8">
+              <View
+                className={cn(
+                  "flex-1 items-center justify-center gap-3 px-8",
+                  history.isPending && "opacity-0"
+                )}
+              >
                 <Ionicons
                   name="stats-chart"
                   size={22}
@@ -146,9 +171,7 @@ export default function EarnPositionScreen() {
                   variant="body"
                   className="text-center text-foreground/50"
                 >
-                  {history.isError
-                    ? "Earnings could not be loaded."
-                    : "Earnings will show here once your balance has earned a cent."}
+                  Earnings will show here once your balance has earned a cent.
                 </Typography>
               </View>
               <View className="flex-row">
@@ -163,7 +186,12 @@ export default function EarnPositionScreen() {
           )}
         </View>
 
-        <View className="mt-6 flex-row items-center justify-center gap-2">
+        <View
+          className={cn(
+            "mt-6 flex-row items-center justify-center gap-2",
+            history.isError && "opacity-40"
+          )}
+        >
           {RANGES.map((option) => {
             const active = option.id === range;
             return (
@@ -171,7 +199,11 @@ export default function EarnPositionScreen() {
                 key={option.id}
                 accessibilityRole="button"
                 accessibilityLabel={`Show ${option.label} earnings`}
-                accessibilityState={{ selected: active }}
+                accessibilityState={{
+                  selected: active,
+                  disabled: history.isError,
+                }}
+                disabled={history.isError}
                 onPress={() => setRange(option.id)}
                 feedback="selection"
                 scaleOnPress={false}
@@ -222,6 +254,7 @@ export default function EarnPositionScreen() {
       </ScrollView>
 
       <EarnActionBar
+        hidden={!!flow}
         canWithdraw={(withdrawableBalances[product.id] ?? 0) > 0}
         onDeposit={() => setFlow({ step: "deposit", productId: product.id })}
         onWithdraw={() => setFlow({ step: "withdraw", productId: product.id })}
@@ -264,11 +297,15 @@ function Stat({
       <Typography variant="body" className="text-foreground/40">
         {label}
       </Typography>
-      <Typography variant="title2" weight="600">
-        {amount === undefined || amount === "—"
-          ? "—"
-          : formatEarnMoney(Number(amount))}
-      </Typography>
+      {amount === undefined || amount === "—" ? (
+        <Typography variant="title2" className="text-foreground/30">
+          Unavailable
+        </Typography>
+      ) : (
+        <Typography variant="title2" weight="600">
+          {formatEarnMoney(Number(amount))}
+        </Typography>
+      )}
     </View>
   );
 }

@@ -155,3 +155,31 @@ export function earnBars(
   }
   return slots.map((slot) => ({ label: slot, earned: earned.get(slot) ?? 0 }));
 }
+
+type EarnCatalog = z.infer<typeof EarnCatalogSchema>;
+
+/**
+ * One product's earnings. A server that predates per-product figures sends
+ * only the totals; while a single product holds money the totals are that
+ * product's, so they stand in rather than leaving the position page blank.
+ */
+export function productEarnings(
+  catalog: EarnCatalog | undefined,
+  id: EarnProvider
+): { lifetimeMinor: string | null; lastSevenDaysMinor: string | null } {
+  const live = catalog?.products.find((row) => row.id === id);
+  if (!catalog || !live)
+    return { lifetimeMinor: null, lastSevenDaysMinor: null };
+  if (live.lifetimeMinor !== undefined || live.lastSevenDaysMinor !== undefined)
+    return {
+      lifetimeMinor: live.lifetimeMinor ?? null,
+      lastSevenDaysMinor: live.lastSevenDaysMinor ?? null,
+    };
+  const held = catalog.products.filter((row) => BigInt(row.positionMinor) > 0n);
+  return held.length === 1 && held[0].id === id
+    ? {
+        lifetimeMinor: catalog.lifetimeMinor,
+        lastSevenDaysMinor: catalog.lastSevenDaysMinor,
+      }
+    : { lifetimeMinor: null, lastSevenDaysMinor: null };
+}
