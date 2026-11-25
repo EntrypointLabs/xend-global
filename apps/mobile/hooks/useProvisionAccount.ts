@@ -63,6 +63,7 @@ export function useProvisionAccount() {
         // the lock. It may never move a signer.
         assertSettings(plan.unsignedTxBase64, {
           vault: account.address,
+          signers: account.signers,
           policyCreates: 2,
           setTimeLockSeconds: SETTINGS_TIME_LOCK_SECONDS,
         });

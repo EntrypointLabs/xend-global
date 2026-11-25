@@ -93,6 +93,8 @@ export async function runSpendingLimitChange(
     // leaves the Account on the back of it.
     assertSettings(plan.unsignedTxBase64, {
       vault: account.address,
+      signers: account.signers,
+      transactionIndex: plan.changeIndex,
       policyCreates: plan.creating ? 1 : 0,
       policyUpdates: plan.removing || plan.creating ? 0 : 1,
       policyRemovals: plan.removing ? 1 : 0,

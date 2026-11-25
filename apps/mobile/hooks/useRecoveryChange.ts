@@ -18,6 +18,7 @@ import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { RECOVERY_KEYS_QUERY_KEY } from "@/hooks/useRecoveryKeys";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
 import { assertSettings } from "@/utils/verifyTransaction";
+import { ROLE_PERMISSIONS } from "@prydd/smart-account";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import {
   apiClient,
@@ -90,9 +91,12 @@ export async function runRecoveryChange(
     // recovery key moves, and nothing touches the spending rules or the lock.
     assertSettings(plan.unsignedTxBase64, {
       vault: account.address,
+      signers: account.signers,
       maxAddSigners: 1,
+      addSignerPermissions: ROLE_PERMISSIONS.recovery,
       maxRemoveSigners: 1,
       policyUpdates: 1,
+      transactionIndex: plan.changeIndex,
     });
 
     let tx = VersionedTransaction.deserialize(

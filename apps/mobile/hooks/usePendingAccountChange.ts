@@ -7,7 +7,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAccount } from "@/hooks/useAccount";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
-import { apiClient } from "@/utils/apiClient";
+import { apiClient, type StagedChange } from "@/utils/apiClient";
+import { assertRejection } from "@/utils/verifyTransaction";
 import { Buffer } from "buffer";
 
 export const PENDING_CHANGE_KEY = ["account", "pending-change"] as const;
@@ -55,9 +56,21 @@ export function useRejectAccountChange() {
       const wallet = embeddedSolana.wallets?.[0];
       if (!wallet) throw new Error("Wallet not ready");
       if (!account) throw new Error("Account not ready");
+      const shown = queryClient.getQueryData<StagedChange | null>(
+        PENDING_CHANGE_KEY
+      );
+      if (!shown) throw new Error("No change to reject");
       const provider = await wallet.getProvider();
 
       const prepared = await apiClient.prepareChangeRejection();
+
+      // Both phone keys sign this. A message that approved instead of
+      // rejecting, or touched a different change, would carry the change the
+      // Consumer is trying to stop.
+      assertRejection(prepared.unsignedTxBase64, {
+        vault: account.address,
+        transactionIndex: shown.transactionIndex,
+      });
 
       // S2 before S1, matching the order the backend compiled and the order
       // Turnkey's policy engine expects: unsigned in, signed out.

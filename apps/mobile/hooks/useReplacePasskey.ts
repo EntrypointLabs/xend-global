@@ -12,6 +12,7 @@ import { PENDING_CHANGE_KEY } from "@/hooks/usePendingAccountChange";
 import { useInitiatedChanges } from "@/hooks/useInitiatedChange";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
 import { assertSettings } from "@/utils/verifyTransaction";
+import { ROLE_PERMISSIONS } from "@prydd/smart-account";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import { apiClient, type AccountResponse } from "@/utils/apiClient";
 
@@ -57,9 +58,15 @@ export async function runPrimaryRotation(
 
     assertSettings(plan.unsignedTxBase64, {
       vault: account.address,
+      signers: {
+        primary: plan.newPrimarySigner ?? account.signers.primary,
+        approval: account.signers.approval,
+      },
       addSigners: plan.newPrimarySigner ? [plan.newPrimarySigner] : [],
+      addSignerPermissions: ROLE_PERMISSIONS.primary,
       removeSigners: [account.signers.primary],
       policyUpdates: 2,
+      transactionIndex: plan.changeIndex,
     });
 
     const signedHex = await signWithApprovalSigner({

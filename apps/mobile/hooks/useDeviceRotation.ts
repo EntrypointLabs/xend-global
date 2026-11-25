@@ -20,6 +20,7 @@ import {
   type DeviceRotationStep,
 } from "@/utils/apiClient";
 import { assertSettings } from "@/utils/verifyTransaction";
+import { ROLE_PERMISSIONS } from "@prydd/smart-account";
 
 /** Propose, approve, then execute a day later. Slack for a re-signed step. */
 const MAX_STEPS = 5;
@@ -75,9 +76,15 @@ export async function runDeviceRotation(
     // disagree with it.
     assertSettings(plan.unsignedTxBase64, {
       vault: account.address,
+      signers: {
+        primary: account.signers.primary,
+        approval: plan.newApprovalSigner ?? account.signers.approval,
+      },
       addSigners: plan.newApprovalSigner ? [plan.newApprovalSigner] : [],
+      addSignerPermissions: ROLE_PERMISSIONS.approval,
       removeSigners: [account.signers.approval],
       policyUpdates: 1,
+      transactionIndex: plan.changeIndex,
     });
 
     const tx = VersionedTransaction.deserialize(
