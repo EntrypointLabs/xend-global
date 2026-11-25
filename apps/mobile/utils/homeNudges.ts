@@ -11,7 +11,7 @@ export interface Nudge {
 export interface NudgeInputs {
   /** Spendable dollars. Null until the balance has loaded. */
   cashUsd: number | null;
-  earnUsd: number;
+  earnUsd: number | null;
   earnDepositsEnabled: boolean;
   /** The best Earn rate on offer, as a percentage such as 4.37. */
   earnApy: number;

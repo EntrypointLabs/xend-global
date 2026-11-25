@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useUserId } from "@/hooks/useUserId";
 import { apiClient } from "@/utils/apiClient";
 import { SEED_DEMO } from "@/utils/devSeed";
-import type { EarnProvider } from "@/utils/earn";
+import { selectEarnBalance, type EarnProvider } from "@/utils/earn";
 
 export interface EarnProduct {
   id: EarnProvider;
@@ -79,7 +79,10 @@ export function earnHeadlineApy(): string {
 }
 export interface EarnPosition {
   productBalances: Record<string, number>;
-  balance: number;
+  balance: number | null;
+  isLoading: boolean;
+  isError: boolean;
+  refetch: ReturnType<typeof useEarnData>["refetch"];
   balanceDisplay: string;
   apyDisplay: string;
   lifetimeEarned: string;
@@ -91,7 +94,7 @@ export function useEarnPosition(): EarnPosition {
   const balances = Object.fromEntries(
     products?.map((p) => [p.id, Number(p.positionMinor) / 1e6]) ?? []
   );
-  const balance = Object.values(balances).reduce((sum, n) => sum + n, 0);
+  const balance = SEED_DEMO ? 0 : selectEarnBalance(products, query.isError);
   const unknownHeldRate = products?.some(
     (p) => BigInt(p.positionMinor) > 0n && p.apy === null
   );
@@ -103,11 +106,14 @@ export function useEarnPosition(): EarnPosition {
   return {
     productBalances: balances,
     balance,
-    balanceDisplay: SEED_DEMO ? "0.00" : products ? balance.toFixed(2) : "—",
+    isLoading: !SEED_DEMO && query.isPending,
+    isError: !SEED_DEMO && query.isError,
+    refetch: query.refetch,
+    balanceDisplay: balance === null ? "—" : balance.toFixed(2),
     apyDisplay:
-      balance > 0 && !unknownHeldRate
+      balance !== null && balance > 0 && !unknownHeldRate
         ? `${((weighted / balance) * 100).toFixed(2)}%`
-        : unknownHeldRate || (!SEED_DEMO && !products)
+        : unknownHeldRate || balance === null
           ? "—"
           : "0.00%",
     lifetimeEarned: SEED_DEMO

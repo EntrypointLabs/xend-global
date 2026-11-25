@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useFeature } from "@/hooks/useFeature";
 import { usePalette } from "@/hooks/usePalette";
+import { selectUsdcDepositLimit } from "@/utils/balances";
 import { cn } from "@/utils/cn";
 import BalanceView from "@/components/BalanceView";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
@@ -175,12 +176,12 @@ export default function EarnScreen() {
             accessibilityLabel="Withdraw from Earn"
             // Disabled rather than hidden: a zero position should still show
             // the Consumer that withdrawing is how they get out.
-            disabled={balance <= 0}
-            accessibilityState={{ disabled: balance <= 0 }}
+            disabled={balance === null || balance <= 0}
+            accessibilityState={{ disabled: balance === null || balance <= 0 }}
             onPress={() => setFlow({ step: "choose-withdraw" })}
             className={cn(
               "flex-row items-center gap-2",
-              balance <= 0 && "opacity-30"
+              (balance === null || balance <= 0) && "opacity-30"
             )}
           >
             <Ionicons name="arrow-up" size={18} color={palette.foreground} />
@@ -194,9 +195,13 @@ export default function EarnScreen() {
       <EarnFlow
         flow={flow}
         products={products}
-        available={balances.usdc}
+        available={selectUsdcDepositLimit(balances.tokens)}
         positionBalances={productBalances}
-        balanceReady={!balances.isLoading && !balances.isError}
+        balanceReady={
+          flow?.step === "withdraw"
+            ? balance !== null
+            : !balances.isLoading && !balances.isError
+        }
         depositsEnabled={depositsEnabled}
         onChange={setFlow}
       />

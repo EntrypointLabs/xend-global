@@ -114,6 +114,9 @@ function setup() {
   const rpc = {
     sendRawTransaction: broadcast,
     getBlockHeight: jest.fn().mockResolvedValue(100),
+    isBlockhashValid: jest
+      .fn()
+      .mockResolvedValue({ context: { slot: 1 }, value: true }),
     getSignatureStatus: jest
       .fn()
       .mockResolvedValue({ context: { slot: 1 }, value: null }),
@@ -431,5 +434,72 @@ describe('Earn preparation and submission', () => {
     ).rejects.toThrow();
     expect(h.signTransaction).not.toHaveBeenCalled();
     expect(h.broadcast).not.toHaveBeenCalled();
+  });
+});
+
+describe('Earn preparation expiry recovery', () => {
+  it('releases an expired never-broadcast approval after the preparation cache is lost', async () => {
+    const h = setup();
+    const quote = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', quote.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    const wire = Buffer.from(tx.serialize()).toString('base64');
+    h.store.clear();
+    await expect(h.service.submit('a', wire)).rejects.toMatchObject({
+      response: { code: 'EARN_PREPARATION_UNAVAILABLE' },
+    });
+    h.rpc.isBlockhashValid
+      .mockResolvedValueOnce({ context: { slot: 2 }, value: true })
+      .mockResolvedValueOnce({ context: { slot: 1 }, value: false });
+    await expect(h.service.submit('a', wire)).rejects.toMatchObject({
+      response: { code: 'EARN_PREPARATION_UNAVAILABLE' },
+    });
+    h.rpc.isBlockhashValid.mockResolvedValue({
+      context: { slot: 1 },
+      value: false,
+    });
+    await expect(h.service.submit('a', wire)).rejects.toMatchObject({
+      response: { code: 'EARN_QUOTE_EXPIRED' },
+    });
+    expect(h.rpc.isBlockhashValid).toHaveBeenLastCalledWith(
+      tx.message.recentBlockhash,
+      { commitment: 'finalized' },
+    );
+    expect(h.broadcast).not.toHaveBeenCalled();
+    expect(h.signTransaction).not.toHaveBeenCalled();
+  });
+  it('checks durable broadcast status before treating a lost pin as expired', async () => {
+    const h = setup();
+    const quote = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', quote.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    const wire = Buffer.from(tx.serialize()).toString('base64');
+    const sent = await h.service.submit('a', wire);
+    h.store.clear();
+    h.rpc.isBlockhashValid.mockResolvedValue({
+      context: { slot: 1 },
+      value: false,
+    });
+    h.rpc.getSignatureStatus.mockResolvedValue({
+      context: { slot: 1 },
+      value: { confirmationStatus: 'confirmed' },
+    });
+    await expect(h.service.submit('a', wire)).resolves.toEqual(sent);
+    expect(h.rpc.isBlockhashValid).not.toHaveBeenCalled();
+    expect(h.broadcast).toHaveBeenCalledTimes(1);
   });
 });

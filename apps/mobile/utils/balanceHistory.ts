@@ -3,7 +3,7 @@ import type { TransferRow } from "@/utils/apiClient";
 
 export interface HistoryInputs {
   /** Today's portfolio value: the anchor the walk starts from. */
-  currentTotal: number;
+  currentTotal: number | null;
   /** USD per whole token, by mint. A mint absent here cannot be valued. */
   pricesByMint: Record<string, number>;
   decimalsByMint: Record<string, number>;
@@ -29,7 +29,7 @@ export function selectBalanceHistory(
   rows: TransferRow[],
   { currentTotal, pricesByMint, decimalsByMint, now }: HistoryInputs
 ): BalancePoint[] {
-  if (rows.length === 0) return [];
+  if (currentTotal === null || rows.length === 0) return [];
 
   const confirmed = rows
     .filter((row) => row.status === "CONFIRMED")

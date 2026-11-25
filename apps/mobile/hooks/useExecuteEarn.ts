@@ -265,12 +265,15 @@ export function useExecuteEarn() {
             const e = error as { data?: { code?: string; signature?: string } };
             if (e.data?.signature)
               await save({ ...stored, signature: e.data.signature });
-            else if (e.data?.code === "EARN_QUOTE_EXPIRED") {
+            else if (
+              e.data?.code === "EARN_QUOTE_EXPIRED" &&
+              !stored.signature
+            ) {
               await clear();
               throw new Error(
                 "The approval expired. Check your balance before trying again."
               );
-            } else return { status: "pending" };
+            } else if (!stored.signature) return { status: "pending" };
           }
         }
         const signature = pending.current?.signature;

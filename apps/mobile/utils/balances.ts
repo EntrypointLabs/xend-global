@@ -63,6 +63,17 @@ export function selectUsdc(tokens: TokenBalance[] | undefined): number {
   return token ? roundTo2(rawToNumber(token.amountRaw, token.decimals)) : 0;
 }
 
+/** Floor native USDC to the slider's cent step; never offer unowned units. */
+export function selectUsdcDepositLimit(
+  tokens: TokenBalance[] | undefined
+): number {
+  const token = tokens?.find((t) => t.mint === getUsdcMint());
+  if (!token) return 0;
+  const cents =
+    (BigInt(token.amountRaw) * 100n) / 10n ** BigInt(token.decimals);
+  return Number(cents) / 100;
+}
+
 /** Lookup of per-mint decimals, for mapping transfer rows that omit them. */
 export function selectDecimalsByMint(
   tokens: TokenBalance[] | undefined
@@ -124,6 +135,16 @@ export function selectPortfolio(tokens: TokenBalance[] | undefined): Portfolio {
   }, empty);
 }
 
+/** A portfolio headline requires every bucket to have a known valuation. */
+export function selectPortfolioTotal(
+  portfolio: Portfolio | null,
+  earnUsd: number | null
+): number | null {
+  return portfolio === null || earnUsd === null
+    ? null
+    : portfolio.cashUsd + portfolio.investmentsUsd + earnUsd;
+}
+
 /**
  * What stands between the Consumer and deleting their Account: everything
  * they hold, priced the way the home screen prices it.
@@ -134,12 +155,13 @@ export function selectPortfolio(tokens: TokenBalance[] | undefined): Portfolio {
  */
 export function holdingsBeforeDelete(
   tokens: TokenBalance[] | undefined,
-  earnUsd: number
-): { usd: number; holdsAnything: boolean } {
+  earnUsd: number | null
+): { usd: number | null; holdsAnything: boolean } {
   const { cashUsd, investmentsUsd } = selectPortfolio(tokens);
   return {
-    usd: cashUsd + investmentsUsd + earnUsd,
+    usd: earnUsd === null ? null : cashUsd + investmentsUsd + earnUsd,
     holdsAnything:
+      earnUsd === null ||
       earnUsd > 0 ||
       (tokens ?? []).some((token) => BigInt(token.amountRaw) > 0n),
   };

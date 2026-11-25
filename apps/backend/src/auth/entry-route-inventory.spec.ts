@@ -68,6 +68,11 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /swaps/quote',
   'POST /swaps/prepare',
   'POST /swaps/submit',
+  // Lending reads and moves require the same full session as swaps.
+  'GET /earn',
+  'POST /earn/quote',
+  'POST /earn/prepare',
+  'POST /earn/submit',
   'GET /account/swap-access',
   'POST /account/swap-access/start',
   'POST /account/swap-access/next',
@@ -400,6 +405,11 @@ describe('entry session route inventory', () => {
       'POST /transfers/submit',
       'POST /swaps/prepare',
       'POST /swaps/submit',
+      // Lending reads and moves require the same full session as swaps.
+      'GET /earn',
+      'POST /earn/quote',
+      'POST /earn/prepare',
+      'POST /earn/submit',
       'POST /account/swap-access/start',
       'POST /account/swap-access/submit',
       'POST /payments/pending/:reference/prepare',

@@ -354,7 +354,30 @@ export class EarnService {
           blockHeight: recovered.blockHeight,
         };
     }
-    if (!pin || pin.userId !== userId)
+    if (!pin) {
+      // Every broadcast is recorded durably first. With neither record nor pin,
+      // this approval was never broadcast by us. Wait for its blockhash to be
+      // invalid in both confirmed and finalized banks before discarding it. A
+      // fresh confirmed blockhash may not exist in the finalized bank yet.
+      const validity = await Promise.all(
+        ['confirmed', 'finalized'].map((commitment) =>
+          this.rpc.isBlockhashValid(tx.message.recentBlockhash, {
+            commitment: commitment as 'confirmed' | 'finalized',
+          }),
+        ),
+      );
+      if (validity.every((result) => !result.value))
+        throw new ConflictException({
+          code: 'EARN_QUOTE_EXPIRED',
+          message:
+            'The approval expired. Check your balance before trying again.',
+        });
+      throw new ConflictException({
+        code: 'EARN_PREPARATION_UNAVAILABLE',
+        message: 'Your approval is still being checked. Try again shortly.',
+      });
+    }
+    if (pin.userId !== userId)
       throw new BadRequestException('Earn transaction does not match');
     if (pin.signature) {
       const status = await this.rpc.getSignatureStatus(pin.signature, {

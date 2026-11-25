@@ -17,7 +17,7 @@ import { useBalanceDelta, useBalanceHistory } from "@/hooks/useBalanceHistory";
 import { earnHeadlineApy, useEarnPosition } from "@/hooks/useEarn";
 import { useInvestments } from "@/hooks/useInvestments";
 import { useSendGate } from "@/hooks/useSendGate";
-import { formatMoney } from "@/utils/balances";
+import { formatMoney, selectPortfolioTotal } from "@/utils/balances";
 import { useBalances } from "@/hooks/useBalances";
 import { useCollapseOnScroll } from "@/hooks/useTabBarCollapse";
 import {
@@ -105,7 +105,12 @@ function HomeScreenContent() {
     isLoading: isBalanceLoading,
     refetch: refetchBalances,
   } = useBalances();
-  const { balance: earnBalance } = useEarnPosition();
+  const {
+    balance: earnBalance,
+    isLoading: isEarnLoading,
+    isError: isEarnError,
+    refetch: refetchEarn,
+  } = useEarnPosition();
   const { holdings } = useInvestments();
   const gateSend = useSendGate();
   const [hidden, setHidden] = useState(false);
@@ -115,11 +120,15 @@ function HomeScreenContent() {
 
   // Everything the Consumer owns, in USD: cash, investments and Earn. The Card
   // joins this sum when it holds a balance of its own.
-  const total = portfolio.cashUsd + portfolio.investmentsUsd + earnBalance;
-  const totalDisplay = total.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const total = selectPortfolioTotal(
+    isBalanceLoading || isBalanceError ? null : portfolio,
+    earnBalance
+  );
+  const totalDisplay =
+    total?.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }) ?? "—";
   const address = useWalletAddress();
   const accountDetailsRef = useRef<BottomSheetModal>(null);
   const { name: walletName } = useWalletName();
@@ -129,10 +138,10 @@ function HomeScreenContent() {
 
   const history = useBalanceHistory(total);
   const delta = useBalanceDelta(history);
-  const hasBalance = total > 0;
+  const hasBalance = total !== null && total > 0;
   // Loading and a failed read are "unknown", which is not the same as empty:
   // the empty-state copy only belongs on an account known to hold nothing.
-  const known = !isBalanceLoading && !isBalanceError;
+  const known = total !== null;
   const earnDepositsEnabled = useFeature("earnDeposits");
   const nudges: StatusItem[] = homeNudges({
     cashUsd: known ? portfolio.cashUsd : null,
@@ -204,14 +213,17 @@ function HomeScreenContent() {
             </View>
 
             <View>
-              {isBalanceError ? (
+              {isBalanceError || isEarnError ? (
                 <>
                   <Typography weight="500" className={cn("text-sm", S.caption)}>
                     Total Balance
                   </Typography>
                   <HapticPressable
                     className="flex-row items-center gap-1.5 self-start py-2"
-                    onPress={() => refetchBalances()}
+                    onPress={() => {
+                      void refetchBalances();
+                      void refetchEarn();
+                    }}
                   >
                     <Typography
                       weight="700"
@@ -253,7 +265,9 @@ function HomeScreenContent() {
                   accessibilityLabel={
                     hidden
                       ? "Total balance, hidden"
-                      : `Total balance, $${totalDisplay}`
+                      : total === null
+                        ? "Total balance unavailable"
+                        : `Total balance, $${totalDisplay}`
                   }
                   accessibilityHint="Shows what it is made of"
                   onPress={() => router.push("/balance")}
@@ -291,7 +305,7 @@ function HomeScreenContent() {
             the first deposit. With nothing to plot the chart shows its muted
             resting bars, which is what "no data yet" looks like. */}
             <BalanceChart
-              loading={isBalanceLoading}
+              loading={isBalanceLoading || isEarnLoading}
               history={hasBalance ? history : []}
               style={{
                 marginTop: size(CHART_GAP_ABOVE),
@@ -430,11 +444,14 @@ function Amount({
   hidden,
   ...props
 }: React.ComponentProps<typeof BalanceView> & { hidden: boolean }) {
-  if (hidden) {
+  if (hidden || props.amount === "—") {
     const { amount: _amount, rolling: _rolling, ...text } = props;
     return (
-      <Typography {...text} accessibilityLabel="Hidden">
-        ••••
+      <Typography
+        {...text}
+        accessibilityLabel={hidden ? "Hidden" : "Balance unavailable"}
+      >
+        {hidden ? "••••" : "—"}
       </Typography>
     );
   }

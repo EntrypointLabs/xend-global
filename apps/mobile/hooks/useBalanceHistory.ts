@@ -15,7 +15,7 @@ import type { BalanceDelta } from "@/utils/balanceDelta";
  *   recomputed so the chart's right-hand end is the same number as the
  *   headline above it, Earn included.
  */
-export function useBalanceHistory(currentTotal: number): BalancePoint[] {
+export function useBalanceHistory(currentTotal: number | null): BalancePoint[] {
   const { decimalsByMint, pricesByMint } = useBalances();
   // Stable per mount: Date.now() inside the memo is an impure render.
   const [now] = useState(() => Date.now());

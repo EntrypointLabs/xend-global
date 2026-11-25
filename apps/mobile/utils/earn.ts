@@ -45,3 +45,12 @@ export const EarnPreparedSchema = z.object({
   settingsAddress: z.string(),
   forwarderProgram: z.string(),
 });
+
+/** An unread or failed position is unknown, never an empty position. */
+export function selectEarnBalance(
+  products: { positionMinor: string }[] | undefined,
+  failed = false
+): number | null {
+  if (!products || failed) return null;
+  return products.reduce((sum, p) => sum + Number(p.positionMinor) / 1e6, 0);
+}

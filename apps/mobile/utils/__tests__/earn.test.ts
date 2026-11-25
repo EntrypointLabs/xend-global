@@ -1,5 +1,12 @@
-import { selectPortfolio, holdingsBeforeDelete } from "@/utils/balances";
+import {
+  selectPortfolio,
+  holdingsBeforeDelete,
+  selectUsdcDepositLimit,
+  selectPortfolioTotal,
+} from "@/utils/balances";
 import { EARN_PROVIDERS } from "@prydd/smart-account";
+import { getUsdcMint } from "@/utils/cluster";
+import { selectEarnBalance } from "@/utils/earn";
 import { projectedValue } from "@/utils/earnProjection";
 import { EarnCatalogSchema, EarnQuoteSchema } from "@/utils/earn";
 
@@ -68,5 +75,50 @@ describe("Earn receipt holdings", () => {
       hasUnpricedHoldings: false,
     });
     expect(holdingsBeforeDelete(receipts, 0).holdsAnything).toBe(true);
+  });
+});
+
+describe("unknown Earn valuation", () => {
+  const cash = { cashUsd: 10, investmentsUsd: 5, hasUnpricedHoldings: false };
+  it("withholds the portfolio total on cold load or a failed Earn read", () => {
+    expect(selectPortfolioTotal(cash, selectEarnBalance(undefined))).toBeNull();
+    expect(
+      selectPortfolioTotal(
+        cash,
+        selectEarnBalance([{ positionMinor: "250000000" }], true)
+      )
+    ).toBeNull();
+    expect(holdingsBeforeDelete([], null).holdsAnything).toBe(true);
+    expect(holdingsBeforeDelete([], null).usd).toBeNull();
+  });
+  it("restores the full total after a successful retry and distinguishes an empty position", () => {
+    expect(
+      selectPortfolioTotal(
+        cash,
+        selectEarnBalance([{ positionMinor: "250000000" }])
+      )
+    ).toBe(265);
+    expect(selectPortfolioTotal(cash, selectEarnBalance([]))).toBe(15);
+    expect(selectPortfolioTotal(null, 0)).toBeNull();
+  });
+});
+
+describe("Earn deposit maximum", () => {
+  it.each([
+    ["10006000", 10],
+    ["9999999", 9.99],
+    ["10000000", 10],
+    ["9999", 0],
+  ])("floors %s raw USDC to owned cents", (amountRaw, expected) => {
+    const maximum = selectUsdcDepositLimit([
+      {
+        mint: getUsdcMint(),
+        amountRaw: String(amountRaw),
+        decimals: 6,
+        symbol: "USDC",
+      },
+    ]);
+    expect(maximum).toBe(expected);
+    expect(BigInt(Math.round(maximum * 1e6)) <= BigInt(amountRaw)).toBe(true);
   });
 });
