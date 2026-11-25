@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Modal, View, StyleSheet, Image } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Modal, View, StyleSheet, Image, Platform } from "react-native";
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import Animated, {
   Easing,
@@ -48,6 +48,20 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
   // before the modal goes.
   const [shown, setShown] = useState(visible);
   const open = useSharedValue(0);
+  // What was picked, run once the menu has gone. Send and Receive open a
+  // native modal of their own, and iOS will not present one while this one
+  // is still on screen folding away.
+  const picked = useRef<(() => void) | null>(null);
+  const runPicked = () => {
+    const action = picked.current;
+    picked.current = null;
+    action?.();
+  };
+
+  // Android has no dismissal callback, and nothing there waits on one.
+  useEffect(() => {
+    if (!shown && Platform.OS !== "ios") runPicked();
+  }, [shown]);
 
   useEffect(() => {
     if (visible) {
@@ -123,6 +137,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
       visible={shown}
       transparent
       animationType="none"
+      onDismiss={runPicked}
       statusBarTranslucent
       onRequestClose={onClose}
     >
@@ -161,8 +176,8 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
                   key={menu.title}
                   className="flex-row items-center py-6"
                   onPress={() => {
+                    picked.current = menu.onPress;
                     onClose();
-                    setTimeout(menu.onPress, 10);
                   }}
                 >
                   <Typography
