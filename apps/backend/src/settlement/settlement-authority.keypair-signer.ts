@@ -45,11 +45,17 @@ export abstract class SettlementAuthorityKeypairSigner
     return this.signer.address;
   }
 
-  async signAndSend(wireTxBase64: string): Promise<string> {
+  async signTransaction(wireTxBase64: string): Promise<string> {
     const bytes = getBase64Encoder().encode(wireTxBase64);
     const tx = getTransactionDecoder().decode(bytes);
     const signed = await partiallySignTransaction([this.signer.keyPair], tx);
     const signedWireBase64 = getBase64EncodedWireTransaction(signed);
-    return this.solana.sendRawTransaction(signedWireBase64);
+    return signedWireBase64;
+  }
+
+  async signAndSend(wireTxBase64: string): Promise<string> {
+    return this.solana.sendRawTransaction(
+      await this.signTransaction(wireTxBase64),
+    );
   }
 }

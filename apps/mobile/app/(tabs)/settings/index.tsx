@@ -330,7 +330,9 @@ export default function SettingsScreen() {
         visible={showDeleteAccount}
         onClose={() => setShowDeleteAccount(false)}
         canDelete={!held.holdsAnything}
-        heldDisplay={held.usd > 0 ? `$${formatMoney(held.usd)}` : null}
+        heldDisplay={
+          held.usd !== null && held.usd > 0 ? `$${formatMoney(held.usd)}` : null
+        }
         onDeleted={handleAccountDeleted}
       />
       <NotificationsModal

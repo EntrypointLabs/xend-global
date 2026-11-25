@@ -230,6 +230,7 @@ function BankAmountStep({
   // Home's headline also counts investments and Earn; only cash can be paid
   // out to a bank, so say why the two numbers differ.
   const elsewhere =
+    earnBalance !== null &&
     portfolio.cashUsd + portfolio.investmentsUsd + earnBalance - usdc >= 0.01;
 
   const openVerify = () => {

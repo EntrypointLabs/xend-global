@@ -130,3 +130,29 @@ export {
 } from "./programs.js";
 
 export { PROGRAM_ID } from "@sqds/smart-account";
+
+export {
+  buildTokenAllowance,
+  type TokenAllowanceParams,
+} from "./token-allowance.js";
+export {
+  EARN_USDC,
+  EARN_PROVIDERS,
+  earnAuthority,
+  earnProviderAccounts,
+  buildEarnInstructions,
+  type EarnProviderId,
+  type EarnAction,
+  type EarnTerms,
+  type BuildEarnParams,
+} from "./earn.js";
+export {
+  decodeEarnExchangeRate,
+  readEarnExchangeRate,
+  sharesValue,
+  sharesForValue,
+  depositShares,
+  type EarnExchangeRate,
+} from "./earn-state.js";
+export { checkEarnMessage } from "./earn-verify.js";
+export { readEarnForwarderCode } from "./earn-code.js";

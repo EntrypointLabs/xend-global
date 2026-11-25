@@ -1259,7 +1259,7 @@ describe.skipIf(!HAVE_FIXTURES)("rejecting a settings change", () => {
 });
 
 /** An Account provisioned the way signup leaves it: both policies, lock on. */
-function provisioned(): Harness {
+function provisioned(allowedPrograms = ABOVE_LIMIT_PROGRAM_ALLOWLIST): Harness {
   const h = setUp({ timeLockSeconds: 0 });
   const index =
     BigInt(
@@ -1286,6 +1286,7 @@ function provisioned(): Harness {
     proposer: h.primary.publicKey,
     transactionIndex: index,
     timeLockSeconds: SETTINGS_TIME_LOCK,
+    allowedPrograms,
   });
 
   expect(failed(send(h.svm, h.primary, propose, [h.primary]))).toBe(false);
@@ -2902,3 +2903,256 @@ describe.skipIf(!HAVE_FIXTURES)("overlapping settings changes", () => {
     expect(signerKeys(h)).toHaveLength(4);
   });
 });
+
+// Replays real lending bytecode against a read-only mainnet snapshot. No funds
+// leave this process. Fetch fixtures and build the forwarder before running.
+import {
+  AddressLookupTableAccount,
+  ComputeBudgetProgram,
+  SYSVAR_CLOCK_PUBKEY,
+} from "@solana/web3.js";
+import {
+  buildEarnInstructions,
+  EARN_PROVIDERS,
+  EARN_USDC,
+  earnAuthority,
+  earnProviderAccounts,
+  type EarnProviderId,
+} from "../src/earn.js";
+const EARN_FIXTURES = join(FIXTURES, "earn");
+const FORWARDER_SO = join(
+  import.meta.dirname,
+  "../../../programs/earn-forwarder/target/deploy/prydd_earn_forwarder.so",
+);
+const haveEarn =
+  HAVE_FIXTURES &&
+  existsSync(join(EARN_FIXTURES, "accounts.json")) &&
+  existsSync(FORWARDER_SO);
+function earnHarness() {
+  const h = provisioned(ABOVE_LIMIT_PROGRAM_ALLOWLIST.slice(0, 5));
+  const forwarder = Keypair.generate().publicKey;
+  h.svm.addProgramFromFile(forwarder, FORWARDER_SO);
+  for (const id of [
+    EARN_PROVIDERS.kamino.program,
+    EARN_PROVIDERS.jupiter.program,
+    "jupeiUmn818Jg1ekPURTpr4mFo29p46vygyykFJ3wZC",
+  ]) {
+    h.svm.addProgramFromFile(
+      new PublicKey(id),
+      join(EARN_FIXTURES, `${id}.so`),
+    );
+  }
+  const snapshot = JSON.parse(
+    readFileSync(join(EARN_FIXTURES, "accounts.json"), "utf8"),
+  );
+  for (const a of snapshot.accounts) {
+    const address = new PublicKey(a.address);
+    if (
+      a.executable ||
+      address.equals(SystemProgram.programId) ||
+      address.equals(TOKEN_PROGRAM) ||
+      address.toBase58().startsWith("Sysvar")
+    )
+      continue;
+    h.svm.setAccount(address, {
+      ...a,
+      owner: new PublicKey(a.owner),
+      data: Buffer.from(a.data, "base64"),
+      rentEpoch: 0,
+    });
+  }
+  const clockData = Buffer.from(
+    snapshot.accounts.find(
+      (a: { address: string }) => a.address === SYSVAR_CLOCK_PUBKEY.toBase58(),
+    ).data,
+    "base64",
+  );
+  const clock = h.svm.getClock();
+  clock.slot = clockData.readBigUInt64LE(0);
+  clock.epochStartTimestamp = clockData.readBigInt64LE(8);
+  clock.epoch = clockData.readBigUInt64LE(16);
+  clock.leaderScheduleEpoch = clockData.readBigUInt64LE(24);
+  clock.unixTimestamp = clockData.readBigInt64LE(32);
+  h.svm.setClock(clock);
+  const cash = associatedTokenAddress(
+    h.addresses.vault,
+    EARN_USDC,
+    TOKEN_PROGRAM,
+  );
+  writeTokenAccount(h.svm, cash, {
+    mint: EARN_USDC,
+    owner: h.addresses.vault,
+    amount: 1_000_000_000n,
+  });
+  const sponsor = Keypair.generate();
+  h.svm.airdrop(sponsor.publicKey, 10_000_000_000n);
+  return { ...h, forwarder, cash, sponsor };
+}
+function runEarn(
+  h: ReturnType<typeof earnHarness>,
+  provider: EarnProviderId,
+  action: "deposit" | "redeem",
+  amount: bigint,
+  minimumOut = 1n,
+  oneSigner = false,
+  mutate?: (ixs: TransactionInstruction[]) => void,
+) {
+  const ixs = buildEarnInstructions({
+    provider,
+    action,
+    amount,
+    minimumOut,
+    addresses: h.addresses,
+    policy: h.abovePolicy,
+    signers: [h.primary.publicKey, h.approval.publicKey],
+    feePayer: h.sponsor.publicKey,
+    forwarderProgram: h.forwarder,
+    allowedPrograms: ABOVE_LIMIT_PROGRAM_ALLOWLIST,
+  });
+  mutate?.(ixs);
+  const staticKeys = new Map<string, PublicKey>();
+  const authority = earnAuthority(h.addresses.vault, h.forwarder);
+  const dynamic = new Set([
+    authority.toBase58(),
+    associatedTokenAddress(authority, EARN_USDC, TOKEN_PROGRAM).toBase58(),
+    associatedTokenAddress(
+      authority,
+      new PublicKey(EARN_PROVIDERS[provider].receipt),
+      TOKEN_PROGRAM,
+    ).toBase58(),
+  ]);
+  for (const key of earnProviderAccounts(provider, action, authority))
+    if (!dynamic.has(key.pubkey.toBase58()))
+      staticKeys.set(key.pubkey.toBase58(), key.pubkey);
+  // Static lookup accounts here are fixtures. Production uses an actual shared
+  // operator-created lookup table, checked by prepare and by the signing phone.
+  const entries = [...staticKeys.values()];
+  const tableKey = Keypair.generate().publicKey;
+  const raw = Buffer.alloc(56 + entries.length * 32);
+  raw.writeUInt32LE(1);
+  raw.writeBigUInt64LE(0xffffffffffffffffn, 4);
+  entries.forEach((k, i) => k.toBuffer().copy(raw, 56 + i * 32));
+  const altOwner = new PublicKey("AddressLookupTab1e1111111111111111111111111");
+  h.svm.setAccount(tableKey, {
+    lamports: Number(h.svm.minimumBalanceForRentExemption(BigInt(raw.length))),
+    data: raw,
+    owner: altOwner,
+    executable: false,
+    rentEpoch: 0,
+  });
+  const table = new AddressLookupTableAccount({
+    key: tableKey,
+    state: AddressLookupTableAccount.deserialize(raw),
+  });
+  const message = new TransactionMessage({
+    payerKey: h.sponsor.publicKey,
+    recentBlockhash: h.svm.latestBlockhash(),
+    instructions: [
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
+      ...ixs,
+    ],
+  }).compileToV0Message([table]);
+  const tx = new VersionedTransaction(message);
+  tx.sign(
+    oneSigner ? [h.sponsor, h.primary] : [h.sponsor, h.primary, h.approval],
+  );
+  expect(tx.serialize().length).toBeLessThanOrEqual(1232);
+  return h.svm.sendTransaction(tx);
+}
+describe.skipIf(!haveEarn)(
+  "Earn forwarder on an existing time-locked Account",
+  () => {
+    it.each(["kamino", "jupiter"] as const)(
+      "deposits and redeems %s without a policy change",
+      (provider) => {
+        const h = earnHarness();
+        const settingsBefore = Buffer.from(
+          h.svm.getAccount(h.addresses.settings)!.data,
+        );
+        const deposited = runEarn(h, provider, "deposit", 10_000_000n);
+        if (failed(deposited))
+          console.error(provider, "deposit", String(deposited));
+        expect(failed(deposited)).toBe(false);
+        const receipt = new PublicKey(EARN_PROVIDERS[provider].receipt);
+        const position = associatedTokenAddress(
+          h.addresses.vault,
+          receipt,
+          TOKEN_PROGRAM,
+        );
+        const shares = tokenBalance(h.svm, position)!;
+        expect(shares).toBeGreaterThan(0n);
+        expect(tokenBalance(h.svm, h.cash)).toBe(990_000_000n);
+        const source = Buffer.from(h.svm.getAccount(h.cash)!.data);
+        expect(source.readUInt32LE(72)).toBe(0);
+        const redeemed = runEarn(h, provider, "redeem", shares);
+        if (failed(redeemed))
+          console.error(provider, "redeem", String(redeemed));
+        expect(failed(redeemed)).toBe(false);
+        expect(tokenBalance(h.svm, position)).toBe(0n);
+        expect(tokenBalance(h.svm, h.cash)).toBeGreaterThan(999_900_000n);
+        expect(
+          Buffer.from(h.svm.getAccount(h.addresses.settings)!.data),
+        ).toEqual(settingsBefore);
+      },
+    );
+    it("refuses one signature and rolls back a minimum-output failure", () => {
+      const h = earnHarness();
+      const before = tokenBalance(h.svm, h.cash);
+      expect(
+        failed(runEarn(h, "kamino", "deposit", 10_000_000n, 1n, true)),
+      ).toBe(true);
+      expect(
+        failed(
+          runEarn(h, "kamino", "deposit", 10_000_000n, 1_000_000_000_000n),
+        ),
+      ).toBe(true);
+      expect(tokenBalance(h.svm, h.cash)).toBe(before);
+      expect(Buffer.from(h.svm.getAccount(h.cash)!.data).readUInt32LE(72)).toBe(
+        0,
+      );
+    });
+    it.each([
+      "recipient",
+      "authority",
+      "provider",
+      "source",
+      "vault-signature",
+    ])("rejects a changed %s and preserves Cash and the allowance", (kind) => {
+      const h = earnHarness(),
+        before = tokenBalance(h.svm, h.cash);
+      const stranger = Keypair.generate().publicKey;
+      const bad = associatedTokenAddress(
+        stranger,
+        new PublicKey(EARN_PROVIDERS.kamino.receipt),
+        TOKEN_PROGRAM,
+      );
+      writeTokenAccount(h.svm, bad, {
+        mint: new PublicKey(EARN_PROVIDERS.kamino.receipt),
+        owner: stranger,
+        amount: 0n,
+      });
+      const result = runEarn(
+        h,
+        "kamino",
+        "deposit",
+        1000000n,
+        1n,
+        false,
+        (ixs) => {
+          const forward = ixs[4]!;
+          if (kind === "recipient") forward.keys[6]!.pubkey = bad;
+          if (kind === "authority") forward.keys[2]!.pubkey = stranger;
+          if (kind === "provider") forward.keys[10]!.pubkey = TOKEN_PROGRAM;
+          if (kind === "source") forward.keys[5]!.pubkey = bad;
+          if (kind === "vault-signature")
+            forward.keys[11]!.pubkey = h.addresses.vault;
+        },
+      );
+      expect(failed(result)).toBe(true);
+      expect(tokenBalance(h.svm, h.cash)).toBe(before);
+      expect(Buffer.from(h.svm.getAccount(h.cash)!.data).readUInt32LE(72)).toBe(
+        0,
+      );
+    });
+  },
+);

@@ -1,0 +1,20 @@
+{
+  "network": "solana-mainnet-beta",
+  "genesisHash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+  "program": "2W8jBW5wRb4sekq5kjhAkdHFBUDPUzb5LnQ4KSa32AKu",
+  "programData": "n5MEu8LsKe5dxsJmEMaomjFGCbFyVxs3ehUFZdvzJsp",
+  "upgradeAuthority": "65UdyhQDorffWGvf9ivvejXwRCNCBKiDKW36LgcbQBQL",
+  "squadsMultisig": "87KMy1bL1xbJxDMa2VecMZohZVLa2mWgFoXQisyK2ehn",
+  "squadsThreshold": 2,
+  "squadsMembers": 3,
+  "lookupTable": "2fM7RUifC6M6c7TgdKBmDWuWSYzb9mDks8uVQAPyXS1F",
+  "lookupAuthority": "7i4dwLUBPuNsetEqvfoNgpfgaiJa7X1adBAZZNG7can7",
+  "lookupAddressCount": 21,
+  "canonicalCodeSha256": "844d036db8a4e44de83b5d3a91c5dd51d6a5371dcde2a685558ced361bef9d85",
+  "binaryBytes": 45976,
+  "sourceCommit": "9775e23b0bf2a083a0c0701d0865e123fc754bae",
+  "deploymentTransaction": "3Zeqr3Yf9amoCtzYrYU1XH86AS2hR5V4bgDoEvCMChsDxH7b27XRzKUeurNWkQbF4EC3SmtqYMFEXocw9UoYjujs",
+  "deploymentSlot": 473827047,
+  "deployedAt": "2026-11-25T17:17:20.000Z",
+  "sbfArchitecture": "v0"
+}

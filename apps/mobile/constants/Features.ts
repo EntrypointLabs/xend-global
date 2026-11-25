@@ -22,7 +22,7 @@ export const BUILD_FEATURES: Record<FeatureName, boolean> = {
    * exists on mainnet only.
    */
   swap: onUnlessFalse(process.env.EXPO_PUBLIC_ENABLE_SWAP),
-  /** Kamino deposits. The position reads correctly; there is no way to fund it. */
+  /** Earn deposits; also gated by deployment readiness and signed transaction checks. */
   earnDeposits: onUnlessFalse(process.env.EXPO_PUBLIC_ENABLE_EARN_DEPOSITS),
   /** Shielded receive. The toggle renders but nothing is behind it. */
   hideMyWallet: onUnlessFalse(process.env.EXPO_PUBLIC_ENABLE_HIDE_MY_WALLET),

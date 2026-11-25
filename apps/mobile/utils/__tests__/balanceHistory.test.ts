@@ -35,6 +35,16 @@ const inputs = {
 };
 
 describe("selectBalanceHistory", () => {
+  it("does not anchor history to an incomplete portfolio while Earn is unknown", () => {
+    expect(
+      selectBalanceHistory([row()], { ...inputs, currentTotal: null })
+    ).toEqual([]);
+    const complete = selectBalanceHistory([row()], {
+      ...inputs,
+      currentTotal: 1000,
+    });
+    expect(complete[complete.length - 1].value).toBe(1000);
+  });
   it("anchors the latest point to the portfolio total, not the cash balance", () => {
     const points = selectBalanceHistory([row()], inputs);
     expect(points[points.length - 1]).toEqual({ at: NOW, value: 429.57 });

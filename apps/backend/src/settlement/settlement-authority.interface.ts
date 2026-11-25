@@ -30,4 +30,6 @@ export interface SettlementAuthoritySigner {
    * key on provisioning).
    */
   signAndSend(wireTxBase64: string): Promise<string>;
+  /** Fully sign without broadcasting, so callers can persist an idempotent retry. */
+  signTransaction?(wireTxBase64: string): Promise<string>;
 }

@@ -308,9 +308,11 @@ export default function BalanceScreen() {
                 <SectionTitle>Grow</SectionTitle>
                 <Card
                   accessibilityLabel={
-                    earnBalance > 0
+                    earnBalance !== null && earnBalance > 0
                       ? `Earn, $${formatMoney(earnBalance)}`
-                      : `Earn, ${earnHeadlineApy()} a year`
+                      : earnBalance === null
+                        ? "Earn balance unavailable"
+                        : `Earn, ${earnHeadlineApy()} a year`
                   }
                   onPress={openEarn}
                 >
@@ -324,10 +326,12 @@ export default function BalanceScreen() {
                     title="Earn"
                     subtitle={`${earnHeadlineApy()} a year on your dollars`}
                     trailing={
-                      earnBalance > 0 ? (
+                      earnBalance !== null && earnBalance > 0 ? (
                         <Amount link>{`$${formatMoney(earnBalance)}`}</Amount>
                       ) : (
-                        <Pill>Discover</Pill>
+                        <Pill>
+                          {earnBalance === null ? "Unavailable" : "Discover"}
+                        </Pill>
                       )
                     }
                   />

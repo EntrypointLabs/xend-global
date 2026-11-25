@@ -484,6 +484,13 @@
       "when": 1795551314412,
       "tag": "0068_swap_venues",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1795583131312,
+      "tag": "0069_earn_operations",
+      "breakpoints": true
     }
   ]
 }

@@ -90,8 +90,9 @@ You do **not** need an ADR for routine choices like file naming, single-feature 
 | [0038](./0038-kafka-is-optional-until-pay-with-prydd-launches.md)        | Kafka is optional until Pay with Prydd launches                                                                                     | Accepted                             | Backend / Infrastructure    |
 | [0039](./0039-the-backend-is-quiet-while-nobody-uses-the-app.md)         | The backend makes no database query while nobody uses the app                                                                       | Accepted                             | Backend / Infrastructure    |
 | [0040](./0040-a-consumer-can-decline-a-payment-handed-to-their-phone.md) | A Consumer can decline a Payment handed to their phone, terminally                                                                  | Accepted                             | Backend / Mobile / Checkout |
+| [0041](./0041-earn-with-existing-account-allowances.md) | Earn through existing Account token allowances | Accepted | Earn / Security / Solana |
 
-> 0014 is reserved for a conditional relayer decision (a Kora reversal, see the 0012 update) and remains an intentional gap. The next free number is 0040.
+> 0014 is reserved for a conditional relayer decision (a Kora reversal, see the 0012 update) and remains an intentional gap. The next free number is 0042.
 
 ## Generating new ADR numbers
 
