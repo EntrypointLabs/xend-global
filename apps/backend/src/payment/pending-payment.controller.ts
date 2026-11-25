@@ -45,6 +45,12 @@ type SubmitBody = z.infer<typeof SubmitSchema>;
 export interface PendingPaymentView {
   reference: string;
   merchantDisplayName: string;
+  /**
+   * The store's own web origin. The phone shows it and reads the Merchant's
+   * payout wallet from it, so a Payment can only land where the store itself
+   * says, not wherever this server says.
+   */
+  merchantOrigin: string | null;
   displayCurrency: string;
   displayAmountMinor: string;
   usdcSettlementRaw: string;
@@ -86,13 +92,21 @@ export class PendingPaymentController {
     const payments = await Promise.all(
       rows.map(async (intent) => {
         const [merchant] = await this.db.client
-          .select({ displayName: merchants.displayName })
+          .select({
+            displayName: merchants.displayName,
+            allowedOrigins: merchants.allowedOrigins,
+          })
           .from(merchants)
           .where(eq(merchants.id, intent.merchantId))
           .limit(1);
+        const allowed = merchant?.allowedOrigins ?? [];
         return {
           reference: intent.id,
           merchantDisplayName: merchant?.displayName ?? 'Merchant',
+          merchantOrigin:
+            intent.openerOrigin && allowed.includes(intent.openerOrigin)
+              ? intent.openerOrigin
+              : (allowed[0] ?? null),
           displayCurrency: intent.displayCurrency,
           displayAmountMinor: intent.displayAmountMinor,
           usdcSettlementRaw: intent.usdcSettlementRaw,

@@ -37,7 +37,12 @@ function intentRow(over: Record<string, unknown> = {}) {
 function makeDb(displayName: string | null = 'Sabi Market'): DbService {
   const chain = {
     where: () => chain,
-    limit: () => Promise.resolve(displayName ? [{ displayName }] : []),
+    limit: () =>
+      Promise.resolve(
+        displayName
+          ? [{ displayName, allowedOrigins: ['https://sabi.market'] }]
+          : [],
+      ),
   };
   return {
     client: { select: () => ({ from: () => chain }) },
@@ -126,6 +131,7 @@ describe('PendingPaymentController.list', () => {
       {
         reference: 'pi_1',
         merchantDisplayName: 'Sabi Market',
+        merchantOrigin: 'https://sabi.market',
         displayCurrency: 'NGN',
         displayAmountMinor: '4500000',
         usdcSettlementRaw: '30000000',
