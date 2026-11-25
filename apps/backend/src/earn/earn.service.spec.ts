@@ -26,6 +26,9 @@ import type { SettlementAuthoritySigner } from '../settlement/settlement-authori
 import type { Web3SwapChain } from '../swap/swap-chain.web3';
 import { createHash } from 'node:crypto';
 import { getBase58Decoder } from '@solana/kit';
+jest.mock('@jup-ag/lend/earn', () => ({
+  getLendingTokenDetails: jest.fn().mockResolvedValue({ supplyRate: '400' }),
+}));
 jest.mock('@prydd/smart-account', () => {
   const actual = jest.requireActual<typeof import('@prydd/smart-account')>(
     '@prydd/smart-account',
@@ -121,6 +124,7 @@ function setup() {
       .fn()
       .mockResolvedValue({ context: { slot: 1 }, value: null }),
     getAccountInfo,
+    getTokenAccountsByOwner: jest.fn().mockResolvedValue({ value: [] }),
   };
   jest
     .mocked(readEarnExchangeRate)
@@ -610,5 +614,85 @@ describe('Earn disabled environments and recovery', () => {
     ).rejects.toMatchObject({ response: { code: 'EARN_QUOTE_EXPIRED' } });
     expect(h.broadcast).not.toHaveBeenCalled();
     expect(h.signTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('Earn valuation across vault-owned token accounts', () => {
+  it('values non-associated receipts without offering them as canonical withdrawals', async () => {
+    const h = setup();
+    const owner = deriveAccountAddresses(42n).vault;
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: false } as Response);
+    h.rpc.getTokenAccountsByOwner.mockImplementation(
+      (wallet: PublicKey, filter: { mint: PublicKey }) => {
+        expect(wallet.equals(owner)).toBe(true);
+        const entry = (amount: bigint, canonical: boolean) => {
+          const data = Buffer.alloc(165);
+          filter.mint.toBuffer().copy(data);
+          owner.toBuffer().copy(data, 32);
+          data.writeBigUInt64LE(amount, 64);
+          return {
+            pubkey: canonical
+              ? associatedTokenAddress(owner, filter.mint, TOKEN_PROGRAM_ID)
+              : Keypair.generate().publicKey,
+            account: {
+              owner: TOKEN_PROGRAM_ID,
+              data,
+              lamports: 1,
+              executable: false,
+              rentEpoch: 0,
+            },
+          };
+        };
+        return Promise.resolve({
+          value: [entry(100_000_000n, true), entry(50_000_000n, false)],
+        });
+      },
+    );
+    const catalog = await h.service.catalog('a');
+    for (const p of catalog.products) {
+      expect(p.positionShares).toBe('150000000');
+      expect(p.positionMinor).toBe('300000000');
+      expect(p.withdrawableMinor).toBe('200000000');
+    }
+  });
+  it('keeps an externally held position visible when the canonical account is empty', async () => {
+    const h = setup();
+    const owner = deriveAccountAddresses(42n).vault;
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: false } as Response);
+    h.rpc.getTokenAccountsByOwner.mockImplementation(
+      (_wallet: PublicKey, filter: { mint: PublicKey }) => {
+        const data = Buffer.alloc(165);
+        filter.mint.toBuffer().copy(data);
+        owner.toBuffer().copy(data, 32);
+        data.writeBigUInt64LE(50_000_000n, 64);
+        return Promise.resolve({
+          value: [
+            {
+              pubkey: Keypair.generate().publicKey,
+              account: {
+                owner: TOKEN_PROGRAM_ID,
+                data,
+                lamports: 1,
+                executable: false,
+                rentEpoch: 0,
+              },
+            },
+          ],
+        });
+      },
+    );
+    const catalog = await h.service.catalog('a');
+    expect(
+      catalog.products.every(
+        (p) =>
+          p.positionMinor === '100000000' &&
+          p.withdrawableMinor === '0' &&
+          !p.withdrawAvailable,
+      ),
+    ).toBe(true);
   });
 });

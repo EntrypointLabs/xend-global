@@ -20,6 +20,7 @@ export const EarnCatalogSchema = z.object({
       apy: z.number().finite().nonnegative().max(10).nullable(),
       positionShares: integer,
       positionMinor: integer,
+      withdrawableMinor: integer,
       available: z.boolean(),
       withdrawAvailable: z.boolean(),
       updatedAt: z.string().datetime(),

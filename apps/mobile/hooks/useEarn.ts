@@ -80,8 +80,10 @@ export function earnHeadlineApy(): string {
   return "—";
 }
 export interface EarnPosition {
-  productBalances: Record<string, number>;
+  /** Canonical receipt accounts the current withdrawal route can spend. */
+  withdrawableBalances: Record<string, number>;
   balance: number | null;
+  hasExternalReceipts: boolean;
   isLoading: boolean;
   isError: boolean;
   refetch: ReturnType<typeof useEarnData>["refetch"];
@@ -94,7 +96,7 @@ export function useEarnPosition(): EarnPosition {
   const query = useEarnData();
   const products = query.data?.products;
   const balances = Object.fromEntries(
-    products?.map((p) => [p.id, Number(p.positionMinor) / 1e6]) ?? []
+    products?.map((p) => [p.id, Number(p.withdrawableMinor) / 1e6]) ?? []
   );
   const balance = SEED_DEMO ? 0 : selectEarnBalance(products, query.isError);
   const unknownHeldRate = products?.some(
@@ -106,7 +108,10 @@ export function useEarnPosition(): EarnPosition {
       0
     ) ?? 0;
   return {
-    productBalances: balances,
+    withdrawableBalances: balances,
+    hasExternalReceipts: !!products?.some(
+      (p) => BigInt(p.positionMinor) > BigInt(p.withdrawableMinor)
+    ),
     balance,
     isLoading: !SEED_DEMO && query.isPending,
     isError: !SEED_DEMO && query.isError,

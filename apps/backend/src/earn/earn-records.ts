@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, asc, gt } from 'drizzle-orm';
 import { Connection, type VersionedTransactionResponse } from '@solana/web3.js';
 import {
   EARN_PROVIDERS,
@@ -83,55 +83,67 @@ export class DrizzleEarnRecords implements EarnRecords {
       .onConflictDoNothing();
   }
   async reconcile(userId: string, rpc: Connection) {
-    const pending = await this.db.client
-      .select()
-      .from(earnOperations)
-      .where(
-        and(
-          eq(earnOperations.userId, userId),
-          eq(earnOperations.status, 'pending'),
-        ),
-      )
-      .orderBy(desc(earnOperations.createdAt))
-      .limit(100);
-    await Promise.all(
-      pending.map(async (row) => {
-        const tx = await rpc.getTransaction(row.signature, {
-          commitment: 'confirmed',
-          maxSupportedTransactionVersion: 0,
-        });
-        if (!tx?.meta) return;
-        if (tx.meta.err) {
-          await this.db.client
-            .update(earnOperations)
-            .set({ status: 'failed', wire: null })
-            .where(eq(earnOperations.signature, row.signature));
-          return;
-        }
-        const delta = earnDeltas(
-          tx,
-          row.vault,
-          EARN_PROVIDERS[row.provider].receipt,
-        );
-        if (!delta || !tx.blockTime) return;
-        if (
-          (row.action === 'deposit' &&
-            (delta.cash >= 0n || delta.shares <= 0n)) ||
-          (row.action === 'redeem' && (delta.cash <= 0n || delta.shares >= 0n))
+    // Keyset pages keep unresolved newer broadcasts from hiding older ones.
+    let cursor: string | undefined;
+    while (true) {
+      const pending = await this.db.client
+        .select()
+        .from(earnOperations)
+        .where(
+          and(
+            eq(earnOperations.userId, userId),
+            eq(earnOperations.status, 'pending'),
+            cursor ? gt(earnOperations.signature, cursor) : undefined,
+          ),
         )
-          return;
-        await this.db.client
-          .update(earnOperations)
-          .set({
-            status: 'confirmed',
-            wire: null,
-            cashDeltaRaw: delta.cash.toString(),
-            shareDeltaRaw: delta.shares.toString(),
-            confirmedAt: new Date(tx.blockTime * 1000),
-          })
-          .where(eq(earnOperations.signature, row.signature));
-      }),
-    );
+        .orderBy(asc(earnOperations.signature))
+        .limit(100);
+      if (!pending.length) break;
+      for (let offset = 0; offset < pending.length; offset += 8) {
+        await Promise.all(
+          pending.slice(offset, offset + 8).map(async (row) => {
+            const tx = await rpc.getTransaction(row.signature, {
+              commitment: 'confirmed',
+              maxSupportedTransactionVersion: 0,
+            });
+            if (!tx?.meta) return;
+            if (tx.meta.err) {
+              await this.db.client
+                .update(earnOperations)
+                .set({ status: 'failed', wire: null })
+                .where(eq(earnOperations.signature, row.signature));
+              return;
+            }
+            const delta = earnDeltas(
+              tx,
+              row.vault,
+              EARN_PROVIDERS[row.provider].receipt,
+            );
+            if (!delta || !tx.blockTime) return;
+            if (
+              (row.action === 'deposit' &&
+                (delta.cash >= 0n || delta.shares <= 0n)) ||
+              (row.action === 'redeem' &&
+                (delta.cash <= 0n || delta.shares >= 0n))
+            )
+              return;
+            await this.db.client
+              .update(earnOperations)
+              .set({
+                status: 'confirmed',
+                wire: null,
+                cashDeltaRaw: delta.cash.toString(),
+                shareDeltaRaw: delta.shares.toString(),
+                confirmedAt: new Date(tx.blockTime * 1000),
+              })
+              .where(eq(earnOperations.signature, row.signature));
+          }),
+        );
+      }
+      const last = pending[pending.length - 1];
+      cursor = last.signature;
+      if (pending.length < 100) break;
+    }
   }
   async earnings(
     userId: string,

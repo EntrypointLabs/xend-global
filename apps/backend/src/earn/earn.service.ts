@@ -153,6 +153,29 @@ export class EarnService {
       throw fail();
     return info.data.readBigUInt64LE(64);
   }
+  private async receiptBalances(owner: PublicKey, mint: PublicKey) {
+    const response = await this.rpc.getTokenAccountsByOwner(
+      owner,
+      { mint },
+      'confirmed',
+    );
+    const canonical = associatedTokenAddress(owner, mint, TOKEN_PROGRAM_ID);
+    let total = 0n,
+      withdrawable = 0n;
+    for (const { pubkey, account } of response.value) {
+      if (
+        !account.owner.equals(TOKEN_PROGRAM_ID) ||
+        account.data.length !== 165 ||
+        !new PublicKey(account.data.subarray(0, 32)).equals(mint) ||
+        !new PublicKey(account.data.subarray(32, 64)).equals(owner)
+      )
+        throw fail();
+      const amount = account.data.readBigUInt64LE(64);
+      total += amount;
+      if (pubkey.equals(canonical)) withdrawable += amount;
+    }
+    return { total, withdrawable };
+  }
   async catalog(userId: string) {
     // These deployments exist only on mainnet. No mainnet address is a
     // valuation source for a devnet Account, even when the wallet read works.
@@ -166,6 +189,7 @@ export class EarnService {
             apy: null,
             positionShares: '0',
             positionMinor: '0',
+            withdrawableMinor: '0',
             available: false,
             withdrawAvailable: false,
             updatedAt: new Date().toISOString(),
@@ -190,10 +214,11 @@ export class EarnService {
       (Object.keys(EARN_PROVIDERS) as EarnProviderId[]).map(
         async (provider) => {
           const p = EARN_PROVIDERS[provider];
-          const [price, shares] = await Promise.all([
+          const [price, holdings] = await Promise.all([
             readEarnExchangeRate(this.rpc, provider),
-            this.balance(a.addresses.vault, new PublicKey(p.receipt)),
+            this.receiptBalances(a.addresses.vault, new PublicKey(p.receipt)),
           ]);
+          const shares = holdings.total;
           positions[provider] = { shares, value: sharesValue(shares, price) };
           let apy: number | null = null;
           // Rate failure never fabricates a zero and does not erase a real position.
@@ -227,9 +252,13 @@ export class EarnService {
             apy,
             positionShares: shares.toString(),
             positionMinor: sharesValue(shares, price).toString(),
+            withdrawableMinor: sharesValue(
+              holdings.withdrawable,
+              price,
+            ).toString(),
             available:
               ready && !this.config.get<boolean>('EARN_DEPOSITS_KILLSWITCH'),
-            withdrawAvailable: ready,
+            withdrawAvailable: ready && holdings.withdrawable > 0n,
             updatedAt: new Date().toISOString(),
           };
         },

@@ -27,7 +27,8 @@ export default function EarnScreen() {
   const balances = useBalances();
   const {
     balance,
-    productBalances,
+    hasExternalReceipts,
+    withdrawableBalances,
     balanceDisplay,
     apyDisplay,
     lifetimeEarned,
@@ -176,12 +177,23 @@ export default function EarnScreen() {
             accessibilityLabel="Withdraw from Earn"
             // Disabled rather than hidden: a zero position should still show
             // the Consumer that withdrawing is how they get out.
-            disabled={balance === null || balance <= 0}
-            accessibilityState={{ disabled: balance === null || balance <= 0 }}
+            disabled={
+              balance === null ||
+              !Object.values(withdrawableBalances).some((value) => value > 0)
+            }
+            accessibilityState={{
+              disabled:
+                balance === null ||
+                !Object.values(withdrawableBalances).some((value) => value > 0),
+            }}
             onPress={() => setFlow({ step: "choose-withdraw" })}
             className={cn(
               "flex-row items-center gap-2",
-              (balance === null || balance <= 0) && "opacity-30"
+              (balance === null ||
+                !Object.values(withdrawableBalances).some(
+                  (value) => value > 0
+                )) &&
+                "opacity-30"
             )}
           >
             <Ionicons name="arrow-up" size={18} color={palette.foreground} />
@@ -192,11 +204,17 @@ export default function EarnScreen() {
         </GlassSurface>
       </View>
 
+      {hasExternalReceipts && (
+        <Typography variant="caption" className="mb-3 text-foreground/40">
+          Some of your balance is not available to withdraw in the app yet.
+        </Typography>
+      )}
+
       <EarnFlow
         flow={flow}
         products={products}
         available={selectUsdcDepositLimit(balances.tokens)}
-        positionBalances={productBalances}
+        positionBalances={withdrawableBalances}
         balanceReady={
           flow?.step === "withdraw"
             ? balance !== null

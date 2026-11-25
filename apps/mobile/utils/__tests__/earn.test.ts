@@ -122,3 +122,33 @@ describe("Earn deposit maximum", () => {
     expect(BigInt(Math.round(maximum * 1e6)) <= BigInt(amountRaw)).toBe(true);
   });
 });
+
+describe("non-associated Earn holdings", () => {
+  it("includes external receipts in valuation while preserving a smaller withdrawal limit", () => {
+    const product = {
+      id: "kamino",
+      provider: "Kamino",
+      name: "Lending Yield",
+      apy: 0.04,
+      positionShares: "150000000",
+      positionMinor: "300000000",
+      withdrawableMinor: "200000000",
+      available: true,
+      withdrawAvailable: true,
+      updatedAt: "2026-11-25T00:00:00.000Z",
+    };
+    const parsed = EarnCatalogSchema.parse({
+      products: [product],
+      lifetimeMinor: null,
+      lastSevenDaysMinor: null,
+    });
+    expect(selectEarnBalance(parsed.products)).toBe(300);
+    expect(Number(parsed.products[0].withdrawableMinor) / 1e6).toBe(200);
+    expect(
+      selectPortfolioTotal(
+        { cashUsd: 0, investmentsUsd: 0, hasUnpricedHoldings: false },
+        selectEarnBalance(parsed.products)
+      )
+    ).toBe(300);
+  });
+});

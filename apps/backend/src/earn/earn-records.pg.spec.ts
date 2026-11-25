@@ -145,6 +145,52 @@ suite('Earn ledger against Postgres', () => {
       }),
     ).toEqual({ lifetimeMinor: '10', lastSevenDaysMinor: null });
   });
+  it('reconciles older confirmed transfers beyond a page of unresolved broadcasts', async () => {
+    await records.pending({
+      ...pendingMeta,
+      userId: 'consumer',
+      signature: 'z-confirmed',
+      vault,
+      provider: 'kamino',
+      action: 'deposit',
+      wire: 'wire',
+    });
+    await client.query(
+      "UPDATE earn_operations SET created_at=now()-interval '1 day'",
+    );
+    await client.query(
+      `INSERT INTO earn_operations (signature,user_id,provider,action,vault,wire,message_hash,quote,block_height) SELECT 'blocker-'||lpad(g::text,3,'0'),'consumer','kamino','deposit','test-vault','wire','hash-'||g,'{}'::jsonb,100 FROM generate_series(1,103) g`,
+    );
+    const getTransaction = jest.fn((signature: string) =>
+      Promise.resolve(
+        signature === 'z-confirmed' ? confirmed('20', '10', '0', '9') : null,
+      ),
+    );
+    await records.reconcile('consumer', {
+      getTransaction,
+    } as unknown as Connection);
+    expect(
+      (
+        await client.query(
+          "SELECT status,cash_delta_raw,share_delta_raw FROM earn_operations WHERE signature='z-confirmed'",
+        )
+      ).rows[0],
+    ).toEqual({
+      status: 'confirmed',
+      cash_delta_raw: '-10',
+      share_delta_raw: '9',
+    });
+    expect(getTransaction).toHaveBeenCalledTimes(104);
+    expect(
+      new Set(getTransaction.mock.calls.map(([signature]) => signature)).size,
+    ).toBe(104);
+    expect(
+      await records.earnings('consumer', {
+        kamino: { shares: 9n, value: 11n },
+        jupiter: { shares: 0n, value: 0n },
+      }),
+    ).toEqual({ lifetimeMinor: '1', lastSevenDaysMinor: '1' });
+  });
   it('does not count unconfirmed or failed transactions as earnings', async () => {
     await records.pending({
       ...pendingMeta,
