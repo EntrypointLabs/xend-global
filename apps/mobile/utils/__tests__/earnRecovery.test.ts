@@ -53,6 +53,16 @@ function setup() {
   return { rpc, read };
 }
 describe("persisted sponsored Earn approvals", () => {
+  it("keeps a processed failure pending until a surviving block confirms the outcome", async () => {
+    const h = setup();
+    const err = { InstructionError: [0, { Custom: 1 }] };
+    h.rpc.getSignatureStatus.mockResolvedValue(
+      response({ ...confirmed, confirmationStatus: "processed", err })
+    );
+    await expect(h.read()).resolves.toBe("pending");
+    h.rpc.getSignatureStatus.mockResolvedValue(response({ ...confirmed, err }));
+    await expect(h.read()).resolves.toBe("failed");
+  });
   it("does not trust an expired height while the signed blockhash is still valid", async () => {
     const h = setup();
     h.rpc.isBlockhashValid.mockResolvedValue({

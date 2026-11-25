@@ -696,3 +696,43 @@ describe('Earn valuation across vault-owned token accounts', () => {
     ).toBe(true);
   });
 });
+
+describe('Canonical Earn cash limits', () => {
+  it('returns the spendable ATA balance independently of arbitrary owner-account ordering', async () => {
+    const h = setup();
+    const owner = deriveAccountAddresses(42n).vault;
+    const canonical = associatedTokenAddress(
+      owner,
+      EARN_USDC,
+      TOKEN_PROGRAM_ID,
+    );
+    const original = h.rpc.getAccountInfo.getMockImplementation()!;
+    h.rpc.getAccountInfo.mockImplementation((key: PublicKey) => {
+      if (!key.equals(canonical)) return original(key);
+      const data = Buffer.alloc(165);
+      EARN_USDC.toBuffer().copy(data);
+      owner.toBuffer().copy(data, 32);
+      data.writeBigUInt64LE(10_006_000n, 64);
+      return Promise.resolve({
+        executable: false,
+        owner: TOKEN_PROGRAM_ID,
+        lamports: 1,
+        data,
+        rentEpoch: 0,
+      });
+    });
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: false } as Response);
+    h.rpc.getTokenAccountsByOwner.mockResolvedValue({ value: [] });
+    const catalog = await h.service.catalog('a');
+    expect(catalog.depositableMinor).toBe('10006000');
+    expect(h.rpc.getAccountInfo).toHaveBeenCalledWith(canonical);
+    expect(
+      h.rpc.getTokenAccountsByOwner.mock.calls.every(
+        (call: unknown[]) =>
+          !(call[1] as { mint: PublicKey }).mint.equals(EARN_USDC),
+      ),
+    ).toBe(true);
+  });
+});

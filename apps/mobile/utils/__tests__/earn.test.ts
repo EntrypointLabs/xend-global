@@ -1,12 +1,10 @@
 import {
   selectPortfolio,
   holdingsBeforeDelete,
-  selectUsdcDepositLimit,
   selectPortfolioTotal,
 } from "@/utils/balances";
 import { EARN_PROVIDERS } from "@prydd/smart-account";
-import { getUsdcMint } from "@/utils/cluster";
-import { selectEarnBalance } from "@/utils/earn";
+import { selectEarnBalance, earnDepositLimit } from "@/utils/earn";
 import { projectedValue } from "@/utils/earnProjection";
 import { EarnCatalogSchema, EarnQuoteSchema } from "@/utils/earn";
 
@@ -27,6 +25,7 @@ describe("Earn estimates and API boundaries", () => {
   it("accepts unavailable historical income without inventing a zero", () => {
     const parsed = EarnCatalogSchema.parse({
       products: [],
+      depositableMinor: "0",
       lifetimeMinor: null,
       lastSevenDaysMinor: null,
     });
@@ -34,6 +33,7 @@ describe("Earn estimates and API boundaries", () => {
     expect(
       EarnCatalogSchema.parse({
         products: [],
+        depositableMinor: "0",
         lifetimeMinor: "-123",
         lastSevenDaysMinor: "0",
       }).lifetimeMinor
@@ -110,14 +110,7 @@ describe("Earn deposit maximum", () => {
     ["10000000", 10],
     ["9999", 0],
   ])("floors %s raw USDC to owned cents", (amountRaw, expected) => {
-    const maximum = selectUsdcDepositLimit([
-      {
-        mint: getUsdcMint(),
-        amountRaw: String(amountRaw),
-        decimals: 6,
-        symbol: "USDC",
-      },
-    ]);
+    const maximum = earnDepositLimit(String(amountRaw));
     expect(maximum).toBe(expected);
     expect(BigInt(Math.round(maximum * 1e6)) <= BigInt(amountRaw)).toBe(true);
   });
@@ -139,6 +132,7 @@ describe("non-associated Earn holdings", () => {
     };
     const parsed = EarnCatalogSchema.parse({
       products: [product],
+      depositableMinor: "0",
       lifetimeMinor: null,
       lastSevenDaysMinor: null,
     });

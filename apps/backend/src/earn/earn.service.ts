@@ -197,6 +197,7 @@ export class EarnService {
         ),
         lifetimeMinor: '0',
         lastSevenDaysMinor: '0',
+        depositableMinor: '0',
       };
     const a = await this.account(userId);
     const ready =
@@ -264,8 +265,11 @@ export class EarnService {
         },
       ),
     );
-    const earnings = await this.records.earnings(userId, positions);
-    return { products, ...earnings };
+    const [earnings, depositable] = await Promise.all([
+      this.records.earnings(userId, positions),
+      this.balance(a.addresses.vault, EARN_USDC),
+    ]);
+    return { products, ...earnings, depositableMinor: depositable.toString() };
   }
   async quote(userId: string, dto: EarnRequest): Promise<EarnQuote> {
     await this.infrastructure(dto.action);

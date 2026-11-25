@@ -5,7 +5,8 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useFeature } from "@/hooks/useFeature";
 import { usePalette } from "@/hooks/usePalette";
-import { selectUsdcDepositLimit } from "@/utils/balances";
+import { earnDepositLimit } from "@/utils/earn";
+import { SEED_DEMO } from "@/utils/devSeed";
 import { cn } from "@/utils/cn";
 import BalanceView from "@/components/BalanceView";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
@@ -27,6 +28,7 @@ export default function EarnScreen() {
   const balances = useBalances();
   const {
     balance,
+    depositableMinor,
     hasExternalReceipts,
     withdrawableBalances,
     balanceDisplay,
@@ -213,12 +215,18 @@ export default function EarnScreen() {
       <EarnFlow
         flow={flow}
         products={products}
-        available={selectUsdcDepositLimit(balances.tokens)}
+        available={
+          SEED_DEMO
+            ? Math.floor(balances.usdc * 100) / 100
+            : earnDepositLimit(depositableMinor)
+        }
         positionBalances={withdrawableBalances}
         balanceReady={
           flow?.step === "withdraw"
             ? balance !== null
-            : !balances.isLoading && !balances.isError
+            : SEED_DEMO
+              ? !balances.isLoading && !balances.isError
+              : depositableMinor !== null
         }
         depositsEnabled={depositsEnabled}
         onChange={setFlow}

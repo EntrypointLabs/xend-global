@@ -83,6 +83,7 @@ export interface EarnPosition {
   /** Canonical receipt accounts the current withdrawal route can spend. */
   withdrawableBalances: Record<string, number>;
   balance: number | null;
+  depositableMinor: string | null;
   hasExternalReceipts: boolean;
   isLoading: boolean;
   isError: boolean;
@@ -113,6 +114,9 @@ export function useEarnPosition(): EarnPosition {
       (p) => BigInt(p.positionMinor) > BigInt(p.withdrawableMinor)
     ),
     balance,
+    depositableMinor: query.isError
+      ? null
+      : (query.data?.depositableMinor ?? null),
     isLoading: !SEED_DEMO && query.isPending,
     isError: !SEED_DEMO && query.isError,
     refetch: query.refetch,

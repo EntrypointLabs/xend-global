@@ -63,17 +63,6 @@ export function selectUsdc(tokens: TokenBalance[] | undefined): number {
   return token ? roundTo2(rawToNumber(token.amountRaw, token.decimals)) : 0;
 }
 
-/** Floor native USDC to the slider's cent step; never offer unowned units. */
-export function selectUsdcDepositLimit(
-  tokens: TokenBalance[] | undefined
-): number {
-  const token = tokens?.find((t) => t.mint === getUsdcMint());
-  if (!token) return 0;
-  const cents =
-    (BigInt(token.amountRaw) * 100n) / 10n ** BigInt(token.decimals);
-  return Number(cents) / 100;
-}
-
 /** Lookup of per-mint decimals, for mapping transfer rows that omit them. */
 export function selectDecimalsByMint(
   tokens: TokenBalance[] | undefined

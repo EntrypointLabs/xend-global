@@ -4,6 +4,7 @@ export type EarnProvider = z.infer<typeof EarnProviderSchema>;
 export type EarnAction = "deposit" | "redeem";
 const integer = z.string().regex(/^\d+$/);
 export const EarnCatalogSchema = z.object({
+  depositableMinor: integer,
   lifetimeMinor: z
     .string()
     .regex(/^-?\d+$/)
@@ -54,4 +55,9 @@ export function selectEarnBalance(
 ): number | null {
   if (!products || failed) return null;
   return products.reduce((sum, p) => sum + Number(p.positionMinor) / 1e6, 0);
+}
+
+/** Canonical USDC base units, floored to the slider's supported cent step. */
+export function earnDepositLimit(raw: string | null | undefined): number {
+  return raw == null ? 0 : Number(BigInt(raw) / 10000n) / 100;
 }

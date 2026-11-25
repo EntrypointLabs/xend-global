@@ -20,13 +20,12 @@ type RecoveryRpc = Pick<
   "getSignatureStatus" | "getBlockHeight" | "isBlockhashValid"
 >;
 function outcome(status: SignatureStatus | null): EarnApprovalOutcome {
-  if (status?.err) return "failed";
   if (
-    status?.confirmationStatus === "confirmed" ||
-    status?.confirmationStatus === "finalized"
+    status?.confirmationStatus !== "confirmed" &&
+    status?.confirmationStatus !== "finalized"
   )
-    return "confirmed";
-  return "pending";
+    return "pending";
+  return status.err ? "failed" : "confirmed";
 }
 /** Resolve the same saved approval; never infer failure from a submission error. */
 export async function readEarnApprovalOutcome(
