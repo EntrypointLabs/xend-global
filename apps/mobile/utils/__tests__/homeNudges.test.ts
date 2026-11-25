@@ -15,8 +15,8 @@ describe("homeNudges", () => {
     expect(homeNudges(base)).toEqual([
       {
         key: "earn",
-        title: "Earn 4.37% a year",
-        subtitle: "About $5 a year on your cash",
+        title: "Earn up to 4.37% per year",
+        subtitle: "Put your dollars into Earn",
       },
       {
         key: "bank-payout",
@@ -37,12 +37,6 @@ describe("homeNudges", () => {
     expect(keys({ ...base, earnDepositsEnabled: false })).toEqual([
       "bank-payout",
     ]);
-  });
-
-  it("quotes the rate instead of a yearly figure that rounds to nothing", () => {
-    expect(homeNudges({ ...base, cashUsd: 5 })[0].subtitle).toBe(
-      "On cash you are not spending"
-    );
   });
 
   it("offers bank payouts only where the card is in naira and priced", () => {

@@ -44,6 +44,7 @@ export const EARN_PRODUCTS: EarnProduct[] = [
     apy: null,
     learnMoreUrl: "https://jup.ag/lend",
     network: "Solana",
+    icon: require("@/assets/icons/jupiter.png"),
   },
 ];
 function useEarnData() {
@@ -86,8 +87,15 @@ export function useEarnProducts() {
     }),
   };
 }
-export function earnHeadlineApy(): string {
-  return "—";
+export function useEarnHeadlineApy(): number {
+  const { products } = useEarnProducts();
+  return products.reduce(
+    (best, p) =>
+      (p.available || p.simulated) && p.apy !== null && p.apy * 100 > best
+        ? p.apy * 100
+        : best,
+    0
+  );
 }
 export interface EarnPosition {
   /** Canonical receipt accounts the current withdrawal route can spend. */
