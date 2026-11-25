@@ -391,6 +391,9 @@ export class EarnService {
     if ((await this.rpc.getBlockHeight('confirmed')) > pin.blockHeight)
       throw new ConflictException({
         code: 'EARN_QUOTE_EXPIRED',
+        // A lost submission response may have kept this signature off the phone.
+        // Return it so the phone checks historical status and finalized expiry.
+        ...(pin.signature ? { signature: pin.signature } : {}),
         message:
           'The approval expired. Check your balance before trying again.',
       });

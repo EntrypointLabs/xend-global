@@ -57,6 +57,7 @@ function useEarnData() {
   });
 }
 export function useEarnProducts() {
+  const { sessionTier } = useAuth();
   const query = useEarnData();
   return {
     ...query,
@@ -68,8 +69,9 @@ export function useEarnProducts() {
         apy,
         apyDisplay: apy === null ? "—" : `${(apy * 100).toFixed(2)}%`,
         simulated: SEED_DEMO,
-        available: !SEED_DEMO && !!live?.available,
-        withdrawAvailable: !SEED_DEMO && !!live?.withdrawAvailable,
+        available: !SEED_DEMO && sessionTier === "full" && !!live?.available,
+        withdrawAvailable:
+          !SEED_DEMO && sessionTier === "full" && !!live?.withdrawAvailable,
       };
     }),
   };

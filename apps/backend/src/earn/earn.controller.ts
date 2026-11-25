@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
+import { AllowEntry } from '../auth/allow-entry.decorator';
 import { ConsumerAuthGuard } from '../auth/consumer-auth.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { EarnService, type EarnRequest } from './earn.service';
@@ -23,7 +24,9 @@ const submitSchema = z
 @UseGuards(ConsumerAuthGuard)
 export class EarnController {
   constructor(private readonly earn: EarnService) {}
-  @Get() catalog(@Req() req: AuthenticatedRequest) {
+  @AllowEntry()
+  @Get()
+  catalog(@Req() req: AuthenticatedRequest) {
     return this.earn.catalog(req.user.userId);
   }
   @Post('quote') quote(

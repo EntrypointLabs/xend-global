@@ -34,6 +34,7 @@ import { UnifiedLocalGuard } from '../fiat/unified/unified-local.guard';
 const ENTRY_ALLOWED: readonly string[] = [
   'GET /wallet/me',
   'GET /wallet/me/balances',
+  'GET /earn',
   'GET /transfers',
   'GET /account/me',
   'GET /account/recovery',
@@ -68,8 +69,7 @@ const CLOSED_TO_ENTRY: readonly string[] = [
   'POST /swaps/quote',
   'POST /swaps/prepare',
   'POST /swaps/submit',
-  // Lending reads and moves require the same full session as swaps.
-  'GET /earn',
+  // Lending moves require a full session; valuations are read-only.
   'POST /earn/quote',
   'POST /earn/prepare',
   'POST /earn/submit',
@@ -405,8 +405,7 @@ describe('entry session route inventory', () => {
       'POST /transfers/submit',
       'POST /swaps/prepare',
       'POST /swaps/submit',
-      // Lending reads and moves require the same full session as swaps.
-      'GET /earn',
+      // Lending moves require a full session; valuations are read-only.
       'POST /earn/quote',
       'POST /earn/prepare',
       'POST /earn/submit',

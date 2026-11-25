@@ -438,6 +438,27 @@ describe('Earn preparation and submission', () => {
 });
 
 describe('Earn preparation expiry recovery', () => {
+  it('returns a sponsored signature on expiry so a lost response does not bypass final status checks', async () => {
+    const h = setup();
+    const quote = await h.service.quote('a', {
+      provider: 'kamino',
+      action: 'deposit',
+      amountMinor: '1000000',
+    });
+    const prep = await h.service.prepare('a', quote.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    const wire = Buffer.from(tx.serialize()).toString('base64');
+    const sent = await h.service.submit('a', wire);
+    h.rpc.getBlockHeight.mockResolvedValue(200);
+    await expect(h.service.submit('a', wire)).rejects.toMatchObject({
+      response: { code: 'EARN_QUOTE_EXPIRED', signature: sent.signature },
+    });
+    expect(h.signTransaction).toHaveBeenCalledTimes(1);
+    expect(h.broadcast).toHaveBeenCalledTimes(1);
+  });
   it('releases an expired never-broadcast approval after the preparation cache is lost', async () => {
     const h = setup();
     const quote = await h.service.quote('a', {

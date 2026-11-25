@@ -26,11 +26,13 @@ import { apiClient } from "@/utils/apiClient";
 import { getSolanaConnection } from "@/utils/chainReads";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
+import { readEarnApprovalOutcome } from "@/utils/earnRecovery";
 import { isUserCanceledSign } from "@/utils/signing";
 
 type Pending = {
   signed: string;
   signature?: string;
+  lastValidBlockHeight?: number;
   provider: EarnProviderId;
   action: EarnAction;
 };
@@ -253,6 +255,7 @@ export function useExecuteEarn() {
             ),
             provider,
             action,
+            lastValidBlockHeight: prepared.lastValidBlockHeight,
           });
         }
         if (!live.current) return { status: "pending" };
@@ -280,10 +283,21 @@ export function useExecuteEarn() {
         if (!signature) return { status: "pending" };
         // Never report success or change positions before chain confirmation.
         for (let i = 0; i < 12; i++) {
-          const result = await rpc.getSignatureStatus(signature, {
-            searchTransactionHistory: true,
-          });
-          if (result.value?.err) {
+          const result = await readEarnApprovalOutcome(rpc, pending.current!);
+          if (result === "expired") {
+            await clear();
+            await Promise.all([
+              queries.invalidateQueries({ queryKey: ["earn"] }),
+              queries.invalidateQueries({ queryKey: ["balances"] }),
+              queries.invalidateQueries({ queryKey: ["transfers"] }),
+            ]);
+            return {
+              status: "failed",
+              message:
+                "The approval expired without going through. Your balances have been refreshed. Try again.",
+            };
+          }
+          if (result === "failed") {
             await clear();
             return {
               status: "failed",
@@ -291,10 +305,7 @@ export function useExecuteEarn() {
                 "The move did not go through. Your balance has not changed.",
             };
           }
-          if (
-            result.value?.confirmationStatus === "confirmed" ||
-            result.value?.confirmationStatus === "finalized"
-          ) {
+          if (result === "confirmed") {
             await clear();
             void queries.invalidateQueries({ queryKey: ["earn"] });
             void queries.invalidateQueries({ queryKey: ["balances"] });
