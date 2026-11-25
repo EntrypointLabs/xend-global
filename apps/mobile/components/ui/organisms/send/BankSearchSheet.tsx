@@ -13,6 +13,11 @@ import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
 import { PillButton } from "@/components/ui/kit";
 import type { Bank } from "@/utils/bank-directory";
 import { usePalette } from "@/hooks/usePalette";
+import {
+  SHEET_LAYER,
+  STACKED_CORNERS,
+  useCoveringSheet,
+} from "@/hooks/useSheetStack";
 import { BankLogo } from "./BankLogo";
 
 const ROW_HEIGHT = 60;
@@ -39,13 +44,16 @@ export const BankSearchSheet = forwardRef<
 >(({ banks, loading, failed, onRetry, onPick }, ref) => {
   const [search, setSearch] = useState("");
   const palette = usePalette();
+  const { stacked, sheetProps: stackProps } = useCoveringSheet();
   const snapPoints = useMemo(() => ["86%"], []);
   const filtered = search
     ? banks.filter((bank) => matchesSearch(bank.name, search))
     : banks;
   const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
-    []
+    (props: BottomSheetBackdropProps) => (
+      <BlurBackdrop {...props} stacked={stacked} />
+    ),
+    [stacked]
   );
 
   return (
@@ -59,11 +67,15 @@ export const BankSearchSheet = forwardRef<
       keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
       onDismiss={() => setSearch("")}
-      backgroundStyle={{ backgroundColor: palette.card }}
+      backgroundStyle={[
+        { backgroundColor: palette.card },
+        stacked && STACKED_CORNERS,
+      ]}
       handleIndicatorStyle={
         palette.dark ? { backgroundColor: palette.fg(0.75) } : undefined
       }
-      containerStyle={{ zIndex: 2 }}
+      containerStyle={SHEET_LAYER.covering}
+      {...stackProps}
     >
       <View className="flex-1">
         <Typography

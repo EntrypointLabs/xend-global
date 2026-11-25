@@ -43,6 +43,36 @@ index fc52033..85efd26 100644
          isInTemporaryPosition,
          animatedDetentsState,
          animatedAnimationState,
+diff --git a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetHostingContainer/BottomSheetHostingContainer.tsx b/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetHostingContainer/BottomSheetHostingContainer.tsx
+index 879061d..960c326 100644
+--- a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetHostingContainer/BottomSheetHostingContainer.tsx
++++ b/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetHostingContainer/BottomSheetHostingContainer.tsx
+@@ -8,6 +8,7 @@ import {
+   View,
+   type ViewStyle,
+ } from 'react-native';
++import Animated from 'react-native-reanimated';
+ import { print } from '../../utilities';
+ import { styles } from './styles';
+ import type { BottomSheetHostingContainerProps } from './types';
+@@ -114,7 +115,7 @@ function BottomSheetHostingContainerComponent({
+ 
+   //#region render
+   return (
+-    <View
++    <Animated.View
+       ref={containerRef}
+       pointerEvents="box-none"
+       onLayout={shouldCalculateHeight ? handleLayoutEvent : undefined}
+@@ -122,7 +123,7 @@ function BottomSheetHostingContainerComponent({
+       collapsable={true}
+     >
+       {children}
+-    </View>
++    </Animated.View>
+   );
+   //#endregion
+ }
 diff --git a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetModal/BottomSheetModal.tsx b/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetModal/BottomSheetModal.tsx
 index 2954b3f..110cb61 100644
 --- a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheetModal/BottomSheetModal.tsx

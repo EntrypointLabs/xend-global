@@ -17,6 +17,11 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Ionicons } from "@expo/vector-icons";
 import { isPublicKey } from "@/utils/solana";
 import { usePalette } from "@/hooks/usePalette";
+import {
+  SHEET_LAYER,
+  STACKED_CORNERS,
+  useCoveringSheet,
+} from "@/hooks/useSheetStack";
 import { withSystemPrompt } from "@/utils/systemPrompt";
 
 interface QRScannerModalProps {
@@ -26,13 +31,16 @@ interface QRScannerModalProps {
 export const QRScannerModal = forwardRef<BottomSheetModal, QRScannerModalProps>(
   ({ onScan }, ref) => {
     const palette = usePalette();
+    const { stacked, sheetProps: stackProps } = useCoveringSheet();
     const snapPoints = useMemo(() => ["94%"], []);
     const [permission, requestPermission] = useCameraPermissions();
     const hasScanned = useRef(false);
 
     const renderBackdrop = useCallback(
-      (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
-      []
+      (props: BottomSheetBackdropProps) => (
+        <BlurBackdrop {...props} stacked={stacked} />
+      ),
+      [stacked]
     );
 
     const handleSheetChanges = useCallback((index: number) => {
@@ -74,11 +82,13 @@ export const QRScannerModal = forwardRef<BottomSheetModal, QRScannerModalProps>(
           backgroundColor: "rgba(255,255,255,0.4)",
           width: "9%",
         }}
-        backgroundStyle={
-          palette.dark ? { backgroundColor: palette.card } : undefined
-        }
+        backgroundStyle={[
+          palette.dark && { backgroundColor: palette.card },
+          stacked && STACKED_CORNERS,
+        ]}
         stackBehavior="push"
-        containerStyle={{ zIndex: 2 }}
+        containerStyle={SHEET_LAYER.covering}
+        {...stackProps}
       >
         <BottomSheetView className="h-full flex-1 bg-[#F0F0F0] dark:bg-card">
           <RenderContent
