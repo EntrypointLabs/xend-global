@@ -31,6 +31,8 @@ import {
   type ConsoleSupportRow,
 } from './console.service';
 import { escapeHtml, layout } from './console-html';
+import { METRICS_STYLES, renderMetrics } from './console-metrics-html';
+import { ConsoleMetricsService } from './console-metrics.service';
 
 function cell(value: string | null | undefined, mono = false): string {
   const text =
@@ -67,8 +69,8 @@ function csrfTokenOf(res: Response): string {
 }
 
 /**
- * Ops console (ADR 0022). Renders server-side HTML tables behind Basic Auth:
- * payments (with refund linkage shown, never actionable), the webhook delivery
+ * Ops console (ADR 0022). Renders server-side HTML behind Basic Auth: a
+ * Metrics page of aggregate volume and user counts, then tables of payments (with refund linkage shown, never actionable), the webhook delivery
  * log with a per-row manual Redeliver button, API key fingerprints, Consumer
  * Accounts, and what Consumers sent the team: support requests and feedback.
  * Three write paths: webhook redelivery, freezing or releasing an Account's
@@ -86,6 +88,7 @@ export class ConsoleController {
 
   constructor(
     private readonly console: ConsoleService,
+    private readonly metrics: ConsoleMetricsService,
     private readonly delivery: WebhookDeliveryService,
     private readonly recovery: RecoveryService,
     private readonly support: SupportService,
@@ -95,7 +98,15 @@ export class ConsoleController {
 
   @Get()
   root(@Res() res: Response): void {
-    res.redirect(302, '/console/payments');
+    res.redirect(302, '/console/metrics');
+  }
+
+  @Get('metrics')
+  async metricsPage(@Res() res: Response): Promise<void> {
+    const metrics = await this.metrics.load();
+    res
+      .type('html')
+      .send(layout('Metrics', renderMetrics(metrics), METRICS_STYLES));
   }
 
   @Get('payments')

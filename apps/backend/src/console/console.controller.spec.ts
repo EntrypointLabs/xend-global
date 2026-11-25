@@ -11,6 +11,7 @@ import { WebhookDeliveryService } from '../webhook/webhook-delivery.service';
 import { AdminAuditService } from './admin-audit.service';
 import { CSRF_COOKIE, CSRF_FIELD } from './console-csrf.guard';
 import { ConsoleController } from './console.controller';
+import { ConsoleMetricsService } from './console-metrics.service';
 import {
   ConsoleService,
   type ConsoleFeedbackRow,
@@ -74,6 +75,7 @@ describe('ConsoleController: support and feedback', () => {
       controllers: [ConsoleController],
       providers: [
         { provide: ConsoleService, useValue: consoleService },
+        { provide: ConsoleMetricsService, useValue: {} },
         { provide: SupportService, useValue: support },
         { provide: AdminAuditService, useValue: audit },
         { provide: WebhookDeliveryService, useValue: {} },
