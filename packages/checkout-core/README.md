@@ -69,6 +69,34 @@ phone: the checkout window waits for that approval and finishes on its own.
 Merchant's allowed origins list. The checkout only posts its result to a
 registered origin.
 
+**Publish your payout wallet** on the same site. The Prydd app and checkout
+read it from `https://<your domain>/.well-known/prydd.json` and refuse to pay
+any other wallet, so a Payment can only reach the wallet your own site names.
+Until the file is there, shoppers cannot pay you. Serve it from a route
+handler with the SDK:
+
+```ts
+// app/.well-known/prydd.json/route.ts (Next.js; any Fetch API server works)
+import { payoutWalletResponse } from "@prydd/checkout-core/payout";
+
+export const dynamic = "force-dynamic";
+
+export function GET() {
+  return payoutWalletResponse({
+    mainnet: process.env.PRYDD_PAYOUT_WALLET_MAINNET,
+  });
+}
+```
+
+Use the wallet you registered with Prydd. `payoutWalletResponse` refuses a
+value that is not a Solana address, and serves the file with
+`Access-Control-Allow-Origin: *` so the checkout can read it. A static file
+with the same body and header works too:
+
+```json
+{ "payoutWallets": { "mainnet": "<your wallet address>" } }
+```
+
 ## Options
 
 - `presentation`: `"modal"` (default) draws the sheet and opens the checkout
