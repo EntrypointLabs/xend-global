@@ -118,6 +118,10 @@ export const SIGN_PROMPT = {
     title: "Turn on Swap",
     reason: "Confirm it is you turning on Swap for your account",
   },
+  earn: {
+    title: "Confirm this Earn move",
+    reason: "Check it is you before Prydd moves this money",
+  },
   swap: {
     title: "Confirm this swap",
     reason: "Check it is you before Prydd swaps this money",

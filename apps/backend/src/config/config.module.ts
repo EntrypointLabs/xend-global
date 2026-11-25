@@ -482,6 +482,12 @@ export const USDC_MINT_BY_CLUSTER = {
           .uri()
           .default('https://lite-api.jup.ag/swap/v1'),
         JUPITER_API_KEY: Joi.string().optional().allow(''),
+        EARN_FORWARDER_CODE_SHA256: Joi.string()
+          .pattern(/^[0-9a-f]{64}$/)
+          .allow('')
+          .optional(),
+        EARN_FORWARDER_PROGRAM: Joi.string().allow('').optional(),
+        EARN_LOOKUP_TABLE: Joi.string().allow('').optional(),
         EARN_DEPOSITS_KILLSWITCH: Joi.boolean()
           .truthy('1')
           .falsy('0', '')

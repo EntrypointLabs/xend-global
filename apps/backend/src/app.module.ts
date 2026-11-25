@@ -1,3 +1,4 @@
+import { EarnModule } from './earn/earn.module';
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -68,6 +69,7 @@ const testDashboardEnabled = process.env.NODE_ENV !== 'production';
     KycModule,
     TransferModule,
     SwapModule,
+    EarnModule,
     ActivityModule,
     RedisModule,
     EventsModule,

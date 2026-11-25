@@ -99,3 +99,8 @@ packages/smart-account/test/fixtures/jupiter/
 *.orig
 *.rej
 *.bak
+
+# Earn program build outputs and read-only chain fixtures
+programs/**/target/
+packages/smart-account/test/fixtures/earn/
+work/

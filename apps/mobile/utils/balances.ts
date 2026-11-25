@@ -1,3 +1,4 @@
+import { EARN_PROVIDERS } from "@prydd/smart-account";
 import type { TokenBalance } from "@/utils/apiClient";
 import { getUsdcMint } from "@/utils/cluster";
 
@@ -102,7 +103,11 @@ export function selectPortfolio(tokens: TokenBalance[] | undefined): Portfolio {
   if (!tokens) return empty;
 
   const cash = cashMints();
+  const earnMints = new Set(
+    Object.values(EARN_PROVIDERS).map((p) => p.receipt as string)
+  );
   return tokens.reduce<Portfolio>((acc, token) => {
+    if (earnMints.has(token.mint)) return acc;
     if (cash.has(token.mint)) {
       acc.cashUsd += rawToNumber(token.amountRaw, token.decimals);
       return acc;

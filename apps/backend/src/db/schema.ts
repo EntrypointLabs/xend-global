@@ -1960,3 +1960,30 @@ export const feedback = pgTable(
     check('feedback_rating_check', sql`${table.rating} BETWEEN 1 AND 5`),
   ],
 );
+
+/** Confirmed Earn cash/share deltas, plus the immutable broadcast for retries. */
+export const earnOperations = pgTable(
+  'earn_operations',
+  {
+    signature: text('signature').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: text('provider').$type<'kamino' | 'jupiter'>().notNull(),
+    action: text('action').$type<'deposit' | 'redeem'>().notNull(),
+    status: text('status')
+      .$type<'pending' | 'confirmed' | 'failed'>()
+      .notNull()
+      .default('pending'),
+    vault: text('vault').notNull(),
+    wire: text('wire'),
+    messageHash: text('message_hash').notNull().unique(),
+    quote: jsonb('quote').$type<Record<string, string | number>>().notNull(),
+    blockHeight: integer('block_height').notNull(),
+    cashDeltaRaw: text('cash_delta_raw'),
+    shareDeltaRaw: text('share_delta_raw'),
+    confirmedAt: timestamp('confirmed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({ userIdx: index('earn_operations_user_idx').on(table.userId) }),
+);

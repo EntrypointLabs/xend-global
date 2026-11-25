@@ -1,4 +1,11 @@
 import {
+  EarnCatalogSchema,
+  EarnQuoteSchema,
+  EarnPreparedSchema,
+  type EarnProvider,
+  type EarnAction,
+} from "@/utils/earn";
+import {
   NairaTransferSchema,
   NairaTransfersSchema,
 } from "@/utils/naira-transfers";
@@ -2067,6 +2074,44 @@ class BackendClient {
       signal,
     });
     return SwapQuoteResponseSchema.parse(raw);
+  }
+
+  async getEarn() {
+    return EarnCatalogSchema.parse(
+      await this.request<unknown>("/earn", { auth: true })
+    );
+  }
+  async quoteEarn(
+    provider: EarnProvider,
+    action: EarnAction,
+    amountMinor: string,
+    withdrawAll = false
+  ) {
+    return EarnQuoteSchema.parse(
+      await this.request<unknown>("/earn/quote", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ provider, action, amountMinor, withdrawAll }),
+      })
+    );
+  }
+  async prepareEarn(quoteId: string) {
+    return EarnPreparedSchema.parse(
+      await this.request<unknown>("/earn/prepare", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ quoteId }),
+      })
+    );
+  }
+  async submitEarn(signedTxBase64: string): Promise<{ signature: string }> {
+    return z.object({ signature: z.string() }).parse(
+      await this.request<unknown>("/earn/submit", {
+        auth: true,
+        method: "POST",
+        body: JSON.stringify({ signedTxBase64 }),
+      })
+    );
   }
 
   /** POST /swaps/prepare: the unsigned swap for a quote still on offer. */
