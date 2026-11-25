@@ -4,13 +4,9 @@ import {
   selectPortfolioTotal,
 } from "@/utils/balances";
 import { EARN_PROVIDERS } from "@prydd/smart-account";
-import {
-  selectEarnBalance,
-  earnDepositLimit,
-  EarnCatalogSchema,
-  EarnQuoteSchema,
-} from "@/utils/earn";
+import { selectEarnBalance, earnDepositLimit } from "@/utils/earn";
 import { projectedValue } from "@/utils/earnProjection";
+import { EarnCatalogSchema, EarnQuoteSchema } from "@/utils/earn";
 
 describe("Earn estimates and API boundaries", () => {
   it("uses effective APY without compounding it a second time", () => {
