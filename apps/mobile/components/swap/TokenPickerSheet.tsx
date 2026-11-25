@@ -19,6 +19,7 @@ import { PillButton } from "@/components/ui/kit/PillButton";
 import { BlurBackdrop } from "@/components/ui/molecules/BlurBackdrop";
 import { useBalances } from "@/hooks/useBalances";
 import { usePalette } from "@/hooks/usePalette";
+import { STACKED_CORNERS, useCoveringSheet } from "@/hooks/useSheetStack";
 import { useSwapTokens } from "@/hooks/useSwapTokens";
 import { cn } from "@/utils/cn";
 import {
@@ -93,6 +94,7 @@ export const TokenPickerSheet = forwardRef<
   const { side, title, selectedMint, onPick, stackBehavior, containerStyle } =
     props;
   const palette = usePalette();
+  const { stacked, sheetProps: stackProps } = useCoveringSheet();
   const insets = useSafeAreaInsets();
   const pair = useSwapPair();
   const { tokens: balances } = useBalances();
@@ -157,8 +159,10 @@ export const TokenPickerSheet = forwardRef<
   const empty = sections.every((section) => section.data.length === 0);
 
   const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => <BlurBackdrop {...props} />,
-    []
+    (props: BottomSheetBackdropProps) => (
+      <BlurBackdrop {...props} stacked={stacked} />
+    ),
+    [stacked]
   );
 
   // The sheet mounts whatever function it is handed as a component, so one
@@ -182,6 +186,7 @@ export const TokenPickerSheet = forwardRef<
       ref={ref}
       stackBehavior={stackBehavior}
       containerStyle={containerStyle}
+      {...stackProps}
       snapPoints={snapPoints}
       enableDynamicSizing={false}
       enablePanDownToClose
@@ -193,7 +198,10 @@ export const TokenPickerSheet = forwardRef<
         setSearch("");
         setCategory(null);
       }}
-      backgroundStyle={{ backgroundColor: palette.card }}
+      backgroundStyle={[
+        { backgroundColor: palette.card },
+        stacked && STACKED_CORNERS,
+      ]}
       handleIndicatorStyle={
         palette.dark ? { backgroundColor: palette.fg(0.75) } : undefined
       }

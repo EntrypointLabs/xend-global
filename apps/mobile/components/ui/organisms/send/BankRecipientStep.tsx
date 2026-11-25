@@ -217,7 +217,7 @@ export default function BankRecipientStep({
   const found = check.state === "found" ? check.recipient : null;
 
   return (
-    <View className="flex-1 bg-card">
+    <View className="flex-1">
       <BankSheetTop leave="close" onPress={onClose} />
       <BottomSheetScrollView
         showsVerticalScrollIndicator={false}

@@ -200,7 +200,7 @@ export default memo(function RecipientStep({
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View className="flex-1 bg-[#F0F0F0] dark:bg-card">
+      <View className="flex-1">
         <View className="mb-8 flex-row items-center justify-between px-4">
           <View className="h-10 w-10" />
           <TabHeaderText className="pb-0 text-center font-semibold">

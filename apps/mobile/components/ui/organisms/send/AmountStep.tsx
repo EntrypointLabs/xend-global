@@ -63,7 +63,7 @@ export default function AmountStep(props: AmountStepProps) {
   return props.recipient ? (
     <BankAmountStep {...props} recipient={props.recipient} />
   ) : (
-    <View className="flex-1 bg-card" />
+    <View className="flex-1" />
   );
 }
 
@@ -320,11 +320,7 @@ function BankAmountStep({
             : { text: "", tone: "muted" };
 
   return (
-    <Pressable
-      accessible={false}
-      onPress={Keyboard.dismiss}
-      className="flex-1 bg-card"
-    >
+    <Pressable accessible={false} onPress={Keyboard.dismiss} className="flex-1">
       <BankSheetTop leave="back" onPress={onBack} disabled={busy} />
       <View className="flex-row items-center justify-center gap-3 px-5">
         <BankLogo name={recipient.bankName} logoKey={recipient.logoKey} />
@@ -525,7 +521,7 @@ function BankReview({
   };
 
   return (
-    <View className="flex-1 bg-card">
+    <View className="flex-1">
       <BankSheetTop leave="back" onPress={onBack} disabled={busy} />
       <View className="flex-1 items-center justify-center px-6 pb-10">
         <BankLogo
@@ -739,7 +735,7 @@ function AmountPad({
   }, [amount, prefix, maxDecimals]);
 
   return (
-    <View className="flex-1 bg-[#F0F0F0] dark:bg-card">
+    <View className="flex-1">
       <View className="relative mb-6 flex-1 px-4">
         {/* Header */}
         <View className="mb-4 flex-row items-center justify-between">
