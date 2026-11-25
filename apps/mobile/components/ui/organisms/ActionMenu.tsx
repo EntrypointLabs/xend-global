@@ -1,7 +1,17 @@
-import React, { useMemo } from "react";
-import { Modal, View, StyleSheet, Image } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Modal, View, StyleSheet, Image, Platform } from "react-native";
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
-import Animated, { SlideInDown, SlideOutDown } from "react-native-reanimated";
+import Animated, {
+  Easing,
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { Typography } from "../atoms/Typography";
 import { useFeature } from "@/hooks/useFeature";
 import { useModalFlow } from "@/contexts/ModalFlowContext";
@@ -18,6 +28,10 @@ interface ActionMenuProps {
   onClose: () => void;
 }
 
+/** The size the stack grows from, at the + button, before it springs open. */
+const FOLDED_SCALE = 0.4;
+const CLOSE_MS = 130;
+
 export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
   const { showSendModal, showReceiveModal } = useModalFlow();
   const gateSend = useSendGate();
@@ -28,6 +42,62 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
   // labels white, on the monochrome Home both follow the mode.
   const dark = useColorfulTheme();
   const palette = usePalette();
+  const reduceMotion = useReducedMotion();
+
+  // Held open past `visible` so the stack can fold back into the + button
+  // before the modal goes.
+  const [shown, setShown] = useState(visible);
+  const open = useSharedValue(0);
+  // What was picked, run once the menu has gone. Send and Receive open a
+  // native modal of their own, and iOS will not present one while this one
+  // is still on screen folding away.
+  const picked = useRef<(() => void) | null>(null);
+  const runPicked = () => {
+    const action = picked.current;
+    picked.current = null;
+    action?.();
+  };
+
+  // Android has no dismissal callback, and nothing there waits on one.
+  useEffect(() => {
+    if (!shown && Platform.OS !== "ios") runPicked();
+  }, [shown]);
+
+  useEffect(() => {
+    if (visible) {
+      setShown(true);
+      open.value = reduceMotion
+        ? withTiming(1, { duration: 150 })
+        : withSpring(1, { duration: 350, dampingRatio: 0.7 });
+    } else {
+      open.value = withTiming(
+        0,
+        { duration: CLOSE_MS, easing: Easing.in(Easing.quad) },
+        (finished) => {
+          if (finished) runOnJS(setShown)(false);
+        }
+      );
+    }
+  }, [visible, reduceMotion, open]);
+
+  const backdrop = useAnimatedStyle(() => ({
+    opacity: interpolate(open.value, [0, 0.6], [0, 1], Extrapolation.CLAMP),
+  }));
+
+  // The stack grows out of the + button's corner, as Fuse's does, and folds
+  // back into it on close.
+  const stack = useAnimatedStyle(() => ({
+    // Anchored on the + button, which sits under the stack's corner.
+    transformOrigin: "100% 100%",
+    opacity: interpolate(open.value, [0, 0.5], [0, 1], Extrapolation.CLAMP),
+    transform: [
+      {
+        scale: reduceMotion
+          ? 1
+          : interpolate(open.value, [0, 1], [FOLDED_SCALE, 1]),
+      },
+    ],
+  }));
 
   const menus = useMemo(() => {
     return [
@@ -64,61 +134,74 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ visible, onClose }) => {
 
   return (
     <Modal
-      visible={visible}
+      visible={shown}
       transparent
-      animationType="fade"
+      animationType="none"
+      onDismiss={runPicked}
       statusBarTranslucent
       onRequestClose={onClose}
     >
       <View className="flex-1 items-end justify-end">
-        <FrostBlurView
-          tint={dark || palette.dark ? "dark" : undefined}
-          // MEASURED-LAYOUT (absoluteFill)
-          style={StyleSheet.absoluteFill}
-        >
-          <HapticPressable
-            className={cn("flex-1", dark && "bg-black/30")}
-            onPress={onClose}
-          />
-        </FrostBlurView>
+        <Animated.View style={[StyleSheet.absoluteFill, backdrop]}>
+          {/* The bright frost, not the grey veil the sheets use: the labels
+              here are dark, and grey behind them makes them hard to read. */}
+          <FrostBlurView
+            veil={false}
+            tint={dark || palette.dark ? "dark" : "light"}
+            // MEASURED-LAYOUT (absoluteFill)
+            style={StyleSheet.absoluteFill}
+          >
+            {/* A light frost alone cannot lift a dark photo card to white,
+                so in light mode a white wash goes over it: the labels then
+                sit on near-white whatever Home shows beneath them. */}
+            <HapticPressable
+              className={cn(
+                "flex-1",
+                dark ? "bg-black/30" : !palette.dark && "bg-white/50"
+              )}
+              onPress={onClose}
+            />
+          </FrostBlurView>
+        </Animated.View>
 
         <View
-          className="absolute right-4 flex flex-col items-end"
+          className="absolute right-4"
           // MEASURED-LAYOUT (safe-area inset)
           style={{ bottom: insets.bottom + 8 }}
         >
-          {menus.map((menu) => (
-            // REANIMATED-EXCEPTION
-            <Animated.View
-              entering={SlideInDown.springify(100).damping(20).stiffness(300)}
-              exiting={SlideOutDown.springify(100).damping(20).stiffness(300)}
-              className="items-end"
-              key={menu.title}
-            >
-              <HapticPressable
-                className="flex-row items-center gap-4 py-6"
-                onPress={() => {
-                  onClose();
-                  setTimeout(menu.onPress, 10);
-                }}
-              >
-                <Typography
-                  weight="600"
-                  className={cn(
-                    "text-lg",
-                    dark ? "text-white" : "text-foreground"
-                  )}
+          <Animated.View style={stack}>
+            <View className="flex flex-col items-end">
+              {menus.map((menu) => (
+                <HapticPressable
+                  key={menu.title}
+                  className="flex-row items-center py-6"
+                  onPress={() => {
+                    picked.current = menu.onPress;
+                    onClose();
+                  }}
                 >
-                  {menu.title}
-                </Typography>
-                <Image
-                  source={menu.icon}
-                  className="size-7"
-                  resizeMode="contain"
-                />
-              </HapticPressable>
-            </Animated.View>
-          ))}
+                  <Typography
+                    weight="600"
+                    className={cn(
+                      "text-lg",
+                      dark ? "text-white" : "text-foreground"
+                    )}
+                  >
+                    {menu.title}
+                  </Typography>
+                  {/* As wide as the + button, so each icon sits centred
+                      over it instead of against the screen edge. */}
+                  <View className="w-[50px] items-center">
+                    <Image
+                      source={menu.icon}
+                      className="size-7"
+                      resizeMode="contain"
+                    />
+                  </View>
+                </HapticPressable>
+              ))}
+            </View>
+          </Animated.View>
         </View>
       </View>
     </Modal>
