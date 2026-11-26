@@ -53,8 +53,10 @@ export class JupiterTokenMetadataAdapter implements TokenMetadataProvider {
 
     const now = Date.now();
     const missing: string[] = [];
+    const stale = new Map<string, TokenMetadata>();
     for (const mint of mints) {
       const entry = this.cache.get(mint);
+      if (entry?.metadata) stale.set(mint, entry.metadata);
       if (entry && now - entry.cachedAt < CACHE_TTL_MS) {
         // A null entry is a remembered miss: the source does not know this
         // mint, and asking again every few seconds will not change that.
@@ -76,10 +78,16 @@ export class JupiterTokenMetadataAdapter implements TokenMetadataProvider {
     } catch (err) {
       // Metadata is decoration. A balance must still render without it, so
       // this degrades to "no name, no logo" rather than failing the read.
+      // An expired name and logo are still right: they are the part of a
+      // token that does not change, so they stand in until a refresh works.
       this.logger.warn(
         `tokens.metadata.unavailable mints=${missing.length}`,
         err,
       );
+      for (const mint of missing) {
+        const kept = stale.get(mint);
+        if (kept) found.set(mint, kept);
+      }
       return found;
     }
 

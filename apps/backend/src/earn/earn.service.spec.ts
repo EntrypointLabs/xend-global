@@ -1314,3 +1314,60 @@ describe('Earn beyond USDC', () => {
     expect(jupiter.positionShares).toBe('0');
   });
 });
+
+describe('Earn rate lookups', () => {
+  const kamino = (supplyApy: number) =>
+    ({
+      ok: true,
+      json: () =>
+        Promise.resolve([
+          {
+            reserve: EARN_PROVIDERS.kamino.reserve,
+            liquidityTokenMint: EARN_USDC.toBase58(),
+            supplyApy,
+          },
+        ]),
+    }) as unknown as Response;
+  const rateOf = (service: EarnService) =>
+    (
+      service as unknown as {
+        apy: (provider: string, asset: string) => Promise<number | null>;
+      }
+    ).apy('kamino', 'usdc');
+
+  afterEach(() => jest.useRealTimers());
+
+  it('keeps the last good rate when the provider fails', async () => {
+    const h = setup();
+    jest.useFakeTimers({ now: Date.UTC(2026, 10, 26) });
+    const fetch = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(kamino(0.0417))
+      .mockResolvedValueOnce({ ok: false, status: 503 } as Response);
+
+    expect(await rateOf(h.service)).toBe(0.0417);
+    jest.setSystemTime(Date.UTC(2026, 10, 26, 0, 5));
+    expect(await rateOf(h.service)).toBe(0.0417);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks the provider once a minute however often it is read', async () => {
+    const h = setup();
+    const fetch = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(kamino(0.0417));
+
+    await Promise.all([rateOf(h.service), rateOf(h.service)]);
+    await rateOf(h.service);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('says unavailable when there has never been a good rate', async () => {
+    const h = setup();
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: false, status: 503 } as Response);
+
+    expect(await rateOf(h.service)).toBeNull();
+  });
+});
