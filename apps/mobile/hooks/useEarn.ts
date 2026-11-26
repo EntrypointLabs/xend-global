@@ -6,6 +6,7 @@ import { apiClient } from "@/utils/apiClient";
 import { SEED_DEMO } from "@/utils/devSeed";
 import {
   formatEarnedMinor,
+  productEarnings,
   selectEarnBalance,
   type EarnProvider,
   type EarnRange,
@@ -37,7 +38,7 @@ export const EARN_PRODUCTS: EarnProduct[] = [
   {
     id: "kamino",
     provider: "Kamino",
-    name: "Lending Yield",
+    name: "Flexible interest",
     description: "Put your dollars to work and earn interest with Kamino.",
     apyDisplay: "—",
     apy: null,
@@ -50,7 +51,7 @@ export const EARN_PRODUCTS: EarnProduct[] = [
   {
     id: "jupiter",
     provider: "Jupiter Lend",
-    name: "Lending Yield",
+    name: "Flexible interest",
     description:
       "Put your dollars to work and earn interest with Jupiter Lend.",
     apyDisplay: "—",
@@ -88,6 +89,7 @@ export function useEarnProducts() {
   return {
     ...query,
     products: EARN_PRODUCTS.map((p) => {
+      const earned = productEarnings(query.data, p.id);
       const live = query.data?.products.find((row) => row.id === p.id);
       const apy = SEED_DEMO ? 0.0359 : (live?.apy ?? null);
       return {
@@ -102,10 +104,10 @@ export function useEarnProducts() {
             : null,
         lifetimeEarned: SEED_DEMO
           ? "0.00"
-          : formatEarnedMinor(live?.lifetimeMinor),
+          : formatEarnedMinor(earned.lifetimeMinor),
         lastSevenDays: SEED_DEMO
           ? "0.00"
-          : formatEarnedMinor(live?.lastSevenDaysMinor),
+          : formatEarnedMinor(earned.lastSevenDaysMinor),
         available: !SEED_DEMO && sessionTier === "full" && !!live?.available,
         withdrawAvailable:
           !SEED_DEMO && sessionTier === "full" && !!live?.withdrawAvailable,

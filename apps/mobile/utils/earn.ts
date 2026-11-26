@@ -98,60 +98,106 @@ export function formatEarnedMinor(minor: string | null | undefined): string {
 }
 
 export interface EarnBar {
+  /** The last day the bar covers, as YYYY-MM-DD. */
   label: string;
+  /** Total earned by the end of that day, in dollars. */
   earned: number;
 }
 
+const DAY = 86400000;
+const iso = (time: number) => new Date(time).toISOString().slice(0, 10);
+
 /**
- * Dollars earned per bar for a range: a bar per day for 7D and 30D, per month
- * for 1Y and ALL. Points are cumulative, so each bar is the rise since the
- * previous snapshot; a fall (a withdrawal of earnings) counts as nothing.
+ * Where each bar of a range ends: seven days for 7D, ten three-day steps for
+ * 30D, month ends for 1Y and ALL. ALL starts at the first snapshot and never
+ * draws more than twelve bars.
+ */
+function slotEnds(range: EarnRange, first: string | undefined, today: Date) {
+  const now = Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate()
+  );
+  if (range === "7d")
+    return Array.from({ length: 7 }, (_, i) => iso(now - (6 - i) * DAY));
+  if (range === "30d")
+    return Array.from({ length: 10 }, (_, i) => iso(now - (9 - i) * 3 * DAY));
+  const monthEnd = (back: number) =>
+    back === 0
+      ? iso(now)
+      : iso(
+          Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - back + 1, 1) -
+            DAY
+        );
+  let months = 12;
+  if (range === "all") {
+    const start = first ? new Date(`${first}T00:00:00Z`) : today;
+    months =
+      (today.getUTCFullYear() - start.getUTCFullYear()) * 12 +
+      today.getUTCMonth() -
+      start.getUTCMonth() +
+      1;
+  }
+  const ends = Array.from({ length: months }, (_, i) =>
+    monthEnd(months - 1 - i)
+  );
+  if (ends.length <= 12) return ends;
+  return Array.from(
+    { length: 12 },
+    (_, i) => ends[Math.round((i * (ends.length - 1)) / 11)]
+  );
+}
+
+/**
+ * Earnings as they build up over a range: each bar is the total earned by its
+ * last day, so the bars climb the way the product sheet's chart does. A day
+ * with no snapshot carries the last known total forward.
  */
 export function earnBars(
   points: EarnHistory["points"],
   range: EarnRange,
   today: Date = new Date()
-): EarnBar[] {
-  const monthly = range === "1y" || range === "all";
-  const key = (day: string) => (monthly ? day.slice(0, 7) : day);
-  const slots: string[] = [];
-  const cursor = new Date(
-    Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())
-  );
-  if (monthly) {
-    const first = points[0]?.day.slice(0, 7);
-    const count =
-      range === "1y"
-        ? 12
-        : Math.max(
-            1,
-            first
-              ? (cursor.getUTCFullYear() - Number(first.slice(0, 4))) * 12 +
-                  cursor.getUTCMonth() -
-                  (Number(first.slice(5, 7)) - 1) +
-                  1
-              : 1
-          );
-    for (let i = count - 1; i >= 0; i--) {
-      const d = new Date(
-        Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() - i, 1)
-      );
-      slots.push(d.toISOString().slice(0, 7));
+): { bars: EarnBar[]; earnedInRange: number } {
+  // The server returns snapshots from the start of the range onwards, never
+  // the one before it, so a day ahead of the first snapshot takes that
+  // snapshot's total rather than zero.
+  const first = points[0] ? Number(points[0].earnedMinor) / 1e6 : 0;
+  const totalBy = (day: string) => {
+    let total = first;
+    for (const point of points) {
+      if (point.day > day) break;
+      total = Number(point.earnedMinor) / 1e6;
     }
-  } else {
-    const count = range === "7d" ? 7 : 30;
-    for (let i = count - 1; i >= 0; i--) {
-      const d = new Date(cursor.getTime() - i * 86400000);
-      slots.push(d.toISOString().slice(0, 10));
-    }
-  }
-  const earned = new Map<string, number>();
-  let previous: number | null = null;
-  for (const point of points) {
-    const total = Number(point.earnedMinor) / 1e6;
-    const gain = previous === null ? 0 : Math.max(0, total - previous);
-    previous = total;
-    earned.set(key(point.day), (earned.get(key(point.day)) ?? 0) + gain);
-  }
-  return slots.map((slot) => ({ label: slot, earned: earned.get(slot) ?? 0 }));
+    return total;
+  };
+  const ends = slotEnds(range, points[0]?.day, today);
+  const bars = ends.map((label) => ({ label, earned: totalBy(label) }));
+  // Without a snapshot from before the range there is no baseline, so the
+  // range's earnings are measured from its first snapshot. ALL counts from
+  // nothing, since its first snapshot is the first there is.
+  const before = range === "all" ? 0 : first;
+  return {
+    bars,
+    earnedInRange: Math.max(0, bars[bars.length - 1].earned - before),
+  };
+}
+
+type EarnCatalog = z.infer<typeof EarnCatalogSchema>;
+
+/**
+ * One product's earnings, or null when the server does not break them out.
+ * The account totals are not a stand-in: they include earnings from products
+ * since withdrawn from, which would be credited to whichever one is held now.
+ */
+export function productEarnings(
+  catalog: EarnCatalog | undefined,
+  id: EarnProvider
+): { lifetimeMinor: string | null; lastSevenDaysMinor: string | null } {
+  const live = catalog?.products.find((row) => row.id === id);
+  if (!catalog || !live)
+    return { lifetimeMinor: null, lastSevenDaysMinor: null };
+  return {
+    lifetimeMinor: live.lifetimeMinor ?? null,
+    lastSevenDaysMinor: live.lastSevenDaysMinor ?? null,
+  };
 }
