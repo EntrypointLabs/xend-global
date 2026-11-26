@@ -12,11 +12,13 @@ export const MONO =
 /**
  * The site's lockup (mark beside PRYDD in Montserrat with its alternate Y)
  * captured as one image: mail clients render neither SVG nor web fonts
- * reliably, and the name has to keep that Y. Hosted rather than embedded:
+ * reliably, and the name has to keep that Y. Its thin white outline does not
+ * show on white and keeps it readable where Gmail darkens the page but cannot
+ * recolour images. Hosted rather than embedded:
  * most clients block data URIs and CID attachments render as a paperclip in
  * some of them.
  */
-export const LOGO_URL = 'https://prydd.co/prydd/email-logo.png';
+export const LOGO_URL = 'https://prydd.co/prydd/email-logo.png?v=2';
 export const SITE_URL = 'https://prydd.co';
 
 export function escapeHtml(value: string): string {
@@ -33,7 +35,7 @@ export function paragraph(text: string, color = MUTED): string {
 }
 
 function brand(): string {
-  return `<img src="${LOGO_URL}" width="131" height="24" alt="PRYDD" style="display:block;width:131px;height:24px;border:0;outline:none;text-decoration:none;">`;
+  return `<img src="${LOGO_URL}" width="137" height="30" alt="PRYDD" style="display:block;width:137px;height:30px;border:0;outline:none;text-decoration:none;">`;
 }
 
 interface LayoutInput {
