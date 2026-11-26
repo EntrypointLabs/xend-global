@@ -1,4 +1,4 @@
-import { earnBars, formatEarnedMinor } from "@/utils/earn";
+import { earnBars, formatEarnedMinor, productEarnings } from "@/utils/earn";
 
 const today = new Date("2026-11-25T12:00:00Z");
 const point = (day: string, earned: number) => ({
@@ -21,12 +21,13 @@ describe("formatEarnedMinor", () => {
 });
 
 describe("earnBars", () => {
-  it("gives a bar per day for 7D, each the rise since the last snapshot", () => {
-    const bars = earnBars(
+  it("gives 7D a bar per day holding the total earned by then", () => {
+    const { bars, earnedInRange } = earnBars(
       [
-        point("2026-11-22", 0),
-        point("2026-11-23", 0.01),
-        point("2026-11-25", 0.04),
+        point("2026-11-19", 0.01),
+        point("2026-11-22", 0.02),
+        point("2026-11-23", 0.03),
+        point("2026-11-25", 0.06),
       ],
       "7d",
       today
@@ -41,27 +42,105 @@ describe("earnBars", () => {
       "2026-11-25",
     ]);
     expect(bars.map((b) => Number(b.earned.toFixed(2)))).toEqual([
-      0, 0, 0, 0, 0.01, 0, 0.03,
+      0.01, 0.01, 0.01, 0.02, 0.03, 0.03, 0.06,
     ]);
+    expect(Number(earnedInRange.toFixed(2))).toBe(0.05);
   });
 
-  it("counts a fall as nothing", () => {
-    const bars = earnBars(
-      [point("2026-11-24", 0.05), point("2026-11-25", 0.02)],
+  it("measures a range from its first snapshot, not from zero", () => {
+    // $10 earned before the week, $11 now: the week earned $1.
+    const { bars, earnedInRange } = earnBars(
+      [point("2026-11-21", 10), point("2026-11-25", 11)],
       "7d",
       today
     );
-    expect(bars.every((b) => b.earned === 0)).toBe(true);
+    expect(Number(earnedInRange.toFixed(2))).toBe(1);
+    expect(bars[0].earned).toBe(10);
   });
 
-  it("groups by month for 1Y and spans back to the first point for ALL", () => {
-    expect(earnBars([], "1y", today)).toHaveLength(12);
-    const all = earnBars(
+  it("steps 30D in ten three-day bars", () => {
+    const { bars } = earnBars([], "30d", today);
+    expect(bars).toHaveLength(10);
+    expect(bars[9].label).toBe("2026-11-25");
+    expect(bars[8].label).toBe("2026-11-22");
+  });
+
+  it("uses month ends for 1Y and starts ALL at the first snapshot", () => {
+    expect(earnBars([], "1y", today).bars).toHaveLength(12);
+    const { bars, earnedInRange } = earnBars(
       [point("2026-09-30", 0), point("2026-10-31", 0.1)],
       "all",
       today
     );
-    expect(all.map((b) => b.label)).toEqual(["2026-09", "2026-10", "2026-11"]);
-    expect(Number(all[1].earned.toFixed(2))).toBe(0.1);
+    expect(bars.map((b) => b.label)).toEqual([
+      "2026-09-30",
+      "2026-10-31",
+      "2026-11-25",
+    ]);
+    expect(Number(earnedInRange.toFixed(2))).toBe(0.1);
+  });
+
+  it("never draws more than twelve bars for ALL", () => {
+    const { bars } = earnBars([point("2024-01-15", 0)], "all", today);
+    expect(bars).toHaveLength(12);
+    expect(bars[11].label).toBe("2026-11-25");
+  });
+});
+
+describe("productEarnings", () => {
+  const product = (
+    id: "kamino" | "jupiter",
+    positionMinor: string,
+    extra: Record<string, string | null> = {}
+  ) => ({
+    id,
+    provider: id,
+    name: "Lending Yield",
+    apy: 0.04,
+    positionShares: positionMinor,
+    positionMinor,
+    withdrawableMinor: positionMinor,
+    available: true,
+    withdrawAvailable: true,
+    updatedAt: "2026-11-25T00:00:00.000Z",
+    ...extra,
+  });
+  const catalog = (products: ReturnType<typeof product>[]) => ({
+    depositableMinor: "0",
+    lifetimeMinor: "40000",
+    lastSevenDaysMinor: "10000",
+    products,
+  });
+
+  it("uses the product's own figures when the server sends them", () => {
+    expect(
+      productEarnings(
+        catalog([
+          product("jupiter", "15000000", {
+            lifetimeMinor: "30000",
+            lastSevenDaysMinor: "5000",
+          }),
+        ]),
+        "jupiter"
+      )
+    ).toEqual({ lifetimeMinor: "30000", lastSevenDaysMinor: "5000" });
+  });
+
+  it("never credits the account totals to the one product held now", () => {
+    expect(
+      productEarnings(
+        catalog([product("jupiter", "15000000"), product("kamino", "0")]),
+        "jupiter"
+      )
+    ).toEqual({ lifetimeMinor: null, lastSevenDaysMinor: null });
+  });
+
+  it("stays unknown when the totals span more than one position", () => {
+    expect(
+      productEarnings(
+        catalog([product("jupiter", "15000000"), product("kamino", "5000000")]),
+        "jupiter"
+      )
+    ).toEqual({ lifetimeMinor: null, lastSevenDaysMinor: null });
   });
 });

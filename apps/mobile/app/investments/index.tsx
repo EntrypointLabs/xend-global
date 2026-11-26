@@ -115,7 +115,16 @@ export default function InvestmentsScreen() {
           showsVerticalScrollIndicator={false}
         >
           {holdings.map((holding) => (
-            <HoldingRow key={holding.mint} holding={holding} />
+            <HoldingRow
+              key={holding.mint}
+              holding={holding}
+              onPress={() =>
+                pane.push({
+                  pathname: "/token/[mint]",
+                  params: { mint: holding.mint },
+                })
+              }
+            />
           ))}
         </ScrollView>
       )}
@@ -206,11 +215,22 @@ function EmptyState({ onGetAssets }: { onGetAssets: () => void }) {
   );
 }
 
-function HoldingRow({ holding }: { holding: InvestmentHolding }) {
+function HoldingRow({
+  holding,
+  onPress,
+}: {
+  holding: InvestmentHolding;
+  onPress: () => void;
+}) {
   const change = holding.priceChange24h;
 
   return (
-    <View className="flex-row items-center justify-between py-2">
+    <HapticPressable
+      accessibilityRole="button"
+      accessibilityLabel={`${holding.name}, details`}
+      onPress={onPress}
+      className="flex-row items-center justify-between py-2"
+    >
       <View className="flex-row items-center gap-3">
         <TokenMark
           mint={holding.mint}
@@ -259,6 +279,6 @@ function HoldingRow({ holding }: { holding: InvestmentHolding }) {
           </Typography>
         )}
       </View>
-    </View>
+    </HapticPressable>
   );
 }

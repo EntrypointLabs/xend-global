@@ -19,19 +19,37 @@ import Svg, {
   Path,
   Stop,
   Line,
-  Rect,
 } from "react-native-svg";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { usePalette } from "@/hooks/usePalette";
 import { showToast } from "@/utils/toast";
+import { useBalances } from "@/hooks/useBalances";
+import { getUsdcMint } from "@/utils/cluster";
+import { formatTokenAmount } from "@/utils/tokens";
 import type { EarnProduct } from "@/hooks/useEarn";
 import { formatEarnMoney, projectedValue } from "@/utils/earnProjection";
+import { apyLabel } from "@/components/earn/EarnProductRows";
+import { EarnBarChart } from "@/components/earn/EarnBarChart";
+import {
+  AssetChip,
+  AssetPickerSheet,
+  TokenStack,
+  type PickableAsset,
+} from "@/components/earn/EarnAssets";
 
 export type EarnFlowState =
   | { step: "choose" | "choose-withdraw" }
-  | { step: "info" | "deposit" | "withdraw"; productId: string };
+  | { step: "info"; productId: string }
+  | {
+      step: "deposit" | "withdraw";
+      productId: string;
+      /** Where back returns to. Without it the screen was opened directly and back closes it. */
+      from?: "choose" | "choose-withdraw" | "info";
+      /** The token to start on, when the screen was opened from one. */
+      mint?: string;
+    };
 type Props = {
   flow: EarnFlowState | null;
   products: EarnProduct[];
@@ -45,17 +63,45 @@ type Props = {
 export function EarnFlow(props: Props) {
   const palette = usePalette();
   const { height } = useWindowDimensions();
-  const flow = props.flow;
+  // The modal animates out after the flow is cleared. Rendering the last
+  // screen through that animation keeps the closing frames from falling back
+  // to the product picker.
+  const [shown, setShown] = useState<{
+    flow: EarnFlowState | null;
+    open: boolean;
+    animation: "fade" | "slide";
+  }>({ flow: null, open: false, animation: "fade" });
+  if (props.flow && !shown.open) {
+    const full =
+      props.flow.step === "deposit" || props.flow.step === "withdraw";
+    // A full screen opened straight from a page slides up over it; a sheet
+    // fades in over the blur. Fading a full screen shows both at once.
+    setShown({
+      flow: props.flow,
+      open: true,
+      animation: full ? "slide" : "fade",
+    });
+  } else if (props.flow && props.flow !== shown.flow) {
+    setShown({ ...shown, flow: props.flow });
+  } else if (!props.flow && shown.open) {
+    setShown({ ...shown, open: false });
+  }
+  const flow = shown.flow;
   const product =
     flow && "productId" in flow
       ? props.products.find((p) => p.id === flow.productId)
       : undefined;
   const fullScreen = flow?.step === "deposit" || flow?.step === "withdraw";
+  const withdrawable = props.products.filter(
+    (p) => (props.positionBalances[p.id] ?? 0) > 0
+  );
+  const pickable =
+    flow?.step === "choose-withdraw" ? withdrawable : props.products;
   return (
     <Modal
-      visible={!!flow}
+      visible={!!props.flow}
       transparent
-      animationType="fade"
+      animationType={shown.animation}
       onRequestClose={() => props.onChange(null)}
     >
       {fullScreen && product ? (
@@ -64,6 +110,8 @@ export function EarnFlow(props: Props) {
           {...props}
           product={product}
           withdraw={flow.step === "withdraw"}
+          from={"from" in flow ? flow.from : undefined}
+          mint={"mint" in flow ? flow.mint : undefined}
         />
       ) : (
         <View className="flex-1 justify-end">
@@ -91,7 +139,11 @@ export function EarnFlow(props: Props) {
                 <Discovery
                   product={product}
                   onDeposit={() =>
-                    props.onChange({ step: "deposit", productId: product.id })
+                    props.onChange({
+                      step: "deposit",
+                      productId: product.id,
+                      from: "info",
+                    })
                   }
                   onClose={() => props.onChange(null)}
                 />
@@ -99,13 +151,6 @@ export function EarnFlow(props: Props) {
                 <>
                   <CloseButton onPress={() => props.onChange(null)} />
                   <View className="items-center pb-7 pt-1">
-                    <View className="mb-4 h-12 w-12 items-center justify-center rounded-full bg-foreground/[0.02]">
-                      <Ionicons
-                        name="information-circle-outline"
-                        size={25}
-                        color={palette.foreground}
-                      />
-                    </View>
                     <Typography variant="title1" weight="600">
                       {flow?.step === "choose-withdraw"
                         ? "Withdraw"
@@ -118,54 +163,51 @@ export function EarnFlow(props: Props) {
                       Choose product
                     </Typography>
                   </View>
-                  {props.products.map((p) => (
+                  {pickable.map((p) => (
                     <HapticPressable
                       key={p.id}
                       accessibilityRole="button"
-                      accessibilityLabel={`Select ${p.provider} ${p.name}`}
-                      disabled={
-                        flow?.step === "choose-withdraw" &&
-                        !(props.positionBalances[p.id] > 0)
-                      }
+                      accessibilityLabel={`Select ${p.provider}`}
                       onPress={() =>
-                        props.onChange({
-                          step:
-                            flow?.step === "choose-withdraw"
-                              ? "withdraw"
-                              : "deposit",
-                          productId: p.id,
-                        })
+                        props.onChange(
+                          flow?.step === "choose-withdraw"
+                            ? {
+                                step: "withdraw",
+                                productId: p.id,
+                                from: "choose-withdraw",
+                              }
+                            : {
+                                step: "deposit",
+                                productId: p.id,
+                                from: "choose",
+                              }
+                        )
                       }
-                      className="flex-row items-center gap-3 pb-2 pt-3"
+                      className="flex-row items-center gap-3 py-4"
                     >
                       <ProviderIcon product={p} />
                       <View className="flex-1">
                         <Typography variant="title2" weight="600">
-                          {p.name}
+                          {p.provider}
                         </Typography>
                         <View className="mt-1 flex-row items-center gap-1">
                           <Typography
                             variant="body"
-                            className="text-foreground/30"
+                            className="text-foreground/40"
                           >
-                            {p.provider} ·{" "}
+                            {p.name} ·
                           </Typography>
                           <Typography variant="body" className="text-success">
-                            {p.apy === null ? "Rate unavailable" : p.apyDisplay}
+                            {apyLabel(p)}
                           </Typography>
-                          {p.apy !== null && (
-                            <Typography
-                              variant="body"
-                              className="text-foreground/30"
-                            >
-                              {p.simulated ? "Simulated APY" : "APY"}
-                            </Typography>
-                          )}
                         </View>
                       </View>
-                      <Image
-                        source={require("@/assets/icons/usdc.png")}
-                        className="h-6 w-6"
+                      <TokenStack
+                        assets={
+                          flow?.step === "choose-withdraw"
+                            ? p.assets.filter((a) => (a.position ?? 0) > 0)
+                            : p.assets
+                        }
                       />
                     </HapticPressable>
                   ))}
@@ -219,22 +261,17 @@ function Discovery({
     <View>
       <CloseButton onPress={onClose} />
       <View className="mb-5 items-center gap-1 pt-1">
-        <Typography variant="title1" weight="600">
-          {product.name}
-        </Typography>
         <View className="flex-row items-center gap-2">
-          <Typography variant="body" className="text-foreground/30">
-            Provided by
-          </Typography>
-          {product.icon ? (
-            <Image source={product.icon} className="h-4 w-4 rounded" />
-          ) : (
-            <Typography variant="caption">J</Typography>
+          {product.icon && (
+            <Image source={product.icon} className="h-6 w-6 rounded-md" />
           )}
-          <Typography variant="body" weight="600">
+          <Typography variant="title1" weight="600">
             {product.provider}
           </Typography>
         </View>
+        <Typography variant="body" className="text-foreground/40">
+          {product.name}
+        </Typography>
       </View>
       <View className="rounded-[24px] border border-foreground/5 bg-foreground/[0.01] p-5">
         <View className="flex-row items-center justify-between gap-2 pb-4">
@@ -245,7 +282,7 @@ function Discovery({
             <Typography variant="caption">
               {product.apy === null
                 ? "Rate unavailable"
-                : `${product.apyDisplay} ${product.simulated ? "Simulated APY" : "APY"}`}
+                : `${product.apyDisplay} APY`}
             </Typography>
           </View>
         </View>
@@ -264,7 +301,7 @@ function Discovery({
           </View>
         </View>
         <Typography variant="body" weight="600" className="mb-4 mt-4">
-          Your potential earn
+          What you could earn
         </Typography>
         <View className="mb-4 flex-row justify-between">
           <View>
@@ -280,31 +317,14 @@ function Discovery({
             </Typography>
           </View>
         </View>
-        <Svg
-          width="100%"
-          height={108}
-          viewBox="0 0 300 108"
-          preserveAspectRatio="none"
-        >
-          {Array.from({ length: 12 }, (_, i) => (
-            <Rect
-              key={i}
-              x={i * 25}
-              y={104 - (i + 1) * 8}
-              width={19}
-              height={(i + 1) * 8}
-              rx={6}
-              fill={palette.primary}
-              opacity={i === 11 ? 1 : 0.08}
-            />
-          ))}
-        </Svg>
+        <EarnBarChart values={Array.from({ length: 12 }, (_, i) => i + 1)} />
       </View>
       <Typography
         variant="body"
         className="mb-3 mt-4 text-center text-foreground/30"
       >
-        Deposit your dollars with {product.provider}
+        Deposit your {product.assets.length > 1 ? "assets" : "dollars"} with{" "}
+        {product.provider}
         {"\n"}to earn interest.
       </Typography>
       <HapticPressable
@@ -342,11 +362,77 @@ function DepositScreen({
   balanceReady,
   depositsEnabled,
   onChange,
-}: Props & { product: EarnProduct; withdraw: boolean }) {
+  from,
+  mint,
+}: Props & {
+  product: EarnProduct;
+  withdraw: boolean;
+  from?: "choose" | "choose-withdraw" | "info";
+  mint?: string;
+}) {
   const palette = usePalette();
   const insets = useSafeAreaInsets();
   const execution = useExecuteEarn();
-  const limit = withdraw ? (positionBalances[product.id] ?? 0) : available;
+  const balances = useBalances();
+  const usdcMint = getUsdcMint();
+  // Every token the product lends, including ones with nothing to move: the
+  // picker shows those at zero and does not let them be chosen.
+  const choices: PickableAsset[] = product.assets.map((asset) => {
+    const held = balances.tokens.find((t) => t.mint === asset.mint);
+    const heldAmount = held ? Number(held.amountRaw) / 10 ** held.decimals : 0;
+    const amount = withdraw
+      ? asset.mint === usdcMint
+        ? (positionBalances[product.id] ?? 0)
+        : asset.withdrawable
+      : asset.mint === usdcMint
+        ? available
+        : (asset.depositable ?? heldAmount);
+    const price =
+      asset.mint === usdcMint
+        ? 1
+        : held?.usdValue != null && heldAmount > 0
+          ? held.usdValue / heldAmount
+          : asset.positionUsd != null && (asset.position ?? 0) > 0
+            ? asset.positionUsd / (asset.position ?? 1)
+            : null;
+    return {
+      mint: asset.mint,
+      symbol: asset.symbol,
+      name: asset.name,
+      iconUrl: asset.iconUrl,
+      decimals: asset.decimals,
+      amount,
+      usd: amount === 0 ? 0 : price === null ? null : amount * price,
+    };
+  });
+  const [assetMint, setAssetMint] = useState(
+    mint ??
+      choices.find((c) => c.amount > 0)?.mint ??
+      choices[0]?.mint ??
+      usdcMint
+  );
+  const [picking, setPicking] = useState(false);
+  const asset = choices.find((c) => c.mint === assetMint) ??
+    choices[0] ?? {
+      mint: usdcMint,
+      symbol: "USDC",
+      name: "USD Coin",
+      iconUrl: null,
+      decimals: 6,
+      amount: withdraw ? (positionBalances[product.id] ?? 0) : available,
+      usd: null,
+    };
+  const lent = product.assets.find((a) => a.mint === asset.mint);
+  const apy = lent?.apy ?? product.apy;
+  const apyDisplay = lent?.apyDisplay ?? product.apyDisplay;
+  const dollars = asset.mint === usdcMint;
+  const price = dollars
+    ? 1
+    : asset.usd !== null && asset.amount > 0
+      ? asset.usd / asset.amount
+      : null;
+  const limit = asset.amount;
+  const step = dollars ? 0.01 : 10 ** -Math.min(asset.decimals, 4);
   const [message, setMessage] = useState<string | null>(null);
   const move = async () => {
     setMessage(null);
@@ -370,13 +456,31 @@ function DepositScreen({
       );
     else if (result.status === "failed") setMessage(result.message);
   };
-  const [chosen, setChosen] = useState(Math.min(1000, limit));
+  // Withdrawing starts at everything; depositing starts at nothing, so no
+  // amount moves without the Consumer choosing it.
+  const [chosen, setChosen] = useState(withdraw ? limit : 0);
   const [years, setYears] = useState(10);
   const amount = Math.min(chosen, limit);
+  const amountUsd = price === null ? null : amount * price;
+  const limitUsd = price === null ? null : limit * price;
+  const showAmount = (units: number) =>
+    dollars
+      ? formatEarnMoney(units)
+      : `${formatTokenAmount(units, asset.decimals)} ${asset.symbol}`;
+  const pick = (next: string) => {
+    const choice = choices.find((c) => c.mint === next);
+    setAssetMint(next);
+    setChosen(withdraw ? (choice?.amount ?? 0) : 0);
+    setPicking(false);
+  };
+  // Only USDC moves until the server can build a transaction for any other
+  // token; the rest can be looked at but not sent.
+  const supported = dollars;
   const canMove =
     execution.ready &&
     (execution.hasPending ||
       (execution.configured &&
+        supported &&
         (withdraw
           ? !!product.withdrawAvailable
           : !!product.available && depositsEnabled) &&
@@ -384,7 +488,13 @@ function DepositScreen({
         !product.simulated &&
         amount > 0));
   const estimated =
-    product.apy === null ? null : projectedValue(amount, product.apy, years);
+    apy === null || amountUsd === null
+      ? null
+      : projectedValue(amountUsd, apy, years);
+  const chip =
+    choices.length > 1 ? (
+      <AssetChip asset={asset} onPress={() => setPicking(true)} />
+    ) : null;
   return (
     <View
       accessibilityViewIsModal
@@ -393,17 +503,29 @@ function DepositScreen({
       style={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 12 }}
     >
       <View className="mb-6 flex-row items-center justify-between">
-        <HapticPressable
-          accessibilityRole="button"
-          accessibilityLabel="Back to products"
-          disabled={execution.isExecuting}
-          onPress={() =>
-            onChange({ step: withdraw ? "choose-withdraw" : "choose" })
-          }
-          className="h-10 w-10 items-center justify-center rounded-full bg-foreground/5"
-        >
-          <Ionicons name="chevron-back" size={20} color={palette.foreground} />
-        </HapticPressable>
+        {from ? (
+          <HapticPressable
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            disabled={execution.isExecuting}
+            onPress={() =>
+              onChange(
+                from === "info"
+                  ? { step: "info", productId: product.id }
+                  : { step: from }
+              )
+            }
+            className="h-10 w-10 items-center justify-center rounded-full bg-foreground/5"
+          >
+            <Ionicons
+              name="chevron-back"
+              size={20}
+              color={palette.foreground}
+            />
+          </HapticPressable>
+        ) : (
+          <View className="h-10 w-10" />
+        )}
         <Typography variant="body" weight="600">
           {withdraw ? "Withdraw" : "Deposit"}
         </Typography>
@@ -420,10 +542,10 @@ function DepositScreen({
       <View className="items-center">
         <Typography variant="caption" className="text-foreground/40">
           {withdraw
-            ? "You receive"
-            : product.apy === null
+            ? "You withdraw"
+            : apy === null
               ? "Rate unavailable"
-              : `Start Earning ${product.apyDisplay} ⓘ`}
+              : `Start earning ${apyDisplay}`}
         </Typography>
         <Typography
           variant="h2"
@@ -432,50 +554,73 @@ function DepositScreen({
           accessibilityLiveRegion="polite"
         >
           {withdraw
-            ? formatEarnMoney(amount)
+            ? showAmount(amount)
             : estimated === null
               ? "—"
               : formatEarnMoney(estimated)}
         </Typography>
         <Typography variant="caption" className="mt-1 text-foreground/40">
           {withdraw
-            ? `From ${product.provider}`
-            : `Estimated Value in ${years} ${years === 1 ? "Year" : "Years"}`}
+            ? !dollars && amountUsd !== null
+              ? `About ${formatEarnMoney(amountUsd)}, from ${product.provider} to your account`
+              : `From ${product.provider} to your ${dollars ? "cash" : "account"}`
+            : `Estimated value in ${years} ${years === 1 ? "year" : "years"}`}
         </Typography>
-        {product.simulated && (
-          <Typography variant="caption" className="mt-1 text-foreground/30">
-            Illustrative estimate
-          </Typography>
-        )}
       </View>
       <View className="mb-8 mt-9 flex-1">
-        {!withdraw && (
-          <ProjectionChart
-            apy={product.apy}
-            amount={amount}
-            years={years}
-            onYears={setYears}
-          />
-        )}
-        {!withdraw && (
-          <View className="mt-3 flex-row justify-between">
-            <Typography variant="caption" className="text-foreground/35">
-              Today
+        <ProjectionChart
+          apy={apy}
+          amount={withdraw ? limit - amount : amount}
+          full={withdraw ? limit : undefined}
+          years={years}
+          onYears={setYears}
+        />
+        <View className="mt-3 flex-row justify-between">
+          <Typography variant="caption" className="text-foreground/35">
+            Today
+          </Typography>
+          <Typography variant="caption" className="text-foreground/35">
+            30Y
+          </Typography>
+        </View>
+      </View>
+      {withdraw ? (
+        <View className="items-center gap-3 pb-5">
+          {chip}
+          <Typography variant="body" className="text-center text-foreground/45">
+            {estimated === null || amountUsd === null ? (
+              "Interest you give up is unavailable"
+            ) : (
+              <>
+                You give up about{" "}
+                <Typography variant="body" weight="600">
+                  {formatEarnMoney(estimated - amountUsd)}
+                </Typography>{" "}
+                in interest over {years} {years === 1 ? "year" : "years"}
+              </>
+            )}
+          </Typography>
+        </View>
+      ) : (
+        <View className="items-center pb-3">
+          <Typography variant="caption" className="text-foreground/40">
+            Initial deposit
+          </Typography>
+          <View className="mt-1 flex-row items-center gap-3">
+            <Typography variant="title1" weight="600">
+              {dollars
+                ? formatEarnMoney(amount)
+                : formatTokenAmount(amount, asset.decimals)}
             </Typography>
-            <Typography variant="caption" className="text-foreground/35">
-              30Y
-            </Typography>
+            {chip}
           </View>
-        )}
-      </View>
-      <View className="items-center pb-3">
-        <Typography variant="caption" className="text-foreground/40">
-          {withdraw ? "Withdrawal amount" : "Initial Deposit"}
-        </Typography>
-        <Typography variant="title1" weight="600" className="mt-1">
-          {formatEarnMoney(amount)}
-        </Typography>
-      </View>
+          {!dollars && amountUsd !== null && (
+            <Typography variant="caption" className="mt-1 text-foreground/40">
+              About {formatEarnMoney(amountUsd)}
+            </Typography>
+          )}
+        </View>
+      )}
       <View
         accessible
         accessibilityRole="adjustable"
@@ -484,7 +629,7 @@ function DepositScreen({
           min: 0,
           max: limit,
           now: amount,
-          text: formatEarnMoney(amount),
+          text: showAmount(amount),
         }}
         accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
         onAccessibilityAction={({ nativeEvent }) =>
@@ -493,7 +638,9 @@ function DepositScreen({
               limit,
               Math.max(
                 0,
-                amount + (nativeEvent.actionName === "increment" ? 1 : -1)
+                amount +
+                  (nativeEvent.actionName === "increment" ? 1 : -1) *
+                    (dollars ? 1 : limit / 20)
               )
             )
           )
@@ -502,8 +649,8 @@ function DepositScreen({
         <Slider
           value={amount}
           minimumValue={0}
-          maximumValue={Math.max(limit, 0.01)}
-          step={0.01}
+          maximumValue={Math.max(limit, step)}
+          step={step}
           disabled={
             execution.isExecuting ||
             execution.hasPending ||
@@ -511,7 +658,7 @@ function DepositScreen({
             limit <= 0
           }
           onValueChange={(value) =>
-            setChosen(value >= limit - 0.01 ? limit : value)
+            setChosen(value >= limit - step ? limit : value)
           }
           minimumTrackTintColor={palette.primary}
           maximumTrackTintColor={palette.fg(0.1)}
@@ -522,9 +669,9 @@ function DepositScreen({
         className="mb-4 mt-3 text-center text-foreground/35"
       >
         {balanceReady
-          ? `${formatEarnMoney(limit)} available`
-          : "Balance unavailable"}{" "}
-        · Returns vary
+          ? `${showAmount(limit)}${!dollars && limitUsd !== null ? ` (${formatEarnMoney(limitUsd)})` : ""} ${withdraw ? "in this position" : "available"}`
+          : "Balance unavailable"}
+        {withdraw ? "" : " · Returns vary"}
       </Typography>
       <HapticPressable
         accessibilityRole="button"
@@ -561,39 +708,69 @@ function DepositScreen({
             ? "A previous approval is still being checked"
             : !depositsEnabled
               ? "Temporarily unavailable"
-              : !(withdraw ? product.withdrawAvailable : product.available) ||
-                  !execution.configured
-                ? "Not available yet"
-                : "Rates vary. Network fees are covered.")}
+              : !supported
+                ? `${asset.symbol} ${withdraw ? "withdrawals" : "deposits"} are coming soon`
+                : !(withdraw ? product.withdrawAvailable : product.available) ||
+                    !execution.configured
+                  ? "Not available yet"
+                  : withdraw
+                    ? "Arrives in your cash balance. Network fees are covered."
+                    : "Rates vary. Network fees are covered.")}
       </Typography>
+      {picking && (
+        <AssetPickerSheet
+          title={withdraw ? "Withdraw which token?" : "Deposit which token?"}
+          assets={choices}
+          selected={asset.mint}
+          onPick={pick}
+          onClose={() => setPicking(false)}
+        />
+      )}
     </View>
   );
 }
 
+/**
+ * Growth of `amount` over 30 years. With `full`, the chart is a withdrawal:
+ * the solid line is what stays in and the faint one is the whole position
+ * left untouched, both on one scale from zero, so the gap is what leaving
+ * costs.
+ */
 function ProjectionChart({
   apy,
   amount,
+  full,
   years,
   onYears,
 }: {
   apy: number | null;
   amount: number;
+  full?: number;
   years: number;
   onYears: (years: number) => void;
 }) {
   const palette = usePalette();
   const [width, setWidth] = useState(300);
-  const principal = Math.max(amount, 1);
   const rate = apy ?? 0;
-  const end = projectedValue(principal, rate, 30);
-  const base = principal * 0.6;
-  const y = (year: number) =>
-    280 - (260 * (projectedValue(principal, rate, year) - base)) / (end - base);
-  const points = Array.from(
-    { length: 121 },
-    (_, i) => `${8 + (i / 120) * 284},${y(i / 4)}`
+  const principal =
+    full === undefined ? Math.max(amount, 1) : Math.max(amount, 0);
+  const top = projectedValue(
+    full === undefined ? principal : Math.max(full, 0.01),
+    rate,
+    30
   );
-  const path = `M${points.join(" L")}`;
+  const floor = full === undefined ? principal * 0.6 : 0;
+  const yOf = (value: number) =>
+    280 - (260 * (value - floor)) / Math.max(top - floor, 1e-9);
+  const pathFor = (start: number) =>
+    `M${Array.from(
+      { length: 121 },
+      (_, i) =>
+        `${8 + (i / 120) * 284},${yOf(projectedValue(start, rate, i / 4))}`
+    ).join(" L")}`;
+  const y = (year: number) => yOf(projectedValue(principal, rate, year));
+  const path = pathFor(principal);
+  const ghost = full === undefined ? null : pathFor(Math.max(full, 0));
   const x = 8 + (years / 30) * 284;
   const select = (locationX: number) =>
     onYears(
@@ -656,6 +833,16 @@ function ProjectionChart({
             strokeOpacity={0.035}
           />
         ))}
+        {ghost && (
+          <Path
+            d={ghost}
+            fill="none"
+            stroke={palette.foreground}
+            strokeOpacity={0.18}
+            strokeWidth={1.5}
+            strokeDasharray="4 4"
+          />
+        )}
         <Path d={`${path} L292,298 L8,298 Z`} fill="url(#earnFill)" />
         <Path d={path} fill="none" stroke={palette.primary} strokeWidth={1.5} />
         <Line
