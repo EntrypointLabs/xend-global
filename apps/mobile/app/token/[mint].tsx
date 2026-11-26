@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { ActivityIndicator, Linking, ScrollView, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 
 import { EarnFlow, type EarnFlowState } from "@/components/earn/EarnFlow";
+import { usePaneNavigation } from "@/contexts/OverlayPaneContext";
 import { TokenPriceChart } from "@/components/token/TokenPriceChart";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { GlassButton } from "@/components/ui/atoms/Glass";
@@ -62,9 +63,22 @@ const RANGES: { id: TokenRange; label: string }[] = [
  */
 export default function TokenScreen() {
   const params = useLocalSearchParams<{ mint: string; earn?: string }>();
-  const mint = params.mint;
-  const earn = EarnProviderSchema.safeParse(params.earn);
-  const router = useRouter();
+  return <TokenDetail mint={params.mint} earn={params.earn} />;
+}
+
+/**
+ * The token page itself, as a route of its own or as a pane in the Total
+ * Balance overlay, where it slides in over Investments and Back returns there.
+ */
+export function TokenDetail({
+  mint,
+  earn: earnParam,
+}: {
+  mint: string;
+  earn?: string;
+}) {
+  const earn = EarnProviderSchema.safeParse(earnParam);
+  const pane = usePaneNavigation();
   const palette = usePalette();
   const swapEnabled = useFeature("swap");
   const depositsEnabled = useFeature("earnDeposits");
@@ -197,7 +211,7 @@ export default function TokenScreen() {
                     decimals,
                     iconUrl,
                   });
-                  router.push("/swap");
+                  pane.push("/swap");
                 },
                 accessibilityLabel: "Swap",
               },
@@ -455,7 +469,7 @@ export default function TokenScreen() {
           radius={999}
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          onPress={() => router.back()}
+          onPress={pane.back}
           className="h-14 w-14 items-center justify-center rounded-full"
         >
           <Ionicons name="chevron-back" size={22} color={palette.foreground} />

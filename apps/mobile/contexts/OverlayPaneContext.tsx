@@ -2,8 +2,10 @@ import { createContext, useContext, useMemo } from "react";
 import { useRouter, type Href } from "expo-router";
 
 interface OverlayPane {
-  /** Slide this pane away, back to the overlay it came from. */
+  /** Slide this pane away, back to what it was opened from. */
   back: () => void;
+  /** Slide a token's page in over this pane. */
+  openToken: (mint: string) => void;
 }
 
 /**
@@ -29,6 +31,10 @@ export function usePaneNavigation() {
     () => ({
       back: pane ? pane.back : () => router.back(),
       push: (href: Href) => (pane ? router.replace(href) : router.push(href)),
+      openToken: (mint: string) =>
+        pane
+          ? pane.openToken(mint)
+          : router.push({ pathname: "/token/[mint]", params: { mint } }),
     }),
     [pane, router]
   );

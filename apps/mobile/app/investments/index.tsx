@@ -118,12 +118,7 @@ export default function InvestmentsScreen() {
             <HoldingRow
               key={holding.mint}
               holding={holding}
-              onPress={() =>
-                pane.push({
-                  pathname: "/token/[mint]",
-                  params: { mint: holding.mint },
-                })
-              }
+              onPress={() => pane.openToken(holding.mint)}
             />
           ))}
         </ScrollView>
