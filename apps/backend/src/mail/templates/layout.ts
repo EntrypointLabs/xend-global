@@ -2,7 +2,6 @@ export const INK = '#0A0A0A';
 export const PAPER = '#F5F5F5';
 export const WHITE = '#FFFFFF';
 export const MUTED = '#6B6B6B';
-export const MUTED_DARK = '#9BA1A6';
 export const BORDER = '#E6E6E6';
 
 export const SANS =
@@ -11,12 +10,13 @@ export const MONO =
   "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
 /**
- * Hosted rather than embedded: most clients block data URIs and CID
- * attachments render as a paperclip in some of them. The square app icon
- * reads correctly on both light and dark backgrounds, where a bare black mark
- * disappears in dark mode.
+ * The site's lockup (mark beside PRYDD in Montserrat with its alternate Y)
+ * captured as one image: mail clients render neither SVG nor web fonts
+ * reliably, and the name has to keep that Y. Hosted rather than embedded:
+ * most clients block data URIs and CID attachments render as a paperclip in
+ * some of them.
  */
-export const MARK_URL = 'https://prydd.co/prydd/apple-touch-icon.png';
+export const LOGO_URL = 'https://prydd.co/prydd/email-logo.png';
 export const SITE_URL = 'https://prydd.co';
 
 export function escapeHtml(value: string): string {
@@ -32,8 +32,8 @@ export function paragraph(text: string, color = MUTED): string {
   return `<p style="margin:0 0 16px;font-family:${SANS};font-size:15px;line-height:24px;color:${color};">${escapeHtml(text)}</p>`;
 }
 
-export function mark(size = 40): string {
-  return `<img src="${MARK_URL}" width="${size}" height="${size}" alt="Prydd" style="display:block;width:${size}px;height:${size}px;border:0;border-radius:${Math.round(size * 0.24)}px;outline:none;text-decoration:none;">`;
+function brand(): string {
+  return `<img src="${LOGO_URL}" width="131" height="24" alt="PRYDD" style="display:block;width:131px;height:24px;border:0;outline:none;text-decoration:none;">`;
 }
 
 interface LayoutInput {
@@ -47,7 +47,7 @@ interface LayoutInput {
 }
 
 /**
- * The frame every Prydd mail sits in: a white card on paper, table-built and
+ * The frame every Prydd mail sits in: one white card on grey under the logo (on phones it has no background at all, so the mail app's own light or dark surface shows through), table-built and
  * inline-styled because Outlook and Gmail ignore most of what a stylesheet
  * would do. Geist loads where the client allows web fonts (Apple Mail, iOS)
  * and falls back to the system face everywhere else.
@@ -72,21 +72,28 @@ export function renderLayout({
   body { margin:0; padding:0; width:100% !important; -webkit-text-size-adjust:100%; }
   a { color:${INK}; }
   @media (max-width: 600px) {
-    .px { padding-left:24px !important; padding-right:24px !important; }
-    .shell { padding:16px 12px !important; }
+    .px { padding-left:20px !important; padding-right:20px !important; }
+    .page { background:none !important; background-color:transparent !important; }
+    .shell { padding:16px 0 24px !important; }
+    .card { background-color:transparent !important; border:0 !important; border-radius:0 !important; }
     .display { font-size:32px !important; line-height:38px !important; }
     .code { font-size:36px !important; letter-spacing:8px !important; }
+    .inset { padding:0 !important; }
+    .hero { padding:32px 20px !important; }
   }
 </style>
 </head>
-<body style="margin:0;padding:0;background-color:${PAPER};">
+<body class="page" style="margin:0;padding:0;background-color:${PAPER};">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">${escapeHtml(preheader)}&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${PAPER};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="page" style="background-color:${PAPER};">
   <tr>
-    <td class="shell" align="center" style="padding:40px 16px;">
+    <td class="shell page" align="center" style="padding:32px 16px 40px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
         <tr>
-          <td style="background-color:${WHITE};border-radius:16px;overflow:hidden;">
+          <td align="center" style="padding:0 0 24px;">${brand()}</td>
+        </tr>
+        <tr>
+          <td class="card" style="background-color:${WHITE};border:1px solid ${BORDER};border-radius:12px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
 ${body}
             </table>

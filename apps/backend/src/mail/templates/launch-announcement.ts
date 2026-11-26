@@ -3,10 +3,9 @@ import {
   escapeHtml,
   INK,
   MUTED,
-  MUTED_DARK,
+  PAPER,
   SANS,
   WHITE,
-  mark,
   renderLayout,
 } from './layout';
 
@@ -46,14 +45,19 @@ export function renderLaunchAnnouncement(): { html: string; text: string } {
 
   const body = `
               <tr>
-                <td class="px" style="background-color:${INK};border-radius:16px 16px 0 0;padding:40px 40px 44px;">
-                  ${mark(48)}
-                  <h1 class="display" style="margin:40px 0 16px;font-family:${SANS};font-size:40px;line-height:46px;font-weight:600;letter-spacing:-1.2px;color:${WHITE};">It's your turn.</h1>
-                  <p style="margin:0 0 32px;font-family:${SANS};font-size:17px;line-height:26px;color:${MUTED_DARK};">Prydd is on iPhone through TestFlight, Apple's app for early releases. Your dollar account is ready to open: an email, your face or fingerprint, and you're in.</p>
+                <td class="inset" style="padding:16px 16px 0;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td class="hero" style="background-color:${PAPER};border-radius:8px;padding:40px 24px;">
+                  <h1 class="display" style="margin:0 0 16px;font-family:${SANS};font-size:40px;line-height:46px;font-weight:600;letter-spacing:-1.2px;color:${INK};">It's your turn.</h1>
+                  <p style="margin:0 0 32px;font-family:${SANS};font-size:17px;line-height:26px;color:${MUTED};">Prydd is on iPhone through TestFlight, Apple's app for early releases. Your dollar account is ready to open: an email, your face or fingerprint, and you're in.</p>
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                      <td style="background-color:${WHITE};border-radius:999px;">
-                        <a href="${TESTFLIGHT_URL}" style="display:inline-block;padding:16px 28px;font-family:${SANS};font-size:16px;line-height:20px;font-weight:600;color:${INK};text-decoration:none;">Get Prydd for iPhone</a>
+                      <td style="background-color:${INK};border-radius:999px;">
+                        <a href="${TESTFLIGHT_URL}" style="display:inline-block;padding:16px 28px;font-family:${SANS};font-size:16px;line-height:20px;font-weight:600;color:${WHITE};text-decoration:none;">Get Prydd for iPhone</a>
+                      </td>
+                    </tr>
+                  </table>
                       </td>
                     </tr>
                   </table>

@@ -5,7 +5,6 @@ import {
   MUTED,
   SANS,
   SITE_URL,
-  mark,
   paragraph,
   renderLayout,
 } from './layout';
@@ -29,10 +28,7 @@ export function renderNoticeEmail({
 
   const body = `
               <tr>
-                <td class="px" style="padding:40px 40px 0;">${mark(40)}</td>
-              </tr>
-              <tr>
-                <td class="px" style="padding:32px 40px 8px;">
+                <td class="px" style="padding:40px 40px 8px;">
                   <h1 style="margin:0 0 16px;font-family:${SANS};font-size:22px;line-height:28px;font-weight:600;letter-spacing:-0.4px;color:${INK};">${escapeHtml(title)}</h1>
                   ${paragraph(lead, INK)}
                   ${middle.map((line) => paragraph(line)).join('\n                  ')}

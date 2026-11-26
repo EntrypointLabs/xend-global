@@ -7,7 +7,6 @@ import {
   PAPER,
   SANS,
   SITE_URL,
-  mark,
   paragraph,
   renderLayout,
 } from './layout';
@@ -35,10 +34,7 @@ export function renderCodeEmail(input: CodeEmailInput): {
 
   const body = `
               <tr>
-                <td class="px" style="padding:40px 40px 0;">${mark(40)}</td>
-              </tr>
-              <tr>
-                <td class="px" style="padding:32px 40px 0;">
+                <td class="px" style="padding:40px 40px 0;">
                   <h1 style="margin:0 0 12px;font-family:${SANS};font-size:26px;line-height:32px;font-weight:600;letter-spacing:-0.5px;color:${INK};">${escapeHtml(title)}</h1>
                   <p style="margin:0;font-family:${SANS};font-size:15px;line-height:24px;color:${MUTED};">${escapeHtml(lead)}</p>
                 </td>
