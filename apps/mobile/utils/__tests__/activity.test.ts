@@ -1051,6 +1051,46 @@ describe("an Earn deposit or withdrawal", () => {
     ).toBe("USDC");
   });
 
+  it("shows a SOL deposit in SOL, from the lent asset's own leg", () => {
+    const SOL = "So11111111111111111111111111111111111111112";
+    const sol = { ...deposit, mint: SOL, amountRaw: "1000000000" };
+    const [entry, ...rest] = mapTransferRowsToActivityEntries(
+      [
+        receiptIn({ earn: sol }),
+        makeRow({
+          id: "sol-out",
+          signature: "sig-earn",
+          mint: SOL,
+          amountRaw: "1000000000",
+          toAddress: VAULT,
+          earn: sol,
+        }),
+      ],
+      ctx
+    );
+    expect(rest).toHaveLength(0);
+    expect(entry).toMatchObject({
+      id: "sol-out",
+      mint: SOL,
+      amountRaw: "1000000000",
+      decimals: 9,
+      tokenSymbol: "SOL",
+    });
+  });
+
+  it("labels a USDG deposit as USDG, not USDC", () => {
+    const USDG = "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH";
+    const [entry] = mapTransferRowsToActivityEntries(
+      [receiptIn({ earn: { ...deposit, mint: USDG } })],
+      ctx
+    );
+    expect(entry).toMatchObject({
+      mint: USDG,
+      decimals: 6,
+      tokenSymbol: "USDG",
+    });
+  });
+
   it("keeps separate operations and ordinary rows apart", () => {
     const withdrawal = {
       provider: "kamino" as const,

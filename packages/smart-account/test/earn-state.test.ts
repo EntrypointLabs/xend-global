@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { EARN_PROVIDERS } from "../src/earn.js";
+import {
+  EARN_PROVIDERS,
+  JUPITER_EARN_ASSETS,
+  type EarnAssetId,
+} from "../src/earn.js";
 import {
   decodeEarnExchangeRate,
   sharesValue,
@@ -32,6 +36,22 @@ describe.skipIf(!existsSync(fixture))("recorded lending exchange rates", () => {
       wrongMint[provider === "kamino" ? 128 : 8] =
         wrongMint[provider === "kamino" ? 128 : 8]! ^ 1;
       expect(() => decodeEarnExchangeRate(provider, wrongMint)).toThrow();
+    },
+  );
+  it.each(Object.keys(JUPITER_EARN_ASSETS) as EarnAssetId[])(
+    "decodes Jupiter %s and refuses it as another asset",
+    (asset) => {
+      const snapshot = JSON.parse(readFileSync(fixture, "utf8"));
+      const row = snapshot.accounts.find(
+        (a: { address: string }) =>
+          a.address === JUPITER_EARN_ASSETS[asset].lending,
+      );
+      const data = Buffer.from(row.data, "base64");
+      expect(
+        decodeEarnExchangeRate("jupiter", data, asset).numerator,
+      ).toBeGreaterThan(0n);
+      const other: EarnAssetId = asset === "USDC" ? "USDT" : "USDC";
+      expect(() => decodeEarnExchangeRate("jupiter", data, other)).toThrow();
     },
   );
 });

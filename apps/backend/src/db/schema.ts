@@ -1972,6 +1972,8 @@ export const earnOperations = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     provider: text('provider').$type<'kamino' | 'jupiter'>().notNull(),
+    /** The lent asset's mint; wrapped SOL stands for native SOL. */
+    mint: text('mint').notNull(),
     action: text('action').$type<'deposit' | 'redeem'>().notNull(),
     status: text('status')
       .$type<'pending' | 'confirmed' | 'failed'>()
@@ -1982,8 +1984,11 @@ export const earnOperations = pgTable(
     messageHash: text('message_hash').notNull().unique(),
     quote: jsonb('quote').$type<Record<string, string | number>>().notNull(),
     blockHeight: integer('block_height').notNull(),
+    /** The vault's change in the lent asset, in that asset's base units. */
     cashDeltaRaw: text('cash_delta_raw'),
     shareDeltaRaw: text('share_delta_raw'),
+    /** USD value of the asset moved, priced at confirmation; null if unpriced. */
+    usdValue: text('usd_value'),
     confirmedAt: timestamp('confirmed_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
@@ -1998,9 +2003,11 @@ export const earnPositionSnapshots = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     provider: text('provider').$type<'kamino' | 'jupiter'>().notNull(),
+    mint: text('mint').notNull(),
     day: date('day', { mode: 'string' }).notNull(),
+    /** In the asset's base units, like every amount on this row. */
     valueMinor: text('value_minor').notNull(),
-    /** Deposits minus withdrawals as of this day, in USDC minor units. */
+    /** Deposits minus withdrawals as of this day. */
     netDepositedMinor: text('net_deposited_minor').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .defaultNow()
@@ -2010,6 +2017,8 @@ export const earnPositionSnapshots = pgTable(
       .notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.userId, table.provider, table.day] }),
+    primaryKey({
+      columns: [table.userId, table.provider, table.mint, table.day],
+    }),
   ],
 );

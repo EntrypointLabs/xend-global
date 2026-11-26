@@ -150,7 +150,7 @@ const EVENTS = sql`
     WHERE status = 'completed' AND usdc_leg->>'currency' = 'USDC'
     UNION ALL
     SELECT 'earn', user_id, COALESCE(confirmed_at, created_at),
-      abs(cash_delta_raw::numeric) / 1000000, signature
+      COALESCE(usd_value::numeric, 0), signature
     FROM earn_operations
     WHERE status = 'confirmed' AND action = 'deposit'
       AND cash_delta_raw IS NOT NULL

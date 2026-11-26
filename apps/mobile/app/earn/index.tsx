@@ -26,15 +26,22 @@ export default function EarnScreen() {
   const balances = useBalances();
   const {
     balance,
+    positionsRead,
     depositableMinor,
     hasExternalReceipts,
     withdrawableBalances,
+    canWithdraw,
     balanceDisplay,
     apyDisplay,
     lifetimeEarned,
     lastSevenDays,
   } = useEarnPosition();
-  const held = products.filter((p) => (p.position ?? 0) >= 0.01);
+  // A token that could not be priced still holds a position.
+  const held = products.filter(
+    (p) =>
+      (p.position ?? 0) >= 0.01 ||
+      (p.position === null && p.assets.some((a) => (a.position ?? 0) > 0))
+  );
   const earning = apyDisplay !== "—" && balance !== null && balance > 0;
   const others = products.filter((p) => !held.includes(p));
 
@@ -125,15 +132,10 @@ export default function EarnScreen() {
 
       <EarnActionBar
         hidden={!!flow}
-        canWithdraw={
-          balance !== null &&
-          Object.values(withdrawableBalances).some((value) => value > 0)
-        }
+        canWithdraw={Object.values(canWithdraw).some(Boolean)}
         onDeposit={() => setFlow({ step: "choose" })}
         onWithdraw={() => {
-          const withdrawable = products.filter(
-            (p) => (withdrawableBalances[p.id] ?? 0) > 0
-          );
+          const withdrawable = products.filter((p) => canWithdraw[p.id]);
           setFlow(
             withdrawable.length === 1
               ? { step: "withdraw", productId: withdrawable[0].id }
@@ -159,7 +161,7 @@ export default function EarnScreen() {
         positionBalances={withdrawableBalances}
         balanceReady={
           flow?.step === "withdraw"
-            ? balance !== null
+            ? positionsRead
             : SEED_DEMO
               ? !balances.isLoading && !balances.isError
               : depositableMinor !== null

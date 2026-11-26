@@ -1,5 +1,11 @@
 import { PublicKey, type Connection } from "@solana/web3.js";
-import { EARN_PROVIDERS, EARN_USDC, type EarnProviderId } from "./earn.js";
+import {
+  EARN_PROVIDERS,
+  EARN_USDC,
+  earnAsset,
+  type EarnAssetId,
+  type EarnProviderId,
+} from "./earn.js";
 
 export interface EarnExchangeRate {
   numerator: bigint;
@@ -18,8 +24,10 @@ function integer(bytes: Uint8Array, offset: number, length: number): bigint {
 export function decodeEarnExchangeRate(
   provider: EarnProviderId,
   data: Uint8Array,
+  asset: EarnAssetId = "USDC",
 ): EarnExchangeRate {
   const p = EARN_PROVIDERS[provider];
+  const a = earnAsset(provider, asset);
   const expected =
     provider === "kamino"
       ? [43, 242, 204, 202, 26, 247, 59, 127]
@@ -46,10 +54,7 @@ export function decodeEarnExchangeRate(
       integer(data, l + 248, 16);
     denominator = integer(data, 2592, 8) * sf;
   } else {
-    if (
-      !key(data, 8).equals(EARN_USDC) ||
-      !key(data, 40).equals(new PublicKey(p.receipt))
-    )
+    if (!key(data, 8).equals(a.mint) || !key(data, 40).equals(a.receipt))
       throw new Error("Jupiter market does not match");
     numerator = integer(data, 115, 8);
     denominator = 1_000_000_000_000n;
@@ -61,15 +66,16 @@ export function decodeEarnExchangeRate(
 export async function readEarnExchangeRate(
   connection: Connection,
   provider: EarnProviderId,
+  asset: EarnAssetId = "USDC",
 ): Promise<EarnExchangeRate> {
   const p = EARN_PROVIDERS[provider];
   const info = await connection.getAccountInfo(
-    new PublicKey(p.reserve),
+    earnAsset(provider, asset).reserve,
     "confirmed",
   );
   if (!info || !info.owner.equals(new PublicKey(p.program)))
     throw new Error("Lending account owner mismatch");
-  return decodeEarnExchangeRate(provider, info.data);
+  return decodeEarnExchangeRate(provider, info.data, asset);
 }
 export function sharesValue(shares: bigint, price: EarnExchangeRate): bigint {
   return (shares * price.numerator) / price.denominator;

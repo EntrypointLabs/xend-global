@@ -123,12 +123,14 @@ export const TransferRowSchema = z.object({
   /**
    * The Earn deposit or withdrawal this movement was one leg of, so a client
    * can show it as one entry instead of a USDC send and a receipt-token
-   * receive. Carried on every row of the transaction. `amountRaw` is the USDC
-   * moved, in minor units, always positive. Absent on an ordinary transfer.
+   * receive. Carried on every row of the transaction. `amountRaw` is the
+   * lent asset moved, in `mint`'s base units, always positive. Absent on an
+   * ordinary transfer.
    */
   earn: z
     .object({
       provider: z.enum(['kamino', 'jupiter']),
+      mint: z.string(),
       action: z.enum(['deposit', 'redeem']),
       amountRaw: z.string(),
     })

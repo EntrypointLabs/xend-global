@@ -13,7 +13,10 @@ import {
   associatedTokenAddress,
   EARN_USDC,
   EARN_PROVIDERS,
+  JUPITER_EARN_ASSETS,
   TOKEN_PROGRAM_ID,
+  earnAsset,
+  earnAssetsFor,
   deriveAccountAddresses,
   readEarnExchangeRate,
   decodeAllowedPrograms,
@@ -88,6 +91,34 @@ function setup() {
       Parameters<Connection['sendRawTransaction']>
     >()
     .mockResolvedValue('broadcast');
+  // The vault's USDC and every receipt it could redeem, each in its own program.
+  const vaultTokens = new Map(
+    [
+      { mint: EARN_USDC, program: TOKEN_PROGRAM_ID },
+      ...(['kamino', 'jupiter'] as const).flatMap((provider) =>
+        earnAssetsFor(provider).map((asset) => {
+          const a = earnAsset(provider, asset);
+          return { mint: a.receipt, program: a.tokenProgram };
+        }),
+      ),
+    ]
+      .filter(({ program }) => program.equals(TOKEN_PROGRAM_ID))
+      .map(({ mint, program }) => [
+        associatedTokenAddress(addresses.vault, mint, program).toBase58(),
+        mint,
+      ]),
+  );
+  // Other Earn token accounts the vault has never opened.
+  const emptyEarnAccounts = new Set(
+    (Object.keys(JUPITER_EARN_ASSETS) as (keyof typeof JUPITER_EARN_ASSETS)[])
+      .map((asset) => earnAsset('jupiter', asset))
+      .flatMap((a) => [
+        associatedTokenAddress(addresses.vault, a.mint, a.tokenProgram),
+        associatedTokenAddress(addresses.vault, a.receipt, a.tokenProgram),
+      ])
+      .map((k) => k.toBase58())
+      .filter((k) => !vaultTokens.has(k)),
+  );
   const getAccountInfo = jest.fn(
     (key: PublicKey): Promise<AccountInfo<Buffer> | null> => {
       if (key.equals(program))
@@ -98,11 +129,19 @@ function setup() {
           data: Buffer.alloc(0),
           rentEpoch: 0,
         });
-      const mint = key.equals(
-        associatedTokenAddress(addresses.vault, EARN_USDC, TOKEN_PROGRAM_ID),
-      )
-        ? EARN_USDC
-        : new PublicKey(EARN_PROVIDERS.kamino.receipt);
+      const mint = vaultTokens.get(key.toBase58());
+      if (!mint)
+        return Promise.resolve(
+          emptyEarnAccounts.has(key.toBase58())
+            ? null
+            : {
+                executable: false,
+                owner: PublicKey.default,
+                lamports: 1,
+                data: Buffer.alloc(165),
+                rentEpoch: 0,
+              },
+        );
       const data = Buffer.alloc(165);
       mint.toBuffer().copy(data);
       addresses.vault.toBuffer().copy(data, 32);
@@ -127,6 +166,7 @@ function setup() {
       .mockResolvedValue({ context: { slot: 1 }, value: null }),
     getAccountInfo,
     getTokenAccountsByOwner: jest.fn().mockResolvedValue({ value: [] }),
+    getBalance: jest.fn().mockResolvedValue(3_000_000_000),
   };
   jest
     .mocked(readEarnExchangeRate)
@@ -194,23 +234,19 @@ function setup() {
       return Promise.resolve();
     }),
     reconcile: jest.fn().mockResolvedValue(undefined),
-    earnings: jest.fn().mockResolvedValue({
-      lifetimeMinor: '0',
-      lastSevenDaysMinor: '0',
-      providers: {
-        kamino: {
-          lifetimeMinor: '0',
-          lastSevenDaysMinor: '0',
-          netDepositedMinor: '0',
-        },
-        jupiter: {
-          lifetimeMinor: '0',
-          lastSevenDaysMinor: '0',
-          netDepositedMinor: '0',
-        },
-      },
-    }),
-    providersWithHistory: jest.fn().mockResolvedValue(new Set()),
+    earnings: jest.fn(
+      (_userId: string, positions: { provider: string; mint: string }[]) =>
+        Promise.resolve(
+          positions.map((p) => ({
+            provider: p.provider as 'kamino' | 'jupiter',
+            mint: p.mint,
+            lifetimeMinor: '0' as string | null,
+            lastSevenDaysMinor: '0' as string | null,
+            netDepositedMinor: '0' as string | null,
+          })),
+        ),
+    ),
+    positionsWithHistory: jest.fn().mockResolvedValue(new Set<string>()),
     recordSnapshots: jest.fn().mockResolvedValue(undefined),
     snapshots: jest.fn().mockResolvedValue([]),
     usersWithEarn: jest.fn().mockResolvedValue([]),
@@ -226,6 +262,21 @@ function setup() {
       findBySubOrganization: jest.fn().mockResolvedValue({ policyIds: null }),
     } as unknown as ApprovalSignerStore,
     records,
+    {
+      getUsdPrices: (mints: string[]) =>
+        Promise.resolve(
+          new Map(
+            mints.map((m) => [
+              m,
+              {
+                usdPrice: m === JUPITER_EARN_ASSETS.SOL.mint ? 150 : 1,
+                priceChange24h: null,
+                decimals: null,
+              },
+            ]),
+          ),
+        ),
+    },
   );
   (service as unknown as { rpc: Connection }).rpc =
     rpc as unknown as Connection;
@@ -251,6 +302,25 @@ function setup() {
 }
 afterEach(() => jest.restoreAllMocks());
 describe('Earn preparation and submission', () => {
+  it('trusts any listed forwarder build and refuses an unlisted one', async () => {
+    const h = setup();
+    const current = createHash('sha256')
+      .update(Buffer.from([1, 2, 3]))
+      .digest('hex');
+    const quote = () =>
+      h.service.quote('a', {
+        provider: 'kamino',
+        action: 'deposit',
+        amountMinor: '1000000',
+      });
+    h.config.set('EARN_FORWARDER_CODE_SHA256', `${'0'.repeat(64)},${current}`);
+    await expect(quote()).resolves.toHaveProperty('quoteId');
+    h.config.set('EARN_FORWARDER_CODE_SHA256', `${'0'.repeat(64)}`);
+    await expect(quote()).rejects.toMatchObject({
+      response: { code: 'EARN_UNAVAILABLE' },
+    });
+    h.config.set('EARN_FORWARDER_CODE_SHA256', current);
+  });
   it('prices a deposit and bounds the receipt floor', async () => {
     const h = setup();
     const q = await h.service.quote('a', {
@@ -669,6 +739,10 @@ describe('Earn disabled environments and recovery', () => {
   });
 });
 
+const usdcReceipts = new Set<string>([
+  EARN_PROVIDERS.kamino.receipt,
+  JUPITER_EARN_ASSETS.USDC.receipt,
+]);
 describe('Earn valuation across vault-owned token accounts', () => {
   it('values non-associated receipts without offering them as canonical withdrawals', async () => {
     const h = setup();
@@ -679,6 +753,8 @@ describe('Earn valuation across vault-owned token accounts', () => {
     h.rpc.getTokenAccountsByOwner.mockImplementation(
       (wallet: PublicKey, filter: { mint: PublicKey }) => {
         expect(wallet.equals(owner)).toBe(true);
+        if (!usdcReceipts.has(filter.mint.toBase58()))
+          return Promise.resolve({ value: [] });
         const entry = (amount: bigint, canonical: boolean) => {
           const data = Buffer.alloc(165);
           filter.mint.toBuffer().copy(data);
@@ -717,6 +793,8 @@ describe('Earn valuation across vault-owned token accounts', () => {
       .mockResolvedValue({ ok: false } as Response);
     h.rpc.getTokenAccountsByOwner.mockImplementation(
       (_wallet: PublicKey, filter: { mint: PublicKey }) => {
+        if (!usdcReceipts.has(filter.mint.toBase58()))
+          return Promise.resolve({ value: [] });
         const data = Buffer.alloc(165);
         filter.mint.toBuffer().copy(data);
         owner.toBuffer().copy(data, 32);
@@ -798,22 +876,25 @@ describe('Earn position history', () => {
   it('reports each position earnings beside the totals', async () => {
     const h = setup();
     noFetch();
-    h.records.earnings.mockResolvedValue({
-      lifetimeMinor: null,
-      lastSevenDaysMinor: null,
-      providers: {
-        kamino: {
-          lifetimeMinor: '250',
-          lastSevenDaysMinor: null,
-          netDepositedMinor: '1000',
-        },
-        jupiter: {
-          lifetimeMinor: null,
-          lastSevenDaysMinor: null,
-          netDepositedMinor: null,
-        },
-      },
-    });
+    h.records.earnings.mockImplementation((_userId, positions) =>
+      Promise.resolve(
+        positions.map((p) => ({
+          provider: p.provider as 'kamino' | 'jupiter',
+          mint: p.mint,
+          ...(p.provider === 'kamino'
+            ? {
+                lifetimeMinor: '250',
+                lastSevenDaysMinor: null,
+                netDepositedMinor: '1000',
+              }
+            : {
+                lifetimeMinor: null,
+                lastSevenDaysMinor: null,
+                netDepositedMinor: null,
+              }),
+        })),
+      ),
+    );
     const catalog = await h.service.catalog('a');
     expect(catalog).not.toHaveProperty('providers');
     expect(catalog.lifetimeMinor).toBeNull();
@@ -837,14 +918,21 @@ describe('Earn position history', () => {
     noFetch();
     h.rpc.getTokenAccountsByOwner.mockResolvedValue({ value: [] });
     jest
-      .mocked(h.records.providersWithHistory)
-      .mockResolvedValue(new Set(['jupiter']));
+      .mocked(h.records.positionsWithHistory)
+      .mockResolvedValue(new Set([`jupiter:${EARN_USDC.toBase58()}`]));
     await h.service.catalog('a');
     await flush();
     expect(h.records.recordSnapshots).toHaveBeenCalledWith(
       'a',
       new Date().toISOString().slice(0, 10),
-      [{ provider: 'jupiter', valueMinor: '0', netDepositedMinor: '0' }],
+      [
+        {
+          provider: 'jupiter',
+          mint: EARN_USDC.toBase58(),
+          valueMinor: '0',
+          netDepositedMinor: '0',
+        },
+      ],
     );
     jest
       .mocked(h.records.recordSnapshots)
@@ -887,13 +975,342 @@ describe('Earn position history', () => {
         netDepositedMinor: '15000000',
       },
     ]);
-    await expect(h.service.history('a', 'jupiter', 'all')).resolves.toEqual({
+    await expect(
+      h.service.history('a', 'jupiter', 'all', EARN_USDC.toBase58()),
+    ).resolves.toEqual({
       provider: 'jupiter',
+      mint: EARN_USDC.toBase58(),
       points: [
         { day: '2026-11-24', valueMinor: '14999999', earnedMinor: '0' },
         { day: '2026-11-25', valueMinor: '15030000', earnedMinor: '30000' },
       ],
     });
-    expect(h.records.snapshots).toHaveBeenCalledWith('a', 'jupiter', null);
+    expect(h.records.snapshots).toHaveBeenCalledWith(
+      'a',
+      { provider: 'jupiter', mint: EARN_USDC.toBase58() },
+      null,
+    );
+  });
+});
+
+describe('Earn beyond USDC', () => {
+  it('combines every token into one dollar history when no mint is asked for', async () => {
+    const h = setup();
+    h.records.snapshots.mockImplementation(
+      (_userId: string, key: { provider: string; mint: string }) =>
+        Promise.resolve(
+          key.mint === EARN_USDC.toBase58()
+            ? [
+                {
+                  day: '2026-11-24',
+                  valueMinor: '10000000',
+                  netDepositedMinor: '10000000',
+                },
+                {
+                  day: '2026-11-25',
+                  valueMinor: '10010000',
+                  netDepositedMinor: '10000000',
+                },
+              ]
+            : key.mint === JUPITER_EARN_ASSETS.SOL.mint
+              ? [
+                  {
+                    day: '2026-11-25',
+                    valueMinor: '1001000000',
+                    netDepositedMinor: '1000000000',
+                  },
+                ]
+              : [],
+        ),
+    );
+    await expect(h.service.history('a', 'jupiter', '30d')).resolves.toEqual({
+      provider: 'jupiter',
+      mint: null,
+      points: [
+        { day: '2026-11-24', valueMinor: '10000000', earnedMinor: '0' },
+        // $10.01 of USDC plus 1.001 SOL at $150.
+        { day: '2026-11-25', valueMinor: '160160000', earnedMinor: '160000' },
+      ],
+    });
+    expect(h.records.snapshots).toHaveBeenCalledTimes(4);
+  });
+  it('refuses a combined history it cannot price in full', async () => {
+    const h = setup();
+    (
+      h.service as unknown as {
+        prices: { getUsdPrices: () => Promise<Map<string, unknown>> };
+      }
+    ).prices = { getUsdPrices: () => Promise.resolve(new Map()) };
+    h.records.snapshots.mockImplementation(
+      (_userId: string, key: { provider: string; mint: string }) =>
+        Promise.resolve(
+          key.mint === JUPITER_EARN_ASSETS.SOL.mint
+            ? [
+                {
+                  day: '2026-11-25',
+                  valueMinor: '1001000000',
+                  netDepositedMinor: '1000000000',
+                },
+              ]
+            : [],
+        ),
+    );
+    await expect(
+      h.service.history('a', 'jupiter', '30d'),
+    ).rejects.toMatchObject({ response: { code: 'EARN_UNAVAILABLE' } });
+  });
+
+  // ConfigService.set also writes process.env, which outlives each setup().
+  afterEach(() => delete process.env.EARN_ENABLED_ASSETS);
+  const USDG = JUPITER_EARN_ASSETS.USDG.mint,
+    SOL = JUPITER_EARN_ASSETS.SOL.mint;
+  const noFetch = () =>
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: false } as Response);
+  it('refuses assets that are not enabled, and anything but USDC on Kamino', async () => {
+    const h = setup();
+    await expect(
+      h.service.quote('a', {
+        provider: 'jupiter',
+        mint: USDG,
+        action: 'deposit',
+        amountMinor: '1000000',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'EARN_ASSET_UNAVAILABLE' } });
+    h.config.set('EARN_ENABLED_ASSETS', 'USDC,USDT,USDG,SOL');
+    await expect(
+      h.service.quote('a', {
+        provider: 'kamino',
+        mint: USDG,
+        action: 'deposit',
+        amountMinor: '1000000',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'EARN_ASSET_UNAVAILABLE' } });
+    await expect(
+      h.service.quote('a', {
+        provider: 'jupiter',
+        mint: 'So11111111111111111111111111111111111111111',
+        action: 'deposit',
+        amountMinor: '1000000',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'EARN_ASSET_UNAVAILABLE' } });
+  });
+  it('quotes and prepares a USDG deposit through Token-2022', async () => {
+    const h = setup();
+    h.config.set('EARN_ENABLED_ASSETS', 'USDC,USDG');
+    const usdg = earnAsset('jupiter', 'USDG');
+    const ata = associatedTokenAddress(
+      deriveAccountAddresses(42n).vault,
+      usdg.mint,
+      usdg.tokenProgram,
+    );
+    const original = h.rpc.getAccountInfo.getMockImplementation()!;
+    h.rpc.getAccountInfo.mockImplementation((key: PublicKey) => {
+      if (!key.equals(ata)) return original(key);
+      const data = Buffer.alloc(182);
+      usdg.mint.toBuffer().copy(data);
+      deriveAccountAddresses(42n).vault.toBuffer().copy(data, 32);
+      data.writeBigUInt64LE(5_000_000n, 64);
+      data[165] = 2;
+      return Promise.resolve({
+        executable: false,
+        owner: usdg.tokenProgram,
+        lamports: 1,
+        data,
+        rentEpoch: 0,
+      });
+    });
+    await expect(
+      h.service.quote('a', {
+        provider: 'jupiter',
+        mint: USDG,
+        action: 'deposit',
+        amountMinor: '6000000',
+      }),
+    ).rejects.toThrow('Amount exceeds your balance');
+    const q = await h.service.quote('a', {
+      provider: 'jupiter',
+      mint: USDG,
+      action: 'deposit',
+      amountMinor: '5000000',
+    });
+    expect(q).toMatchObject({ mint: USDG, inputAmountRaw: '5000000' });
+    const prep = await h.service.prepare('a', q.quoteId);
+    expect(prep.quote.mint).toBe(USDG);
+    const keys = h.compile.mock.calls[0][0].instructions.flatMap((ix) => [
+      ix.programId,
+      ...ix.keys.map((k) => k.pubkey),
+    ]);
+    expect(keys.some((k) => k.equals(usdg.tokenProgram))).toBe(true);
+    expect(keys.some((k) => k.equals(usdg.receipt))).toBe(true);
+    expect(keys.some((k) => k.equals(EARN_USDC))).toBe(false);
+  });
+  it('deposits native SOL up to the vault lamports and records the mint', async () => {
+    const h = setup();
+    h.config.set('EARN_ENABLED_ASSETS', 'USDC,SOL');
+    await expect(
+      h.service.quote('a', {
+        provider: 'jupiter',
+        mint: SOL,
+        action: 'deposit',
+        amountMinor: '3000000001',
+      }),
+    ).rejects.toThrow('Amount exceeds your balance');
+    const q = await h.service.quote('a', {
+      provider: 'jupiter',
+      mint: SOL,
+      action: 'deposit',
+      amountMinor: '1000000000',
+    });
+    const prep = await h.service.prepare('a', q.quoteId);
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(prep.unsignedTxBase64, 'base64'),
+    );
+    tx.sign([h.primary, h.approval]);
+    await h.service.submit('a', Buffer.from(tx.serialize()).toString('base64'));
+    expect([...h.durable.values()][0]).toMatchObject({
+      provider: 'jupiter',
+      mint: SOL,
+      action: 'deposit',
+    });
+  });
+  it('repays the sponsor wrapped-SOL rent only when the vault has no wrapped-SOL account', async () => {
+    const h = setup();
+    h.config.set('EARN_ENABLED_ASSETS', 'USDC,SOL');
+    const sol = earnAsset('jupiter', 'SOL');
+    const wsol = associatedTokenAddress(
+      deriveAccountAddresses(42n).vault,
+      sol.mint,
+      sol.tokenProgram,
+    );
+    const refunds = async () => {
+      const q = await h.service.quote('a', {
+        provider: 'jupiter',
+        mint: SOL,
+        action: 'deposit',
+        amountMinor: '1000000000',
+      });
+      await h.service.prepare('a', q.quoteId);
+      const ixs = h.compile.mock.calls.at(-1)![0].instructions;
+      return ixs.some((ix) =>
+        ix.keys.some(
+          (k) =>
+            k.pubkey.equals(new PublicKey(h.authority.address)) && !k.isSigner,
+        ),
+      );
+    };
+    expect(await refunds()).toBe(true);
+    const original = h.rpc.getAccountInfo.getMockImplementation()!;
+    h.rpc.getAccountInfo.mockImplementation((key: PublicKey) =>
+      key.equals(wsol)
+        ? Promise.resolve({
+            executable: false,
+            owner: TOKEN_PROGRAM_ID,
+            lamports: 2_039_280,
+            data: Buffer.alloc(165),
+            rentEpoch: 0,
+          })
+        : original(key),
+    );
+    expect(await refunds()).toBe(false);
+  });
+  it('lists every Jupiter asset with its own figures and Kamino with USDC only', async () => {
+    const h = setup();
+    noFetch();
+    h.config.set('EARN_ENABLED_ASSETS', 'USDC,SOL');
+    const catalog = await h.service.catalog('a');
+    const kamino = catalog.products.find((p) => p.id === 'kamino')!;
+    const jupiter = catalog.products.find((p) => p.id === 'jupiter')!;
+    expect(kamino.assets.map((a) => a.symbol)).toEqual(['USDC']);
+    expect(jupiter.assets.map((a) => a.symbol)).toEqual([
+      'USDC',
+      'USDG',
+      'SOL',
+      'USDT',
+    ]);
+    const sol = jupiter.assets.find((a) => a.symbol === 'SOL')!;
+    expect(jupiter.available).toBe(true);
+    expect(sol).toMatchObject({
+      mint: SOL,
+      decimals: 9,
+      positionRaw: '0',
+      positionUsd: '0.000000',
+      depositableRaw: '3000000000',
+      lifetimeEarnedRaw: '0',
+      lastSevenDaysEarnedRaw: '0',
+      lifetimeEarnedUsd: '0.000000',
+      lastSevenDaysEarnedUsd: '0.000000',
+      available: true,
+      withdrawAvailable: false,
+    });
+    expect(jupiter.assets.find((a) => a.symbol === 'USDG')!.available).toBe(
+      false,
+    );
+    expect(jupiter.assets.find((a) => a.symbol === 'USDC')).toMatchObject({
+      depositableRaw: '100000000',
+      available: true,
+    });
+  });
+  it('values a SOL position in its own row and keeps the USDC fields USDC', async () => {
+    const h = setup();
+    noFetch();
+    const solReceipt = JUPITER_EARN_ASSETS.SOL.receipt;
+    const owner = deriveAccountAddresses(42n).vault;
+    h.rpc.getTokenAccountsByOwner.mockImplementation(
+      (_wallet: PublicKey, filter: { mint: PublicKey }) => {
+        if (filter.mint.toBase58() !== solReceipt)
+          return Promise.resolve({ value: [] });
+        const data = Buffer.alloc(165);
+        filter.mint.toBuffer().copy(data);
+        owner.toBuffer().copy(data, 32);
+        data.writeBigUInt64LE(1_000_000_000n, 64);
+        return Promise.resolve({
+          value: [
+            {
+              pubkey: associatedTokenAddress(
+                owner,
+                filter.mint,
+                TOKEN_PROGRAM_ID,
+              ),
+              account: {
+                owner: TOKEN_PROGRAM_ID,
+                data,
+                lamports: 1,
+                executable: false,
+                rentEpoch: 0,
+              },
+            },
+          ],
+        });
+      },
+    );
+    h.records.earnings.mockImplementation((_userId, positions) =>
+      Promise.resolve(
+        positions.map((p) => ({
+          provider: p.provider as 'kamino' | 'jupiter',
+          mint: p.mint,
+          lifetimeMinor: p.mint === SOL ? '100000000' : '0',
+          lastSevenDaysMinor: p.mint === SOL ? null : '0',
+          netDepositedMinor: '0',
+        })),
+      ),
+    );
+    const catalog = await h.service.catalog('a');
+    const jupiter = catalog.products.find((p) => p.id === 'jupiter')!;
+    expect(jupiter.assets.find((a) => a.symbol === 'SOL')).toMatchObject({
+      lifetimeEarnedRaw: '100000000',
+      lifetimeEarnedUsd: '15.000000',
+      lastSevenDaysEarnedUsd: null,
+      positionRaw: '2000000000',
+      positionUsd: '300.000000',
+      withdrawableRaw: '2000000000',
+      withdrawAvailable: false,
+    });
+    // The product-level fields stay USDC for app builds that read them as such.
+    expect(jupiter.positionMinor).toBe('0');
+    expect(jupiter.withdrawableMinor).toBe('0');
+    expect(jupiter.withdrawAvailable).toBe(false);
+    expect(jupiter.positionShares).toBe('0');
   });
 });

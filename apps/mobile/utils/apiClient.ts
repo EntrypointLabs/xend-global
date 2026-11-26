@@ -699,11 +699,13 @@ export const TransferRowSchema = z.object({
     .catch(undefined),
   /**
    * The Earn deposit or withdrawal this row was one leg of, on every leg.
-   * `amountRaw` is the USDC moved, in minor units, always positive.
+   * `amountRaw` is the lent asset moved, in `mint`'s base units, always
+   * positive. Rows from before Earn lent more than USDC carry no mint.
    */
   earn: z
     .object({
       provider: z.enum(["kamino", "jupiter"]),
+      mint: z.string().optional(),
       action: z.enum(["deposit", "redeem"]),
       amountRaw: z.string(),
     })
@@ -2122,13 +2124,20 @@ class BackendClient {
     provider: EarnProvider,
     action: EarnAction,
     amountMinor: string,
-    withdrawAll = false
+    withdrawAll = false,
+    mint?: string
   ) {
     return EarnQuoteSchema.parse(
       await this.request<unknown>("/earn/quote", {
         auth: true,
         method: "POST",
-        body: JSON.stringify({ provider, action, amountMinor, withdrawAll }),
+        body: JSON.stringify({
+          provider,
+          action,
+          amountMinor,
+          withdrawAll,
+          ...(mint ? { mint } : {}),
+        }),
       })
     );
   }

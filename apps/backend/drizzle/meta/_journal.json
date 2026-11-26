@@ -498,6 +498,13 @@
       "when": 1795641287664,
       "tag": "0070_earn_position_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1795652310458,
+      "tag": "0071_earn_asset_mint",
+      "breakpoints": true
     }
   ]
 }

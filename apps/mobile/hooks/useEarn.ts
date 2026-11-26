@@ -8,6 +8,11 @@ import {
   formatEarnedMinor,
   productEarnings,
   selectEarnBalance,
+  productCanWithdraw,
+  productHasExternalReceipts,
+  productValueUsd,
+  productEarningsUsd,
+  catalogEarnings,
   type EarnProvider,
   type EarnRange,
   type TokenRange,
@@ -122,13 +127,15 @@ export function useEarnProducts() {
   return {
     ...query,
     products: EARN_PRODUCTS.map((p) => {
-      const earned = productEarnings(query.data, p.id);
       const live = query.data?.products.find((row) => row.id === p.id);
+      // The product-level earnings are USDC only; token rows cover the rest.
+      const earned =
+        (live && productEarningsUsd(live)) ?? productEarnings(query.data, p.id);
       const apy = SEED_DEMO ? 0.0359 : (live?.apy ?? null);
       const position = SEED_DEMO
         ? 0
         : live && !query.isError
-          ? Number(live.positionMinor) / 1e6
+          ? productValueUsd(live)
           : null;
       const available =
         !SEED_DEMO && sessionTier === "full" && !!live?.available;
@@ -147,8 +154,14 @@ export function useEarnProducts() {
                   ...USDC_ASSET,
                   apy,
                   apyDisplay: apy === null ? "—" : `${(apy * 100).toFixed(2)}%`,
-                  position,
-                  positionUsd: position,
+                  position:
+                    live && !query.isError
+                      ? Number(live.positionMinor) / 1e6
+                      : null,
+                  positionUsd:
+                    live && !query.isError
+                      ? Number(live.positionMinor) / 1e6
+                      : null,
                   withdrawable: live ? Number(live.withdrawableMinor) / 1e6 : 0,
                   lifetimeEarned:
                     earned.lifetimeMinor === null
@@ -190,8 +203,15 @@ export function useEarnHeadlineApy(): number {
   );
 }
 export interface EarnPosition {
-  /** Canonical receipt accounts the current withdrawal route can spend. */
+  /** USDC each product's canonical receipt accounts can withdraw, in dollars. */
   withdrawableBalances: Record<string, number>;
+  /** Whether each product has any token, USDC or not, that can be withdrawn. */
+  canWithdraw: Record<string, boolean>;
+  /**
+   * The positions were read, so withdrawals can be offered from each token's
+   * own amount even when the dollar total is unknown.
+   */
+  positionsRead: boolean;
   balance: number | null;
   depositableMinor: string | null;
   hasExternalReceipts: boolean;
@@ -210,19 +230,32 @@ export function useEarnPosition(): EarnPosition {
     products?.map((p) => [p.id, Number(p.withdrawableMinor) / 1e6]) ?? []
   );
   const balance = SEED_DEMO ? 0 : selectEarnBalance(products, query.isError);
-  const unknownHeldRate = products?.some(
-    (p) => BigInt(p.positionMinor) > 0n && p.apy === null
+  // Each held token at its own rate, weighted by what it is worth.
+  const held = (products ?? []).flatMap((p) =>
+    p.assets?.length
+      ? p.assets
+          .filter((a) => BigInt(a.positionRaw) > 0n)
+          .map((a) => ({
+            apy: a.apy,
+            usd: a.positionUsd === null ? null : Number(a.positionUsd),
+          }))
+      : BigInt(p.positionMinor) > 0n
+        ? [{ apy: p.apy, usd: Number(p.positionMinor) / 1e6 }]
+        : []
   );
-  const weighted =
-    products?.reduce(
-      (sum, p) => sum + (p.apy ?? 0) * (Number(p.positionMinor) / 1e6),
-      0
-    ) ?? 0;
+  const unknownHeldRate = held.some((h) => h.apy === null || h.usd === null);
+  const earned = catalogEarnings(query.data);
+  const weighted = held.reduce(
+    (sum, h) => sum + (h.apy ?? 0) * (h.usd ?? 0),
+    0
+  );
   return {
     withdrawableBalances: balances,
-    hasExternalReceipts: !!products?.some(
-      (p) => BigInt(p.positionMinor) > BigInt(p.withdrawableMinor)
+    positionsRead: SEED_DEMO || (!!products && !query.isError),
+    canWithdraw: Object.fromEntries(
+      products?.map((p) => [p.id, productCanWithdraw(p)]) ?? []
     ),
+    hasExternalReceipts: !!products?.some(productHasExternalReceipts),
     balance,
     depositableMinor: query.isError
       ? null
@@ -239,10 +272,10 @@ export function useEarnPosition(): EarnPosition {
           : "0.00%",
     lifetimeEarned: SEED_DEMO
       ? "0.00"
-      : formatEarnedMinor(query.data?.lifetimeMinor),
+      : formatEarnedMinor(earned.lifetimeMinor),
     lastSevenDays: SEED_DEMO
       ? "0.00"
-      : formatEarnedMinor(query.data?.lastSevenDaysMinor),
+      : formatEarnedMinor(earned.lastSevenDaysMinor),
   };
 }
 

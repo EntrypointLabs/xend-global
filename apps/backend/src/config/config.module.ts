@@ -482,12 +482,18 @@ export const USDC_MINT_BY_CLUSTER = {
           .uri()
           .default('https://lite-api.jup.ag/swap/v1'),
         JUPITER_API_KEY: Joi.string().optional().allow(''),
+        // One or more reviewed forwarder builds, comma-separated, so the
+        // current program and its reviewed upgrade can both be trusted.
         EARN_FORWARDER_CODE_SHA256: Joi.string()
-          .pattern(/^[0-9a-f]{64}$/)
+          .pattern(/^[0-9a-f]{64}(,[0-9a-f]{64})*$/)
           .allow('')
           .optional(),
         EARN_FORWARDER_PROGRAM: Joi.string().allow('').optional(),
         EARN_LOOKUP_TABLE: Joi.string().allow('').optional(),
+        // Comma-separated Earn assets open for new moves (USDC, USDT, USDG, SOL).
+        // Anything beyond USDC needs the multi-asset forwarder deployed and an
+        // app release that sends a mint and verifies the asset it signs.
+        EARN_ENABLED_ASSETS: Joi.string().default('USDC'),
         EARN_DEPOSITS_KILLSWITCH: Joi.boolean()
           .truthy('1')
           .falsy('0', '')

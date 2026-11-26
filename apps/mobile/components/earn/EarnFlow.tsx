@@ -93,7 +93,9 @@ export function EarnFlow(props: Props) {
       : undefined;
   const fullScreen = flow?.step === "deposit" || flow?.step === "withdraw";
   const withdrawable = props.products.filter(
-    (p) => (props.positionBalances[p.id] ?? 0) > 0
+    (p) =>
+      (props.positionBalances[p.id] ?? 0) > 0 ||
+      p.assets.some((a) => a.withdrawable > 0)
   );
   const pickable =
     flow?.step === "choose-withdraw" ? withdrawable : props.products;
@@ -441,7 +443,8 @@ function DepositScreen({
       product.id,
       withdraw ? "redeem" : "deposit",
       amount,
-      withdraw && amount === limit
+      withdraw && amount === limit,
+      dollars ? undefined : asset.mint
     );
     if (result.status === "confirmed") {
       showToast(
@@ -473,17 +476,18 @@ function DepositScreen({
     setChosen(withdraw ? (choice?.amount ?? 0) : 0);
     setPicking(false);
   };
-  // Only USDC moves until the server can build a transaction for any other
-  // token; the rest can be looked at but not sent.
-  const supported = dollars;
+  // The server opens each token separately, so another token can be looked at
+  // before it can be moved.
+  const open = dollars
+    ? !!(withdraw ? product.withdrawAvailable : product.available)
+    : !!(withdraw ? lent?.withdrawAvailable : lent?.available);
+  const supported = dollars || open;
   const canMove =
     execution.ready &&
     (execution.hasPending ||
       (execution.configured &&
-        supported &&
-        (withdraw
-          ? !!product.withdrawAvailable
-          : !!product.available && depositsEnabled) &&
+        open &&
+        (withdraw || depositsEnabled) &&
         balanceReady &&
         !product.simulated &&
         amount > 0));
@@ -710,8 +714,7 @@ function DepositScreen({
               ? "Temporarily unavailable"
               : !supported
                 ? `${asset.symbol} ${withdraw ? "withdrawals" : "deposits"} are coming soon`
-                : !(withdraw ? product.withdrawAvailable : product.available) ||
-                    !execution.configured
+                : !open || !execution.configured
                   ? "Not available yet"
                   : withdraw
                     ? "Arrives in your cash balance. Network fees are covered."

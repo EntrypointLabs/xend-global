@@ -3081,7 +3081,11 @@ describe.skipIf(!haveEarn)(
         );
         const shares = tokenBalance(h.svm, position)!;
         expect(shares).toBeGreaterThan(0n);
-        expect(tokenBalance(h.svm, h.cash)).toBe(990_000_000n);
+        // Kamino can leave a base unit of the input unspent; the forwarder returns it.
+        expect(tokenBalance(h.svm, h.cash)).toBeGreaterThanOrEqual(
+          990_000_000n,
+        );
+        expect(tokenBalance(h.svm, h.cash)).toBeLessThan(990_000_010n);
         const source = Buffer.from(h.svm.getAccount(h.cash)!.data);
         expect(source.readUInt32LE(72)).toBe(0);
         const redeemed = runEarn(h, provider, "redeem", shares);
@@ -3156,3 +3160,258 @@ describe.skipIf(!haveEarn)(
     });
   },
 );
+
+// Multi-asset Jupiter Earn: USDG exercises Token-2022, SOL exercises wrapping
+// the vault's native lamports and unwrapping them again under the same policy.
+import {
+  earnAsset,
+  JUPITER_EARN_ASSETS,
+  type EarnAssetId,
+} from "../src/earn.js";
+const TOKEN_2022 = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+function multiHarness() {
+  const h = earnHarness();
+  h.svm.addProgramFromFile(
+    TOKEN_2022,
+    join(EARN_FIXTURES, `${TOKEN_2022.toBase58()}.so`),
+  );
+  return h;
+}
+function fundVaultToken(
+  h: ReturnType<typeof earnHarness>,
+  asset: EarnAssetId,
+  amount: bigint,
+) {
+  const { mint, tokenProgram } = earnAsset("jupiter", asset);
+  const ata = associatedTokenAddress(h.addresses.vault, mint, tokenProgram);
+  const create = new TransactionInstruction({
+    programId: new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
+    data: Buffer.from([1]),
+    keys: [
+      { pubkey: h.sponsor.publicKey, isSigner: true, isWritable: true },
+      { pubkey: ata, isSigner: false, isWritable: true },
+      { pubkey: h.addresses.vault, isSigner: false, isWritable: false },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: tokenProgram, isSigner: false, isWritable: false },
+    ],
+  });
+  const msg = new TransactionMessage({
+    payerKey: h.sponsor.publicKey,
+    recentBlockhash: h.svm.latestBlockhash(),
+    instructions: [create],
+  }).compileToV0Message();
+  const tx = new VersionedTransaction(msg);
+  tx.sign([h.sponsor]);
+  const r = h.svm.sendTransaction(tx);
+  if (failed(r)) throw new Error(String(r));
+  const acct = h.svm.getAccount(ata)!;
+  const data = Buffer.from(acct.data);
+  data.writeBigUInt64LE(amount, 64);
+  h.svm.setAccount(ata, { ...acct, data });
+  return ata;
+}
+function runAsset(
+  h: ReturnType<typeof earnHarness>,
+  asset: EarnAssetId,
+  action: "deposit" | "redeem",
+  amount: bigint,
+  minimumOut = 1n,
+  mutate?: (ixs: TransactionInstruction[]) => void,
+) {
+  const ixs = buildEarnInstructions({
+    provider: "jupiter",
+    asset,
+    action,
+    amount,
+    minimumOut,
+    addresses: h.addresses,
+    policy: h.abovePolicy,
+    signers: [h.primary.publicKey, h.approval.publicKey],
+    feePayer: h.sponsor.publicKey,
+    forwarderProgram: h.forwarder,
+    allowedPrograms: ABOVE_LIMIT_PROGRAM_ALLOWLIST,
+    wrappedSolAccountExists: !!h.svm.getAccount(
+      associatedTokenAddress(
+        h.addresses.vault,
+        earnAsset("jupiter", "SOL").mint,
+        TOKEN_PROGRAM,
+      ),
+    ),
+  });
+  mutate?.(ixs);
+  const authority = earnAuthority(h.addresses.vault, h.forwarder);
+  const { mint, tokenProgram, receipt } = earnAsset("jupiter", asset);
+  const dynamic = new Set([
+    authority.toBase58(),
+    associatedTokenAddress(authority, mint, tokenProgram).toBase58(),
+    associatedTokenAddress(authority, receipt, tokenProgram).toBase58(),
+  ]);
+  const entries = new Map<string, PublicKey>();
+  for (const key of earnProviderAccounts("jupiter", action, authority, asset))
+    if (!dynamic.has(key.pubkey.toBase58()))
+      entries.set(key.pubkey.toBase58(), key.pubkey);
+  const list = [...entries.values()];
+  const tableKey = Keypair.generate().publicKey;
+  const raw = Buffer.alloc(56 + list.length * 32);
+  raw.writeUInt32LE(1);
+  raw.writeBigUInt64LE(0xffffffffffffffffn, 4);
+  list.forEach((k, i) => k.toBuffer().copy(raw, 56 + i * 32));
+  h.svm.setAccount(tableKey, {
+    lamports: Number(h.svm.minimumBalanceForRentExemption(BigInt(raw.length))),
+    data: raw,
+    owner: new PublicKey("AddressLookupTab1e1111111111111111111111111"),
+    executable: false,
+    rentEpoch: 0,
+  });
+  const table = new AddressLookupTableAccount({
+    key: tableKey,
+    state: AddressLookupTableAccount.deserialize(raw),
+  });
+  const message = new TransactionMessage({
+    payerKey: h.sponsor.publicKey,
+    recentBlockhash: h.svm.latestBlockhash(),
+    instructions: [
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
+      ...ixs,
+    ],
+  }).compileToV0Message([table]);
+  const tx = new VersionedTransaction(message);
+  tx.sign([h.sponsor, h.primary, h.approval]);
+  const size = tx.serialize().length;
+  const result = h.svm.sendTransaction(tx);
+  h.svm.expireBlockhash();
+  return { size, result };
+}
+describe.skipIf(!haveEarn)("Jupiter Earn beyond USDC", () => {
+  it.each(["USDG", "USDT"] as const)("deposits and redeems %s", (asset) => {
+    const h = multiHarness();
+    const cash = fundVaultToken(h, asset, 1_000_000_000n);
+    const { receipt, tokenProgram } = earnAsset("jupiter", asset);
+    const dep = runAsset(h, asset, "deposit", 10_000_000n);
+    console.log(
+      asset,
+      "deposit bytes",
+      dep.size,
+      failed(dep.result) ? String(dep.result) : "ok",
+    );
+    expect(failed(dep.result)).toBe(false);
+    expect(dep.size).toBeLessThanOrEqual(1232);
+    const position = associatedTokenAddress(
+      h.addresses.vault,
+      receipt,
+      tokenProgram,
+    );
+    const shares = tokenBalance(h.svm, position)!;
+    expect(shares).toBeGreaterThan(0n);
+    expect(tokenBalance(h.svm, cash)).toBe(990_000_000n);
+    expect(Buffer.from(h.svm.getAccount(cash)!.data).readUInt32LE(72)).toBe(0);
+    const red = runAsset(h, asset, "redeem", shares);
+    console.log(
+      asset,
+      "redeem bytes",
+      red.size,
+      failed(red.result) ? String(red.result) : "ok",
+    );
+    expect(failed(red.result)).toBe(false);
+    expect(red.size).toBeLessThanOrEqual(1232);
+    expect(tokenBalance(h.svm, position)).toBe(0n);
+    expect(tokenBalance(h.svm, cash)).toBeGreaterThan(999_900_000n);
+  });
+  it("deposits native SOL and redeems back to native SOL", () => {
+    const h = multiHarness();
+    h.svm.airdrop(h.addresses.vault, 5n * LAMPORTS_PER_SOL_BIG);
+    const vaultBefore = h.svm.getBalance(h.addresses.vault)!;
+    const sponsorBefore = h.svm.getBalance(h.sponsor.publicKey)!;
+    const { receipt } = earnAsset("jupiter", "SOL");
+    const wsol = associatedTokenAddress(
+      h.addresses.vault,
+      earnAsset("jupiter", "SOL").mint,
+      TOKEN_PROGRAM,
+    );
+    const dep = runAsset(h, "SOL", "deposit", 1_000_000_000n);
+    console.log(
+      "SOL deposit bytes",
+      dep.size,
+      failed(dep.result) ? String(dep.result) : "ok",
+    );
+    expect(failed(dep.result)).toBe(false);
+    expect(dep.size).toBeLessThanOrEqual(1232);
+    expect(h.svm.getAccount(wsol)?.lamports ?? 0).toBe(0);
+    const position = associatedTokenAddress(
+      h.addresses.vault,
+      receipt,
+      TOKEN_PROGRAM,
+    );
+    const shares = tokenBalance(h.svm, position)!;
+    expect(shares).toBeGreaterThan(0n);
+    expect(h.svm.getBalance(h.addresses.vault)).toBe(
+      vaultBefore - 1_000_000_000n,
+    );
+    const red = runAsset(h, "SOL", "redeem", shares);
+    console.log(
+      "SOL redeem bytes",
+      red.size,
+      failed(red.result) ? String(red.result) : "ok",
+    );
+    expect(failed(red.result)).toBe(false);
+    expect(red.size).toBeLessThanOrEqual(1232);
+    expect(tokenBalance(h.svm, position)).toBe(0n);
+    expect(h.svm.getAccount(wsol)?.lamports ?? 0).toBe(0);
+    expect(h.svm.getBalance(h.addresses.vault)!).toBeGreaterThan(
+      vaultBefore - 1_000n,
+    );
+    console.log(
+      "SOL vault delta",
+      h.svm.getBalance(h.addresses.vault)! - vaultBefore,
+      "sponsor delta",
+      h.svm.getBalance(h.sponsor.publicKey)! - sponsorBefore,
+    );
+  });
+  it("returns an existing wrapped-SOL account's rent to the vault, not the sponsor", () => {
+    const h = multiHarness();
+    h.svm.airdrop(h.addresses.vault, 5n * LAMPORTS_PER_SOL_BIG);
+    const wsol = fundVaultToken(h, "SOL", 0n);
+    const rent = BigInt(h.svm.getAccount(wsol)!.lamports);
+    const vaultBefore = h.svm.getBalance(h.addresses.vault)!;
+    const sponsorBefore = h.svm.getBalance(h.sponsor.publicKey)!;
+    const dep = runAsset(h, "SOL", "deposit", 1_000_000_000n);
+    expect(failed(dep.result)).toBe(false);
+    expect(h.svm.getAccount(wsol)?.lamports ?? 0).toBe(0);
+    expect(h.svm.getBalance(h.addresses.vault)).toBe(
+      vaultBefore - 1_000_000_000n + rent,
+    );
+    // The sponsor paid only fees and the new receipt and staging accounts.
+    expect(h.svm.getBalance(h.sponsor.publicKey)!).toBeLessThan(sponsorBefore);
+  });
+  it("still refuses a non-USDC asset on Kamino", () => {
+    expect(() => earnAsset("kamino", "USDG")).toThrow();
+  });
+  it.each(["receipt", "lending", "asset"] as const)(
+    "rejects a USDG deposit routed to USDC's %s and keeps the USDG",
+    (kind) => {
+      const h = multiHarness();
+      const cash = fundVaultToken(h, "USDG", 1_000_000_000n);
+      const usdc = JUPITER_EARN_ASSETS.USDC;
+      const { result } = runAsset(
+        h,
+        "USDG",
+        "deposit",
+        10_000_000n,
+        1n,
+        (ixs) => {
+          const forward = ixs.find((ix) => ix.programId.equals(h.forwarder))!;
+          if (kind === "receipt")
+            forward.keys[4]!.pubkey = new PublicKey(usdc.receipt);
+          if (kind === "lending")
+            forward.keys[11 + 5]!.pubkey = new PublicKey(usdc.lending);
+          if (kind === "asset")
+            forward.keys[3]!.pubkey = new PublicKey(usdc.mint);
+        },
+      );
+      expect(failed(result)).toBe(true);
+      expect(tokenBalance(h.svm, cash)).toBe(1_000_000_000n);
+    },
+  );
+});
+const LAMPORTS_PER_SOL_BIG = 1_000_000_000n;

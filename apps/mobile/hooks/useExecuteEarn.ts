@@ -7,14 +7,17 @@ import { Buffer } from "buffer";
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 import {
   checkEarnMessage,
-  EARN_PROVIDERS,
+  earnAsset,
+  earnAssetByMint,
   TOKEN_PROGRAM_ID,
+  WRAPPED_SOL_MINT,
   associatedTokenAddress,
   decodeAllowedPrograms,
   derivePolicyAddress,
   deriveVaultAddress,
   readEarnExchangeRate,
   readEarnForwarderCode,
+  reviewedCodeHashes,
   depositShares,
   sharesValue,
   sharesForValue,
@@ -42,7 +45,9 @@ type Outcome =
   | { status: "cancelled" }
   | { status: "failed"; message: string };
 const publicProgram = process.env.EXPO_PUBLIC_EARN_FORWARDER_PROGRAM;
-const publicCodeHash = process.env.EXPO_PUBLIC_EARN_FORWARDER_CODE_SHA256;
+const reviewedHashes = reviewedCodeHashes(
+  process.env.EXPO_PUBLIC_EARN_FORWARDER_CODE_SHA256
+);
 export function useExecuteEarn() {
   const { data: account } = useAccount();
   const embedded = useEmbeddedSolanaWallet();
@@ -93,7 +98,9 @@ export function useExecuteEarn() {
       provider: EarnProviderId,
       action: EarnAction,
       amount: number,
-      withdrawAll = false
+      withdrawAll = false,
+      /** The token being lent; USDC when absent. `amount` is in its units. */
+      mint?: string
     ): Promise<Outcome> => {
       if (locked.current) return { status: "pending" };
       if (!account || !storageKey || !ready)
@@ -118,21 +125,26 @@ export function useExecuteEarn() {
       };
       try {
         if (!pending.current) {
-          if (!publicProgram || !publicCodeHash)
+          if (!publicProgram || !reviewedHashes.length)
             throw new Error("Earn is not available in this build yet");
-          const minor = Math.round(amount * 1e6);
+          const asset = mint ? earnAssetByMint(mint) : "USDC";
+          if (!asset) throw new Error("Earn is not available for this token");
+          const lent = earnAsset(provider, asset);
+          const minor = Math.round(amount * 10 ** lent.decimals);
           if (!Number.isSafeInteger(minor) || minor <= 0)
             throw new Error("Choose a valid amount");
           const quote = await apiClient.quoteEarn(
             provider,
             action,
             String(minor),
-            withdrawAll
+            withdrawAll,
+            mint
           );
           if (
             quote.provider !== provider ||
             quote.action !== action ||
             quote.amountMinor !== String(minor) ||
+            (mint !== undefined && quote.mint !== mint) ||
             quote.expiresAt * 1000 <= Date.now()
           )
             throw new Error("The estimate changed. Try again.");
@@ -147,9 +159,20 @@ export function useExecuteEarn() {
             policy = derivePolicyAddress(settings, 2n);
           if (!deriveVaultAddress(settings).equals(vault))
             throw new Error("This request did not match your Account");
-          const [price, policyInfo] = await Promise.all([
-            readEarnExchangeRate(rpc, provider),
+          // The server repays the sponsor wrapped-SOL rent only for an account
+          // it opens, so this phone reads the same fact before rebuilding.
+          const [price, policyInfo, wrappedSol] = await Promise.all([
+            readEarnExchangeRate(rpc, provider, asset),
             rpc.getAccountInfo(policy),
+            asset === "SOL"
+              ? rpc.getAccountInfo(
+                  associatedTokenAddress(
+                    vault,
+                    WRAPPED_SOL_MINT,
+                    TOKEN_PROGRAM_ID
+                  )
+                )
+              : Promise.resolve(null),
           ]);
           if (!policyInfo) throw new Error("Your Account is not ready yet");
           const input = BigInt(quote.inputAmountRaw),
@@ -168,9 +191,8 @@ export function useExecuteEarn() {
           )
             throw new Error("The estimate changed. Try again.");
           if (withdrawAll) {
-            const receipt = new PublicKey(EARN_PROVIDERS[provider].receipt);
             const holding = await rpc.getTokenAccountBalance(
-              associatedTokenAddress(vault, receipt, TOKEN_PROGRAM_ID)
+              associatedTokenAddress(vault, lent.receipt, lent.tokenProgram)
             );
             if (action !== "redeem" || BigInt(holding.value.amount) !== input)
               throw new Error("Your position changed. Try again.");
@@ -186,7 +208,7 @@ export function useExecuteEarn() {
           const hash = Array.from(new Uint8Array(digest))
             .map((b) => b.toString(16).padStart(2, "0"))
             .join("");
-          if (hash !== publicCodeHash)
+          if (!reviewedHashes.includes(hash))
             throw new Error("Earn is temporarily unavailable");
           const tx = VersionedTransaction.deserialize(
             Buffer.from(prepared.unsignedTxBase64, "base64")
@@ -203,6 +225,7 @@ export function useExecuteEarn() {
             prepared.unsignedTxBase64,
             {
               provider,
+              asset,
               action,
               amount: input,
               minimumOut: minimum,
@@ -215,6 +238,7 @@ export function useExecuteEarn() {
               allowedPrograms: decodeAllowedPrograms(policy, policyInfo),
               feePayer: tx.message.staticAccountKeys[0],
               forwarderProgram: new PublicKey(publicProgram),
+              wrappedSolAccountExists: !!wrappedSol,
             },
             tables
           );
@@ -336,6 +360,6 @@ export function useExecuteEarn() {
     isExecuting,
     hasPending,
     ready,
-    configured: !!publicProgram && !!publicCodeHash,
+    configured: !!publicProgram && reviewedHashes.length > 0,
   };
 }

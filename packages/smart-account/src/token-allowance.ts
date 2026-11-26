@@ -15,6 +15,12 @@ export interface TokenAllowanceParams {
   allowedPrograms: readonly PublicKey[];
   /** Shared, explicitly selected Earn forwarder; not an Account signer. */
   forwarderProgram?: PublicKey;
+  /** The mint's token program; Token-2022 mints such as USDG need it. */
+  tokenProgram?: PublicKey;
+  /** Vault instructions run under the same policy call before the approve (SOL wrapping). */
+  beforeGrant?: TransactionInstruction[];
+  /** Vault instructions run under the same policy call after the revoke (SOL unwrapping). */
+  afterRevoke?: TransactionInstruction[];
 }
 
 /**
@@ -57,21 +63,19 @@ export function buildTokenAllowance(params: TokenAllowanceParams): {
   if (amount <= 0n || amount > 0xffffffffffffffffn) {
     throw new Error("Invalid token allowance amount");
   }
-  const constraint = allowedPrograms.findIndex((p) =>
-    p.equals(TOKEN_PROGRAM_ID),
-  );
-  if (constraint < 0 || constraint > 255)
-    throw new Error("Policy does not admit Token instructions");
-  const source = associatedTokenAddress(
-    addresses.vault,
-    mint,
-    TOKEN_PROGRAM_ID,
-  );
-  function wrap(inner: TransactionInstruction): TransactionInstruction {
+  const tokenProgram = params.tokenProgram ?? TOKEN_PROGRAM_ID;
+  const constraintOf = (program: PublicKey) => {
+    const index = allowedPrograms.findIndex((p) => p.equals(program));
+    if (index < 0 || index > 255)
+      throw new Error(`Policy does not admit ${program.toBase58()}`);
+    return index;
+  };
+  const source = associatedTokenAddress(addresses.vault, mint, tokenProgram);
+  function wrap(inners: TransactionInstruction[]): TransactionInstruction {
     const compiled = utils.instructionsToSynchronousTransactionDetails({
       vaultPda: addresses.vault,
       members: [],
-      transaction_instructions: [inner],
+      transaction_instructions: inners,
     });
     return instructions.executePolicyPayloadSync({
       policy,
@@ -81,7 +85,9 @@ export function buildTokenAllowance(params: TokenAllowanceParams): {
         __kind: "ProgramInteraction",
         fields: [
           {
-            instructionConstraintIndices: Uint8Array.of(constraint),
+            instructionConstraintIndices: Uint8Array.from(
+              inners.map((ix) => constraintOf(ix.programId)),
+            ),
             transactionPayload: {
               __kind: "SyncTransaction",
               fields: [
@@ -106,9 +112,10 @@ export function buildTokenAllowance(params: TokenAllowanceParams): {
   approve.writeBigUInt64LE(amount, 1);
   return {
     source,
-    grant: wrap(
+    grant: wrap([
+      ...(params.beforeGrant ?? []),
       new TransactionInstruction({
-        programId: TOKEN_PROGRAM_ID,
+        programId: tokenProgram,
         data: approve,
         keys: [
           { pubkey: source, isSigner: false, isWritable: true },
@@ -116,16 +123,17 @@ export function buildTokenAllowance(params: TokenAllowanceParams): {
           { pubkey: addresses.vault, isSigner: true, isWritable: true },
         ],
       }),
-    ),
-    revoke: wrap(
+    ]),
+    revoke: wrap([
       new TransactionInstruction({
-        programId: TOKEN_PROGRAM_ID,
+        programId: tokenProgram,
         data: Buffer.from([5]),
         keys: [
           { pubkey: source, isSigner: false, isWritable: true },
           { pubkey: addresses.vault, isSigner: true, isWritable: true },
         ],
       }),
-    ),
+      ...(params.afterRevoke ?? []),
+    ]),
   };
 }

@@ -138,10 +138,15 @@ export {
 export {
   EARN_USDC,
   EARN_PROVIDERS,
+  JUPITER_EARN_ASSETS,
+  earnAsset,
+  earnAssetByMint,
+  earnAssetsFor,
   earnAuthority,
   earnProviderAccounts,
   buildEarnInstructions,
   type EarnProviderId,
+  type EarnAssetId,
   type EarnAction,
   type EarnTerms,
   type BuildEarnParams,
@@ -155,4 +160,4 @@ export {
   type EarnExchangeRate,
 } from "./earn-state.js";
 export { checkEarnMessage } from "./earn-verify.js";
-export { readEarnForwarderCode } from "./earn-code.js";
+export { readEarnForwarderCode, reviewedCodeHashes } from "./earn-code.js";
