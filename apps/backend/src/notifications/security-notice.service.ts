@@ -4,6 +4,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { pushDevices, users, type AccountEventKind } from '../db/schema';
 import { MAILER, type Mailer } from '../mail/mail.interface';
+import { renderNoticeEmail } from '../mail/templates/notice-email';
 import { NOTICE_KIND, PUSH_SENDER } from './push-sender.interface';
 import type { NoticeKind, PushSender } from './push-sender.interface';
 
@@ -136,7 +137,15 @@ export class SecurityNoticeService {
         );
         return;
       }
-      await this.mailer.send({ to, subject: draft.subject, text: draft.text });
+      await this.mailer.send({
+        to,
+        subject: draft.subject,
+        text: draft.text,
+        html: renderNoticeEmail({
+          title: draft.subject,
+          paragraphs: draft.text.split('\n\n'),
+        }),
+      });
       // The address never reaches the log.
       this.logger.log(
         `security_notice.mailed userId=${event.userId} kind=${event.kind}`,
@@ -165,7 +174,10 @@ export class SecurityNoticeService {
  * Written out per kind rather than assembled, because these are the sentences
  * somebody reads to work out whether their account was touched without them.
  */
-function compose(event: SecurityEvent, context: NoticeContext): Notice | null {
+export function compose(
+  event: SecurityEvent,
+  context: NoticeContext,
+): Notice | null {
   const when = formatWhen(event.occurredAt);
   const subject = event.subject;
   const previous = event.previousSubject;

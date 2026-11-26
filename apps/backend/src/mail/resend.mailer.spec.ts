@@ -64,6 +64,17 @@ describe('ResendMailer', () => {
     expect(sentBody()).not.toHaveProperty('replyTo');
   });
 
+  it('sends the html part alongside the text when one is given', async () => {
+    await makeMailer().send({
+      to: 'a@example.com',
+      subject: 's',
+      text: 't',
+      html: '<p>t</p>',
+    });
+
+    expect(sentBody()).toMatchObject({ text: 't', html: '<p>t</p>' });
+  });
+
   it('sends no reply-to field at all when none is given', async () => {
     await makeMailer().send({ to: 'a@example.com', subject: 's', text: 't' });
 
