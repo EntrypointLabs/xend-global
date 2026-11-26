@@ -4,6 +4,10 @@ import { promisify } from 'node:util';
 
 import { MAILER, type Mailer } from '../mail/mail.interface';
 import {
+  renderCodeEmail,
+  type CodeEmailCopy,
+} from '../mail/templates/code-email';
+import {
   ChallengeAttemptsExhaustedError,
   InvalidRecoveryCodeError,
   NoRecoveryChallengeError,
@@ -40,6 +44,50 @@ const GRANT_TTL_MS = 15 * 60 * 1000;
 
 const MAX_ATTEMPTS = 5;
 const MAX_CODES_PER_HOUR = 5;
+
+const RECOVERY_COPY: CodeEmailCopy = {
+  title: 'Your recovery code',
+  lead: 'Enter this code in Prydd to move your account to a new phone.',
+  details: [
+    'Moving a phone takes 24 hours to take effect, and we will tell you when it starts.',
+  ],
+  notMe:
+    'Someone else knows your email address. The code alone cannot move your money: spending needs the phone you already have.',
+};
+
+export const CODE_EMAIL_COPY: Record<RecoveryChallengePurpose, CodeEmailCopy> =
+  {
+    contact_verification: {
+      title: 'Confirm your email',
+      lead: 'Enter this code in Prydd to confirm this address for your account.',
+      details: [
+        'This address is how we reach you, and it is what lets you move your account to a new phone if you lose this one. It is not a way to sign in: that is your passkey.',
+      ],
+      notMe:
+        'You can ignore this mail. Nothing changes unless the code is entered.',
+    },
+    contact_rotation: {
+      title: 'Confirm your new email',
+      lead: 'Enter this code in Prydd to make this the new address for your account.',
+      details: [
+        'Both keys on your phone approve the change, then it takes a day to go through. Until then the address already on your account stays in place, and we will write to it too.',
+      ],
+      notMe:
+        'You can ignore this mail. Nothing changes unless the code is entered.',
+    },
+    entry_session: {
+      title: 'Your Prydd code',
+      lead: 'Enter this code in Prydd to look around your account. What it opens lasts an hour.',
+      details: [
+        'It cannot send money or change your keys: those need your passkey.',
+      ],
+      notMe:
+        'Someone else knows your email address. They cannot spend with it.',
+    },
+    device_rotation: RECOVERY_COPY,
+    recovery_key_email: RECOVERY_COPY,
+    primary_rotation: RECOVERY_COPY,
+  };
 
 /**
  * Issues and checks the email code that releases S3.
@@ -99,49 +147,16 @@ export class RecoveryChallengeService {
       expiresAt,
     });
 
+    const { html, text } = renderCodeEmail({
+      code,
+      expiresInMinutes: CODE_TTL_MS / 60_000,
+      ...CODE_EMAIL_COPY[purpose],
+    });
     await this.mailer.send({
       to: email,
-      subject: `${code} is your Prydd code`,
-      text:
-        purpose === 'contact_verification'
-          ? [
-              `${code} confirms this address for your Prydd account.`,
-              '',
-              'It expires in 10 minutes.',
-              '',
-              'This address is how we reach you, and it is what lets you move your',
-              'account to a new phone if you lose this one. It is not a way to sign in:',
-              'that is your passkey.',
-            ].join('\n')
-          : purpose === 'contact_rotation'
-            ? [
-                `${code} confirms this as the new address for your Prydd account.`,
-                '',
-                'It expires in 10 minutes.',
-                '',
-                'Both keys on your phone approve the change, then it takes a day to go',
-                'through. Until then the address already on your account stays in place,',
-                'and we will write to it too.',
-              ].join('\n')
-            : purpose === 'entry_session'
-              ? [
-                  `${code} lets you into your Prydd account to look around.`,
-                  '',
-                  'It expires in 10 minutes, and what it opens lasts an hour.',
-                  '',
-                  'It cannot send money or change your keys: those need your passkey.',
-                  'If you did not ask for this, someone else knows your email address.',
-                  'They cannot spend with it.',
-                ].join('\n')
-              : [
-                  `${code} is your Prydd recovery code.`,
-                  '',
-                  'It lets you move your account to a new phone, and it expires in 10 minutes.',
-                  'Moving a phone takes 24 hours to take effect, and we will tell you when it starts.',
-                  '',
-                  'If you did not ask for this, someone else knows your email address. The code',
-                  'alone cannot move your money: spending needs the phone you already have.',
-                ].join('\n'),
+      subject: `Your PRYDD Verification code: ${code}`,
+      text,
+      html,
     });
 
     // The code never reaches the log, and neither does the address.

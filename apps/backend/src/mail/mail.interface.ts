@@ -3,8 +3,9 @@ export const MAILER = Symbol('MAILER');
 export interface OutgoingMail {
   to: string;
   subject: string;
-  /** Plain text. Every mail we send is short enough not to need markup. */
+  /** Always sent, as the fallback for clients that do not render markup. */
   text: string;
+  html?: string;
   /**
    * Where a reply should go, when that is not the sender. Set on mail the
    * team receives about a Consumer, so answering it reaches them directly.
