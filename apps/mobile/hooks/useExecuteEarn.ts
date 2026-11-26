@@ -51,6 +51,12 @@ type Outcome =
  * from before, which would undo the update this phone has already made.
  */
 const EARN_INDEX_LAG_MS = 4_000;
+/** The catalog only; the history queries share the prefix. */
+const CATALOG = {
+  queryKey: ["earn"],
+  predicate: (query: { queryKey: readonly unknown[] }) =>
+    query.queryKey.length === 2,
+};
 const publicProgram = process.env.EXPO_PUBLIC_EARN_FORWARDER_PROGRAM;
 const reviewedHashes = reviewedCodeHashes(
   process.env.EXPO_PUBLIC_EARN_FORWARDER_CODE_SHA256
@@ -130,8 +136,16 @@ export function useExecuteEarn() {
         pending.current = p;
         setPending(true);
       };
-      // The move this call makes, when it is not finishing an earlier one.
+      // The move this call makes, when it is not finishing an earlier one,
+      // and when the catalog it would be applied to was last read.
       let moved: EarnMove | null = null;
+      const catalogReadAt = () =>
+        queries
+          .getQueryCache()
+          .findAll(CATALOG)
+          .map((query) => query.state.dataUpdatedAt)
+          .join();
+      let readBeforeMove = "";
       try {
         if (!pending.current) {
           if (!publicProgram || !reviewedHashes.length)
@@ -142,6 +156,7 @@ export function useExecuteEarn() {
           const minor = Math.round(amount * 10 ** lent.decimals);
           if (!Number.isSafeInteger(minor) || minor <= 0)
             throw new Error("Choose a valid amount");
+          readBeforeMove = catalogReadAt();
           moved = {
             provider,
             action,
@@ -349,14 +364,14 @@ export function useExecuteEarn() {
           if (result === "confirmed") {
             await clear();
             const move = moved;
-            if (move)
-              queries.setQueriesData<EarnCatalog>(
-                // The catalog only; the history queries share the prefix.
-                {
-                  queryKey: ["earn"],
-                  predicate: (q) => q.queryKey.length === 2,
-                },
-                (catalog) => catalog && applyEarnMove(catalog, move)
+            // A read still in flight would land over the update below.
+            await queries.cancelQueries(CATALOG);
+            // A catalog read since the move began may already hold it, and
+            // adding it again would count it twice. Then the delayed refetch
+            // below is the one that settles the screen.
+            if (move && catalogReadAt() === readBeforeMove)
+              queries.setQueriesData<EarnCatalog>(CATALOG, (catalog) =>
+                catalog ? applyEarnMove(catalog, move) : catalog
               );
             setTimeout(
               () => void queries.invalidateQueries({ queryKey: ["earn"] }),

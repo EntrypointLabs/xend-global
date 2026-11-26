@@ -70,7 +70,51 @@ describe("applyEarnMove", () => {
     expect(kamino.positionMinor).toBe("0");
     expect(kamino.assets?.[0].positionRaw).toBe("0");
     expect(kamino.assets?.[0].positionUsd).toBe("0");
-    expect(after.products[1]).toBe(catalog.products[1]);
+    expect(after.products[1].positionMinor).toBe("15040000");
+  });
+
+  it("keeps receipts outside the canonical account on a withdrawal of everything", () => {
+    const split = {
+      ...catalog,
+      products: catalog.products.map((p) =>
+        p.id === "kamino"
+          ? {
+              ...p,
+              withdrawableMinor: "6000000",
+              assets: p.assets?.map((a) => ({
+                ...a,
+                withdrawableRaw: "6000000",
+              })),
+            }
+          : p
+      ),
+    };
+    const after = applyEarnMove(split, {
+      provider: "kamino",
+      action: "redeem",
+      mint: USDC,
+      minor: 6000000n,
+      all: true,
+      usdc: true,
+    });
+    const usdc = after.products[0].assets?.[0];
+    expect(usdc?.positionRaw).toBe("4040000");
+    expect(usdc?.withdrawableRaw).toBe("0");
+    expect(after.products[0].positionMinor).toBe("4040000");
+  });
+
+  it("moves the cash every product draws on", () => {
+    const after = applyEarnMove(catalog, {
+      provider: "jupiter",
+      action: "deposit",
+      mint: USDC,
+      minor: 5000000n,
+      all: false,
+      usdc: true,
+    });
+    expect(after.depositableMinor).toBe("45000000");
+    expect(after.products[0].assets?.[0].depositableRaw).toBe("45000000");
+    expect(after.products[0].assets?.[0].positionRaw).toBe("10040000");
   });
 
   it("adds a deposit to the position and takes it from what is held", () => {

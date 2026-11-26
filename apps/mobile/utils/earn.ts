@@ -385,11 +385,24 @@ export function applyEarnMove(
   catalog: EarnCatalog,
   move: EarnMove
 ): EarnCatalog {
-  const next = (held: bigint) => {
-    if (move.action === "deposit") return held + move.minor;
-    if (move.all) return 0n;
-    return held > move.minor ? held - move.minor : 0n;
+  const less = (a: bigint, b: bigint) => (a > b ? a - b : 0n);
+  // A withdrawal of everything redeems what is withdrawable, which can be
+  // less than the position: receipts held outside the canonical account stay.
+  const shift = (position: bigint, withdrawable: bigint) => {
+    if (move.action === "deposit")
+      return {
+        position: position + move.minor,
+        withdrawable: withdrawable + move.minor,
+      };
+    const out = move.all ? withdrawable : move.minor;
+    return {
+      position: less(position, out),
+      withdrawable: less(withdrawable, out),
+    };
   };
+  // Cash the Account holds, which every product draws on alike.
+  const cash = (held: bigint) =>
+    move.action === "deposit" ? less(held, move.minor) : held + move.minor;
   const scaleUsd = (usd: string | null, before: bigint, after: bigint) => {
     if (after === 0n) return "0";
     if (usd === null || before === 0n)
@@ -398,30 +411,36 @@ export function applyEarnMove(
   };
   return {
     ...catalog,
+    depositableMinor: move.usdc
+      ? cash(BigInt(catalog.depositableMinor)).toString()
+      : catalog.depositableMinor,
     products: catalog.products.map((product) => {
-      if (product.id !== move.provider) return product;
+      const moved = product.id === move.provider;
+      const usdc =
+        moved && move.usdc
+          ? shift(
+              BigInt(product.positionMinor),
+              BigInt(product.withdrawableMinor)
+            )
+          : null;
       return {
         ...product,
-        ...(move.usdc && {
-          positionMinor: next(BigInt(product.positionMinor)).toString(),
-          withdrawableMinor: next(BigInt(product.withdrawableMinor)).toString(),
+        ...(usdc && {
+          positionMinor: usdc.position.toString(),
+          withdrawableMinor: usdc.withdrawable.toString(),
         }),
         assets: product.assets?.map((asset) => {
           if (asset.mint !== move.mint) return asset;
+          const depositableRaw = cash(BigInt(asset.depositableRaw)).toString();
+          if (!moved) return { ...asset, depositableRaw };
           const before = BigInt(asset.positionRaw);
-          const after = next(before);
-          const held = BigInt(asset.depositableRaw);
+          const after = shift(before, BigInt(asset.withdrawableRaw));
           return {
             ...asset,
-            positionRaw: after.toString(),
-            positionUsd: scaleUsd(asset.positionUsd, before, after),
-            withdrawableRaw: next(BigInt(asset.withdrawableRaw)).toString(),
-            depositableRaw: (move.action === "deposit"
-              ? held > move.minor
-                ? held - move.minor
-                : 0n
-              : held + move.minor
-            ).toString(),
+            positionRaw: after.position.toString(),
+            positionUsd: scaleUsd(asset.positionUsd, before, after.position),
+            withdrawableRaw: after.withdrawable.toString(),
+            depositableRaw,
           };
         }),
       };
