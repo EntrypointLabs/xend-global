@@ -1,4 +1,4 @@
-import { EARN_PROVIDERS } from "@prydd/smart-account";
+import { EARN_PROVIDERS, JUPITER_EARN_ASSETS } from "@prydd/smart-account";
 import type { TokenBalance } from "@/utils/apiClient";
 import { getUsdcMint } from "@/utils/cluster";
 
@@ -86,6 +86,19 @@ export interface Portfolio {
   hasUnpricedHoldings: boolean;
 }
 
+const EARN_RECEIPT_MINTS: ReadonlySet<string> = new Set([
+  ...Object.values(EARN_PROVIDERS).map((p) => p.receipt),
+  ...Object.values(JUPITER_EARN_ASSETS).map((a) => a.receipt),
+]);
+
+/**
+ * A lending receipt such as Jupiter Lend WSOL. Earn already counts what it is
+ * worth, so it is never a holding of its own.
+ */
+export function isEarnReceipt(mint: string): boolean {
+  return EARN_RECEIPT_MINTS.has(mint);
+}
+
 /**
  * The Consumer's holdings split into the buckets the home screen shows.
  *
@@ -103,11 +116,8 @@ export function selectPortfolio(tokens: TokenBalance[] | undefined): Portfolio {
   if (!tokens) return empty;
 
   const cash = cashMints();
-  const earnMints = new Set(
-    Object.values(EARN_PROVIDERS).map((p) => p.receipt as string)
-  );
   return tokens.reduce<Portfolio>((acc, token) => {
-    if (earnMints.has(token.mint)) return acc;
+    if (isEarnReceipt(token.mint)) return acc;
     if (cash.has(token.mint)) {
       acc.cashUsd += rawToNumber(token.amountRaw, token.decimals);
       return acc;

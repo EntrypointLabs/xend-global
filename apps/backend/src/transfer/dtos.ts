@@ -133,6 +133,8 @@ export const TransferRowSchema = z.object({
       mint: z.string(),
       action: z.enum(['deposit', 'redeem']),
       amountRaw: z.string(),
+      /** USD value of `amountRaw`, priced at confirmation; null until then. */
+      usdValue: z.string().nullable(),
     })
     .optional(),
   /**

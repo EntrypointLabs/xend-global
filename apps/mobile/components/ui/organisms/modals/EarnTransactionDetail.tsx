@@ -9,9 +9,10 @@ import HapticPressable from "../../atoms/HapticPressable";
 import { EarnMark } from "@/components/ui/organisms/ActivityItem";
 import { usePalette } from "@/hooks/usePalette";
 import { truncateAddress } from "@/utils/helper";
-import { formatDollarsMinor } from "@/utils/ramp";
 import {
   activityDetailTimestamp,
+  earnAmountLabel,
+  earnUsdLabel,
   earnReceiptLabel,
   type ActivityEntry,
   type EarnMovement,
@@ -41,6 +42,7 @@ export function EarnTransactionDetail({
     "MMM d, yyyy 'at' h:mma"
   );
   const rowClass = "flex-row justify-between items-center py-2";
+  const usd = earnUsdLabel(item);
 
   return (
     <ActionModal visible={visible} onClose={onClose}>
@@ -68,8 +70,17 @@ export function EarnTransactionDetail({
         </Typography>
 
         <Typography weight="700" className="mb-1 text-3xl text-foreground">
-          {formatDollarsMinor(earn.amountRaw, item.decimals)}
+          {earnAmountLabel(item)}
         </Typography>
+
+        {usd !== null && (
+          <Typography
+            weight="600"
+            className="mb-1 text-base text-foreground/30"
+          >
+            {usd}
+          </Typography>
+        )}
 
         <Typography weight="600" className="mb-4 text-sm text-foreground/30">
           {date}

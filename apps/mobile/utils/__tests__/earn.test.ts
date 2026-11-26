@@ -1,9 +1,10 @@
 import {
   selectPortfolio,
   holdingsBeforeDelete,
+  isEarnReceipt,
   selectPortfolioTotal,
 } from "@/utils/balances";
-import { EARN_PROVIDERS } from "@prydd/smart-account";
+import { EARN_PROVIDERS, JUPITER_EARN_ASSETS } from "@prydd/smart-account";
 import {
   EarnCatalogSchema,
   EarnQuoteSchema,
@@ -71,8 +72,11 @@ describe("Earn estimates and API boundaries", () => {
 
 describe("Earn receipt holdings", () => {
   it("does not double count receipts as investments and still protects account deletion", () => {
-    const receipts = Object.values(EARN_PROVIDERS).map((p) => ({
-      mint: p.receipt,
+    const receipts = [
+      ...Object.values(EARN_PROVIDERS).map((p) => p.receipt),
+      ...Object.values(JUPITER_EARN_ASSETS).map((a) => a.receipt),
+    ].map((mint) => ({
+      mint,
       amountRaw: "1000000",
       decimals: 6,
       symbol: null,
@@ -84,6 +88,11 @@ describe("Earn receipt holdings", () => {
       hasUnpricedHoldings: false,
     });
     expect(holdingsBeforeDelete(receipts, 0).holdsAnything).toBe(true);
+  });
+
+  it("treats Jupiter Lend WSOL as a receipt, not an investment", () => {
+    expect(isEarnReceipt(JUPITER_EARN_ASSETS.SOL.receipt)).toBe(true);
+    expect(isEarnReceipt(JUPITER_EARN_ASSETS.SOL.mint)).toBe(false);
   });
 });
 
