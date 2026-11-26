@@ -1,6 +1,6 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
-import { Linking, ScrollView, View } from "react-native";
+import { ActivityIndicator, Linking, ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
@@ -41,6 +41,9 @@ import {
 } from "@/utils/earn";
 import { formatEarnMoney } from "@/utils/earnProjection";
 import { describeToken, formatTokenAmount } from "@/utils/tokens";
+
+const ACTIVITY_TARGET = 10;
+const AUTO_PAGES = 8;
 
 const RANGES: { id: TokenRange; label: string }[] = [
   { id: "1d", label: "1D" },
@@ -139,6 +142,19 @@ export default function TokenScreen() {
     balances.iconsByMint,
     mint,
   ]);
+
+  // The feed is wallet-wide and paged, so a token's history can sit past the
+  // first page. Older pages load until a screenful of this token's entries
+  // turns up or the feed runs out; after that, "Show older" goes further.
+  const pagesLoaded = transfers.data?.pages.length ?? 0;
+  const searching =
+    !!transfers.hasNextPage &&
+    entries.length < ACTIVITY_TARGET &&
+    pagesLoaded < AUTO_PAGES;
+  useEffect(() => {
+    if (searching && !transfers.isFetchingNextPage)
+      void transfers.fetchNextPage();
+  }, [searching, transfers]);
 
   const lentLabel = earnProduct ? `In ${earnProduct.provider}` : "In Earn";
   // Only a token some product lends has an Earn side worth showing.
@@ -385,7 +401,7 @@ export default function TokenScreen() {
           </HapticPressable>
         </View>
 
-        {entries.length > 0 && (
+        {(entries.length > 0 || searching) && (
           <View className="mt-8 border-t border-foreground/5 pt-6">
             <Typography variant="title2" weight="600" className="mb-2">
               Activity
@@ -397,6 +413,25 @@ export default function TokenScreen() {
                 onPress={() => setOpened(entry)}
               />
             ))}
+            {searching ? (
+              <View className="mt-3 items-center">
+                <ActivityIndicator color={palette.fg(0.4)} />
+              </View>
+            ) : (
+              transfers.hasNextPage && (
+                <HapticPressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    void transfers.fetchNextPage();
+                  }}
+                  className="mt-3 items-center py-2"
+                >
+                  <Typography variant="body" weight="600">
+                    Show older
+                  </Typography>
+                </HapticPressable>
+              )
+            )}
           </View>
         )}
       </ScrollView>
