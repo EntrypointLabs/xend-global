@@ -445,6 +445,8 @@ export class EarnService {
           : (prices as Map<string, { usdPrice: number }>).get(p.mint)?.usdPrice;
       const usd = (raw: bigint) =>
         raw === 0n ? 0n : usdMicro(raw, asset.decimals, usdPrice);
+      const usdText = (raw: string | null) =>
+        raw === null ? null : formatUsd(usd(BigInt(raw)));
       const e = earningsOf.get(positionKey(p));
       const withdrawable = sharesValue(p.holdings.withdrawable, p.price);
       const enabled = this.enabled(p.asset);
@@ -472,6 +474,9 @@ export class EarnService {
           withdrawableRaw: withdrawable.toString(),
           lifetimeEarnedRaw: e?.lifetimeMinor ?? null,
           lastSevenDaysEarnedRaw: e?.lastSevenDaysMinor ?? null,
+          // Today's price, so the app can total income across tokens.
+          lifetimeEarnedUsd: usdText(e?.lifetimeMinor ?? null),
+          lastSevenDaysEarnedUsd: usdText(e?.lastSevenDaysMinor ?? null),
           depositableRaw: (depositableOf.get(p.asset) ?? 0n).toString(),
           available: depositsOpen && enabled,
           withdrawAvailable: ready && enabled && p.holdings.withdrawable > 0n,

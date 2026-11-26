@@ -64,7 +64,7 @@ export default function EarnPositionScreen() {
   const [range, setRange] = useState<EarnRange>("7d");
   const { products } = useEarnProducts();
   const balances = useBalances();
-  const { balance, depositableMinor, withdrawableBalances, canWithdraw } =
+  const { positionsRead, depositableMinor, withdrawableBalances, canWithdraw } =
     useEarnPosition();
   const history = useEarnHistory(
     provider.success ? provider.data : "kamino",
@@ -325,7 +325,7 @@ export default function EarnPositionScreen() {
         positionBalances={withdrawableBalances}
         balanceReady={
           flow?.step === "withdraw"
-            ? balance !== null
+            ? positionsRead
             : SEED_DEMO
               ? !balances.isLoading && !balances.isError
               : depositableMinor !== null

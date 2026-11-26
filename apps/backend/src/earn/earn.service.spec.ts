@@ -1152,6 +1152,8 @@ describe('Earn beyond USDC', () => {
       depositableRaw: '3000000000',
       lifetimeEarnedRaw: '0',
       lastSevenDaysEarnedRaw: '0',
+      lifetimeEarnedUsd: '0.000000',
+      lastSevenDaysEarnedUsd: '0.000000',
       available: true,
       withdrawAvailable: false,
     });
@@ -1196,9 +1198,23 @@ describe('Earn beyond USDC', () => {
         });
       },
     );
+    h.records.earnings.mockImplementation((_userId, positions) =>
+      Promise.resolve(
+        positions.map((p) => ({
+          provider: p.provider as 'kamino' | 'jupiter',
+          mint: p.mint,
+          lifetimeMinor: p.mint === SOL ? '100000000' : '0',
+          lastSevenDaysMinor: p.mint === SOL ? null : '0',
+          netDepositedMinor: '0',
+        })),
+      ),
+    );
     const catalog = await h.service.catalog('a');
     const jupiter = catalog.products.find((p) => p.id === 'jupiter')!;
     expect(jupiter.assets.find((a) => a.symbol === 'SOL')).toMatchObject({
+      lifetimeEarnedRaw: '100000000',
+      lifetimeEarnedUsd: '15.000000',
+      lastSevenDaysEarnedUsd: null,
       positionRaw: '2000000000',
       positionUsd: '300.000000',
       withdrawableRaw: '2000000000',

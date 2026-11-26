@@ -5,8 +5,10 @@ import {
   TOKEN_PROGRAM_ID,
   associatedTokenAddress,
   EARN_USDC,
+  JUPITER_EARN_ASSETS,
 } from "@prydd/smart-account";
 import { fetchEarnFromChain } from "@/utils/earnChain";
+import { selectEarnBalance } from "@/utils/earn";
 import { getSolanaConnection } from "@/utils/chainReads";
 jest.mock("@/utils/chainReads", () => ({ getSolanaConnection: jest.fn() }));
 jest.mock("@prydd/smart-account", () => ({
@@ -38,7 +40,8 @@ beforeEach(() => jest.clearAllMocks());
 it("establishes zero from complete receipt scans without market reads during an outage", async () => {
   const rpc = setup();
   const result = await fetchEarnFromChain(vault.toBase58());
-  expect(rpc.getTokenAccountsByOwner).toHaveBeenCalledTimes(2);
+  // Kamino's USDC receipt and all four Jupiter receipts.
+  expect(rpc.getTokenAccountsByOwner).toHaveBeenCalledTimes(5);
   expect(result.products.map((p) => p.positionMinor)).toEqual(["0", "0"]);
   expect(
     result.products.every((p) => !p.available && !p.withdrawAvailable)
@@ -85,4 +88,35 @@ it("preserves unknown when a receipt scan or a held receipt price fails", async 
   await expect(fetchEarnFromChain(vault.toBase58())).rejects.toThrow(
     "Reserve unavailable"
   );
+});
+it("reads a SOL-only position and leaves its dollar value unknown", async () => {
+  const rpc = setup(),
+    receipt = new PublicKey(JUPITER_EARN_ASSETS.SOL.receipt);
+  rpc.getTokenAccountsByOwner.mockImplementation(
+    (_owner: PublicKey, { mint }: { mint: PublicKey }) =>
+      Promise.resolve({
+        value: mint.equals(receipt)
+          ? [
+              {
+                pubkey: associatedTokenAddress(
+                  vault,
+                  receipt,
+                  TOKEN_PROGRAM_ID
+                ),
+                account: token(receipt, 1_000_000_000n),
+              },
+            ]
+          : [],
+      })
+  );
+  const result = await fetchEarnFromChain(vault.toBase58());
+  const jupiter = result.products.find((p) => p.id === "jupiter")!;
+  expect(jupiter.positionMinor).toBe("0");
+  expect(jupiter.assets?.find((a) => a.symbol === "SOL")).toMatchObject({
+    positionRaw: "2000000000",
+    positionUsd: null,
+    withdrawableRaw: "2000000000",
+    withdrawAvailable: false,
+  });
+  expect(selectEarnBalance(result.products)).toBeNull();
 });

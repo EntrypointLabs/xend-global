@@ -11,6 +11,8 @@ import {
   productCanWithdraw,
   productHasExternalReceipts,
   productValueUsd,
+  productEarningsUsd,
+  catalogEarnings,
   type EarnProvider,
   type EarnRange,
   type TokenRange,
@@ -125,8 +127,10 @@ export function useEarnProducts() {
   return {
     ...query,
     products: EARN_PRODUCTS.map((p) => {
-      const earned = productEarnings(query.data, p.id);
       const live = query.data?.products.find((row) => row.id === p.id);
+      // The product-level earnings are USDC only; token rows cover the rest.
+      const earned =
+        (live && productEarningsUsd(live)) ?? productEarnings(query.data, p.id);
       const apy = SEED_DEMO ? 0.0359 : (live?.apy ?? null);
       const position = SEED_DEMO
         ? 0
@@ -203,6 +207,11 @@ export interface EarnPosition {
   withdrawableBalances: Record<string, number>;
   /** Whether each product has any token, USDC or not, that can be withdrawn. */
   canWithdraw: Record<string, boolean>;
+  /**
+   * The positions were read, so withdrawals can be offered from each token's
+   * own amount even when the dollar total is unknown.
+   */
+  positionsRead: boolean;
   balance: number | null;
   depositableMinor: string | null;
   hasExternalReceipts: boolean;
@@ -235,12 +244,14 @@ export function useEarnPosition(): EarnPosition {
         : []
   );
   const unknownHeldRate = held.some((h) => h.apy === null || h.usd === null);
+  const earned = catalogEarnings(query.data);
   const weighted = held.reduce(
     (sum, h) => sum + (h.apy ?? 0) * (h.usd ?? 0),
     0
   );
   return {
     withdrawableBalances: balances,
+    positionsRead: SEED_DEMO || (!!products && !query.isError),
     canWithdraw: Object.fromEntries(
       products?.map((p) => [p.id, productCanWithdraw(p)]) ?? []
     ),
@@ -261,10 +272,10 @@ export function useEarnPosition(): EarnPosition {
           : "0.00%",
     lifetimeEarned: SEED_DEMO
       ? "0.00"
-      : formatEarnedMinor(query.data?.lifetimeMinor),
+      : formatEarnedMinor(earned.lifetimeMinor),
     lastSevenDays: SEED_DEMO
       ? "0.00"
-      : formatEarnedMinor(query.data?.lastSevenDaysMinor),
+      : formatEarnedMinor(earned.lastSevenDaysMinor),
   };
 }
 

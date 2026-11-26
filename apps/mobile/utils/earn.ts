@@ -15,6 +15,9 @@ export const EarnAssetSchema = z.object({
   withdrawableRaw: integer,
   lifetimeEarnedRaw: integer.nullable(),
   lastSevenDaysEarnedRaw: integer.nullable(),
+  /** Earnings at today's price, as dollars. Absent from older servers. */
+  lifetimeEarnedUsd: z.string().nullable().optional(),
+  lastSevenDaysEarnedUsd: z.string().nullable().optional(),
   /** What the vault holds of this token and could deposit (lamports for SOL). */
   depositableRaw: integer,
   available: z.boolean(),
@@ -100,6 +103,80 @@ export function productValueUsd(
     total += Number(asset.positionUsd);
   }
   return total;
+}
+
+/** A dollar decimal string such as "12.345678" in USD micro-units. */
+function usdToMinor(usd: string): bigint {
+  const [whole, fraction = ""] = usd.split(".");
+  const sign = whole.startsWith("-") ? -1n : 1n;
+  const micro =
+    BigInt(whole.replace("-", "") || "0") * 1_000_000n +
+    BigInt((fraction + "000000").slice(0, 6));
+  return sign * micro;
+}
+
+/**
+ * A product's earnings across every token it lends, in USD micro-units, or
+ * null when the server sends no per-token dollar figures. Each figure is null
+ * when any token's earnings are unknown or unpriced.
+ */
+export function productEarningsUsd(product: Pick<CatalogProduct, "assets">): {
+  lifetimeMinor: string | null;
+  lastSevenDaysMinor: string | null;
+} | null {
+  const assets = product.assets;
+  if (
+    !assets?.length ||
+    assets.some(
+      (a) =>
+        a.lifetimeEarnedUsd === undefined ||
+        a.lastSevenDaysEarnedUsd === undefined
+    )
+  )
+    return null;
+  const sum = (key: "lifetimeEarnedUsd" | "lastSevenDaysEarnedUsd") => {
+    let total = 0n;
+    for (const asset of assets) {
+      const value = asset[key];
+      if (value === null || value === undefined) return null;
+      total += usdToMinor(value);
+    }
+    return total.toString();
+  };
+  return {
+    lifetimeMinor: sum("lifetimeEarnedUsd"),
+    lastSevenDaysMinor: sum("lastSevenDaysEarnedUsd"),
+  };
+}
+
+/**
+ * Earnings across every product, from token rows where the server sends them
+ * and the account totals otherwise.
+ */
+export function catalogEarnings(catalog: EarnCatalog | undefined): {
+  lifetimeMinor: string | null;
+  lastSevenDaysMinor: string | null;
+} {
+  if (!catalog) return { lifetimeMinor: null, lastSevenDaysMinor: null };
+  const perProduct = catalog.products.map(productEarningsUsd);
+  if (perProduct.some((p) => p === null))
+    return {
+      lifetimeMinor: catalog.lifetimeMinor,
+      lastSevenDaysMinor: catalog.lastSevenDaysMinor,
+    };
+  const sum = (key: "lifetimeMinor" | "lastSevenDaysMinor") => {
+    let total = 0n;
+    for (const p of perProduct) {
+      const value = p![key];
+      if (value === null) return null;
+      total += BigInt(value);
+    }
+    return total.toString();
+  };
+  return {
+    lifetimeMinor: sum("lifetimeMinor"),
+    lastSevenDaysMinor: sum("lastSevenDaysMinor"),
+  };
 }
 
 /** Whether any token in the product can be withdrawn right now. */

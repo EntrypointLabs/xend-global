@@ -26,6 +26,7 @@ export default function EarnScreen() {
   const balances = useBalances();
   const {
     balance,
+    positionsRead,
     depositableMinor,
     hasExternalReceipts,
     withdrawableBalances,
@@ -160,7 +161,7 @@ export default function EarnScreen() {
         positionBalances={withdrawableBalances}
         balanceReady={
           flow?.step === "withdraw"
-            ? balance !== null
+            ? positionsRead
             : SEED_DEMO
               ? !balances.isLoading && !balances.isError
               : depositableMinor !== null

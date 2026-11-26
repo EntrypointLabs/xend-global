@@ -78,7 +78,8 @@ export default function TokenScreen() {
 
   const balances = useBalances();
   const { products } = useEarnProducts();
-  const { balance, depositableMinor, withdrawableBalances } = useEarnPosition();
+  const { positionsRead, depositableMinor, withdrawableBalances } =
+    useEarnPosition();
   const overview = useTokenOverview(mint, range);
   const transfers = useTransfersInfinite();
 
@@ -480,7 +481,7 @@ export default function TokenScreen() {
           positionBalances={withdrawableBalances}
           balanceReady={
             flow?.step === "withdraw"
-              ? balance !== null
+              ? positionsRead
               : SEED_DEMO
                 ? !balances.isLoading && !balances.isError
                 : depositableMinor !== null

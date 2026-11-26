@@ -3,9 +3,12 @@ import {
   associatedTokenAddress,
   EARN_PROVIDERS,
   EARN_USDC,
+  earnAsset,
+  earnAssetsFor,
   readEarnExchangeRate,
   sharesValue,
   TOKEN_PROGRAM_ID,
+  type EarnAssetId,
 } from "@prydd/smart-account";
 import { getSolanaConnection } from "@/utils/chainReads";
 import { EarnCatalogSchema, type EarnProvider } from "@/utils/earn";
@@ -20,16 +23,64 @@ export async function fetchEarnFromChain(owner: string) {
     account: {
       owner: PublicKey;
       data: Buffer;
-    }
+    },
+    tokenProgram: PublicKey = TOKEN_PROGRAM_ID
   ) => {
     if (
-      !account.owner.equals(TOKEN_PROGRAM_ID) ||
-      account.data.length !== 165 ||
+      !account.owner.equals(tokenProgram) ||
+      account.data.length < 165 ||
       !new PublicKey(account.data.subarray(0, 32)).equals(mint) ||
       !new PublicKey(account.data.subarray(32, 64)).equals(vault)
     )
       throw new Error("Unable to read Earn balance");
     return account.data.readBigUInt64LE(64);
+  };
+  const readAsset = async (id: EarnProvider, assetId: EarnAssetId) => {
+    const asset = earnAsset(id, assetId);
+    const accounts = await rpc.getTokenAccountsByOwner(vault, {
+      mint: asset.receipt,
+    });
+    const canonical = associatedTokenAddress(
+      vault,
+      asset.receipt,
+      asset.tokenProgram
+    );
+    let shares = 0n,
+      withdrawable = 0n;
+    for (const entry of accounts.value) {
+      const amount = balance(asset.receipt, entry.account, asset.tokenProgram);
+      shares += amount;
+      if (entry.pubkey.equals(canonical)) withdrawable += amount;
+    }
+    // A complete successful scan establishes zero without relying on the
+    // provider's reserve. Held receipts still require a readable live price.
+    const price =
+      shares > 0n ? await readEarnExchangeRate(rpc, id, assetId) : null;
+    const value = price ? sharesValue(shares, price) : 0n;
+    const dollars = asset.mint.equals(EARN_USDC);
+    return {
+      shares: shares.toString(),
+      mint: asset.mint.toBase58(),
+      symbol: asset.symbol,
+      name: asset.name,
+      iconUrl: null,
+      decimals: asset.decimals,
+      apy: null,
+      positionRaw: value.toString(),
+      // Only USDC has a dollar value without the price service.
+      positionUsd:
+        dollars || value === 0n ? (Number(value) / 1e6).toFixed(6) : null,
+      withdrawableRaw: price
+        ? sharesValue(withdrawable, price).toString()
+        : "0",
+      lifetimeEarnedRaw: null,
+      lastSevenDaysEarnedRaw: null,
+      lifetimeEarnedUsd: null,
+      lastSevenDaysEarnedUsd: null,
+      depositableRaw: "0",
+      available: false,
+      withdrawAvailable: false,
+    };
   };
   const products = await Promise.all(
     (Object.keys(EARN_PROVIDERS) as EarnProvider[]).map(async (id) => {
@@ -47,32 +98,24 @@ export async function fetchEarnFromChain(owner: string) {
           withdrawAvailable: false,
           updatedAt: new Date().toISOString(),
         };
-      const mint = new PublicKey(provider.receipt);
-      const accounts = await rpc.getTokenAccountsByOwner(vault, { mint });
-      const canonical = associatedTokenAddress(vault, mint, TOKEN_PROGRAM_ID);
-      let shares = 0n,
-        withdrawable = 0n;
-      for (const entry of accounts.value) {
-        const amount = balance(mint, entry.account);
-        shares += amount;
-        if (entry.pubkey.equals(canonical)) withdrawable += amount;
-      }
-      // A complete successful scan establishes zero without relying on the
-      // provider's reserve. Held receipts still require a readable live price.
-      const price = shares > 0n ? await readEarnExchangeRate(rpc, id) : null;
+      // Every token the product lends, so a holding in one the backend
+      // would have priced is never read as an empty position.
+      const assets = await Promise.all(
+        earnAssetsFor(id).map((assetId) => readAsset(id, assetId))
+      );
+      const usdc = assets.find((a) => a.mint === EARN_USDC.toBase58())!;
       return {
         id,
         provider: provider.name,
         name: "Lending Yield",
         apy: null,
-        positionShares: shares.toString(),
-        positionMinor: price ? sharesValue(shares, price).toString() : "0",
-        withdrawableMinor: price
-          ? sharesValue(withdrawable, price).toString()
-          : "0",
+        positionShares: usdc.shares,
+        positionMinor: usdc.positionRaw,
+        withdrawableMinor: usdc.withdrawableRaw,
         available: false,
         withdrawAvailable: false,
         updatedAt: new Date().toISOString(),
+        assets: assets.map(({ shares: _shares, ...row }) => row),
       };
     })
   );
