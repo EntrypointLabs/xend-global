@@ -33,6 +33,7 @@ import {
   type ActivityEntry,
 } from "@/utils/activity";
 import { cn } from "@/utils/cn";
+import { pickSwapToken } from "@/utils/swapPair";
 import { SEED_DEMO } from "@/utils/devSeed";
 import {
   EarnProviderSchema,
@@ -185,7 +186,18 @@ export default function TokenScreen() {
           ? [
               {
                 icon: () => <PillLabel icon="swap-horizontal" label="Swap" />,
-                onPress: () => router.push("/swap"),
+                onPress: () => {
+                  // Swap keeps its own pair, so it would otherwise open on
+                  // whatever was last chosen there.
+                  pickSwapToken("pay", {
+                    mint,
+                    symbol: named.symbol,
+                    name: named.name,
+                    decimals,
+                    iconUrl,
+                  });
+                  router.push("/swap");
+                },
                 accessibilityLabel: "Swap",
               },
             ]
