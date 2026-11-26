@@ -64,6 +64,8 @@ type PaneKey = keyof typeof PANES;
  * What the total balance is made of, laid over a blurred Home: Cash and
  * Investments as what the Consumer has, Earn as what it could be doing.
  */
+const BALANCE_FROST_INTENSITY = 70;
+
 export default function BalanceScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -185,8 +187,14 @@ export default function BalanceScreen() {
       <BottomSheetModalProvider>
         <View className="flex-1">
           <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
-            <FrostBlurView veil={false} style={StyleSheet.absoluteFill}>
-              <View className="flex-1 bg-background/60" />
+            {/* Heavier than the shared frost: this page is read on top of
+                Home, and Home's numbers showing through compete with it. */}
+            <FrostBlurView
+              veil={false}
+              intensity={BALANCE_FROST_INTENSITY}
+              style={StyleSheet.absoluteFill}
+            >
+              <View className="flex-1 bg-background/75" />
             </FrostBlurView>
           </Animated.View>
 
