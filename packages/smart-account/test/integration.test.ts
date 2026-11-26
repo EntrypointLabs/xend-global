@@ -3231,6 +3231,13 @@ function runAsset(
     feePayer: h.sponsor.publicKey,
     forwarderProgram: h.forwarder,
     allowedPrograms: ABOVE_LIMIT_PROGRAM_ALLOWLIST,
+    wrappedSolAccountExists: !!h.svm.getAccount(
+      associatedTokenAddress(
+        h.addresses.vault,
+        earnAsset("jupiter", "SOL").mint,
+        TOKEN_PROGRAM,
+      ),
+    ),
   });
   mutate?.(ixs);
   const authority = earnAuthority(h.addresses.vault, h.forwarder);
@@ -3360,6 +3367,22 @@ describe.skipIf(!haveEarn)("Jupiter Earn beyond USDC", () => {
       "sponsor delta",
       h.svm.getBalance(h.sponsor.publicKey)! - sponsorBefore,
     );
+  });
+  it("returns an existing wrapped-SOL account's rent to the vault, not the sponsor", () => {
+    const h = multiHarness();
+    h.svm.airdrop(h.addresses.vault, 5n * LAMPORTS_PER_SOL_BIG);
+    const wsol = fundVaultToken(h, "SOL", 0n);
+    const rent = BigInt(h.svm.getAccount(wsol)!.lamports);
+    const vaultBefore = h.svm.getBalance(h.addresses.vault)!;
+    const sponsorBefore = h.svm.getBalance(h.sponsor.publicKey)!;
+    const dep = runAsset(h, "SOL", "deposit", 1_000_000_000n);
+    expect(failed(dep.result)).toBe(false);
+    expect(h.svm.getAccount(wsol)?.lamports ?? 0).toBe(0);
+    expect(h.svm.getBalance(h.addresses.vault)).toBe(
+      vaultBefore - 1_000_000_000n + rent,
+    );
+    // The sponsor paid only fees and the new receipt and staging accounts.
+    expect(h.svm.getBalance(h.sponsor.publicKey)!).toBeLessThan(sponsorBefore);
   });
   it("still refuses a non-USDC asset on Kamino", () => {
     expect(() => earnAsset("kamino", "USDG")).toThrow();

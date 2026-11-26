@@ -157,6 +157,12 @@ export interface BuildEarnParams
     Omit<TokenAllowanceParams, "delegate" | "mint" | "amount"> {
   forwarderProgram: PublicKey;
   feePayer: PublicKey;
+  /**
+   * SOL only: the vault already has its wrapped-SOL account, so the sponsor
+   * opens nothing and is owed no rent when the move closes it. Read from the
+   * chain by whoever builds the message, phone and backend alike.
+   */
+  wrappedSolAccountExists?: boolean;
 }
 export function earnAuthority(vault: PublicKey, program: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
@@ -315,8 +321,8 @@ export function buildEarnInstructions(
   // Native SOL lives in the vault's lamports. Wrap exactly the deposit into the
   // vault's wSOL account before the allowance, and close that account after a
   // move so the vault holds plain SOL again. Closing hands the account rent to
-  // the vault, which repays the sponsor in the same policy call, so the vault
-  // ends level whoever opened the account.
+  // the vault; when the sponsor opened the account in this transaction the
+  // vault repays it in the same policy call, so the vault ends level.
   const sol = mint.equals(WRAPPED_SOL_MINT);
   const wsol = associatedTokenAddress(
     addresses.vault,
@@ -334,11 +340,15 @@ export function buildEarnInstructions(
             { ...ro(addresses.vault), isSigner: true },
           ],
         }),
-        SystemProgram.transfer({
-          fromPubkey: addresses.vault,
-          toPubkey: feePayer,
-          lamports: TOKEN_ACCOUNT_RENT_LAMPORTS,
-        }),
+        ...(params.wrappedSolAccountExists
+          ? []
+          : [
+              SystemProgram.transfer({
+                fromPubkey: addresses.vault,
+                toPubkey: feePayer,
+                lamports: TOKEN_ACCOUNT_RENT_LAMPORTS,
+              }),
+            ]),
       ]
     : [];
   const allowance = buildTokenAllowance({

@@ -602,10 +602,21 @@ export class EarnService {
     const allowed = decodeAllowedPrograms(a.policy, info);
     const asset = quoteAsset(stored);
     if (!this.enabled(asset)) throw fail();
+    // The sponsor is repaid wrapped-SOL rent only for an account it opens.
+    const wrappedSolAccountExists =
+      asset === 'SOL' &&
+      !!(await this.rpc.getAccountInfo(
+        associatedTokenAddress(
+          a.addresses.vault,
+          earnAsset('jupiter', 'SOL').mint,
+          earnAsset('jupiter', 'SOL').tokenProgram,
+        ),
+      ));
     const instructions = buildEarnInstructions({
       ...a,
       provider: stored.provider,
       asset,
+      wrappedSolAccountExists,
       action: stored.action,
       amount: BigInt(stored.inputAmountRaw),
       minimumOut: BigInt(stored.minimumOutRaw),

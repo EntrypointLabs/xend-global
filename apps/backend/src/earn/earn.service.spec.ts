@@ -1088,6 +1088,46 @@ describe('Earn beyond USDC', () => {
       action: 'deposit',
     });
   });
+  it('repays the sponsor wrapped-SOL rent only when the vault has no wrapped-SOL account', async () => {
+    const h = setup();
+    h.config.set('EARN_ENABLED_ASSETS', 'USDC,SOL');
+    const sol = earnAsset('jupiter', 'SOL');
+    const wsol = associatedTokenAddress(
+      deriveAccountAddresses(42n).vault,
+      sol.mint,
+      sol.tokenProgram,
+    );
+    const refunds = async () => {
+      const q = await h.service.quote('a', {
+        provider: 'jupiter',
+        mint: SOL,
+        action: 'deposit',
+        amountMinor: '1000000000',
+      });
+      await h.service.prepare('a', q.quoteId);
+      const ixs = h.compile.mock.calls.at(-1)![0].instructions;
+      return ixs.some((ix) =>
+        ix.keys.some(
+          (k) =>
+            k.pubkey.equals(new PublicKey(h.authority.address)) && !k.isSigner,
+        ),
+      );
+    };
+    expect(await refunds()).toBe(true);
+    const original = h.rpc.getAccountInfo.getMockImplementation()!;
+    h.rpc.getAccountInfo.mockImplementation((key: PublicKey) =>
+      key.equals(wsol)
+        ? Promise.resolve({
+            executable: false,
+            owner: TOKEN_PROGRAM_ID,
+            lamports: 2_039_280,
+            data: Buffer.alloc(165),
+            rentEpoch: 0,
+          })
+        : original(key),
+    );
+    expect(await refunds()).toBe(false);
+  });
   it('lists every Jupiter asset with its own figures and Kamino with USDC only', async () => {
     const h = setup();
     noFetch();
