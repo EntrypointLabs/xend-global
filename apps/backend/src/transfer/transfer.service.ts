@@ -755,6 +755,7 @@ export class TransferService {
       .select({
         signature: earnOperations.signature,
         provider: earnOperations.provider,
+        mint: earnOperations.mint,
         action: earnOperations.action,
         cashDeltaRaw: earnOperations.cashDeltaRaw,
         quote: earnOperations.quote,
@@ -771,6 +772,7 @@ export class TransferService {
         row.signature,
         {
           provider: row.provider,
+          mint: row.mint,
           action: row.action,
           amountRaw: earnCashMoved(row),
         },
@@ -1094,10 +1096,10 @@ function intentKey(intentId: string): string {
 }
 
 /**
- * The USDC an Earn operation moved, in minor units. The vault's measured
+ * The asset an Earn operation moved, in that asset's base units. The vault's measured
  * delta is authoritative; before it is recorded the quote stands in, where a
- * deposit's input is USDC but a withdrawal's input is receipt shares, so its
- * USDC side is the expected output.
+ * deposit's input is the asset but a withdrawal's input is receipt shares, so
+ * its asset side is the expected output.
  */
 function earnCashMoved(row: {
   action: 'deposit' | 'redeem';

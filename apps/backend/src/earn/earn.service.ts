@@ -2,16 +2,20 @@ import { parseKaminoRate, parseJupiterRate } from './earn-rate';
 import { EARN_RECORDS, type EarnRecords } from './earn-records';
 import {
   historyPoints,
+  positionKey,
   rangeStartDay,
   snapshotsToRecord,
+  totalEarnings,
   utcDay,
   type EarnHistoryRange,
+  type EarnPositionKey,
   type ProviderEarnings,
 } from './earn-history';
 import {
   Inject,
   Injectable,
   Logger,
+  Optional,
   ServiceUnavailableException,
   BadRequestException,
   ConflictException,
@@ -28,15 +32,27 @@ import {
   derivePolicyAddress,
   EARN_PROVIDERS,
   EARN_USDC,
+  earnAsset,
+  earnAssetByMint,
+  earnAssetsFor,
   readEarnExchangeRate,
   readEarnForwarderCode,
   sharesForValue,
   sharesValue,
   depositShares,
-  TOKEN_PROGRAM_ID,
+  type EarnAssetId,
   type EarnProviderId,
   type EarnAction,
+  type EarnExchangeRate,
 } from '@prydd/smart-account';
+import {
+  TOKEN_PRICE_PROVIDER,
+  type TokenPriceProvider,
+} from '../prices/token-price.interface';
+import {
+  TOKEN_METADATA_PROVIDER,
+  type TokenMetadataProvider,
+} from '../tokens/token-metadata.interface';
 import {
   SQUADS_ACCOUNT_STORE,
   ABOVE_LIMIT_POLICY_SEED,
@@ -59,11 +75,14 @@ import { Web3SwapChain } from '../swap/swap-chain.web3';
 
 export interface EarnRequest {
   provider: EarnProviderId;
+  /** The lent asset; USDC when absent. `amountMinor` is in its base units. */
+  mint?: string;
   action: EarnAction;
   amountMinor: string;
   withdrawAll?: boolean;
 }
-export interface EarnQuote extends Omit<EarnRequest, 'withdrawAll'> {
+export interface EarnQuote extends Omit<EarnRequest, 'withdrawAll' | 'mint'> {
+  mint: string;
   quoteId: string;
   inputAmountRaw: string;
   expectedOutRaw: string;
@@ -79,6 +98,29 @@ interface Pin {
   blockHeight: number;
   signature?: string;
   wire?: string;
+}
+const USDC = EARN_USDC.toBase58();
+/** Quotes and ledger rows written before Earn knew more than one asset are USDC. */
+const quoteAsset = (quote: { mint?: string }): EarnAssetId =>
+  earnAssetByMint(quote.mint ?? USDC) ?? 'USDC';
+type Position = EarnPositionKey & {
+  asset: EarnAssetId;
+  price: EarnExchangeRate;
+  holdings: { total: bigint; withdrawable: bigint };
+  shares: bigint;
+  value: bigint;
+};
+/** A raw amount in USD micro-units (USDC minor units), or null if unpriced. */
+function usdMicro(
+  raw: bigint,
+  decimals: number,
+  usdPrice: number | undefined,
+): bigint | null {
+  if (usdPrice === undefined || !Number.isFinite(usdPrice) || usdPrice < 0)
+    return null;
+  return (
+    (raw * BigInt(Math.round(usdPrice * 1e9))) / 10n ** BigInt(decimals + 3)
+  );
 }
 const fail = () =>
   new ServiceUnavailableException({
@@ -99,6 +141,12 @@ export class EarnService {
     @Inject(APPROVAL_SIGNER_STORE)
     private readonly approvals: ApprovalSignerStore,
     @Inject(EARN_RECORDS) private readonly records: EarnRecords,
+    @Optional()
+    @Inject(TOKEN_PRICE_PROVIDER)
+    private readonly prices?: TokenPriceProvider,
+    @Optional()
+    @Inject(TOKEN_METADATA_PROVIDER)
+    private readonly metadata?: TokenMetadataProvider,
   ) {
     this.rpc = new Connection(
       config.getOrThrow<string>('HELIUS_RPC_URL'),
@@ -149,35 +197,72 @@ export class EarnService {
       ],
     };
   }
-  private async balance(owner: PublicKey, mint: PublicKey): Promise<bigint> {
+  /**
+   * Assets enabled for new moves. Others still show any position the vault
+   * holds; they wait on a forwarder that can carry them.
+   */
+  private enabled(asset: EarnAssetId): boolean {
+    const list = (this.config.get<string>('EARN_ENABLED_ASSETS') ?? 'USDC')
+      .split(',')
+      .map((a) => a.trim().toUpperCase());
+    return list.includes(asset);
+  }
+  private isTokenAccount(
+    data: Buffer,
+    program: PublicKey,
+    accountProgram: PublicKey,
+    mint: PublicKey,
+    owner: PublicKey,
+  ) {
+    return (
+      accountProgram.equals(program) &&
+      data.length >= 165 &&
+      new PublicKey(data.subarray(0, 32)).equals(mint) &&
+      new PublicKey(data.subarray(32, 64)).equals(owner)
+    );
+  }
+  /** What the vault can lend of an asset: native lamports for SOL. */
+  private async balance(owner: PublicKey, asset: EarnAssetId): Promise<bigint> {
+    const { mint, tokenProgram } = earnAsset('jupiter', asset);
+    if (asset === 'SOL') return BigInt(await this.rpc.getBalance(owner));
+    return this.tokenBalance(owner, mint, tokenProgram);
+  }
+  /** The owner's canonical associated account for a mint, which Earn moves from. */
+  private async tokenBalance(
+    owner: PublicKey,
+    mint: PublicKey,
+    tokenProgram: PublicKey,
+  ): Promise<bigint> {
     const info = await this.rpc.getAccountInfo(
-      associatedTokenAddress(owner, mint, TOKEN_PROGRAM_ID),
+      associatedTokenAddress(owner, mint, tokenProgram),
     );
     if (!info) return 0n;
-    if (
-      !info.owner.equals(TOKEN_PROGRAM_ID) ||
-      info.data.length !== 165 ||
-      !new PublicKey(info.data.subarray(0, 32)).equals(mint) ||
-      !new PublicKey(info.data.subarray(32, 64)).equals(owner)
-    )
+    if (!this.isTokenAccount(info.data, tokenProgram, info.owner, mint, owner))
       throw fail();
     return info.data.readBigUInt64LE(64);
   }
-  private async receiptBalances(owner: PublicKey, mint: PublicKey) {
+  private async receiptBalances(
+    owner: PublicKey,
+    mint: PublicKey,
+    tokenProgram: PublicKey,
+  ) {
     const response = await this.rpc.getTokenAccountsByOwner(
       owner,
       { mint },
       'confirmed',
     );
-    const canonical = associatedTokenAddress(owner, mint, TOKEN_PROGRAM_ID);
+    const canonical = associatedTokenAddress(owner, mint, tokenProgram);
     let total = 0n,
       withdrawable = 0n;
     for (const { pubkey, account } of response.value) {
       if (
-        !account.owner.equals(TOKEN_PROGRAM_ID) ||
-        account.data.length !== 165 ||
-        !new PublicKey(account.data.subarray(0, 32)).equals(mint) ||
-        !new PublicKey(account.data.subarray(32, 64)).equals(owner)
+        !this.isTokenAccount(
+          account.data,
+          tokenProgram,
+          account.owner,
+          mint,
+          owner,
+        )
       )
         throw fail();
       const amount = account.data.readBigUInt64LE(64);
@@ -189,61 +274,105 @@ export class EarnService {
   private mainnet() {
     return this.config.get<string>('SOLANA_CLUSTER') === 'mainnet';
   }
-  private async position(vault: PublicKey, provider: EarnProviderId) {
+  private async position(
+    vault: PublicKey,
+    provider: EarnProviderId,
+    asset: EarnAssetId,
+  ): Promise<Position> {
+    const a = earnAsset(provider, asset);
     const [price, holdings] = await Promise.all([
-      readEarnExchangeRate(this.rpc, provider),
-      this.receiptBalances(
-        vault,
-        new PublicKey(EARN_PROVIDERS[provider].receipt),
-      ),
+      readEarnExchangeRate(this.rpc, provider, asset),
+      this.receiptBalances(vault, a.receipt, a.tokenProgram),
     ]);
     return {
+      provider,
+      mint: a.mint.toBase58(),
+      asset,
       price,
       holdings,
       shares: holdings.total,
       value: sharesValue(holdings.total, price),
     };
   }
+  private async positions(vault: PublicKey): Promise<Position[]> {
+    const keys = (Object.keys(EARN_PROVIDERS) as EarnProviderId[]).flatMap(
+      (provider) =>
+        earnAssetsFor(provider).map((asset) => ({ provider, asset })),
+    );
+    return Promise.all(
+      keys.map(({ provider, asset }) => this.position(vault, provider, asset)),
+    );
+  }
   private async recordSnapshots(
     userId: string,
-    positions: Record<EarnProviderId, { shares: bigint; value: bigint }>,
-    earnings: Record<EarnProviderId, ProviderEarnings>,
+    positions: Position[],
+    earnings: (EarnPositionKey & ProviderEarnings)[],
   ) {
-    const withHistory = await this.records.providersWithHistory(userId);
+    const withHistory = await this.records.positionsWithHistory(userId);
+    const byKey = new Map(earnings.map((e) => [positionKey(e), e]));
     await this.records.recordSnapshots(
       userId,
       utcDay(new Date()),
-      snapshotsToRecord(positions, earnings, withHistory),
+      snapshotsToRecord(
+        positions.flatMap((p) => {
+          const e = byKey.get(positionKey(p));
+          return e ? [{ ...p, earnings: e }] : [];
+        }),
+        withHistory,
+      ),
     );
   }
   async snapshot(userId: string): Promise<void> {
     if (!this.mainnet()) return;
     const a = await this.account(userId);
     await this.records.reconcile(userId, this.rpc);
-    const providers = Object.keys(EARN_PROVIDERS) as EarnProviderId[];
-    const read = await Promise.all(
-      providers.map((provider) => this.position(a.addresses.vault, provider)),
-    );
-    const positions = Object.fromEntries(
-      providers.map((provider, i) => [
-        provider,
-        { shares: read[i].shares, value: read[i].value },
-      ]),
-    ) as Record<EarnProviderId, { shares: bigint; value: bigint }>;
+    const positions = await this.positions(a.addresses.vault);
     const earnings = await this.records.earnings(userId, positions);
-    await this.recordSnapshots(userId, positions, earnings.providers);
+    await this.recordSnapshots(userId, positions, earnings);
   }
   async history(
     userId: string,
     provider: EarnProviderId,
     range: EarnHistoryRange,
+    mint: string = USDC,
   ) {
+    const asset = earnAssetByMint(mint);
+    if (!asset || !earnAssetsFor(provider).includes(asset))
+      throw new BadRequestException('Unsupported Earn asset');
     const rows = await this.records.snapshots(
       userId,
-      provider,
+      { provider, mint },
       rangeStartDay(range, new Date()),
     );
-    return { provider, points: historyPoints(rows) };
+    return { provider, mint, points: historyPoints(rows) };
+  }
+  private async apy(provider: EarnProviderId, asset: EarnAssetId) {
+    let apy: number | null = null;
+    // Rate failure never fabricates a zero and does not erase a real position.
+    try {
+      if (provider === 'jupiter') {
+        const sdk = await import('@jup-ag/lend/earn');
+        const details = await sdk.getLendingTokenDetails({
+          connection: this.rpc,
+          lendingToken: earnAsset(provider, asset).receipt,
+          market: 'main',
+        });
+        const supplyRate: unknown = details.supplyRate;
+        apy = parseJupiterRate(supplyRate);
+      } else {
+        const response = await fetch(
+          'https://api.kamino.finance/kamino-market/7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF/reserves/metrics',
+          { signal: AbortSignal.timeout(5000) },
+        );
+        if (response.ok)
+          apy = parseKaminoRate((await response.json()) as unknown);
+      }
+    } catch {
+      /* Position and withdrawal reads remain available without an APY. */
+    }
+    if (apy !== null && (!Number.isFinite(apy) || apy < 0 || apy > 10))
+      return null;
+    return apy;
   }
   async catalog(userId: string) {
     // These deployments exist only on mainnet. No mainnet address is a
@@ -264,6 +393,7 @@ export class EarnService {
             lifetimeMinor: '0',
             lastSevenDaysMinor: '0',
             updatedAt: new Date().toISOString(),
+            assets: [],
           }),
         ),
         lifetimeMinor: '0',
@@ -278,86 +408,133 @@ export class EarnService {
         () => false,
       ));
     await this.records.reconcile(userId, this.rpc);
-    const positions = {} as Record<
-      EarnProviderId,
-      { shares: bigint; value: bigint }
-    >;
-    const products = await Promise.all(
-      (Object.keys(EARN_PROVIDERS) as EarnProviderId[]).map(
-        async (provider) => {
-          const p = EARN_PROVIDERS[provider];
-          const { price, holdings, shares, value } = await this.position(
-            a.addresses.vault,
-            provider,
-          );
-          positions[provider] = { shares, value };
-          let apy: number | null = null;
-          // Rate failure never fabricates a zero and does not erase a real position.
-          try {
-            if (provider === 'jupiter') {
-              const sdk = await import('@jup-ag/lend/earn');
-              const details = await sdk.getLendingTokenDetails({
-                connection: this.rpc,
-                lendingToken: new PublicKey(p.receipt),
-                market: 'main',
-              });
-              const supplyRate: unknown = details.supplyRate;
-              apy = parseJupiterRate(supplyRate);
-            } else {
-              const response = await fetch(
-                'https://api.kamino.finance/kamino-market/7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF/reserves/metrics',
-                { signal: AbortSignal.timeout(5000) },
-              );
-              if (response.ok)
-                apy = parseKaminoRate((await response.json()) as unknown);
-            }
-          } catch {
-            /* Position and withdrawal reads remain available without an APY. */
-          }
-          if (apy !== null && (!Number.isFinite(apy) || apy < 0 || apy > 10))
-            apy = null;
-          return {
-            id: provider,
-            provider: p.name,
-            name: 'Lending Yield',
-            apy,
-            positionShares: shares.toString(),
-            positionMinor: value.toString(),
-            withdrawableMinor: sharesValue(
-              holdings.withdrawable,
-              price,
-            ).toString(),
-            available:
-              ready && !this.config.get<boolean>('EARN_DEPOSITS_KILLSWITCH'),
-            withdrawAvailable: ready && holdings.withdrawable > 0n,
-            updatedAt: new Date().toISOString(),
-          };
-        },
-      ),
+    const positions = await this.positions(a.addresses.vault);
+    const assets = [...new Set(positions.map((p) => p.asset))];
+    const mints = assets.map((asset) =>
+      earnAsset('jupiter', asset).mint.toBase58(),
     );
-    const [earnings, depositable] = await Promise.all([
+    const [earnings, apys, depositable, prices, metadata] = await Promise.all([
       this.records.earnings(userId, positions),
-      this.balance(a.addresses.vault, EARN_USDC),
+      Promise.all(positions.map((p) => this.apy(p.provider, p.asset))),
+      Promise.all(
+        assets.map((asset) => this.balance(a.addresses.vault, asset)),
+      ),
+      this.prices
+        ? this.prices.getUsdPrices(mints).catch(() => new Map())
+        : Promise.resolve(new Map()),
+      this.metadata
+        ? this.metadata.getMetadata(mints).catch(() => new Map())
+        : Promise.resolve(new Map()),
     ]);
     // The chart is a side effect of this read and must never delay or fail it.
-    void this.recordSnapshots(userId, positions, earnings.providers).catch(
+    void this.recordSnapshots(userId, positions, earnings).catch(
       (err: unknown) => this.logger.warn('earn.snapshot_failed', err),
     );
+    const depositableOf = new Map(
+      assets.map((asset, i) => [asset, depositable[i]]),
+    );
+    const earningsOf = new Map(earnings.map((e) => [positionKey(e), e]));
+    const depositsOpen =
+      ready && !this.config.get<boolean>('EARN_DEPOSITS_KILLSWITCH');
+    const rows = positions.map((p, i) => {
+      const asset = earnAsset(p.provider, p.asset);
+      // Earn's USDC figures have always been dollars at face value.
+      const usdPrice =
+        p.mint === USDC
+          ? 1
+          : (prices as Map<string, { usdPrice: number }>).get(p.mint)?.usdPrice;
+      const usd = (raw: bigint) =>
+        raw === 0n ? 0n : usdMicro(raw, asset.decimals, usdPrice);
+      const e = earningsOf.get(positionKey(p));
+      const withdrawable = sharesValue(p.holdings.withdrawable, p.price);
+      const enabled = this.enabled(p.asset);
+      return {
+        provider: p.provider,
+        usd,
+        value: p.value,
+        withdrawable,
+        lifetime: e?.lifetimeMinor ?? null,
+        lastSevenDays: e?.lastSevenDaysMinor ?? null,
+        apy: apys[i],
+        shares: p.shares,
+        asset: {
+          mint: p.mint,
+          symbol: asset.symbol,
+          name:
+            (metadata as Map<string, { name: string }>).get(p.mint)?.name ??
+            asset.name,
+          iconUrl:
+            (metadata as Map<string, { iconUrl: string | null }>).get(p.mint)
+              ?.iconUrl ?? null,
+          decimals: asset.decimals,
+          apy: apys[i],
+          positionRaw: p.value.toString(),
+          positionUsd: formatUsd(usd(p.value)),
+          withdrawableRaw: withdrawable.toString(),
+          lifetimeEarnedRaw: e?.lifetimeMinor ?? null,
+          lastSevenDaysEarnedRaw: e?.lastSevenDaysMinor ?? null,
+          depositableRaw: (depositableOf.get(p.asset) ?? 0n).toString(),
+          available: depositsOpen && enabled,
+          withdrawAvailable: ready && enabled && p.holdings.withdrawable > 0n,
+        },
+      };
+    });
+    /** USD micro-units across a product's assets; unknown if any part is. */
+    const sumUsd = (parts: (bigint | null)[]) =>
+      parts.some((v) => v === null)
+        ? null
+        : parts.reduce<bigint>((n, v) => n + v!, 0n);
+    const usdOf = (raw: string | null, r: (typeof rows)[number]) =>
+      raw === null ? null : r.usd(BigInt(raw));
+    const products = (Object.keys(EARN_PROVIDERS) as EarnProviderId[]).map(
+      (id) => {
+        const mine = rows.filter((r) => r.provider === id);
+        const usdc = mine.find((r) => r.asset.mint === USDC)!;
+        const lifetime = sumUsd(mine.map((r) => usdOf(r.lifetime, r)));
+        const seven = sumUsd(mine.map((r) => usdOf(r.lastSevenDays, r)));
+        return {
+          id,
+          provider: EARN_PROVIDERS[id].name,
+          name: 'Lending Yield',
+          apy: usdc.apy,
+          positionShares: usdc.shares.toString(),
+          positionMinor: (
+            sumUsd(mine.map((r) => r.usd(r.value))) ?? 0n
+          ).toString(),
+          withdrawableMinor: (
+            sumUsd(mine.map((r) => r.usd(r.withdrawable))) ?? 0n
+          ).toString(),
+          available: mine.some((r) => r.asset.available),
+          withdrawAvailable: mine.some((r) => r.asset.withdrawAvailable),
+          lifetimeMinor: lifetime?.toString() ?? null,
+          lastSevenDaysMinor: seven?.toString() ?? null,
+          updatedAt: new Date().toISOString(),
+          assets: mine.map((r) => r.asset),
+        };
+      },
+    );
+    const totals = totalEarnings(products);
     return {
-      products: products.map((product) => ({
-        ...product,
-        lifetimeMinor: earnings.providers[product.id].lifetimeMinor,
-        lastSevenDaysMinor: earnings.providers[product.id].lastSevenDaysMinor,
-      })),
-      lifetimeMinor: earnings.lifetimeMinor,
-      lastSevenDaysMinor: earnings.lastSevenDaysMinor,
-      depositableMinor: depositable.toString(),
+      products,
+      lifetimeMinor: totals.lifetimeMinor,
+      lastSevenDaysMinor: totals.lastSevenDaysMinor,
+      depositableMinor: (depositableOf.get('USDC') ?? 0n).toString(),
     };
   }
   async quote(userId: string, dto: EarnRequest): Promise<EarnQuote> {
     await this.infrastructure(dto.action);
-    const a = await this.account(userId),
-      p = EARN_PROVIDERS[dto.provider];
+    const a = await this.account(userId);
+    const asset = earnAssetByMint(dto.mint ?? USDC);
+    if (
+      !asset ||
+      !earnAssetsFor(dto.provider).includes(asset) ||
+      !this.enabled(asset)
+    )
+      throw new BadRequestException({
+        code: 'EARN_ASSET_UNAVAILABLE',
+        message: 'Earn is not available for this token yet',
+      });
+    const { receipt, mint } = earnAsset(dto.provider, asset);
     if (!a.approvalCompatible)
       throw new ConflictException({
         code: 'EARN_APPROVAL_POLICY_REVIEW_REQUIRED',
@@ -370,11 +547,14 @@ export class EarnService {
     if (amount <= 0n || amount >= 0xffffffffffffffffn)
       throw new BadRequestException('Choose a valid amount');
     const [price, balance] = await Promise.all([
-      readEarnExchangeRate(this.rpc, dto.provider),
-      this.balance(
-        a.addresses.vault,
-        dto.action === 'deposit' ? EARN_USDC : new PublicKey(p.receipt),
-      ),
+      readEarnExchangeRate(this.rpc, dto.provider, asset),
+      dto.action === 'deposit'
+        ? this.balance(a.addresses.vault, asset)
+        : this.tokenBalance(
+            a.addresses.vault,
+            receipt,
+            earnAsset(dto.provider, asset).tokenProgram,
+          ),
     ]);
     let input = amount;
     if (dto.action === 'redeem') {
@@ -396,6 +576,7 @@ export class EarnService {
     if (minimum <= 0n) throw new BadRequestException('Amount is too small');
     const quote: EarnQuote = {
       provider: dto.provider,
+      mint: mint.toBase58(),
       action: dto.action,
       amountMinor: dto.amountMinor,
       quoteId: randomUUID(),
@@ -430,9 +611,12 @@ export class EarnService {
     const info = await this.rpc.getAccountInfo(a.policy);
     if (!info) throw fail();
     const allowed = decodeAllowedPrograms(a.policy, info);
+    const asset = quoteAsset(stored);
+    if (!this.enabled(asset)) throw fail();
     const instructions = buildEarnInstructions({
       ...a,
       provider: stored.provider,
+      asset,
       action: stored.action,
       amount: BigInt(stored.inputAmountRaw),
       minimumOut: BigInt(stored.minimumOutRaw),
@@ -446,6 +630,7 @@ export class EarnService {
     });
     const quote: EarnQuote = {
       provider: stored.provider,
+      mint: earnAsset(stored.provider, asset).mint.toBase58(),
       action: stored.action,
       amountMinor: stored.amountMinor,
       quoteId: stored.quoteId,
@@ -587,6 +772,7 @@ export class EarnService {
       wire: pin.wire,
       vault: account.addresses.vault.toBase58(),
       provider: pin.quote.provider,
+      mint: pin.quote.mint ?? USDC,
       action: pin.quote.action,
       messageHash: key,
       quote: { ...pin.quote },
@@ -607,6 +793,12 @@ export class EarnService {
     }
     return { signature: pin.signature! };
   }
+}
+function formatUsd(micro: bigint | null): string | null {
+  if (micro === null) return null;
+  const whole = micro / 1_000_000n,
+    fraction = (micro % 1_000_000n).toString().padStart(6, '0');
+  return `${whole}.${fraction}`;
 }
 function pinKey(message: string): string {
   return `earn:prepared:${createHash('sha256').update(message).digest('hex')}`;

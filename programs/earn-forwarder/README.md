@@ -4,7 +4,7 @@ This is one shared, stateless program, with a derived authority for each existin
 
 The existing two-signature Token policy grants an exact allowance to this program's authority. In the same outer transaction the forwarder transfers that input into its staging account, invokes one pinned lending instruction, checks the actual output against the signed minimum, returns the entire output and unspent input to the original Account, then the Account revokes the allowance. Failure rolls back all of it. Neither the primary signer alone nor the sponsor can access a position afterward: receipt tokens belong to the Account.
 
-Only native Solana USDC and legacy SPL Token receipt tokens are supported. Borrowing, leverage, Token-2022, NAVI and bridges are outside this implementation. The app and backend pin Kamino's active, non-term main-market USDC reserve and Jupiter Lend's main-market USDC lending token. The on-chain program pins the two provider program IDs and the deposit/redeem ABI, validates token ownership/mints and PDA authority, refuses a vault signature passed to a provider, and enforces a positive minimum output.
+Kamino lends native USDC only. Jupiter Lend lends any main-market asset, with classic Token or Token-2022 mints; the app and backend pin USDC, USDT, USDG and SOL (see [0042](../../docs/adr/0042-earn-lends-usdt-usdg-and-sol-on-jupiter.md)). Native SOL is wrapped into the vault's wrapped-SOL account inside the outer transaction and unwrapped after it; the forwarder only ever sees token accounts. Borrowing, leverage, NAVI and bridges are outside this implementation. The on-chain program pins the two provider program IDs and the deposit/redeem ABI, pins Kamino to USDC, validates token ownership, mints and PDA authority, requires the asset and receipt mints to belong to the token program it is given, refuses a vault signature passed to a provider, and enforces a positive minimum output.
 
 ## Validation
 
@@ -34,6 +34,20 @@ Deployed on 2026-11-25 from source commit `9775e23b0bf2a083a0c0701d0865e123fc754
 [Deployment and authority assignment](https://explorer.solana.com/tx/3Zeqr3Yf9amoCtzYrYU1XH86AS2hR5V4bgDoEvCMChsDxH7b27XRzKUeurNWkQbF4EC3SmtqYMFEXocw9UoYjujs) happened atomically in one fee-wallet transaction. The fee wallet does not retain program upgrade authority. The upload buffer was closed. Initial upload transaction retries were resumed against the same buffer and program identity.
 
 The initial deployment was not a Squad proposal, so it will not appear as an executed proposal in the Squad's transaction history. To register it in the Squads dashboard, connect a member wallet, open **Developers → Programs → Add Program**, use the name **Prydd Earn Forwarder**, and enter the program address above. The on-chain authority is already the Squad vault; no new authority transfer is needed. Future upgrades require the Squad's approval threshold. See [Squads program management](https://docs.squads.so/main/navigating-your-squad/developers-assets/programs).
+
+## Multi-asset upgrade
+
+The deployed binary (`844d036d…`) is USDC-only. Turning on USDT, USDG and SOL needs the multi-asset build, deployed as an upgrade through the Squad, then the configuration below.
+
+1. Build from the reviewed commit with `cargo build-sbf --arch v0` (platform-tools v1.58) and record the canonical code hash (trailing zero bytes trimmed, as `setup-earn-lookup.mjs` prints it). The build is smaller than the deployed program, so the program-data account needs no extension.
+2. From the fee wallet: `solana program write-buffer target/deploy/prydd_earn_forwarder.so`, then `solana program set-buffer-authority <BUFFER> --new-buffer-authority 65UdyhQDorffWGvf9ivvejXwRCNCBKiDKW36LgcbQBQL`. Check the buffer bytes match the reviewed binary.
+3. In the Squads app, **Developers → Programs → Prydd Earn Forwarder → Upgrade**, with the buffer address and the fee wallet as spill address. Two members approve, then execute.
+4. Confirm the on-chain code hash equals the reviewed hash and the upgrade authority is unchanged.
+5. Extend the shared lookup table with the new markets: `node apps/backend/scripts/setup-earn-lookup.mjs --binary <so> --extend 2fM7RUifC6M6c7TgdKBmDWuWSYzb9mDks8uVQAPyXS1F` prints the plan; add `--execute --payer-keypair <fee wallet>` to send it. The phone rebuilds against whatever tables a message names, so no app change follows from the extension.
+6. Set `EARN_FORWARDER_CODE_SHA256` (backend) and `EXPO_PUBLIC_EARN_FORWARDER_CODE_SHA256` (mobile) to the new hash and set `EARN_ENABLED_ASSETS=USDC,USDT,USDG,SOL`. Ship the backend, then the app. Builds pinned to the old hash stop signing Earn until the new app is installed.
+7. With the operator's test Account, make a small deposit and withdrawal of each new asset, USDG and SOL first.
+
+Apply migration `0071_earn_asset_mint.sql` with the backend release; it records every existing Earn row as USDC.
 
 ## Backend and mobile activation
 

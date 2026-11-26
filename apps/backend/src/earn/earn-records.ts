@@ -1,27 +1,35 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { and, eq, asc, desc, gt, gte, lte, sql } from 'drizzle-orm';
 import { Connection, type VersionedTransactionResponse } from '@solana/web3.js';
 import {
-  EARN_PROVIDERS,
+  earnAsset,
+  earnAssetByMint,
   type EarnProviderId,
-  EARN_USDC,
 } from '@prydd/smart-account';
 import { DbService } from '../db/db.service';
 import { earnOperations, earnPositionSnapshots } from '../db/schema';
 import {
+  TOKEN_PRICE_PROVIDER,
+  type TokenPriceProvider,
+} from '../prices/token-price.interface';
+import { usdValueOf } from '../prices/usd-value';
+import {
+  positionKey,
   providerEarnings,
-  totalEarnings,
   weekAgoDay,
   type EarnBaseline,
+  type EarnPositionKey,
   type EarnSnapshot,
   type ProviderEarnings,
 } from './earn-history';
+const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
 export const EARN_RECORDS = Symbol('EarnRecords');
 export interface EarnPending {
   userId: string;
   signature: string;
   vault: string;
   provider: EarnProviderId;
+  mint: string;
   action: 'deposit' | 'redeem';
   wire: string;
   messageHash: string;
@@ -41,15 +49,13 @@ export interface EarnRecords {
   } | null>;
   pending(record: EarnPending): Promise<void>;
   reconcile(userId: string, rpc: Connection): Promise<void>;
+  /** Each position's income, in that position's asset base units. */
   earnings(
     userId: string,
-    positions: Record<EarnProviderId, { shares: bigint; value: bigint }>,
-  ): Promise<{
-    lifetimeMinor: string | null;
-    lastSevenDaysMinor: string | null;
-    providers: Record<EarnProviderId, ProviderEarnings>;
-  }>;
-  providersWithHistory(userId: string): Promise<Set<EarnProviderId>>;
+    positions: (EarnPositionKey & { shares: bigint; value: bigint })[],
+  ): Promise<(EarnPositionKey & ProviderEarnings)[]>;
+  /** `positionKey`s that already have a snapshot. */
+  positionsWithHistory(userId: string): Promise<Set<string>>;
   recordSnapshots(
     userId: string,
     day: string,
@@ -57,25 +63,40 @@ export interface EarnRecords {
   ): Promise<void>;
   snapshots(
     userId: string,
-    provider: EarnProviderId,
+    key: EarnPositionKey,
     fromDay: string | null,
   ): Promise<{ day: string; valueMinor: string; netDepositedMinor: string }[]>;
   usersWithEarn(): Promise<string[]>;
 }
+/**
+ * The vault's change in the lent asset and in its receipt shares. Native SOL
+ * is wrapped and unwrapped inside the same transaction, so for SOL the
+ * vault's own lamports carry the movement and its wrapped balance nets out.
+ */
 export function earnDeltas(
   tx: VersionedTransactionResponse,
   vault: string,
   receipt: string,
+  mint: string,
 ): { cash: bigint; shares: bigint } | null {
   if (!tx.meta || tx.meta.err) return null;
-  const sum = (rows: typeof tx.meta.preTokenBalances, mint: string) =>
+  const sum = (rows: typeof tx.meta.preTokenBalances, m: string) =>
     (rows ?? [])
-      .filter((r) => r.owner === vault && r.mint === mint)
+      .filter((r) => r.owner === vault && r.mint === m)
       .reduce((n, row) => n + BigInt(row.uiTokenAmount.amount), 0n);
+  let cash =
+    sum(tx.meta.postTokenBalances, mint) - sum(tx.meta.preTokenBalances, mint);
+  if (mint === WRAPPED_SOL) {
+    const keys = tx.transaction.message
+      .getAccountKeys({ accountKeysFromLookups: tx.meta.loadedAddresses })
+      .keySegments()
+      .flat();
+    const index = keys.findIndex((k) => k.toBase58() === vault);
+    if (index < 0) return null;
+    cash += BigInt(tx.meta.postBalances[index] - tx.meta.preBalances[index]);
+  }
   return {
-    cash:
-      sum(tx.meta.postTokenBalances, EARN_USDC.toBase58()) -
-      sum(tx.meta.preTokenBalances, EARN_USDC.toBase58()),
+    cash,
     shares:
       sum(tx.meta.postTokenBalances, receipt) -
       sum(tx.meta.preTokenBalances, receipt),
@@ -83,7 +104,27 @@ export function earnDeltas(
 }
 @Injectable()
 export class DrizzleEarnRecords implements EarnRecords {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    @Optional()
+    @Inject(TOKEN_PRICE_PROVIDER)
+    private readonly prices?: TokenPriceProvider,
+  ) {}
+  /** Frozen at confirmation, like a transfer's value, so Activity never reprices it. */
+  private async usdValue(mint: string, amount: bigint): Promise<string | null> {
+    const asset = earnAssetByMint(mint);
+    if (!this.prices || !asset) return null;
+    try {
+      return await usdValueOf(
+        this.prices,
+        mint,
+        amount < 0n ? -amount : amount,
+        earnAsset('jupiter', asset).decimals,
+      );
+    } catch {
+      return null;
+    }
+  }
   async recover(userId: string, messageHash: string) {
     const [row] = await this.db.client
       .select()
@@ -135,10 +176,13 @@ export class DrizzleEarnRecords implements EarnRecords {
                 .where(eq(earnOperations.signature, row.signature));
               return;
             }
+            const asset = earnAssetByMint(row.mint);
+            if (!asset) return;
             const delta = earnDeltas(
               tx,
               row.vault,
-              EARN_PROVIDERS[row.provider].receipt,
+              earnAsset(row.provider, asset).receipt.toBase58(),
+              row.mint,
             );
             if (!delta || !tx.blockTime) return;
             if (
@@ -155,6 +199,7 @@ export class DrizzleEarnRecords implements EarnRecords {
                 wire: null,
                 cashDeltaRaw: delta.cash.toString(),
                 shareDeltaRaw: delta.shares.toString(),
+                usdValue: await this.usdValue(row.mint, delta.cash),
                 confirmedAt: new Date(tx.blockTime * 1000),
               })
               .where(eq(earnOperations.signature, row.signature));
@@ -168,7 +213,7 @@ export class DrizzleEarnRecords implements EarnRecords {
   }
   async earnings(
     userId: string,
-    positions: Record<EarnProviderId, { shares: bigint; value: bigint }>,
+    positions: (EarnPositionKey & { shares: bigint; value: bigint })[],
   ) {
     const now = Date.now();
     const [rows, baselines] = await Promise.all([
@@ -178,37 +223,36 @@ export class DrizzleEarnRecords implements EarnRecords {
         .where(eq(earnOperations.userId, userId)),
       this.baselines(userId, weekAgoDay(now)),
     ]);
-    const providers = {
-      kamino: providerEarnings(
+    return positions.map((p) => ({
+      provider: p.provider,
+      mint: p.mint,
+      ...providerEarnings(
         rows,
-        'kamino',
-        positions.kamino,
+        p,
+        p,
         now,
-        baselines.kamino,
+        baselines.get(positionKey(p)) ?? { weekAgo: null, earliest: null },
       ),
-      jupiter: providerEarnings(
-        rows,
-        'jupiter',
-        positions.jupiter,
-        now,
-        baselines.jupiter,
-      ),
-    };
-    return { ...totalEarnings(providers), providers };
+    }));
   }
   private async baselines(
     userId: string,
     weekAgo: string,
-  ): Promise<Record<EarnProviderId, EarnBaseline>> {
+  ): Promise<Map<string, EarnBaseline>> {
     const columns = {
       provider: earnPositionSnapshots.provider,
+      mint: earnPositionSnapshots.mint,
       day: earnPositionSnapshots.day,
       valueMinor: earnPositionSnapshots.valueMinor,
       netDepositedMinor: earnPositionSnapshots.netDepositedMinor,
     };
+    const distinct = [
+      earnPositionSnapshots.provider,
+      earnPositionSnapshots.mint,
+    ];
     const [weekAgoRows, earliestRows] = await Promise.all([
       this.db.client
-        .selectDistinctOn([earnPositionSnapshots.provider], columns)
+        .selectDistinctOn(distinct, columns)
         .from(earnPositionSnapshots)
         .where(
           and(
@@ -216,49 +260,39 @@ export class DrizzleEarnRecords implements EarnRecords {
             lte(earnPositionSnapshots.day, weekAgo),
           ),
         )
-        .orderBy(
-          earnPositionSnapshots.provider,
-          desc(earnPositionSnapshots.day),
-        ),
+        .orderBy(...distinct, desc(earnPositionSnapshots.day)),
       this.db.client
-        .selectDistinctOn([earnPositionSnapshots.provider], columns)
+        .selectDistinctOn(distinct, columns)
         .from(earnPositionSnapshots)
         .where(eq(earnPositionSnapshots.userId, userId))
-        .orderBy(
-          earnPositionSnapshots.provider,
-          asc(earnPositionSnapshots.day),
-        ),
+        .orderBy(...distinct, asc(earnPositionSnapshots.day)),
     ]);
-    const pick = (
-      rows: typeof weekAgoRows,
-      provider: EarnProviderId,
-    ): EarnBaseline['earliest'] => {
-      const row = rows.find((r) => r.provider === provider);
-      return row
-        ? {
-            day: row.day,
-            valueMinor: row.valueMinor,
-            netDepositedMinor: row.netDepositedMinor,
-          }
-        : null;
-    };
-    return {
-      kamino: {
-        weekAgo: pick(weekAgoRows, 'kamino'),
-        earliest: pick(earliestRows, 'kamino'),
-      },
-      jupiter: {
-        weekAgo: pick(weekAgoRows, 'jupiter'),
-        earliest: pick(earliestRows, 'jupiter'),
-      },
-    };
+    const row = (r: (typeof weekAgoRows)[number]) => ({
+      day: r.day,
+      valueMinor: r.valueMinor,
+      netDepositedMinor: r.netDepositedMinor,
+    });
+    const out = new Map<string, EarnBaseline>();
+    for (const r of earliestRows)
+      out.set(positionKey(r), { weekAgo: null, earliest: row(r) });
+    for (const r of weekAgoRows) {
+      const key = positionKey(r);
+      out.set(key, {
+        earliest: out.get(key)?.earliest ?? null,
+        weekAgo: row(r),
+      });
+    }
+    return out;
   }
-  async providersWithHistory(userId: string) {
+  async positionsWithHistory(userId: string) {
     const rows = await this.db.client
-      .selectDistinct({ provider: earnPositionSnapshots.provider })
+      .selectDistinct({
+        provider: earnPositionSnapshots.provider,
+        mint: earnPositionSnapshots.mint,
+      })
       .from(earnPositionSnapshots)
       .where(eq(earnPositionSnapshots.userId, userId));
-    return new Set(rows.map((r) => r.provider));
+    return new Set(rows.map(positionKey));
   }
   async recordSnapshots(
     userId: string,
@@ -273,6 +307,7 @@ export class DrizzleEarnRecords implements EarnRecords {
         target: [
           earnPositionSnapshots.userId,
           earnPositionSnapshots.provider,
+          earnPositionSnapshots.mint,
           earnPositionSnapshots.day,
         ],
         set: {
@@ -284,7 +319,7 @@ export class DrizzleEarnRecords implements EarnRecords {
   }
   async snapshots(
     userId: string,
-    provider: EarnProviderId,
+    key: EarnPositionKey,
     fromDay: string | null,
   ) {
     return this.db.client
@@ -297,7 +332,8 @@ export class DrizzleEarnRecords implements EarnRecords {
       .where(
         and(
           eq(earnPositionSnapshots.userId, userId),
-          eq(earnPositionSnapshots.provider, provider),
+          eq(earnPositionSnapshots.provider, key.provider),
+          eq(earnPositionSnapshots.mint, key.mint),
           fromDay ? gte(earnPositionSnapshots.day, fromDay) : undefined,
         ),
       )

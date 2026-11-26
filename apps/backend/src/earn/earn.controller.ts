@@ -20,6 +20,7 @@ interface AuthenticatedRequest extends Request {
 export const EarnQuoteRequestSchema = z
   .object({
     provider: z.enum(['kamino', 'jupiter']),
+    mint: z.string().min(32).max(44).optional(),
     action: z.enum(['deposit', 'redeem']),
     amountMinor: z.string().regex(/^[1-9]\d{0,19}$/),
     withdrawAll: z.boolean().optional(),
@@ -28,6 +29,7 @@ export const EarnQuoteRequestSchema = z
 export const EarnHistoryQuerySchema = z
   .object({
     provider: z.enum(['kamino', 'jupiter']),
+    mint: z.string().min(32).max(44).optional(),
     range: z.enum(EARN_HISTORY_RANGES).default('30d'),
   })
   .strict();
@@ -49,9 +51,18 @@ export class EarnController {
   history(
     @Req() req: AuthenticatedRequest,
     @Query(new ZodValidationPipe(EarnHistoryQuerySchema))
-    query: { provider: 'kamino' | 'jupiter'; range: EarnHistoryRange },
+    query: {
+      provider: 'kamino' | 'jupiter';
+      mint?: string;
+      range: EarnHistoryRange;
+    },
   ) {
-    return this.earn.history(req.user.userId, query.provider, query.range);
+    return this.earn.history(
+      req.user.userId,
+      query.provider,
+      query.range,
+      query.mint,
+    );
   }
   @Post('quote') quote(
     @Req() req: AuthenticatedRequest,

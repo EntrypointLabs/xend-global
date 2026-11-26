@@ -10,11 +10,10 @@ import {
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
 import {
-  EARN_PROVIDERS,
-  EARN_USDC,
+  earnAsset,
+  earnAssetsFor,
   earnProviderAccounts,
   associatedTokenAddress,
-  TOKEN_PROGRAM_ID,
   readEarnForwarderCode,
 } from '@prydd/smart-account';
 const args = process.argv.slice(2),
@@ -23,6 +22,8 @@ const args = process.argv.slice(2),
     return i < 0 ? undefined : args[i + 1];
   };
 const execute = args.includes('--execute');
+// Adds only the missing addresses to an existing table instead of creating one.
+const extend = arg('--extend');
 const binary = arg('--binary'),
   programId = process.env.EARN_FORWARDER_PROGRAM,
   rpcUrl = process.env.HELIUS_RPC_URL;
@@ -34,28 +35,40 @@ const local = readFileSync(binary);
 let end = local.length;
 while (end > 0 && local[end - 1] === 0) end--;
 const hash = createHash('sha256').update(local.subarray(0, end)).digest('hex');
-const rpc = new Connection(rpcUrl, 'confirmed'),
-  program = new PublicKey(programId);
 const dummy = new PublicKey(new Uint8Array(32).fill(7));
 const keys = new Map();
-for (const provider of ['kamino', 'jupiter']) {
-  const receipt = new PublicKey(EARN_PROVIDERS[provider].receipt);
-  const dynamic = new Set([
-    dummy.toBase58(),
-    associatedTokenAddress(dummy, EARN_USDC, TOKEN_PROGRAM_ID).toBase58(),
-    associatedTokenAddress(dummy, receipt, TOKEN_PROGRAM_ID).toBase58(),
-  ]);
-  for (const action of ['deposit', 'redeem'])
-    for (const a of earnProviderAccounts(provider, action, dummy))
-      if (!dynamic.has(a.pubkey.toBase58()))
-        keys.set(a.pubkey.toBase58(), a.pubkey);
-}
-const addresses = [...keys.values()];
+for (const provider of ['kamino', 'jupiter'])
+  for (const asset of earnAssetsFor(provider)) {
+    const { mint, receipt, tokenProgram } = earnAsset(provider, asset);
+    const dynamic = new Set([
+      dummy.toBase58(),
+      associatedTokenAddress(dummy, mint, tokenProgram).toBase58(),
+      associatedTokenAddress(dummy, receipt, tokenProgram).toBase58(),
+    ]);
+    for (const action of ['deposit', 'redeem'])
+      for (const a of earnProviderAccounts(provider, action, dummy, asset))
+        if (!dynamic.has(a.pubkey.toBase58()))
+          keys.set(a.pubkey.toBase58(), a.pubkey);
+  }
+const rpc = new Connection(rpcUrl, 'confirmed'),
+  program = new PublicKey(programId);
+const existing = extend
+  ? (await rpc.getAddressLookupTable(new PublicKey(extend))).value
+  : null;
+if (extend && !existing) throw new Error('No lookup table at --extend');
+const present = new Set(
+  (existing?.state.addresses ?? []).map((k) => k.toBase58()),
+);
+const addresses = [...keys.values()].filter((k) => !present.has(k.toBase58()));
+if (present.size + addresses.length > 256)
+  throw new Error('A lookup table holds at most 256 addresses');
 console.log(
   JSON.stringify(
     {
       mode: execute ? 'execute' : 'read-only plan',
       program: programId,
+      extending: extend ?? null,
+      alreadyPresent: present.size,
       reviewedCodeSha256: hash,
       staticLookupAddresses: addresses.map((k) => k.toBase58()),
       lookupRentLamports: await rpc.getMinimumBalanceForRentExemption(
@@ -76,12 +89,22 @@ if (execute) {
   const payer = Keypair.fromSecretKey(
     Uint8Array.from(JSON.parse(readFileSync(payerFile, 'utf8'))),
   );
-  const [create, address] = AddressLookupTableProgram.createLookupTable({
-    authority: payer.publicKey,
-    payer: payer.publicKey,
-    recentSlot: await rpc.getSlot('finalized'),
-  });
-  await sendAndConfirmTransaction(rpc, new Transaction().add(create), [payer]);
+  let address;
+  if (existing) {
+    if (!existing.state.authority?.equals(payer.publicKey))
+      throw new Error('--payer-keypair is not the table authority');
+    address = existing.key;
+  } else {
+    const [create, created] = AddressLookupTableProgram.createLookupTable({
+      authority: payer.publicKey,
+      payer: payer.publicKey,
+      recentSlot: await rpc.getSlot('finalized'),
+    });
+    await sendAndConfirmTransaction(rpc, new Transaction().add(create), [
+      payer,
+    ]);
+    address = created;
+  }
   for (let i = 0; i < addresses.length; i += 20)
     await sendAndConfirmTransaction(
       rpc,

@@ -55,12 +55,22 @@ describe('EarnController history', () => {
         { day: '2026-11-25', valueMinor: '15030000', earnedMinor: '30000' },
       ],
     });
-    expect(earn.history).toHaveBeenCalledWith('bob', 'jupiter', '7d');
+    expect(earn.history).toHaveBeenCalledWith(
+      'bob',
+      'jupiter',
+      '7d',
+      undefined,
+    );
   });
 
   it.each(['30d', '1y', 'all'])('accepts the %s range', async (range) => {
     await get(`?provider=kamino&range=${range}`).expect(200);
-    expect(earn.history).toHaveBeenCalledWith('bob', 'kamino', range);
+    expect(earn.history).toHaveBeenCalledWith(
+      'bob',
+      'kamino',
+      range,
+      undefined,
+    );
   });
 
   it.each([

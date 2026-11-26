@@ -10,6 +10,12 @@ import {
   type EarnLedgerRow,
 } from './earn-history';
 
+const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+const SOL = 'So11111111111111111111111111111111111111112';
+const at = (provider: 'kamino' | 'jupiter', mint = USDC) => ({
+  provider,
+  mint,
+});
 const NOW = Date.parse('2026-11-25T12:00:00Z');
 const daysAgo = (n: number) => new Date(NOW - n * 86_400_000);
 const row = (
@@ -18,8 +24,10 @@ const row = (
   shares: string,
   confirmedAt: Date | null = daysAgo(1),
   status = 'confirmed',
+  mint = USDC,
 ): EarnLedgerRow => ({
   provider,
+  mint,
   status,
   cashDeltaRaw: cash,
   shareDeltaRaw: shares,
@@ -49,7 +57,7 @@ describe('providerEarnings', () => {
     expect(
       providerEarnings(
         rows,
-        'jupiter',
+        at('jupiter'),
         { shares: 10_800_000n, value: 12_100_000n },
         NOW,
       ),
@@ -61,7 +69,7 @@ describe('providerEarnings', () => {
     expect(
       providerEarnings(
         rows,
-        'kamino',
+        at('kamino'),
         { shares: 7_000_000n, value: 7_000_500n },
         NOW,
       ),
@@ -75,7 +83,7 @@ describe('providerEarnings', () => {
     expect(
       providerEarnings(
         rows,
-        'kamino',
+        at('kamino'),
         { shares: 7_000_000n, value: 6_999_999n },
         NOW,
       ),
@@ -83,16 +91,47 @@ describe('providerEarnings', () => {
   });
   it('leaves earnings and principal unknown when the ledger does not explain the shares', () => {
     expect(
-      providerEarnings(rows, 'kamino', { shares: 7_000_001n, value: 1n }, NOW),
+      providerEarnings(
+        rows,
+        at('kamino'),
+        { shares: 7_000_001n, value: 1n },
+        NOW,
+      ),
     ).toEqual({
       lifetimeMinor: null,
       lastSevenDaysMinor: null,
       netDepositedMinor: null,
     });
   });
+  it('keeps each asset at a provider apart', () => {
+    const mixed = [
+      ...rows,
+      row('jupiter', '-2000000000', '1900000000', daysAgo(2), 'confirmed', SOL),
+    ];
+    expect(
+      providerEarnings(
+        mixed,
+        at('jupiter', SOL),
+        { shares: 1_900_000_000n, value: 2_000_100_000n },
+        NOW,
+      ),
+    ).toEqual({
+      lifetimeMinor: '100000',
+      lastSevenDaysMinor: '100000',
+      netDepositedMinor: '2000000000',
+    });
+    expect(
+      providerEarnings(
+        mixed,
+        at('jupiter'),
+        { shares: 10_800_000n, value: 12_100_000n },
+        NOW,
+      ),
+    ).toMatchObject({ lifetimeMinor: '100000' });
+  });
   it('reports a zero for a provider never used', () => {
     expect(
-      providerEarnings([], 'kamino', { shares: 0n, value: 0n }, NOW),
+      providerEarnings([], at('kamino'), { shares: 0n, value: 0n }, NOW),
     ).toEqual({
       lifetimeMinor: '0',
       lastSevenDaysMinor: '0',
@@ -108,64 +147,64 @@ describe('totalEarnings', () => {
     netDepositedMinor: '0',
   };
   it('sums positions, and stays unknown when any position is unknown', () => {
-    expect(totalEarnings({ kamino: known, jupiter: known })).toEqual({
+    expect(totalEarnings([known, known])).toEqual({
       lifetimeMinor: '20',
       lastSevenDaysMinor: '20',
     });
     expect(
-      totalEarnings({
-        kamino: known,
-        jupiter: { ...known, lastSevenDaysMinor: null },
-      }),
+      totalEarnings([known, { ...known, lastSevenDaysMinor: null }]),
     ).toEqual({ lifetimeMinor: '20', lastSevenDaysMinor: null });
   });
 });
 
 describe('snapshotsToRecord', () => {
-  const earnings = {
-    kamino: {
-      lifetimeMinor: '0',
-      lastSevenDaysMinor: '0',
-      netDepositedMinor: '0',
-    },
-    jupiter: {
-      lifetimeMinor: '5',
-      lastSevenDaysMinor: '5',
-      netDepositedMinor: '100',
-    },
+  const zero = {
+    lifetimeMinor: '0',
+    lastSevenDaysMinor: '0',
+    netDepositedMinor: '0',
   };
+  const held = {
+    lifetimeMinor: '5',
+    lastSevenDaysMinor: '5',
+    netDepositedMinor: '100',
+  };
+  const positions = (jupiterNet: string | null = '100') => [
+    { ...at('kamino'), value: 0n, earnings: zero },
+    {
+      ...at('jupiter'),
+      value: 105n,
+      earnings: { ...held, netDepositedMinor: jupiterNet },
+    },
+    { ...at('jupiter', SOL), value: 0n, earnings: zero },
+  ];
   it('records held positions and the final zero day of a withdrawn one', () => {
-    expect(
-      snapshotsToRecord(
-        { kamino: { value: 0n }, jupiter: { value: 105n } },
-        earnings,
-        new Set(),
-      ),
-    ).toEqual([
-      { provider: 'jupiter', valueMinor: '105', netDepositedMinor: '100' },
+    expect(snapshotsToRecord(positions(), new Set())).toEqual([
+      {
+        provider: 'jupiter',
+        mint: USDC,
+        valueMinor: '105',
+        netDepositedMinor: '100',
+      },
     ]);
-    expect(
-      snapshotsToRecord(
-        { kamino: { value: 0n }, jupiter: { value: 105n } },
-        earnings,
-        new Set(['kamino'] as const),
-      ),
-    ).toEqual([
-      { provider: 'kamino', valueMinor: '0', netDepositedMinor: '0' },
-      { provider: 'jupiter', valueMinor: '105', netDepositedMinor: '100' },
-    ]);
+    expect(snapshotsToRecord(positions(), new Set([`jupiter:${SOL}`]))).toEqual(
+      [
+        {
+          provider: 'jupiter',
+          mint: USDC,
+          valueMinor: '105',
+          netDepositedMinor: '100',
+        },
+        {
+          provider: 'jupiter',
+          mint: SOL,
+          valueMinor: '0',
+          netDepositedMinor: '0',
+        },
+      ],
+    );
   });
   it('skips a position whose principal is unknown', () => {
-    expect(
-      snapshotsToRecord(
-        { kamino: { value: 0n }, jupiter: { value: 105n } },
-        {
-          ...earnings,
-          jupiter: { ...earnings.jupiter, netDepositedMinor: null },
-        },
-        new Set(),
-      ),
-    ).toEqual([]);
+    expect(snapshotsToRecord(positions(null), new Set())).toEqual([]);
   });
 });
 
@@ -213,7 +252,7 @@ describe('seven-day earnings from snapshots', () => {
   });
   it('measures from the latest snapshot on or before seven days ago', () => {
     expect(
-      providerEarnings(old, 'jupiter', position, NOW, {
+      providerEarnings(old, at('jupiter'), position, NOW, {
         weekAgo: snap('2026-11-18', '10030000'),
         earliest: snap('2026-10-26', '10000000'),
       }),
@@ -224,7 +263,7 @@ describe('seven-day earnings from snapshots', () => {
     expect(
       providerEarnings(
         rows,
-        'jupiter',
+        at('jupiter'),
         { shares: 15_000_000n, value: 15_050_000n },
         NOW,
         { weekAgo: snap('2026-11-18', '10030000'), earliest: null },
@@ -233,7 +272,7 @@ describe('seven-day earnings from snapshots', () => {
   });
   it('clamps at zero when the baseline earned more than today', () => {
     expect(
-      providerEarnings(old, 'jupiter', position, NOW, {
+      providerEarnings(old, at('jupiter'), position, NOW, {
         weekAgo: snap('2026-11-18', '10060000'),
         earliest: null,
       }),
@@ -242,7 +281,7 @@ describe('seven-day earnings from snapshots', () => {
   it('keeps all lifetime earnings for a position younger than the window', () => {
     const young = [row('jupiter', '-10000000', '10000000', daysAgo(3))];
     expect(
-      providerEarnings(young, 'jupiter', position, NOW, {
+      providerEarnings(young, at('jupiter'), position, NOW, {
         weekAgo: null,
         earliest: snap('2026-11-23', '10010000'),
       }),
@@ -250,18 +289,18 @@ describe('seven-day earnings from snapshots', () => {
   });
   it('falls back to the earliest snapshot for an older position whose history starts later', () => {
     expect(
-      providerEarnings(old, 'jupiter', position, NOW, {
+      providerEarnings(old, at('jupiter'), position, NOW, {
         weekAgo: null,
         earliest: snap('2026-11-22', '10040000'),
       }),
     ).toMatchObject({ lifetimeMinor: '50000', lastSevenDaysMinor: '10000' });
   });
   it('stays unknown with no snapshot at all for an older position, and on share mismatch', () => {
-    expect(providerEarnings(old, 'jupiter', position, NOW)).toMatchObject({
+    expect(providerEarnings(old, at('jupiter'), position, NOW)).toMatchObject({
       lastSevenDaysMinor: null,
     });
     expect(
-      providerEarnings(old, 'jupiter', { shares: 1n, value: 1n }, NOW, {
+      providerEarnings(old, at('jupiter'), { shares: 1n, value: 1n }, NOW, {
         weekAgo: snap('2026-11-18', '0'),
         earliest: null,
       }),
@@ -274,15 +313,15 @@ describe('seven-day earnings from snapshots', () => {
   it('sums the per-position seven-day figures into the total', () => {
     const kamino = providerEarnings(
       [],
-      'kamino',
+      at('kamino'),
       { shares: 0n, value: 0n },
       NOW,
     );
-    const jupiter = providerEarnings(old, 'jupiter', position, NOW, {
+    const jupiter = providerEarnings(old, at('jupiter'), position, NOW, {
       weekAgo: snap('2026-11-18', '10030000'),
       earliest: null,
     });
-    expect(totalEarnings({ kamino, jupiter })).toEqual({
+    expect(totalEarnings([kamino, jupiter])).toEqual({
       lifetimeMinor: '50000',
       lastSevenDaysMinor: '20000',
     });

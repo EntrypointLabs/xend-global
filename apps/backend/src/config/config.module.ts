@@ -488,6 +488,9 @@ export const USDC_MINT_BY_CLUSTER = {
           .optional(),
         EARN_FORWARDER_PROGRAM: Joi.string().allow('').optional(),
         EARN_LOOKUP_TABLE: Joi.string().allow('').optional(),
+        // Comma-separated Earn assets open for new moves (USDC, USDT, USDG, SOL).
+        // Anything beyond USDC needs the multi-asset forwarder deployed first.
+        EARN_ENABLED_ASSETS: Joi.string().default('USDC'),
         EARN_DEPOSITS_KILLSWITCH: Joi.boolean()
           .truthy('1')
           .falsy('0', '')

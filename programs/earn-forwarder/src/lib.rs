@@ -39,17 +39,32 @@ fn terms(data: &[u8]) -> Result<(u8, u8, u64, u64), ProgramError> {
     }
     Ok((data[1], data[2], amount, minimum))
 }
-fn token(info: &AccountInfo) -> Result<Account, ProgramError> {
-    if info.owner != &spl_token::id() {
-        return Err(ProgramError::IllegalOwner);
+const TOKEN_2022: Pubkey = pubkey!("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+// Token-2022 keeps the classic layout as a prefix; extensions follow an
+// account-type byte at offset 165 (1 = mint, 2 = token account).
+fn base<'a>(
+    info: &AccountInfo,
+    data: &'a [u8],
+    len: usize,
+    kind: u8,
+) -> Result<&'a [u8], ProgramError> {
+    if info.owner == &spl_token::id() && data.len() == len {
+        return Ok(data);
     }
-    Account::unpack(&info.try_borrow_data()?)
+    if info.owner == &TOKEN_2022
+        && (data.len() == len || (data.len() > Account::LEN && data[Account::LEN] == kind))
+    {
+        return Ok(&data[..len]);
+    }
+    Err(ProgramError::IllegalOwner)
+}
+fn token(info: &AccountInfo) -> Result<Account, ProgramError> {
+    let data = info.try_borrow_data()?;
+    Account::unpack(base(info, &data, Account::LEN, 2)?)
 }
 fn mint(info: &AccountInfo) -> Result<Mint, ProgramError> {
-    if info.owner != &spl_token::id() {
-        return Err(ProgramError::IllegalOwner);
-    }
-    Mint::unpack(&info.try_borrow_data()?)
+    let data = info.try_borrow_data()?;
+    Mint::unpack(base(info, &data, Mint::LEN, 1)?)
 }
 fn same(a: &Pubkey, b: &Pubkey) -> ProgramResult {
     if a != b {
@@ -76,8 +91,16 @@ pub fn process_instruction(
     if !payer.is_signer || vault.is_signer || !venue.executable {
         return Err(ProgramError::InvalidAccountData);
     }
-    same(token_program.key, &spl_token::id())?;
-    same(asset.key, &USDC)?;
+    if token_program.key != &spl_token::id() && token_program.key != &TOKEN_2022 {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    // Kamino stays pinned to USDC. Jupiter derives its lending and receipt
+    // accounts from the asset mint, so any listed main-market asset is safe here.
+    if provider == 0 {
+        same(asset.key, &USDC)?;
+    }
+    same(asset.owner, token_program.key)?;
+    same(receipt.owner, token_program.key)?;
     same(venue.key, if provider == 0 { &KAMINO } else { &JUPITER })?;
     if asset.key == receipt.key {
         return Err(ProgramError::InvalidAccountData);
@@ -222,16 +245,19 @@ fn transfer<'a>(
     decimals: u8,
     seeds: &[&[u8]],
 ) -> ProgramResult {
-    let ix = spl_token::instruction::transfer_checked(
-        program.key,
-        source.key,
-        mint.key,
-        dest.key,
-        authority.key,
-        &[],
-        amount,
-        decimals,
-    )?;
+    let mut data = vec![12u8];
+    data.extend_from_slice(&amount.to_le_bytes());
+    data.push(decimals);
+    let ix = Instruction {
+        program_id: *program.key,
+        accounts: vec![
+            AccountMeta::new(*source.key, false),
+            AccountMeta::new_readonly(*mint.key, false),
+            AccountMeta::new(*dest.key, false),
+            AccountMeta::new_readonly(*authority.key, true),
+        ],
+        data,
+    };
     invoke_signed(
         &ix,
         &[

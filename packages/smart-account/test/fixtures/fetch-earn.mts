@@ -6,6 +6,8 @@ import {
   EARN_PROVIDERS,
   EARN_USDC,
   earnProviderAccounts,
+  JUPITER_EARN_ASSETS,
+  type EarnAssetId,
 } from "../../src/earn.js";
 const target = join(import.meta.dirname, "earn");
 mkdirSync(target, { recursive: true });
@@ -18,6 +20,7 @@ const ids = [
   EARN_PROVIDERS.kamino.program,
   EARN_PROVIDERS.jupiter.program,
   "jupeiUmn818Jg1ekPURTpr4mFo29p46vygyykFJ3wZC",
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
 ];
 try {
   for (const id of ids) {
@@ -33,11 +36,17 @@ try {
     [EARN_USDC.toBase58(), EARN_USDC],
     [SYSVAR_CLOCK_PUBKEY.toBase58(), SYSVAR_CLOCK_PUBKEY],
   ]);
-  for (const provider of ["kamino", "jupiter"] as const) {
-    for (const action of ["deposit", "redeem"] as const) {
-      for (const a of earnProviderAccounts(provider, action, PublicKey.default))
+  for (const action of ["deposit", "redeem"] as const) {
+    for (const a of earnProviderAccounts("kamino", action, PublicKey.default))
+      keys.set(a.pubkey.toBase58(), a.pubkey);
+    for (const asset of Object.keys(JUPITER_EARN_ASSETS) as EarnAssetId[])
+      for (const a of earnProviderAccounts(
+        "jupiter",
+        action,
+        PublicKey.default,
+        asset,
+      ))
         keys.set(a.pubkey.toBase58(), a.pubkey);
-    }
   }
   const addresses = [...keys.values()];
   const state = await rpc.getMultipleAccountsInfoAndContext(addresses);

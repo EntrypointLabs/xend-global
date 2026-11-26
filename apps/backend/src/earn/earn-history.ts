@@ -3,8 +3,19 @@ import type { EarnProviderId } from '@prydd/smart-account';
 export const EARN_HISTORY_RANGES = ['7d', '30d', '1y', 'all'] as const;
 export type EarnHistoryRange = (typeof EARN_HISTORY_RANGES)[number];
 
+/** One lent asset at one provider: the unit every Earn figure is kept in. */
+export interface EarnPositionKey {
+  provider: EarnProviderId;
+  mint: string;
+}
+
+export function positionKey(key: EarnPositionKey): string {
+  return `${key.provider}:${key.mint}`;
+}
+
 export interface EarnLedgerRow {
   provider: EarnProviderId;
+  mint: string;
   status: string;
   cashDeltaRaw: string | null;
   shareDeltaRaw: string | null;
@@ -20,6 +31,7 @@ export interface ProviderEarnings {
 
 export interface EarnSnapshot {
   provider: EarnProviderId;
+  mint: string;
   valueMinor: string;
   netDepositedMinor: string;
 }
@@ -30,7 +42,7 @@ export interface EarnSnapshotRow {
   netDepositedMinor: string;
 }
 
-/** The snapshots a seven-day figure is measured from, for one provider. */
+/** The snapshots a seven-day figure is measured from, for one position. */
 export interface EarnBaseline {
   /** Latest snapshot on or before the day seven days ago. */
   weekAgo: EarnSnapshotRow | null;
@@ -54,15 +66,19 @@ export function earnedMinor(valueMinor: string, netDepositedMinor: string) {
   return clampEarned(BigInt(valueMinor) - BigInt(netDepositedMinor)).toString();
 }
 
+/** Every amount in and out is in the position's own asset base units. */
 export function providerEarnings(
   rows: EarnLedgerRow[],
-  provider: EarnProviderId,
+  key: EarnPositionKey,
   position: { shares: bigint; value: bigint },
   now: number,
   baseline: EarnBaseline = { weekAgo: null, earliest: null },
 ): ProviderEarnings {
   const confirmed = rows.filter(
-    (r) => r.provider === provider && r.status === 'confirmed',
+    (r) =>
+      r.provider === key.provider &&
+      r.mint === key.mint &&
+      r.status === 'confirmed',
   );
   const recorded = confirmed.reduce(
     (n, r) => n + BigInt(r.shareDeltaRaw ?? '0'),
@@ -105,12 +121,16 @@ export function providerEarnings(
   };
 }
 
+/** Sums figures already in one unit; any unknown makes the total unknown. */
 export function totalEarnings(
-  providers: Record<EarnProviderId, ProviderEarnings>,
+  figures: Iterable<
+    Pick<ProviderEarnings, 'lifetimeMinor' | 'lastSevenDaysMinor'>
+  >,
 ) {
+  const all = [...figures];
   const sum = (key: 'lifetimeMinor' | 'lastSevenDaysMinor') => {
     let total = 0n;
-    for (const p of Object.values(providers)) {
+    for (const p of all) {
       if (p[key] === null) return null;
       total += BigInt(p[key]);
     }
@@ -127,19 +147,21 @@ export function totalEarnings(
  * at zero instead of stopping at the last day it held anything.
  */
 export function snapshotsToRecord(
-  positions: Record<EarnProviderId, { value: bigint }>,
-  earnings: Record<EarnProviderId, ProviderEarnings>,
-  withHistory: ReadonlySet<EarnProviderId>,
+  positions: (EarnPositionKey & {
+    value: bigint;
+    earnings: ProviderEarnings;
+  })[],
+  withHistory: ReadonlySet<string>,
 ): EarnSnapshot[] {
-  return (Object.keys(positions) as EarnProviderId[]).flatMap((provider) => {
-    const net = earnings[provider].netDepositedMinor;
+  return positions.flatMap((p) => {
+    const net = p.earnings.netDepositedMinor;
     if (net === null) return [];
-    if (positions[provider].value === 0n && !withHistory.has(provider))
-      return [];
+    if (p.value === 0n && !withHistory.has(positionKey(p))) return [];
     return [
       {
-        provider,
-        valueMinor: positions[provider].value.toString(),
+        provider: p.provider,
+        mint: p.mint,
+        valueMinor: p.value.toString(),
         netDepositedMinor: net,
       },
     ];
