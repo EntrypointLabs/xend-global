@@ -3,6 +3,7 @@ import type {
   AwaitingPayment,
   TransferRow,
 } from "@/utils/apiClient";
+import { earnAssetByMint, JUPITER_EARN_ASSETS } from "@prydd/smart-account";
 import { getUsdcMint } from "@/utils/cluster";
 import { formatRawAmount, WRAPPED_SOL_MINT } from "@/utils/swap";
 import type { MerchantCategory } from "@/utils/merchantCategory";
@@ -294,7 +295,7 @@ export function mapTransferRowsToActivityEntries(
 /**
  * One Earn deposit or withdrawal from whichever of its legs were indexed.
  *
- * On chain it is a USDC leg and a receipt-token leg, which read as a payment
+ * On chain it is a lent-asset leg and a receipt-token leg, which read as a payment
  * to a vault and a deposit of some unfamiliar token. Either can be missing, so
  * the amount comes from the operation, not from a leg.
  */
@@ -305,18 +306,20 @@ function earnEntry(
   const earn = legs[0].earn!;
   const direction = earn.action === "deposit" ? "SEND" : "RECEIVE";
   const usdc = getUsdcMint();
+  const asset = earn.mint ? earnAssetByMint(earn.mint) : null;
+  const mint = asset ? earn.mint! : usdc;
   const base =
-    legs.find((leg) => leg.mint === usdc && leg.direction === direction) ??
+    legs.find((leg) => leg.mint === mint && leg.direction === direction) ??
     legs[0];
   return {
     ...mapTransferRowToActivityEntry(base, ctx),
     direction: earn.action === "deposit" ? "send" : "receive",
-    mint: usdc,
+    mint,
     amountRaw: earn.amountRaw,
-    decimals: USDC_DECIMALS,
+    decimals: asset ? JUPITER_EARN_ASSETS[asset].decimals : USDC_DECIMALS,
     iconUrl: null,
     tokenName: null,
-    tokenSymbol: "USDC",
+    tokenSymbol: asset ?? "USDC",
     // Money moved between the Consumer's own holdings, so it is neither spent
     // nor received.
     usdValue: null,

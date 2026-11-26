@@ -720,7 +720,7 @@ describe('Earn disabled environments and recovery', () => {
   });
 });
 
-const usdcReceipts = new Set([
+const usdcReceipts = new Set<string>([
   EARN_PROVIDERS.kamino.receipt,
   JUPITER_EARN_ASSETS.USDC.receipt,
 ]);
@@ -1103,6 +1103,7 @@ describe('Earn beyond USDC', () => {
       'USDT',
     ]);
     const sol = jupiter.assets.find((a) => a.symbol === 'SOL')!;
+    expect(jupiter.available).toBe(true);
     expect(sol).toMatchObject({
       mint: SOL,
       decimals: 9,
@@ -1122,7 +1123,7 @@ describe('Earn beyond USDC', () => {
       available: true,
     });
   });
-  it('values a SOL position in dollars without mixing units', async () => {
+  it('values a SOL position in its own row and keeps the USDC fields USDC', async () => {
     const h = setup();
     noFetch();
     const solReceipt = JUPITER_EARN_ASSETS.SOL.receipt;
@@ -1163,7 +1164,10 @@ describe('Earn beyond USDC', () => {
       withdrawableRaw: '2000000000',
       withdrawAvailable: false,
     });
-    expect(jupiter.positionMinor).toBe('300000000');
+    // The product-level fields stay USDC for app builds that read them as such.
+    expect(jupiter.positionMinor).toBe('0');
+    expect(jupiter.withdrawableMinor).toBe('0');
+    expect(jupiter.withdrawAvailable).toBe(false);
     expect(jupiter.positionShares).toBe('0');
   });
 });

@@ -450,7 +450,6 @@ export class EarnService {
       const enabled = this.enabled(p.asset);
       return {
         provider: p.provider,
-        usd,
         value: p.value,
         withdrawable,
         lifetime: e?.lifetimeMinor ?? null,
@@ -479,35 +478,25 @@ export class EarnService {
         },
       };
     });
-    /** USD micro-units across a product's assets; unknown if any part is. */
-    const sumUsd = (parts: (bigint | null)[]) =>
-      parts.some((v) => v === null)
-        ? null
-        : parts.reduce<bigint>((n, v) => n + v!, 0n);
-    const usdOf = (raw: string | null, r: (typeof rows)[number]) =>
-      raw === null ? null : r.usd(BigInt(raw));
+    // The product-level fields stay USDC, exactly as before other assets
+    // existed: app builds that predate `assets` read them as the USDC position
+    // they can withdraw, and would offer a USDC redemption against SOL shares.
     const products = (Object.keys(EARN_PROVIDERS) as EarnProviderId[]).map(
       (id) => {
         const mine = rows.filter((r) => r.provider === id);
         const usdc = mine.find((r) => r.asset.mint === USDC)!;
-        const lifetime = sumUsd(mine.map((r) => usdOf(r.lifetime, r)));
-        const seven = sumUsd(mine.map((r) => usdOf(r.lastSevenDays, r)));
         return {
           id,
           provider: EARN_PROVIDERS[id].name,
           name: 'Lending Yield',
           apy: usdc.apy,
           positionShares: usdc.shares.toString(),
-          positionMinor: (
-            sumUsd(mine.map((r) => r.usd(r.value))) ?? 0n
-          ).toString(),
-          withdrawableMinor: (
-            sumUsd(mine.map((r) => r.usd(r.withdrawable))) ?? 0n
-          ).toString(),
-          available: mine.some((r) => r.asset.available),
-          withdrawAvailable: mine.some((r) => r.asset.withdrawAvailable),
-          lifetimeMinor: lifetime?.toString() ?? null,
-          lastSevenDaysMinor: seven?.toString() ?? null,
+          positionMinor: usdc.value.toString(),
+          withdrawableMinor: usdc.withdrawable.toString(),
+          available: usdc.asset.available,
+          withdrawAvailable: usdc.asset.withdrawAvailable,
+          lifetimeMinor: usdc.lifetime,
+          lastSevenDaysMinor: usdc.lastSevenDays,
           updatedAt: new Date().toISOString(),
           assets: mine.map((r) => r.asset),
         };
