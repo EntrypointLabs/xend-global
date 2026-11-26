@@ -27,7 +27,7 @@ const FEATURES: Array<[string, string]> = [
   ['Send in seconds', 'To anyone, any time. Network fees are on us.'],
   [
     'Nothing to remember',
-    'No password, no seed phrase. Your face or fingerprint is the key.',
+    'No password to forget. Your face or fingerprint is the key.',
   ],
 ];
 
