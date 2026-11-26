@@ -160,4 +160,4 @@ export {
   type EarnExchangeRate,
 } from "./earn-state.js";
 export { checkEarnMessage } from "./earn-verify.js";
-export { readEarnForwarderCode } from "./earn-code.js";
+export { readEarnForwarderCode, reviewedCodeHashes } from "./earn-code.js";

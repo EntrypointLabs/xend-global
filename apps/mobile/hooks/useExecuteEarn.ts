@@ -17,6 +17,7 @@ import {
   deriveVaultAddress,
   readEarnExchangeRate,
   readEarnForwarderCode,
+  reviewedCodeHashes,
   depositShares,
   sharesValue,
   sharesForValue,
@@ -44,7 +45,9 @@ type Outcome =
   | { status: "cancelled" }
   | { status: "failed"; message: string };
 const publicProgram = process.env.EXPO_PUBLIC_EARN_FORWARDER_PROGRAM;
-const publicCodeHash = process.env.EXPO_PUBLIC_EARN_FORWARDER_CODE_SHA256;
+const reviewedHashes = reviewedCodeHashes(
+  process.env.EXPO_PUBLIC_EARN_FORWARDER_CODE_SHA256
+);
 export function useExecuteEarn() {
   const { data: account } = useAccount();
   const embedded = useEmbeddedSolanaWallet();
@@ -122,7 +125,7 @@ export function useExecuteEarn() {
       };
       try {
         if (!pending.current) {
-          if (!publicProgram || !publicCodeHash)
+          if (!publicProgram || !reviewedHashes.length)
             throw new Error("Earn is not available in this build yet");
           const asset = mint ? earnAssetByMint(mint) : "USDC";
           if (!asset) throw new Error("Earn is not available for this token");
@@ -205,7 +208,7 @@ export function useExecuteEarn() {
           const hash = Array.from(new Uint8Array(digest))
             .map((b) => b.toString(16).padStart(2, "0"))
             .join("");
-          if (hash !== publicCodeHash)
+          if (!reviewedHashes.includes(hash))
             throw new Error("Earn is temporarily unavailable");
           const tx = VersionedTransaction.deserialize(
             Buffer.from(prepared.unsignedTxBase64, "base64")
@@ -357,6 +360,6 @@ export function useExecuteEarn() {
     isExecuting,
     hasPending,
     ready,
-    configured: !!publicProgram && !!publicCodeHash,
+    configured: !!publicProgram && reviewedHashes.length > 0,
   };
 }

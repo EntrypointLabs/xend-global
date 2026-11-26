@@ -38,6 +38,7 @@ import {
   earnAssetsFor,
   readEarnExchangeRate,
   readEarnForwarderCode,
+  reviewedCodeHashes,
   sharesForValue,
   sharesValue,
   depositShares,
@@ -174,10 +175,12 @@ export class EarnService {
       this.chain.lookupTables([lookup]),
     ]);
     if (!info?.executable) throw fail();
-    const expectedHash = this.config.get<string>('EARN_FORWARDER_CODE_SHA256');
-    if (!expectedHash) throw fail();
+    const reviewed = reviewedCodeHashes(
+      this.config.get<string>('EARN_FORWARDER_CODE_SHA256'),
+    );
+    if (!reviewed.length) throw fail();
     const code = await readEarnForwarderCode(this.rpc, program);
-    if (createHash('sha256').update(code).digest('hex') !== expectedHash)
+    if (!reviewed.includes(createHash('sha256').update(code).digest('hex')))
       throw fail();
     return { program, tables };
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PublicKey, type Connection } from "@solana/web3.js";
-import { readEarnForwarderCode } from "../src/earn-code.js";
+import { readEarnForwarderCode, reviewedCodeHashes } from "../src/earn-code.js";
 const loader = new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111");
 describe("reviewed forwarding program code", () => {
   it("requires an executable upgradeable program and trims only its reserved padding", async () => {
@@ -39,5 +39,16 @@ describe("reviewed forwarding program code", () => {
         programData,
       ),
     ).rejects.toThrow();
+  });
+});
+describe("reviewed forwarder builds", () => {
+  const a = "a".repeat(64),
+    b = "b".repeat(64);
+  it("trusts each listed digest and drops anything malformed", () => {
+    expect(reviewedCodeHashes(a)).toEqual([a]);
+    expect(reviewedCodeHashes(`${a}, ${b}`)).toEqual([a, b]);
+    expect(reviewedCodeHashes(`${a},XYZ,${"A".repeat(64)}`)).toEqual([a]);
+    expect(reviewedCodeHashes(undefined)).toEqual([]);
+    expect(reviewedCodeHashes("")).toEqual([]);
   });
 });

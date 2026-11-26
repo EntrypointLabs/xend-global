@@ -302,6 +302,25 @@ function setup() {
 }
 afterEach(() => jest.restoreAllMocks());
 describe('Earn preparation and submission', () => {
+  it('trusts any listed forwarder build and refuses an unlisted one', async () => {
+    const h = setup();
+    const current = createHash('sha256')
+      .update(Buffer.from([1, 2, 3]))
+      .digest('hex');
+    const quote = () =>
+      h.service.quote('a', {
+        provider: 'kamino',
+        action: 'deposit',
+        amountMinor: '1000000',
+      });
+    h.config.set('EARN_FORWARDER_CODE_SHA256', `${'0'.repeat(64)},${current}`);
+    await expect(quote()).resolves.toHaveProperty('quoteId');
+    h.config.set('EARN_FORWARDER_CODE_SHA256', `${'0'.repeat(64)}`);
+    await expect(quote()).rejects.toMatchObject({
+      response: { code: 'EARN_UNAVAILABLE' },
+    });
+    h.config.set('EARN_FORWARDER_CODE_SHA256', current);
+  });
   it('prices a deposit and bounds the receipt floor', async () => {
     const h = setup();
     const q = await h.service.quote('a', {
