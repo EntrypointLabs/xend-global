@@ -1570,6 +1570,7 @@ describe('TransferService.list', () => {
             action: 'deposit',
             cashDeltaRaw: '-15000000',
             quote: { inputAmountRaw: '14990000', amountMinor: '15000000' },
+            usdValue: '15.000000',
           },
           {
             signature: 'sig_wd',
@@ -1588,6 +1589,7 @@ describe('TransferService.list', () => {
       provider: 'jupiter',
       action: 'deposit',
       amountRaw: '15000000',
+      usdValue: '15.000000',
     };
     expect(byId.get('t_in')).toEqual(deposit);
     expect(byId.get('t_out')).toEqual(deposit);

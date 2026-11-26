@@ -16,6 +16,8 @@ import type {
 } from "@/utils/activity";
 import {
   EARN_PROVIDER_NAMES,
+  earnAmountLabel,
+  earnUsdLabel,
   statusLabel,
   swapAmountLabel,
   swapPairLabel,
@@ -445,6 +447,7 @@ function EarnItem({
 }) {
   const tone = useRowTone();
   const isInactive = entry.status === "pending" || entry.status === "failed";
+  const usd = earnUsdLabel(entry);
 
   return (
     <HapticPressable
@@ -469,16 +472,23 @@ function EarnItem({
             {statusLabel(entry)}
           </Typography>
         </View>
-        <Typography
-          weight="600"
-          className={cn(
-            "text-sm tracking-[0.5px]",
-            isInactive ? tone.muted : tone.ink,
-            entry.status === "failed" && "line-through"
+        <View className="items-end gap-0.5">
+          <Typography
+            weight="600"
+            className={cn(
+              "text-sm tracking-[0.5px]",
+              isInactive ? tone.muted : tone.ink,
+              entry.status === "failed" && "line-through"
+            )}
+          >
+            {earnAmountLabel(entry)}
+          </Typography>
+          {usd !== null && (
+            <Typography weight="500" className={cn("text-xs", tone.muted)}>
+              {usd}
+            </Typography>
           )}
-        >
-          {formatDollarsMinor(earn.amountRaw, entry.decimals)}
-        </Typography>
+        </View>
       </View>
     </HapticPressable>
   );

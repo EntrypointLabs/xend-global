@@ -1,7 +1,7 @@
-import { EARN_PROVIDERS } from "@prydd/smart-account";
 import { useMemo } from "react";
 
 import { useBalances } from "@/hooks/useBalances";
+import { isEarnReceipt } from "@/utils/balances";
 import { getUsdcMint } from "@/utils/cluster";
 import { describeToken } from "@/utils/tokens";
 
@@ -37,9 +37,7 @@ export function useInvestments() {
     return (
       tokens
         .filter(
-          (token) =>
-            token.mint !== usdcMint &&
-            !Object.values(EARN_PROVIDERS).some((p) => p.receipt === token.mint)
+          (token) => token.mint !== usdcMint && !isEarnReceipt(token.mint)
         )
         // A closed token account lingers at zero, which is not a holding.
         .filter((token) => BigInt(token.amountRaw) > 0n)

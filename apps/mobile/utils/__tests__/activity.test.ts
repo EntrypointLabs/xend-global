@@ -3,7 +3,9 @@ import type { AwaitingPayment, TransferRow } from "@/utils/apiClient";
 import {
   arrivalLabel,
   activityDetailTimestamp,
+  earnAmountLabel,
   earnReceiptLabel,
+  earnUsdLabel,
   awaitingPaymentActivityEntry,
   securityActivityEntry,
   mapAccountEventToActivityEntry,
@@ -1046,6 +1048,10 @@ describe("an Earn deposit or withdrawal", () => {
       counterparty: "",
       earn: deposit,
     });
+    expect(earnAmountLabel(entry)).toBe("$15.00");
+    expect(
+      earnUsdLabel({ ...entry, earn: { ...entry.earn!, usdValue: "15" } })
+    ).toBeNull();
     expect(
       describeToken(entry.mint, entry.tokenSymbol, entry.tokenName).symbol
     ).toBe("USDC");
@@ -1076,6 +1082,14 @@ describe("an Earn deposit or withdrawal", () => {
       decimals: 9,
       tokenSymbol: "SOL",
     });
+    expect(earnAmountLabel(entry)).toBe("1 SOL");
+    expect(earnAmountLabel({ ...entry, amountRaw: "149100000" })).toBe(
+      "0.1491 SOL"
+    );
+    expect(earnUsdLabel(entry)).toBeNull();
+    expect(
+      earnUsdLabel({ ...entry, earn: { ...entry.earn!, usdValue: "10.48" } })
+    ).toBe("$10.48");
   });
 
   it("labels a USDG deposit as USDG, not USDC", () => {
@@ -1089,6 +1103,7 @@ describe("an Earn deposit or withdrawal", () => {
       decimals: 6,
       tokenSymbol: "USDG",
     });
+    expect(earnAmountLabel(entry)).toBe("15 USDG");
   });
 
   it("keeps separate operations and ordinary rows apart", () => {

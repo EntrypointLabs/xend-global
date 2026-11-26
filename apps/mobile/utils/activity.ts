@@ -8,6 +8,7 @@ import { getUsdcMint } from "@/utils/cluster";
 import { formatRawAmount, WRAPPED_SOL_MINT } from "@/utils/swap";
 import type { MerchantCategory } from "@/utils/merchantCategory";
 import { describeToken, formatTokenAmount } from "@/utils/tokens";
+import { formatUsdFromString } from "@/utils/balances";
 import {
   formatDollarsMinor,
   formatNaira,
@@ -42,7 +43,7 @@ export interface ActivityEntry {
   swap?: SwapSummary;
   /**
    * The Earn deposit or withdrawal this entry stands for. The entry's amount
-   * is then the USDC moved and the receipt token is never shown.
+   * is then the lent token moved and the receipt token is never shown.
    */
   earn?: EarnMovement;
   /** Set only on `security` entries: what changed on the Account. */
@@ -331,6 +332,29 @@ function earnEntry(
 /** "Deposit" or "Withdrawal". */
 export function earnActionLabel(earn: EarnMovement): string {
   return earn.action === "deposit" ? "Deposit" : "Withdrawal";
+}
+
+/** "$15.04" for USDC, "0.1491 SOL" for any other lent token. */
+export function earnAmountLabel(entry: ActivityEntry): string {
+  const symbol = entry.tokenSymbol ?? "USDC";
+  if (symbol === "USDC")
+    return formatDollarsMinor(entry.amountRaw, entry.decimals);
+  const amount = formatTokenAmount(
+    Number(entry.amountRaw) / 10 ** entry.decimals,
+    entry.decimals
+  );
+  return `${amount} ${symbol}`;
+}
+
+/**
+ * What a non-USDC Earn move was worth when it confirmed, shown beneath the
+ * token amount. Null for USDC, which already reads in dollars, and while the
+ * move is unconfirmed or unpriced.
+ */
+export function earnUsdLabel(entry: ActivityEntry): string | null {
+  const usd = entry.earn?.usdValue;
+  if ((entry.tokenSymbol ?? "USDC") === "USDC" || usd == null) return null;
+  return formatUsdFromString(usd) || null;
 }
 
 /** "Jupiter Lend Deposit": what the receipt says happened. */

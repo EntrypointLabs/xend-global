@@ -759,6 +759,7 @@ export class TransferService {
         action: earnOperations.action,
         cashDeltaRaw: earnOperations.cashDeltaRaw,
         quote: earnOperations.quote,
+        usdValue: earnOperations.usdValue,
       })
       .from(earnOperations)
       .where(
@@ -775,6 +776,7 @@ export class TransferService {
           mint: row.mint,
           action: row.action,
           amountRaw: earnCashMoved(row),
+          usdValue: row.usdValue,
         },
       ]),
     );
