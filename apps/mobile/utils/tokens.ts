@@ -5,6 +5,8 @@ import { getUsdcMint } from "@/utils/cluster";
 export const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
 export const EURC_MINT = "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr";
 export const KMNO_MINT = "KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS";
+export const USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+export const USDG_MINT = "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH";
 
 export interface TokenIdentity {
   /** What a Consumer calls it: "Solana", not "SOL". */
@@ -23,6 +25,9 @@ export interface TokenIdentity {
  */
 const KNOWN: Record<string, TokenIdentity> = {
   [WRAPPED_SOL_MINT]: { name: "Solana", symbol: "SOL" },
+  // Named here so they read the same whether or not the index answered.
+  [USDT_MINT]: { name: "Tether USD", symbol: "USDT" },
+  [USDG_MINT]: { name: "Global Dollar", symbol: "USDG" },
 };
 
 /**

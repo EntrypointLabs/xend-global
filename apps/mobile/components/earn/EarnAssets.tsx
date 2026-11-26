@@ -1,5 +1,11 @@
 import React from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  SlideInDown,
+  SlideOutDown,
+} from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
@@ -7,6 +13,7 @@ import { TokenMark } from "@/components/ui/atoms/TokenMark";
 import { Typography } from "@/components/ui/atoms/Typography";
 import type { EarnAsset } from "@/hooks/useEarn";
 import { usePalette } from "@/hooks/usePalette";
+import { EASE_IN, EASE_OUT, SHEET } from "@/components/ui/motion/tokens";
 import { cn } from "@/utils/cn";
 import { formatTokenAmount } from "@/utils/tokens";
 
@@ -119,74 +126,91 @@ export function AssetPickerSheet({
   const palette = usePalette();
   return (
     <View className="absolute inset-0 justify-end">
-      <Pressable
-        accessibilityLabel="Close token list"
-        onPress={onClose}
-        className="absolute inset-0 bg-black/20"
-      />
-      <View
-        accessibilityViewIsModal
-        className="mx-3 mb-7 max-h-[70%] rounded-[32px] bg-card px-5 pb-4 pt-6"
+      <Animated.View
+        entering={FadeIn.duration(SHEET.backdropInMs)}
+        exiting={FadeOut.duration(SHEET.backdropOutMs)}
+        style={StyleSheet.absoluteFill}
       >
-        <Typography variant="title1" weight="600" className="mb-3 text-center">
-          {title}
-        </Typography>
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {assets.map((asset) => {
-            const active = asset.mint === selected;
-            return (
-              <HapticPressable
-                key={asset.mint}
-                accessibilityRole="button"
-                // Listed so the Consumer sees what can be lent, but there is
-                // nothing of it to move.
-                disabled={asset.amount <= 0}
-                accessibilityState={{
-                  selected: active,
-                  disabled: asset.amount <= 0,
-                }}
-                accessibilityLabel={`${asset.name}, ${formatTokenAmount(asset.amount, asset.decimals)} ${asset.symbol}`}
-                onPress={() => onPick(asset.mint)}
-                className={cn(
-                  "flex-row items-center gap-3 py-3",
-                  asset.amount <= 0 && "opacity-40"
-                )}
-              >
-                <TokenMark
-                  mint={asset.mint}
-                  label={asset.symbol}
-                  iconUrl={asset.iconUrl}
-                  size={40}
-                />
-                <View className="flex-1">
-                  <Typography variant="title2" weight="600">
-                    {asset.name}
-                  </Typography>
-                  <Typography variant="body" className="text-foreground/40">
-                    {formatTokenAmount(asset.amount, asset.decimals)}{" "}
-                    {asset.symbol}
-                  </Typography>
-                </View>
-                {asset.usd !== null && (
-                  <Typography variant="body" weight="600">
-                    {asset.usd.toLocaleString("en-US", {
-                      style: "currency",
-                      currency: "USD",
-                    })}
-                  </Typography>
-                )}
-                {active && (
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={20}
-                    color={palette.foreground}
+        <Pressable
+          accessibilityLabel="Close token list"
+          onPress={onClose}
+          className="flex-1 bg-black/20"
+        />
+      </Animated.View>
+      <Animated.View
+        entering={SlideInDown.duration(SHEET.inMs).easing(EASE_OUT)}
+        exiting={SlideOutDown.duration(SHEET.outMs).easing(EASE_IN)}
+        // MEASURED-LAYOUT: the list scrolls past this share of the screen.
+        style={{ maxHeight: "70%" }}
+      >
+        <View
+          accessibilityViewIsModal
+          className="mx-3 mb-7 shrink rounded-[32px] bg-card px-5 pb-4 pt-6"
+        >
+          <Typography
+            variant="title1"
+            weight="600"
+            className="mb-3 text-center"
+          >
+            {title}
+          </Typography>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {assets.map((asset) => {
+              const active = asset.mint === selected;
+              return (
+                <HapticPressable
+                  key={asset.mint}
+                  accessibilityRole="button"
+                  // Listed so the Consumer sees what can be lent, but there is
+                  // nothing of it to move.
+                  disabled={asset.amount <= 0}
+                  accessibilityState={{
+                    selected: active,
+                    disabled: asset.amount <= 0,
+                  }}
+                  accessibilityLabel={`${asset.name}, ${formatTokenAmount(asset.amount, asset.decimals)} ${asset.symbol}`}
+                  onPress={() => onPick(asset.mint)}
+                  className={cn(
+                    "flex-row items-center gap-3 py-3",
+                    asset.amount <= 0 && "opacity-40"
+                  )}
+                >
+                  <TokenMark
+                    mint={asset.mint}
+                    label={asset.symbol}
+                    iconUrl={asset.iconUrl}
+                    size={40}
                   />
-                )}
-              </HapticPressable>
-            );
-          })}
-        </ScrollView>
-      </View>
+                  <View className="flex-1">
+                    <Typography variant="title2" weight="600">
+                      {asset.name}
+                    </Typography>
+                    <Typography variant="body" className="text-foreground/40">
+                      {formatTokenAmount(asset.amount, asset.decimals)}{" "}
+                      {asset.symbol}
+                    </Typography>
+                  </View>
+                  {asset.usd !== null && (
+                    <Typography variant="body" weight="600">
+                      {asset.usd.toLocaleString("en-US", {
+                        style: "currency",
+                        currency: "USD",
+                      })}
+                    </Typography>
+                  )}
+                  {active && (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={20}
+                      color={palette.foreground}
+                    />
+                  )}
+                </HapticPressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </Animated.View>
     </View>
   );
 }

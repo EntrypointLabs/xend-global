@@ -32,6 +32,7 @@ import { OverlayPaneContext } from "@/contexts/OverlayPaneContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import CashScreen from "@/app/cash";
 import InvestmentsScreen from "@/app/investments";
+import { TokenDetail } from "@/app/token/[mint]";
 import { useBalances } from "@/hooks/useBalances";
 import { useEarnHeadlineApy, useEarnPosition } from "@/hooks/useEarn";
 import { useFeature } from "@/hooks/useFeature";
@@ -59,11 +60,15 @@ const PANES = {
   investments: InvestmentsScreen,
 } as const;
 type PaneKey = keyof typeof PANES;
+/** What is slid in over the cards, in order: a card's pane, then a token. */
+type Layer = { kind: PaneKey } | { kind: "token"; mint: string };
 
 /**
  * What the total balance is made of, laid over a blurred Home: Cash and
  * Investments as what the Consumer has, Earn as what it could be doing.
  */
+const BALANCE_FROST_INTENSITY = 70;
+
 export default function BalanceScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -82,9 +87,10 @@ export default function BalanceScreen() {
   const { holdings } = useInvestments();
   const { width } = useWindowDimensions();
   const progress = useSharedValue(0);
-  // 0 with the cards on screen, 1 with a pane slid in over them.
+  // How many layers are slid in over the cards: 0 with the cards on screen,
+  // 1 with a card's pane, 2 with a token over that pane.
   const slide = useSharedValue(0);
-  const [pane, setPane] = useState<PaneKey | null>(null);
+  const [stack, setStack] = useState<Layer[]>([]);
 
   useEffect(() => {
     progress.value = reduceMotion
@@ -114,36 +120,44 @@ export default function BalanceScreen() {
     [closeThen, goToEarn]
   );
 
-  const open = useCallback(
-    (key: PaneKey) => {
-      setPane(key);
-      slide.value = withTiming(1, {
+  const push = useCallback(
+    (layer: Layer) => {
+      slide.value = withTiming(stack.length + 1, {
         duration: SLIDE_MS,
         easing: Easing.out(Easing.cubic),
       });
+      setStack((layers) => [...layers, layer]);
     },
-    [slide]
+    [slide, stack.length]
   );
-  const backToCards = useCallback(() => {
-    const unmount = () => setPane(null);
+  const open = useCallback((key: PaneKey) => push({ kind: key }), [push]);
+  const back = useCallback(() => {
+    const depth = stack.length - 1;
+    const trim = (to: number) => setStack((layers) => layers.slice(0, to));
     slide.value = withTiming(
-      0,
+      depth,
       { duration: SLIDE_MS, easing: Easing.out(Easing.cubic) },
       (finished) => {
-        if (finished) runOnJS(unmount)();
+        if (finished) runOnJS(trim)(depth);
       }
     );
-  }, [slide]);
-  const paneContext = useMemo(() => ({ back: backToCards }), [backToCards]);
+  }, [slide, stack.length]);
+  const paneContext = useMemo(
+    () => ({
+      back,
+      openToken: (mint: string) => push({ kind: "token", mint }),
+    }),
+    [back, push]
+  );
 
   useEffect(() => {
-    if (!pane) return;
+    if (stack.length === 0) return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      backToCards();
+      back();
       return true;
     });
     return () => sub.remove();
-  }, [pane, backToCards]);
+  }, [stack.length, back]);
 
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 0.6], [0, 1], "clamp"),
@@ -157,19 +171,29 @@ export default function BalanceScreen() {
   // The cards leave to the left as the pane arrives from the right, each
   // fading at its far end so neither is cut off hard at the screen edge.
   // With reduced motion they cross-fade in place.
-  const cardsStyle = useAnimatedStyle(() => ({
-    opacity: 1 - slide.value,
-    transform: reduceMotion ? [] : [{ translateX: -width * slide.value }],
-  }));
+  const cardsStyle = useAnimatedStyle(() => {
+    const away = Math.min(slide.value, 1);
+    return {
+      opacity: 1 - away,
+      transform: reduceMotion ? [] : [{ translateX: -width * away }],
+    };
+  });
   // Moved, never faded: the pane's footer is liquid glass, which turns dark
   // grey on a layer whose opacity is animated. Only the reduced-motion
   // cross-fade, where nothing moves, touches its opacity.
-  const paneStyle = useAnimatedStyle(() =>
+  // Each layer sits a screen to the right of the one before it, so the one
+  // being covered leaves to the left as the next arrives.
+  const firstLayerStyle = useAnimatedStyle(() =>
     reduceMotion
-      ? { opacity: slide.value }
+      ? { opacity: 1 - Math.min(Math.abs(slide.value - 1), 1) }
       : { transform: [{ translateX: width * (1 - slide.value) }] }
   );
-  const Pane = pane ? PANES[pane] : null;
+  const secondLayerStyle = useAnimatedStyle(() =>
+    reduceMotion
+      ? { opacity: 1 - Math.min(Math.abs(slide.value - 2), 1) }
+      : { transform: [{ translateX: width * (2 - slide.value) }] }
+  );
+  const layerStyles = [firstLayerStyle, secondLayerStyle];
 
   // A failed read leaves the portfolio at zero, which must not be shown as an
   // empty account.
@@ -185,8 +209,14 @@ export default function BalanceScreen() {
       <BottomSheetModalProvider>
         <View className="flex-1">
           <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
-            <FrostBlurView veil={false} style={StyleSheet.absoluteFill}>
-              <View className="flex-1 bg-background/60" />
+            {/* Heavier than the shared frost: this page is read on top of
+                Home, and Home's numbers showing through compete with it. */}
+            <FrostBlurView
+              veil={false}
+              intensity={BALANCE_FROST_INTENSITY}
+              style={StyleSheet.absoluteFill}
+            >
+              <View className="flex-1 bg-background/75" />
             </FrostBlurView>
           </Animated.View>
 
@@ -200,7 +230,7 @@ export default function BalanceScreen() {
             ]}
           >
             <Animated.View
-              pointerEvents={pane ? "none" : "auto"}
+              pointerEvents={stack.length > 0 ? "none" : "auto"}
               style={[StyleSheet.absoluteFill, cardsStyle]}
             >
               <ScrollView
@@ -342,13 +372,26 @@ export default function BalanceScreen() {
             </Animated.View>
           </Animated.View>
 
-          {Pane && (
-            <Animated.View style={[StyleSheet.absoluteFill, paneStyle]}>
-              <OverlayPaneContext.Provider value={paneContext}>
-                <Pane />
-              </OverlayPaneContext.Provider>
-            </Animated.View>
-          )}
+          {stack.slice(0, layerStyles.length).map((layer, i) => {
+            const Pane = layer.kind === "token" ? null : PANES[layer.kind];
+            return (
+              <Animated.View
+                key={
+                  layer.kind === "token" ? `token:${layer.mint}` : layer.kind
+                }
+                style={[StyleSheet.absoluteFill, layerStyles[i]]}
+                pointerEvents={i === stack.length - 1 ? "auto" : "none"}
+              >
+                <OverlayPaneContext.Provider value={paneContext}>
+                  {Pane ? (
+                    <Pane />
+                  ) : (
+                    layer.kind === "token" && <TokenDetail mint={layer.mint} />
+                  )}
+                </OverlayPaneContext.Provider>
+              </Animated.View>
+            );
+          })}
 
           {/* On no animated layer at all: it holds still while the others
           move, and its glass is never faded. */}

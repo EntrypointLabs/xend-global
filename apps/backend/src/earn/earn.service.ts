@@ -124,6 +124,17 @@ function usdMicro(
     (raw * BigInt(Math.round(usdPrice * 1e9))) / 10n ** BigInt(decimals + 3)
   );
 }
+/**
+ * How long a rate is reused. Every open Earn screen refreshes every 30
+ * seconds, so this keeps the lookups to one a minute however many are open.
+ */
+const RATE_FRESH_MS = 60_000;
+/**
+ * How old a rate may be and still stand in for one that failed to load. A
+ * rate from an hour ago is a better answer than "unavailable", which is what
+ * a single slow response from the provider used to show.
+ */
+const RATE_STALE_MS = 6 * 60 * 60 * 1000;
 const fail = () =>
   new ServiceUnavailableException({
     code: 'EARN_UNAVAILABLE',
@@ -133,6 +144,8 @@ const fail = () =>
 export class EarnService {
   private readonly logger = new Logger(EarnService.name);
   private rpc: Connection;
+  private readonly rates = new Map<string, { apy: number; at: number }>();
+  private readonly rateReads = new Map<string, Promise<number | null>>();
   constructor(
     private readonly config: ConfigService,
     @Inject(SQUADS_ACCOUNT_STORE) private readonly accounts: SquadsAccountStore,
@@ -386,7 +399,30 @@ export class EarnService {
     if (combined.partial) throw fail();
     return { provider, mint: null, points: historyPoints(combined.rows) };
   }
-  private async apy(provider: EarnProviderId, asset: EarnAssetId) {
+  /** The rate, from the last good read when a fresh one cannot be had. */
+  private async apy(
+    provider: EarnProviderId,
+    asset: EarnAssetId,
+  ): Promise<number | null> {
+    const key = `${provider}:${asset}`;
+    const known = this.rates.get(key);
+    if (known && Date.now() - known.at < RATE_FRESH_MS) return known.apy;
+    // Concurrent requests share one read rather than each asking the provider.
+    let read = this.rateReads.get(key);
+    if (!read) {
+      read = this.readApy(provider, asset).finally(() =>
+        this.rateReads.delete(key),
+      );
+      this.rateReads.set(key, read);
+    }
+    const apy = await read;
+    if (apy !== null) {
+      this.rates.set(key, { apy, at: Date.now() });
+      return apy;
+    }
+    return known && Date.now() - known.at < RATE_STALE_MS ? known.apy : null;
+  }
+  private async readApy(provider: EarnProviderId, asset: EarnAssetId) {
     let apy: number | null = null;
     // Rate failure never fabricates a zero and does not erase a real position.
     try {
@@ -404,11 +440,15 @@ export class EarnService {
           'https://api.kamino.finance/kamino-market/7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF/reserves/metrics',
           { signal: AbortSignal.timeout(5000) },
         );
-        if (response.ok)
-          apy = parseKaminoRate((await response.json()) as unknown);
+        if (!response.ok) throw new Error(`status ${response.status}`);
+        apy = parseKaminoRate((await response.json()) as unknown);
       }
-    } catch {
-      /* Position and withdrawal reads remain available without an APY. */
+    } catch (err) {
+      // Position and withdrawal reads remain available without an APY.
+      this.logger.warn(
+        `earn.rate.unavailable provider=${provider} asset=${asset}`,
+        err,
+      );
     }
     if (apy !== null && (!Number.isFinite(apy) || apy < 0 || apy > 10))
       return null;

@@ -31,6 +31,7 @@ import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
 import { readEarnApprovalOutcome } from "@/utils/earnRecovery";
 import { isUserCanceledSign } from "@/utils/signing";
+import { applyEarnMove, type EarnCatalog, type EarnMove } from "@/utils/earn";
 
 type Pending = {
   signed: string;
@@ -44,6 +45,18 @@ type Outcome =
   | { status: "pending" }
   | { status: "cancelled" }
   | { status: "failed"; message: string };
+/**
+ * The server reads positions through an index that runs a few seconds behind
+ * the chain. Asked the moment a move confirms, it answers with the position
+ * from before, which would undo the update this phone has already made.
+ */
+const EARN_INDEX_LAG_MS = 4_000;
+/** The catalog only; the history queries share the prefix. */
+const CATALOG = {
+  queryKey: ["earn"],
+  predicate: (query: { queryKey: readonly unknown[] }) =>
+    query.queryKey.length === 2,
+};
 const publicProgram = process.env.EXPO_PUBLIC_EARN_FORWARDER_PROGRAM;
 const reviewedHashes = reviewedCodeHashes(
   process.env.EXPO_PUBLIC_EARN_FORWARDER_CODE_SHA256
@@ -100,7 +113,12 @@ export function useExecuteEarn() {
       amount: number,
       withdrawAll = false,
       /** The token being lent; USDC when absent. `amount` is in its units. */
-      mint?: string
+      mint?: string,
+      /**
+       * Called once the move is on its way, after which nothing the Consumer
+       * does on this screen changes it: the rest is waiting for the chain.
+       */
+      onSubmitted?: () => void
     ): Promise<Outcome> => {
       if (locked.current) return { status: "pending" };
       if (!account || !storageKey || !ready)
@@ -123,6 +141,16 @@ export function useExecuteEarn() {
         pending.current = p;
         setPending(true);
       };
+      // The move this call makes, when it is not finishing an earlier one,
+      // and when the catalog it would be applied to was last read.
+      let moved: EarnMove | null = null;
+      const catalogReadAt = () =>
+        queries
+          .getQueryCache()
+          .findAll(CATALOG)
+          .map((query) => query.state.dataUpdatedAt)
+          .join();
+      let readBeforeMove = "";
       try {
         if (!pending.current) {
           if (!publicProgram || !reviewedHashes.length)
@@ -133,6 +161,15 @@ export function useExecuteEarn() {
           const minor = Math.round(amount * 10 ** lent.decimals);
           if (!Number.isSafeInteger(minor) || minor <= 0)
             throw new Error("Choose a valid amount");
+          readBeforeMove = catalogReadAt();
+          moved = {
+            provider,
+            action,
+            mint: lent.mint.toBase58(),
+            minor: BigInt(minor),
+            all: withdrawAll,
+            usdc: asset === "USDC",
+          };
           const quote = await apiClient.quoteEarn(
             provider,
             action,
@@ -305,6 +342,7 @@ export function useExecuteEarn() {
         }
         const signature = pending.current?.signature;
         if (!signature) return { status: "pending" };
+        onSubmitted?.();
         // Never report success or change positions before chain confirmation.
         for (let i = 0; i < 12; i++) {
           const result = await readEarnApprovalOutcome(rpc, pending.current!);
@@ -331,7 +369,20 @@ export function useExecuteEarn() {
           }
           if (result === "confirmed") {
             await clear();
-            void queries.invalidateQueries({ queryKey: ["earn"] });
+            const move = moved;
+            // A read still in flight would land over the update below.
+            await queries.cancelQueries(CATALOG);
+            // A catalog read since the move began may already hold it, and
+            // adding it again would count it twice. Then the delayed refetch
+            // below is the one that settles the screen.
+            if (move && catalogReadAt() === readBeforeMove)
+              queries.setQueriesData<EarnCatalog>(CATALOG, (catalog) =>
+                catalog ? applyEarnMove(catalog, move) : catalog
+              );
+            setTimeout(
+              () => void queries.invalidateQueries({ queryKey: ["earn"] }),
+              EARN_INDEX_LAG_MS
+            );
             void queries.invalidateQueries({ queryKey: ["balances"] });
             void queries.invalidateQueries({ queryKey: ["transfers"] });
             return { status: "confirmed" };

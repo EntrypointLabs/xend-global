@@ -1,6 +1,7 @@
 import { useExecuteEarn } from "@/hooks/useExecuteEarn";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Image,
   Linking,
   Modal,
@@ -439,19 +440,30 @@ function DepositScreen({
   const move = async () => {
     setMessage(null);
     const wasPending = execution.hasPending;
+    // Once the move is submitted the screen has done its job: it closes and
+    // the toast carries the rest, the way a send does.
+    let submitted = false;
     const result = await execution.execute(
       product.id,
       withdraw ? "redeem" : "deposit",
       amount,
       withdraw && amount === limit,
-      dollars ? undefined : asset.mint
+      dollars ? undefined : asset.mint,
+      () => {
+        submitted = true;
+        toastEarnMoving(withdraw);
+        onChange(null);
+      }
     );
+    if (submitted) {
+      if (result.status === "confirmed") toastEarnDone(withdraw, wasPending);
+      else if (result.status === "failed") toastEarnFailed(result.message);
+      // Still pending: the toast runs out and the screen picks the saved
+      // approval up next time, as Activity does for a send.
+      return;
+    }
     if (result.status === "confirmed") {
-      showToast(
-        wasPending ? "Confirmed" : withdraw ? "Withdrawn" : "Deposited",
-        <Ionicons name="checkmark-circle" size={16} className="text-success" />,
-        { tone: "success" }
-      );
+      toastEarnDone(withdraw, wasPending);
       onChange(null);
     } else if (result.status === "pending")
       setMessage(
@@ -687,21 +699,23 @@ function DepositScreen({
         onPress={() => {
           void move();
         }}
-        className="items-center rounded-full bg-primary py-4"
+        className="h-14 items-center justify-center rounded-full bg-primary"
       >
-        <Typography
-          variant="body"
-          weight="600"
-          className="text-primary-foreground"
-        >
-          {execution.isExecuting
-            ? "Checking…"
-            : execution.hasPending
+        {execution.isExecuting ? (
+          <ActivityIndicator size="small" className="text-primary-foreground" />
+        ) : (
+          <Typography
+            variant="body"
+            weight="600"
+            className="text-primary-foreground"
+          >
+            {execution.hasPending
               ? "Check previous approval"
               : withdraw
                 ? "Withdraw"
                 : "Add Money"}
-        </Typography>
+          </Typography>
+        )}
       </HapticPressable>
       <Typography
         variant="caption"
@@ -723,7 +737,7 @@ function DepositScreen({
       {picking && (
         <AssetPickerSheet
           title={withdraw ? "Withdraw which token?" : "Deposit which token?"}
-          assets={choices}
+          assets={byValueHeld(choices)}
           selected={asset.mint}
           onPick={pick}
           onClose={() => setPicking(false)}
@@ -867,5 +881,46 @@ function ProjectionChart({
         />
       </Svg>
     </View>
+  );
+}
+
+/**
+ * What the Consumer holds most of first, by dollar value. Tokens worth the
+ * same, which is every one they hold none of, keep the product's own order.
+ */
+function byValueHeld(choices: PickableAsset[]): PickableAsset[] {
+  const worth = (c: PickableAsset) =>
+    c.usd ?? (c.amount > 0 ? Number.MIN_VALUE : 0);
+  return [...choices].sort((a, b) => worth(b) - worth(a));
+}
+
+const EARN_TOAST_ID = "earn";
+/** Long enough to cover the confirmation the move waits on. */
+const EARN_MOVING_TOAST_MS = 20_000;
+const EARN_FAILED_TOAST_MS = 5_000;
+
+function toastEarnMoving(withdraw: boolean) {
+  showToast(
+    withdraw ? "Withdrawing" : "Depositing",
+    <ActivityIndicator size="small" className="text-foreground" />,
+    { id: EARN_TOAST_ID, durationMs: EARN_MOVING_TOAST_MS }
+  );
+}
+
+function toastEarnDone(withdraw: boolean, finishedEarlier: boolean) {
+  showToast(
+    finishedEarlier ? "Confirmed" : withdraw ? "Withdrawn" : "Deposited",
+    <Ionicons name="checkmark-circle" size={16} className="text-success" />,
+    { id: EARN_TOAST_ID, tone: "success" }
+  );
+}
+
+/** The toast says it failed; the reason is logged for tracing. */
+function toastEarnFailed(reason: string) {
+  console.warn(`[earn] ${reason}`);
+  showToast(
+    "Failed",
+    <Ionicons name="close-circle" size={16} className="text-destructive" />,
+    { id: EARN_TOAST_ID, durationMs: EARN_FAILED_TOAST_MS, tone: "failed" }
   );
 }

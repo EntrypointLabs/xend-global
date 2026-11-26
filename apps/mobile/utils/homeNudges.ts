@@ -22,22 +22,27 @@ export interface NudgeInputs {
 }
 
 /**
- * Things the Consumer has not tried yet, offered once nothing needs them. Each
- * one stops on its own once it no longer applies: Earn once money is in it,
- * and both when there is nothing to put to work.
+ * What the slot under the balance offers once the balance has something in
+ * it. Things the Consumer has not tried yet come first; Earn is always there
+ * behind them, so the slot is never empty, the way Fuse keeps its own.
  */
 export function homeNudges(input: NudgeInputs): Nudge[] {
   const { cashUsd } = input;
   if (cashUsd === null || cashUsd <= 0) return [];
   const nudges: Nudge[] = [];
 
-  if (input.earnDepositsEnabled && input.earnUsd === 0 && input.earnApy > 0) {
-    nudges.push({
-      key: "earn",
-      title: `Earn up to ${input.earnApy}% per year`,
-      subtitle: "Put your dollars into Earn",
-    });
-  }
+  const earn: Nudge | null = input.earnDepositsEnabled
+    ? {
+        key: "earn",
+        title:
+          input.earnApy > 0
+            ? `Earn up to ${input.earnApy}% per year`
+            : "Earn on your dollars",
+        subtitle: "Put your dollars into Earn",
+      }
+    : null;
+  const triedEarn = input.earnUsd !== null && input.earnUsd > 0;
+  if (earn && !triedEarn) nudges.push(earn);
 
   // Bank payouts go to Nigerian accounts only.
   if (input.currency === "NGN" && input.symbol && input.perUsd) {
@@ -48,5 +53,6 @@ export function homeNudges(input: NudgeInputs): Nudge[] {
     });
   }
 
+  if (earn && triedEarn) nudges.push(earn);
   return nudges;
 }

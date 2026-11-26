@@ -21,7 +21,7 @@ import {
 import { useWalletAddress } from "@/hooks/useWalletAddress";
 import { fetchEarnFromChain } from "@/utils/earnChain";
 import { getUsdcMint } from "@/utils/cluster";
-import { WRAPPED_SOL_MINT } from "@/utils/tokens";
+import { describeToken, WRAPPED_SOL_MINT } from "@/utils/tokens";
 import type { z } from "zod";
 
 export interface EarnAsset {
@@ -309,8 +309,8 @@ function toAsset(
   const scale = 10 ** asset.decimals;
   return {
     mint: asset.mint,
-    symbol: asset.symbol,
-    name: asset.name,
+    // The index calls SOL "Wrapped SOL"; the app calls it Solana everywhere.
+    ...describeToken(asset.mint, asset.symbol, asset.name),
     iconUrl: asset.iconUrl,
     decimals: asset.decimals,
     apy: asset.apy,
