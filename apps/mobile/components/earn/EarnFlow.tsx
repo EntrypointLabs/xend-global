@@ -25,10 +25,19 @@ import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { usePalette } from "@/hooks/usePalette";
 import { showToast } from "@/utils/toast";
+import { useBalances } from "@/hooks/useBalances";
+import { getUsdcMint } from "@/utils/cluster";
+import { formatTokenAmount } from "@/utils/tokens";
 import type { EarnProduct } from "@/hooks/useEarn";
 import { formatEarnMoney, projectedValue } from "@/utils/earnProjection";
 import { apyLabel } from "@/components/earn/EarnProductRows";
 import { EarnBarChart } from "@/components/earn/EarnBarChart";
+import {
+  AssetChip,
+  AssetPickerSheet,
+  TokenStack,
+  type PickableAsset,
+} from "@/components/earn/EarnAssets";
 
 export type EarnFlowState =
   | { step: "choose" | "choose-withdraw" }
@@ -38,6 +47,8 @@ export type EarnFlowState =
       productId: string;
       /** Where back returns to. Without it the screen was opened directly and back closes it. */
       from?: "choose" | "choose-withdraw" | "info";
+      /** The token to start on, when the screen was opened from one. */
+      mint?: string;
     };
 type Props = {
   flow: EarnFlowState | null;
@@ -100,6 +111,7 @@ export function EarnFlow(props: Props) {
           product={product}
           withdraw={flow.step === "withdraw"}
           from={"from" in flow ? flow.from : undefined}
+          mint={"mint" in flow ? flow.mint : undefined}
         />
       ) : (
         <View className="flex-1 justify-end">
@@ -190,9 +202,12 @@ export function EarnFlow(props: Props) {
                           </Typography>
                         </View>
                       </View>
-                      <Image
-                        source={require("@/assets/icons/usdc.png")}
-                        className="h-6 w-6"
+                      <TokenStack
+                        assets={
+                          flow?.step === "choose-withdraw"
+                            ? p.assets.filter((a) => (a.position ?? 0) > 0)
+                            : p.assets
+                        }
                       />
                     </HapticPressable>
                   ))}
@@ -308,7 +323,8 @@ function Discovery({
         variant="body"
         className="mb-3 mt-4 text-center text-foreground/30"
       >
-        Deposit your dollars with {product.provider}
+        Deposit your {product.assets.length > 1 ? "assets" : "dollars"} with{" "}
+        {product.provider}
         {"\n"}to earn interest.
       </Typography>
       <HapticPressable
@@ -347,15 +363,76 @@ function DepositScreen({
   depositsEnabled,
   onChange,
   from,
+  mint,
 }: Props & {
   product: EarnProduct;
   withdraw: boolean;
   from?: "choose" | "choose-withdraw" | "info";
+  mint?: string;
 }) {
   const palette = usePalette();
   const insets = useSafeAreaInsets();
   const execution = useExecuteEarn();
-  const limit = withdraw ? (positionBalances[product.id] ?? 0) : available;
+  const balances = useBalances();
+  const usdcMint = getUsdcMint();
+  // Every token the product lends, including ones with nothing to move: the
+  // picker shows those at zero and does not let them be chosen.
+  const choices: PickableAsset[] = product.assets.map((asset) => {
+    const held = balances.tokens.find((t) => t.mint === asset.mint);
+    const heldAmount = held ? Number(held.amountRaw) / 10 ** held.decimals : 0;
+    const amount = withdraw
+      ? asset.mint === usdcMint
+        ? (positionBalances[product.id] ?? 0)
+        : asset.withdrawable
+      : asset.mint === usdcMint
+        ? available
+        : (asset.depositable ?? heldAmount);
+    const price =
+      asset.mint === usdcMint
+        ? 1
+        : held?.usdValue != null && heldAmount > 0
+          ? held.usdValue / heldAmount
+          : asset.positionUsd != null && (asset.position ?? 0) > 0
+            ? asset.positionUsd / (asset.position ?? 1)
+            : null;
+    return {
+      mint: asset.mint,
+      symbol: asset.symbol,
+      name: asset.name,
+      iconUrl: asset.iconUrl,
+      decimals: asset.decimals,
+      amount,
+      usd: amount === 0 ? 0 : price === null ? null : amount * price,
+    };
+  });
+  const [assetMint, setAssetMint] = useState(
+    mint ??
+      choices.find((c) => c.amount > 0)?.mint ??
+      choices[0]?.mint ??
+      usdcMint
+  );
+  const [picking, setPicking] = useState(false);
+  const asset = choices.find((c) => c.mint === assetMint) ??
+    choices[0] ?? {
+      mint: usdcMint,
+      symbol: "USDC",
+      name: "USD Coin",
+      iconUrl: null,
+      decimals: 6,
+      amount: withdraw ? (positionBalances[product.id] ?? 0) : available,
+      usd: null,
+    };
+  const lent = product.assets.find((a) => a.mint === asset.mint);
+  const apy = lent?.apy ?? product.apy;
+  const apyDisplay = lent?.apyDisplay ?? product.apyDisplay;
+  const dollars = asset.mint === usdcMint;
+  const price = dollars
+    ? 1
+    : asset.usd !== null && asset.amount > 0
+      ? asset.usd / asset.amount
+      : null;
+  const limit = asset.amount;
+  const step = dollars ? 0.01 : 10 ** -Math.min(asset.decimals, 4);
   const [message, setMessage] = useState<string | null>(null);
   const move = async () => {
     setMessage(null);
@@ -384,10 +461,26 @@ function DepositScreen({
   const [chosen, setChosen] = useState(withdraw ? limit : 0);
   const [years, setYears] = useState(10);
   const amount = Math.min(chosen, limit);
+  const amountUsd = price === null ? null : amount * price;
+  const limitUsd = price === null ? null : limit * price;
+  const showAmount = (units: number) =>
+    dollars
+      ? formatEarnMoney(units)
+      : `${formatTokenAmount(units, asset.decimals)} ${asset.symbol}`;
+  const pick = (next: string) => {
+    const choice = choices.find((c) => c.mint === next);
+    setAssetMint(next);
+    setChosen(withdraw ? (choice?.amount ?? 0) : 0);
+    setPicking(false);
+  };
+  // Only USDC moves until the server can build a transaction for any other
+  // token; the rest can be looked at but not sent.
+  const supported = dollars;
   const canMove =
     execution.ready &&
     (execution.hasPending ||
       (execution.configured &&
+        supported &&
         (withdraw
           ? !!product.withdrawAvailable
           : !!product.available && depositsEnabled) &&
@@ -395,7 +488,13 @@ function DepositScreen({
         !product.simulated &&
         amount > 0));
   const estimated =
-    product.apy === null ? null : projectedValue(amount, product.apy, years);
+    apy === null || amountUsd === null
+      ? null
+      : projectedValue(amountUsd, apy, years);
+  const chip =
+    choices.length > 1 ? (
+      <AssetChip asset={asset} onPress={() => setPicking(true)} />
+    ) : null;
   return (
     <View
       accessibilityViewIsModal
@@ -444,9 +543,9 @@ function DepositScreen({
         <Typography variant="caption" className="text-foreground/40">
           {withdraw
             ? "You withdraw"
-            : product.apy === null
+            : apy === null
               ? "Rate unavailable"
-              : `Start earning ${product.apyDisplay}`}
+              : `Start earning ${apyDisplay}`}
         </Typography>
         <Typography
           variant="h2"
@@ -455,20 +554,22 @@ function DepositScreen({
           accessibilityLiveRegion="polite"
         >
           {withdraw
-            ? formatEarnMoney(amount)
+            ? showAmount(amount)
             : estimated === null
               ? "—"
               : formatEarnMoney(estimated)}
         </Typography>
         <Typography variant="caption" className="mt-1 text-foreground/40">
           {withdraw
-            ? `From ${product.provider} to your cash`
+            ? !dollars && amountUsd !== null
+              ? `About ${formatEarnMoney(amountUsd)}, from ${product.provider} to your account`
+              : `From ${product.provider} to your ${dollars ? "cash" : "account"}`
             : `Estimated value in ${years} ${years === 1 ? "year" : "years"}`}
         </Typography>
       </View>
       <View className="mb-8 mt-9 flex-1">
         <ProjectionChart
-          apy={product.apy}
+          apy={apy}
           amount={withdraw ? limit - amount : amount}
           full={withdraw ? limit : undefined}
           years={years}
@@ -484,30 +585,40 @@ function DepositScreen({
         </View>
       </View>
       {withdraw ? (
-        <Typography
-          variant="body"
-          className="pb-5 text-center text-foreground/45"
-        >
-          {estimated === null ? (
-            "Interest you give up is unavailable"
-          ) : (
-            <>
-              You give up about{" "}
-              <Typography variant="body" weight="600">
-                {formatEarnMoney(estimated - amount)}
-              </Typography>{" "}
-              in interest over {years} {years === 1 ? "year" : "years"}
-            </>
-          )}
-        </Typography>
+        <View className="items-center gap-3 pb-5">
+          {chip}
+          <Typography variant="body" className="text-center text-foreground/45">
+            {estimated === null || amountUsd === null ? (
+              "Interest you give up is unavailable"
+            ) : (
+              <>
+                You give up about{" "}
+                <Typography variant="body" weight="600">
+                  {formatEarnMoney(estimated - amountUsd)}
+                </Typography>{" "}
+                in interest over {years} {years === 1 ? "year" : "years"}
+              </>
+            )}
+          </Typography>
+        </View>
       ) : (
         <View className="items-center pb-3">
           <Typography variant="caption" className="text-foreground/40">
             Initial deposit
           </Typography>
-          <Typography variant="title1" weight="600" className="mt-1">
-            {formatEarnMoney(amount)}
-          </Typography>
+          <View className="mt-1 flex-row items-center gap-3">
+            <Typography variant="title1" weight="600">
+              {dollars
+                ? formatEarnMoney(amount)
+                : formatTokenAmount(amount, asset.decimals)}
+            </Typography>
+            {chip}
+          </View>
+          {!dollars && amountUsd !== null && (
+            <Typography variant="caption" className="mt-1 text-foreground/40">
+              About {formatEarnMoney(amountUsd)}
+            </Typography>
+          )}
         </View>
       )}
       <View
@@ -518,7 +629,7 @@ function DepositScreen({
           min: 0,
           max: limit,
           now: amount,
-          text: formatEarnMoney(amount),
+          text: showAmount(amount),
         }}
         accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
         onAccessibilityAction={({ nativeEvent }) =>
@@ -527,7 +638,9 @@ function DepositScreen({
               limit,
               Math.max(
                 0,
-                amount + (nativeEvent.actionName === "increment" ? 1 : -1)
+                amount +
+                  (nativeEvent.actionName === "increment" ? 1 : -1) *
+                    (dollars ? 1 : limit / 20)
               )
             )
           )
@@ -536,8 +649,8 @@ function DepositScreen({
         <Slider
           value={amount}
           minimumValue={0}
-          maximumValue={Math.max(limit, 0.01)}
-          step={0.01}
+          maximumValue={Math.max(limit, step)}
+          step={step}
           disabled={
             execution.isExecuting ||
             execution.hasPending ||
@@ -545,7 +658,7 @@ function DepositScreen({
             limit <= 0
           }
           onValueChange={(value) =>
-            setChosen(value >= limit - 0.01 ? limit : value)
+            setChosen(value >= limit - step ? limit : value)
           }
           minimumTrackTintColor={palette.primary}
           maximumTrackTintColor={palette.fg(0.1)}
@@ -556,7 +669,7 @@ function DepositScreen({
         className="mb-4 mt-3 text-center text-foreground/35"
       >
         {balanceReady
-          ? `${formatEarnMoney(limit)} ${withdraw ? "in this position" : "available"}`
+          ? `${showAmount(limit)}${!dollars && limitUsd !== null ? ` (${formatEarnMoney(limitUsd)})` : ""} ${withdraw ? "in this position" : "available"}`
           : "Balance unavailable"}
         {withdraw ? "" : " · Returns vary"}
       </Typography>
@@ -595,13 +708,24 @@ function DepositScreen({
             ? "A previous approval is still being checked"
             : !depositsEnabled
               ? "Temporarily unavailable"
-              : !(withdraw ? product.withdrawAvailable : product.available) ||
-                  !execution.configured
-                ? "Not available yet"
-                : withdraw
-                  ? "Arrives in your cash balance. Network fees are covered."
-                  : "Rates vary. Network fees are covered.")}
+              : !supported
+                ? `${asset.symbol} ${withdraw ? "withdrawals" : "deposits"} are coming soon`
+                : !(withdraw ? product.withdrawAvailable : product.available) ||
+                    !execution.configured
+                  ? "Not available yet"
+                  : withdraw
+                    ? "Arrives in your cash balance. Network fees are covered."
+                    : "Rates vary. Network fees are covered.")}
       </Typography>
+      {picking && (
+        <AssetPickerSheet
+          title={withdraw ? "Withdraw which token?" : "Deposit which token?"}
+          assets={choices}
+          selected={asset.mint}
+          onPick={pick}
+          onClose={() => setPicking(false)}
+        />
+      )}
     </View>
   );
 }

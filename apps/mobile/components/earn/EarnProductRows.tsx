@@ -7,6 +7,7 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { usePalette } from "@/hooks/usePalette";
 import type { EarnProduct } from "@/hooks/useEarn";
+import { TokenStack } from "@/components/earn/EarnAssets";
 
 export function apyLabel(product: EarnProduct) {
   if (product.apy === null) return "Rate unavailable";
@@ -90,6 +91,7 @@ export function ProductCard({
       <View className="flex-row items-center gap-3">
         <Logo product={product} />
         <ProductHeading product={product} />
+        <TokenStack assets={product.assets} />
       </View>
       <Typography variant="body" className="mt-3 text-foreground/40">
         {product.description}

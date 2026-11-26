@@ -37,6 +37,7 @@ import { TestDashboardModule } from './test-dashboard/test-dashboard.module';
 import { HealthModule } from './health/health.module';
 import { FeaturesModule } from './features/features.module';
 import { SwapModule } from './swap/swap.module';
+import { TokenOverviewModule } from './tokens/token-overview.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { TracingModule } from './tracing/tracing.module';
 import { THROTTLE_LIMITS } from './common/throttle';
@@ -70,6 +71,7 @@ const testDashboardEnabled = process.env.NODE_ENV !== 'production';
     TransferModule,
     SwapModule,
     EarnModule,
+    TokenOverviewModule,
     ActivityModule,
     RedisModule,
     EventsModule,
