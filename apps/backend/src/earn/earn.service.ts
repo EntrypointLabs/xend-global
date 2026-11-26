@@ -441,7 +441,8 @@ export class EarnService {
       }),
     ]);
     clearTimeout(timer);
-    return this.rates.get(key)?.apy ?? null;
+    const latest = this.rates.get(key);
+    return latest && Date.now() - latest.at < RATE_STALE_MS ? latest.apy : null;
   }
   /** One shared read per provider, which loads every asset's rate at once. */
   private refreshRates(provider: EarnProviderId): Promise<void> {

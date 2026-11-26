@@ -1422,6 +1422,19 @@ describe('Earn rate lookups', () => {
     expect(await rate).toBeNull();
   });
 
+  it('stops answering a rate the provider has not confirmed for six hours', async () => {
+    const h = setup();
+    jest.useFakeTimers({ now: Date.UTC(2026, 10, 26) });
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(kamino(0.0417))
+      .mockResolvedValue({ ok: false, status: 503 } as Response);
+
+    expect(await rateOf(h.service)).toBe(0.0417);
+    jest.setSystemTime(Date.UTC(2026, 10, 26, 6, 1));
+    expect(await rateOf(h.service)).toBeNull();
+  });
+
   it('says unavailable when there has never been a good rate', async () => {
     const h = setup();
     jest
