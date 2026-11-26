@@ -333,7 +333,8 @@ export class EarnService {
   }
   /**
    * One token's history in its own units, or with no mint, every token the
-   * product lends combined in USD micro-units at today's prices.
+   * product lends combined in USD micro-units at today's prices. The combined
+   * history is unavailable while any token with snapshots cannot be priced.
    */
   async history(
     userId: string,
@@ -378,12 +379,9 @@ export class EarnService {
         };
       }),
     );
-    return {
-      provider,
-      mint: null,
-      partial: combined.partial,
-      points: historyPoints(combined.rows),
-    };
+    // A total missing a token would read as complete; say it is unavailable.
+    if (combined.partial) throw fail();
+    return { provider, mint: null, points: historyPoints(combined.rows) };
   }
   private async apy(provider: EarnProviderId, asset: EarnAssetId) {
     let apy: number | null = null;

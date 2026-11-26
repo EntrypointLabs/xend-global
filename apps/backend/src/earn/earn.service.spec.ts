@@ -1007,7 +1007,6 @@ describe('Earn beyond USDC', () => {
     await expect(h.service.history('a', 'jupiter', '30d')).resolves.toEqual({
       provider: 'jupiter',
       mint: null,
-      partial: false,
       points: [
         { day: '2026-11-24', valueMinor: '10000000', earnedMinor: '0' },
         // $10.01 of USDC plus 1.001 SOL at $150.
@@ -1015,6 +1014,31 @@ describe('Earn beyond USDC', () => {
       ],
     });
     expect(h.records.snapshots).toHaveBeenCalledTimes(4);
+  });
+  it('refuses a combined history it cannot price in full', async () => {
+    const h = setup();
+    (
+      h.service as unknown as {
+        prices: { getUsdPrices: () => Promise<Map<string, unknown>> };
+      }
+    ).prices = { getUsdPrices: () => Promise.resolve(new Map()) };
+    h.records.snapshots.mockImplementation(
+      (_userId: string, key: { provider: string; mint: string }) =>
+        Promise.resolve(
+          key.mint === JUPITER_EARN_ASSETS.SOL.mint
+            ? [
+                {
+                  day: '2026-11-25',
+                  valueMinor: '1001000000',
+                  netDepositedMinor: '1000000000',
+                },
+              ]
+            : [],
+        ),
+    );
+    await expect(
+      h.service.history('a', 'jupiter', '30d'),
+    ).rejects.toMatchObject({ response: { code: 'EARN_UNAVAILABLE' } });
   });
 
   // ConfigService.set also writes process.env, which outlives each setup().
