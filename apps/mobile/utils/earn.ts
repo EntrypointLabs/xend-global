@@ -177,8 +177,12 @@ export function earnBars(
   range: EarnRange,
   today: Date = new Date()
 ): { bars: EarnBar[]; earnedInRange: number } {
+  // The server returns snapshots from the start of the range onwards, never
+  // the one before it, so a day ahead of the first snapshot takes that
+  // snapshot's total rather than zero.
+  const first = points[0] ? Number(points[0].earnedMinor) / 1e6 : 0;
   const totalBy = (day: string) => {
-    let total = 0;
+    let total = first;
     for (const point of points) {
       if (point.day > day) break;
       total = Number(point.earnedMinor) / 1e6;
@@ -187,18 +191,10 @@ export function earnBars(
   };
   const ends = slotEnds(range, points[0]?.day, today);
   const bars = ends.map((label) => ({ label, earned: totalBy(label) }));
-  const firstEnd = new Date(`${ends[0]}T00:00:00Z`).getTime();
-  const rangeStart =
-    range === "7d"
-      ? firstEnd
-      : range === "30d"
-        ? firstEnd - 2 * DAY
-        : Date.UTC(
-            new Date(firstEnd).getUTCFullYear(),
-            new Date(firstEnd).getUTCMonth(),
-            1
-          );
-  const before = range === "all" ? 0 : totalBy(iso(rangeStart - DAY));
+  // Without a snapshot from before the range there is no baseline, so the
+  // range's earnings are measured from its first snapshot. ALL counts from
+  // nothing, since its first snapshot is the first there is.
+  const before = range === "all" ? 0 : first;
   return {
     bars,
     earnedInRange: Math.max(0, bars[bars.length - 1].earned - before),
@@ -208,9 +204,9 @@ export function earnBars(
 type EarnCatalog = z.infer<typeof EarnCatalogSchema>;
 
 /**
- * One product's earnings. A server that predates per-product figures sends
- * only the totals; while a single product holds money the totals are that
- * product's, so they stand in rather than leaving the position page blank.
+ * One product's earnings, or null when the server does not break them out.
+ * The account totals are not a stand-in: they include earnings from products
+ * since withdrawn from, which would be credited to whichever one is held now.
  */
 export function productEarnings(
   catalog: EarnCatalog | undefined,
@@ -219,18 +215,10 @@ export function productEarnings(
   const live = catalog?.products.find((row) => row.id === id);
   if (!catalog || !live)
     return { lifetimeMinor: null, lastSevenDaysMinor: null };
-  if (live.lifetimeMinor !== undefined || live.lastSevenDaysMinor !== undefined)
-    return {
-      lifetimeMinor: live.lifetimeMinor ?? null,
-      lastSevenDaysMinor: live.lastSevenDaysMinor ?? null,
-    };
-  const held = catalog.products.filter((row) => BigInt(row.positionMinor) > 0n);
-  return held.length === 1 && held[0].id === id
-    ? {
-        lifetimeMinor: catalog.lifetimeMinor,
-        lastSevenDaysMinor: catalog.lastSevenDaysMinor,
-      }
-    : { lifetimeMinor: null, lastSevenDaysMinor: null };
+  return {
+    lifetimeMinor: live.lifetimeMinor ?? null,
+    lastSevenDaysMinor: live.lastSevenDaysMinor ?? null,
+  };
 }
 
 export type TokenRange = "1d" | "1w" | "1m" | "6m" | "1y";
