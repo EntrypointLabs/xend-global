@@ -64,7 +64,8 @@ export default function EarnPositionScreen() {
   const [range, setRange] = useState<EarnRange>("7d");
   const { products } = useEarnProducts();
   const balances = useBalances();
-  const { balance, depositableMinor, withdrawableBalances } = useEarnPosition();
+  const { balance, depositableMinor, withdrawableBalances, canWithdraw } =
+    useEarnPosition();
   const history = useEarnHistory(
     provider.success ? provider.data : "kamino",
     range
@@ -308,7 +309,7 @@ export default function EarnPositionScreen() {
 
       <EarnActionBar
         hidden={!!flow}
-        canWithdraw={(withdrawableBalances[product.id] ?? 0) > 0}
+        canWithdraw={!!canWithdraw[product.id]}
         onDeposit={() => setFlow({ step: "deposit", productId: product.id })}
         onWithdraw={() => setFlow({ step: "withdraw", productId: product.id })}
       />

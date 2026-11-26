@@ -79,13 +79,58 @@ export const EarnPreparedSchema = z.object({
   forwarderProgram: z.string(),
 });
 
+type CatalogProduct = Pick<
+  z.infer<typeof EarnCatalogSchema>["products"][number],
+  "positionMinor" | "withdrawableMinor" | "assets"
+>;
+
+/**
+ * A product's dollar value across every token it lends. The product-level
+ * figures are USDC only, so a product with token rows is summed from those.
+ * Null when a token with a balance could not be priced: unknown, never zero.
+ */
+export function productValueUsd(
+  product: Pick<CatalogProduct, "positionMinor" | "assets">
+): number | null {
+  if (!product.assets?.length) return Number(product.positionMinor) / 1e6;
+  let total = 0;
+  for (const asset of product.assets) {
+    if (BigInt(asset.positionRaw) === 0n) continue;
+    if (asset.positionUsd === null) return null;
+    total += Number(asset.positionUsd);
+  }
+  return total;
+}
+
+/** Whether any token in the product can be withdrawn right now. */
+export function productCanWithdraw(product: CatalogProduct): boolean {
+  return product.assets?.length
+    ? product.assets.some((a) => BigInt(a.withdrawableRaw) > 0n)
+    : BigInt(product.withdrawableMinor) > 0n;
+}
+
+/** Shares held outside the canonical accounts the withdrawal route spends. */
+export function productHasExternalReceipts(product: CatalogProduct): boolean {
+  return product.assets?.length
+    ? product.assets.some(
+        (a) => BigInt(a.positionRaw) > BigInt(a.withdrawableRaw)
+      )
+    : BigInt(product.positionMinor) > BigInt(product.withdrawableMinor);
+}
+
 /** An unread or failed position is unknown, never an empty position. */
 export function selectEarnBalance(
-  products: { positionMinor: string }[] | undefined,
+  products: Pick<CatalogProduct, "positionMinor" | "assets">[] | undefined,
   failed = false
 ): number | null {
   if (!products || failed) return null;
-  return products.reduce((sum, p) => sum + Number(p.positionMinor) / 1e6, 0);
+  let total = 0;
+  for (const product of products) {
+    const value = productValueUsd(product);
+    if (value === null) return null;
+    total += value;
+  }
+  return total;
 }
 
 /** Canonical USDC base units, floored to the slider's supported cent step. */

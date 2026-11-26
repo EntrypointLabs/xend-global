@@ -93,7 +93,9 @@ export function EarnFlow(props: Props) {
       : undefined;
   const fullScreen = flow?.step === "deposit" || flow?.step === "withdraw";
   const withdrawable = props.products.filter(
-    (p) => (props.positionBalances[p.id] ?? 0) > 0
+    (p) =>
+      (props.positionBalances[p.id] ?? 0) > 0 ||
+      p.assets.some((a) => a.withdrawable > 0)
   );
   const pickable =
     flow?.step === "choose-withdraw" ? withdrawable : props.products;
