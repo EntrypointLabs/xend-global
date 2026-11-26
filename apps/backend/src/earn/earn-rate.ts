@@ -24,7 +24,7 @@ export function parseKaminoRate(payload: unknown): number {
   return row.parse(entries[0]).supplyApy;
 }
 
-/** @jup-ag/lend 0.4.0 documents supplyRate as APY in 1e4 units. */
+/** Jupiter Lend reports supplyRate as APY in 1e4 units. */
 export function parseJupiterRate(value: unknown): number {
   const units = z
     .string()
@@ -33,4 +33,26 @@ export function parseJupiterRate(value: unknown): number {
     .pipe(z.number().finite().min(0).max(100000))
     .parse(String(value));
   return units / 10000;
+}
+
+const jupiterToken = z.object({
+  address: z.string(),
+  supplyRate: z.union([z.string(), z.number()]),
+});
+/**
+ * Jupiter Lend's public token list, keyed by lending token address. One entry
+ * that cannot be read is left out rather than failing every other rate.
+ */
+export function parseJupiterRates(payload: unknown): Map<string, number> {
+  const rates = new Map<string, number>();
+  for (const entry of z.array(z.unknown()).parse(payload)) {
+    const token = jupiterToken.safeParse(entry);
+    if (!token.success) continue;
+    try {
+      rates.set(token.data.address, parseJupiterRate(token.data.supplyRate));
+    } catch {
+      continue;
+    }
+  }
+  return rates;
 }

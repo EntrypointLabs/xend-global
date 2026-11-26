@@ -1,4 +1,4 @@
-import { parseKaminoRate, parseJupiterRate } from './earn-rate';
+import { parseKaminoRate, parseJupiterRates } from './earn-rate';
 import { EARN_RECORDS, type EarnRecords } from './earn-records';
 import {
   combineHistories,
@@ -135,6 +135,10 @@ const RATE_FRESH_MS = 60_000;
  * a single slow response from the provider used to show.
  */
 const RATE_STALE_MS = 6 * 60 * 60 * 1000;
+/** The longest a balance waits for a rate there has never been one of. */
+const RATE_WAIT_MS = 1500;
+const DEPLOYMENT_FRESH_MS = 60_000;
+const JUPITER_LEND_TOKENS = 'https://lite-api.jup.ag/lend/v1/earn/tokens';
 const fail = () =>
   new ServiceUnavailableException({
     code: 'EARN_UNAVAILABLE',
@@ -145,7 +149,8 @@ export class EarnService {
   private readonly logger = new Logger(EarnService.name);
   private rpc: Connection;
   private readonly rates = new Map<string, { apy: number; at: number }>();
-  private readonly rateReads = new Map<string, Promise<number | null>>();
+  private readonly rateReads = new Map<EarnProviderId, Promise<void>>();
+  private deployment?: { check: Promise<boolean>; at: number };
   constructor(
     private readonly config: ConfigService,
     @Inject(SQUADS_ACCOUNT_STORE) private readonly accounts: SquadsAccountStore,
@@ -196,6 +201,21 @@ export class EarnService {
     if (!reviewed.includes(createHash('sha256').update(code).digest('hex')))
       throw fail();
     return { program, tables };
+  }
+  /**
+   * Whether Earn can be offered, reused for a minute across every balance
+   * read. Moves still check the deployment themselves each time.
+   */
+  private deployedForReads(): Promise<boolean> {
+    const known = this.deployment;
+    if (known && Date.now() - known.at < DEPLOYMENT_FRESH_MS)
+      return known.check;
+    const check = this.infrastructure().then(
+      () => true,
+      () => false,
+    );
+    this.deployment = { check, at: Date.now() };
+    return check;
   }
   private async account(userId: string) {
     const row = await this.accounts.findByUserId(userId);
@@ -399,7 +419,11 @@ export class EarnService {
     if (combined.partial) throw fail();
     return { provider, mint: null, points: historyPoints(combined.rows) };
   }
-  /** The rate, from the last good read when a fresh one cannot be had. */
+  /**
+   * The rate, never holding up a balance for long: a stale rate is answered
+   * at once while a fresh one loads, and with none at all the read waits only
+   * RATE_WAIT_MS before saying unavailable.
+   */
   private async apy(
     provider: EarnProviderId,
     asset: EarnAssetId,
@@ -407,52 +431,62 @@ export class EarnService {
     const key = `${provider}:${asset}`;
     const known = this.rates.get(key);
     if (known && Date.now() - known.at < RATE_FRESH_MS) return known.apy;
-    // Concurrent requests share one read rather than each asking the provider.
-    let read = this.rateReads.get(key);
-    if (!read) {
-      read = this.readApy(provider, asset).finally(() =>
-        this.rateReads.delete(key),
-      );
-      this.rateReads.set(key, read);
-    }
-    const apy = await read;
-    if (apy !== null) {
-      this.rates.set(key, { apy, at: Date.now() });
-      return apy;
-    }
-    return known && Date.now() - known.at < RATE_STALE_MS ? known.apy : null;
+    const read = this.refreshRates(provider);
+    if (known && Date.now() - known.at < RATE_STALE_MS) return known.apy;
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      read,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, RATE_WAIT_MS);
+      }),
+    ]);
+    clearTimeout(timer);
+    const latest = this.rates.get(key);
+    return latest && Date.now() - latest.at < RATE_STALE_MS ? latest.apy : null;
   }
-  private async readApy(provider: EarnProviderId, asset: EarnAssetId) {
-    let apy: number | null = null;
+  /** One shared read per provider, which loads every asset's rate at once. */
+  private refreshRates(provider: EarnProviderId): Promise<void> {
+    let read = this.rateReads.get(provider);
+    if (!read) {
+      read = this.readRates(provider).finally(() =>
+        this.rateReads.delete(provider),
+      );
+      this.rateReads.set(provider, read);
+    }
+    return read;
+  }
+  private async readRates(provider: EarnProviderId): Promise<void> {
     // Rate failure never fabricates a zero and does not erase a real position.
     try {
+      const rates = new Map<EarnAssetId, number>();
       if (provider === 'jupiter') {
-        const sdk = await import('@jup-ag/lend/earn');
-        const details = await sdk.getLendingTokenDetails({
-          connection: this.rpc,
-          lendingToken: earnAsset(provider, asset).receipt,
-          market: 'main',
+        const response = await fetch(JUPITER_LEND_TOKENS, {
+          signal: AbortSignal.timeout(5000),
         });
-        const supplyRate: unknown = details.supplyRate;
-        apy = parseJupiterRate(supplyRate);
+        if (!response.ok) throw new Error(`status ${response.status}`);
+        const byReceipt = parseJupiterRates((await response.json()) as unknown);
+        for (const asset of earnAssetsFor('jupiter')) {
+          const apy = byReceipt.get(
+            earnAsset('jupiter', asset).receipt.toBase58(),
+          );
+          if (apy !== undefined) rates.set(asset, apy);
+        }
       } else {
         const response = await fetch(
           'https://api.kamino.finance/kamino-market/7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF/reserves/metrics',
           { signal: AbortSignal.timeout(5000) },
         );
         if (!response.ok) throw new Error(`status ${response.status}`);
-        apy = parseKaminoRate((await response.json()) as unknown);
+        rates.set('USDC', parseKaminoRate((await response.json()) as unknown));
       }
+      const at = Date.now();
+      for (const [asset, apy] of rates)
+        if (Number.isFinite(apy) && apy >= 0 && apy <= 10)
+          this.rates.set(`${provider}:${asset}`, { apy, at });
     } catch (err) {
       // Position and withdrawal reads remain available without an APY.
-      this.logger.warn(
-        `earn.rate.unavailable provider=${provider} asset=${asset}`,
-        err,
-      );
+      this.logger.warn(`earn.rate.unavailable provider=${provider}`, err);
     }
-    if (apy !== null && (!Number.isFinite(apy) || apy < 0 || apy > 10))
-      return null;
-    return apy;
   }
   async catalog(userId: string) {
     // These deployments exist only on mainnet. No mainnet address is a
@@ -481,14 +515,12 @@ export class EarnService {
         depositableMinor: '0',
       };
     const a = await this.account(userId);
-    const ready =
-      a.approvalCompatible &&
-      (await this.infrastructure().then(
-        () => true,
-        () => false,
-      ));
-    await this.records.reconcile(userId, this.rpc);
-    const positions = await this.positions(a.addresses.vault);
+    const [deployed, , positions] = await Promise.all([
+      this.deployedForReads(),
+      this.records.reconcile(userId, this.rpc),
+      this.positions(a.addresses.vault),
+    ]);
+    const ready = a.approvalCompatible && deployed;
     const assets = [...new Set(positions.map((p) => p.asset))];
     const mints = assets.map((asset) =>
       earnAsset('jupiter', asset).mint.toBase58(),
