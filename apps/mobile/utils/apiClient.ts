@@ -2124,13 +2124,20 @@ class BackendClient {
     provider: EarnProvider,
     action: EarnAction,
     amountMinor: string,
-    withdrawAll = false
+    withdrawAll = false,
+    mint?: string
   ) {
     return EarnQuoteSchema.parse(
       await this.request<unknown>("/earn/quote", {
         auth: true,
         method: "POST",
-        body: JSON.stringify({ provider, action, amountMinor, withdrawAll }),
+        body: JSON.stringify({
+          provider,
+          action,
+          amountMinor,
+          withdrawAll,
+          ...(mint ? { mint } : {}),
+        }),
       })
     );
   }

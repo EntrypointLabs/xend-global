@@ -59,6 +59,8 @@ export const EarnCatalogSchema = z.object({
 });
 export const EarnQuoteSchema = z.object({
   provider: EarnProviderSchema,
+  /** The lent token. Servers from before Earn lent more than USDC omit it. */
+  mint: z.string().optional(),
   action: z.enum(["deposit", "redeem"]),
   amountMinor: integer,
   quoteId: z.string().uuid(),
