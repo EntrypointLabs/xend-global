@@ -24,7 +24,7 @@ describe("earnBars", () => {
   it("gives 7D a bar per day holding the total earned by then", () => {
     const { bars, earnedInRange } = earnBars(
       [
-        point("2026-11-18", 0.01),
+        point("2026-11-19", 0.01),
         point("2026-11-22", 0.02),
         point("2026-11-23", 0.03),
         point("2026-11-25", 0.06),
@@ -45,6 +45,17 @@ describe("earnBars", () => {
       0.01, 0.01, 0.01, 0.02, 0.03, 0.03, 0.06,
     ]);
     expect(Number(earnedInRange.toFixed(2))).toBe(0.05);
+  });
+
+  it("measures a range from its first snapshot, not from zero", () => {
+    // $10 earned before the week, $11 now: the week earned $1.
+    const { bars, earnedInRange } = earnBars(
+      [point("2026-11-21", 10), point("2026-11-25", 11)],
+      "7d",
+      today
+    );
+    expect(Number(earnedInRange.toFixed(2))).toBe(1);
+    expect(bars[0].earned).toBe(10);
   });
 
   it("steps 30D in ten three-day bars", () => {
@@ -115,13 +126,13 @@ describe("productEarnings", () => {
     ).toEqual({ lifetimeMinor: "30000", lastSevenDaysMinor: "5000" });
   });
 
-  it("falls back to the totals while only this product holds money", () => {
+  it("never credits the account totals to the one product held now", () => {
     expect(
       productEarnings(
         catalog([product("jupiter", "15000000"), product("kamino", "0")]),
         "jupiter"
       )
-    ).toEqual({ lifetimeMinor: "40000", lastSevenDaysMinor: "10000" });
+    ).toEqual({ lifetimeMinor: null, lastSevenDaysMinor: null });
   });
 
   it("stays unknown when the totals span more than one position", () => {
