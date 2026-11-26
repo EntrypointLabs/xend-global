@@ -19,7 +19,6 @@ import Svg, {
   Path,
   Stop,
   Line,
-  Rect,
 } from "react-native-svg";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
@@ -28,6 +27,8 @@ import { usePalette } from "@/hooks/usePalette";
 import { showToast } from "@/utils/toast";
 import type { EarnProduct } from "@/hooks/useEarn";
 import { formatEarnMoney, projectedValue } from "@/utils/earnProjection";
+import { apyLabel } from "@/components/earn/EarnProductRows";
+import { EarnBarChart } from "@/components/earn/EarnBarChart";
 
 export type EarnFlowState =
   | { step: "choose" | "choose-withdraw" }
@@ -51,24 +52,35 @@ type Props = {
 export function EarnFlow(props: Props) {
   const palette = usePalette();
   const { height } = useWindowDimensions();
-  const flow = props.flow;
+  // The modal animates out after the flow is cleared. Rendering the last
+  // screen through that animation keeps the closing frames from falling back
+  // to the product picker.
+  const [shown, setShown] = useState<{
+    flow: EarnFlowState | null;
+    open: boolean;
+    animation: "fade" | "slide";
+  }>({ flow: null, open: false, animation: "fade" });
+  if (props.flow && !shown.open) {
+    const full =
+      props.flow.step === "deposit" || props.flow.step === "withdraw";
+    // A full screen opened straight from a page slides up over it; a sheet
+    // fades in over the blur. Fading a full screen shows both at once.
+    setShown({
+      flow: props.flow,
+      open: true,
+      animation: full ? "slide" : "fade",
+    });
+  } else if (props.flow && props.flow !== shown.flow) {
+    setShown({ ...shown, flow: props.flow });
+  } else if (!props.flow && shown.open) {
+    setShown({ ...shown, open: false });
+  }
+  const flow = shown.flow;
   const product =
     flow && "productId" in flow
       ? props.products.find((p) => p.id === flow.productId)
       : undefined;
   const fullScreen = flow?.step === "deposit" || flow?.step === "withdraw";
-  // A full screen opened straight from a page slides up over it; a sheet fades
-  // in over the blur. Fading a full screen in shows both screens at once.
-  const [presentation, setPresentation] = useState<{
-    open: boolean;
-    animation: "fade" | "slide";
-  }>({ open: false, animation: "fade" });
-  if (!!flow !== presentation.open) {
-    setPresentation({
-      open: !!flow,
-      animation: flow && fullScreen ? "slide" : presentation.animation,
-    });
-  }
   const withdrawable = props.products.filter(
     (p) => (props.positionBalances[p.id] ?? 0) > 0
   );
@@ -76,9 +88,9 @@ export function EarnFlow(props: Props) {
     flow?.step === "choose-withdraw" ? withdrawable : props.products;
   return (
     <Modal
-      visible={!!flow}
+      visible={!!props.flow}
       transparent
-      animationType={flow ? presentation.animation : "fade"}
+      animationType={shown.animation}
       onRequestClose={() => props.onChange(null)}
     >
       {fullScreen && product ? (
@@ -143,7 +155,7 @@ export function EarnFlow(props: Props) {
                     <HapticPressable
                       key={p.id}
                       accessibilityRole="button"
-                      accessibilityLabel={`Select ${p.provider} ${p.name}`}
+                      accessibilityLabel={`Select ${p.provider}`}
                       onPress={() =>
                         props.onChange(
                           flow?.step === "choose-withdraw"
@@ -159,7 +171,7 @@ export function EarnFlow(props: Props) {
                               }
                         )
                       }
-                      className="flex-row items-center gap-3 pb-2 pt-3"
+                      className="flex-row items-center gap-3 py-4"
                     >
                       <ProviderIcon product={p} />
                       <View className="flex-1">
@@ -169,21 +181,13 @@ export function EarnFlow(props: Props) {
                         <View className="mt-1 flex-row items-center gap-1">
                           <Typography
                             variant="body"
-                            className="text-foreground/30"
+                            className="text-foreground/40"
                           >
-                            {p.name} ·{" "}
+                            {p.name} ·
                           </Typography>
                           <Typography variant="body" className="text-success">
-                            {p.apy === null ? "Rate unavailable" : p.apyDisplay}
+                            {apyLabel(p)}
                           </Typography>
-                          {p.apy !== null && (
-                            <Typography
-                              variant="body"
-                              className="text-foreground/30"
-                            >
-                              {p.simulated ? "Simulated APY" : "APY"}
-                            </Typography>
-                          )}
                         </View>
                       </View>
                       <Image
@@ -250,7 +254,7 @@ function Discovery({
             {product.provider}
           </Typography>
         </View>
-        <Typography variant="body" className="text-foreground/30">
+        <Typography variant="body" className="text-foreground/40">
           {product.name}
         </Typography>
       </View>
@@ -263,7 +267,7 @@ function Discovery({
             <Typography variant="caption">
               {product.apy === null
                 ? "Rate unavailable"
-                : `${product.apyDisplay} ${product.simulated ? "Simulated APY" : "APY"}`}
+                : `${product.apyDisplay} APY`}
             </Typography>
           </View>
         </View>
@@ -298,25 +302,7 @@ function Discovery({
             </Typography>
           </View>
         </View>
-        <Svg
-          width="100%"
-          height={108}
-          viewBox="0 0 300 108"
-          preserveAspectRatio="none"
-        >
-          {Array.from({ length: 12 }, (_, i) => (
-            <Rect
-              key={i}
-              x={i * 25}
-              y={104 - (i + 1) * 8}
-              width={19}
-              height={(i + 1) * 8}
-              rx={6}
-              fill={palette.primary}
-              opacity={i === 11 ? 1 : 0.08}
-            />
-          ))}
-        </Svg>
+        <EarnBarChart values={Array.from({ length: 12 }, (_, i) => i + 1)} />
       </View>
       <Typography
         variant="body"
@@ -454,11 +440,10 @@ function DepositScreen({
           <Ionicons name="close" size={19} color={palette.foreground} />
         </HapticPressable>
       </View>
-      {withdraw && <View className="flex-1" />}
       <View className="items-center">
         <Typography variant="caption" className="text-foreground/40">
           {withdraw
-            ? "You receive"
+            ? "You withdraw"
             : product.apy === null
               ? "Rate unavailable"
               : `Start earning ${product.apyDisplay}`}
@@ -477,44 +462,53 @@ function DepositScreen({
         </Typography>
         <Typography variant="caption" className="mt-1 text-foreground/40">
           {withdraw
-            ? `From ${product.provider}`
+            ? `From ${product.provider} to your cash`
             : `Estimated value in ${years} ${years === 1 ? "year" : "years"}`}
         </Typography>
-        {product.simulated && (
-          <Typography variant="caption" className="mt-1 text-foreground/30">
-            Illustrative estimate
+      </View>
+      <View className="mb-8 mt-9 flex-1">
+        <ProjectionChart
+          apy={product.apy}
+          amount={withdraw ? limit - amount : amount}
+          full={withdraw ? limit : undefined}
+          years={years}
+          onYears={setYears}
+        />
+        <View className="mt-3 flex-row justify-between">
+          <Typography variant="caption" className="text-foreground/35">
+            Today
           </Typography>
-        )}
+          <Typography variant="caption" className="text-foreground/35">
+            30Y
+          </Typography>
+        </View>
       </View>
       {withdraw ? (
-        <View className="h-10" />
+        <Typography
+          variant="body"
+          className="pb-5 text-center text-foreground/45"
+        >
+          {estimated === null ? (
+            "Interest you give up is unavailable"
+          ) : (
+            <>
+              You give up about{" "}
+              <Typography variant="body" weight="600">
+                {formatEarnMoney(estimated - amount)}
+              </Typography>{" "}
+              in interest over {years} {years === 1 ? "year" : "years"}
+            </>
+          )}
+        </Typography>
       ) : (
-        <>
-          <View className="mb-8 mt-9 flex-1">
-            <ProjectionChart
-              apy={product.apy}
-              amount={amount}
-              years={years}
-              onYears={setYears}
-            />
-            <View className="mt-3 flex-row justify-between">
-              <Typography variant="caption" className="text-foreground/35">
-                Today
-              </Typography>
-              <Typography variant="caption" className="text-foreground/35">
-                30Y
-              </Typography>
-            </View>
-          </View>
-          <View className="items-center pb-3">
-            <Typography variant="caption" className="text-foreground/40">
-              Initial deposit
-            </Typography>
-            <Typography variant="title1" weight="600" className="mt-1">
-              {formatEarnMoney(amount)}
-            </Typography>
-          </View>
-        </>
+        <View className="items-center pb-3">
+          <Typography variant="caption" className="text-foreground/40">
+            Initial deposit
+          </Typography>
+          <Typography variant="title1" weight="600" className="mt-1">
+            {formatEarnMoney(amount)}
+          </Typography>
+        </View>
       )}
       <View
         accessible
@@ -566,7 +560,6 @@ function DepositScreen({
           : "Balance unavailable"}
         {withdraw ? "" : " · Returns vary"}
       </Typography>
-      {withdraw && <View className="flex-1" />}
       <HapticPressable
         accessibilityRole="button"
         accessibilityState={{
@@ -613,30 +606,47 @@ function DepositScreen({
   );
 }
 
+/**
+ * Growth of `amount` over 30 years. With `full`, the chart is a withdrawal:
+ * the solid line is what stays in and the faint one is the whole position
+ * left untouched, both on one scale from zero, so the gap is what leaving
+ * costs.
+ */
 function ProjectionChart({
   apy,
   amount,
+  full,
   years,
   onYears,
 }: {
   apy: number | null;
   amount: number;
+  full?: number;
   years: number;
   onYears: (years: number) => void;
 }) {
   const palette = usePalette();
   const [width, setWidth] = useState(300);
-  const principal = Math.max(amount, 1);
   const rate = apy ?? 0;
-  const end = projectedValue(principal, rate, 30);
-  const base = principal * 0.6;
-  const y = (year: number) =>
-    280 - (260 * (projectedValue(principal, rate, year) - base)) / (end - base);
-  const points = Array.from(
-    { length: 121 },
-    (_, i) => `${8 + (i / 120) * 284},${y(i / 4)}`
+  const principal =
+    full === undefined ? Math.max(amount, 1) : Math.max(amount, 0);
+  const top = projectedValue(
+    full === undefined ? principal : Math.max(full, 0.01),
+    rate,
+    30
   );
-  const path = `M${points.join(" L")}`;
+  const floor = full === undefined ? principal * 0.6 : 0;
+  const yOf = (value: number) =>
+    280 - (260 * (value - floor)) / Math.max(top - floor, 1e-9);
+  const pathFor = (start: number) =>
+    `M${Array.from(
+      { length: 121 },
+      (_, i) =>
+        `${8 + (i / 120) * 284},${yOf(projectedValue(start, rate, i / 4))}`
+    ).join(" L")}`;
+  const y = (year: number) => yOf(projectedValue(principal, rate, year));
+  const path = pathFor(principal);
+  const ghost = full === undefined ? null : pathFor(Math.max(full, 0));
   const x = 8 + (years / 30) * 284;
   const select = (locationX: number) =>
     onYears(
@@ -699,6 +709,16 @@ function ProjectionChart({
             strokeOpacity={0.035}
           />
         ))}
+        {ghost && (
+          <Path
+            d={ghost}
+            fill="none"
+            stroke={palette.foreground}
+            strokeOpacity={0.18}
+            strokeWidth={1.5}
+            strokeDasharray="4 4"
+          />
+        )}
         <Path d={`${path} L292,298 L8,298 Z`} fill="url(#earnFill)" />
         <Path d={path} fill="none" stroke={palette.primary} strokeWidth={1.5} />
         <Line

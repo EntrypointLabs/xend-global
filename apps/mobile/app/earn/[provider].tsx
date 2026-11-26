@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import BalanceView from "@/components/BalanceView";
 import { EarnActionBar } from "@/components/earn/EarnActionBar";
+import { EarnBarChart } from "@/components/earn/EarnBarChart";
 import { EarnFlow, type EarnFlowState } from "@/components/earn/EarnFlow";
 import { apyLabel } from "@/components/earn/EarnProductRows";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
@@ -35,6 +36,21 @@ const RANGES: { id: EarnRange; label: string }[] = [
   { id: "all", label: "ALL" },
 ];
 
+const RANGE_TITLES: Record<EarnRange, string> = {
+  "7d": "Earned in 7 days",
+  "30d": "Earned in 30 days",
+  "1y": "Earned in 12 months",
+  all: "Earned in total",
+};
+
+function shortDate(day: string, range: EarnRange) {
+  return new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    ...(range === "7d" || range === "30d" ? { day: "numeric" } : {}),
+  });
+}
+
 /** One Earn position: what it holds, what it has earned, and the protocol behind it. */
 export default function EarnPositionScreen() {
   const params = useLocalSearchParams<{ provider: string }>();
@@ -51,7 +67,7 @@ export default function EarnPositionScreen() {
     range
   );
   const [today] = useState(() => new Date());
-  const bars = useMemo(
+  const chart = useMemo(
     () => earnBars(history.data?.points ?? [], range, today),
     [history.data, range, today]
   );
@@ -61,7 +77,6 @@ export default function EarnPositionScreen() {
     : undefined;
   if (!product) return <Redirect href="/earn" />;
 
-  const peak = Math.max(...bars.map((bar) => bar.earned));
   const position = product.position;
 
   return (
@@ -82,7 +97,7 @@ export default function EarnPositionScreen() {
       >
         <View className="flex-row items-center gap-2">
           <Typography variant="body" className="text-foreground/40">
-            {product.name}
+            Balance
           </Typography>
           <Typography variant="body" className="text-foreground/20">
             •
@@ -104,42 +119,22 @@ export default function EarnPositionScreen() {
           <Stat label="Last 7D" amount={product.lastSevenDays} alignEnd />
         </View>
 
-        <View className="mt-10 h-44 justify-end">
-          {peak > 0 ? (
-            <View
-              accessible
-              accessibilityRole="image"
-              accessibilityLabel={`Earned ${formatEarnMoney(
-                bars.reduce((sum, bar) => sum + bar.earned, 0)
-              )} in this period`}
-              className="h-full flex-row items-end"
-            >
-              {bars.map((bar) => (
-                <View
-                  key={bar.label}
-                  className="h-full flex-1 items-center justify-end px-px"
-                >
-                  <View
-                    className={cn(
-                      "rounded-full",
-                      bar.earned > 0
-                        ? "w-2/5 bg-success"
-                        : "w-full bg-foreground/10"
-                    )}
-                    style={{
-                      height:
-                        bar.earned > 0 ? `${(bar.earned / peak) * 100}%` : 4,
-                    }}
-                  />
-                </View>
-              ))}
-            </View>
-          ) : history.isError ? (
-            <View className="flex-1 items-center justify-center gap-3 px-8">
-              <Typography
-                variant="body"
-                className="text-center text-foreground/50"
-              >
+        <View className="mt-8 rounded-[24px] border border-foreground/5 bg-foreground/[0.01] p-5">
+          <View className="mb-4 flex-row items-baseline justify-between gap-2">
+            <Typography variant="body" weight="600">
+              {RANGE_TITLES[range]}
+            </Typography>
+            {!history.isError && !history.isPending && (
+              <Typography variant="body" weight="600">
+                {chart.earnedInRange > 0 && chart.earnedInRange < 0.01
+                  ? "Under $0.01"
+                  : formatEarnMoney(chart.earnedInRange)}
+              </Typography>
+            )}
+          </View>
+          {history.isError ? (
+            <View className="h-[108px] items-center justify-center gap-3">
+              <Typography variant="body" className="text-foreground/50">
                 Earnings could not be loaded.
               </Typography>
               <HapticPressable
@@ -155,36 +150,37 @@ export default function EarnPositionScreen() {
               </HapticPressable>
             </View>
           ) : (
-            <>
-              <View
-                className={cn(
-                  "flex-1 items-center justify-center gap-3 px-8",
-                  history.isPending && "opacity-0"
+            <View
+              accessible
+              accessibilityRole="image"
+              accessibilityLabel={`${RANGE_TITLES[range]}: ${formatEarnMoney(chart.earnedInRange)}`}
+            >
+              <EarnBarChart
+                values={chart.bars.map((bar) =>
+                  history.isPending ? 0 : bar.earned
                 )}
-              >
-                <Ionicons
-                  name="stats-chart"
-                  size={22}
-                  color={palette.fg(0.25)}
-                />
-                <Typography
-                  variant="body"
-                  className="text-center text-foreground/50"
-                >
-                  Earnings will show here once your balance has earned a cent.
+              />
+              <View className="mt-2 flex-row justify-between">
+                <Typography variant="caption" className="text-foreground/35">
+                  {shortDate(chart.bars[0].label, range)}
+                </Typography>
+                <Typography variant="caption" className="text-foreground/35">
+                  Today
                 </Typography>
               </View>
-              <View className="flex-row">
-                {Array.from({ length: 7 }, (_, i) => (
-                  <View
-                    key={i}
-                    className="mx-[3px] h-1.5 flex-1 rounded-full bg-foreground/10"
-                  />
-                ))}
-              </View>
-            </>
+            </View>
           )}
         </View>
+        {!history.isError &&
+          !history.isPending &&
+          chart.earnedInRange === 0 && (
+            <Typography
+              variant="caption"
+              className="mt-3 text-center text-foreground/40"
+            >
+              Your first cent of interest shows up here.
+            </Typography>
+          )}
 
         <View
           className={cn(

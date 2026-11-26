@@ -38,7 +38,7 @@ export const EARN_PRODUCTS: EarnProduct[] = [
   {
     id: "kamino",
     provider: "Kamino",
-    name: "Lending Yield",
+    name: "Flexible interest",
     description: "Put your dollars to work and earn interest with Kamino.",
     apyDisplay: "—",
     apy: null,
@@ -51,7 +51,7 @@ export const EARN_PRODUCTS: EarnProduct[] = [
   {
     id: "jupiter",
     provider: "Jupiter Lend",
-    name: "Lending Yield",
+    name: "Flexible interest",
     description:
       "Put your dollars to work and earn interest with Jupiter Lend.",
     apyDisplay: "—",

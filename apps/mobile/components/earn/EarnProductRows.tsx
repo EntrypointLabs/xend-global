@@ -10,29 +10,27 @@ import type { EarnProduct } from "@/hooks/useEarn";
 
 export function apyLabel(product: EarnProduct) {
   if (product.apy === null) return "Rate unavailable";
-  return product.simulated
-    ? `${product.apyDisplay} Simulated APY`
-    : `${product.apyDisplay} APY`;
+  return `${product.apyDisplay} APY`;
 }
 
 function ProductHeading({ product }: { product: EarnProduct }) {
   return (
     <View className="min-w-0 flex-1">
-      <Typography variant="title2" weight="600" numberOfLines={1}>
-        {product.provider}
-      </Typography>
       <Typography
         variant="body"
         numberOfLines={1}
         className="text-foreground/40"
       >
-        {product.name}
+        {product.provider}
         <Typography variant="body" className="text-foreground/20">
           {"  •  "}
         </Typography>
         <Typography variant="body" weight="600" className="text-success">
           {apyLabel(product)}
         </Typography>
+      </Typography>
+      <Typography variant="title2" weight="600" numberOfLines={1}>
+        {product.name}
       </Typography>
     </View>
   );
@@ -85,7 +83,7 @@ export function ProductCard({
   return (
     <HapticPressable
       accessibilityRole="button"
-      accessibilityLabel={`About ${product.provider} ${product.name}`}
+      accessibilityLabel={`About ${product.provider}`}
       onPress={onPress}
       className="rounded-2xl bg-foreground/[0.03] px-4 py-4"
     >

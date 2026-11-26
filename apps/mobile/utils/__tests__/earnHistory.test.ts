@@ -21,12 +21,13 @@ describe("formatEarnedMinor", () => {
 });
 
 describe("earnBars", () => {
-  it("gives a bar per day for 7D, each the rise since the last snapshot", () => {
-    const bars = earnBars(
+  it("gives 7D a bar per day holding the total earned by then", () => {
+    const { bars, earnedInRange } = earnBars(
       [
-        point("2026-11-22", 0),
-        point("2026-11-23", 0.01),
-        point("2026-11-25", 0.04),
+        point("2026-11-18", 0.01),
+        point("2026-11-22", 0.02),
+        point("2026-11-23", 0.03),
+        point("2026-11-25", 0.06),
       ],
       "7d",
       today
@@ -41,28 +42,37 @@ describe("earnBars", () => {
       "2026-11-25",
     ]);
     expect(bars.map((b) => Number(b.earned.toFixed(2)))).toEqual([
-      0, 0, 0, 0, 0.01, 0, 0.03,
+      0.01, 0.01, 0.01, 0.02, 0.03, 0.03, 0.06,
     ]);
+    expect(Number(earnedInRange.toFixed(2))).toBe(0.05);
   });
 
-  it("counts a fall as nothing", () => {
-    const bars = earnBars(
-      [point("2026-11-24", 0.05), point("2026-11-25", 0.02)],
-      "7d",
-      today
-    );
-    expect(bars.every((b) => b.earned === 0)).toBe(true);
+  it("steps 30D in ten three-day bars", () => {
+    const { bars } = earnBars([], "30d", today);
+    expect(bars).toHaveLength(10);
+    expect(bars[9].label).toBe("2026-11-25");
+    expect(bars[8].label).toBe("2026-11-22");
   });
 
-  it("groups by month for 1Y and spans back to the first point for ALL", () => {
-    expect(earnBars([], "1y", today)).toHaveLength(12);
-    const all = earnBars(
+  it("uses month ends for 1Y and starts ALL at the first snapshot", () => {
+    expect(earnBars([], "1y", today).bars).toHaveLength(12);
+    const { bars, earnedInRange } = earnBars(
       [point("2026-09-30", 0), point("2026-10-31", 0.1)],
       "all",
       today
     );
-    expect(all.map((b) => b.label)).toEqual(["2026-09", "2026-10", "2026-11"]);
-    expect(Number(all[1].earned.toFixed(2))).toBe(0.1);
+    expect(bars.map((b) => b.label)).toEqual([
+      "2026-09-30",
+      "2026-10-31",
+      "2026-11-25",
+    ]);
+    expect(Number(earnedInRange.toFixed(2))).toBe(0.1);
+  });
+
+  it("never draws more than twelve bars for ALL", () => {
+    const { bars } = earnBars([point("2024-01-15", 0)], "all", today);
+    expect(bars).toHaveLength(12);
+    expect(bars[11].label).toBe("2026-11-25");
   });
 });
 
