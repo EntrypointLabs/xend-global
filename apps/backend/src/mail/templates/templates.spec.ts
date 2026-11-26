@@ -30,11 +30,11 @@ describe('renderCodeEmail', () => {
 });
 
 describe('renderLaunchAnnouncement', () => {
-  it('links the App Store and carries the Broadcast unsubscribe placeholder', () => {
+  it('links TestFlight and carries the Broadcast unsubscribe placeholder', () => {
     const { html, text } = renderLaunchAnnouncement();
 
     for (const part of [html, text]) {
-      expect(part).toContain('https://apps.apple.com/app/id6829126490');
+      expect(part).toContain('https://testflight.apple.com/join/V4zsFUk4');
       expect(part).toContain('{{{RESEND_UNSUBSCRIBE_URL}}}');
     }
   });

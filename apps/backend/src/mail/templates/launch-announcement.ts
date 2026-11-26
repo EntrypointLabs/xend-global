@@ -10,7 +10,7 @@ import {
   renderLayout,
 } from './layout';
 
-export const APP_STORE_URL = 'https://apps.apple.com/app/id6829126490';
+export const TESTFLIGHT_URL = 'https://testflight.apple.com/join/V4zsFUk4';
 
 /**
  * Resend fills this in when the mail goes out as a Broadcast. Sent any other
@@ -31,7 +31,7 @@ const FEATURES: Array<[string, string]> = [
   ],
 ];
 
-export const LAUNCH_SUBJECT = "It's your turn: Prydd is on the App Store";
+export const LAUNCH_SUBJECT = "It's your turn: Prydd is ready on iPhone";
 
 export function renderLaunchAnnouncement(): { html: string; text: string } {
   const featureRows = FEATURES.map(
@@ -49,11 +49,11 @@ export function renderLaunchAnnouncement(): { html: string; text: string } {
                 <td class="px" style="background-color:${INK};border-radius:16px 16px 0 0;padding:40px 40px 44px;">
                   ${mark(48)}
                   <h1 class="display" style="margin:40px 0 16px;font-family:${SANS};font-size:40px;line-height:46px;font-weight:600;letter-spacing:-1.2px;color:${WHITE};">It's your turn.</h1>
-                  <p style="margin:0 0 32px;font-family:${SANS};font-size:17px;line-height:26px;color:${MUTED_DARK};">Prydd is on the App Store. Your dollar account is ready to open: an email, your face or fingerprint, and you're in.</p>
+                  <p style="margin:0 0 32px;font-family:${SANS};font-size:17px;line-height:26px;color:${MUTED_DARK};">Prydd is on iPhone through TestFlight, Apple's app for early releases. Your dollar account is ready to open: an email, your face or fingerprint, and you're in.</p>
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                     <tr>
                       <td style="background-color:${WHITE};border-radius:999px;">
-                        <a href="${APP_STORE_URL}" style="display:inline-block;padding:16px 28px;font-family:${SANS};font-size:16px;line-height:20px;font-weight:600;color:${INK};text-decoration:none;">Get Prydd for iPhone</a>
+                        <a href="${TESTFLIGHT_URL}" style="display:inline-block;padding:16px 28px;font-family:${SANS};font-size:16px;line-height:20px;font-weight:600;color:${INK};text-decoration:none;">Get Prydd for iPhone</a>
                       </td>
                     </tr>
                   </table>
@@ -75,7 +75,7 @@ export function renderLaunchAnnouncement(): { html: string; text: string } {
   const html = renderLayout({
     title: LAUNCH_SUBJECT,
     preheader:
-      'Your dollar account is ready to open. Get Prydd on the App Store.',
+      'Your dollar account is ready to open. Get Prydd for iPhone on TestFlight.',
     body,
     footer: `You're getting this because you joined the Prydd waitlist at prydd.co.<br><a href="${UNSUBSCRIBE_URL}" style="color:${MUTED};text-decoration:underline;">Unsubscribe</a>`,
   });
@@ -83,9 +83,9 @@ export function renderLaunchAnnouncement(): { html: string; text: string } {
   const text = [
     "It's your turn.",
     '',
-    "Prydd is on the App Store. Your dollar account is ready to open: an email, your face or fingerprint, and you're in.",
+    "Prydd is on iPhone through TestFlight, Apple's app for early releases. Your dollar account is ready to open: an email, your face or fingerprint, and you're in.",
     '',
-    `Get Prydd for iPhone: ${APP_STORE_URL}`,
+    `Get Prydd for iPhone: ${TESTFLIGHT_URL}`,
     '',
     ...FEATURES.map(([name, line]) => `${name}. ${line}`),
     '',
