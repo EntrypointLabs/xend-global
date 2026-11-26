@@ -85,13 +85,12 @@ export const EARN_PRODUCTS: EarnProduct[] = [
     id: "jupiter",
     provider: "Jupiter Lend",
     name: "Flexible interest",
-    description:
-      "Put your dollars to work and earn interest with Jupiter Lend.",
+    description: "Put your assets to work and earn interest with Jupiter Lend.",
     apyDisplay: "—",
     apy: null,
     learnMoreUrl: "https://jup.ag/lend",
     about:
-      "Jupiter Lend is the lending market from Jupiter on Solana. Your dollars are lent to borrowers through Jupiter Lend, and you earn the interest they pay. The rate moves with how much is supplied and how much is borrowed.",
+      "Jupiter Lend is the lending market from Jupiter on Solana. Your assets are lent to borrowers through Jupiter Lend, and you earn the interest they pay. The rate moves with how much is supplied and how much is borrowed.",
     network: "Solana",
     icon: require("@/assets/icons/jupiter.png"),
     assets: [],

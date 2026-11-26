@@ -323,7 +323,8 @@ function Discovery({
         variant="body"
         className="mb-3 mt-4 text-center text-foreground/30"
       >
-        Deposit your dollars with {product.provider}
+        Deposit your {product.assets.length > 1 ? "assets" : "dollars"} with{" "}
+        {product.provider}
         {"\n"}to earn interest.
       </Typography>
       <HapticPressable
