@@ -489,7 +489,8 @@ export const USDC_MINT_BY_CLUSTER = {
         EARN_FORWARDER_PROGRAM: Joi.string().allow('').optional(),
         EARN_LOOKUP_TABLE: Joi.string().allow('').optional(),
         // Comma-separated Earn assets open for new moves (USDC, USDT, USDG, SOL).
-        // Anything beyond USDC needs the multi-asset forwarder deployed first.
+        // Anything beyond USDC needs the multi-asset forwarder deployed and an
+        // app release that sends a mint and verifies the asset it signs.
         EARN_ENABLED_ASSETS: Joi.string().default('USDC'),
         EARN_DEPOSITS_KILLSWITCH: Joi.boolean()
           .truthy('1')

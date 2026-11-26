@@ -44,8 +44,9 @@ The deployed binary (`844d036d…`) is USDC-only. Turning on USDT, USDG and SOL 
 3. In the Squads app, **Developers → Programs → Prydd Earn Forwarder → Upgrade**, with the buffer address and the fee wallet as spill address. Two members approve, then execute.
 4. Confirm the on-chain code hash equals the reviewed hash and the upgrade authority is unchanged.
 5. Extend the shared lookup table with the new markets: `node apps/backend/scripts/setup-earn-lookup.mjs --binary <so> --extend 2fM7RUifC6M6c7TgdKBmDWuWSYzb9mDks8uVQAPyXS1F` prints the plan; add `--execute --payer-keypair <fee wallet>` to send it. The phone rebuilds against whatever tables a message names, so no app change follows from the extension.
-6. Set `EARN_FORWARDER_CODE_SHA256` (backend) and `EXPO_PUBLIC_EARN_FORWARDER_CODE_SHA256` (mobile) to the new hash and set `EARN_ENABLED_ASSETS=USDC,USDT,USDG,SOL`. Ship the backend, then the app. Builds pinned to the old hash stop signing Earn until the new app is installed.
-7. With the operator's test Account, make a small deposit and withdrawal of each new asset, USDG and SOL first.
+6. Set `EARN_FORWARDER_CODE_SHA256` (backend) and `EXPO_PUBLIC_EARN_FORWARDER_CODE_SHA256` (mobile) to the new hash. Ship the backend, then the app. Builds pinned to the old hash stop signing Earn until the new app is installed.
+7. Only once an app release that lends other assets is installed, set `EARN_ENABLED_ASSETS=USDC,USDT,USDG,SOL`. That release must read the catalog's `assets`, send `mint` with every quote, and pass the asset (and, for SOL, whether the vault's wrapped-SOL account exists) when it rebuilds the message. Earlier builds only ever quote and verify USDC, so enabling the other assets before then shows nothing new to them.
+8. With the operator's test Account, make a small deposit and withdrawal of each new asset, USDG and SOL first.
 
 Apply migration `0071_earn_asset_mint.sql` with the backend release; it records every existing Earn row as USDC.
 
