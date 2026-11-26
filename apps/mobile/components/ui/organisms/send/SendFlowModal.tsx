@@ -40,6 +40,8 @@ export interface SendFlowModalRef {
 interface SendFlowModalProps {
   mode?: SendMode;
   onClose?: () => void;
+  /** The token to start on, when opened from that token's page. USDC otherwise. */
+  initialMint?: string;
 }
 
 type Step = "Recipient" | "Amount";
@@ -49,7 +51,7 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 const springConfig = {};
 
 export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
-  ({ mode = "crypto", onClose }, ref) => {
+  ({ mode = "crypto", onClose, initialMint }, ref) => {
     const snapPoints = useMemo(() => ["94%"], []);
     const palette = usePalette();
     const background =
@@ -59,7 +61,9 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
     // Beside the scanner rather than inside the amount step: a sheet opened
     // from inside this one's content lands underneath it.
     const tokenPickerRef = useRef<BottomSheetModal>(null);
-    const [sendMint, setSendMint] = useState(getUsdcMint);
+    const [sendMint, setSendMint] = useState(
+      () => initialMint ?? getUsdcMint()
+    );
 
     const [, setStep] = useState<Step>("Recipient");
     const [recipient, setRecipient] = useState<string>("");
@@ -82,12 +86,12 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
             setStep("Recipient");
             setRecipient("");
             setBankRecipient(null);
-            setSendMint(getUsdcMint());
+            setSendMint(initialMint ?? getUsdcMint());
             translateX.value = 0;
           }, 300);
         }
       },
-      [onClose, translateX]
+      [onClose, translateX, initialMint]
     );
 
     const showAmount = () => {

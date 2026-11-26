@@ -82,16 +82,17 @@ export default function TokenScreen() {
   const transfers = useTransfersInfinite();
 
   const held = balances.tokens.find((token) => token.mint === mint);
-  const lentIn = products.flatMap((product) =>
+  // Every product lending this token, closed positions included: a position
+  // withdrawn to zero still has what it earned.
+  const lending = products.flatMap((product) =>
     product.assets
       .filter(
         (asset) =>
-          asset.mint === mint &&
-          (asset.position ?? 0) > 0 &&
-          (!earn.success || product.id === earn.data)
+          asset.mint === mint && (!earn.success || product.id === earn.data)
       )
       .map((asset) => ({ product, asset }))
   );
+  const lentIn = lending.filter((row) => (row.asset.position ?? 0) > 0);
   const earnProduct = earn.success
     ? products.find((product) => product.id === earn.data)
     : undefined;
@@ -110,7 +111,7 @@ export default function TokenScreen() {
 
   const available = held ? Number(held.amountRaw) / 10 ** held.decimals : 0;
   const lent = lentIn.reduce((sum, row) => sum + (row.asset.position ?? 0), 0);
-  const earned = lentIn.reduce(
+  const earned = lending.reduce(
     (sum, row) => sum + (row.asset.lifetimeEarned ?? 0),
     0
   );
@@ -486,7 +487,11 @@ export default function TokenScreen() {
               sendFlowModalRef.current?.present();
             }}
           />
-          <SendFlowModal ref={sendFlowModalRef} onClose={() => {}} />
+          <SendFlowModal
+            ref={sendFlowModalRef}
+            onClose={() => {}}
+            initialMint={mint}
+          />
         </>
       )}
     </ScreenLayout>
