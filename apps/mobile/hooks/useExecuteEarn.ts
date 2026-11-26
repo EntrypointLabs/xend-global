@@ -113,7 +113,12 @@ export function useExecuteEarn() {
       amount: number,
       withdrawAll = false,
       /** The token being lent; USDC when absent. `amount` is in its units. */
-      mint?: string
+      mint?: string,
+      /**
+       * Called once the move is on its way, after which nothing the Consumer
+       * does on this screen changes it: the rest is waiting for the chain.
+       */
+      onSubmitted?: () => void
     ): Promise<Outcome> => {
       if (locked.current) return { status: "pending" };
       if (!account || !storageKey || !ready)
@@ -337,6 +342,7 @@ export function useExecuteEarn() {
         }
         const signature = pending.current?.signature;
         if (!signature) return { status: "pending" };
+        onSubmitted?.();
         // Never report success or change positions before chain confirmation.
         for (let i = 0; i < 12; i++) {
           const result = await readEarnApprovalOutcome(rpc, pending.current!);
