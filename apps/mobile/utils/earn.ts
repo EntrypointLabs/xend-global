@@ -325,7 +325,7 @@ export function earnBars(
   };
 }
 
-type EarnCatalog = z.infer<typeof EarnCatalogSchema>;
+export type EarnCatalog = z.infer<typeof EarnCatalogSchema>;
 
 /**
  * One product's earnings, or null when the server does not break them out.
@@ -360,3 +360,75 @@ export const TokenOverviewSchema = z.object({
   points: z.array(z.object({ at: z.string(), priceUsd: z.number() })),
 });
 export type TokenOverview = z.infer<typeof TokenOverviewSchema>;
+
+export interface EarnMove {
+  provider: EarnProvider;
+  action: EarnAction;
+  /** The token moved, in its smallest units. */
+  mint: string;
+  minor: bigint;
+  /** A withdrawal of everything, which leaves nothing whatever the rounding. */
+  all: boolean;
+  /** The product-level figures are USDC; this says whether they move too. */
+  usdc: boolean;
+}
+
+/**
+ * The catalog as it stands once a confirmed move lands, so the screen shows
+ * it at once instead of after the server catches up with the chain.
+ *
+ * The dollar value scales with the position at the price the catalog already
+ * holds; a first deposit of a token with no price yet stays unpriced until
+ * the server answers.
+ */
+export function applyEarnMove(
+  catalog: EarnCatalog,
+  move: EarnMove
+): EarnCatalog {
+  const next = (held: bigint) => {
+    if (move.action === "deposit") return held + move.minor;
+    if (move.all) return 0n;
+    return held > move.minor ? held - move.minor : 0n;
+  };
+  const scaleUsd = (usd: string | null, before: bigint, after: bigint) => {
+    if (after === 0n) return "0";
+    if (usd === null || before === 0n)
+      return move.usdc ? toDollars(after) : null;
+    return ((Number(usd) * Number(after)) / Number(before)).toFixed(6);
+  };
+  return {
+    ...catalog,
+    products: catalog.products.map((product) => {
+      if (product.id !== move.provider) return product;
+      return {
+        ...product,
+        ...(move.usdc && {
+          positionMinor: next(BigInt(product.positionMinor)).toString(),
+          withdrawableMinor: next(BigInt(product.withdrawableMinor)).toString(),
+        }),
+        assets: product.assets?.map((asset) => {
+          if (asset.mint !== move.mint) return asset;
+          const before = BigInt(asset.positionRaw);
+          const after = next(before);
+          const held = BigInt(asset.depositableRaw);
+          return {
+            ...asset,
+            positionRaw: after.toString(),
+            positionUsd: scaleUsd(asset.positionUsd, before, after),
+            withdrawableRaw: next(BigInt(asset.withdrawableRaw)).toString(),
+            depositableRaw: (move.action === "deposit"
+              ? held > move.minor
+                ? held - move.minor
+                : 0n
+              : held + move.minor
+            ).toString(),
+          };
+        }),
+      };
+    }),
+  };
+}
+
+function toDollars(minor: bigint): string {
+  return (Number(minor) / 1e6).toFixed(6);
+}

@@ -31,6 +31,7 @@ import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
 import { readEarnApprovalOutcome } from "@/utils/earnRecovery";
 import { isUserCanceledSign } from "@/utils/signing";
+import { applyEarnMove, type EarnCatalog, type EarnMove } from "@/utils/earn";
 
 type Pending = {
   signed: string;
@@ -44,6 +45,12 @@ type Outcome =
   | { status: "pending" }
   | { status: "cancelled" }
   | { status: "failed"; message: string };
+/**
+ * The server reads positions through an index that runs a few seconds behind
+ * the chain. Asked the moment a move confirms, it answers with the position
+ * from before, which would undo the update this phone has already made.
+ */
+const EARN_INDEX_LAG_MS = 4_000;
 const publicProgram = process.env.EXPO_PUBLIC_EARN_FORWARDER_PROGRAM;
 const reviewedHashes = reviewedCodeHashes(
   process.env.EXPO_PUBLIC_EARN_FORWARDER_CODE_SHA256
@@ -123,6 +130,8 @@ export function useExecuteEarn() {
         pending.current = p;
         setPending(true);
       };
+      // The move this call makes, when it is not finishing an earlier one.
+      let moved: EarnMove | null = null;
       try {
         if (!pending.current) {
           if (!publicProgram || !reviewedHashes.length)
@@ -133,6 +142,14 @@ export function useExecuteEarn() {
           const minor = Math.round(amount * 10 ** lent.decimals);
           if (!Number.isSafeInteger(minor) || minor <= 0)
             throw new Error("Choose a valid amount");
+          moved = {
+            provider,
+            action,
+            mint: lent.mint.toBase58(),
+            minor: BigInt(minor),
+            all: withdrawAll,
+            usdc: asset === "USDC",
+          };
           const quote = await apiClient.quoteEarn(
             provider,
             action,
@@ -331,7 +348,20 @@ export function useExecuteEarn() {
           }
           if (result === "confirmed") {
             await clear();
-            void queries.invalidateQueries({ queryKey: ["earn"] });
+            const move = moved;
+            if (move)
+              queries.setQueriesData<EarnCatalog>(
+                // The catalog only; the history queries share the prefix.
+                {
+                  queryKey: ["earn"],
+                  predicate: (q) => q.queryKey.length === 2,
+                },
+                (catalog) => catalog && applyEarnMove(catalog, move)
+              );
+            setTimeout(
+              () => void queries.invalidateQueries({ queryKey: ["earn"] }),
+              EARN_INDEX_LAG_MS
+            );
             void queries.invalidateQueries({ queryKey: ["balances"] });
             void queries.invalidateQueries({ queryKey: ["transfers"] });
             return { status: "confirmed" };

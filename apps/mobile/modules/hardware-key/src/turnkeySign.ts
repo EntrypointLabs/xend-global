@@ -33,6 +33,23 @@ export interface TurnkeySignParams {
   prompt: SignPrompt;
 }
 
+/**
+ * The device key's signing service said no. Its own wording, which can be
+ * about quotas and billing, is for error reports, not the Consumer: the
+ * message is what they read, and `detail` is what was actually said.
+ */
+export class ApprovalSignerRefusedError extends Error {
+  readonly detail: string;
+
+  constructor(detail: string) {
+    super(
+      "Your device key could not confirm this right now. Nothing has moved. Try again later."
+    );
+    this.name = "ApprovalSignerRefusedError";
+    this.detail = detail;
+  }
+}
+
 export async function signWithApprovalSigner({
   organizationId,
   signWith,
@@ -70,8 +87,8 @@ export async function signWithApprovalSigner({
 
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(
-      `Approval signer refused: ${payload?.message ?? response.status}`
+    throw new ApprovalSignerRefusedError(
+      String(payload?.message ?? response.status)
     );
   }
 

@@ -723,7 +723,7 @@ function DepositScreen({
       {picking && (
         <AssetPickerSheet
           title={withdraw ? "Withdraw which token?" : "Deposit which token?"}
-          assets={choices}
+          assets={byValueHeld(choices)}
           selected={asset.mint}
           onPick={pick}
           onClose={() => setPicking(false)}
@@ -868,4 +868,14 @@ function ProjectionChart({
       </Svg>
     </View>
   );
+}
+
+/**
+ * What the Consumer holds most of first, by dollar value. Tokens worth the
+ * same, which is every one they hold none of, keep the product's own order.
+ */
+function byValueHeld(choices: PickableAsset[]): PickableAsset[] {
+  const worth = (c: PickableAsset) =>
+    c.usd ?? (c.amount > 0 ? Number.MIN_VALUE : 0);
+  return [...choices].sort((a, b) => worth(b) - worth(a));
 }
