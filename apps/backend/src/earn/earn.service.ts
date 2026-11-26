@@ -1,6 +1,7 @@
 import { parseKaminoRate, parseJupiterRate } from './earn-rate';
 import { EARN_RECORDS, type EarnRecords } from './earn-records';
 import {
+  combineHistories,
   historyPoints,
   positionKey,
   rangeStartDay,
@@ -330,21 +331,59 @@ export class EarnService {
     const earnings = await this.records.earnings(userId, positions);
     await this.recordSnapshots(userId, positions, earnings);
   }
+  /**
+   * One token's history in its own units, or with no mint, every token the
+   * product lends combined in USD micro-units at today's prices.
+   */
   async history(
     userId: string,
     provider: EarnProviderId,
     range: EarnHistoryRange,
-    mint: string = USDC,
+    mint?: string,
   ) {
-    const asset = earnAssetByMint(mint);
-    if (!asset || !earnAssetsFor(provider).includes(asset))
-      throw new BadRequestException('Unsupported Earn asset');
-    const rows = await this.records.snapshots(
-      userId,
-      { provider, mint },
-      rangeStartDay(range, new Date()),
+    const from = rangeStartDay(range, new Date());
+    if (mint !== undefined) {
+      const asset = earnAssetByMint(mint);
+      if (!asset || !earnAssetsFor(provider).includes(asset))
+        throw new BadRequestException('Unsupported Earn asset');
+      const rows = await this.records.snapshots(
+        userId,
+        { provider, mint },
+        from,
+      );
+      return { provider, mint, points: historyPoints(rows) };
+    }
+    const assets = earnAssetsFor(provider).map((a) => earnAsset(provider, a));
+    const mints = assets.map((a) => a.mint.toBase58());
+    const [series, prices] = await Promise.all([
+      Promise.all(
+        mints.map((m) =>
+          this.records.snapshots(userId, { provider, mint: m }, from),
+        ),
+      ),
+      mints.every((m) => m === USDC) || !this.prices
+        ? Promise.resolve(new Map<string, { usdPrice: number }>())
+        : this.prices
+            .getUsdPrices(mints.filter((m) => m !== USDC))
+            .catch(() => new Map<string, { usdPrice: number }>()),
+    ]);
+    const combined = combineHistories(
+      assets.map((a, i) => {
+        const m = mints[i];
+        const usdPrice = m === USDC ? 1 : prices.get(m)?.usdPrice;
+        return {
+          rows: series[i],
+          toUsd: (raw: bigint) =>
+            raw === 0n ? 0n : usdMicro(raw, a.decimals, usdPrice),
+        };
+      }),
     );
-    return { provider, mint, points: historyPoints(rows) };
+    return {
+      provider,
+      mint: null,
+      partial: combined.partial,
+      points: historyPoints(combined.rows),
+    };
   }
   private async apy(provider: EarnProviderId, asset: EarnAssetId) {
     let apy: number | null = null;

@@ -1,5 +1,6 @@
 import {
   clampEarned,
+  combineHistories,
   earnedMinor,
   historyPoints,
   providerEarnings,
@@ -328,5 +329,50 @@ describe('seven-day earnings from snapshots', () => {
   });
   it('names the UTC day seven days ago', () => {
     expect(weekAgoDay(NOW)).toBe('2026-11-18');
+  });
+});
+
+describe('combineHistories', () => {
+  const snap = (day: string, value: string, net: string) => ({
+    day,
+    valueMinor: value,
+    netDepositedMinor: net,
+  });
+  const same = (raw: bigint) => raw;
+  it('carries a withdrawn token forward so its earnings stay in the total', () => {
+    expect(
+      combineHistories([
+        {
+          rows: [
+            snap('2026-11-01', '105', '100'),
+            snap('2026-11-03', '0', '-6'),
+          ],
+          toUsd: same,
+        },
+        {
+          rows: [
+            snap('2026-11-02', '50', '50'),
+            snap('2026-11-04', '52', '50'),
+          ],
+          toUsd: same,
+        },
+      ]),
+    ).toEqual({
+      partial: false,
+      rows: [
+        snap('2026-11-01', '105', '100'),
+        snap('2026-11-02', '155', '150'),
+        snap('2026-11-03', '50', '44'),
+        snap('2026-11-04', '52', '44'),
+      ],
+    });
+  });
+  it('leaves out a token it cannot price and says the total is partial', () => {
+    expect(
+      combineHistories([
+        { rows: [snap('2026-11-01', '5', '5')], toUsd: same },
+        { rows: [snap('2026-11-01', '9', '9')], toUsd: () => null },
+      ]),
+    ).toEqual({ partial: true, rows: [snap('2026-11-01', '5', '5')] });
   });
 });

@@ -195,3 +195,52 @@ export function historyPoints(rows: EarnSnapshotRow[]): EarnHistoryPoint[] {
       earnedMinor: earnedMinor(r.valueMinor, r.netDepositedMinor),
     }));
 }
+
+/**
+ * Several tokens' daily snapshots as one series, each converted by `toUsd`.
+ * A token's last snapshot carries forward to later days, so a position
+ * withdrawn in full keeps its earnings in the total instead of dropping out.
+ * Tokens that cannot be priced are left out and reported as `partial`.
+ */
+export function combineHistories(
+  series: {
+    rows: EarnSnapshotRow[];
+    toUsd: (raw: bigint) => bigint | null;
+  }[],
+): { rows: EarnSnapshotRow[]; partial: boolean } {
+  let partial = false;
+  const priced = series.flatMap(({ rows, toUsd }) => {
+    const converted = rows.map((r) => ({
+      day: r.day,
+      value: toUsd(BigInt(r.valueMinor)),
+      net: toUsd(BigInt(r.netDepositedMinor)),
+    }));
+    if (converted.some((r) => r.value === null || r.net === null)) {
+      partial = true;
+      return [];
+    }
+    return [
+      converted
+        .map((r) => ({ day: r.day, value: r.value!, net: r.net! }))
+        .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0)),
+    ];
+  });
+  const days = [...new Set(priced.flat().map((r) => r.day))].sort();
+  const rows = days.map((day) => {
+    let value = 0n,
+      net = 0n;
+    for (const token of priced) {
+      let latest: (typeof token)[number] | undefined;
+      for (const r of token) if (r.day <= day) latest = r;
+      if (!latest) continue;
+      value += latest.value;
+      net += latest.net;
+    }
+    return {
+      day,
+      valueMinor: value.toString(),
+      netDepositedMinor: net.toString(),
+    };
+  });
+  return { rows, partial };
+}

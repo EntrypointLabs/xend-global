@@ -956,7 +956,9 @@ describe('Earn position history', () => {
         netDepositedMinor: '15000000',
       },
     ]);
-    await expect(h.service.history('a', 'jupiter', 'all')).resolves.toEqual({
+    await expect(
+      h.service.history('a', 'jupiter', 'all', EARN_USDC.toBase58()),
+    ).resolves.toEqual({
       provider: 'jupiter',
       mint: EARN_USDC.toBase58(),
       points: [
@@ -973,6 +975,48 @@ describe('Earn position history', () => {
 });
 
 describe('Earn beyond USDC', () => {
+  it('combines every token into one dollar history when no mint is asked for', async () => {
+    const h = setup();
+    h.records.snapshots.mockImplementation(
+      (_userId: string, key: { provider: string; mint: string }) =>
+        Promise.resolve(
+          key.mint === EARN_USDC.toBase58()
+            ? [
+                {
+                  day: '2026-11-24',
+                  valueMinor: '10000000',
+                  netDepositedMinor: '10000000',
+                },
+                {
+                  day: '2026-11-25',
+                  valueMinor: '10010000',
+                  netDepositedMinor: '10000000',
+                },
+              ]
+            : key.mint === JUPITER_EARN_ASSETS.SOL.mint
+              ? [
+                  {
+                    day: '2026-11-25',
+                    valueMinor: '1001000000',
+                    netDepositedMinor: '1000000000',
+                  },
+                ]
+              : [],
+        ),
+    );
+    await expect(h.service.history('a', 'jupiter', '30d')).resolves.toEqual({
+      provider: 'jupiter',
+      mint: null,
+      partial: false,
+      points: [
+        { day: '2026-11-24', valueMinor: '10000000', earnedMinor: '0' },
+        // $10.01 of USDC plus 1.001 SOL at $150.
+        { day: '2026-11-25', valueMinor: '160160000', earnedMinor: '160000' },
+      ],
+    });
+    expect(h.records.snapshots).toHaveBeenCalledTimes(4);
+  });
+
   // ConfigService.set also writes process.env, which outlives each setup().
   afterEach(() => delete process.env.EARN_ENABLED_ASSETS);
   const USDG = JUPITER_EARN_ASSETS.USDG.mint,
