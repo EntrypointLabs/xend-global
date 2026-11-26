@@ -8,11 +8,17 @@ import { totalEarnings } from './earn-history';
 import type { TokenPriceProvider } from '../prices/token-price.interface';
 import { DbService } from '../db/db.service';
 import {
+  associatedTokenAddress,
   EARN_PROVIDERS,
   EARN_USDC,
   JUPITER_EARN_ASSETS,
+  TOKEN_PROGRAM_ID,
 } from '@prydd/smart-account';
-import type { Connection, VersionedTransactionResponse } from '@solana/web3.js';
+import {
+  PublicKey,
+  type Connection,
+  type VersionedTransactionResponse,
+} from '@solana/web3.js';
 const url = process.env.EARN_TEST_DATABASE_URL;
 const suite = url ? describe : describe.skip;
 const USDC = EARN_USDC.toBase58();
@@ -24,7 +30,12 @@ const pendingMeta = {
   blockHeight: 100,
 };
 const receipt = EARN_PROVIDERS.kamino.receipt,
-  vault = 'test-vault';
+  vault = new PublicKey(new Uint8Array(32).fill(9)).toBase58();
+const wrappedSol = associatedTokenAddress(
+  new PublicKey(vault),
+  new PublicKey('So11111111111111111111111111111111111111112'),
+  TOKEN_PROGRAM_ID,
+).toBase58();
 function confirmed(
   cashBefore: string,
   cashAfter: string,
@@ -58,6 +69,7 @@ function solDeposit(
   lamportsBefore: number,
   lamportsAfter: number,
   sharesAfter: string,
+  wrapped: [before: number, after: number] = [0, 0],
 ): VersionedTransactionResponse {
   const shares = (amount: string) => [
     {
@@ -73,7 +85,11 @@ function solDeposit(
       message: {
         getAccountKeys: () => ({
           keySegments: () => [
-            [{ toBase58: () => 'sponsor' }, { toBase58: () => vault }],
+            [
+              { toBase58: () => 'sponsor' },
+              { toBase58: () => vault },
+              { toBase58: () => wrappedSol },
+            ],
           ],
         }),
       },
@@ -81,8 +97,8 @@ function solDeposit(
     meta: {
       err: null,
       loadedAddresses: { writable: [], readonly: [] },
-      preBalances: [5_000_000_000, lamportsBefore],
-      postBalances: [4_990_000_000, lamportsAfter],
+      preBalances: [5_000_000_000, lamportsBefore, wrapped[0]],
+      postBalances: [4_990_000_000, lamportsAfter, wrapped[1]],
       preTokenBalances: [],
       postTokenBalances: shares(sharesAfter),
     },
@@ -249,7 +265,7 @@ suite('Earn ledger against Postgres', () => {
       "UPDATE earn_operations SET created_at=now()-interval '1 day'",
     );
     await client.query(
-      `INSERT INTO earn_operations (signature,user_id,provider,mint,action,vault,wire,message_hash,quote,block_height) SELECT 'blocker-'||lpad(g::text,3,'0'),'consumer','kamino','${USDC}','deposit','test-vault','wire','hash-'||g,'{}'::jsonb,100 FROM generate_series(1,103) g`,
+      `INSERT INTO earn_operations (signature,user_id,provider,mint,action,vault,wire,message_hash,quote,block_height) SELECT 'blocker-'||lpad(g::text,3,'0'),'consumer','kamino','${USDC}','deposit','${vault}','wire','hash-'||g,'{}'::jsonb,100 FROM generate_series(1,103) g`,
     );
     const getTransaction = jest.fn((signature: string) =>
       Promise.resolve(
@@ -560,5 +576,16 @@ describe('Earn delta parsing', () => {
         SOL,
       ),
     ).toEqual({ cash: -2_000_000_000n, shares: 1_900_000_000n });
+  });
+  it('keeps the rent of an existing wrapped-SOL account out of the SOL deposit', () => {
+    // 1 SOL lent; closing the vault's own wrapped-SOL account returned its rent.
+    expect(
+      earnDeltas(
+        solDeposit(3_000_000_000, 2_002_039_280, '950000000', [2_039_280, 0]),
+        vault,
+        JUPITER_EARN_ASSETS.SOL.receipt,
+        SOL,
+      ),
+    ).toEqual({ cash: -1_000_000_000n, shares: 950_000_000n });
   });
 });

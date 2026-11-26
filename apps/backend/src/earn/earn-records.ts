@@ -1,7 +1,12 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { and, eq, asc, desc, gt, gte, lte, sql } from 'drizzle-orm';
-import { Connection, type VersionedTransactionResponse } from '@solana/web3.js';
 import {
+  Connection,
+  PublicKey,
+  type VersionedTransactionResponse,
+} from '@solana/web3.js';
+import {
+  associatedTokenAddress,
   earnAsset,
   earnAssetByMint,
   type EarnProviderId,
@@ -69,9 +74,12 @@ export interface EarnRecords {
   usersWithEarn(): Promise<string[]>;
 }
 /**
- * The vault's change in the lent asset and in its receipt shares. Native SOL
- * is wrapped and unwrapped inside the same transaction, so for SOL the
- * vault's own lamports carry the movement and its wrapped balance nets out.
+ * The vault's change in the lent asset and in its receipt shares.
+ *
+ * Native SOL is wrapped and unwrapped inside the same transaction, so for SOL
+ * the vault's holding is its own lamports plus every lamport in its
+ * wrapped-SOL account, rent included. Closing that account moves its rent to
+ * the vault, and counting both sides keeps that rent out of the deposit.
  */
 export function earnDeltas(
   tx: VersionedTransactionResponse,
@@ -84,16 +92,29 @@ export function earnDeltas(
     (rows ?? [])
       .filter((r) => r.owner === vault && r.mint === m)
       .reduce((n, row) => n + BigInt(row.uiTokenAmount.amount), 0n);
-  let cash =
-    sum(tx.meta.postTokenBalances, mint) - sum(tx.meta.preTokenBalances, mint);
+  let cash: bigint;
   if (mint === WRAPPED_SOL) {
     const keys = tx.transaction.message
       .getAccountKeys({ accountKeysFromLookups: tx.meta.loadedAddresses })
       .keySegments()
-      .flat();
-    const index = keys.findIndex((k) => k.toBase58() === vault);
+      .flat()
+      .map((k) => k.toBase58());
+    const index = keys.indexOf(vault);
     if (index < 0) return null;
-    cash += BigInt(tx.meta.postBalances[index] - tx.meta.preBalances[index]);
+    const wrapped = keys.indexOf(
+      associatedTokenAddress(
+        new PublicKey(vault),
+        new PublicKey(WRAPPED_SOL),
+        earnAsset('jupiter', 'SOL').tokenProgram,
+      ).toBase58(),
+    );
+    const lamports = (i: number) =>
+      i < 0 ? 0n : BigInt(tx.meta!.postBalances[i] - tx.meta!.preBalances[i]);
+    cash = lamports(index) + lamports(wrapped);
+  } else {
+    cash =
+      sum(tx.meta.postTokenBalances, mint) -
+      sum(tx.meta.preTokenBalances, mint);
   }
   return {
     cash,
