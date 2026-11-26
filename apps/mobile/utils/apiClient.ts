@@ -1,5 +1,7 @@
 import {
   EarnCatalogSchema,
+  TokenOverviewSchema,
+  type TokenRange,
   EarnHistorySchema,
   type EarnRange,
   EarnQuoteSchema,
@@ -2098,6 +2100,14 @@ class BackendClient {
   async getEarn() {
     return EarnCatalogSchema.parse(
       await this.request<unknown>("/earn", { auth: true })
+    );
+  }
+  async getTokenOverview(mint: string, range: TokenRange) {
+    return TokenOverviewSchema.parse(
+      await this.request<unknown>(
+        `/tokens/${encodeURIComponent(mint)}/overview?range=${range}`,
+        { auth: true }
+      )
     );
   }
   async getEarnHistory(provider: EarnProvider, range: EarnRange) {

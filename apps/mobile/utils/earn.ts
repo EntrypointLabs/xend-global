@@ -3,6 +3,23 @@ export const EarnProviderSchema = z.enum(["kamino", "jupiter"]);
 export type EarnProvider = z.infer<typeof EarnProviderSchema>;
 export type EarnAction = "deposit" | "redeem";
 const integer = z.string().regex(/^\d+$/);
+export const EarnAssetSchema = z.object({
+  mint: z.string(),
+  symbol: z.string(),
+  name: z.string(),
+  iconUrl: z.string().nullable(),
+  decimals: z.number().int().min(0).max(18),
+  apy: z.number().finite().nonnegative().max(10).nullable(),
+  positionRaw: integer,
+  positionUsd: z.string().nullable(),
+  withdrawableRaw: integer,
+  lifetimeEarnedRaw: integer.nullable(),
+  lastSevenDaysEarnedRaw: integer.nullable(),
+  /** What the vault holds of this token and could deposit (lamports for SOL). */
+  depositableRaw: integer,
+  available: z.boolean(),
+  withdrawAvailable: z.boolean(),
+});
 export const EarnCatalogSchema = z.object({
   depositableMinor: integer,
   lifetimeMinor: z
@@ -35,6 +52,8 @@ export const EarnCatalogSchema = z.object({
         .regex(/^-?\d+$/)
         .nullable()
         .optional(),
+      /** Every token the product lends. Absent on a USDC-only server. */
+      assets: z.array(EarnAssetSchema).optional(),
     })
   ),
 });
@@ -213,3 +232,19 @@ export function productEarnings(
       }
     : { lifetimeMinor: null, lastSevenDaysMinor: null };
 }
+
+export type TokenRange = "1d" | "1w" | "1m" | "6m" | "1y";
+
+/** A token's price, its recent history and what the market trades of it. */
+export const TokenOverviewSchema = z.object({
+  mint: z.string(),
+  name: z.string().nullable(),
+  symbol: z.string().nullable(),
+  iconUrl: z.string().nullable(),
+  decimals: z.number().int().nullable(),
+  priceUsd: z.number().nullable(),
+  priceChange24h: z.number().nullable(),
+  volume24hUsd: z.number().nullable(),
+  points: z.array(z.object({ at: z.string(), priceUsd: z.number() })),
+});
+export type TokenOverview = z.infer<typeof TokenOverviewSchema>;

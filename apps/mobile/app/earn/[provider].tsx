@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Image, Linking, ScrollView, View } from "react-native";
-import { Redirect, useLocalSearchParams } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import BalanceView from "@/components/BalanceView";
@@ -9,6 +9,8 @@ import { EarnBarChart } from "@/components/earn/EarnBarChart";
 import { EarnFlow, type EarnFlowState } from "@/components/earn/EarnFlow";
 import { apyLabel } from "@/components/earn/EarnProductRows";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
+import { TokenMark } from "@/components/ui/atoms/TokenMark";
+import { formatTokenAmount } from "@/utils/tokens";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { ScreenLayout } from "@/components/ui/layout";
 import { useBalances } from "@/hooks/useBalances";
@@ -56,6 +58,7 @@ export default function EarnPositionScreen() {
   const params = useLocalSearchParams<{ provider: string }>();
   const provider = EarnProviderSchema.safeParse(params.provider);
   const palette = usePalette();
+  const router = useRouter();
   const depositsEnabled = useFeature("earnDeposits");
   const [flow, setFlow] = useState<EarnFlowState | null>(null);
   const [range, setRange] = useState<EarnRange>("7d");
@@ -78,6 +81,7 @@ export default function EarnPositionScreen() {
   if (!product) return <Redirect href="/earn" />;
 
   const position = product.position;
+  const held = product.assets.filter((asset) => (asset.position ?? 0) > 0);
 
   return (
     <ScreenLayout>
@@ -118,6 +122,59 @@ export default function EarnPositionScreen() {
           <Stat label="Lifetime Earned" amount={product.lifetimeEarned} />
           <Stat label="Last 7D" amount={product.lastSevenDays} alignEnd />
         </View>
+
+        {product.assets.length > 1 && held.length > 0 && (
+          <View className="mt-8">
+            <Typography variant="body" weight="600" className="mb-1">
+              Your tokens
+            </Typography>
+            {held.map((asset) => (
+              <HapticPressable
+                key={asset.mint}
+                accessibilityRole="button"
+                accessibilityLabel={`${asset.name}, ${formatTokenAmount(asset.position ?? 0, asset.decimals)} ${asset.symbol}`}
+                onPress={() =>
+                  router.push({
+                    pathname: "/token/[mint]",
+                    params: { mint: asset.mint, earn: product.id },
+                  })
+                }
+                className="flex-row items-center gap-3 py-2.5"
+              >
+                <TokenMark
+                  mint={asset.mint}
+                  label={asset.symbol}
+                  iconUrl={asset.iconUrl}
+                  size={40}
+                />
+                <View className="flex-1">
+                  <Typography variant="body" weight="600">
+                    {asset.name}
+                  </Typography>
+                  <Typography variant="body" className="text-foreground/40">
+                    {formatTokenAmount(asset.position ?? 0, asset.decimals)}{" "}
+                    {asset.symbol}
+                  </Typography>
+                </View>
+                <View className="items-end">
+                  <Typography variant="body" weight="600">
+                    {asset.positionUsd === null
+                      ? "Unpriced"
+                      : formatEarnMoney(asset.positionUsd)}
+                  </Typography>
+                  <Typography variant="caption" className="text-success">
+                    {asset.apyDisplay} APY
+                  </Typography>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={16}
+                  color={palette.fg(0.3)}
+                />
+              </HapticPressable>
+            ))}
+          </View>
+        )}
 
         <View className="mt-8 rounded-[24px] border border-foreground/5 bg-foreground/[0.01] p-5">
           <View className="mb-4 flex-row items-baseline justify-between gap-2">
