@@ -81,7 +81,7 @@ export default function BalanceScreen() {
     : isLoading
       ? "Checking what you hold"
       : "Hold assets alongside your dollars";
-  const { balance: earnBalance } = useEarnPosition();
+  const { displayBalance: earnBalance } = useEarnPosition();
   const earnHeadlineApy = useEarnHeadlineApy();
   const earnRate = earnHeadlineApy > 0 ? `${earnHeadlineApy.toFixed(2)}%` : "—";
   const { holdings } = useInvestments();

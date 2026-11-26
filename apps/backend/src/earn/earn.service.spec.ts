@@ -913,6 +913,14 @@ describe('Earn position history', () => {
       ]),
     );
   });
+  it('checks the deployment once a minute across balance reads', async () => {
+    const h = setup();
+    noFetch();
+    h.rpc.getTokenAccountsByOwner.mockResolvedValue({ value: [] });
+    await h.service.catalog('a');
+    await h.service.catalog('a');
+    expect(h.lookupTables).toHaveBeenCalledTimes(1);
+  });
   it('records the day snapshot after a catalog read and still answers when the write fails', async () => {
     const h = setup();
     noFetch();
@@ -1333,7 +1341,7 @@ describe('Earn rate lookups', () => {
       service as unknown as {
         apy: (provider: string, asset: string) => Promise<number | null>;
       }
-    ).apy('kamino', 'usdc');
+    ).apy('kamino', 'USDC');
 
   afterEach(() => jest.useRealTimers());
 
@@ -1360,6 +1368,58 @@ describe('Earn rate lookups', () => {
     await Promise.all([rateOf(h.service), rateOf(h.service)]);
     await rateOf(h.service);
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  const jupiterRateOf = (service: EarnService, asset: string) =>
+    (
+      service as unknown as {
+        apy: (provider: string, asset: string) => Promise<number | null>;
+      }
+    ).apy('jupiter', asset);
+
+  it('reads every Jupiter rate in one request', async () => {
+    const h = setup();
+    const fetch = jest.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve([
+          { address: JUPITER_EARN_ASSETS.USDC.receipt, supplyRate: '385' },
+          { address: JUPITER_EARN_ASSETS.SOL.receipt, supplyRate: '364' },
+        ]),
+    } as unknown as Response);
+
+    const [usdc, sol, usdt] = await Promise.all([
+      jupiterRateOf(h.service, 'USDC'),
+      jupiterRateOf(h.service, 'SOL'),
+      jupiterRateOf(h.service, 'USDT'),
+    ]);
+    expect([usdc, sol, usdt]).toEqual([0.0385, 0.0364, null]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers with the last rate while a fresh one loads', async () => {
+    const h = setup();
+    jest.useFakeTimers({ now: Date.UTC(2026, 10, 26) });
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(kamino(0.0417))
+      .mockReturnValueOnce(new Promise<Response>(() => {}));
+
+    expect(await rateOf(h.service)).toBe(0.0417);
+    jest.setSystemTime(Date.UTC(2026, 10, 26, 0, 5));
+    expect(await rateOf(h.service)).toBe(0.0417);
+  });
+
+  it('stops waiting on a provider that has never answered', async () => {
+    const h = setup();
+    jest.useFakeTimers();
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockReturnValue(new Promise<Response>(() => {}));
+
+    const rate = rateOf(h.service);
+    await jest.advanceTimersByTimeAsync(1500);
+    expect(await rate).toBeNull();
   });
 
   it('says unavailable when there has never been a good rate', async () => {

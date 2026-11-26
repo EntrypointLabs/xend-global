@@ -1,4 +1,8 @@
-import { parseKaminoRate, parseJupiterRate } from './earn-rate';
+import {
+  parseKaminoRate,
+  parseJupiterRate,
+  parseJupiterRates,
+} from './earn-rate';
 import { EARN_PROVIDERS, EARN_USDC } from '@prydd/smart-account';
 const row = {
   reserve: EARN_PROVIDERS.kamino.reserve,
@@ -32,5 +36,21 @@ describe('Jupiter SDK APY units', () => {
     expect(parseJupiterRate('0')).toBe(0);
     expect(() => parseJupiterRate('Infinity')).toThrow();
     expect(() => parseJupiterRate('-1')).toThrow();
+  });
+});
+
+describe('Jupiter Lend token list', () => {
+  it('keys rates by lending token and skips entries it cannot read', () => {
+    const rates = parseJupiterRates([
+      { address: 'a', supplyRate: '385' },
+      { address: 'b', supplyRate: 'Infinity' },
+      { supplyRate: '400' },
+      { address: 'c', supplyRate: 364 },
+    ]);
+    expect([...rates]).toEqual([
+      ['a', 0.0385],
+      ['c', 0.0364],
+    ]);
+    expect(() => parseJupiterRates({})).toThrow();
   });
 });

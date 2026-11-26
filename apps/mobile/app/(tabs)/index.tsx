@@ -107,7 +107,7 @@ function HomeScreenContent() {
   } = useBalances();
   const {
     balance: earnBalance,
-    isLoading: isEarnLoading,
+    displayBalance: earnDisplayBalance,
     isError: isEarnError,
     refetch: refetchEarn,
   } = useEarnPosition();
@@ -122,7 +122,7 @@ function HomeScreenContent() {
   // joins this sum when it holds a balance of its own.
   const total = selectPortfolioTotal(
     isBalanceLoading || isBalanceError ? null : portfolio,
-    earnBalance
+    earnDisplayBalance
   );
   const totalDisplay =
     total?.toLocaleString("en-US", {
@@ -306,7 +306,7 @@ function HomeScreenContent() {
             the first deposit. With nothing to plot the chart shows its muted
             resting bars, which is what "no data yet" looks like. */}
             <BalanceChart
-              loading={isBalanceLoading || isEarnLoading}
+              loading={isBalanceLoading || earnDisplayBalance === null}
               history={hasBalance ? history : []}
               style={{
                 marginTop: size(CHART_GAP_ABOVE),

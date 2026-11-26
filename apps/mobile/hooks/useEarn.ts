@@ -1,4 +1,5 @@
 import type { ImageSourcePropType } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserId } from "@/hooks/useUserId";
@@ -101,6 +102,32 @@ export const EARN_PRODUCTS: EarnProduct[] = [
     assets: [],
   },
 ];
+const savedEarnBalanceKey = (userId: string) => `earn.balance.${userId}`;
+async function saveEarnBalance(
+  userId: string | null | undefined,
+  data: { products: Parameters<typeof selectEarnBalance>[0] }
+) {
+  const balance = selectEarnBalance(data.products);
+  if (!userId || balance === null) return;
+  await AsyncStorage.setItem(
+    savedEarnBalanceKey(userId),
+    String(balance)
+  ).catch(() => undefined);
+}
+/** The last Earn balance this phone read for the user, kept across launches. */
+function useSavedEarnBalance() {
+  const userId = useUserId();
+  return useQuery({
+    queryKey: ["earn", userId, "saved"],
+    queryFn: async () => {
+      const raw = await AsyncStorage.getItem(savedEarnBalanceKey(userId!));
+      const balance = raw === null ? NaN : Number(raw);
+      return Number.isFinite(balance) ? balance : null;
+    },
+    enabled: !!userId && !SEED_DEMO,
+    staleTime: Infinity,
+  });
+}
 function useEarnData() {
   const { isAuthenticated } = useAuth();
   const userId = useUserId();
@@ -108,12 +135,15 @@ function useEarnData() {
   return useQuery({
     queryKey: ["earn", userId],
     queryFn: async () => {
+      let data;
       try {
-        return await apiClient.getEarn();
+        data = await apiClient.getEarn();
       } catch (error) {
         if (!address) throw error;
-        return fetchEarnFromChain(address);
+        data = await fetchEarnFromChain(address);
       }
+      void saveEarnBalance(userId, data);
+      return data;
     },
     enabled: !!isAuthenticated && !SEED_DEMO,
     staleTime: 15000,
@@ -213,6 +243,11 @@ export interface EarnPosition {
    */
   positionsRead: boolean;
   balance: number | null;
+  /**
+   * The live balance, or while it is still loading the last one this phone
+   * read. For headline figures only, never for limits or account deletion.
+   */
+  displayBalance: number | null;
   depositableMinor: string | null;
   hasExternalReceipts: boolean;
   isLoading: boolean;
@@ -225,6 +260,7 @@ export interface EarnPosition {
 }
 export function useEarnPosition(): EarnPosition {
   const query = useEarnData();
+  const saved = useSavedEarnBalance();
   const products = query.data?.products;
   const balances = Object.fromEntries(
     products?.map((p) => [p.id, Number(p.withdrawableMinor) / 1e6]) ?? []
@@ -257,6 +293,8 @@ export function useEarnPosition(): EarnPosition {
     ),
     hasExternalReceipts: !!products?.some(productHasExternalReceipts),
     balance,
+    displayBalance:
+      balance ?? (!SEED_DEMO && query.isPending ? (saved.data ?? null) : null),
     depositableMinor: query.isError
       ? null
       : (query.data?.depositableMinor ?? null),
