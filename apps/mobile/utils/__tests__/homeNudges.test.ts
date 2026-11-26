@@ -31,9 +31,31 @@ describe("homeNudges", () => {
     expect(homeNudges({ ...base, cashUsd: null })).toEqual([]);
   });
 
-  it("stops offering Earn once money is in it or deposits are off", () => {
+  it("keeps Earn behind what is new once money is in it", () => {
     const keys = (input: NudgeInputs) => homeNudges(input).map((n) => n.key);
-    expect(keys({ ...base, earnUsd: 10 })).toEqual(["bank-payout"]);
+    expect(keys({ ...base, earnUsd: 10 })).toEqual(["bank-payout", "earn"]);
+  });
+
+  it("never leaves a funded account's slot empty", () => {
+    expect(
+      homeNudges({
+        ...base,
+        earnUsd: 25.53,
+        currency: "GBP",
+        symbol: "£",
+        perUsd: 0.76,
+      }).map((n) => n.key)
+    ).toEqual(["earn"]);
+  });
+
+  it("names Earn without a rate when none is known", () => {
+    expect(homeNudges({ ...base, earnApy: 0 })[0].title).toBe(
+      "Earn on your dollars"
+    );
+  });
+
+  it("offers no Earn while deposits are off", () => {
+    const keys = (input: NudgeInputs) => homeNudges(input).map((n) => n.key);
     expect(keys({ ...base, earnDepositsEnabled: false })).toEqual([
       "bank-payout",
     ]);
