@@ -53,6 +53,7 @@ import { useCountryCard } from "@/hooks/useCountryCard";
 import type { CountryCard } from "@/utils/countryCards";
 import type { DisplayRates } from "@/utils/displayRates";
 import { formatLocalAmount, formatRateLabel } from "@/utils/displayRates";
+import { analytics } from "@/utils/analytics";
 
 // Lifts the 31pt header controls to a 47pt target without growing them.
 const HEADER_HIT_SLOP = 8;
@@ -83,6 +84,17 @@ const CARD_ACTION_ROUTES = {
   split: "/split-bill",
   more: "/do-more",
 } as const satisfies Record<CountryWidgetAction, string>;
+
+const CARD_ACTION_FEATURES = {
+  atm: "find_atm",
+  convert: "convert_price",
+  split: "split_bill",
+  more: "do_more",
+} as const satisfies Record<CountryWidgetAction, string>;
+
+function trackHomeAction(feature: string) {
+  analytics.track("feature_opened", { feature, source: "home" });
+}
 
 function HomeScreenContent() {
   const colorful = useColorfulTheme();
@@ -157,14 +169,17 @@ function HomeScreenContent() {
   }).map((nudge) => ({
     ...nudge,
     ...NUDGE_ART[nudge.key],
-    onPress:
-      nudge.key === "earn"
-        ? () => router.push("/earn")
-        : () =>
-            gateSend(() => {
-              setSendMode("bank");
-              sendFlowModalRef.current?.present();
-            }),
+    onPress: () => {
+      analytics.track("nudge_tapped", { nudge: nudge.key });
+      if (nudge.key === "earn") {
+        router.push("/earn");
+        return;
+      }
+      gateSend(() => {
+        setSendMode("bank");
+        sendFlowModalRef.current?.present();
+      });
+    },
   }));
   const dayChange =
     delta && hasBalance && !hidden && Math.abs(delta.amount) >= 0.005
@@ -271,7 +286,10 @@ function HomeScreenContent() {
                         : `Total balance, $${totalDisplay}`
                   }
                   accessibilityHint="Shows what it is made of"
-                  onPress={() => router.push("/balance")}
+                  onPress={() => {
+                    trackHomeAction("balance");
+                    router.push("/balance");
+                  }}
                   className="self-start"
                 >
                   <View className="flex-row items-center gap-1">
@@ -321,16 +339,25 @@ function HomeScreenContent() {
               <ActionButton
                 primary
                 label="Add money"
-                onPress={showReceiveModal}
+                onPress={() => {
+                  trackHomeAction("add_money");
+                  showReceiveModal();
+                }}
               />
               <ActionButton
                 label="Send"
-                onPress={() => gateSend(showSendModal)}
+                onPress={() => {
+                  trackHomeAction("send");
+                  gateSend(showSendModal);
+                }}
               />
               {swapEnabled && (
                 <ActionButton
                   label="Swap"
-                  onPress={() => router.push("/swap")}
+                  onPress={() => {
+                    trackHomeAction("swap");
+                    router.push("/swap");
+                  }}
                 />
               )}
             </View>
@@ -361,8 +388,14 @@ function HomeScreenContent() {
               >
                 <CountryAccountWidget
                   card={countryCard}
-                  onAction={(action) => router.push(CARD_ACTION_ROUTES[action])}
-                  onPress={() => router.push("/cash")}
+                  onAction={(action) => {
+                    trackHomeAction(CARD_ACTION_FEATURES[action]);
+                    router.push(CARD_ACTION_ROUTES[action]);
+                  }}
+                  onPress={() => {
+                    trackHomeAction("cash");
+                    router.push("/cash");
+                  }}
                   {...localLabels(
                     countryCard,
                     rates,
@@ -377,7 +410,10 @@ function HomeScreenContent() {
             <HapticPressable
               accessibilityRole="button"
               accessibilityLabel="Account details"
-              onPress={() => accountDetailsRef.current?.present()}
+              onPress={() => {
+                trackHomeAction("account_details");
+                accountDetailsRef.current?.present();
+              }}
               className={cn(
                 "mb-6 flex-row items-center gap-1.5 self-center rounded-full px-5 py-3",
                 S.quietPill

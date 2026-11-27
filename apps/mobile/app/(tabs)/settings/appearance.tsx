@@ -17,6 +17,7 @@ import {
 import { useToast } from "@/contexts/ToastContext";
 import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
+import { analytics } from "@/utils/analytics";
 
 const ICONS: {
   value: AppIconChoice;
@@ -55,6 +56,7 @@ export default function AppearanceScreen() {
     if (value === icon) return;
     try {
       await setIcon(value);
+      analytics.track("appearance_changed", { setting: "icon", value });
     } catch {
       showToast("Couldn't change the app icon. Try again.");
     }
@@ -182,6 +184,12 @@ export default function AppearanceScreen() {
                 accessibilityLabel={MODE_LABELS[choice.value]}
                 onPress={() => {
                   setModePickerOpen(false);
+                  if (choice.value !== mode) {
+                    analytics.track("appearance_changed", {
+                      setting: "mode",
+                      value: choice.value,
+                    });
+                  }
                   setMode(choice.value);
                 }}
                 className={cn(

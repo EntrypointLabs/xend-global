@@ -14,6 +14,7 @@ import { apiClient } from "@/utils/apiClient";
 import { displayMoney } from "@/utils/display-money";
 import { nairaAllowanceLeft, type FiatLimits } from "@/utils/fiat";
 import { cn } from "@/utils/cn";
+import { analytics } from "@/utils/analytics";
 
 const DISPLAY = { fontFamily: "Montserrat_900Black" } as const;
 
@@ -85,7 +86,13 @@ export default function NairaLimitsScreen() {
             ? "Finish verifying"
             : "Verify to raise your limits"
         }
-        onPress={() => router.push("/verify-identity")}
+        onPress={() => {
+          analytics.track("feature_opened", {
+            feature: "verify_identity",
+            source: "naira_limits",
+          });
+          router.push("/verify-identity");
+        }}
       />
     ) : null;
 

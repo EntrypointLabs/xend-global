@@ -12,6 +12,7 @@ import { QRScannerModal } from "@/components/ui/organisms/send/QRScannerModal";
 import { isSignerAddress } from "@/utils/solana";
 import { usePalette } from "@/hooks/usePalette";
 import { withSystemPrompt } from "@/utils/systemPrompt";
+import { trackFlow } from "@/utils/analytics";
 
 /**
  * Takes the wallet address, and refuses a malformed one here.
@@ -127,13 +128,14 @@ export default function AddRecoveryWalletScreen() {
         <View className="flex-1" />
 
         <HapticPressable
-          onPress={() =>
-            valid &&
+          onPress={() => {
+            if (!valid) return;
+            trackFlow("recovery_change", { rail: "wallet" }).started();
             router.push({
               pathname: "/settings/confirm-recovery-key",
               params: { address: trimmed },
-            } as never)
-          }
+            } as never);
+          }}
           disabled={!valid}
           className={`h-14 items-center justify-center rounded-full ${
             valid ? "bg-primary" : "bg-primary/50"

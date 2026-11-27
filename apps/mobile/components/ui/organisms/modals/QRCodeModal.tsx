@@ -15,6 +15,7 @@ import TabHeaderText from "@/components/ui/atoms/TabHeaderText";
 import { Ionicons } from "@expo/vector-icons";
 import { useToast } from "@/contexts/ToastContext";
 import { usePalette } from "@/hooks/usePalette";
+import { analytics } from "@/utils/analytics";
 
 interface QRCodeModalProps {
   walletAddress: string;
@@ -33,6 +34,7 @@ export const QRCodeModal = forwardRef<BottomSheetModal, QRCodeModalProps>(
 
     const handleCopyAddress = async () => {
       await Clipboard.setStringAsync(walletAddress);
+      analytics.track("receive_details_copied", { kind: "address" });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast(
         "Copied address",

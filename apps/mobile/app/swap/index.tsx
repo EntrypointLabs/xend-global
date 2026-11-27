@@ -35,6 +35,7 @@ import {
 } from "@/utils/swap";
 import { flipSwapPair, useSwapPair, type SwapSide } from "@/utils/swapPair";
 import { cn } from "@/utils/cn";
+import { bucketAmount, trackFlow } from "@/utils/analytics";
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"];
 
@@ -69,6 +70,10 @@ function SwapScreen() {
 
   const { pay: payToken, receive: receiveToken } = useSwapPair();
   const [amount, setAmount] = useState("0");
+
+  useEffect(() => {
+    trackFlow("swap").started();
+  }, []);
 
   // An amount belongs to the asset it was typed for: 5 SOL is not 5 USDC.
   useEffect(() => setAmount("0"), [payToken.mint]);
@@ -159,10 +164,17 @@ function SwapScreen() {
 
   const confirm = async () => {
     if (!quote) return;
-    const outcome = await execute(quote, {
-      pay: payToken,
-      receive: receiveToken,
-    });
+    const usdPrice = tokens.find((t) => t.mint === payToken.mint)?.usdPrice;
+    const outcome = await execute(
+      quote,
+      { pay: payToken, receive: receiveToken },
+      {
+        amount_bucket:
+          usdPrice == null
+            ? undefined
+            : bucketAmount(Number(amount) * usdPrice),
+      }
+    );
     if (outcome.status === "canceled") return;
     if (outcome.status === "failed") {
       showToast(outcome.message);

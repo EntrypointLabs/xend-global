@@ -10,6 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSessions, useRevokeSession } from "@/hooks/useSessions";
 import type { SessionSummary } from "@/utils/apiClient";
 import { usePalette } from "@/hooks/usePalette";
+import { analytics } from "@/utils/analytics";
 
 const MONTHS = [
   "Jan",
@@ -50,6 +51,7 @@ export default function ConnectedMerchantsScreen() {
           style: "destructive",
           onPress: () =>
             revoke(session.id, {
+              onSuccess: () => analytics.track("merchant_disconnected", {}),
               onError: () =>
                 Alert.alert(
                   "Couldn't revoke",

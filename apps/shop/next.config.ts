@@ -3,7 +3,11 @@ import path from "node:path";
 
 const config: NextConfig = {
   outputFileTracingRoot: path.join(import.meta.dirname, "../.."),
-  transpilePackages: ["@prydd/checkout-react", "@prydd/checkout-core"],
+  transpilePackages: [
+    "@prydd/checkout-react",
+    "@prydd/checkout-core",
+    "@prydd/analytics",
+  ],
 };
 
 export default config;

@@ -19,6 +19,7 @@ import {
 import { Email } from "@/types/Auth";
 import { apiErrorStatus } from "@/utils/apiClient";
 import { usePalette } from "@/hooks/usePalette";
+import { trackFlow } from "@/utils/analytics";
 
 /**
  * Takes the address that will become a recovery key, and sends a code to it.
@@ -52,6 +53,10 @@ export default function AddRecoveryEmailScreen() {
       return;
     }
     setError(null);
+    const flow = trackFlow("recovery_change", {
+      rail: changing ? "email_change" : "email",
+    });
+    flow.started();
     try {
       await (changing ? requestRotationCode : requestCode).mutateAsync(
         parsed.data
@@ -63,6 +68,7 @@ export default function AddRecoveryEmailScreen() {
           : { email: parsed.data },
       } as never);
     } catch (err) {
+      flow.failed(err, { step: "code" });
       setError(
         apiErrorStatus(err) === 409
           ? changing

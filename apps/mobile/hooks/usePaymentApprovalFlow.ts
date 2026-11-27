@@ -24,6 +24,16 @@ import {
   savePendingPaymentSubmission,
 } from "@/utils/pendingPaymentSubmissions";
 import { SEED_DEMO } from "@/utils/devSeed";
+import { bucketAmount, trackFlow } from "@/utils/analytics";
+
+type ApprovalTracker = ReturnType<typeof trackFlow>;
+
+export function paymentApprovalFlow(payment: AwaitingPayment) {
+  return trackFlow("payment_approval", {
+    token: "USDC",
+    amount_bucket: bucketAmount(Number(payment.usdcSettlementRaw) / 1e6),
+  });
+}
 
 export type ApprovalStep = "preparing" | "device" | "sending" | "confirming";
 
@@ -126,7 +136,11 @@ export function usePaymentApprovalFlow() {
     void queryClient.invalidateQueries({ queryKey: ACCOUNT_QUERY_KEY });
   };
 
-  const submit = async (payment: AwaitingPayment, signedTxBase64: string) => {
+  const submit = async (
+    payment: AwaitingPayment,
+    signedTxBase64: string,
+    flow: ApprovalTracker
+  ) => {
     if (!userId) throw new Error("Authenticated user not loaded");
     signed.current[payment.reference] = signedTxBase64;
     await savePendingPaymentSubmission(userId, {
@@ -144,6 +158,8 @@ export function usePaymentApprovalFlow() {
       try {
         const status = await apiClient.paymentStatus(payment.reference);
         if (TERMINAL.has(status)) {
+          if (status === "succeeded") flow.succeeded();
+          else flow.failed(status);
           await forget(payment.reference);
           settled(status === "succeeded");
           setPhase(
@@ -156,6 +172,7 @@ export function usePaymentApprovalFlow() {
       } catch {
         // Both unreachable: keep the bytes so a retry is safe.
       }
+      flow.failed(err);
       setPhase(
         problem(
           "paused",
@@ -176,8 +193,10 @@ export function usePaymentApprovalFlow() {
     );
     settled(outcome === "succeeded");
     if (outcome === "succeeded") {
+      flow.succeeded();
       setPhase({ kind: "succeeded" });
     } else if (outcome === "failed") {
+      flow.failed("onchain_failed");
       setPhase(terminalProblem("failed"));
     } else {
       setPhase(
@@ -191,8 +210,12 @@ export function usePaymentApprovalFlow() {
     }
   };
 
-  const signAndSubmit = async (payment: AwaitingPayment) => {
+  const signAndSubmit = async (
+    payment: AwaitingPayment,
+    flow: ApprovalTracker
+  ) => {
     if (Date.parse(payment.expiresAt) <= Date.now()) {
+      flow.failed("expired");
       setPhase(terminalProblem("expired"));
       return;
     }
@@ -200,6 +223,7 @@ export function usePaymentApprovalFlow() {
       (wallet) => wallet.address === account?.signers.primary
     );
     if (!SEED_DEMO && (!embeddedWallet || !account)) {
+      flow.failed("not_ready");
       setPhase(
         problem(
           "paused",
@@ -217,7 +241,8 @@ export function usePaymentApprovalFlow() {
     if (SEED_DEMO) {
       setPhase({ kind: "working", step: "device" });
       await new Promise((r) => setTimeout(r, 900));
-      await submit(payment, "demo");
+      flow.submitted();
+      await submit(payment, "demo", flow);
       return;
     }
 
@@ -246,18 +271,23 @@ export function usePaymentApprovalFlow() {
       method: "signTransaction",
       params: { transaction: tx },
     });
-    await submit(payment, fromByteArray(signedTransaction.serialize()));
+    flow.submitted({ needs_approval: prepared.needsApprovalSignature });
+    await submit(payment, fromByteArray(signedTransaction.serialize()), flow);
   };
 
   const approve = async (payment: AwaitingPayment) => {
     if (busy.current) return;
     busy.current = true;
+    const flow = paymentApprovalFlow(payment);
     try {
       const saved = signed.current[payment.reference];
-      if (saved) await submit(payment, saved);
-      else await signAndSubmit(payment);
+      if (saved) {
+        flow.submitted({ step: "resume" });
+        await submit(payment, saved, flow);
+      } else await signAndSubmit(payment, flow);
     } catch (err) {
       if (isUserCanceledSign(err)) {
+        flow.cancelled({ step: "sign" });
         setPhase(
           problem(
             "paused",
@@ -269,6 +299,7 @@ export function usePaymentApprovalFlow() {
         return;
       }
       Sentry.captureException(err);
+      flow.failed(err);
       const status = apiErrorStatus(err);
       if (status === 410) {
         setPhase(terminalProblem("expired"));
@@ -293,6 +324,7 @@ export function usePaymentApprovalFlow() {
     setPhase({ kind: "declining" });
     try {
       await apiClient.declinePayment(payment.reference);
+      paymentApprovalFlow(payment).cancelled({ step: "declined" });
       settled(false);
       setPhase({ kind: "declined" });
     } catch (err) {

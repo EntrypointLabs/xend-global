@@ -14,6 +14,7 @@ import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
 import { assertSettings } from "@/utils/verifyTransaction";
 import { SIGN_PROMPT } from "@/modules/hardware-key/src";
 import { apiClient, type AccountResponse } from "@/utils/apiClient";
+import { trackFlow } from "@/utils/analytics";
 
 /** Propose, approve, then execute a day later. Slack for a re-signed step. */
 const MAX_STEPS = 5;
@@ -122,8 +123,18 @@ export function useFinishPrimaryRotation() {
     staleTime: Infinity,
     retry: false,
     queryFn: async () => {
-      const outcome = await runPrimaryRotation(account!);
-      if (outcome.finished) invalidateAfterReplacement(queryClient);
+      const flow = trackFlow("passkey_replace", { step: "finish" });
+      let outcome: ReplacePasskeyOutcome;
+      try {
+        outcome = await runPrimaryRotation(account!);
+      } catch (err) {
+        flow.failed(err);
+        throw err;
+      }
+      if (outcome.finished) {
+        flow.succeeded();
+        invalidateAfterReplacement(queryClient);
+      }
       return outcome;
     },
   });

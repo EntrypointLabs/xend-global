@@ -11,23 +11,25 @@
     "lint": "eslint . --max-warnings 0"
   },
   "dependencies": {
+    "@prydd/analytics": "*",
     "@prydd/checkout-core": "*",
     "@prydd/checkout-react": "*",
     "next": "16.4.6",
     "postgres": "^3.4.7",
+    "posthog-js": "^1.455.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@prydd/eslint-config": "*",
     "@tailwindcss/postcss": "^4.3.2",
     "@types/node": "^22.15.3",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
+    "eslint": "^9.39.1",
     "tailwindcss": "^4.3.2",
-    "typescript": "5.9.2",
-    "@prydd/eslint-config": "*",
-    "eslint": "^9.39.1"
+    "typescript": "5.9.2"
   },
   "engines": {
     "node": "24.x"

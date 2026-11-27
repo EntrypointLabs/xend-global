@@ -1,0 +1,31 @@
+{
+  "name": "@prydd/analytics",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./web": "./src/web.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint ."
+  },
+  "peerDependencies": {
+    "posthog-js": "^1.455.0"
+  },
+  "peerDependenciesMeta": {
+    "posthog-js": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@prydd/eslint-config": "*",
+    "@prydd/typescript-config": "*",
+    "posthog-js": "^1.455.4",
+    "typescript": "5.9.2",
+    "vitest": "^4.1.10"
+  }
+}

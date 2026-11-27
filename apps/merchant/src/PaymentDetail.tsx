@@ -4,6 +4,7 @@ import { formatUsdc, formatDisplayAmount } from "./money";
 import { navigate, pagePath } from "./router";
 import { formatWhen, statusLabel } from "./PaymentsPanel";
 import { CopyButton, ErrorCard, Icon, LoadingBlock, StatusChip } from "./ui";
+import { analytics } from "./analytics";
 
 export function deliveryLabel(status: string): string {
   if (status === "succeeded") return "Delivered";
@@ -70,6 +71,7 @@ export function PaymentDetail({
         if (!active) return;
         setPayment(data);
         setStatus("ready");
+        analytics.track("merchant_payment_opened", { status: data.status });
       })
       .catch((failure: unknown) => {
         if (!active) return;

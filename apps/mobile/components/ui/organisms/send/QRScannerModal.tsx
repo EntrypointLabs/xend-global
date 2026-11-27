@@ -23,6 +23,7 @@ import {
   useCoveringSheet,
 } from "@/hooks/useSheetStack";
 import { withSystemPrompt } from "@/utils/systemPrompt";
+import { analytics } from "@/utils/analytics";
 
 interface QRScannerModalProps {
   onScan: (address: string) => void;
@@ -58,6 +59,7 @@ export const QRScannerModal = forwardRef<BottomSheetModal, QRScannerModalProps>(
         if (hasScanned.current) return;
         if (!isPublicKey(result.data)) return;
         hasScanned.current = true;
+        analytics.track("qr_scanned", { kind: "address" });
 
         const address = result.data;
         onScan(address);

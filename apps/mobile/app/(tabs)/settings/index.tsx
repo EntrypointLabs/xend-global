@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/glass";
 import { useColorfulTheme } from "@/contexts/AppearanceContext";
 import { cn } from "@/utils/cn";
+import { analytics } from "@/utils/analytics";
 import { SettingsItem } from "@/components/ui/molecules";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import { Spacing } from "@/constants/Spacing";
@@ -154,7 +155,13 @@ export default function SettingsScreen() {
         {
           label: "Prydd Card",
           icon: require("@/assets/icons/card.png"),
-          onPress: () => router.push("/card?from=/(tabs)/settings" as never),
+          onPress: () => {
+            analytics.track("feature_opened", {
+              feature: "card",
+              source: "settings",
+            });
+            router.push("/card?from=/(tabs)/settings" as never);
+          },
         },
       ],
     },
@@ -219,9 +226,13 @@ export default function SettingsScreen() {
                 activeOpacity={0.9}
                 accessibilityRole="button"
                 accessibilityLabel="Learn about Prydd Plus"
-                onPress={() =>
-                  router.push("/plus?from=/(tabs)/settings" as never)
-                }
+                onPress={() => {
+                  analytics.track("feature_opened", {
+                    feature: "plus",
+                    source: "settings",
+                  });
+                  router.push("/plus?from=/(tabs)/settings" as never);
+                }}
               >
                 <View className="flex-row items-center">
                   <View className="mr-3 h-8 w-8 items-center justify-center">

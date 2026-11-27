@@ -12,6 +12,7 @@ import { useDeviceRotation } from "@/hooks/useDeviceRotation";
 import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { apiClient, apiErrorStatus } from "@/utils/apiClient";
 import { usePalette } from "@/hooks/usePalette";
+import { trackFlow } from "@/utils/analytics";
 
 type Stage = "explain" | "code" | "working" | "waiting";
 
@@ -45,10 +46,13 @@ export default function RestoreDeviceScreen() {
 
   const sendCode = async () => {
     setError(null);
+    const flow = trackFlow("device_restore");
+    flow.started();
     try {
       await apiClient.requestDeviceRotationCode();
       setStage("code");
     } catch (err) {
+      flow.failed(err, { step: "code" });
       setError(
         apiErrorStatus(err) === 429
           ? "Too many codes. Wait a few minutes and try again."
@@ -60,12 +64,18 @@ export default function RestoreDeviceScreen() {
   const confirm = async (code: string) => {
     setError(null);
     setStage("working");
+    const flow = trackFlow("device_restore");
+    let step = "verify";
     try {
       const { grantId } = await apiClient.verifyDeviceRotationCode(code);
+      step = "rotate";
+      flow.submitted();
       const outcome = await rotation.mutateAsync(grantId);
+      flow.succeeded({ step: outcome.finished ? "executed" : "staged" });
       setActiveAt(outcome.waitingUntil);
       setStage("waiting");
     } catch (err) {
+      flow.failed(err, { step });
       const status = apiErrorStatus(err);
       setError(
         status === 401

@@ -7,6 +7,7 @@ export default function SplitBillScreen() {
   return (
     <FeatureIntro
       illustration="split"
+      feature="split_bill"
       headline="Split any bill"
       benefits={[
         {

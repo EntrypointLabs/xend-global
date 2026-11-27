@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useBag } from "@/components/CartProvider";
+import { analytics } from "@/lib/analytics";
+import { productById } from "@/lib/catalog";
 
 export function AddToBag({
   productId,
@@ -16,6 +18,10 @@ export function AddToBag({
   dark: boolean;
 }) {
   const { add } = useBag();
+  useEffect(() => {
+    const slug = productById(productId)?.slug;
+    if (slug) analytics.track("shop_product_viewed", { product: slug });
+  }, [productId]);
   const firstInStock = sizes?.find((s) => (stock[s] ?? 0) > 0) ?? null;
   const [size, setSize] = useState<string | null>(firstInStock);
   const [added, setAdded] = useState(false);

@@ -29,6 +29,7 @@ import {
   type FiatOrder,
 } from "@/utils/fiat";
 import { cn } from "@/utils/cn";
+import { bucketAmount, trackFlow } from "@/utils/analytics";
 
 const PRESETS = [5_000, 10_000, 20_000, 50_000];
 const MIN_NAIRA = 100;
@@ -37,6 +38,7 @@ const ROUTE_ID = "paj:ngn-usdc";
 // stops showing it, so a late transfer still lands.
 const LATE_WINDOW_MS = 72 * 60 * 60 * 1000;
 const DISPLAY = { fontFamily: "Montserrat_900Black" } as const;
+const DEPOSIT_FLOW = { rail: "bank", provider: "paj", to_token: "USDC" };
 
 type Stage =
   | { kind: "amount" }
@@ -123,6 +125,10 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
   const size = amountSize(typed.length);
 
   useEffect(() => {
+    trackFlow("naira_deposit", DEPOSIT_FLOW).started();
+  }, []);
+
+  useEffect(() => {
     const id = setTimeout(() => setDebounced(amount), 450);
     return () => clearTimeout(id);
   }, [amount]);
@@ -155,13 +161,19 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
     }
     setBusy(true);
     setError(null);
+    const flow = trackFlow("naira_deposit", {
+      ...DEPOSIT_FLOW,
+      amount_bucket: bucketAmount(amount, "NGN"),
+    });
     try {
       // A fresh quote at the moment of asking: a preview may be minutes old.
       const fresh = await apiClient.fiatQuote(ROUTE_ID, String(amount * 100));
       if (fresh.verification?.verificationRequired) {
+        flow.failed("verification_required");
         router.push("/verify-identity");
         return;
       }
+      flow.submitted();
       const order = await apiClient.fiatCreateOrder(
         fresh.id,
         Crypto.randomUUID(),
@@ -171,9 +183,11 @@ function AmountStage({ onOrder }: { onOrder: (orderId: string) => void }) {
       onOrder(order.id);
     } catch (err) {
       if (fiatErrorCode(err) === "VERIFICATION_REQUIRED") {
+        flow.failed("verification_required");
         router.push("/verify-identity");
         return;
       }
+      flow.failed(fiatErrorCode(err) ?? err);
       setError(
         fiatErrorMessage(err) ??
           "We couldn't set up your deposit. Nothing was charged. Try again."
@@ -579,6 +593,8 @@ const STEPS = [
   },
 ] as const;
 
+const DEPOSIT_ENDED = new Set(["completed", "failed", "returned", "expired"]);
+
 function WatchStage({
   order,
   onClose,
@@ -588,6 +604,25 @@ function WatchStage({
   onClose: () => void;
   onRestart: () => void;
 }) {
+  // Only an outcome watched happen here is reported, so reopening a finished
+  // deposit does not count it twice.
+  const firstStatus = useRef(order.status);
+  const reported = useRef(false);
+  useEffect(() => {
+    if (reported.current || DEPOSIT_ENDED.has(firstStatus.current)) return;
+    if (!DEPOSIT_ENDED.has(order.status)) return;
+    reported.current = true;
+    const flow = trackFlow("naira_deposit", {
+      ...DEPOSIT_FLOW,
+      amount_bucket: bucketAmount(
+        Number(order.quote.debit.amountMinor) / 100,
+        "NGN"
+      ),
+    });
+    if (order.status === "completed") flow.succeeded();
+    else flow.failed(order.status);
+  }, [order.status, order.quote.debit.amountMinor]);
+
   const reached = useMemo(() => {
     if (order.status === "completed") return 3;
     if (order.status === "processing") return 2;

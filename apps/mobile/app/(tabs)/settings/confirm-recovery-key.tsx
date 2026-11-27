@@ -15,6 +15,7 @@ import {
 } from "@/hooks/useRecoveryKeys";
 import { truncateAddress } from "@/utils/helper";
 import { usePalette } from "@/hooks/usePalette";
+import { analytics, trackFlow } from "@/utils/analytics";
 
 /**
  * Last look before the key is staged, and the two signatures that stage it.
@@ -59,6 +60,9 @@ export default function ConfirmRecoveryKeyScreen() {
       return;
     }
     setError(null);
+    const flow = trackFlow("recovery_change", {
+      rail: email ? (changing ? "email_change" : "email") : "wallet",
+    });
     try {
       if (email && grantId && changing) {
         await rotateEmail.mutateAsync({ email, grantId });
@@ -69,9 +73,17 @@ export default function ConfirmRecoveryKeyScreen() {
       } else {
         return;
       }
+      flow.submitted();
       const outcome = await change.mutateAsync(account);
+      flow.succeeded({ step: outcome.finished ? "executed" : "staged" });
+      if (!changing) {
+        analytics.track("recovery_method_added", {
+          kind: email ? "email" : "wallet",
+        });
+      }
       setActiveAt(outcome.waitingUntil);
     } catch (err) {
+      flow.failed(err);
       setError(
         err instanceof Error
           ? err.message

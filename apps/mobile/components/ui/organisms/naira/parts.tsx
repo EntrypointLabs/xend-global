@@ -6,6 +6,7 @@ import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { copyToClipboard } from "@/utils/clipboard";
 import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
+import { analytics } from "@/utils/analytics";
 
 /** The bank-details card language shared by every naira surface. */
 export function Card({
@@ -54,11 +55,13 @@ export function CopyRow({
   value,
   copyValue,
   copyLabel,
+  receiveKind,
 }: {
   label: string;
   value: string;
   copyValue?: string;
   copyLabel: string;
+  receiveKind?: "address" | "account_number";
 }) {
   const palette = usePalette();
   return (
@@ -66,7 +69,12 @@ export function CopyRow({
       feedback="none"
       accessibilityRole="button"
       accessibilityLabel={`Copy ${copyLabel}`}
-      onPress={() => void copyToClipboard(copyValue ?? value, copyLabel)}
+      onPress={() => {
+        if (receiveKind) {
+          analytics.track("receive_details_copied", { kind: receiveKind });
+        }
+        void copyToClipboard(copyValue ?? value, copyLabel);
+      }}
       className="flex-row items-center justify-between"
     >
       <View className="flex-1 pr-4">

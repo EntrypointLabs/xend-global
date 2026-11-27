@@ -4,10 +4,12 @@ import { Icon } from "./ui";
 export function KeyReveal({
   secret,
   onDismiss,
+  onCopied,
   label,
 }: {
   secret: string;
   onDismiss: () => void;
+  onCopied?: () => void;
   label?: string;
 }) {
   const [status, setStatus] = useState("");
@@ -15,6 +17,7 @@ export function KeyReveal({
     try {
       await navigator.clipboard.writeText(secret);
       setStatus("Key copied. Store it securely on your server.");
+      onCopied?.();
     } catch {
       setStatus("Clipboard access was denied. Select and copy the key above.");
     }

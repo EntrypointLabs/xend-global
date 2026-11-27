@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import type { PortalClient } from "./portal";
 import { CopyButton } from "./ui";
+import { analytics } from "./analytics";
 
 function ReceivingSection({
   subtitle,
@@ -63,7 +64,7 @@ export function ReceivingAccount(props: {
   nairaAvailable: boolean;
   busy: boolean;
   /** Runs an action under the page's busy state and error banner. */
-  run: (action: () => Promise<void>) => Promise<void>;
+  run: (action: () => Promise<void>, name?: string) => Promise<void>;
   onConnected: () => Promise<void>;
 }) {
   const { client, destination, busy, run, onConnected } = props;
@@ -156,8 +157,11 @@ export function ReceivingAccount(props: {
               onClick={() =>
                 void run(async () => {
                   await client.post("destination");
+                  analytics.track("merchant_receiving_account_saved", {
+                    kind: "usdc",
+                  });
                   await onConnected();
-                })
+                }, "receiving_account_usdc")
               }
             >
               Initialize USDC account
@@ -172,7 +176,7 @@ export function ReceivingAccount(props: {
 function NairaSetup(props: {
   client: PortalClient;
   busy: boolean;
-  run: (action: () => Promise<void>) => Promise<void>;
+  run: (action: () => Promise<void>, name?: string) => Promise<void>;
   onConnected: () => Promise<void>;
 }) {
   const { client } = props;
@@ -240,8 +244,11 @@ function NairaSetup(props: {
             accountNumber,
             confirmedAccountName: confirmed.accountName,
           });
+          analytics.track("merchant_receiving_account_saved", {
+            kind: "naira",
+          });
           await props.onConnected();
-        });
+        }, "receiving_account_naira");
       }}
     >
       <p>

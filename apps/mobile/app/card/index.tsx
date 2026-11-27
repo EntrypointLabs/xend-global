@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { PRYDD_CARD_BENEFITS } from "@/constants/FeaturePreviews";
+import { analytics } from "@/utils/analytics";
 
 export default function PryddCardScreen() {
   const router = useRouter();
@@ -89,6 +90,9 @@ export default function PryddCardScreen() {
           {/* Not wired to anything yet: there is no waitlist to join. */}
           <HapticPressable
             accessibilityRole="button"
+            onPress={() =>
+              analytics.track("coming_soon_tapped", { feature: "card" })
+            }
             className="items-center rounded-full bg-white py-5"
           >
             <Typography weight="600" className="text-[17px] text-black">

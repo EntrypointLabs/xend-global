@@ -11,3 +11,9 @@ jest.mock("@sentry/react-native", () => ({
   captureException: jest.fn(),
   captureMessage: jest.fn(),
 }));
+
+// Analytics is reporting only; tests never assert on what reaches PostHog.
+jest.mock("posthog-react-native", () => ({
+  __esModule: true,
+  default: jest.fn(),
+}));

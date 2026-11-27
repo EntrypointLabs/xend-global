@@ -12,6 +12,7 @@ import {
 } from "@/app/actions";
 import { rememberOrder, useBag, writeStorage } from "@/components/CartProvider";
 import { ProductArt } from "@/components/ProductArt";
+import { analytics, bucketAmount } from "@/lib/analytics";
 import {
   formatUsd,
   ONE_SIGNATURE_LIMIT_CENTS,
@@ -106,6 +107,10 @@ export function CheckoutView({ apiBase }: { apiBase: string }) {
       email: email.trim(),
       name: name.trim(),
     });
+    analytics.track("shop_checkout_started", {
+      items: items.reduce((n, i) => n + i.qty, 0),
+      amount_bucket: bucketAmount(total / 100, "USD"),
+    });
     const res = await startCheckout({
       lines: items.map(({ productId, size, qty }) => ({
         productId,
@@ -116,6 +121,7 @@ export function CheckoutView({ apiBase }: { apiBase: string }) {
       name,
     });
     if (!res.ok) {
+      analytics.track("shop_order_failed", { reason: "checkout_start_failed" });
       setError(res.error);
       currentStock()
         .then(setStock)

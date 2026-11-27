@@ -20,6 +20,7 @@ import {
 import { useToast } from "@/contexts/ToastContext";
 import { apiClient, apiErrorCode } from "@/utils/apiClient";
 import { cn } from "@/utils/cn";
+import { analytics } from "@/utils/analytics";
 import { usePalette } from "@/hooks/usePalette";
 
 export default function FeedbackScreen() {
@@ -52,6 +53,7 @@ export default function FeedbackScreen() {
       );
       return;
     }
+    analytics.track("feedback_submitted", { has_text: trimmed.length > 0 });
     showToast("Thanks for the feedback");
     router.back();
   };

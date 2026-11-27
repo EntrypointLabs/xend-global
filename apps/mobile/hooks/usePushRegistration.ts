@@ -16,6 +16,7 @@ import { requestApproval } from "@/utils/approvalRequests";
 import { SEED_DEMO } from "@/utils/devSeed";
 import { demoApproval } from "@/utils/devSeedApproval";
 import { withSystemPrompt } from "@/utils/systemPrompt";
+import { analytics } from "@/utils/analytics";
 
 /**
  * What a notice is about, and where tapping it lands. Mirrors the server's
@@ -91,6 +92,7 @@ export function useNotificationRouting() {
   useEffect(() => {
     if (!response) return;
     const kind = noticeKind(response.notification);
+    analytics.track("notification_opened", { kind: kind ?? "unknown" });
 
     // The approval takeover sits above every screen, so there is nowhere to
     // navigate: name the Payment and let it come forward once the list (fetched
@@ -217,10 +219,17 @@ export function usePushRegistration() {
       }
 
       const existing = await Notifications.getPermissionsAsync();
-      const granted =
-        existing.granted ||
-        (await withSystemPrompt(() => Notifications.requestPermissionsAsync()))
-          .granted;
+      let granted = existing.granted;
+      if (!granted) {
+        granted = (
+          await withSystemPrompt(() => Notifications.requestPermissionsAsync())
+        ).granted;
+        // Without `canAskAgain` the OS answers from the earlier refusal and
+        // no prompt is shown, so there was no answer to record.
+        if (existing.canAskAgain) {
+          analytics.track("push_permission_answered", { granted });
+        }
+      }
       if (!granted || cancelled) return;
 
       const token = await getPushToken();

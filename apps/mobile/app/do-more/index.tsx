@@ -12,9 +12,11 @@ import { Typography } from "@/components/ui/atoms/Typography";
 import { useFeature } from "@/hooks/useFeature";
 import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
+import { analytics } from "@/utils/analytics";
 import {
   DO_MORE_ITEMS,
   DO_MORE_SECTIONS,
+  doMoreFeatureSlug,
   type DoMoreItem,
   type DoMoreSection,
 } from "@/utils/doMore";
@@ -40,6 +42,10 @@ export default function DoMoreScreen() {
   );
 
   const open = (item: DoMoreItem) => {
+    analytics.track("feature_opened", {
+      feature: doMoreFeatureSlug(item),
+      source: "do_more",
+    });
     if (item.route) router.push(item.route);
     else router.push(`/do-more/${item.key}`);
   };

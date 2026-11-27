@@ -14,6 +14,7 @@ import { useNow } from "@/hooks/useNow";
 import { usePalette } from "@/hooks/usePalette";
 import { apiClient } from "@/utils/apiClient";
 import { fiatErrorMessage, type Verification } from "@/utils/fiat";
+import { analytics } from "@/utils/analytics";
 
 const DISPLAY = { fontFamily: "Montserrat_900Black" } as const;
 const RESEND_AFTER_MS = 60_000;
@@ -64,6 +65,11 @@ export default function VerifyIdentityScreen() {
   }, [current?.status, step, result]);
 
   const settle = (next: Verification) => {
+    analytics.track("identity_verification_completed", {
+      outcome: next.declineCode
+        ? `${next.status}_${next.declineCode.toLowerCase()}`
+        : next.status,
+    });
     setResult(next);
     void queryClient.invalidateQueries({ queryKey: ["fiat"] });
   };
@@ -86,6 +92,7 @@ export default function VerifyIdentityScreen() {
   const sendBvn = () =>
     run(async () => {
       if (!consent.data) throw new Error("consent not loaded");
+      analytics.track("identity_verification_started", {});
       const next = await apiClient.startVerification(bvn, consent.data.version);
       if (next.status === "code_sent") {
         setResult(null);

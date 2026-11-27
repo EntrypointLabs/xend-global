@@ -9,6 +9,7 @@ import type { PortalClient } from "./portal";
 import { formatUsdc, formatDisplayAmount } from "./money";
 import { navigate, paymentPath } from "./router";
 import { ErrorCard, Icon, PageHeader, SkeletonRows, StatusChip } from "./ui";
+import { analytics } from "./analytics";
 
 export type PaymentSummary = {
   id: string;
@@ -101,6 +102,9 @@ export function PaymentsPanel({
   }, [applied]);
 
   function apply(next: { status: string; q: string }) {
+    analytics.track("merchant_payments_filtered", {
+      filter: (next.status || "all") + (next.q ? "+search" : ""),
+    });
     setRows([]);
     setCursor(null);
     setApplied(next);

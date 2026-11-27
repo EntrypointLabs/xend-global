@@ -21,6 +21,7 @@ import {
   type AppTheme,
 } from "@/contexts/AppearanceContext";
 import { cn } from "@/utils/cn";
+import { analytics } from "@/utils/analytics";
 
 const THEMES: AppTheme[] = ["monochrome", "colorful"];
 const FIELD = require("@/assets/images/auth/life-meets-savings.jpg");
@@ -43,15 +44,20 @@ export default function ThemePreviewScreen() {
   const side = (width - cardWidth) / 2;
   const scrollRef = useRef<ScrollView>(null);
 
+  const choose = (next: AppTheme) => {
+    if (next === theme) return;
+    analytics.track("appearance_changed", { setting: "theme", value: next });
+    setTheme(next);
+  };
+
   const settle = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const index = Math.round(event.nativeEvent.contentOffset.x / step);
-    const next = THEMES[Math.max(0, Math.min(THEMES.length - 1, index))];
-    if (next !== theme) setTheme(next);
+    choose(THEMES[Math.max(0, Math.min(THEMES.length - 1, index))]);
   };
 
   const select = (index: number) => {
     scrollRef.current?.scrollTo({ x: index * step, animated: true });
-    if (THEMES[index] !== theme) setTheme(THEMES[index]);
+    choose(THEMES[index]);
   };
 
   return (

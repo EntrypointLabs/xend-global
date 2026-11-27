@@ -14,10 +14,12 @@
   },
   "dependencies": {
     "@privy-io/react-auth": "^3.34.0",
+    "@prydd/analytics": "*",
     "@prydd/checkout-protocol": "*",
     "@solana-program/memo": "^0.9.0",
     "@solana/kit": "^7.0.0",
     "@vercel/functions": "^2.2.13",
+    "posthog-js": "^1.455.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "zod": "^3.25.76"

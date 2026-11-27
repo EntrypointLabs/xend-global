@@ -17,6 +17,7 @@ import {
   type PasskeySignInOutcome,
 } from "@/utils/passkeyOutcome";
 import { withSystemPrompt } from "@/utils/systemPrompt";
+import { analytics, errorReason, trackFlow } from "@/utils/analytics";
 
 /** Must match the relying party the credential was registered against. */
 const RELYING_PARTY = "https://prydd.co";
@@ -81,6 +82,29 @@ export function usePasskeyLogin() {
     } = {}
   ): Promise<PasskeySignInOutcome> => {
     const { signupToken, expectUserId, retryEmptyResponse } = options;
+    const setup = signupToken
+      ? trackFlow("account_setup", { step: "passkey" })
+      : null;
+    const report = (outcome: PasskeySignInOutcome, err?: unknown) => {
+      const reason =
+        outcome === "failed" && err ? errorReason(err) : errorReason(outcome);
+      if (setup) {
+        if (outcome === "signed-in") setup.succeeded();
+        else if (outcome === "cancelled") setup.cancelled();
+        else setup.failed(outcome, { reason });
+        return;
+      }
+      if (outcome === "signed-in") {
+        analytics.track("auth_login_succeeded", {
+          method: "passkey",
+          is_new_user: false,
+        });
+      } else {
+        analytics.track("auth_login_failed", { method: "passkey", reason });
+      }
+    };
+    if (setup) setup.started();
+    else analytics.track("auth_login_started", { method: "passkey" });
     setError(null);
     setBusy(true);
     try {
@@ -95,13 +119,16 @@ export function usePasskeyLogin() {
       );
       if (!user) {
         setError(noUser);
+        report("failed");
         return "failed";
       }
       if (await completePasskeySession(user, signupToken, expectUserId)) {
+        report("signed-in");
         return "signed-in";
       }
 
       setError("Signed in, but Prydd could not start your session.");
+      report("failed");
       return "failed";
     } catch (err) {
       // The passkey is real and Prydd has nothing behind it. Not a failure to
@@ -110,6 +137,7 @@ export function usePasskeyLogin() {
       if (err instanceof PasskeyHasNoAccountError) {
         await privyLogout().catch(reportLogoutFailure("no-account"));
         if (__DEV__) console.warn("[passkey] sign-in ended as no-account");
+        report("no-account");
         return "no-account";
       }
       // The wrong credential for the account the inbox named. Privy's
@@ -119,6 +147,7 @@ export function usePasskeyLogin() {
         wrongAccount.current = err.maskedEmail;
         await privyLogout().catch(reportLogoutFailure("wrong-account"));
         if (__DEV__) console.warn("[passkey] sign-in ended as wrong-account");
+        report("wrong-account");
         return "wrong-account";
       }
       const outcome = classifyPasskeyError(err, Platform.OS);
@@ -136,6 +165,7 @@ export function usePasskeyLogin() {
         // error level buries the ones that are actually wrong.
         if (__DEV__) console.warn(`[passkey] sign-in ended as ${outcome}`);
       }
+      report(outcome, err);
       return outcome;
     } finally {
       setBusy(false);

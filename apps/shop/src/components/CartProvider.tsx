@@ -8,6 +8,8 @@ import {
   useMemo,
   useState,
 } from "react";
+import { analytics } from "@/lib/analytics";
+import { productById } from "@/lib/catalog";
 
 export interface BagLine {
   productId: string;
@@ -67,6 +69,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       ready,
       count: lines.reduce((n, l) => n + l.qty, 0),
       add: (line) => {
+        analytics.track("shop_added_to_bag", {
+          product: productById(line.productId)?.slug ?? "unknown",
+          quantity: line.qty,
+        });
         const i = lines.findIndex(
           (l) => l.productId === line.productId && l.size === line.size,
         );
@@ -78,7 +84,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             ),
           );
       },
-      setQty: (productId, size, qty) =>
+      setQty: (productId, size, qty) => {
+        if (qty <= 0) {
+          analytics.track("shop_removed_from_bag", {
+            product: productById(productId)?.slug ?? "unknown",
+          });
+        }
         commit(
           qty <= 0
             ? lines.filter(
@@ -89,7 +100,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                   ? { ...l, qty: Math.min(5, qty) }
                   : l,
               ),
-        ),
+        );
+      },
       clear: () => commit([]),
     }),
     [lines, ready, commit],

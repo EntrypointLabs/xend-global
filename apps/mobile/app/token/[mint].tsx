@@ -43,6 +43,7 @@ import {
 } from "@/utils/earn";
 import { formatEarnMoney } from "@/utils/earnProjection";
 import { describeToken, formatTokenAmount } from "@/utils/tokens";
+import { analytics } from "@/utils/analytics";
 
 const ACTIVITY_TARGET = 10;
 const AUTO_PAGES = 8;
@@ -168,6 +169,14 @@ export function TokenDetail({
     !!transfers.hasNextPage &&
     entries.length < ACTIVITY_TARGET &&
     pagesLoaded < AUTO_PAGES;
+  const viewedMint = useRef<string | null>(null);
+  const symbolSettled = !!named.symbol || !overview.isPending;
+  useEffect(() => {
+    if (!symbolSettled || viewedMint.current === mint) return;
+    viewedMint.current = mint;
+    analytics.track("token_viewed", { token: named.symbol || "unknown" });
+  }, [mint, named.symbol, symbolSettled]);
+
   useEffect(() => {
     if (searching && !transfers.isFetchingNextPage)
       void transfers.fetchNextPage();
@@ -438,7 +447,16 @@ export function TokenDetail({
               <ActivityItem
                 key={entry.id}
                 {...entry}
-                onPress={() => setOpened(entry)}
+                onPress={() => {
+                  analytics.track("transaction_opened", {
+                    kind: entry.swap
+                      ? "swap"
+                      : entry.kind === "transfer"
+                        ? entry.direction
+                        : entry.kind,
+                  });
+                  setOpened(entry);
+                }}
               />
             ))}
             {searching ? (

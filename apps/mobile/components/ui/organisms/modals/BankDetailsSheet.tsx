@@ -29,6 +29,7 @@ import { apiClient } from "@/utils/apiClient";
 import type { BankAccountRecordSchema } from "@/utils/bank-accounts";
 import { usePalette } from "@/hooks/usePalette";
 import { cn } from "@/utils/cn";
+import { analytics } from "@/utils/analytics";
 import { SEED_DEMO, SEED_USER } from "@/utils/devSeed";
 import {
   Card,
@@ -186,7 +187,11 @@ export const BankDetailsSheet = forwardRef<
       if (lines.length > 0) lines.push("");
       lines.push(`Solana wallet: ${address}`);
     }
-    if (lines.length > 0) void Share.share({ message: lines.join("\n") });
+    if (lines.length === 0) return;
+    analytics.track("receive_details_shared", {
+      kind: account ? "account_number" : "address",
+    });
+    void Share.share({ message: lines.join("\n") });
   };
 
   const active =
@@ -242,6 +247,7 @@ export const BankDetailsSheet = forwardRef<
               value={groupAccountNumber(active.accountNumber)}
               copyValue={active.accountNumber}
               copyLabel="account number"
+              receiveKind="account_number"
             />
             <CopyRow
               label="Bank name"
@@ -455,7 +461,12 @@ export const BankDetailsSheet = forwardRef<
             dashGap={6}
             className="my-5"
           />
-          <CopyRow label="Solana" value={address} copyLabel="wallet address" />
+          <CopyRow
+            label="Solana"
+            value={address}
+            copyLabel="wallet address"
+            receiveKind="address"
+          />
         </Card>
       </View>
     );

@@ -23,10 +23,15 @@ const appleAuthShim = path.resolve(__dirname, "shims/expo-apple-authentication.j
 // the build machine. Its sources use `.js` suffixes on relative imports, which
 // Metro does not map back to `.ts` on its own.
 const smartAccountSrc = path.resolve(__dirname, "../../packages/smart-account/src");
+// Same reason as smart-account: workspace packages are read from source.
+const analyticsSrc = path.resolve(__dirname, "../../packages/analytics/src/index.ts");
 const baseResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (moduleName === "expo-apple-authentication") {
     return { type: "sourceFile", filePath: appleAuthShim };
+  }
+  if (moduleName === "@prydd/analytics") {
+    return { type: "sourceFile", filePath: analyticsSrc };
   }
   if (moduleName === "@prydd/smart-account") {
     return { type: "sourceFile", filePath: path.join(smartAccountSrc, "index.ts") };

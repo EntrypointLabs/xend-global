@@ -12,6 +12,7 @@ import {
   type SupportTopic,
 } from "@/utils/support";
 import { usePalette } from "@/hooks/usePalette";
+import { analytics } from "@/utils/analytics";
 
 const TOPIC_ICON: Record<SupportTopic, keyof typeof Ionicons.glyphMap> = {
   account_access: "key-outline",
@@ -67,12 +68,16 @@ export default function SupportScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={`${label}. ${detail}`}
                 feedback="selection"
-                onPress={() =>
+                onPress={() => {
+                  analytics.track("support_opened", {
+                    channel: "message",
+                    topic,
+                  });
                   router.push({
                     pathname: "/settings/support-message",
                     params: { topic },
-                  } as never)
-                }
+                  } as never);
+                }}
                 className="flex-row items-center gap-4 border-b border-foreground/[0.06] py-4"
               >
                 <View className="size-12 items-center justify-center rounded-full border border-foreground/10">

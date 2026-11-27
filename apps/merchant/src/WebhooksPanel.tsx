@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { PortalClient } from "./portal";
 import { formatWhen } from "./PaymentsPanel";
 import { deliveryLabel } from "./PaymentDetail";
+import { analytics, trackActionFailed } from "./analytics";
 import {
   CodeTabs,
   ErrorCard,
@@ -105,9 +106,11 @@ export function WebhooksPanel({
         { url, mode: cluster === "devnet" ? "test" : mode },
       );
       onSecret(created.secret, "Signing secret");
+      analytics.track("merchant_webhook_saved", { is_new: true });
       setUrl("");
       await load();
     } catch (failure) {
+      trackActionFailed("webhook_create", failure);
       setError(
         failure instanceof Error ? failure.message : "Could not create.",
       );
@@ -125,8 +128,10 @@ export function WebhooksPanel({
         `webhooks/${encodeURIComponent(id)}/rotate_secret`,
       );
       onSecret(rotated.secret, "New signing secret");
+      analytics.track("merchant_webhook_saved", { is_new: false });
       await load();
     } catch (failure) {
+      trackActionFailed("webhook_rotate_secret", failure);
       setError(
         failure instanceof Error ? failure.message : "Could not rotate.",
       );
@@ -140,8 +145,10 @@ export function WebhooksPanel({
     setError("");
     try {
       await client.post(`webhooks/${encodeURIComponent(id)}/delete`);
+      analytics.track("merchant_webhook_deleted", {});
       await load();
     } catch (failure) {
+      trackActionFailed("webhook_delete", failure);
       setError(
         failure instanceof Error ? failure.message : "Could not delete.",
       );

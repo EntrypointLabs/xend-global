@@ -141,6 +141,10 @@ export const DO_MORE_ITEMS: DoMoreItem[] = [
   },
 ];
 
+export function doMoreFeatureSlug(item: DoMoreItem): string {
+  return item.key.replace(/-/g, "_");
+}
+
 export function doMoreItem(key: string): DoMoreItem | undefined {
   return DO_MORE_ITEMS.find((item) => item.key === key);
 }

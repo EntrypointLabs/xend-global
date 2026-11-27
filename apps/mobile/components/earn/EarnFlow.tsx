@@ -1,5 +1,5 @@
 import { useExecuteEarn } from "@/hooks/useExecuteEarn";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -26,6 +26,7 @@ import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { Typography } from "@/components/ui/atoms/Typography";
 import { usePalette } from "@/hooks/usePalette";
 import { showToast } from "@/utils/toast";
+import { bucketAmount, trackFlow } from "@/utils/analytics";
 import { useBalances } from "@/hooks/useBalances";
 import { getUsdcMint } from "@/utils/cluster";
 import { formatTokenAmount } from "@/utils/tokens";
@@ -437,6 +438,11 @@ function DepositScreen({
   const limit = asset.amount;
   const step = dollars ? 0.01 : 10 ** -Math.min(asset.decimals, 4);
   const [message, setMessage] = useState<string | null>(null);
+  useEffect(() => {
+    trackFlow(withdraw ? "earn_withdraw" : "earn_deposit", {
+      provider: product.id,
+    }).started();
+  }, [withdraw, product.id]);
   const move = async () => {
     setMessage(null);
     const wasPending = execution.hasPending;
@@ -453,6 +459,10 @@ function DepositScreen({
         submitted = true;
         toastEarnMoving(withdraw);
         onChange(null);
+      },
+      {
+        token: asset.symbol,
+        amount_bucket: amountUsd === null ? undefined : bucketAmount(amountUsd),
       }
     );
     if (submitted) {

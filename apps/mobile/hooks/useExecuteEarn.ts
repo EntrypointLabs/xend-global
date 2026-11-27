@@ -32,6 +32,8 @@ import { signWithApprovalSigner } from "@/modules/hardware-key/src/turnkeySign";
 import { readEarnApprovalOutcome } from "@/utils/earnRecovery";
 import { isUserCanceledSign } from "@/utils/signing";
 import { applyEarnMove, type EarnCatalog, type EarnMove } from "@/utils/earn";
+import { trackFlow } from "@/utils/analytics";
+import type { FlowProps } from "@prydd/analytics";
 
 type Pending = {
   signed: string;
@@ -118,16 +120,25 @@ export function useExecuteEarn() {
        * Called once the move is on its way, after which nothing the Consumer
        * does on this screen changes it: the rest is waiting for the chain.
        */
-      onSubmitted?: () => void
+      onSubmitted?: () => void,
+      track?: FlowProps
     ): Promise<Outcome> => {
       if (locked.current) return { status: "pending" };
-      if (!account || !storageKey || !ready)
+      const flow = trackFlow(
+        action === "deposit" ? "earn_deposit" : "earn_withdraw",
+        { provider, ...track }
+      );
+      if (!account || !storageKey || !ready) {
+        flow.failed("not_ready");
         return { status: "failed", message: "Your Account is not ready yet" };
+      }
       const wallet = embedded.wallets?.find(
         (w) => w.address === account.signers.primary
       );
-      if (!wallet)
+      if (!wallet) {
+        flow.failed("not_ready");
         return { status: "failed", message: "Your Account is not ready yet" };
+      }
       locked.current = true;
       setExecuting(true);
       const rpc = getSolanaConnection();
@@ -286,7 +297,10 @@ export function useExecuteEarn() {
             prepared.lastValidBlockHeight
           )
             throw new Error("The estimate expired. Try again.");
-          if (!live.current) return { status: "cancelled" };
+          if (!live.current) {
+            flow.cancelled({ step: "left" });
+            return { status: "cancelled" };
+          }
           let signedHex: string;
           try {
             signedHex = await signWithApprovalSigner({
@@ -296,10 +310,16 @@ export function useExecuteEarn() {
               prompt: SIGN_PROMPT.earn,
             });
           } catch (error) {
-            if (isUserCanceledSign(error)) return { status: "cancelled" };
+            if (isUserCanceledSign(error)) {
+              flow.cancelled({ step: "sign" });
+              return { status: "cancelled" };
+            }
             throw error;
           }
-          if (!live.current) return { status: "cancelled" };
+          if (!live.current) {
+            flow.cancelled({ step: "left" });
+            return { status: "cancelled" };
+          }
           const providerApi = await wallet.getProvider();
           const { signedTransaction } = await providerApi.request({
             method: "signTransaction",
@@ -309,7 +329,10 @@ export function useExecuteEarn() {
               ),
             },
           });
-          if (!live.current) return { status: "cancelled" };
+          if (!live.current) {
+            flow.cancelled({ step: "left" });
+            return { status: "cancelled" };
+          }
           await save({
             signed: Buffer.from(signedTransaction.serialize()).toString(
               "base64"
@@ -321,6 +344,7 @@ export function useExecuteEarn() {
         }
         if (!live.current) return { status: "pending" };
         const stored = pending.current!;
+        flow.submitted({ step: stored.signature ? "resume" : undefined });
         {
           try {
             const result = await apiClient.submitEarn(stored.signed);
@@ -347,6 +371,7 @@ export function useExecuteEarn() {
         for (let i = 0; i < 12; i++) {
           const result = await readEarnApprovalOutcome(rpc, pending.current!);
           if (result === "expired") {
+            flow.failed("approval_expired");
             await clear();
             await Promise.all([
               queries.invalidateQueries({ queryKey: ["earn"] }),
@@ -360,6 +385,7 @@ export function useExecuteEarn() {
             };
           }
           if (result === "failed") {
+            flow.failed("onchain_failed");
             await clear();
             return {
               status: "failed",
@@ -368,6 +394,7 @@ export function useExecuteEarn() {
             };
           }
           if (result === "confirmed") {
+            flow.succeeded();
             await clear();
             const move = moved;
             // A read still in flight would land over the update below.
@@ -391,6 +418,7 @@ export function useExecuteEarn() {
         }
         return { status: "pending" };
       } catch (error) {
+        flow.failed(error);
         return {
           status: "failed",
           message: pending.current

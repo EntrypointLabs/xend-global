@@ -26,6 +26,7 @@ import {
   paymentPath,
   useRoute,
   useSearch,
+  type Route,
 } from "./router";
 import {
   CodeTabs,
@@ -42,6 +43,12 @@ import { PaymentDetail } from "./PaymentDetail";
 import { AuditPanel } from "./AuditPanel";
 import { ReceivingAccount, type Destination } from "./ReceivingAccount";
 import { BrandSection, type BrandMerchant } from "./BrandSection";
+import {
+  analytics,
+  reportFailure,
+  routeToScreenName,
+  trackActionFailed,
+} from "./analytics";
 
 type ApiKey = {
   id: string;
@@ -81,8 +88,38 @@ type Dashboard = {
 };
 
 function DashboardApp() {
-  const { user } = usePrivy();
+  const { user, ready, authenticated } = usePrivy();
+  useSessionAnalytics(ready, authenticated);
   return <MerchantWorkspace key={user?.id ?? "signed-out"} />;
+}
+
+// Lives above MerchantWorkspace because that remounts per Privy user, which
+// would lose the previous sign-in state. A session restored on page load is
+// not reported as a fresh sign-in.
+function useSessionAnalytics(ready: boolean, authenticated: boolean) {
+  const last = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!ready) return;
+    const before = last.current;
+    last.current = authenticated;
+    if (before === false && authenticated) {
+      analytics.track("merchant_signed_in", {});
+    } else if (before === true && !authenticated) {
+      analytics.track("merchant_signed_out", {});
+      analytics.reset();
+    }
+  }, [ready, authenticated]);
+}
+
+function screenFor(route: Route): string {
+  if (route.page === "payment" && route.paymentId) {
+    return routeToScreenName(paymentPath(route.paymentId), {
+      paymentId: encodeURIComponent(route.paymentId),
+    });
+  }
+  return routeToScreenName(
+    pagePath(route.page === "payment" ? "payments" : route.page),
+  );
 }
 
 function keyKind(key: ApiKey): string {
@@ -146,16 +183,36 @@ function MerchantWorkspace() {
   const [secretReveal, setSecretReveal] = useState<{
     secret: string;
     label: string;
+    kind: "api_key" | "webhook_secret";
   } | null>(null);
   const [keyName, setKeyName] = useState("");
   const search = useSearch();
 
-  async function run(action: () => Promise<void>) {
+  const merchantId = data?.merchant.id;
+  useEffect(() => {
+    if (merchantId) analytics.identify(merchantId, { merchant_id: merchantId });
+  }, [merchantId]);
+
+  const screen = !ready
+    ? null
+    : data
+      ? screenFor(route)
+      : !authenticated
+        ? "/sign-in"
+        : account.status === "loading"
+          ? null
+          : "/setup";
+  useEffect(() => {
+    if (screen) analytics.screen(screen);
+  }, [screen]);
+
+  async function run(action: () => Promise<void>, name?: string) {
     setBusy(true);
     setError("");
     try {
       await action();
     } catch (e) {
+      trackActionFailed(name ?? "unknown", e);
       setError(
         e instanceof PortalRequestError || e instanceof Error
           ? e.message
@@ -173,15 +230,24 @@ function MerchantWorkspace() {
       mode,
       name: keyName.trim() || undefined,
     });
-    setSecretReveal({ secret: key.raw, label: "API key" });
+    setSecretReveal({ secret: key.raw, label: "API key", kind: "api_key" });
+    analytics.track("merchant_api_key_created", { mode });
     setKeyName("");
     await refresh();
   }
-  async function rotate(id: string) {
+  async function rotate(apiKey: ApiKey) {
     const key = await client.post<{ raw: string }>(
-      `keys/${encodeURIComponent(id)}/rotate`,
+      `keys/${encodeURIComponent(apiKey.id)}/rotate`,
     );
-    setSecretReveal({ secret: key.raw, label: "New API key" });
+    setSecretReveal({
+      secret: key.raw,
+      label: "New API key",
+      kind: "api_key",
+    });
+    analytics.track("merchant_api_key_created", {
+      mode: apiKey.executionCluster === "devnet" ? "devnet" : apiKey.mode,
+      rotated: true,
+    });
     await refresh();
   }
 
@@ -267,7 +333,8 @@ function MerchantWorkspace() {
                             acceptUsdcTerms: accepted,
                           }),
                         );
-                      });
+                        analytics.track("merchant_workspace_created", {});
+                      }, "register");
                     }}
                   >
                     <label>
@@ -317,7 +384,7 @@ function MerchantWorkspace() {
                         type="button"
                         className="secondary"
                         disabled={busy}
-                        onClick={() => void run(refresh)}
+                        onClick={() => void run(refresh, "open_existing")}
                       >
                         Open existing
                       </button>
@@ -408,6 +475,11 @@ function MerchantWorkspace() {
                 secret={secretReveal.secret}
                 label={secretReveal.label}
                 onDismiss={() => setSecretReveal(null)}
+                onCopied={
+                  secretReveal.kind === "api_key"
+                    ? () => analytics.track("merchant_api_key_revealed", {})
+                    : undefined
+                }
               />
             )}
             {page === "overview" ? (
@@ -434,7 +506,9 @@ function MerchantWorkspace() {
             ) : page === "webhooks" ? (
               <WebhooksPanel
                 client={client}
-                onSecret={(secret, label) => setSecretReveal({ secret, label })}
+                onSecret={(secret, label) =>
+                  setSecretReveal({ secret, label, kind: "webhook_secret" })
+                }
                 revealActive={secretReveal !== null}
                 cluster={data.cluster}
               />
@@ -511,7 +585,8 @@ function MerchantWorkspace() {
                               );
                             }
                             setData(await client.post<Dashboard>("kyb/submit"));
-                          })
+                            analytics.track("merchant_review_submitted", {});
+                          }, "review_submit")
                         }
                       >
                         {data.merchant.kybStatus === "rejected"
@@ -531,30 +606,46 @@ function MerchantWorkspace() {
                 </section>
                 <BrandSection
                   merchant={data.merchant}
-                  onCategory={async (category) =>
-                    setData(
-                      await client.put<Dashboard>("branding", { category }),
-                    )
+                  onCategory={(category) =>
+                    reportFailure("brand_category", async () => {
+                      setData(
+                        await client.put<Dashboard>("branding", { category }),
+                      );
+                      analytics.track("merchant_brand_saved", {
+                        part: "category",
+                      });
+                    })
                   }
-                  onUpload={async (logo) =>
-                    setData(await client.put<Dashboard>("logo", logo))
+                  onUpload={(logo) =>
+                    reportFailure("brand_logo", async () => {
+                      setData(await client.put<Dashboard>("logo", logo));
+                      analytics.track("merchant_brand_saved", { part: "logo" });
+                    })
                   }
-                  onRemove={async () =>
-                    setData(await client.delete<Dashboard>("logo"))
+                  onRemove={() =>
+                    reportFailure("brand_logo_remove", async () => {
+                      setData(await client.delete<Dashboard>("logo"));
+                      analytics.track("merchant_brand_saved", {
+                        part: "logo_removed",
+                      });
+                    })
                   }
                 />
                 <BusinessProfileForm
                   ref={profileRef}
                   key={data.merchant.id}
                   merchant={data.merchant}
-                  onSave={async (update) => {
-                    const next = await client.post<Dashboard>(
-                      "profile",
-                      update,
-                    );
-                    setData(next);
-                    return next.merchant;
-                  }}
+                  onSave={(update) =>
+                    reportFailure("profile_save", async () => {
+                      const next = await client.post<Dashboard>(
+                        "profile",
+                        update,
+                      );
+                      setData(next);
+                      analytics.track("merchant_profile_saved", {});
+                      return next.merchant;
+                    })
+                  }
                 />
               </section>
             ) : (
@@ -579,7 +670,9 @@ function MerchantWorkspace() {
                     <div className="actions">
                       <button
                         disabled={busy || secretReveal !== null}
-                        onClick={() => void run(() => issue("test"))}
+                        onClick={() =>
+                          void run(() => issue("test"), "api_key_create")
+                        }
                       >
                         <Icon name="plus" size={15} />
                         Simulation key
@@ -595,7 +688,9 @@ function MerchantWorkspace() {
                               ? "Verify your business and connect a receiving account first"
                               : undefined
                           }
-                          onClick={() => void run(() => issue("live"))}
+                          onClick={() =>
+                            void run(() => issue("live"), "api_key_create")
+                          }
                         >
                           Live key
                         </button>
@@ -606,7 +701,9 @@ function MerchantWorkspace() {
                           disabled={
                             busy || secretReveal !== null || !data.destination
                           }
-                          onClick={() => void run(() => issue("devnet"))}
+                          onClick={() =>
+                            void run(() => issue("devnet"), "api_key_create")
+                          }
                         >
                           Devnet execution key
                         </button>
@@ -654,11 +751,18 @@ function MerchantWorkspace() {
                         key={key.id}
                         apiKey={key}
                         disabled={busy || secretReveal !== null}
-                        onRotate={() => void run(() => rotate(key.id))}
+                        onRotate={() =>
+                          void run(() => rotate(key), "api_key_rotate")
+                        }
                         onRevoke={async () => {
-                          const revoked = await client.post<{
-                            revokedAt: string;
-                          }>(`keys/${encodeURIComponent(key.id)}/revoke`);
+                          const revoked = await reportFailure(
+                            "api_key_revoke",
+                            () =>
+                              client.post<{
+                                revokedAt: string;
+                              }>(`keys/${encodeURIComponent(key.id)}/revoke`),
+                          );
+                          analytics.track("merchant_api_key_revoked", {});
                           setData((current) =>
                             current
                               ? {

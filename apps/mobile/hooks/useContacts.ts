@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { StorageService, userScopedKey } from "@/utils/storage";
 import { AUTH_STORAGE_KEYS } from "@/utils/auth";
 import { useUserId } from "@/hooks/useUserId";
+import { analytics } from "@/utils/analytics";
 
 export interface Contact {
   name: string;
@@ -38,6 +39,7 @@ export function useContacts() {
         (await StorageService.getItem<Contact[]>(storageKey)) ?? [];
       const next = [...current, contact];
       await StorageService.setItem(storageKey, next);
+      analytics.track("contact_saved", {});
       return next;
     },
     onSuccess: (next) => {
