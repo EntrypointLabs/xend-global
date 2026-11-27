@@ -1,3 +1,4 @@
+import { EARN_PROVIDERS, JUPITER_EARN_ASSETS } from "@prydd/smart-account";
 import type { TokenBalance } from "@/utils/apiClient";
 import { formatTokenPrice } from "@/utils/swap";
 import {
@@ -20,6 +21,22 @@ describe("heldSwapTokens", () => {
   it("leaves out what the Account holds none of", () => {
     const held = heldSwapTokens([
       balance({ mint: "a", amountRaw: "0", symbol: "AAA", name: "Alpha" }),
+      balance({ mint: "b", amountRaw: "25", symbol: "BBB", name: "Beta" }),
+    ]);
+    expect(held.map((token) => token.mint)).toEqual(["b"]);
+  });
+
+  it("leaves out Earn shares, which are withdrawn through Earn", () => {
+    const held = heldSwapTokens([
+      balance({ mint: EARN_PROVIDERS.kamino.receipt, amountRaw: "12376630" }),
+      balance({
+        mint: JUPITER_EARN_ASSETS.USDC.receipt,
+        amountRaw: "14042735",
+      }),
+      balance({
+        mint: JUPITER_EARN_ASSETS.SOL.receipt,
+        amountRaw: "141736903",
+      }),
       balance({ mint: "b", amountRaw: "25", symbol: "BBB", name: "Beta" }),
     ]);
     expect(held.map((token) => token.mint)).toEqual(["b"]);
