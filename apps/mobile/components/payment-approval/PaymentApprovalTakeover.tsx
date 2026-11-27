@@ -1,3 +1,4 @@
+import { GlassButton } from "@/components/ui/atoms/Glass";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -276,19 +277,21 @@ export function PaymentApprovalTakeover({
                   Waiting at checkout
                 </Typography>
               </View>
-              <HapticPressable
+              <GlassButton
+                radius={999}
+                fallbackClassName="border border-foreground/[0.08] bg-card"
                 onPress={onLater}
                 disabled={busy}
                 accessibilityRole="button"
                 accessibilityLabel="Decide later"
                 hitSlop={8}
                 className={cn(
-                  "size-10 items-center justify-center rounded-full bg-foreground/[0.05]",
+                  "size-10 items-center justify-center rounded-full",
                   busy && "opacity-30"
                 )}
               >
                 <Ionicons name="close" size={20} color={palette.ink} />
-              </HapticPressable>
+              </GlassButton>
             </View>
 
             <View className="flex-1 justify-center">

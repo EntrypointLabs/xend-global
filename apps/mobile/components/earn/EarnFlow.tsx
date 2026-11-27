@@ -1,3 +1,4 @@
+import { GlassButton } from "@/components/ui/atoms/Glass";
 import { useExecuteEarn } from "@/hooks/useExecuteEarn";
 import React, { useState } from "react";
 import {
@@ -520,7 +521,9 @@ function DepositScreen({
     >
       <View className="mb-6 flex-row items-center justify-between">
         {from ? (
-          <HapticPressable
+          <GlassButton
+            radius={999}
+            fallbackClassName="border border-foreground/[0.08] bg-card"
             accessibilityRole="button"
             accessibilityLabel="Back"
             disabled={execution.isExecuting}
@@ -531,29 +534,31 @@ function DepositScreen({
                   : { step: from }
               )
             }
-            className="h-10 w-10 items-center justify-center rounded-full bg-foreground/5"
+            className="h-10 w-10 items-center justify-center rounded-full"
           >
             <Ionicons
               name="chevron-back"
               size={20}
               color={palette.foreground}
             />
-          </HapticPressable>
+          </GlassButton>
         ) : (
           <View className="h-10 w-10" />
         )}
         <Typography variant="body" weight="600">
           {withdraw ? "Withdraw" : "Deposit"}
         </Typography>
-        <HapticPressable
+        <GlassButton
+          radius={999}
+          fallbackClassName="border border-foreground/[0.08] bg-card"
           accessibilityRole="button"
           accessibilityLabel="Close"
           disabled={execution.isExecuting}
           onPress={() => onChange(null)}
-          className="h-10 w-10 items-center justify-center rounded-full bg-foreground/5"
+          className="h-10 w-10 items-center justify-center rounded-full"
         >
           <Ionicons name="close" size={19} color={palette.foreground} />
-        </HapticPressable>
+        </GlassButton>
       </View>
       <View className="items-center">
         <Typography variant="caption" className="text-foreground/40">

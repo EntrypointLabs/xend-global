@@ -1,3 +1,5 @@
+import { GlassButton } from "@/components/ui/atoms/Glass";
+import { OnPhotoProvider } from "@/components/ui/glass";
 import React, { useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -56,14 +58,18 @@ export default function PryddCardScreen() {
           }}
         >
           <View className="flex-row justify-end">
-            <HapticPressable
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              onPress={close}
-              className="h-9 w-9 items-center justify-center rounded-full bg-white/10"
-            >
-              <Ionicons name="close" size={20} color="#FFFFFFB3" />
-            </HapticPressable>
+            <OnPhotoProvider value>
+              <GlassButton
+                radius={999}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                onPress={close}
+                className="h-9 w-9 items-center justify-center rounded-full"
+                fallbackClassName="bg-white/10"
+              >
+                <Ionicons name="close" size={20} color="#FFFFFFB3" />
+              </GlassButton>
+            </OnPhotoProvider>
           </View>
 
           <View className="flex-1 items-center justify-center">

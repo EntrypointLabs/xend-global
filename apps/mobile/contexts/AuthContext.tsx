@@ -427,7 +427,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loggingOutRef.current = true;
     showToast(
       "Signing out…",
-      <ActivityIndicator size="small" color="#000000" />
+      <ActivityIndicator size="small" className="text-foreground" />
     );
     setIsLoggingOut(true);
     try {

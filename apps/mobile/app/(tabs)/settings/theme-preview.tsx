@@ -1,3 +1,5 @@
+import { GlassButton } from "@/components/ui/atoms/Glass";
+import { OnPhotoProvider } from "@/components/ui/glass";
 import React, { useRef } from "react";
 import {
   Image,
@@ -57,14 +59,18 @@ export default function ThemePreviewScreen() {
   return (
     <SafeAreaView className="flex-1 bg-black">
       <View className="h-14 flex-row items-center justify-center px-5">
-        <HapticPressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => router.back()}
-          className="absolute left-5 size-11 items-center justify-center rounded-full bg-white/10"
-        >
-          <Ionicons name="arrow-back" size={20} color="#FFF" />
-        </HapticPressable>
+        <OnPhotoProvider value>
+          <GlassButton
+            radius={999}
+            fallbackClassName="bg-white/10"
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            onPress={() => router.back()}
+            className="absolute left-5 size-11 items-center justify-center rounded-full"
+          >
+            <Ionicons name="arrow-back" size={20} color="#FFF" />
+          </GlassButton>
+        </OnPhotoProvider>
         <Typography weight="500" className="text-base text-white">
           Theme preview
         </Typography>

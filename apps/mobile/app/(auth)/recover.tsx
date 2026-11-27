@@ -1,3 +1,5 @@
+import { GlassButton } from "@/components/ui/atoms/Glass";
+import { OnPhotoProvider } from "@/components/ui/glass";
 import React from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
@@ -45,15 +47,19 @@ function RecoverScreen() {
       <AuthAtmosphere variant="quiet" />
       <View className="flex-1">
         <View className="px-5" style={{ paddingTop: insets.top + 8 }}>
-          <HapticPressable
-            onPress={onBack}
-            feedback="selection"
-            className="size-10 items-center justify-center rounded-full bg-white/10"
-            accessibilityLabel="Back to login"
-            hitSlop={8}
-          >
-            <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
-          </HapticPressable>
+          <OnPhotoProvider value>
+            <GlassButton
+              radius={999}
+              fallbackClassName="bg-white/10"
+              onPress={onBack}
+              feedback="selection"
+              className="size-10 items-center justify-center rounded-full"
+              accessibilityLabel="Back to login"
+              hitSlop={8}
+            >
+              <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+            </GlassButton>
+          </OnPhotoProvider>
         </View>
 
         <View

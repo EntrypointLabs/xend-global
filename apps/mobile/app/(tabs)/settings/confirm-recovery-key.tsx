@@ -1,3 +1,4 @@
+import { GlassButton } from "@/components/ui/atoms/Glass";
 import { useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -131,14 +132,16 @@ export default function ConfirmRecoveryKeyScreen() {
   return (
     <ScreenLayout>
       <View className="flex-1 px-3">
-        <HapticPressable
+        <GlassButton
+          radius={999}
           onPress={() => router.back()}
           disabled={busy}
-          className="size-10 items-center justify-center rounded-full bg-foreground/[0.08]"
+          className="size-10 items-center justify-center rounded-full"
+          fallbackClassName="border border-foreground/[0.08] bg-card"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="chevron-back" size={20} color={palette.fg(0.4)} />
-        </HapticPressable>
+          <Ionicons name="chevron-back" size={20} color={palette.foreground} />
+        </GlassButton>
 
         <Typography
           weight="700"
