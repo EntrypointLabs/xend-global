@@ -1,4 +1,5 @@
 import type { TokenBalance } from "@/utils/apiClient";
+import { isEarnReceipt } from "@/utils/balances";
 import type { SwapToken } from "@/utils/swap";
 import { describeToken } from "@/utils/tokens";
 
@@ -15,27 +16,31 @@ export interface HeldSwapToken extends SwapToken {
 export function heldSwapTokens(
   balances: readonly TokenBalance[]
 ): HeldSwapToken[] {
-  return balances
-    .filter((balance) => /^0*[1-9]/.test(balance.amountRaw))
-    .slice()
-    .sort((a, b) => (b.usdValue ?? 0) - (a.usdValue ?? 0))
-    .map((balance) => {
-      const { name, symbol } = describeToken(
-        balance.mint,
-        balance.symbol,
-        balance.name
-      );
-      return {
-        mint: balance.mint,
-        // A mint nothing can name still has to be told apart from the others.
-        symbol: symbol || name,
-        name,
-        decimals: balance.decimals,
-        iconUrl: balance.iconUrl ?? null,
-        amountRaw: balance.amountRaw,
-        usdPrice: balance.usdPrice ?? null,
-      };
-    });
+  return (
+    balances
+      .filter((balance) => /^0*[1-9]/.test(balance.amountRaw))
+      // Earn shares are withdrawn through Earn, never swapped away.
+      .filter((balance) => !isEarnReceipt(balance.mint))
+      .slice()
+      .sort((a, b) => (b.usdValue ?? 0) - (a.usdValue ?? 0))
+      .map((balance) => {
+        const { name, symbol } = describeToken(
+          balance.mint,
+          balance.symbol,
+          balance.name
+        );
+        return {
+          mint: balance.mint,
+          // A mint nothing can name still has to be told apart from the others.
+          symbol: symbol || name,
+          name,
+          decimals: balance.decimals,
+          iconUrl: balance.iconUrl ?? null,
+          amountRaw: balance.amountRaw,
+          usdPrice: balance.usdPrice ?? null,
+        };
+      })
+  );
 }
 
 /** A mint address cut to its two ends, which is how one is told from another. */
