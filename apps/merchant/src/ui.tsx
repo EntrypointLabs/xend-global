@@ -102,6 +102,12 @@ const ICONS: Record<string, ReactNode> = {
     </>
   ),
   chart: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />,
+  warning: (
+    <>
+      <path d="M10.3 4.2 2.9 17.5a2 2 0 0 0 1.7 3h14.8a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z" />
+      <path d="M12 9.5v4.5M12 17.2v.3" />
+    </>
+  ),
   info: (
     <>
       <circle cx="12" cy="12" r="9" />

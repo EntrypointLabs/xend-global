@@ -1578,6 +1578,28 @@ td.right {
   font-size: 13.5px;
   color: var(--ink-2);
 }
+.notice[data-tone="warning"] {
+  border-color: color-mix(in srgb, var(--pending) 35%, var(--line));
+  background: color-mix(in srgb, var(--pending) 6%, var(--card));
+}
+.notice[data-tone="warning"] > .icon {
+  flex: none;
+  color: var(--pending);
+}
+.notice code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.payout-warnings {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+.payout-warnings .notice {
+  margin-bottom: 0;
+}
 .notice strong {
   display: block;
   color: var(--ink);

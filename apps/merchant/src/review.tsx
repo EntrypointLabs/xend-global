@@ -11,6 +11,22 @@ import { ReceivingAccount } from "./ReceivingAccount";
 import { BrandSection } from "./BrandSection";
 import type { MerchantCategory } from "./merchantCategory";
 
+const realFetch = window.fetch.bind(window);
+window.fetch = (input, init) => {
+  const url = String(input instanceof Request ? input.url : input);
+  if (url.startsWith("https://changed.review.example/"))
+    return Promise.resolve(
+      Response.json({
+        payoutWallets: {
+          devnet: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+        },
+      }),
+    );
+  if (url.startsWith("https://unpublished.review.example/"))
+    return Promise.resolve(new Response("Not found", { status: 404 }));
+  return realFetch(input, init);
+};
+
 /**
  * A dev-only harness for eyeballing the portal panels without Privy sign-in or
  * a running backend. Not part of the shipped app: main.tsx never imports it.
@@ -254,6 +270,20 @@ function Review() {
                   onConnected={async () => {}}
                 />
               ))}
+              <ReceivingAccount
+                client={stub}
+                destination={{ address: "UsdcTokenAccount1111111111111111" }}
+                receivingWallet="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+                allowedOrigins={[
+                  "https://changed.review.example",
+                  "https://unpublished.review.example",
+                ]}
+                cluster="devnet"
+                nairaAvailable={false}
+                busy={false}
+                run={(action) => action()}
+                onConnected={async () => {}}
+              />
             </div>
           </section>
         )}

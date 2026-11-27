@@ -67,6 +67,7 @@ type Dashboard = {
       kybSubmittedAt: string | null;
       kybReviewNote: string | null;
       receivingWallet: string;
+      allowedOrigins?: string[] | null;
     };
   destination: Destination | null;
   nairaSettlementAvailable?: boolean;
@@ -447,6 +448,7 @@ function MerchantWorkspace() {
                   client={client}
                   destination={data.destination}
                   receivingWallet={data.merchant.receivingWallet}
+                  allowedOrigins={data.merchant.allowedOrigins}
                   cluster={data.cluster}
                   nairaAvailable={data.nairaSettlementAvailable === true}
                   busy={busy}
