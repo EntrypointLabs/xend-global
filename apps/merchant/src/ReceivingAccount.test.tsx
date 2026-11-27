@@ -137,3 +137,61 @@ describe("ReceivingAccount", () => {
     expect(screen.queryByText(/Initialize USDC account/)).toBeNull();
   });
 });
+
+describe("payout file warning", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function serveFile(body: unknown, status = 200) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(new Response(JSON.stringify(body), { status })),
+      ),
+    );
+  }
+
+  function renderConnected() {
+    render(
+      <ReceivingAccount
+        client={{ get: vi.fn(), post: vi.fn() } as unknown as PortalClient}
+        destination={{ address: "UsdcTokenAccount" }}
+        receivingWallet="MerchantWallet111"
+        allowedOrigins={["https://shop.example", "http://localhost:3100"]}
+        cluster="devnet"
+        nairaAvailable={false}
+        busy={false}
+        run={(action) => action()}
+        onConnected={vi.fn()}
+      />,
+    );
+  }
+
+  it("warns when the site lists a different wallet", async () => {
+    serveFile({ payoutWallets: { devnet: "SomeoneElse1111111111111111111" } });
+    renderConnected();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "shop.example lists a different payout wallet",
+    );
+    expect(alert.textContent).toContain("Some…1111");
+  });
+
+  it("warns when the site does not list the wallet", async () => {
+    serveFile({}, 404);
+    renderConnected();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "shop.example doesn't list your payout wallet",
+    );
+  });
+
+  it("says nothing when the site lists this wallet", async () => {
+    serveFile({ payoutWallets: { devnet: "MerchantWallet111" } });
+    renderConnected();
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});

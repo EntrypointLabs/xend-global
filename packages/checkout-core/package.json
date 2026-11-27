@@ -30,6 +30,16 @@
         "types": "./dist/webhook/verify.d.cts",
         "default": "./dist/webhook/verify.cjs"
       }
+    },
+    "./payout": {
+      "import": {
+        "types": "./dist/payout/payout.d.mts",
+        "default": "./dist/payout/payout.mjs"
+      },
+      "require": {
+        "types": "./dist/payout/payout.d.cts",
+        "default": "./dist/payout/payout.cjs"
+      }
     }
   },
   "main": "./dist/index.cjs",

@@ -24,6 +24,9 @@ import {
   savePendingPaymentSubmission,
 } from "@/utils/pendingPaymentSubmissions";
 import { SEED_DEMO } from "@/utils/devSeed";
+import { getUsdcMint } from "@/utils/cluster";
+import { fetchPayoutWallet, storeOrigin } from "@/utils/merchantPayoutWallet";
+import { checkPayment, MISMATCH_MESSAGE } from "@/utils/verifyTransaction";
 
 export type ApprovalStep = "preparing" | "device" | "sending" | "confirming";
 
@@ -212,12 +215,54 @@ export function usePaymentApprovalFlow() {
     }
 
     setPhase({ kind: "working", step: "preparing" });
+
+    // Read before the backend prepares anything: a store that cannot say where
+    // its money goes leaves the Payment untouched rather than authorized.
+    let payoutWallet = "";
+    if (!SEED_DEMO) {
+      const origin = storeOrigin(payment.merchantOrigin);
+      try {
+        if (!origin) throw new Error("no store origin");
+        payoutWallet = await fetchPayoutWallet(origin);
+      } catch (err) {
+        Sentry.captureException(err, { tags: { surface: "payment.payout" } });
+        setPhase(
+          problem(
+            "paused",
+            "We couldn't confirm this store",
+            "Nothing has been paid. The store hasn't confirmed where Prydd payments go, so this can't be approved yet.",
+            true
+          )
+        );
+        return;
+      }
+    }
+
     const prepared = await apiClient.preparePayment(payment.reference);
 
     if (SEED_DEMO) {
       setPhase({ kind: "working", step: "device" });
       await new Promise((r) => setTimeout(r, 900));
       await submit(payment, "demo");
+      return;
+    }
+
+    // Both phone keys sign this, and two keys can move the whole Account in
+    // one go, so nothing is signed until the message is read back and found
+    // to pay exactly the amount on the card and nothing else.
+    const mismatch = checkPayment(prepared.unsignedTxBase64, {
+      vault: account!.address,
+      mint: getUsdcMint(),
+      amountRaw: payment.usdcSettlementRaw,
+      payoutWallet,
+    });
+    if (mismatch) {
+      Sentry.captureException(new Error(`payment mismatch: ${mismatch}`), {
+        tags: { surface: "payment.approve" },
+      });
+      setPhase(
+        problem("failed", "That didn't go through", MISMATCH_MESSAGE, false)
+      );
       return;
     }
 

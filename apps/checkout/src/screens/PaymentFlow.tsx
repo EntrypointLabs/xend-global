@@ -15,6 +15,7 @@ import { ConfirmSheet } from './ConfirmSheet';
 import { CancelButton, ExpiredNotice, PayButton } from './PayButton';
 import { PaymentSheet } from './PaymentSheet';
 import { quoteExpired, useQuoteExpired } from '../lib/useQuoteExpired';
+import { fetchPayoutWallet, payingStoreOrigin } from '../lib/payoutWallet';
 
 export interface PaymentFlowProps {
   intent: IntentView;
@@ -22,6 +23,8 @@ export interface PaymentFlowProps {
   onError: (err: unknown) => void;
   onCancel: () => void;
   waitForTerminal?: boolean;
+  /** The store page that opened this checkout, from the launch URL. */
+  opener?: string | null;
 }
 
 function PaymentFlowInner({
@@ -30,6 +33,7 @@ function PaymentFlowInner({
   onError,
   onCancel,
   waitForTerminal = false,
+  opener = null,
 }: PaymentFlowProps) {
   const { runCeremony, signSpend, forgetIdentity } = usePasskeyCeremony();
   const [busy, setBusy] = useState(false);
@@ -78,10 +82,17 @@ function PaymentFlowInner({
           onTerminal(result);
           return;
         }
+        const payoutWallet = await fetchPayoutWallet(
+          payingStoreOrigin(intent.merchantOrigin, opener),
+          result.executionCluster,
+          { signal: controller.signal },
+        );
         const signedTxBase64 = await signSpend(
           result.unsignedTxBase64,
           result.signerAddress,
           result.executionCluster,
+          intent.usdcSettlementRaw,
+          payoutWallet,
         );
         const input = { reference: intent.reference, signedTxBase64 };
         onTerminal(
@@ -118,6 +129,7 @@ function PaymentFlowInner({
     onTerminal,
     onError,
     waitForTerminal,
+    opener,
   ]);
 
   const wrongPasskeyNotice = wrongPasskey ? (

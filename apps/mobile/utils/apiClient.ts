@@ -603,6 +603,8 @@ export const SubmitSwapResponseSchema = z.object({ signature: z.string() });
 export const AwaitingPaymentSchema = z.object({
   reference: z.string(),
   merchantDisplayName: z.string(),
+  /** The store's web origin, where its payout wallet is published. */
+  merchantOrigin: z.string().nullable().optional(),
   /** ISO 4217, whatever the Merchant priced in. */
   displayCurrency: z.string(),
   displayAmountMinor: z.string(),

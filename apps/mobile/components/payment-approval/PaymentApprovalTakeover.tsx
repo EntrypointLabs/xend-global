@@ -12,6 +12,7 @@ import * as Haptics from "expo-haptics";
 import { useReducedMotion } from "react-native-reanimated";
 
 import { Typography } from "@/components/ui/atoms/Typography";
+import { storeOrigin } from "@/utils/merchantPayoutWallet";
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { HoldToApprove } from "@/components/payment-approval/HoldToApprove";
 import type {
@@ -216,6 +217,8 @@ export function PaymentApprovalTakeover({
   );
   const usdc = formatMoney("USDC", payment.usdcSettlementRaw);
   const merchant = payment.merchantDisplayName;
+  const origin = storeOrigin(payment.merchantOrigin);
+  const storeHost = origin ? new URL(origin).host : null;
   const busy = phase.kind === "working" || phase.kind === "declining";
   const answered = phase.kind === "succeeded" || phase.kind === "declined";
 
@@ -321,6 +324,7 @@ export function PaymentApprovalTakeover({
               </Typography>
 
               <View className="mt-8 border-t border-foreground/[0.07]">
+                {storeHost ? <Detail label="Store" value={storeHost} /> : null}
                 {payment.merchantReference ? (
                   <Detail label="For" value={payment.merchantReference} />
                 ) : null}

@@ -1,6 +1,12 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
+import {
+  checkPayoutFile,
+  PAYOUT_FILE_PATH,
+  storeSites,
+  type PayoutFileCheck,
+} from "./payoutFile";
 import type { PortalClient } from "./portal";
-import { CopyButton } from "./ui";
+import { CopyButton, Icon } from "./ui";
 
 function ReceivingSection({
   subtitle,
@@ -59,6 +65,7 @@ export function ReceivingAccount(props: {
   client: PortalClient;
   destination: Destination | null;
   receivingWallet: string;
+  allowedOrigins?: readonly string[] | null;
   cluster: string;
   nairaAvailable: boolean;
   busy: boolean;
@@ -150,6 +157,13 @@ export function ReceivingAccount(props: {
               label="Copy address"
             />
           </div>
+          {destination && (
+            <PayoutFileWarnings
+              origins={props.allowedOrigins}
+              cluster={props.cluster}
+              wallet={props.receivingWallet}
+            />
+          )}
           {!destination && (
             <button
               disabled={busy}
@@ -166,6 +180,74 @@ export function ReceivingAccount(props: {
         </>
       )}
     </ReceivingSection>
+  );
+}
+
+function shortAddress(address: string): string {
+  return address.length > 12
+    ? `${address.slice(0, 4)}…${address.slice(-4)}`
+    : address;
+}
+
+function PayoutFileWarnings(props: {
+  origins: readonly string[] | null | undefined;
+  cluster: string;
+  wallet: string;
+}) {
+  const { cluster, wallet } = props;
+  const sites = storeSites(props.origins).join(" ");
+  const [checks, setChecks] = useState<[string, PayoutFileCheck][]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const origins = sites ? sites.split(" ") : [];
+    Promise.all(
+      origins.map(
+        async (origin) =>
+          [
+            origin,
+            await checkPayoutFile(origin, cluster, wallet, {
+              signal: controller.signal,
+            }),
+          ] as [string, PayoutFileCheck],
+      ),
+    )
+      .then(setChecks)
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [sites, cluster, wallet]);
+
+  const problems = checks.filter(([, check]) => check.state !== "match");
+  if (problems.length === 0) return null;
+  return (
+    <div className="payout-warnings">
+      {problems.map(([origin, check]) => {
+        const host = new URL(origin).host;
+        return (
+          <div key={origin} className="notice" data-tone="warning" role="alert">
+            <Icon name="warning" />
+            {check.state === "mismatch" ? (
+              <div>
+                <strong>{host} lists a different payout wallet</strong>
+                Shoppers can&apos;t pay you until your site lists the same
+                wallet as this account. It lists{" "}
+                <code title={check.published}>
+                  {shortAddress(check.published)}
+                </code>
+                . If nobody on your team changed it, check who can edit your
+                site.
+              </div>
+            ) : (
+              <div>
+                <strong>{host} doesn&apos;t list your payout wallet</strong>
+                Shoppers can&apos;t pay until your site serves{" "}
+                <code>{PAYOUT_FILE_PATH}</code> with this wallet.
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
