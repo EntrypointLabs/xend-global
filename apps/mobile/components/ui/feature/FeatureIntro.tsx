@@ -10,6 +10,7 @@ import {
   type IllustrationName,
 } from "@/components/ui/feature/Illustration";
 import { FeatureScreen } from "@/components/ui/feature/FeatureScreen";
+import { analytics } from "@/utils/analytics";
 
 export interface FeatureBenefit {
   icon: keyof typeof Ionicons.glyphMap;
@@ -29,11 +30,22 @@ export interface FeatureIntroProps {
    * button's shape and says when, without offering anything to press.
    */
   waiting?: string;
+  /** Slug reported when the Coming soon footer is tapped. */
+  feature?: string;
 }
 
 /** What every feature that is not open yet ends on, so it reads as planned. */
-export function ComingSoonButton() {
-  return <WaitingPill label="Coming soon" />;
+export function ComingSoonButton({ feature }: { feature?: string } = {}) {
+  return (
+    <WaitingPill
+      label="Coming soon"
+      onTouchEnd={
+        feature
+          ? () => analytics.track("coming_soon_tapped", { feature })
+          : undefined
+      }
+    />
+  );
 }
 
 /**
@@ -44,9 +56,11 @@ export function ComingSoonButton() {
 export function WaitingPill({
   label,
   informative = false,
+  onTouchEnd,
 }: {
   label: string;
   informative?: boolean;
+  onTouchEnd?: () => void;
 }) {
   const palette = usePalette();
   return (
@@ -54,6 +68,7 @@ export function WaitingPill({
       accessible
       accessibilityRole="text"
       accessibilityLabel={label}
+      onTouchEnd={onTouchEnd}
       className="h-14 flex-row items-center justify-center gap-2 rounded-full bg-foreground/[0.05]"
     >
       <Ionicons
@@ -86,6 +101,7 @@ export function FeatureIntro({
   benefits,
   cta,
   waiting,
+  feature,
 }: FeatureIntroProps) {
   const { width } = useWindowDimensions();
   const palette = usePalette();
@@ -103,7 +119,7 @@ export function FeatureIntro({
             loading={cta.loading}
           />
         ) : (
-          <ComingSoonButton />
+          <ComingSoonButton feature={feature} />
         )
       }
     >

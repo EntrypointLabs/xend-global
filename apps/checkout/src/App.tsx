@@ -19,6 +19,9 @@ import { LoadingShell } from './screens/LoadingShell';
 import { InsufficientBalance } from './screens/InsufficientBalance';
 import { Result } from './screens/Result';
 import { ApprovalRequired } from './screens/ApprovalRequired';
+import { errorReason, routeToScreenName } from '@prydd/analytics';
+import { analytics, intentAmountBucket } from './lib/analytics';
+import { isFramed } from './lib/frame';
 
 /*
  * The real passkey flow ships by default; VITE_ENABLE_PRIVY=false loads a
@@ -63,12 +66,28 @@ export function App() {
   // state (LoadingShell), never an error. A missing nonce is fatal.
   useEffect(() => {
     try {
-      setLaunch(parseLaunch(window.location.search));
+      const parsed = parseLaunch(window.location.search);
+      setLaunch(parsed);
+      analytics.track('checkout_opened', {
+        mode: isFramed()
+          ? 'iframe'
+          : parsed.mode === 'iframe'
+            ? 'direct'
+            : parsed.mode,
+      });
     } catch (err) {
+      analytics.track('checkout_failed', {
+        reason: errorReason(err),
+        stage: 'launch',
+      });
       if (err instanceof LaunchError) setPhase({ kind: 'fatal' });
       else setPhase({ kind: 'fatal' });
     }
   }, []);
+
+  useEffect(() => {
+    analytics.screen(routeToScreenName(['checkout', phase.kind]));
+  }, [phase.kind]);
 
   // Announce the surface to the merchant page as soon as the launch parses,
   // before the intent is fetched. Without a named opener there is no exact
@@ -107,8 +126,9 @@ export function App() {
   // Deliver a user-initiated cancel. Redirect mode navigates to the signed
   // cancelUrl carried on the intent; if none exists it renders canceled in place.
   const deliverCancel = useCallback(
-    (intent: IntentView) => {
+    (intent: IntentView, stage: string) => {
       if (!launch) return;
+      analytics.track('checkout_cancelled', { stage });
       if (launch.mode === 'redirect') {
         const cancelUrl = intent.cancelUrl;
         if (cancelUrl) {
@@ -138,8 +158,22 @@ export function App() {
       .then((intent) => {
         if (stale) return;
         if (isNonPayable(intent.status)) {
+          if (intent.status !== 'succeeded') {
+            analytics.track('checkout_failed', {
+              reason: `intent_${intent.status}`,
+              stage: 'load',
+            });
+          }
           deliverResult(intent, intent.status as CheckoutStatus);
           return;
+        }
+        if (intent.awaitingApproval) {
+          analytics.track('checkout_approval_required', {});
+        } else {
+          analytics.track('checkout_quote_shown', {
+            token: 'USDC',
+            amount_bucket: intentAmountBucket(intent),
+          });
         }
         setPhase(
           intent.awaitingApproval
@@ -147,8 +181,13 @@ export function App() {
             : { kind: 'pay', intent },
         );
       })
-      .catch(() => {
-        if (!stale) setPhase({ kind: 'fatal' });
+      .catch((err: unknown) => {
+        if (stale) return;
+        analytics.track('checkout_failed', {
+          reason: errorReason(err),
+          stage: 'load',
+        });
+        setPhase({ kind: 'fatal' });
       });
 
     return () => {
@@ -165,14 +204,22 @@ export function App() {
     (intent: IntentView, err: unknown) => {
       if (err instanceof CheckoutApiError) {
         if (err.code === 'INSUFFICIENT_BALANCE') {
+          analytics.track('checkout_insufficient_balance', {
+            amount_bucket: intentAmountBucket(intent),
+          });
           setPhase({ kind: 'insufficient', intent });
           return;
         }
         if (err.code === 'APPROVAL_REQUIRED') {
+          analytics.track('checkout_approval_required', {});
           setPhase({ kind: 'approval', intent });
           return;
         }
         if (err.code === 'INTENT_EXPIRED') {
+          analytics.track('checkout_failed', {
+            reason: errorReason(err),
+            stage: 'pay',
+          });
           deliverResult(intent, 'expired');
           return;
         }
@@ -188,6 +235,10 @@ export function App() {
           return;
         }
       }
+      analytics.track('checkout_failed', {
+        reason: errorReason(err),
+        stage: 'pay',
+      });
       deliverResult(intent, 'failed');
     },
     [deliverResult, launch],
@@ -195,6 +246,16 @@ export function App() {
 
   const handleTerminal = useCallback(
     (intent: IntentView, result: TerminalResult) => {
+      if (result.status === 'succeeded') {
+        analytics.track('checkout_paid', {
+          amount_bucket: intentAmountBucket(intent),
+        });
+      } else {
+        analytics.track('checkout_failed', {
+          reason: 'payment_failed',
+          stage: 'settle',
+        });
+      }
       deliverResult(intent, result.status, result.redirectUrl);
     },
     [deliverResult],
@@ -203,7 +264,18 @@ export function App() {
   const approvalIntent = phase.kind === 'approval' ? phase.intent : null;
   const handleApprovalOutcome = useCallback(
     (status: CheckoutStatus) => {
-      if (approvalIntent) deliverResult(approvalIntent, status);
+      if (!approvalIntent) return;
+      if (status === 'succeeded') {
+        analytics.track('checkout_paid', {
+          amount_bucket: intentAmountBucket(approvalIntent),
+        });
+      } else {
+        analytics.track('checkout_failed', {
+          reason: `intent_${status}`,
+          stage: 'approval',
+        });
+      }
+      deliverResult(approvalIntent, status);
     },
     [approvalIntent, deliverResult],
   );
@@ -225,7 +297,9 @@ export function App() {
       );
     case 'insufficient':
       return (
-        <InsufficientBalance onCancel={() => deliverCancel(phase.intent)} />
+        <InsufficientBalance
+          onCancel={() => deliverCancel(phase.intent, 'insufficient')}
+        />
       );
     case 'approval':
       return (
@@ -233,7 +307,7 @@ export function App() {
           intent={phase.intent}
           opener={launch?.opener ?? null}
           onOutcome={handleApprovalOutcome}
-          onCancel={() => deliverCancel(phase.intent)}
+          onCancel={() => deliverCancel(phase.intent, 'approval')}
         />
       );
     case 'pay':
@@ -245,7 +319,7 @@ export function App() {
               handleTerminal(phase.intent, result)
             }
             onError={(err: unknown) => handleError(phase.intent, err)}
-            onCancel={() => deliverCancel(phase.intent)}
+            onCancel={() => deliverCancel(phase.intent, 'pay')}
             waitForTerminal={launch?.mode === 'redirect'}
           />
         </Suspense>

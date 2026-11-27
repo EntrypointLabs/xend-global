@@ -10,6 +10,8 @@ import type { ConfirmedTransferEvent } from '../solana/solana-rpc.interface';
 import type { WalletAddress } from '../wallet/wallet-provider.interface';
 import { RampActivityService } from '../fiat/ramp-activity';
 import type { RampDetails } from '../fiat/ramp-activity';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
+import { bucketAmount } from '../analytics/redact';
 
 /**
  * The write side of the activity feed. Called by both the webhook hot
@@ -39,6 +41,7 @@ export class TailerService {
     private readonly notifications: NotificationsService,
     private readonly namer: TokenNamer,
     @Optional() private readonly ramps?: RampActivityService,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {}
 
   /**
@@ -102,6 +105,9 @@ export class TailerService {
       evt.decimals,
     );
 
+    const submittedSend =
+      direction === 'SEND' ? await this.pendingSend(evt) : null;
+
     // The CASE in the DO UPDATE clause is the load-bearing status guard:
     // if the existing row is already CONFIRMED or FAILED, keep that
     // status (do not regress); otherwise take the incoming status.
@@ -163,6 +169,7 @@ export class TailerService {
       rows: { id: string; created_at: Date | string; inserted: boolean }[];
     };
     const isNewRow = written.rows?.[0]?.inserted === true;
+    if (submittedSend) this.reportConfirmedSend(evt, submittedSend);
 
     // Update the per-wallet bookmark. Take MAX so out-of-order events
     // (rare; happens when the webhook delivers a slot newer than the
@@ -211,6 +218,51 @@ export class TailerService {
     }
 
     return direction;
+  }
+
+  /**
+   * A send this backend submitted is a PENDING row until the chain confirms
+   * it, and the upsert below is what flips it. Read before the write, so the
+   * upsert itself stays exactly as it was. The reconciler can settle the same
+   * row in the meantime; that race is rare and costs a duplicate analytics
+   * event at worst.
+   */
+  private async pendingSend(
+    evt: ConfirmedTransferEvent,
+  ): Promise<{ userId: string; usdValue: string | null } | null> {
+    if (!this.analytics?.enabled) return null;
+    const result = (await this.db.client.execute(sql`
+      SELECT sa.user_id AS "userId", t.usd_value AS "usdValue"
+      FROM transfers t
+      JOIN smart_accounts sa ON sa.id = t.smart_account_id
+      WHERE t.signature = ${evt.signature}
+        AND t.mint = ${evt.mint}
+        AND t.from_address = ${evt.fromAddress}
+        AND t.to_address = ${evt.toAddress}
+        AND t.amount_raw = ${evt.amountRaw.toString()}
+        AND t.leg_index = ${evt.legIndex}::integer
+        AND t.status = 'PENDING'
+      LIMIT 1
+    `)) as unknown as {
+      rows?: { userId: string; usdValue: string | null }[];
+    };
+    return result.rows?.[0] ?? null;
+  }
+
+  private reportConfirmedSend(
+    evt: ConfirmedTransferEvent,
+    send: { userId: string; usdValue: string | null },
+  ): void {
+    this.analytics?.capture(
+      'server_transfer_confirmed',
+      { consumerId: send.userId },
+      {
+        token: this.analytics.tokenSymbol(evt.mint),
+        amount_bucket: bucketAmount(
+          send.usdValue === null ? null : Number(send.usdValue),
+        ),
+      },
+    );
   }
 
   private generateId(): string {

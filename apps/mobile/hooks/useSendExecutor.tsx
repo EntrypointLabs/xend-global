@@ -23,6 +23,7 @@ import { isUserCanceledSign } from "@/utils/signing";
 import { toRawAmount, WRAPPED_SOL_MINT } from "@/utils/swap";
 import { getUsdcMint } from "@/utils/cluster";
 import { showToast } from "@/utils/toast";
+import { bucketAmount, trackFlow } from "@/utils/analytics";
 import {
   fiatErrorCode,
   fiatErrorMessage,
@@ -71,6 +72,12 @@ export interface SendToken {
   decimals: number;
 }
 const NOT_READY = "Your Account is not ready yet. Try again in a moment.";
+
+export type SendTracking = {
+  flow: ReturnType<typeof trackFlow>;
+  /** The caller reports success itself, as a bank payout settles off chain. */
+  settlesElsewhere?: boolean;
+};
 
 function toastSending() {
   showToast(
@@ -257,10 +264,15 @@ export function useSendExecutor() {
     async (
       recipient: string,
       amount: string,
-      token?: SendToken
+      token?: SendToken,
+      tracking?: SendTracking
     ): Promise<SendStart> => {
+      const flow = tracking?.flow ?? trackFlow("send", { rail: "wallet" });
       const embeddedWallet = embeddedSolana.wallets?.[0];
-      if (!embeddedWallet) return { status: "failed", reason: NOT_READY };
+      if (!embeddedWallet) {
+        flow.failed("not_ready");
+        return { status: "failed", reason: NOT_READY };
+      }
 
       const mint = token?.mint ?? getUsdcMint();
       // The backend wants the integer at the token's own decimals, built from
@@ -272,6 +284,7 @@ export function useSendExecutor() {
       // A retry that already holds a signed transfer resumes at the submit
       // rather than replaying checks the Consumer has done once.
       let prepared = pendingCrypto?.submission ?? null;
+      let needsApproval: boolean | undefined;
 
       try {
         if (!prepared) {
@@ -290,12 +303,16 @@ export function useSendExecutor() {
                 amountRaw,
               });
             } else if (err?.data?.code === "RPC_UNAVAILABLE") {
+              flow.failed(err.data.code);
               return { status: "failed", reason: NETWORK_BUSY };
             } else if (err?.data?.code === "BELOW_RENT_MINIMUM") {
+              flow.failed(err.data.code);
               return { status: "failed", reason: EMPTY_ADDRESS_NEEDS_MORE_SOL };
             } else if (err?.data?.code === "INSUFFICIENT_SOL") {
+              flow.failed(err.data.code);
               return { status: "failed", reason: NOT_ENOUGH_PLAIN_SOL };
             } else if (err?.data?.code === "UNSUPPORTED_MINT") {
+              flow.failed(err.data.code);
               return { status: "failed", reason: TOKEN_CANNOT_BE_SENT };
             } else {
               throw err;
@@ -316,11 +333,13 @@ export function useSendExecutor() {
             Sentry.captureException(new Error(`spend mismatch: ${mismatch}`), {
               tags: { surface: "send.crypto" },
             });
+            flow.failed("spend_mismatch");
             return { status: "failed", reason: MISMATCH_MESSAGE };
           }
 
           let signedBase64: string;
           let presenceProof: string | undefined;
+          needsApproval = prep.needsApprovalSignature;
           try {
             const provider = await embeddedWallet.getProvider();
             let tx = VersionedTransaction.deserialize(
@@ -364,7 +383,10 @@ export function useSendExecutor() {
           } catch (err) {
             // A dismissed prompt is a decision, not a fault, and nothing has
             // been signed.
-            if (isUserCanceledSign(err)) return { status: "cancelled" };
+            if (isUserCanceledSign(err)) {
+              flow.cancelled({ step: "sign" });
+              return { status: "cancelled" };
+            }
             throw err;
           }
 
@@ -377,10 +399,12 @@ export function useSendExecutor() {
         }
       } catch (error) {
         Sentry.captureException(error, { tags: { surface: "send.crypto" } });
+        flow.failed(error);
         return { status: "failed", reason: SOMETHING_WRONG };
       }
 
       const submission = prepared;
+      flow.submitted({ needs_approval: needsApproval });
       toastSending();
       const sendingUntil = Date.now() + SENDING_TOAST_MS;
       void (async () => {
@@ -389,6 +413,7 @@ export function useSendExecutor() {
           submitted = await submitPrepared(submission);
         } catch (err: any) {
           const code = err?.data?.code;
+          flow.failed(code ?? err);
           if (code === "INTENT_EXPIRED") {
             // The signed tx can no longer land; a fresh prepare is required.
             pendingCrypto = null;
@@ -427,9 +452,11 @@ export function useSendExecutor() {
         settleTransferInFeed(queryClient, submitted.transferId, settled);
         invalidateAfterCryptoSend(queryClient);
         if (settled === "FAILED") {
+          flow.failed("onchain_failed");
           toastFailed(`transfer ${submitted.transferId} failed on chain`);
           return;
         }
+        if (!tracking?.settlesElsewhere) flow.succeeded();
         toastSent();
       })();
 
@@ -499,20 +526,37 @@ export function useSendExecutor() {
    */
   const fundBank = useCallback(
     async (order: FiatOrder): Promise<SendStart> => {
+      const flow = trackFlow("naira_withdraw", {
+        rail: "bank",
+        provider: "paycrest",
+        token: "USDC",
+        amount_bucket: bucketAmount(
+          minorToPlain(order.quote.credit.amountMinor, 2),
+          "NGN"
+        ),
+      });
       const { depositAddress, depositAmount } = order.instructions;
-      if (!depositAddress || !depositAmount)
+      if (!depositAddress || !depositAmount) {
+        flow.failed("missing_deposit");
         return { status: "failed", reason: SOMETHING_WRONG };
+      }
       const start = await sendCrypto(
         depositAddress,
-        minorToPlain(depositAmount.amountMinor, depositAmount.decimals)
+        minorToPlain(depositAmount.amountMinor, depositAmount.decimals),
+        undefined,
+        { flow, settlesElsewhere: true }
       );
       if (start.status === "sending") {
         void (async () => {
           const settled = await waitForFiatOrder(order.id);
           queryClient.invalidateQueries({ queryKey: ["fiat"] });
-          if (settled === "returned")
+          if (settled === "returned") {
+            flow.failed("payout_returned");
             toastFailed("The bank payout failed. Your USDC was returned.");
-          else if (settled === "completed") toastPaidOut();
+          } else if (settled === "completed") {
+            flow.succeeded();
+            toastPaidOut();
+          }
         })();
       }
       return start;

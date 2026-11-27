@@ -38,6 +38,7 @@ import {
   useSendExecutor,
   type SendStart,
 } from "@/hooks/useSendExecutor";
+import { bucketAmount, trackFlow } from "@/utils/analytics";
 import { groupAccountNumber, type BankRecipient } from "./bankAccount";
 import { BankLogo } from "./BankLogo";
 import { BankSheetFooter, BankSheetTop, DISPLAY } from "./BankSheetParts";
@@ -153,10 +154,21 @@ function CryptoAmountStep({
       }}
       onBack={onBack}
       onContinue={(amount) =>
-        sendCrypto(recipient, amount, {
-          mint: token.mint,
-          decimals: token.decimals,
-        })
+        sendCrypto(
+          recipient,
+          amount,
+          { mint: token.mint, decimals: token.decimals },
+          {
+            flow: trackFlow("send", {
+              rail: "wallet",
+              token: token.symbol,
+              amount_bucket:
+                price === null
+                  ? undefined
+                  : bucketAmount(Number(amount) * price),
+            }),
+          }
+        )
       }
       onSending={onClose}
     />

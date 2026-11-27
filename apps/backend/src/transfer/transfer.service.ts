@@ -76,6 +76,8 @@ import type {
   TransferRow,
 } from './dtos';
 import { ReconcilerService } from '../activity/reconciler.service';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
+import { bucketAmount } from '../analytics/redact';
 
 const SOL_DECIMALS = 9;
 /** What an account with no data needs to stay open. */
@@ -175,6 +177,7 @@ export class TransferService {
     private readonly ramps: RampActivityService,
     @Inject(TOKEN_PRICE_PROVIDER) private readonly prices: TokenPriceProvider,
     @Optional() private readonly feePayer?: FeePayerWatchService,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {
     // Pull the stablecoin mint allowlist from env so devnet vs mainnet
     // mints can swap without code changes.
@@ -623,12 +626,22 @@ export class TransferService {
         `transfer.submit.rpc_failed intent_id=${req.intentId} vault_spend=${intent.vaultSpend}`,
         err instanceof Error ? (err.stack ?? err.message) : String(err),
       );
-      if (isFeePayerShortfall(err)) {
+      const feePayerShort = isFeePayerShortfall(err);
+      if (feePayerShort) {
         this.logger.error(
           `transfer.submit.fee_payer_short intent_id=${req.intentId}`,
         );
         void this.feePayer?.onShortfall();
       }
+      this.analytics?.capture(
+        'server_transfer_failed',
+        { consumerId: userId },
+        {
+          ...this.analyticsProps(intent, null),
+          step: 'broadcast',
+          reason: feePayerShort ? 'fee_payer_short' : 'rpc_unavailable',
+        },
+      );
       throw new RpcUnavailableError(
         'sendRawTransaction failed; no transfer row written',
         err,
@@ -691,6 +704,22 @@ export class TransferService {
     // 6. Erase the intent: it has served its purpose.
     await this.prepared.delete(intentKey(req.intentId));
 
+    const props = this.analyticsProps(intent, usdValue);
+    this.analytics?.capture(
+      'server_transfer_submitted',
+      { consumerId: userId },
+      props,
+    );
+    // The webhook confirmed this send before the row above was written, so
+    // the tailer had no PENDING row to finalize and this is the transition.
+    if (row.status === 'CONFIRMED') {
+      this.analytics?.capture(
+        'server_transfer_confirmed',
+        { consumerId: userId },
+        props,
+      );
+    }
+
     // 7. The webhook normally finalizes the row; this is the fallback for a
     //    delivery that never comes.
     this.reconciler.armPendingCheck();
@@ -699,6 +728,14 @@ export class TransferService {
       transferId: row.id,
       signature,
       status: 'PENDING',
+    };
+  }
+
+  private analyticsProps(intent: IntentRecord, usdValue: string | null) {
+    return {
+      token: this.analytics?.tokenSymbol(intent.mint),
+      amount_bucket: bucketAmount(usdValue === null ? null : Number(usdValue)),
+      rail: intent.vaultSpend ? 'vault' : 'wallet',
     };
   }
 

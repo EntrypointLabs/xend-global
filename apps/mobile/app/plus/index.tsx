@@ -10,6 +10,7 @@ export default function PryddPlusScreen() {
       title="Prydd Plus"
       subtitle="A membership for people who use Prydd every day."
       benefits={PRYDD_PLUS_BENEFITS}
+      feature="plus"
     />
   );
 }

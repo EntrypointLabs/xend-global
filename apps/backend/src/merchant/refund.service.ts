@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { and, eq, isNull, ne } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
@@ -11,6 +11,8 @@ import {
 import { findVaultAddress } from '../capability/vault-address';
 import { SettlementRouter } from '../settlement/settlement-router';
 import { IdempotencyService } from './idempotency.service';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
+import { bucketUsdcRaw, reasonCode } from '../analytics/redact';
 import {
   IdempotencyKeyRequiredError,
   PaymentNotRefundableError,
@@ -53,7 +55,28 @@ export class RefundService {
     private readonly db: DbService,
     private readonly router: SettlementRouter,
     private readonly idempotency: IdempotencyService,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {}
+
+  /** Reached only by the request that inserted the refund row, so once per refund. */
+  private report(
+    payment: typeof payments.$inferSelect,
+    requested: bigint,
+    provider: string,
+    failure?: unknown,
+  ) {
+    this.analytics?.capture(
+      failure === undefined ? 'server_refund_issued' : 'server_refund_failed',
+      { merchantId: payment.merchantId },
+      {
+        merchant_id: payment.merchantId,
+        payment_id: payment.id,
+        amount_bucket: bucketUsdcRaw(requested),
+        provider,
+        ...(failure === undefined ? {} : { reason: reasonCode(failure) }),
+      },
+    );
+  }
 
   async refund(params: RefundParams): Promise<RefundObject> {
     if (!params.idempotencyKey) {
@@ -153,6 +176,7 @@ export class RefundService {
       this.logger.log(
         `refund.reverse refund_id=${inserted.row.id} payment_id=${payment.id} amount_raw=${requested} simulated=true`,
       );
+      this.report(payment, requested, 'test');
       return {
         status: 200,
         body: this.toRefundObject({
@@ -230,6 +254,7 @@ export class RefundService {
       this.logger.log(
         `refund.reverse refund_id=${refundRow.id} payment_id=${payment.id} amount_raw=${requested} signature=${signature}`,
       );
+      this.report(payment, requested, account.provider);
 
       return {
         status: 200,
@@ -248,6 +273,7 @@ export class RefundService {
         .update(refunds)
         .set({ status: 'failed', updatedAt: new Date() })
         .where(eq(refunds.id, refundRow.id));
+      this.report(payment, requested, account.provider, err);
       throw err;
     }
   }

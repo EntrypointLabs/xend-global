@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Montserrat } from "next/font/google";
 import Link from "next/link";
+import { AnalyticsScreens } from "@/components/AnalyticsScreens";
 import { CartProvider } from "@/components/CartProvider";
 import { Header } from "@/components/Header";
 import "./globals.css";
@@ -35,6 +36,7 @@ export default function RootLayout({
       className={`${geist.variable} ${geistMono.variable} ${montserrat.variable}`}
     >
       <body className="flex min-h-dvh flex-col font-sans">
+        <AnalyticsScreens />
         <CartProvider>
           <Header />
           <main className="flex-1">{children}</main>

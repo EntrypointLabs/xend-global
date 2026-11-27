@@ -8,6 +8,7 @@ import type { FiatOrder, FiatQuote, StoredFiatOrder } from './fiat.types';
 import { FiatError } from './fiat.errors';
 import type { FiatVerificationService } from './verification/verification.service';
 import { decimalToMinor, minorToDecimal } from './fiat-money';
+import type { ServerAnalytics } from '../analytics/server-analytics.service';
 
 jest.mock('./fiat.repository', () => ({ FIAT_STORE: Symbol('test-store') }));
 
@@ -497,6 +498,54 @@ describe('FiatService real ramp orders', () => {
     const { orders } = await service.list('ada');
     expect(orders.find((o) => o.quote.id === refused.id)?.status).toBe(
       'failed',
+    );
+  });
+
+  it('reports a deposit created and completed once each, in naira ranges', async () => {
+    const config = {
+      get: (key: string) =>
+        ({ NODE_ENV: 'test', FIAT_ENABLED_PROVIDERS: 'paj' })[key],
+    } as unknown as ConfigService;
+    const analytics = { capture: jest.fn<void, [string, unknown, unknown]>() };
+    const reporting = new FiatService(
+      new FiatProviderRegistry([ramp], config),
+      new RampStore(),
+      {
+        verifiedCustomerId: async () => null,
+      } as unknown as FiatVerificationService,
+      config,
+      analytics as unknown as ServerAnalytics,
+    );
+    const q = await reporting.quote('ada', {
+      routeId: 'paj:ngn-usdc',
+      amountMinor: String(12_345 * 100),
+    });
+    const order = await reporting.create('ada', {
+      quoteId: q.id,
+      idempotencyKey: 'key-analytics',
+      fields: {},
+    });
+    reported = { status: 'completed' };
+    await reporting.refreshFromProvider('paj', `ref-${order.id}`);
+    await reporting.refreshFromProvider('paj', `ref-${order.id}`);
+
+    const events = analytics.capture.mock.calls.map((call) => call[0]);
+    expect(events).toEqual([
+      'server_fiat_order_created',
+      'server_fiat_order_completed',
+    ]);
+    expect(analytics.capture).toHaveBeenLastCalledWith(
+      'server_fiat_order_completed',
+      { consumerId: 'ada' },
+      {
+        provider: 'paj',
+        amount_bucket: '10k-50k',
+        currency: 'NGN',
+        status: 'completed',
+      },
+    );
+    expect(JSON.stringify(analytics.capture.mock.calls)).not.toMatch(
+      /12345|1234500/,
     );
   });
 

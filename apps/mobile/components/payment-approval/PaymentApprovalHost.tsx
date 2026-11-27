@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 import { FullWindowOverlay } from "react-native-screens";
 
@@ -6,7 +6,10 @@ import { PaymentApprovalTakeover } from "@/components/payment-approval/PaymentAp
 import { useAuth } from "@/contexts/AuthContext";
 import { useAppLock } from "@/contexts/AppLockContext";
 import { useAwaitingPayments } from "@/hooks/useAwaitingPayments";
-import { usePaymentApprovalFlow } from "@/hooks/usePaymentApprovalFlow";
+import {
+  paymentApprovalFlow,
+  usePaymentApprovalFlow,
+} from "@/hooks/usePaymentApprovalFlow";
 import type { AwaitingPayment } from "@/utils/apiClient";
 import {
   deferApproval,
@@ -56,6 +59,16 @@ export function PaymentApprovalHost() {
     waiting.find((p) => !deferred.has(p.reference)) ||
     null;
   const payment = pinned ?? candidate;
+  const shown =
+    isAuthenticated && sessionTier === "full" && !isLocked ? payment : null;
+
+  // Once per Payment: the lock hides and reshows the same one.
+  const startedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!shown || startedFor.current === shown.reference) return;
+    startedFor.current = shown.reference;
+    paymentApprovalFlow(shown).started();
+  }, [shown]);
 
   const close = useCallback(() => {
     if (payment) {
@@ -67,7 +80,11 @@ export function PaymentApprovalHost() {
   }, [flow, payment]);
 
   const later = useCallback(() => {
-    if (payment) deferApproval(payment.reference);
+    if (payment) {
+      if (flow.phase.kind === "idle")
+        paymentApprovalFlow(payment).cancelled({ step: "later" });
+      deferApproval(payment.reference);
+    }
     setPinned(null);
     flow.reset();
   }, [flow, payment]);

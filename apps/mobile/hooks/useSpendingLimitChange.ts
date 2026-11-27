@@ -23,6 +23,7 @@ import {
   type AccountResponse,
   type SpendingLimitChangeStep,
 } from "@/utils/apiClient";
+import { trackFlow } from "@/utils/analytics";
 
 /** Propose, approve, approve, then execute a day later, plus one re-signature. */
 const MAX_STEPS = 6;
@@ -206,10 +207,18 @@ export function useFinishSpendingLimitChange() {
       change?.transactionIndex ?? "none",
     ],
     queryFn: async () => {
-      const outcome = await runSpendingLimitChange(
-        account as AccountResponse,
-        (await wallet!.getProvider()) as SolanaProvider
-      );
+      const flow = trackFlow("spending_limit_change", { step: "finish" });
+      let outcome: SpendingLimitChangeOutcome;
+      try {
+        outcome = await runSpendingLimitChange(
+          account as AccountResponse,
+          (await wallet!.getProvider()) as SolanaProvider
+        );
+      } catch (err) {
+        flow.failed(err);
+        throw err;
+      }
+      if (outcome.finished) flow.succeeded();
       invalidateAfterChange(queryClient);
       return outcome;
     },

@@ -27,6 +27,7 @@ import { hardwareKey } from "@/modules/hardware-key/src";
 import { Email } from "@/types/Auth";
 import { apiClient, apiErrorCode, apiErrorStatus } from "@/utils/apiClient";
 import { cn } from "@/utils/cn";
+import { analytics, errorReason, trackFlow } from "@/utils/analytics";
 import { AuthAtmosphere } from "@/components/ui/molecules/AuthAtmosphere";
 import {
   AUTH_BRAND_BLUE,
@@ -195,6 +196,11 @@ function AddEmailScreen() {
 
     setError(null);
     setSaving(true);
+    if (signedIn) {
+      trackFlow("account_setup", { step: "email" }).started();
+    } else {
+      analytics.track("auth_login_started", { method: "email" });
+    }
     try {
       if (signedIn) {
         await apiClient.requestContactEmailCode(parsed.data);
@@ -205,6 +211,7 @@ function AddEmailScreen() {
       setStep("code");
     } catch (err) {
       console.error("[add-email] could not send the code", err);
+      trackEmailFailure(err);
       const status = apiErrorStatus(err);
       setError(
         status === 409
@@ -229,6 +236,7 @@ function AddEmailScreen() {
     try {
       if (signedIn) {
         await apiClient.setContactEmail(claimed, entered);
+        trackFlow("account_setup", { step: "email" }).succeeded();
         setSessionEmail(claimed);
         // The one moment the fingerprint prompts it costs read as part of
         // signing up rather than as an ambush on an empty dashboard.
@@ -241,15 +249,24 @@ function AddEmailScreen() {
           // passkey runs right here: succeeding lands them signed in fully,
           // and anything else stays on this screen as a retry.
           await enterWithEmail(proof);
+          analytics.track("auth_login_succeeded", {
+            method: "email",
+            is_new_user: false,
+          });
           setEntryUserId(proof.user.id);
           await unlock(proof.user.id);
           return;
         }
+        analytics.track("auth_login_succeeded", {
+          method: "email",
+          is_new_user: true,
+        });
         setSignupToken(proof.signupToken);
         setStep("passkey");
       }
     } catch (err) {
       console.error("[add-email] could not confirm the code", err);
+      trackEmailFailure(err);
       const status = apiErrorStatus(err);
       const code = apiErrorCode(err);
       setError(
@@ -267,6 +284,17 @@ function AddEmailScreen() {
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const trackEmailFailure = (err: unknown) => {
+    if (signedIn) {
+      trackFlow("account_setup", { step: "email" }).failed(err);
+    } else {
+      analytics.track("auth_login_failed", {
+        method: "email",
+        reason: errorReason(err),
+      });
     }
   };
 
@@ -295,6 +323,7 @@ function AddEmailScreen() {
    * worse than the degraded state it protects against.
    */
   const onSkipAccountSetup = () => {
+    trackFlow("account_setup", { step: "enrol" }).cancelled();
     clearSetupError();
     done();
   };

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createAssociatedTokenAccountIdempotentInstruction } from '@solana/spl-token';
 import {
@@ -25,6 +25,8 @@ import {
 } from '@prydd/smart-account';
 
 import { AccountCreationError } from '../account/account.errors';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
+import { bucketAmount } from '../analytics/redact';
 import {
   ABOVE_LIMIT_POLICY_SEED,
   SQUADS_ACCOUNT_STORE,
@@ -147,6 +149,7 @@ export class SwapService {
     private readonly authority: SettlementAuthoritySigner,
     @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
     @Inject(SWAP_RECORDS) private readonly records: SwapRecords,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {}
 
   /**
@@ -549,9 +552,29 @@ export class SwapService {
       throw new SwapMismatchError('the swap is missing a signature');
     }
 
-    const signature = await this.authority.signAndSend(signedTxBase64);
+    let signature: string;
+    try {
+      signature = await this.authority.signAndSend(signedTxBase64);
+    } catch (err) {
+      this.analytics?.capture(
+        'server_swap_failed',
+        { consumerId: userId },
+        {
+          ...this.analyticsProps(prepared),
+          step: 'broadcast',
+          reason: 'broadcast_failed',
+        },
+      );
+      throw err;
+    }
     await this.prepared.delete(key);
     this.logger.log(`swap.submitted userId=${userId} signature=${signature}`);
+    // Once per swap: the pin is gone, so a replay is refused above.
+    this.analytics?.capture(
+      'server_swap_submitted',
+      { consumerId: userId },
+      this.analyticsProps(prepared),
+    );
     // The swap is already on its way, so a label that fails to save costs
     // Activity a word and must not turn a broadcast swap into an error.
     await this.records.record({ ...prepared, signature }).catch((cause) => {
@@ -560,6 +583,25 @@ export class SwapService {
       );
     });
     return { signature };
+  }
+
+  /** Sized by whichever side is a dollar stablecoin; a SOL-to-token swap has no size. */
+  private analyticsProps(swap: PreparedSwap) {
+    const token = this.analytics?.tokenSymbol(swap.inputMint);
+    const toToken = this.analytics?.tokenSymbol(swap.outputMint);
+    const dollars = (raw: string, decimals: number) =>
+      bucketAmount(Number(raw) / 10 ** decimals);
+    const stable = (symbol: string | undefined) =>
+      symbol === 'USDC' || symbol === 'USDT';
+    return {
+      token,
+      to_token: toToken,
+      amount_bucket: stable(token)
+        ? dollars(swap.amountInRaw, swap.inputDecimals)
+        : stable(toToken)
+          ? dollars(swap.amountOutRaw, swap.outputDecimals)
+          : undefined,
+    };
   }
 
   private assertAvailable(): void {

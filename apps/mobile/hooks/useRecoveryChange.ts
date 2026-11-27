@@ -24,6 +24,7 @@ import {
   type AccountResponse,
   type RecoveryChangeStep,
 } from "@/utils/apiClient";
+import { trackFlow } from "@/utils/analytics";
 
 /**
  * Propose, approve, approve, then execute a day later. Six absorbs a step that
@@ -192,10 +193,18 @@ export function useFinishRecoveryChange() {
   return useQuery({
     queryKey: ["recovery-change", "finish", waiting || "none"],
     queryFn: async () => {
-      const outcome = await runRecoveryChange(
-        account as AccountResponse,
-        (await wallet!.getProvider()) as SolanaProvider
-      );
+      const flow = trackFlow("recovery_change", { step: "finish" });
+      let outcome: RecoveryChangeOutcome;
+      try {
+        outcome = await runRecoveryChange(
+          account as AccountResponse,
+          (await wallet!.getProvider()) as SolanaProvider
+        );
+      } catch (err) {
+        flow.failed(err);
+        throw err;
+      }
+      if (outcome.finished) flow.succeeded();
       invalidateAfterChange(queryClient);
       return outcome;
     },

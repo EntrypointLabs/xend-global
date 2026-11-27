@@ -30,6 +30,7 @@ import {
 } from "@/hooks/useSheetStack";
 import { TokenPickerSheet } from "@/components/swap/TokenPickerSheet";
 import { getUsdcMint } from "@/utils/cluster";
+import { trackFlow } from "@/utils/analytics";
 import type { BankRecipient, SendMode } from "./bankAccount";
 
 export interface SendFlowModalRef {
@@ -95,6 +96,12 @@ export const SendFlowModal = forwardRef<BottomSheetModal, SendFlowModalProps>(
     );
 
     const showAmount = () => {
+      if (mode === "bank")
+        trackFlow("naira_withdraw", {
+          rail: "bank",
+          provider: "paycrest",
+        }).started();
+      else trackFlow("send", { rail: "wallet" }).started();
       setStep("Amount");
       Keyboard.dismiss();
       translateX.value = withSpring(-SCREEN_WIDTH, springConfig);

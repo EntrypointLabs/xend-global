@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
 import {
@@ -15,6 +15,7 @@ import {
   PREPARED_TX_TTL_SECONDS,
 } from '../prepared/prepared-tx.interface';
 import type { PreparedTxStore } from '../prepared/prepared-tx.interface';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
 import { AccountCreationError } from './account.errors';
 import {
   ABOVE_LIMIT_POLICY_SEED,
@@ -71,6 +72,7 @@ export class ProvisioningService {
      * intents.
      */
     @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {}
 
   async prepareNext(userId: string): Promise<ProvisioningPlan> {
@@ -110,6 +112,7 @@ export class ProvisioningService {
       unsigned.messageBase64,
       PREPARED_TX_TTL_SECONDS,
     );
+    await this.prepared.set(stepKey(userId), step, PREPARED_TX_TTL_SECONDS);
 
     this.logger.log(
       `provisioning.step userId=${userId} step=${step} index=${transactionIndex}`,
@@ -140,14 +143,22 @@ export class ProvisioningService {
     }
 
     await this.assertMatchesPreparedStep(userId, signedTxBase64);
+    const step = await this.prepared.get<ProvisioningStep>(stepKey(userId));
 
     const signature = await this.chain.submit(signedTxBase64);
     // Spent: a signed step is submitted once, and a replay has to prepare
     // again against the chain's current index.
     await this.prepared.delete(preparedKey(userId));
+    await this.prepared.delete(stepKey(userId));
     this.logger.log(
       `provisioning.step_landed userId=${userId} signature=${signature}`,
     );
+    // Either of these executes the change, and the chain confirmed it above.
+    if (step === 'provision' || step === 'execute') {
+      this.analytics?.capture('server_account_provisioned', {
+        consumerId: userId,
+      });
+    }
     return signature;
   }
 
@@ -321,4 +332,8 @@ function nextStep(
 
 function preparedKey(userId: string): string {
   return `provisioning:${userId}`;
+}
+
+function stepKey(userId: string): string {
+  return `provisioning-step:${userId}`;
 }

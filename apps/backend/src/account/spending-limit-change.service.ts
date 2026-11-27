@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
 import { ConfigService } from '@nestjs/config';
 import {
   PublicKey,
@@ -151,6 +152,7 @@ export class SpendingLimitChangeService {
      * `submit`, so the only bytes it will ever sign are bytes this built.
      */
     @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {}
 
   /**
@@ -324,10 +326,17 @@ export class SpendingLimitChangeService {
         limit: limitOf(staged),
         previous: staged.previous,
       });
-      await this.events.recordSettingsChangeExecuted(userId, {
+      const recorded = await this.events.recordSettingsChangeExecuted(userId, {
         changeIndex: staged.changeIndex,
         subject: limitOf(staged),
       });
+      if (recorded) {
+        this.analytics?.capture(
+          'server_account_change_completed',
+          { consumerId: userId },
+          { kind: 'spending_limit' },
+        );
+      }
     } else {
       await this.events.recordSettingsChangeRejected(userId, {
         changeIndex: staged.changeIndex,

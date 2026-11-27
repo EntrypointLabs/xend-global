@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { lookupOrders, recentOrders } from "@/app/actions";
 import { rememberedOrders } from "@/components/CartProvider";
+import { analytics } from "@/lib/analytics";
 import { formatUsd } from "@/lib/catalog";
 import type { Order } from "@/lib/orders";
 
@@ -77,7 +78,9 @@ export function OrdersLookup() {
         onSubmit={async (e) => {
           e.preventDefault();
           setBusy(true);
-          setFound(await lookupOrders(email, number).catch(() => []));
+          const result = await lookupOrders(email, number).catch(() => []);
+          analytics.track("shop_order_lookup", { found: result.length > 0 });
+          setFound(result);
           setBusy(false);
         }}
       >

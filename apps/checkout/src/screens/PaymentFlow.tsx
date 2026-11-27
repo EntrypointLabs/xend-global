@@ -15,6 +15,7 @@ import { ConfirmSheet } from './ConfirmSheet';
 import { CancelButton, ExpiredNotice, PayButton } from './PayButton';
 import { PaymentSheet } from './PaymentSheet';
 import { quoteExpired, useQuoteExpired } from '../lib/useQuoteExpired';
+import { analytics, intentAmountBucket } from '../lib/analytics';
 
 export interface PaymentFlowProps {
   intent: IntentView;
@@ -46,6 +47,10 @@ function PaymentFlowInner({
     [],
   );
 
+  useEffect(() => {
+    if (expired) analytics.track('checkout_quote_expired', {});
+  }, [expired]);
+
   /**
    * The whole Payment, in the order the security model requires: prove who the
    * Consumer is, get the Spend the backend built out of their Account, sign it
@@ -63,11 +68,18 @@ function PaymentFlowInner({
     setBusy(true);
     setFailed(false);
     setWrongPasskey(false);
+    analytics.track('checkout_confirmed', {
+      amount_bucket: intentAmountBucket(intent),
+    });
+    analytics.track('checkout_sign_in_started', { method: 'passkey' });
     // No awaited fetch before the ceremony call, so Safari user activation holds.
     // A recognised Session runs it too, and sends the identity it proves: the
     // backend then authorizes whoever owns the passkey just chosen, not the
     // Session's Consumer, so a different or unfinished identity is caught.
-    const credential = runCeremony().then((result) => result.providerToken);
+    const credential = runCeremony().then((result) => {
+      analytics.track('checkout_signed_in', { method: 'passkey' });
+      return result.providerToken;
+    });
 
     credential
       .then((providerToken) =>
@@ -98,6 +110,10 @@ function PaymentFlowInner({
         ) {
           // Nothing was charged and the intent is still payable: let the
           // shopper pick another passkey here instead of ending the checkout.
+          analytics.track('checkout_failed', {
+            reason: 'unknown_consumer',
+            stage: 'sign_in',
+          });
           await forgetIdentity().catch(() => undefined);
           setWrongPasskey(true);
           return;

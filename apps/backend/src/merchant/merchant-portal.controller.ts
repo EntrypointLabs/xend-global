@@ -11,11 +11,13 @@ import {
   Put,
   ConflictException,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { DbService } from '../db/db.service';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
 import {
   apiKeys,
   MERCHANT_CATEGORIES,
@@ -91,6 +93,7 @@ export class MerchantPortalController {
     private readonly config: ConfigService,
     private readonly audit: MerchantAuditService,
     private readonly logos: MerchantLogoService,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {}
 
   /** What shoppers see in the Prydd app next to this Merchant's Payments. */
@@ -240,7 +243,7 @@ export class MerchantPortalController {
     const identity = await this.owner.identity(authorization);
     // Concurrent signup requests resolve to the same Merchant. No client can
     // attach itself to a pre-existing Merchant by supplying an id or email.
-    await this.db.client
+    const [created] = await this.db.client
       .insert(merchants)
       .values({
         ownerProviderId: identity.providerUserId,
@@ -250,7 +253,13 @@ export class MerchantPortalController {
         allowedOrigins: [body.origin],
         settlementTermsAcceptedAt: new Date(),
       })
-      .onConflictDoNothing({ target: merchants.ownerProviderId });
+      .onConflictDoNothing({ target: merchants.ownerProviderId })
+      .returning({ id: merchants.id });
+    if (created) {
+      this.analytics?.capture('server_merchant_registered', {
+        merchantId: created.id,
+      });
+    }
     return this.dashboard(await this.owner.ownedForIdentity(identity));
   }
 

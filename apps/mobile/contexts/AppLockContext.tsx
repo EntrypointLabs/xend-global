@@ -14,6 +14,7 @@ import { AuthStorage } from "@/utils/storage/authStorage";
 import { hasLinkedPasskey } from "@/utils/auth";
 import { privacyCover } from "@/modules/privacy-cover/src";
 import { isSystemPromptOpen, withSystemPrompt } from "@/utils/systemPrompt";
+import { analytics } from "@/utils/analytics";
 
 // Dev-only escape hatch for automated / e2e testing, where a fingerprint can't
 // be supplied. Safe to commit: gated behind `__DEV__`, so a release build can
@@ -118,6 +119,7 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
       // can't satisfy; they already cleared email OTP + passkey to get here.
       if (!hasHardware || !isEnrolled) {
         setIsLocked(false);
+        analytics.track("app_unlocked", { method: "none" });
         return true;
       }
 
@@ -130,6 +132,9 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
       );
       if (result.success) {
         setIsLocked(false);
+        // The result does not say whether the device passcode stood in for
+        // the biometric, so both count as one.
+        analytics.track("app_unlocked", { method: "biometric" });
         return true;
       }
       return false;

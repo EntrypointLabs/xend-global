@@ -15,6 +15,7 @@ import Animated, {
 
 import HapticPressable from "@/components/ui/atoms/HapticPressable";
 import { Typography } from "@/components/ui/atoms/Typography";
+import { analytics } from "@/utils/analytics";
 
 export interface FeatureBenefit {
   icon: keyof typeof Ionicons.glyphMap;
@@ -31,6 +32,8 @@ interface FeaturePreviewScreenProps {
   benefits: FeatureBenefit[];
   /** Overrides the default "Coming soon" label. */
   footnote?: string;
+  /** Slug reported when the Coming soon footer is tapped. */
+  feature?: string;
 }
 
 const SCREEN_BLACK = "#0A0A0B";
@@ -63,6 +66,7 @@ export function FeaturePreviewScreen({
   subtitle,
   benefits,
   footnote = "Coming soon",
+  feature,
 }: FeaturePreviewScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -182,6 +186,11 @@ export function FeaturePreviewScreen({
             accessibilityRole="button"
             accessibilityState={{ disabled: true }}
             accessibilityLabel={`${title}, ${footnote}`}
+            onTouchEnd={
+              feature
+                ? () => analytics.track("coming_soon_tapped", { feature })
+                : undefined
+            }
             className="mt-6 items-center rounded-full bg-white/10 py-5"
           >
             <Typography weight="600" className="text-[17px] text-white/50">

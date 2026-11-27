@@ -40,6 +40,7 @@ import { useInvestments } from "@/hooks/useInvestments";
 import { usePalette } from "@/hooks/usePalette";
 import { formatMoney } from "@/utils/balances";
 import { cn } from "@/utils/cn";
+import { analytics } from "@/utils/analytics";
 
 /**
  * Where Home's total sits, in points from the screen's top left. The page
@@ -115,10 +116,10 @@ export default function BalanceScreen() {
   const close = useCallback(() => closeThen(goBack), [closeThen, goBack]);
   // Earn is a place to do things, not a balance to glance at, so it gets its
   // own page: the overlay closes and Earn takes its place on the stack.
-  const openEarn = useCallback(
-    () => closeThen(goToEarn),
-    [closeThen, goToEarn]
-  );
+  const openEarn = useCallback(() => {
+    analytics.track("feature_opened", { feature: "earn", source: "balance" });
+    closeThen(goToEarn);
+  }, [closeThen, goToEarn]);
 
   const push = useCallback(
     (layer: Layer) => {
@@ -130,7 +131,13 @@ export default function BalanceScreen() {
     },
     [slide, stack.length]
   );
-  const open = useCallback((key: PaneKey) => push({ kind: key }), [push]);
+  const open = useCallback(
+    (key: PaneKey) => {
+      analytics.track("feature_opened", { feature: key, source: "balance" });
+      push({ kind: key });
+    },
+    [push]
+  );
   const back = useCallback(() => {
     const depth = stack.length - 1;
     const trim = (to: number) => setStack((layers) => layers.slice(0, to));

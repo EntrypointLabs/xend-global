@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { retryBackoff } from '../common/retry-backoff';
 import { ConfigService } from '@nestjs/config';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
 import { DbService } from '../db/db.service';
 import { webhookDeliveries, webhookEndpoints } from '../db/schema';
 import { assertPublicHttpsUrl } from '../common/url-safety';
@@ -32,6 +33,7 @@ export class WebhookDeliveryService {
   constructor(
     private readonly db: DbService,
     private readonly config: ConfigService,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {}
 
   /**
@@ -120,7 +122,13 @@ export class WebhookDeliveryService {
         return;
       }
 
-      await this.recordFailure(delivery, res.status, bodyText, durationMs);
+      await this.recordFailure(
+        delivery,
+        res.status,
+        bodyText,
+        durationMs,
+        endpoint.merchantId,
+      );
     } catch (err) {
       const durationMs = Date.now() - t0;
       // A refused redirect, network error, SSRF rejection, or timeout all land
@@ -130,6 +138,7 @@ export class WebhookDeliveryService {
         null,
         err instanceof Error ? err.message.slice(0, 256) : 'error',
         durationMs,
+        endpoint.merchantId,
       );
     }
   }
@@ -139,10 +148,11 @@ export class WebhookDeliveryService {
     responseStatus: number | null,
     responseBody: string,
     durationMs: number,
+    merchantId?: string,
   ): Promise<void> {
     const maxAttempts = this.config.getOrThrow<number>('WEBHOOK_MAX_ATTEMPTS');
     if (delivery.attemptNo >= maxAttempts) {
-      await this.db.client
+      const [givenUp] = await this.db.client
         .update(webhookDeliveries)
         .set({
           status: 'exhausted',
@@ -151,7 +161,27 @@ export class WebhookDeliveryService {
           durationMs,
           nextRetryAt: null,
         })
-        .where(eq(webhookDeliveries.id, delivery.id));
+        .where(
+          and(
+            eq(webhookDeliveries.id, delivery.id),
+            ne(webhookDeliveries.status, 'exhausted'),
+          ),
+        )
+        .returning({ id: webhookDeliveries.id });
+      if (givenUp && merchantId) {
+        this.analytics?.capture(
+          'server_webhook_delivery_failed',
+          { merchantId },
+          {
+            merchant_id: merchantId,
+            attempt: delivery.attemptNo,
+            reason:
+              responseStatus === null
+                ? 'no_response'
+                : `http_${responseStatus}`,
+          },
+        );
+      }
       this.logger.warn(
         `webhook.exhausted delivery_id=${delivery.id} event_id=${delivery.eventId} endpoint_id=${delivery.endpointId}`,
       );

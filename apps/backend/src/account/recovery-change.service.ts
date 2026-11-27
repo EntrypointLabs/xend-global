@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
 import {
   PublicKey,
   VersionedTransaction,
@@ -90,6 +91,7 @@ export class RecoveryChangeService {
      * `submit`, so the only bytes it will ever sign are bytes this built.
      */
     @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {}
 
   /**
@@ -128,10 +130,17 @@ export class RecoveryChangeService {
       if (executed) {
         await this.assertLanded(userId, account, open.changeIndex);
         await this.recovery.settle(userId, open.changeIndex);
-        await this.events.recordSettingsChangeExecuted(userId, {
-          changeIndex: open.changeIndex,
-          subject,
-        });
+        const recorded = await this.events.recordSettingsChangeExecuted(
+          userId,
+          { changeIndex: open.changeIndex, subject },
+        );
+        if (recorded) {
+          this.analytics?.capture(
+            'server_account_change_completed',
+            { consumerId: userId },
+            { kind: 'recovery' },
+          );
+        }
       } else {
         await this.recovery.abandon(userId, open.changeIndex);
         await this.events.recordSettingsChangeRejected(userId, {

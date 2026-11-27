@@ -13,6 +13,7 @@ import {
 } from "@/hooks/useRecoveryKeys";
 import { apiErrorStatus } from "@/utils/apiClient";
 import { usePalette } from "@/hooks/usePalette";
+import { trackFlow } from "@/utils/analytics";
 
 /**
  * The code step, between giving an address and reviewing the key it becomes.
@@ -52,6 +53,9 @@ export default function ConfirmRecoveryEmailScreen() {
           : { email, grantId },
       } as never);
     } catch (err) {
+      trackFlow("recovery_change", {
+        rail: changing ? "email_change" : "email",
+      }).failed(err, { step: "verify" });
       const status = apiErrorStatus(err);
       setError(
         status === 401

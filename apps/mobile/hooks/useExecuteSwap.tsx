@@ -32,6 +32,8 @@ import { getSolanaConnection } from "@/utils/chainReads";
 import { isUserCanceledSign } from "@/utils/signing";
 import { isSwapQuoteExpired, type SwapQuote } from "@/utils/swap";
 import { showToast } from "@/utils/toast";
+import { trackFlow } from "@/utils/analytics";
+import type { FlowProps } from "@prydd/analytics";
 import { checkSwap, MISMATCH_MESSAGE } from "@/utils/verifyTransaction";
 
 export type SwapOutcome =
@@ -73,13 +75,26 @@ export function useExecuteSwap() {
   const [isExecuting, setIsExecuting] = useState(false);
 
   const execute = useCallback(
-    async (quote: SwapQuote, pair: SwapPair): Promise<SwapOutcome> => {
+    async (
+      quote: SwapQuote,
+      pair: SwapPair,
+      track?: FlowProps
+    ): Promise<SwapOutcome> => {
+      const flow = trackFlow("swap", {
+        token: pair.pay.symbol,
+        to_token: pair.receive.symbol,
+        ...track,
+      });
       const wallet = embedded.wallets?.[0];
-      if (!wallet || !account) return { status: "failed", message: NOT_READY };
+      if (!wallet || !account) {
+        flow.failed("not_ready");
+        return { status: "failed", message: NOT_READY };
+      }
 
       // Checked here as well as on screen: a quote can lapse between the tap
       // and this running.
       if (isSwapQuoteExpired(quote, Date.now())) {
+        flow.failed("quote_expired");
         return { status: "failed", message: PRICE_EXPIRED };
       }
 
@@ -97,6 +112,7 @@ export function useExecuteSwap() {
           if (code === "PRICE_MOVED" || code === "QUOTE_EXPIRED") {
             void queryClient.invalidateQueries({ queryKey: ["swapQuote"] });
           }
+          flow.failed(code);
           return { status: "failed", message };
         }
 
@@ -125,6 +141,7 @@ export function useExecuteSwap() {
           Sentry.captureException(new Error(`swap mismatch: ${mismatch}`), {
             tags: { surface: "swap" },
           });
+          flow.failed("swap_mismatch");
           return { status: "failed", message: MISMATCH_MESSAGE };
         }
 
@@ -151,10 +168,14 @@ export function useExecuteSwap() {
         } catch (error) {
           // A dismissed prompt is a decision, not a fault, and nothing has
           // been signed.
-          if (isUserCanceledSign(error)) return { status: "canceled" };
+          if (isUserCanceledSign(error)) {
+            flow.cancelled({ step: "sign" });
+            return { status: "canceled" };
+          }
           throw error;
         }
 
+        flow.submitted();
         const { signature } = await apiClient.submitSwap(signedBase64);
         addPendingSwap({
           account: account.address,
@@ -177,13 +198,16 @@ export function useExecuteSwap() {
           },
           venues: quote.venues,
         });
-        followToOutcome(signature, queryClient, {
-          vault: account.address,
-          outputMint: quote.outputMint,
-        });
+        followToOutcome(
+          signature,
+          queryClient,
+          { vault: account.address, outputMint: quote.outputMint },
+          flow
+        );
         return { status: "submitted", signature };
       } catch (error) {
         Sentry.captureException(error, { tags: { surface: "swap" } });
+        flow.failed(error);
         return { status: "failed", message: SOMETHING_WRONG };
       } finally {
         setIsExecuting(false);
@@ -210,7 +234,8 @@ const OUTCOME_POLL_MS = 1_500;
 function followToOutcome(
   signature: string,
   queryClient: QueryClient,
-  swap: { vault: string; outputMint: string }
+  swap: { vault: string; outputMint: string },
+  flow: ReturnType<typeof trackFlow>
 ) {
   showToast(
     "Swapping",
@@ -226,6 +251,7 @@ function followToOutcome(
     queryClient.invalidateQueries({ queryKey: ["balances"] });
     queryClient.invalidateQueries({ queryKey: ["transfers"] });
     if (outcome === "landed") {
+      flow.succeeded();
       // The same check that flips the toast settles the swap in Activity, so
       // the two change together instead of Activity waiting on the indexer.
       settlePendingSwap(signature);
@@ -237,6 +263,7 @@ function followToOutcome(
       const received = await readReceived(signature, swap);
       if (received) settlePendingSwap(signature, received);
     } else if (outcome === "failed") {
+      flow.failed("onchain_failed");
       // Nothing changed hands, so there is nothing for Activity to show.
       removePendingSwap(signature);
       showToast(

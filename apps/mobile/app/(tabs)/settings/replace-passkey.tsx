@@ -12,6 +12,7 @@ import { usePasskeyLogin } from "@/hooks/usePasskeyLogin";
 import { useReplacePasskey } from "@/hooks/useReplacePasskey";
 import { apiClient, apiErrorCode, apiErrorStatus } from "@/utils/apiClient";
 import { usePalette } from "@/hooks/usePalette";
+import { trackFlow } from "@/utils/analytics";
 
 type Stage = "explain" | "code" | "working" | "waiting";
 
@@ -37,10 +38,13 @@ export default function ReplacePasskeyScreen() {
 
   const sendCode = async () => {
     setError(null);
+    const flow = trackFlow("passkey_replace");
+    flow.started();
     try {
       await apiClient.requestPasskeyRotationCode();
       setStage("code");
     } catch (err) {
+      flow.failed(err, { step: "code" });
       setError(
         apiErrorStatus(err) === 429
           ? "Too many codes. Wait a few minutes and try again."
@@ -52,26 +56,34 @@ export default function ReplacePasskeyScreen() {
   const confirm = async (code: string) => {
     setError(null);
     setStage("working");
+    const flow = trackFlow("passkey_replace");
+    let step = "verify";
     try {
       const { grantId } = await apiClient.verifyPasskeyRotationCode(code);
+      step = "passkey";
       const privyIdToken = await passkey.createReplacement();
       if (!privyIdToken) {
+        flow.failed("passkey_not_created", { step });
         setError(passkey.error ?? "The passkey was not created.");
         setStage("code");
         setAttempt((n) => n + 1);
         return;
       }
       try {
+        step = "rotate";
+        flow.submitted();
         const outcome = await replacement.mutateAsync({
           grantId,
           privyIdToken,
         });
+        flow.succeeded({ step: outcome.finished ? "executed" : "staged" });
         setActiveAt(outcome.waitingUntil);
         setStage("waiting");
       } finally {
         await passkey.discardPrivySession();
       }
     } catch (err) {
+      flow.failed(err, { step });
       const status = apiErrorStatus(err);
       setError(
         apiErrorCode(err) === "PASSKEY_IN_USE"

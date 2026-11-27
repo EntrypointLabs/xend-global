@@ -5,7 +5,8 @@
     "strict": true,
     "paths": {
       "@/*": ["./*"],
-      "@prydd/smart-account": ["../../packages/smart-account/src/index.ts"]
+      "@prydd/smart-account": ["../../packages/smart-account/src/index.ts"],
+      "@prydd/analytics": ["../../packages/analytics/src/index.ts"]
     }
   },
   "include": [

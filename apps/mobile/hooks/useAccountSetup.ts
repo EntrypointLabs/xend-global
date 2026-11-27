@@ -8,6 +8,7 @@ import { useProvisionAccount } from "@/hooks/useProvisionAccount";
 import { useSweepToVault } from "@/hooks/useSweepToVault";
 import { ACCOUNT_SETUP_STATUS_KEY } from "@/hooks/useAccountSetupStatus";
 import { apiClient } from "@/utils/apiClient";
+import { trackFlow } from "@/utils/analytics";
 
 /** What the Consumer is being shown while it happens. */
 export type AccountSetupStage = "idle" | "creating" | "securing";
@@ -41,6 +42,8 @@ export function useAccountSetup() {
 
   const run = useCallback(async () => {
     setError(null);
+    const flow = trackFlow("account_setup", { step: "enrol" });
+    flow.started();
     try {
       let current = account ?? null;
 
@@ -68,9 +71,11 @@ export function useAccountSetup() {
       });
 
       setStage("idle");
+      flow.succeeded();
       return true;
     } catch (err) {
       report(err);
+      flow.failed(err);
       setStage("idle");
       setError(
         "We could not finish securing your Account. You can try again, or carry on and we will pick this up next time."

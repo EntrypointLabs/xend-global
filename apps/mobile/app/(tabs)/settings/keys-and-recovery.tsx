@@ -30,6 +30,7 @@ import { truncateAddress } from "@/utils/helper";
 import { KEY_COLORS, recoveryKeyColor } from "@/utils/keyColors";
 import type { RecoveryKey } from "@/utils/apiClient";
 import { usePalette } from "@/hooks/usePalette";
+import { trackFlow } from "@/utils/analytics";
 
 export default function KeysAndRecoveryScreen() {
   const palette = usePalette();
@@ -65,10 +66,17 @@ export default function KeysAndRecoveryScreen() {
   const onRemove = async (key: RecoveryKey) => {
     if (!account) return;
     setError(null);
+    const flow = trackFlow("recovery_change", {
+      rail: key.status === "pending_add" ? "cancel" : "remove",
+    });
+    flow.started();
     try {
       await removeKey.mutateAsync(key);
-      await change.mutateAsync(account);
+      flow.submitted();
+      const outcome = await change.mutateAsync(account);
+      flow.succeeded({ step: outcome.finished ? "executed" : "staged" });
     } catch (err) {
+      flow.failed(err);
       setError(describe(err));
     }
   };

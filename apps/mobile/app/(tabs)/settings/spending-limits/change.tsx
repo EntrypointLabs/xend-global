@@ -22,6 +22,7 @@ import {
   toUsdcRaw,
 } from "@/utils/spendingLimit";
 import { cn } from "@/utils/cn";
+import { bucketAmount, trackFlow } from "@/utils/analytics";
 
 const DISPLAY = { fontFamily: "Montserrat_900Black" } as const;
 const PRESETS = [100, 250, 500, 1_000, 2_500, 5_000];
@@ -84,6 +85,14 @@ export default function ChangeSpendingLimitScreen() {
     if (!account) return;
     if (!noLimit && (raw === null || issue)) return;
     setError(null);
+    const flow = trackFlow("spending_limit_change", {
+      rail: noLimit ? "remove" : limit ? "change" : "set",
+      amount_bucket: noLimit
+        ? undefined
+        : bucketAmount(Number(raw as bigint) / 1_000_000),
+    });
+    flow.started();
+    flow.submitted();
     try {
       const outcome = await change.mutateAsync({
         account,
@@ -91,8 +100,10 @@ export default function ChangeSpendingLimitScreen() {
           ? { remove: true }
           : { maxPerPeriod: (raw as bigint).toString() },
       });
+      flow.succeeded({ step: outcome.finished ? "executed" : "staged" });
       setStaged({ waitingUntil: outcome.waitingUntil, removed: noLimit });
     } catch (err) {
+      flow.failed(err);
       setError(describeChangeError(err));
     }
   };

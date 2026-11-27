@@ -20,6 +20,7 @@ import {
   type DeviceRotationStep,
 } from "@/utils/apiClient";
 import { assertSettings } from "@/utils/verifyTransaction";
+import { trackFlow } from "@/utils/analytics";
 
 /** Propose, approve, then execute a day later. Slack for a re-signed step. */
 const MAX_STEPS = 5;
@@ -216,10 +217,18 @@ export function useFinishDeviceRotation() {
   return useQuery({
     queryKey: ["device-rotation", "finish", pending ?? "none"],
     queryFn: async () => {
-      const outcome = await runDeviceRotation(
-        account!,
-        (await wallet!.getProvider()) as SolanaProvider
-      );
+      const flow = trackFlow("device_restore", { step: "finish" });
+      let outcome: DeviceRotationOutcome;
+      try {
+        outcome = await runDeviceRotation(
+          account!,
+          (await wallet!.getProvider()) as SolanaProvider
+        );
+      } catch (err) {
+        flow.failed(err);
+        throw err;
+      }
+      if (outcome.finished) flow.succeeded();
       invalidateAfterRotation(queryClient);
       return outcome;
     },

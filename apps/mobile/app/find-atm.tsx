@@ -7,6 +7,7 @@ export default function FindAtmScreen() {
   return (
     <FeatureIntro
       illustration="atm"
+      feature="find_atm"
       headline="Cash, wherever you land"
       benefits={[
         {

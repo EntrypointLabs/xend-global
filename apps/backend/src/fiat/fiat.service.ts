@@ -15,6 +15,9 @@ import type { FiatDirection, FiatStatus } from './fiat-provider.interface';
 import { FiatError } from './fiat.errors';
 import { nextFiatStatus, providerFiatStatus } from './fiat-state';
 import { FiatVerificationService } from './verification/verification.service';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
+import type { ServerEventName } from '../analytics/server-events';
+import { bucketNgnMinor } from '../analytics/redact';
 import {
   DEFAULT_UNVERIFIED_LIMIT_NAIRA,
   LIMIT_WINDOW_MS,
@@ -27,6 +30,11 @@ import {
 const TERMINAL: ReadonlySet<FiatStatus> = new Set([
   'completed',
   'failed',
+  'returned',
+]);
+const UNSUCCESSFUL: ReadonlySet<FiatStatus> = new Set([
+  'failed',
+  'expired',
   'returned',
 ]);
 // PAJ deletes an unpaid deposit order after 72 hours; nothing can land later.
@@ -48,7 +56,73 @@ export class FiatService {
     @Inject(FIAT_STORE) private readonly store: FiatStore,
     @Optional() private readonly verification?: FiatVerificationService,
     @Optional() private readonly config?: ConfigService,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {}
+
+  /**
+   * `store.event` with the outcome reported. The reducer runs against the
+   * locked row and only for an update not seen before, so a status it moves
+   * is moved exactly once, whichever poll or callback got there.
+   */
+  private async transition(
+    userId: string,
+    orderId: string,
+    key: string,
+    eventHash: string,
+    reduce: (order: FiatOrder) => FiatOrder,
+  ): Promise<FiatOrder> {
+    let from = null as FiatStatus | null;
+    const result = await this.store.event(
+      userId,
+      orderId,
+      key,
+      eventHash,
+      (order) => {
+        const next = reduce(order);
+        from = next.status === order.status ? null : order.status;
+        return next;
+      },
+    );
+    if (from) this.report(userId, result, from);
+    return result;
+  }
+
+  /**
+   * A naira deposit is a fiat order; a bank send is a payout. `from` is null
+   * when the order was just created. Simulated orders move no money and are
+   * left out.
+   */
+  private report(userId: string, order: FiatOrder, from: FiatStatus | null) {
+    if (!this.analytics || order.simulation) return;
+    const send = order.route.direction === 'send';
+    let event: ServerEventName | null = null;
+    if (order.status === 'completed') {
+      event = send
+        ? 'server_bank_payout_completed'
+        : 'server_fiat_order_completed';
+    } else if (
+      UNSUCCESSFUL.has(order.status) &&
+      !(from && UNSUCCESSFUL.has(from))
+    ) {
+      event = send ? 'server_bank_payout_failed' : 'server_fiat_order_failed';
+    } else if (from === null && !send) {
+      event = 'server_fiat_order_created';
+    }
+    if (!event) return;
+    this.analytics.capture(
+      event,
+      { consumerId: userId },
+      {
+        provider: order.route.provider,
+        amount_bucket: bucketNgnMinor(nairaMinorOf(order.quote)),
+        currency: 'NGN',
+        status: order.status,
+        ...(from === null && event !== 'server_fiat_order_created'
+          ? { step: 'create' }
+          : {}),
+      },
+    );
+  }
 
   private limitMinor(): bigint {
     const naira = Number(
@@ -241,7 +315,7 @@ export class FiatService {
       !!reported.refundSignature &&
       reported.refundSignature !== current.refundSignature;
     if (next === current.status && !newRefund) return current;
-    return this.store.event(
+    return this.transition(
       row.userId,
       current.id,
       newRefund
@@ -286,7 +360,7 @@ export class FiatService {
       const event = staleCreation
         ? 'creation_uncertain'
         : 'instructions_expired';
-      return this.store.event(
+      return this.transition(
         userId,
         order.id,
         `system:${event}`,
@@ -439,6 +513,7 @@ export class FiatService {
         updatedAt: new Date().toISOString(),
       };
       await this.store.save(row);
+      this.report(userId, row.order, null);
       return this.order(userId, row.order.id);
     } catch (error) {
       // A refusal means no provider order exists, so nothing needs review and
@@ -453,7 +528,10 @@ export class FiatService {
         updatedAt: new Date().toISOString(),
       };
       await this.store.save(row);
-      if (refused) throw error;
+      if (refused) {
+        this.report(userId, row.order, null);
+        throw error;
+      }
       this.logger.error(
         `fiat.create uncertain order=${row.order.id} ${error instanceof Error ? error.message : ''}`,
       );

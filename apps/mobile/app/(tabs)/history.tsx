@@ -29,6 +29,7 @@ import {
   type ActivityEntry,
 } from "@/utils/activity";
 import { requestApproval } from "@/utils/approvalRequests";
+import { analytics } from "@/utils/analytics";
 
 export default function HistoryScreen() {
   const address = useWalletAddress();
@@ -99,6 +100,13 @@ export default function HistoryScreen() {
   usePendingWatch(transferRows.some((row) => row.status === "pending"));
 
   const handleItemPress = useCallback((item: ActivityEntry) => {
+    analytics.track("transaction_opened", {
+      kind: item.swap
+        ? "swap"
+        : item.kind === "transfer"
+          ? item.direction
+          : item.kind,
+    });
     // An unfinished Payment is the one row here that is an instruction rather
     // than a record. There is no receipt to open, so it goes where it can be
     // finished instead.

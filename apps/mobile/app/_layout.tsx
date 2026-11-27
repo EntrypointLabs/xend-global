@@ -38,6 +38,7 @@ import { FullWindowOverlay } from "react-native-screens";
 import { privacyCover } from "@/modules/privacy-cover/src";
 import { FrostBlurView } from "@/components/ui/atoms/FrostBlurView";
 import { PaymentApprovalHost } from "@/components/payment-approval/PaymentApprovalHost";
+import { AnalyticsWatch } from "@/components/AnalyticsWatch";
 import {
   focusManager,
   QueryClient,
@@ -351,6 +352,7 @@ function RootLayout() {
             <AppearanceProvider>
               <AuthProvider>
                 <ActivityWatch />
+                <AnalyticsWatch />
                 <AppLockProvider>
                   <BlurTargetProvider>
                     {/* The New Architecture flattens layout-only views, which

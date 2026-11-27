@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { checkOrder } from "@/app/actions";
 import { rememberOrder, useBag } from "@/components/CartProvider";
 import { ProductArt } from "@/components/ProductArt";
@@ -12,6 +12,7 @@ import {
   productById,
 } from "@/lib/catalog";
 import type { Order } from "@/lib/orders";
+import { analytics, bucketAmount } from "@/lib/analytics";
 
 const POLL_MS = 4000;
 const POLL_FOR_MS = 20 * 60_000;
@@ -65,6 +66,23 @@ export function OrderView({
   useEffect(() => {
     rememberOrder(initial.id);
   }, [initial.id]);
+
+  // Only an outcome this visit saw happen is reported, so reopening an old
+  // order from the lookup page does not count it again.
+  const watchedOutcome = useRef(
+    fromCheckout || initial.status === "awaiting_payment",
+  );
+  useEffect(() => {
+    if (!watchedOutcome.current || order.status === "awaiting_payment") return;
+    watchedOutcome.current = false;
+    if (order.status === "paid" || order.status === "needs_review") {
+      analytics.track("shop_order_paid", {
+        amount_bucket: bucketAmount(order.totalCents / 100, "USD"),
+      });
+    } else {
+      analytics.track("shop_order_failed", { reason: order.status });
+    }
+  }, [order.status, order.totalCents]);
 
   useEffect(() => {
     if (

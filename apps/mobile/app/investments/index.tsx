@@ -24,6 +24,7 @@ import { SendFlowModal } from "@/components/ui/organisms/send/SendFlowModal";
 import { formatMoney } from "@/utils/balances";
 import { formatTokenAmount } from "@/utils/tokens";
 import { cn } from "@/utils/cn";
+import { analytics } from "@/utils/analytics";
 
 /**
  * Investments: every token the Consumer holds that is not their spending
@@ -60,7 +61,10 @@ export default function InvestmentsScreen() {
                   </Typography>
                 </View>
               ),
-              onPress: () => pane.push("/swap"),
+              onPress: () => {
+                trackInvestmentsAction("swap");
+                pane.push("/swap");
+              },
               accessibilityLabel: "Swap",
             },
           ]
@@ -78,7 +82,10 @@ export default function InvestmentsScreen() {
             </Typography>
           </View>
         ),
-        onPress: () => gateSend(() => setIsSendModalVisible(true)),
+        onPress: () => {
+          trackInvestmentsAction("send");
+          gateSend(() => setIsSendModalVisible(true));
+        },
         accessibilityLabel: "Send",
       },
     ],
@@ -107,7 +114,12 @@ export default function InvestmentsScreen() {
       </View>
 
       {isEmpty ? (
-        <EmptyState onGetAssets={showReceiveModal} />
+        <EmptyState
+          onGetAssets={() => {
+            trackInvestmentsAction("add_money");
+            showReceiveModal();
+          }}
+        />
       ) : (
         <ScrollView
           className="mt-6 flex-1"
@@ -162,6 +174,10 @@ export default function InvestmentsScreen() {
       <QRCodeModal ref={qrCodeModalRef} walletAddress={address ?? ""} />
     </ScreenLayout>
   );
+}
+
+function trackInvestmentsAction(feature: string) {
+  analytics.track("feature_opened", { feature, source: "investments" });
 }
 
 function EmptyState({ onGetAssets }: { onGetAssets: () => void }) {

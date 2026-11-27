@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
 import { PublicKey, VersionedTransaction } from '@solana/web3.js';
 import { eq } from 'drizzle-orm';
 import type { TransactionInstruction } from '@solana/web3.js';
@@ -103,6 +104,7 @@ export class PrimaryRotationService {
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
     /** Same guard as provisioning: the only bytes submitted are bytes we built. */
     @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {}
 
   /**
@@ -472,14 +474,22 @@ export class PrimaryRotationService {
       pendingPrimaryProviderId: null,
       pendingPrimaryChangeIndex: null,
     });
-    await this.events.recordPasskeyEnrolled(account.userId, {
+    const enrolled = await this.events.recordPasskeyEnrolled(account.userId, {
       credentialId: newSigner,
     });
-    if (account.pendingPrimaryChangeIndex) {
-      await this.events.recordSettingsChangeExecuted(account.userId, {
-        changeIndex: account.pendingPrimaryChangeIndex,
-        subject: newSigner,
-      });
+    const executed = account.pendingPrimaryChangeIndex
+      ? await this.events.recordSettingsChangeExecuted(account.userId, {
+          changeIndex: account.pendingPrimaryChangeIndex,
+          subject: newSigner,
+        })
+      : null;
+    // Either record being new means this call committed the rotation.
+    if (enrolled || executed) {
+      this.analytics?.capture(
+        'server_account_change_completed',
+        { consumerId: account.userId },
+        { kind: 'primary_rotation' },
+      );
     }
     // Best-effort; the reconciler is the safety net, and a rotation that
     // executed must not be reported failed over a webhook registration.
