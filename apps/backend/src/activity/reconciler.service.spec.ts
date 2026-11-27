@@ -6,6 +6,7 @@ import type { NotificationsService } from '../notifications/notifications.servic
 import type { TokenPriceProvider } from '../prices/token-price.interface';
 import type { DbService } from '../db/db.service';
 import type { SolanaRpc } from '../solana/solana-rpc.interface';
+import type { ServerAnalytics } from '../analytics/server-analytics.service';
 
 /** Names the mints these tests use; anything else goes unnamed, as in life. */
 function fakeNamer(): TokenNamer {
@@ -268,6 +269,69 @@ describe('ReconcilerService.tick', () => {
     expect(updates).toHaveLength(1);
     // The UPDATE has the status guard via WHERE clause.
     expect(updates[0].payload).toMatch(/PENDING/);
+  });
+
+  it('reports a confirmation it made once, bucketed, and never one the guard skipped', async () => {
+    const sig = 'sig-analytics';
+    const { db } = makeFakeDb({
+      outstanding: [
+        {
+          signature: sig,
+          smartAccountId: 'sa1',
+          submittedAt: new Date(Date.now() - 60_000),
+        },
+      ],
+    });
+    // The first UPDATE moves the row; a second finds it no longer PENDING.
+    const execute = db.client.execute as jest.Mock;
+    const fallback = execute.getMockImplementation() as (s: unknown) => unknown;
+    let moved = false;
+    execute.mockImplementation((stmt: unknown) => {
+      const str = JSON.stringify(stmt);
+      if (str.includes('UPDATE') && str.includes('CONFIRMED')) {
+        const rows = moved
+          ? []
+          : [{ userId: 'user-1', mint: 'USDC-MINT', usdValue: '42.17' }];
+        moved = true;
+        return Promise.resolve({ rows, rowCount: rows.length });
+      }
+      return fallback(stmt);
+    });
+    const confirmed = {
+      signature: sig,
+      slot: 1n,
+      confirmationStatus: 'confirmed',
+      err: null,
+    };
+    const solana = makeFakeSolana({
+      getSignatureStatuses: jest.fn().mockResolvedValue([confirmed]),
+    });
+    const analytics = {
+      capture: jest.fn(),
+      tokenSymbol: (mint: string) => (mint === 'USDC-MINT' ? 'USDC' : 'other'),
+    };
+    const reconciler = new ReconcilerService(
+      db,
+      solana,
+      new TailerService(
+        db,
+        fakePriceProvider(),
+        fakeNotifications(),
+        fakeNamer(),
+      ),
+      analytics as unknown as ServerAnalytics,
+    );
+
+    await reconciler.tick();
+    await reconciler.tick();
+
+    expect(analytics.capture).toHaveBeenCalledTimes(1);
+    expect(analytics.capture).toHaveBeenCalledWith(
+      'server_transfer_confirmed',
+      { consumerId: 'user-1' },
+      { token: 'USDC', amount_bucket: '10-50' },
+    );
+    expect(JSON.stringify(analytics.capture.mock.calls)).not.toContain('42.17');
   });
 
   it('anchors the age comparison to UTC, not the server-local timezone', async () => {

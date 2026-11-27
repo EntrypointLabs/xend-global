@@ -4,8 +4,12 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
+import { bucketAmount } from '../analytics/redact';
 import { DbService } from '../db/db.service';
 import { smartAccounts, squadsAccounts, tailerState } from '../db/schema';
 import { SOLANA_RPC } from '../solana/solana-rpc.interface';
@@ -97,6 +101,7 @@ export class ReconcilerService implements OnModuleInit, OnModuleDestroy {
     private readonly db: DbService,
     @Inject(SOLANA_RPC) private readonly solana: SolanaRpc,
     private readonly tailer: TailerService,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -388,14 +393,13 @@ export class ReconcilerService implements OnModuleInit, OnModuleDestroy {
     for (const status of statuses) {
       if (status.err) {
         // Cluster reports an error — finalize as FAILED.
-        await this.db.client.execute(sql`
-          UPDATE transfers
-          SET status = 'FAILED'::transfer_status,
+        await this.finalize(
+          status.signature,
+          sql`status = 'FAILED'::transfer_status,
               failure_reason = ${JSON.stringify(status.err)},
-              confirmed_at = NOW()
-          WHERE signature = ${status.signature}
-            AND status = 'PENDING'
-        `);
+              confirmed_at = NOW()`,
+          'chain_error',
+        );
         failed++;
         this.reconcileFinalizedCount++;
       } else if (
@@ -403,24 +407,16 @@ export class ReconcilerService implements OnModuleInit, OnModuleDestroy {
         status.confirmationStatus === 'finalized'
       ) {
         const slotStr = status.slot != null ? status.slot.toString() : null;
-        if (slotStr) {
-          await this.db.client.execute(sql`
-            UPDATE transfers
-            SET status = 'CONFIRMED'::transfer_status,
+        await this.finalize(
+          status.signature,
+          slotStr
+            ? sql`status = 'CONFIRMED'::transfer_status,
                 confirmed_at = NOW(),
-                slot = ${slotStr}::bigint
-            WHERE signature = ${status.signature}
-              AND status = 'PENDING'
-          `);
-        } else {
-          await this.db.client.execute(sql`
-            UPDATE transfers
-            SET status = 'CONFIRMED'::transfer_status,
-                confirmed_at = NOW()
-            WHERE signature = ${status.signature}
-              AND status = 'PENDING'
-          `);
-        }
+                slot = ${slotStr}::bigint`
+            : sql`status = 'CONFIRMED'::transfer_status,
+                confirmed_at = NOW()`,
+          null,
+        );
         finalized++;
         this.reconcileFinalizedCount++;
       } else if (
@@ -431,14 +427,13 @@ export class ReconcilerService implements OnModuleInit, OnModuleDestroy {
         // the row has aged past the blockhash lifetime — the transaction
         // was dropped or its blockhash expired and will never land.
         // Finalize as FAILED so it stops occupying the oldest-first batch.
-        await this.db.client.execute(sql`
-          UPDATE transfers
-          SET status = 'FAILED'::transfer_status,
+        await this.finalize(
+          status.signature,
+          sql`status = 'FAILED'::transfer_status,
               failure_reason = ${JSON.stringify({ code: 'BLOCKHASH_EXPIRED' })},
-              confirmed_at = NOW()
-          WHERE signature = ${status.signature}
-            AND status = 'PENDING'
-        `);
+              confirmed_at = NOW()`,
+          'blockhash_expired',
+        );
         failed++;
         this.reconcileFinalizedCount++;
       }
@@ -461,6 +456,45 @@ export class ReconcilerService implements OnModuleInit, OnModuleDestroy {
       );
       this.logger.log(
         `tailer.reconcile.percent_of_confirmations rolling=${pct}% (reconciled=${this.reconcileFinalizedCount} webhook=${this.webhookFinalizedCount})`,
+      );
+    }
+  }
+
+  /**
+   * Settles a PENDING send. The status guard means only the call that moves
+   * the row reports it, so a send settled by the webhook first stays quiet.
+   * `failure` is null for a confirmation.
+   */
+  private async finalize(
+    signature: string,
+    set: SQL,
+    failure: string | null,
+  ): Promise<void> {
+    const result = (await this.db.client.execute(sql`
+      UPDATE transfers
+      SET ${set}
+      WHERE signature = ${signature}
+        AND status = 'PENDING'
+      RETURNING
+        (SELECT sa.user_id FROM smart_accounts sa
+          WHERE sa.id = transfers.smart_account_id) AS "userId",
+        mint,
+        usd_value AS "usdValue"
+    `)) as unknown as {
+      rows?: { userId: string | null; mint: string; usdValue: string | null }[];
+    };
+    for (const row of result.rows ?? []) {
+      if (!row.userId) continue;
+      this.analytics?.capture(
+        failure ? 'server_transfer_failed' : 'server_transfer_confirmed',
+        { consumerId: row.userId },
+        {
+          token: this.analytics.tokenSymbol(row.mint),
+          amount_bucket: bucketAmount(
+            row.usdValue === null ? null : Number(row.usdValue),
+          ),
+          ...(failure ? { step: 'chain', reason: failure } : {}),
+        },
       );
     }
   }

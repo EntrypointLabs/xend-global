@@ -6,6 +6,9 @@ import { EVENT_CONSUMER } from './event-consumer.interface';
 import { KafkaEventConsumer } from './kafka-event-consumer';
 import { LoggingEventPublisher } from './logging-event-publisher';
 import { DisabledEventConsumer } from './disabled-event-consumer';
+import { AnalyticsEventPublisher } from '../analytics/analytics-event-publisher';
+import { AnalyticsModule } from '../analytics/analytics.module';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
 
 export function brokerConfigured(config: ConfigService): boolean {
   return Boolean(config.get<string>('KAFKA_BROKERS')?.trim());
@@ -17,14 +20,18 @@ export function brokerConfigured(config: ConfigService): boolean {
  * otherwise (ADR 0038). No publishing or consuming code depends on which.
  */
 @Module({
+  imports: [AnalyticsModule],
   providers: [
     {
       provide: EVENT_PUBLISHER,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) =>
-        brokerConfigured(config)
-          ? new KafkaEventPublisher(config)
-          : new LoggingEventPublisher(),
+      inject: [ConfigService, ServerAnalytics],
+      useFactory: (config: ConfigService, analytics: ServerAnalytics) =>
+        new AnalyticsEventPublisher(
+          brokerConfigured(config)
+            ? new KafkaEventPublisher(config)
+            : new LoggingEventPublisher(),
+          analytics,
+        ),
     },
     {
       provide: EVENT_CONSUMER,

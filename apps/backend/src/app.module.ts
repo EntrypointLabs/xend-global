@@ -1,5 +1,6 @@
 import { EarnModule } from './earn/earn.module';
 import { Module } from '@nestjs/common';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AccountModule } from './account/account.module';
@@ -62,6 +63,7 @@ const testDashboardEnabled = process.env.NODE_ENV !== 'production';
     FeaturesModule,
     MetricsModule,
     TracingModule,
+    AnalyticsModule,
     EntrySessionModule,
     AuthModule,
     WalletsModule,

@@ -8,6 +8,10 @@ import { KafkaEventPublisher } from './kafka-event-publisher';
 import { KafkaEventConsumer } from './kafka-event-consumer';
 import { LoggingEventPublisher } from './logging-event-publisher';
 import { DisabledEventConsumer } from './disabled-event-consumer';
+import { AnalyticsEventPublisher } from '../analytics/analytics-event-publisher';
+
+const innerPublisher = (publisher: unknown) =>
+  (publisher as AnalyticsEventPublisher).inner;
 
 type ConfigValues = Record<string, string | undefined>;
 
@@ -41,7 +45,12 @@ describe('EventsModule', () => {
       KAFKA_CLIENT_ID: 'test',
     });
 
-    expect(moduleRef.get(EVENT_PUBLISHER)).toBeInstanceOf(KafkaEventPublisher);
+    expect(moduleRef.get(EVENT_PUBLISHER)).toBeInstanceOf(
+      AnalyticsEventPublisher,
+    );
+    expect(innerPublisher(moduleRef.get(EVENT_PUBLISHER))).toBeInstanceOf(
+      KafkaEventPublisher,
+    );
     expect(moduleRef.get(EVENT_CONSUMER)).toBeInstanceOf(KafkaEventConsumer);
   });
 
@@ -54,7 +63,7 @@ describe('EventsModule', () => {
 
       const publisher = app.get<EventPublisher>(EVENT_PUBLISHER);
       const consumer = app.get<EventConsumer>(EVENT_CONSUMER);
-      expect(publisher).toBeInstanceOf(LoggingEventPublisher);
+      expect(innerPublisher(publisher)).toBeInstanceOf(LoggingEventPublisher);
       expect(consumer).toBeInstanceOf(DisabledEventConsumer);
 
       const handler = jest.fn();

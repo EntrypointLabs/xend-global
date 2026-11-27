@@ -1,8 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import { DbService } from '../../db/db.service';
+import { DbService, type DbExecutor } from '../../db/db.service';
 import { fiatVerifications } from '../../db/schema';
 import {
   PajClient,
@@ -10,6 +10,7 @@ import {
   type PajKycSession,
 } from '../../settlement/providers/paj/paj.client';
 import { FiatError } from '../fiat.errors';
+import { ServerAnalytics } from '../../analytics/server-analytics.service';
 
 const PROVIDER = 'paj';
 
@@ -28,6 +29,12 @@ export interface VerificationView {
 }
 
 type Row = typeof fiatVerifications.$inferSelect;
+
+/** The statuses that end a verification, as `server_kyc_completed` reports them. */
+const DECISIONS: Record<string, VerificationStatus> = {
+  VERIFIED: 'verified',
+  DECLINED: 'declined',
+};
 
 const PUBLIC_STATUS: Record<string, VerificationStatus> = {
   OTP_SENT: 'code_sent',
@@ -49,6 +56,7 @@ export class FiatVerificationService {
     private readonly db: DbService,
     private readonly paj: PajClient,
     private readonly config: ConfigService,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {}
 
   async view(userId: string): Promise<VerificationView> {
@@ -153,17 +161,48 @@ export class FiatVerificationService {
 
   private async refresh(row: Row): Promise<Row> {
     const customer = await this.paj.getKycCustomer(row.customerId!);
-    const [updated] = await this.db.client
-      .update(fiatVerifications)
-      .set({
-        status: customer.status,
-        tier: customer.tier ?? null,
-        declineCode: customer.declineCode ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(fiatVerifications.userId, row.userId))
-      .returning();
+    const updated = await this.decide(row.userId, (tx) =>
+      tx
+        .update(fiatVerifications)
+        .set({
+          status: customer.status,
+          tier: customer.tier ?? null,
+          declineCode: customer.declineCode ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(fiatVerifications.userId, row.userId))
+        .returning(),
+    );
     return updated ?? row;
+  }
+
+  /**
+   * Runs a write with the Consumer's row locked, and reports a decision the
+   * write moved it into. A review that lands while the app is also polling
+   * is then reported by whichever got the lock first, and only once.
+   */
+  private async decide(
+    userId: string,
+    write: (tx: DbExecutor) => Promise<Row[]>,
+  ): Promise<Row | undefined> {
+    const { before, after } = await this.db.client.transaction(async (tx) => {
+      const [prior] = await tx
+        .select({ status: fiatVerifications.status })
+        .from(fiatVerifications)
+        .where(eq(fiatVerifications.userId, userId))
+        .for('update');
+      const [row] = await write(tx);
+      return { before: prior?.status, after: row };
+    });
+    const decision = after && DECISIONS[after.status];
+    if (decision && before !== after.status) {
+      this.analytics?.capture(
+        'server_kyc_completed',
+        { consumerId: userId },
+        { provider: PROVIDER, status: decision },
+      );
+    }
+    return after;
   }
 
   private async row(userId: string): Promise<Row | null> {
@@ -189,12 +228,14 @@ export class FiatVerificationService {
       declineCode: session.declineCode ?? null,
       updatedAt: new Date(),
     };
-    const [row] = await this.db.client
-      .insert(fiatVerifications)
-      .values({ userId, ...values })
-      .onConflictDoUpdate({ target: fiatVerifications.userId, set: values })
-      .returning();
-    return row;
+    const row = await this.decide(userId, (tx) =>
+      tx
+        .insert(fiatVerifications)
+        .values({ userId, ...values })
+        .onConflictDoUpdate({ target: fiatVerifications.userId, set: values })
+        .returning(),
+    );
+    return row!;
   }
 
   /** Stable per user, so the partner sees one identity without our user id. */

@@ -3,6 +3,7 @@ import type { ConfigService } from '@nestjs/config';
 import type { DbService } from '../db/db.service';
 import { webhookDeliveries, webhookEndpoints } from '../db/schema';
 import { WebhookDeliveryService } from './webhook-delivery.service';
+import type { ServerAnalytics } from '../analytics/server-analytics.service';
 
 type EndpointRow = typeof webhookEndpoints.$inferSelect;
 type DeliveryRow = typeof webhookDeliveries.$inferSelect;
@@ -79,7 +80,12 @@ function makeDb(endpoint: EndpointRow | null) {
     update: () => ({
       set: (v: Record<string, unknown>) => {
         updates.push(v);
-        return { where: () => Promise.resolve() };
+        return {
+          where: () =>
+            Object.assign(Promise.resolve(), {
+              returning: () => Promise.resolve([{ id: 'wd1' }]),
+            }),
+        };
       },
     }),
   };
@@ -133,6 +139,41 @@ describe('WebhookDeliveryService.attempt', () => {
     await service.attempt(deliveryRow({ attemptNo: 3 }));
     expect(updates[0]).toMatchObject({ status: 'exhausted' });
     expect(updates[0].nextRetryAt).toBeNull();
+  });
+
+  it('reports the given-up delivery to analytics once, by merchant and status code', async () => {
+    const { db } = makeDb(endpointRow());
+    mockFetch(() =>
+      Promise.resolve({ status: 503, text: () => Promise.resolve('down') }),
+    );
+    const analytics = { capture: jest.fn() };
+    const service = new WebhookDeliveryService(
+      db,
+      makeConfig({ WEBHOOK_MAX_ATTEMPTS: 3 }),
+      analytics as unknown as ServerAnalytics,
+    );
+    await service.attempt(deliveryRow({ attemptNo: 3 }));
+    expect(analytics.capture).toHaveBeenCalledTimes(1);
+    expect(analytics.capture).toHaveBeenCalledWith(
+      'server_webhook_delivery_failed',
+      { merchantId: 'm1' },
+      { merchant_id: 'm1', attempt: 3, reason: 'http_503' },
+    );
+  });
+
+  it('does not report a failure that will be retried', async () => {
+    const { db } = makeDb(endpointRow());
+    mockFetch(() =>
+      Promise.resolve({ status: 500, text: () => Promise.resolve('err') }),
+    );
+    const analytics = { capture: jest.fn() };
+    const service = new WebhookDeliveryService(
+      db,
+      makeConfig(),
+      analytics as unknown as ServerAnalytics,
+    );
+    await service.attempt(deliveryRow({ attemptNo: 1 }));
+    expect(analytics.capture).not.toHaveBeenCalled();
   });
 
   it('marks failed when a redirect makes fetch reject under redirect:error', async () => {

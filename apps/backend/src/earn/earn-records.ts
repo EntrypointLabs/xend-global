@@ -18,6 +18,8 @@ import {
   type TokenPriceProvider,
 } from '../prices/token-price.interface';
 import { usdValueOf } from '../prices/usd-value';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
+import { bucketAmount } from '../analytics/redact';
 import {
   positionKey,
   providerEarnings,
@@ -130,7 +132,29 @@ export class DrizzleEarnRecords implements EarnRecords {
     @Optional()
     @Inject(TOKEN_PRICE_PROVIDER)
     private readonly prices?: TokenPriceProvider,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {}
+  private report(
+    event:
+      | 'server_earn_submitted'
+      | 'server_earn_confirmed'
+      | 'server_earn_failed',
+    row: Pick<EarnPending, 'userId' | 'provider' | 'mint' | 'action'>,
+    usdValue?: string | null,
+  ) {
+    this.analytics?.capture(
+      event,
+      { consumerId: row.userId },
+      {
+        kind: row.action === 'redeem' ? 'withdraw' : 'deposit',
+        provider: row.provider,
+        token: this.analytics.tokenSymbol(row.mint),
+        amount_bucket:
+          usdValue == null ? undefined : bucketAmount(Number(usdValue)),
+        ...(event === 'server_earn_failed' ? { reason: 'chain_error' } : {}),
+      },
+    );
+  }
   /** Frozen at confirmation, like a transfer's value, so Activity never reprices it. */
   private async usdValue(mint: string, amount: bigint): Promise<string | null> {
     const asset = earnAssetByMint(mint);
@@ -160,10 +184,13 @@ export class DrizzleEarnRecords implements EarnRecords {
     return row ?? null;
   }
   async pending(record: EarnPending) {
-    await this.db.client
+    // A retried submit re-records the same signature; only the first counts.
+    const inserted = await this.db.client
       .insert(earnOperations)
       .values(record)
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ signature: earnOperations.signature });
+    if (inserted.length) this.report('server_earn_submitted', record);
   }
   async reconcile(userId: string, rpc: Connection) {
     // Keyset pages keep unresolved newer broadcasts from hiding older ones.
@@ -191,10 +218,17 @@ export class DrizzleEarnRecords implements EarnRecords {
             });
             if (!tx?.meta) return;
             if (tx.meta.err) {
-              await this.db.client
+              const failed = await this.db.client
                 .update(earnOperations)
                 .set({ status: 'failed', wire: null })
-                .where(eq(earnOperations.signature, row.signature));
+                .where(
+                  and(
+                    eq(earnOperations.signature, row.signature),
+                    eq(earnOperations.status, 'pending'),
+                  ),
+                )
+                .returning({ signature: earnOperations.signature });
+              if (failed.length) this.report('server_earn_failed', row);
               return;
             }
             const asset = earnAssetByMint(row.mint);
@@ -213,17 +247,26 @@ export class DrizzleEarnRecords implements EarnRecords {
                 (delta.cash <= 0n || delta.shares >= 0n))
             )
               return;
-            await this.db.client
+            const usdValue = await this.usdValue(row.mint, delta.cash);
+            const confirmed = await this.db.client
               .update(earnOperations)
               .set({
                 status: 'confirmed',
                 wire: null,
                 cashDeltaRaw: delta.cash.toString(),
                 shareDeltaRaw: delta.shares.toString(),
-                usdValue: await this.usdValue(row.mint, delta.cash),
+                usdValue,
                 confirmedAt: new Date(tx.blockTime * 1000),
               })
-              .where(eq(earnOperations.signature, row.signature));
+              .where(
+                and(
+                  eq(earnOperations.signature, row.signature),
+                  eq(earnOperations.status, 'pending'),
+                ),
+              )
+              .returning({ signature: earnOperations.signature });
+            if (confirmed.length)
+              this.report('server_earn_confirmed', row, usdValue);
           }),
         );
       }

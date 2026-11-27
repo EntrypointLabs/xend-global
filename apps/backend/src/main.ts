@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { createPostHogLogger } from './analytics/posthog-logger';
 import { correlationIdMiddleware } from './common/correlation-id.middleware';
 import { noStoreMiddleware } from './common/no-store.middleware';
 import { securityHeadersMiddleware } from './common/security-headers.middleware';
@@ -22,9 +23,11 @@ async function bootstrap() {
   // for HMAC verification. Providers sign the unmodified payload; any JSON
   // re-serialization would change the byte sequence and break verification.
   // bodyParser:false so the parsers below are registered with a size limit.
+  const posthogLogger = createPostHogLogger();
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
     bodyParser: false,
+    ...(posthogLogger ? { logger: posthogLogger } : {}),
   });
   app.useBodyParser('json', { limit: BODY_LIMIT });
   app.useBodyParser('urlencoded', { extended: true, limit: BODY_LIMIT });

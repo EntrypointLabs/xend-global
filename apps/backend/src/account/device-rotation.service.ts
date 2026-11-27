@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { ServerAnalytics } from '../analytics/server-analytics.service';
 import {
   PublicKey,
   VersionedTransaction,
@@ -104,6 +105,7 @@ export class DeviceRotationService {
     private readonly events: AccountEventsService,
     /** Same guard as provisioning: the only bytes submitted are bytes we built. */
     @Inject(PREPARED_TX_STORE) private readonly prepared: PreparedTxStore,
+    @Optional() private readonly analytics?: ServerAnalytics,
   ) {}
 
   /**
@@ -497,12 +499,23 @@ export class DeviceRotationService {
       pendingApprovalSubOrgId: null,
       pendingApprovalChangeIndex: null,
     });
-    await this.events.recordDeviceRotated(account.userId, newSigner);
-    if (account.pendingApprovalChangeIndex) {
-      await this.events.recordSettingsChangeExecuted(account.userId, {
-        changeIndex: account.pendingApprovalChangeIndex,
-        subject: newSigner,
-      });
+    const rotated = await this.events.recordDeviceRotated(
+      account.userId,
+      newSigner,
+    );
+    const executed = account.pendingApprovalChangeIndex
+      ? await this.events.recordSettingsChangeExecuted(account.userId, {
+          changeIndex: account.pendingApprovalChangeIndex,
+          subject: newSigner,
+        })
+      : null;
+    // Either record being new means this call committed the rotation.
+    if (rotated || executed) {
+      this.analytics?.capture(
+        'server_account_change_completed',
+        { consumerId: account.userId },
+        { kind: 'device_rotation' },
+      );
     }
   }
 

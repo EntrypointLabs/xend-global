@@ -510,6 +510,13 @@ export const USDC_MINT_BY_CLUSTER = {
         // the SDK starts in main.ts before Nest loads.
         OTEL_EXPORTER_OTLP_ENDPOINT: Joi.string().uri().optional().allow(''),
         OTEL_SERVICE_NAME: Joi.string().default('prydd-backend'),
+        // PostHog: server events go out when the project key is set, and log
+        // lines at or above POSTHOG_LOGS_LEVEL ship to PostHog Logs.
+        POSTHOG_KEY: Joi.string().optional().allow(''),
+        POSTHOG_HOST: Joi.string().uri().optional().allow(''),
+        POSTHOG_LOGS_LEVEL: Joi.string()
+          .valid('off', 'log', 'warn', 'error', 'fatal')
+          .default('log'),
       }),
     }),
   ],
