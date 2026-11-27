@@ -9,6 +9,6 @@ export async function copyToClipboard(value: string, label: string) {
   void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   showToast(
     `Copied ${label}`,
-    <Ionicons name="checkmark-circle" size={16} color="black" />
+    <Ionicons name="checkmark-circle" size={16} className="text-foreground" />
   );
 }

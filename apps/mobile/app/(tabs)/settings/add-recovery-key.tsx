@@ -1,3 +1,4 @@
+import { GlassButton } from "@/components/ui/atoms/Glass";
 import { View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -60,13 +61,15 @@ export default function AddRecoveryKeyScreen() {
 function BackButton() {
   const palette = usePalette();
   return (
-    <HapticPressable
+    <GlassButton
+      radius={999}
       onPress={() => router.back()}
-      className="size-10 items-center justify-center rounded-full bg-foreground/[0.08]"
+      className="size-10 items-center justify-center rounded-full"
+      fallbackClassName="border border-foreground/[0.08] bg-card"
       accessibilityLabel="Go back"
     >
-      <Ionicons name="chevron-back" size={20} color={palette.fg(0.4)} />
-    </HapticPressable>
+      <Ionicons name="chevron-back" size={20} color={palette.foreground} />
+    </GlassButton>
   );
 }
 

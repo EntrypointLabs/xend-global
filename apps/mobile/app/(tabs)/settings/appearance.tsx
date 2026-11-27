@@ -1,3 +1,4 @@
+import { GlassButton } from "@/components/ui/atoms/Glass";
 import React, { useState } from "react";
 import { Image, View } from "react-native";
 import { router } from "expo-router";
@@ -62,14 +63,16 @@ export default function AppearanceScreen() {
 
   return (
     <ScreenLayout>
-      <HapticPressable
+      <GlassButton
+        radius={999}
         accessibilityRole="button"
         accessibilityLabel="Back"
         onPress={() => router.back()}
-        className="mt-2 size-11 items-center justify-center rounded-full bg-foreground/5"
+        className="mt-2 size-11 items-center justify-center rounded-full"
+        fallbackClassName="border border-foreground/[0.08] bg-card"
       >
         <Ionicons name="arrow-back" size={20} color={palette.foreground} />
-      </HapticPressable>
+      </GlassButton>
 
       <Typography weight="700" className="mt-5 text-3xl text-foreground">
         Appearance

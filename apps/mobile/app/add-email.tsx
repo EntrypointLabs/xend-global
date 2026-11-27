@@ -1,3 +1,5 @@
+import { GlassButton } from "@/components/ui/atoms/Glass";
+import { OnPhotoProvider } from "@/components/ui/glass";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -316,31 +318,39 @@ function AddEmailScreen() {
         <View className="flex-1">
           <View className="px-5" style={{ paddingTop: insets.top + 8 }}>
             {step === "address" ? (
-              <HapticPressable
-                onPress={leaveAddressStep}
-                disabled={saving}
-                feedback="selection"
-                className="size-10 items-center justify-center rounded-full bg-white/10"
-                accessibilityLabel={addressLeaveLabel}
-                hitSlop={8}
-              >
-                <Ionicons
-                  name={!signedIn ? "chevron-back" : "close"}
-                  size={22}
-                  color="#FFFFFF"
-                />
-              </HapticPressable>
+              <OnPhotoProvider value>
+                <GlassButton
+                  radius={999}
+                  fallbackClassName="bg-white/10"
+                  onPress={leaveAddressStep}
+                  disabled={saving}
+                  feedback="selection"
+                  className="size-10 items-center justify-center rounded-full"
+                  accessibilityLabel={addressLeaveLabel}
+                  hitSlop={8}
+                >
+                  <Ionicons
+                    name={!signedIn ? "chevron-back" : "close"}
+                    size={22}
+                    color="#FFFFFF"
+                  />
+                </GlassButton>
+              </OnPhotoProvider>
             ) : step === "code" || step === "passkey" ? (
-              <HapticPressable
-                onPress={editAddress}
-                disabled={saving || creatingPasskey}
-                feedback="selection"
-                className="size-10 items-center justify-center rounded-full bg-white/10"
-                accessibilityLabel="Use a different address"
-                hitSlop={8}
-              >
-                <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
-              </HapticPressable>
+              <OnPhotoProvider value>
+                <GlassButton
+                  radius={999}
+                  fallbackClassName="bg-white/10"
+                  onPress={editAddress}
+                  disabled={saving || creatingPasskey}
+                  feedback="selection"
+                  className="size-10 items-center justify-center rounded-full"
+                  accessibilityLabel="Use a different address"
+                  hitSlop={8}
+                >
+                  <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+                </GlassButton>
+              </OnPhotoProvider>
             ) : (
               <View className="size-10" />
             )}

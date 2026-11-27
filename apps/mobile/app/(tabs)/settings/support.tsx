@@ -1,3 +1,4 @@
+import { GlassButton } from "@/components/ui/atoms/Glass";
 import React from "react";
 import { ScrollView, View } from "react-native";
 import { router } from "expo-router";
@@ -31,14 +32,16 @@ export default function SupportScreen() {
   return (
     <ScreenLayout>
       <View className="flex-1 px-3">
-        <HapticPressable
+        <GlassButton
+          radius={999}
           onPress={() => router.back()}
-          className="size-10 items-center justify-center rounded-full bg-foreground/[0.08]"
+          className="size-10 items-center justify-center rounded-full"
+          fallbackClassName="border border-foreground/[0.08] bg-card"
           accessibilityRole="button"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="chevron-back" size={20} color={palette.fg(0.4)} />
-        </HapticPressable>
+          <Ionicons name="chevron-back" size={20} color={palette.foreground} />
+        </GlassButton>
 
         <Typography
           weight="700"

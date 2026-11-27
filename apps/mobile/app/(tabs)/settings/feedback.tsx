@@ -1,3 +1,4 @@
+import { GlassButton } from "@/components/ui/atoms/Glass";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -63,14 +64,16 @@ export default function FeedbackScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={insets.top + MESSAGE_SCREEN_INSET}
       >
-        <HapticPressable
+        <GlassButton
+          radius={999}
           onPress={() => router.back()}
-          className="size-10 items-center justify-center rounded-full bg-foreground/[0.08]"
+          className="size-10 items-center justify-center rounded-full"
+          fallbackClassName="border border-foreground/[0.08] bg-card"
           accessibilityRole="button"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="chevron-back" size={20} color={palette.fg(0.4)} />
-        </HapticPressable>
+          <Ionicons name="chevron-back" size={20} color={palette.foreground} />
+        </GlassButton>
 
         <Typography
           weight="700"

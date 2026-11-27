@@ -214,7 +214,7 @@ function followToOutcome(
 ) {
   showToast(
     "Swapping",
-    <ActivityIndicator size="small" className="text-black" />,
+    <ActivityIndicator size="small" className="text-foreground" />,
     { id: SWAP_TOAST_ID, durationMs: SWAPPING_TOAST_MS }
   );
 
